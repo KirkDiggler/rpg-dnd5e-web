@@ -427,6 +427,29 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate cantrip choices
+    //
+    // THE SAME SHAPE AS EVERY OTHER COUNT-DRIVEN REQUIREMENT. A bard chooses
+    // 2 of its cantrips and the refusal reads like the skills one; nothing
+    // about a spell makes the door different (design rpg-project#405, §10).
+    const cantripChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.CANTRIPS
+      ) || [];
+
+    for (const choice of cantripChoices) {
+      const cantripChoice = currentClassChoices.cantrips?.find(
+        (cc) => cc.choiceId === choice.id
+      );
+      const selected = cantripChoice?.spellRefs || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} cantrip${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
     // For now, we'll skip validation of other choice types that don't use enums yet
     // TODO: Add validation for weapon proficiencies, armor proficiencies, feats, features
     // when they are updated to use structured types
@@ -1326,6 +1349,84 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Cantrip Choices */}
+                    {(() => {
+                      const cantripChoices =
+                        choicesSource?.filter(
+                          (choice) =>
+                            choice.choiceType === ChoiceCategory.CANTRIPS
+                        ) || [];
+
+                      if (cantripChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Cantrips{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {cantripChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.cantrips?.find(
+                                    (cc) => cc.choiceId === choice.id
+                                  )?.spellRefs || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  // Selections are `dnd5e:spells:<id>` refs.
+                                  const spellRefs = selections as string[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      equipment: [],
+                                      features: [],
+                                    };
+                                    const updatedCantrips =
+                                      currentChoices.cantrips?.filter(
+                                        (cc) => cc.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (spellRefs.length > 0) {
+                                      updatedCantrips.push({
+                                        choiceId: choice.id,
+                                        spellRefs,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        cantrips: updatedCantrips,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Tool Proficiency Choices */}
                     {(() => {
                       const toolChoices =
@@ -1805,7 +1906,8 @@ export function ClassSelectionModal({
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
                             choice.choiceType !==
                               ChoiceCategory.FIGHTING_STYLE &&
-                            choice.choiceType !== ChoiceCategory.EXPERTISE
+                            choice.choiceType !== ChoiceCategory.EXPERTISE &&
+                            choice.choiceType !== ChoiceCategory.CANTRIPS
                         ) || [];
 
                       if (otherChoices.length === 0) return null;

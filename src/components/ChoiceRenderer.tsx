@@ -7,6 +7,7 @@ import {
   getSkillInfo,
   getToolInfo,
 } from '../utils/enumRegistry';
+import { spellRefLabel } from '../utils/spellRefs';
 import { EnumChoice } from './choices/EnumChoice';
 import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
 import { SimpleChoice } from './choices/SimpleChoice';
@@ -166,6 +167,32 @@ export function ChoiceRenderer({
           'Wisdom',
           'Charisma',
         ]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+  }
+
+  // Cantrips - use EnumChoice, off the REF STRINGS and never the enum.
+  //
+  // `SpellOptions.available` is deprecated and no producer writes it (design
+  // rpg-project#405, R8); `available_refs` is the live field. The count drives
+  // the layout exactly as it does for skills, so a bard's choose-2 gets the
+  // same checkbox grid a rogue's choose-4 does — no second control, and no
+  // modal of its own.
+  //
+  // The label is derived from the ref because nothing else is offered: this
+  // options message carries no names. Every place the server DOES author a
+  // spell's name — the cast row, the save beat — uses that name verbatim.
+  if (
+    choice.choiceType === ChoiceCategory.CANTRIPS &&
+    choice.options?.case === 'spellOptions'
+  ) {
+    return (
+      <EnumChoice
+        choice={choice}
+        available={choice.options.value.availableRefs}
+        currentSelections={currentSelections}
+        getDisplayInfo={(ref: string) => ({ name: spellRefLabel(ref) })}
         onSelectionChange={onSelectionChange}
       />
     );

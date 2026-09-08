@@ -68,6 +68,23 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.REACT) {
     return declaration.reaction?.name || 'Reaction';
   }
+  // A CAST HAS NO SERVER-AUTHORED NAME TO READ YET, and this is the honest
+  // consequence rather than a client-side spell table.
+  //
+  // `SpellRef` exists and says it "identifies WHICH SPELL a VERB_CAST
+  // declaration casts", and VERB_CAST's own doc says "a level-1 bard knows
+  // two cantrips and reads two rows" — but `Declaration` carries no spell
+  // field beside `attack`, `ability`, `death_save` and `reaction`, so there is
+  // nothing here to name the row with. Deriving "Vicious Mockery" from
+  // `dnd5e:spells:vicious-mockery` is exactly what the ability row refuses to
+  // do and would go stale the first time a spell was renamed.
+  //
+  // Two cantrips therefore read as two "Cast" rows until `Declaration.spell`
+  // lands, at which point this becomes `declaration.spell?.name || 'Cast'`
+  // and nothing else here changes.
+  if (declaration.verb === Verb.CAST) {
+    return 'Cast';
+  }
   return 'Move';
 }
 
@@ -98,6 +115,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ACTIVATE) return '✦';
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   if (declaration.verb === Verb.REACT) return '⚡';
+  if (declaration.verb === Verb.CAST) return '✧';
   return '➜';
 }
 
@@ -509,6 +527,12 @@ export function ActionDock({
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
+      // A CAST IS DRAWN LIKE EVERY OTHER OFFER. Afford mints one row per
+      // cantrip this build can actually cast and none for one it cannot
+      // (design rpg-project#405, R9), so a bard with two behaviourless
+      // cantrips — and every fighter — gets no Cast rows without the client
+      // deciding anything.
+      declaration.verb === Verb.CAST ||
       (declaration.verb === Verb.DEATH_SAVE &&
         isDeathSaveExecutableShape(declaration, 'display'))
   );

@@ -43,9 +43,14 @@ export function TargetSurface({
   // an armed activation with no highlighted candidates at all: the ally was
   // neither ringed on the canvas nor listed here, so the one member the server
   // named was the one member nobody could click.
+  //
+  // A CAST JOINS ON THE SAME LINE. Afford rules who a cantrip may be pointed
+  // at — in range, in sight, on the right side — and a cast that names a
+  // creature is a MEMBER-targeted declaration like any other.
   const isMemberTargeted =
     (declaration?.verb === Verb.ATTACK ||
-      declaration?.verb === Verb.ACTIVATE) &&
+      declaration?.verb === Verb.ACTIVATE ||
+      declaration?.verb === Verb.CAST) &&
     declaration.targetKind === TargetKind.MEMBER;
   const availableTargets =
     phase === 'targeting' && isMemberTargeted
@@ -58,7 +63,11 @@ export function TargetSurface({
   const armedName =
     declaration?.verb === Verb.ACTIVATE
       ? declaration.ability?.name || 'Ability'
-      : declaration?.attack?.name || 'Attack';
+      : // The declaration carries no spell name to read (see ActionDock's
+        // `declarationLabel`), so the armed prompt says what the verb is.
+        declaration?.verb === Verb.CAST
+        ? 'Cast'
+        : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;

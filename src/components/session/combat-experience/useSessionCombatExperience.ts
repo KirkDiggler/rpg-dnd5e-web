@@ -1,5 +1,6 @@
 import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
+import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
 import { useSessionReact } from '@/api/useSessionReact';
@@ -209,6 +210,7 @@ export function useSessionCombatExperience({
   const automaticEndTurnRef = useRef(false);
   const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
+  const castInFlightRef = useRef(false);
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -250,6 +252,7 @@ export function useSessionCombatExperience({
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
+  const { cast } = useSessionCast();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -339,7 +342,9 @@ export function useSessionCombatExperience({
       clock === ClockKind.TURN &&
       active === member &&
       armedMatches.length === 1 &&
-      (armedVerb === Verb.ATTACK || armedVerb === Verb.ACTIVATE) &&
+      (armedVerb === Verb.ATTACK ||
+        armedVerb === Verb.ACTIVATE ||
+        armedVerb === Verb.CAST) &&
       armedMatches[0]?.targetKind === TargetKind.MEMBER &&
       armedMatches[0]?.available;
     return {
@@ -571,6 +576,31 @@ export function useSessionCombatExperience({
           return;
         }
         runActivateRef.current(candidate);
+        return;
+      }
+
+      // A CAST ARMS OR FIRES BY ITS TARGET KIND, exactly as an activation
+      // does. Vicious Mockery names a creature, so it arms and waits for a
+      // candidate the server ruled; True Strike is cast on the caster, so
+      // there is nothing to wait for and it fires on the click.
+      if (candidate.verb === Verb.CAST) {
+        if (candidate.targetKind === TargetKind.MEMBER) {
+          const current = uniqueCurrentDeclaration(
+            declarationsRef.current,
+            candidate,
+            Verb.CAST,
+            TargetKind.MEMBER
+          );
+          if (!current) return;
+          setInteraction({
+            armedDeclarationId: current.id,
+            selectedCandidateMember: null,
+            changedOptionNotice: null,
+          });
+          setTargeting(true);
+          return;
+        }
+        runCastRef.current(candidate);
       }
     },
     [
@@ -592,6 +622,7 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         attackInFlightRef.current ||
         activateInFlightRef.current ||
+        castInFlightRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -612,7 +643,8 @@ export function useSessionCombatExperience({
       // ruled, echo the selector back. Only the RPC differs.
       const targetTakingVerb =
         selected?.declaration?.verb === Verb.ATTACK ||
-        selected?.declaration?.verb === Verb.ACTIVATE;
+        selected?.declaration?.verb === Verb.ACTIVATE ||
+        selected?.declaration?.verb === Verb.CAST;
       if (
         !selected?.declaration ||
         !targetTakingVerb ||
@@ -632,6 +664,39 @@ export function useSessionCombatExperience({
       const exactTarget = selected.candidate.member;
       setInteraction(currentState);
       setTargeting(false);
+
+      if (declaration.verb === Verb.CAST) {
+        castInFlightRef.current = true;
+        void (async () => {
+          try {
+            await cast({
+              session,
+              member,
+              declarationId: declaration.id,
+              target: exactTarget,
+            });
+            if (!mountedRef.current) return;
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(declaration.id, Verb.CAST, exactTarget);
+            } else {
+              const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+            }
+          } finally {
+            castInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
 
       if (declaration.verb === Verb.ACTIVATE) {
         activateInFlightRef.current = true;
@@ -715,6 +780,7 @@ export function useSessionCombatExperience({
     [
       activate,
       attack,
+      cast,
       invalidateAuthority,
       member,
       presentation,
@@ -798,6 +864,87 @@ export function useSessionCombatExperience({
   );
 
   runActivateRef.current = onActivate;
+
+  // runCast is held in a ref for the same reason runActivate is: it and
+  // onSelectDeclaration are mutually recursive through the dock's single
+  // onSelect handler.
+  const runCastRef = useRef<(candidate: Declaration) => void>(() => {});
+
+  /**
+   * A cast that names nobody — True Strike on the caster's own next swing.
+   *
+   * BY ID, NEVER BY VERB, the law Activate established the moment one verb
+   * compiled more than one offer. A bard reads one Cast row per castable
+   * cantrip, so "the current declaration for CAST" has no answer;
+   * `uniqueCurrentDeclaration` matches the selector, which is the unique
+   * thing.
+   *
+   * NO TARGET IS SENT. `CastRequest.target` on a TARGET_KIND_NONE declaration
+   * is INVALID_ARGUMENT rather than a value quietly ignored, so a self cast
+   * must leave it unset.
+   */
+  const onCast = useCallback(
+    (candidate: Declaration) => {
+      if (
+        !mountedRef.current ||
+        castInFlightRef.current ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member
+      ) {
+        return;
+      }
+      const current = uniqueCurrentDeclaration(
+        declarationsRef.current,
+        candidate,
+        Verb.CAST,
+        TargetKind.NONE
+      );
+      if (!current) return;
+
+      castInFlightRef.current = true;
+      void (async () => {
+        try {
+          await cast({
+            session,
+            member,
+            declarationId: current.id,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.CAST);
+          } else {
+            // Ambiguous about whether the cast committed — the ack is thin by
+            // design. Fail closed, preserve the message, reconcile, never
+            // retry.
+            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford']);
+          }
+        } finally {
+          castInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      cast,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
+  );
+
+  runCastRef.current = onCast;
 
   const onEndTurn = useCallback(
     (candidate: Declaration) => {

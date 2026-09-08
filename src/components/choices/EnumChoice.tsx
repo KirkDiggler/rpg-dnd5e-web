@@ -9,7 +9,20 @@ export interface EnumDisplayInfo {
 // Layout options - implement 'rows' and 'grouped' now, others later
 export type ChoiceLayout = 'rows' | 'grid' | 'chips' | 'grouped';
 
-export interface EnumChoiceProps<T extends number> {
+/**
+ * What an option's value is on the wire.
+ *
+ * A NUMBER FOR AN ENUM, A STRING FOR A REF. Every requirement drawn by this
+ * control used to be a closed proto enum, so the value was a number. Cantrips
+ * are the first that are not: spells travel as `dnd5e:spells:<id>` ref strings
+ * (design rpg-project#405, R8), and the option list is a list of those. The
+ * control's behaviour is identical either way — it toggles values it was given
+ * and hands them back — so the constraint widens rather than the control
+ * forking.
+ */
+export type EnumChoiceValue = string | number;
+
+export interface EnumChoiceProps<T extends EnumChoiceValue> {
   // Core data
   choice: Choice;
   available: T[];
@@ -79,7 +92,7 @@ function SelectionMark({
   );
 }
 
-export function EnumChoice<T extends number>({
+export function EnumChoice<T extends EnumChoiceValue>({
   choice,
   available,
   currentSelections,
@@ -89,7 +102,9 @@ export function EnumChoice<T extends number>({
   layout,
   onSelectionChange,
 }: EnumChoiceProps<T>) {
-  // Filter out UNSPECIFIED values (value 0) - these should never be displayed to users
+  // Filter out UNSPECIFIED values (value 0) - these should never be displayed
+  // to users. Only an enum has one; a ref string is never 0 and every ref
+  // survives this filter untouched.
   const filteredAvailable = available.filter((item) => item !== 0);
 
   // Auto-detect layout

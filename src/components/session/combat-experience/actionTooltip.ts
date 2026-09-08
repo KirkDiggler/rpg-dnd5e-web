@@ -73,7 +73,11 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
         ? declaration.ability?.name || 'Ability'
         : declaration.verb === Verb.DEATH_SAVE
           ? declaration.deathSave?.name || 'Death Save'
-          : 'Move';
+          : // No spell name on the declaration to read; see `declarationLabel`
+            // in ActionDock for why this is not derived from a ref.
+            declaration.verb === Verb.CAST
+            ? 'Cast'
+            : 'Move';
 
   const lines: ActionTooltipLine[] = [];
 
