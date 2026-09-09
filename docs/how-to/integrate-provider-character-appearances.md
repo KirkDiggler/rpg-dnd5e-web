@@ -22,13 +22,31 @@ The receipt chain is:
 
 Assets issue [rpg-game-assets#185](https://github.com/KirkDiggler/rpg-game-assets/issues/185) is the first fixture. Its current receipt is **prepared, unpublished, and unmerged**. It can prove the pure declaration projection, but it cannot authorize runtime sync or a Web publication claim.
 
-After the provider is genuinely merged, check out its verified merge commit cleanly and run the existing command (the same command for a human or an agent):
+After the provider is genuinely merged, use the publisher's `resolve` command to produce a new merged receipt; never edit the prepared or publication JSON by hand. Check out the private provider repository cleanly at that receipt's exact `provider.mergeSha`. The Web wrapper takes an explicit existing Web issue number in this initial version and defaults to a machine-readable dry-run plan:
 
 ```bash
-RPG_GAME_ASSETS_PATH=/path/to/clean/rpg-game-assets \
-ASSETS_SYNC_SKIP_UPDATE=1 \
-npm run assets:sync
+: "${WEB_ISSUE_NUMBER:?set this to an existing open Web issue on Project 19}"
+npm run assets:expose-provider-appearances -- \
+  --provider-receipt /path/to/merged-provider-receipt.json \
+  --provider-repo /path/to/clean/rpg-game-assets-at-merge-sha \
+  --web-issue "$WEB_ISSUE_NUMBER"
 ```
+
+That command verifies the receipt shape and source-handoff binding, the private provider repository and merged PR readback, the clean checkout's exact merge SHA, and every receipt-owned provider hash. It also verifies the Web issue is open on Project 19, the canonical UI/UX signature, the `origin/dev` base, and that the generic class tooling has landed. It performs no checkout, sync, write, branch, push, or PR mutation.
+
+Only after reviewing that plan, opt into the ordinary sync and Web publication explicitly. Choose a fresh receipt path; existing output and branch/worktree/PR state is retained and reported rather than overwritten or silently retried:
+
+```bash
+npm run assets:expose-provider-appearances -- \
+  --provider-receipt /path/to/merged-provider-receipt.json \
+  --provider-repo /path/to/clean/rpg-game-assets-at-merge-sha \
+  --web-issue "$WEB_ISSUE_NUMBER" \
+  --worktree-root "/path/to/rpg-dnd5e-web/.worktrees/${WEB_ISSUE_NUMBER}-bard-provider-exposure" \
+  --output /path/to/web-receipt.json \
+  --apply
+```
+
+Apply creates the isolated numbered Web worktree from fresh `origin/dev`, delegates exactly to `npm run assets:sync` with the verified provider checkout and update suppression, stages only its tracked generated customization catalog, runs focused generator/resolver tests and the normal `ci-check`, then uses ordinary commit/push/PR operations against `dev`. The emitted Web receipt records the verified merged provider SHA and class/races, Web base/branch/head/PR readback, and normal generation/check results. Licensed GLB/BLEND/runtime bytes remain ignored and must never be staged.
 
 The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or legacy fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
 
