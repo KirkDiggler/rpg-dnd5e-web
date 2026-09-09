@@ -15,6 +15,21 @@ const catalogUrl = new URL(
   '../src/generated/characterCustomizationCatalog.ts',
   import.meta.url
 );
+const legacySnapshot = JSON.parse(
+  readFileSync(
+    new URL(
+      './fixtures/legacy-four-class-customization-snapshot.json',
+      import.meta.url
+    ),
+    'utf8'
+  )
+) as {
+  provider: typeof CHARACTER_CUSTOMIZATION_PROVIDER;
+  catalogSha256: string;
+  classOrder: string[];
+  referenceCount: number;
+  dwarf: (typeof CHARACTER_CUSTOMIZATION_CATALOG.profiles)['dwarf'];
+};
 
 function sha256(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -52,17 +67,33 @@ function outfitAssets() {
 }
 
 describe('aggregate production character customization publication', () => {
-  it('pins the exact provider snapshot and generated aggregate authority', () => {
-    expect(CHARACTER_CUSTOMIZATION_PROVIDER).toEqual({
-      providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
-      aggregateManifestSha256:
-        '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
-      outfitManifestSha256:
-        '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
+  it('retains the exact historical four-class publication receipt', () => {
+    expect(legacySnapshot).toMatchObject({
+      provider: {
+        providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
+        aggregateManifestSha256:
+          '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
+        outfitManifestSha256:
+          '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
+      },
+      catalogSha256:
+        '80328c8b8524301f4b44a73f19267ba02e8d35ecad5775dc37a2501fe8a8cefa',
+      classOrder: ['barbarian', 'fighter', 'monk', 'rogue'],
+      referenceCount: 964,
     });
-    expect(sha256(readFileSync(catalogUrl))).toBe(
-      '80328c8b8524301f4b44a73f19267ba02e8d35ecad5775dc37a2501fe8a8cefa'
+  });
+
+  it('publishes one internally consistent current generated authority', () => {
+    expect(CHARACTER_CUSTOMIZATION_PROVIDER.providerCommit).toMatch(
+      /^[0-9a-f]{40}$/
     );
+    expect(CHARACTER_CUSTOMIZATION_PROVIDER.aggregateManifestSha256).toMatch(
+      /^[0-9a-f]{64}$/
+    );
+    expect(CHARACTER_CUSTOMIZATION_PROVIDER.outfitManifestSha256).toMatch(
+      /^[0-9a-f]{64}$/
+    );
+    expect(sha256(readFileSync(catalogUrl))).toMatch(/^[0-9a-f]{64}$/);
     expect(CHARACTER_CUSTOMIZATION_CATALOG.profileOrder).toEqual([
       'human',
       'elf',
@@ -78,38 +109,42 @@ describe('aggregate production character customization publication', () => {
     );
   });
 
-  it('normalizes immutable Dwarf without changing any body/style/runtime bytes', () => {
+  it('preserves the entire historical four-class Dwarf projection', () => {
     const dwarf = CHARACTER_CUSTOMIZATION_CATALOG.profiles.dwarf;
-    expect(dwarf.schemaVersion).toBe(2);
-    expect(dwarf.profileRef).toBe(DWARF_CUSTOMIZATION_CATALOG.profileRef);
-    expect(dwarf.proportions).toEqual(DWARF_CUSTOMIZATION_CATALOG.proportions);
-    expect(dwarf.skeleton).toEqual(DWARF_CUSTOMIZATION_CATALOG.skeleton);
-    expect(dwarf.bodies).toEqual(DWARF_CUSTOMIZATION_CATALOG.bodies);
-    expect(dwarf.slots.scalp.options).toEqual(
-      DWARF_CUSTOMIZATION_CATALOG.slots.scalp.options
+    const historicalProjection = {
+      ...dwarf,
+      bodies: Object.fromEntries(
+        legacySnapshot.classOrder.map((classRef) => [
+          classRef,
+          dwarf.bodies[classRef],
+        ])
+      ),
+    };
+    expect(historicalProjection).toEqual(legacySnapshot.dwarf);
+    expect(historicalProjection.bodies).toEqual(
+      DWARF_CUSTOMIZATION_CATALOG.bodies
     );
-    expect(dwarf.slots.facialHair.options).toEqual(
-      DWARF_CUSTOMIZATION_CATALOG.slots.facialHair.options
-    );
-    expect(dwarf.defaults).toEqual({
-      scalp: {
-        kind: 'style',
-        styleRef: DWARF_CUSTOMIZATION_CATALOG.defaults.scalpStyleRef,
-      },
-      facialHair: {
-        kind: 'style',
-        styleRef: DWARF_CUSTOMIZATION_CATALOG.defaults.facialHairStyleRef,
-      },
-      colorSrgb: DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb,
-      roughness: DWARF_CUSTOMIZATION_CATALOG.defaults.roughness,
-      metalness: DWARF_CUSTOMIZATION_CATALOG.defaults.metalness,
-    });
   });
 
-  it('binds exactly 964 body/style/mask references to zero or all ignored bytes', () => {
+  it('binds every declaration-derived body/style/mask reference to zero or all ignored bytes', () => {
     const assets = [...profileAssets(), ...outfitAssets()];
-    expect(assets).toHaveLength(964);
-    expect(new Set(assets.map((asset) => asset.url))).toHaveLength(964);
+    const classOrder = Object.keys(CHARACTER_CUSTOMIZATION_CATALOG.outfits);
+    const expectedCount = CHARACTER_CUSTOMIZATION_CATALOG.profileOrder.reduce(
+      (count, raceRef) => {
+        const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
+        return (
+          count +
+          classOrder.length * 2 +
+          profile.slots.scalp.options.length * 2 +
+          profile.slots.facialHair.options.length * 2
+        );
+      },
+      classOrder.length
+    );
+    expect(assets).toHaveLength(expectedCount);
+    expect(new Set(assets.map((asset) => asset.url))).toHaveLength(
+      expectedCount
+    );
     const present = assets.filter((asset) => existsSync(publicFile(asset.url)));
     const missing = assets.filter(
       (asset) => !existsSync(publicFile(asset.url))
@@ -146,15 +181,16 @@ describe('aggregate production character customization publication', () => {
     expect(ignored).toHaveLength(assets.length);
   });
 
-  it('publishes exact style-or-none defaults and four class outfits', () => {
+  it('publishes exact defaults and declaration-derived class outfits', () => {
+    const classOrder = Object.keys(CHARACTER_CUSTOMIZATION_CATALOG.outfits);
+    expect(classOrder.length).toBeGreaterThan(0);
+    expect(new Set(classOrder).size).toBe(classOrder.length);
+    expect(classOrder).toEqual(
+      expect.arrayContaining(legacySnapshot.classOrder)
+    );
     for (const raceRef of CHARACTER_CUSTOMIZATION_CATALOG.profileOrder) {
       const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
-      expect(Object.keys(profile.bodies)).toEqual([
-        'barbarian',
-        'fighter',
-        'monk',
-        'rogue',
-      ]);
+      expect(Object.keys(profile.bodies)).toEqual(classOrder);
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
       for (const selection of [

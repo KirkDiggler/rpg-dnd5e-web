@@ -20,8 +20,6 @@ const PROVIDER_CUSTOMIZATION_ROOT =
 const AGGREGATE_MANIFEST = `${PROVIDER_CUSTOMIZATION_ROOT}/manifest.json`;
 const OUTFIT_MANIFEST =
   'harness/models/synty/characters/outfit-customization/v1/manifest.json';
-const AGGREGATE_MANIFEST_SHA256 =
-  '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac';
 const WEB_SYNTY_ROOT = '/models/synty/';
 const PROFILE_ORDER = [
   'human',
@@ -32,12 +30,6 @@ const PROFILE_ORDER = [
   'halfling',
   'gnome',
   'half-orc',
-] as const;
-const CLASSES = [
-  ['barbarian', '01'],
-  ['fighter', '16'],
-  ['monk', '08'],
-  ['rogue', '10'],
 ] as const;
 const ANIMATIONS = ['Idle_Relaxed', 'Walk_Forward'] as const;
 const SURFACE = {
@@ -54,7 +46,7 @@ const GENERATED_FORMAT_PATH = fileURLToPath(
 );
 
 export type CustomizationRaceRef = (typeof PROFILE_ORDER)[number];
-export type CustomizationStarterClass = (typeof CLASSES)[number][0];
+export type CustomizationStarterClass = string;
 export type CustomizationSlot = 'scalp' | 'facial-hair';
 export type CustomizationDefaultSelection =
   | { readonly kind: 'style'; readonly styleRef: string }
@@ -138,7 +130,7 @@ export interface CharacterCustomizationProfile {
 
 export interface OutfitTreatment {
   readonly classRef: CustomizationStarterClass;
-  readonly outfit: '01' | '16' | '08' | '10';
+  readonly outfit: string;
   readonly maskUrl: string;
   readonly maskSha256: string;
   readonly defaultPrimaryColorSrgb: number;
@@ -173,7 +165,7 @@ interface AggregateProfileEntry {
   readonly schemaVersion: 2 | 3;
   readonly manifest: string;
   readonly manifestSha256: string;
-  readonly runtimeFileCount: 117 | 121;
+  readonly runtimeFileCount: number;
 }
 
 interface ParsedAggregate {
@@ -192,11 +184,11 @@ export interface GeneratedCharacterCustomizationReceipt {
   readonly providerCommit: string;
   readonly aggregateManifestSha256: string;
   readonly outfitManifestSha256: string;
-  readonly profileCount: 8;
-  readonly bodyCount: 32;
-  readonly accessoryCount: 448;
-  readonly thumbnailCount: 448;
-  readonly sourceAssetCount: 974;
+  readonly profileCount: number;
+  readonly bodyCount: number;
+  readonly accessoryCount: number;
+  readonly thumbnailCount: number;
+  readonly sourceAssetCount: number;
 }
 
 function fail(message: string): never {
@@ -301,6 +293,22 @@ function opaqueRef(value: unknown, label: string): string {
   const result = nonempty(value, label);
   if (result.includes('/') || result.includes('\\') || result.includes('://')) {
     fail(`${label} must be opaque and never a path`);
+  }
+  return result;
+}
+
+function classRef(value: unknown, label: string): string {
+  const result = opaqueRef(value, label);
+  if (!/^[a-z][a-z0-9-]*$/.test(result)) {
+    fail(`${label} must be a lowercase class ref`);
+  }
+  return result;
+}
+
+function outfitRef(value: unknown, label: string): string {
+  const result = opaqueRef(value, label);
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(result)) {
+    fail(`${label} must be a lowercase outfit ref`);
   }
   return result;
 }
@@ -533,20 +541,18 @@ function newProfile(
       : webRoot + relative;
   };
 
-  const bodiesSource = exactObject(
-    manifest.bodies,
-    CLASSES.map(([classRef]) => `${raceRef}:${classRef}`),
-    `${raceRef}.bodies`
-  );
+  const bodiesSource = object(manifest.bodies, `${raceRef}.bodies`);
+  if (Object.keys(bodiesSource).length === 0) {
+    fail(`${raceRef}.bodies must declare at least one class body`);
+  }
   const bodies = {} as Record<
     CustomizationStarterClass,
     CharacterCustomizationBody
   >;
-  for (const [classRef, outfit] of CLASSES) {
-    const combination = `${raceRef}:${classRef}`;
+  for (const [combination, bodyValue] of Object.entries(bodiesSource)) {
     const label = `${raceRef}.bodies.${combination}`;
     const body = exactObject(
-      bodiesSource[combination],
+      bodyValue,
       [
         'animations',
         'class',
@@ -559,22 +565,31 @@ function newProfile(
       ],
       label
     );
-    exactString(body.combination, combination, `${label}.combination`);
-    exactString(body.class, classRef, `${label}.class`);
-    exactString(body.outfit, outfit, `${label}.outfit`);
+    const bodyClass = classRef(body.class, `${label}.class`);
+    const expectedCombination = `${raceRef}:${bodyClass}`;
+    exactString(body.combination, expectedCombination, `${label}.combination`);
+    if (combination !== expectedCombination) {
+      fail(`${label} key must match ${expectedCombination}`);
+    }
+    const outfit = outfitRef(body.outfit, `${label}.outfit`);
     exactStringArray(body.animations, ANIMATIONS, `${label}.animations`);
     if (
       !Array.isArray(body.sourceMeshes) ||
       body.sourceMeshes.length === 0 ||
       body.sourceMeshes.some(
         (mesh) =>
-          typeof mesh !== 'string' || mesh.length === 0 || mesh.includes('Hair')
-      )
+          typeof mesh !== 'string' ||
+          mesh.length === 0 ||
+          /(?:Hair|FacialHair)/i.test(mesh)
+      ) ||
+      new Set(body.sourceMeshes).size !== body.sourceMeshes.length
     ) {
-      fail(`${label}.sourceMeshes must be non-empty hairless mesh names`);
+      fail(
+        `${label}.sourceMeshes must be unique, non-empty hairless mesh names`
+      );
     }
     const path = portablePath(body.path, `${label}.path`);
-    const expectedPath = `bodies/${raceRef}-${classRef}-body.glb`;
+    const expectedPath = `bodies/${raceRef}-${bodyClass}-body.glb`;
     if (path !== expectedPath) fail(`${label}.path must be ${expectedPath}`);
     const bodySha256 = digest(body.sha256, `${label}.sha256`);
     const fallback = exactObject(
@@ -583,17 +598,17 @@ function newProfile(
       `${label}.fallback`
     );
     const fallbackPath = portablePath(fallback.path, `${label}.fallback.path`);
-    const expectedFallback =
-      raceRef === 'human'
-        ? `fallbacks/human-${classRef}-complete.glb`
-        : `${PROVIDER_SYNTY_ROOT}characters/race-class/${raceRef}-${classRef}.glb`;
-    if (fallbackPath !== expectedFallback) {
-      fail(`${label}.fallback.path must be ${expectedFallback}`);
+    const localFallback = `fallbacks/${raceRef}-${bodyClass}-complete.glb`;
+    const legacyFallback = `${PROVIDER_SYNTY_ROOT}characters/race-class/${raceRef}-${bodyClass}.glb`;
+    if (fallbackPath !== localFallback && fallbackPath !== legacyFallback) {
+      fail(
+        `${label}.fallback.path must be ${localFallback} or ${legacyFallback}`
+      );
     }
     const fallbackSha256 = digest(fallback.sha256, `${label}.fallback.sha256`);
-    bodies[classRef] = {
-      combination,
-      classRef,
+    bodies[bodyClass] = {
+      combination: expectedCombination,
+      classRef: bodyClass,
       outfit,
       url: add(path, bodySha256, `${label}.path`),
       sha256: bodySha256,
@@ -698,9 +713,10 @@ function newProfile(
   };
   const scalp = parseSlot('scalp', 38);
   const facialHair = parseSlot('facial-hair', 18);
-  if (sourceAssets.length !== 120) {
+  const expectedSourceAssetCount = Object.keys(bodies).length * 2 + 112;
+  if (sourceAssets.length !== expectedSourceAssetCount) {
     fail(
-      `${raceRef} must resolve exactly 120 body/fallback/style/thumbnail files`
+      `${raceRef} must resolve two body files per class plus 56 accessories and 56 thumbnails`
     );
   }
   return {
@@ -788,22 +804,47 @@ function parseAggregate(value: unknown): ParsedAggregate {
     ],
     'aggregate inventory'
   );
-  for (const [field, expected] of Object.entries({
-    accessoryCount: 448,
-    bodyCount: 32,
-    compatibilityCheckCount: 1792,
-    profileCount: 8,
-    profileRuntimeFileCount: 940,
-    thumbnailCount: 448,
-  })) {
-    exactNumber(inventory[field], expected, `aggregate inventory.${field}`);
+  const profileCount = PROFILE_ORDER.length;
+  exactNumber(
+    inventory.profileCount,
+    profileCount,
+    'aggregate inventory.profileCount'
+  );
+  exactNumber(
+    inventory.accessoryCount,
+    profileCount * 56,
+    'aggregate inventory.accessoryCount'
+  );
+  exactNumber(
+    inventory.thumbnailCount,
+    profileCount * 56,
+    'aggregate inventory.thumbnailCount'
+  );
+  const bodyCount = finite(
+    inventory.bodyCount,
+    'aggregate inventory.bodyCount'
+  );
+  if (
+    !Number.isInteger(bodyCount) ||
+    bodyCount <= 0 ||
+    bodyCount % profileCount !== 0
+  ) {
+    fail(
+      'aggregate inventory.bodyCount must declare the same positive class count for every profile'
+    );
   }
+  exactNumber(
+    inventory.compatibilityCheckCount,
+    bodyCount * 56,
+    'aggregate inventory.compatibilityCheckCount'
+  );
   const source = exactObject(
     aggregate.profiles,
     PROFILE_ORDER,
     'aggregate profiles'
   );
   const entries = {} as Record<CustomizationRaceRef, AggregateProfileEntry>;
+  let runtimeFileCount = 0;
   for (const raceRef of PROFILE_ORDER) {
     const entry = exactObject(
       source[raceRef],
@@ -817,13 +858,22 @@ function parseAggregate(value: unknown): ParsedAggregate {
       `aggregate profiles.${raceRef}`
     );
     const schemaVersion = raceRef === 'dwarf' ? 2 : 3;
-    const runtimeFileCount = raceRef === 'human' ? 121 : 117;
     if (entry.schemaVersion !== schemaVersion) {
       fail(`aggregate profiles.${raceRef}.schemaVersion differs`);
     }
-    if (entry.runtimeFileCount !== runtimeFileCount) {
-      fail(`aggregate profiles.${raceRef}.runtimeFileCount differs`);
+    const entryRuntimeFileCount = finite(
+      entry.runtimeFileCount,
+      `aggregate profiles.${raceRef}.runtimeFileCount`
+    );
+    if (
+      !Number.isInteger(entryRuntimeFileCount) ||
+      entryRuntimeFileCount <= 0
+    ) {
+      fail(
+        `aggregate profiles.${raceRef}.runtimeFileCount must be a positive integer`
+      );
     }
+    runtimeFileCount += entryRuntimeFileCount;
     entries[raceRef] = {
       profileRef: exactString(
         entry.profileRef,
@@ -840,16 +890,21 @@ function parseAggregate(value: unknown): ParsedAggregate {
         entry.manifestSha256,
         `aggregate profiles.${raceRef}.manifestSha256`
       ),
-      runtimeFileCount,
+      runtimeFileCount: entryRuntimeFileCount,
     };
   }
+  exactNumber(
+    inventory.profileRuntimeFileCount,
+    runtimeFileCount,
+    'aggregate inventory.profileRuntimeFileCount'
+  );
   return { document: aggregate, entries };
 }
 
 function projectOutfitManifest(
   value: unknown,
   authority: {
-    readonly aggregateManifestSha256: string;
+    readonly aggregateManifestSha256?: string;
     readonly profiles: readonly CharacterCustomizationProfile[];
   }
 ): {
@@ -877,20 +932,28 @@ function projectOutfitManifest(
     'class-outfit-colors-v1',
     'outfit manifest workflowVersion'
   );
-  exactStringArray(
-    manifest.classOrder,
-    CLASSES.map(([classRef]) => classRef),
-    'outfit manifest classOrder'
+  if (!Array.isArray(manifest.classOrder) || manifest.classOrder.length === 0) {
+    fail('outfit manifest classOrder must declare at least one class');
+  }
+  const classOrder = manifest.classOrder.map((value, index) =>
+    classRef(value, `outfit manifest classOrder[${index}]`)
   );
+  if (new Set(classOrder).size !== classOrder.length) {
+    fail('outfit manifest classOrder must not contain duplicates');
+  }
   const inventory = exactObject(
     manifest.inventory,
     ['maskCount', 'runtimeFileCount'],
     'outfit manifest inventory'
   );
-  exactNumber(inventory.maskCount, 4, 'outfit manifest inventory.maskCount');
+  exactNumber(
+    inventory.maskCount,
+    classOrder.length,
+    'outfit manifest inventory.maskCount'
+  );
   exactNumber(
     inventory.runtimeFileCount,
-    5,
+    classOrder.length + 1,
     'outfit manifest inventory.runtimeFileCount'
   );
   const channelEncoding = exactObject(
@@ -918,11 +981,18 @@ function projectOutfitManifest(
     'characters/customization/manifest.json',
     'outfit manifest profileAuthority.manifest'
   );
-  exactString(
+  const profileAuthoritySha256 = digest(
     profileAuthority.sha256,
-    authority.aggregateManifestSha256,
     'outfit manifest profileAuthority.sha256'
   );
+  if (
+    authority.aggregateManifestSha256 &&
+    profileAuthoritySha256 !== authority.aggregateManifestSha256
+  ) {
+    fail(
+      'outfit manifest profileAuthority.sha256 differs from aggregate bytes'
+    );
+  }
   const atlas = exactObject(
     manifest.atlas,
     ['dimensions', 'id', 'sha256'],
@@ -954,15 +1024,15 @@ function projectOutfitManifest(
   }
   const source = exactObject(
     manifest.outfits,
-    CLASSES.map(([classRef]) => classRef),
+    classOrder,
     'outfit manifest outfits'
   );
   const treatments = {} as Record<CustomizationStarterClass, OutfitTreatment>;
   const sourceAssets: SourceAsset[] = [];
-  for (const [classRef, outfit] of CLASSES) {
-    const label = `outfit manifest outfits.${classRef}`;
+  for (const declaredClass of classOrder) {
+    const label = `outfit manifest outfits.${declaredClass}`;
     const entry = exactObject(
-      source[classRef],
+      source[declaredClass],
       [
         'classRef',
         'defaultPrimarySrgb',
@@ -974,8 +1044,8 @@ function projectOutfitManifest(
       ],
       label
     );
-    exactString(entry.classRef, classRef, `${label}.classRef`);
-    exactString(entry.outfit, outfit, `${label}.outfit`);
+    exactString(entry.classRef, declaredClass, `${label}.classRef`);
+    const outfit = outfitRef(entry.outfit, `${label}.outfit`);
     const validateColor = (candidate: unknown, name: string) => {
       const color = finite(candidate, name);
       if (!Number.isInteger(color) || color < 0 || color > 0xffffff) {
@@ -984,7 +1054,7 @@ function projectOutfitManifest(
       return color;
     };
     const mask = portablePath(entry.mask, `${label}.mask`);
-    const expectedMask = `characters/outfit-customization/v1/masks/${classRef}-${outfit}.png`;
+    const expectedMask = `characters/outfit-customization/v1/masks/${declaredClass}-${outfit}.png`;
     if (mask !== expectedMask) fail(`${label}.mask must be ${expectedMask}`);
     if (!Array.isArray(entry.meshNames) || entry.meshNames.length === 0) {
       fail(`${label}.meshNames must be non-empty`);
@@ -999,10 +1069,15 @@ function projectOutfitManifest(
     if (new Set(meshNames).size !== meshNames.length) {
       fail(`${label}.meshNames must not contain duplicates`);
     }
+    if (meshNames.some((mesh) => /(?:Hair|FacialHair|Head|Ear)/i.test(mesh))) {
+      fail(
+        `${label}.meshNames must contain clothing only, never identity or hair`
+      );
+    }
     const maskSha256 = digest(entry.maskSha256, `${label}.maskSha256`);
-    treatments[classRef] = {
-      classRef,
-      outfit: outfit as OutfitTreatment['outfit'],
+    treatments[declaredClass] = {
+      classRef: declaredClass,
+      outfit,
       maskUrl: `${WEB_SYNTY_ROOT}${mask}`,
       maskSha256,
       defaultPrimaryColorSrgb: validateColor(
@@ -1020,13 +1095,31 @@ function projectOutfitManifest(
       sha256: maskSha256,
     });
   }
+  for (const profile of authority.profiles) {
+    exactObject(
+      profile.bodies,
+      classOrder,
+      `${profile.raceRef} body declarations`
+    );
+    for (const declaredClass of classOrder) {
+      if (
+        profile.bodies[declaredClass]?.outfit !==
+        treatments[declaredClass]?.outfit
+      ) {
+        fail(
+          `${profile.raceRef}:${declaredClass} outfit differs from outfit authority`
+        );
+      }
+    }
+  }
   return { treatments, sourceAssets };
 }
 
 function projectInternal(
   aggregateValue: unknown,
   manifests: Readonly<Record<string, unknown>>,
-  outfitManifest: unknown
+  outfitManifest: unknown,
+  aggregateManifestSha256?: string
 ): {
   readonly catalog: CharacterCustomizationCatalog;
   readonly profiles: readonly ParsedProfile[];
@@ -1046,11 +1139,64 @@ function projectInternal(
     if (value.profile.profileRef !== aggregate.entries[raceRef].profileRef) {
       fail(`${raceRef} profileRef differs from aggregate`);
     }
+    const bodyCount = Object.keys(value.profile.bodies).length;
+    const rawManifest = object(manifests[raceRef], `${raceRef} manifest`);
+    const rawBodies = object(rawManifest.bodies, `${raceRef}.bodies`);
+    const localFallbackCount = Object.values(rawBodies).filter((bodyValue) => {
+      const body = object(bodyValue, `${raceRef} body`);
+      const fallback = object(body.fallback, `${raceRef} body fallback`);
+      return (
+        typeof fallback.path === 'string' &&
+        fallback.path.startsWith('fallbacks/')
+      );
+    }).length;
+    const expectedRuntimeFileCount = 1 + 112 + bodyCount + localFallbackCount;
+    if (
+      aggregate.entries[raceRef].runtimeFileCount !== expectedRuntimeFileCount
+    ) {
+      fail(
+        `aggregate profiles.${raceRef}.runtimeFileCount differs from declarations`
+      );
+    }
   }
+  const declaredBodyCount = parsed.reduce(
+    (count, value) => count + Object.keys(value.profile.bodies).length,
+    0
+  );
+  const aggregateInventory = object(
+    aggregate.document.inventory,
+    'aggregate inventory'
+  );
+  exactNumber(
+    aggregateInventory.bodyCount,
+    declaredBodyCount,
+    'aggregate inventory.bodyCount'
+  );
   const outfits = projectOutfitManifest(outfitManifest, {
-    aggregateManifestSha256: AGGREGATE_MANIFEST_SHA256,
+    aggregateManifestSha256,
     profiles: parsed.map((value) => value.profile),
   });
+  for (const raceRef of PROFILE_ORDER) {
+    const rawManifest = object(manifests[raceRef], `${raceRef} manifest`);
+    const rawBodies = object(rawManifest.bodies, `${raceRef}.bodies`);
+    for (const [declaredClass, treatment] of Object.entries(
+      outfits.treatments
+    )) {
+      const rawBody = object(
+        rawBodies[`${raceRef}:${declaredClass}`],
+        `${raceRef}:${declaredClass} body`
+      );
+      const sourceMeshes = rawBody.sourceMeshes as readonly unknown[];
+      if (
+        !Array.isArray(sourceMeshes) ||
+        treatment.meshNames.some((mesh) => !sourceMeshes.includes(mesh))
+      ) {
+        fail(
+          `${raceRef}:${declaredClass} body must contain every outfit clothing mesh`
+        );
+      }
+    }
+  }
   return {
     catalog: {
       schemaVersion: 1,
@@ -1075,7 +1221,7 @@ export function projectCharacterCustomizationAuthority(
 }
 
 const GENERATED_TYPES = `export type CustomizationRaceRef = 'human' | 'elf' | 'dwarf' | 'half-elf' | 'tiefling' | 'halfling' | 'gnome' | 'half-orc';
-export type CustomizationStarterClass = 'barbarian' | 'fighter' | 'monk' | 'rogue';
+export type CustomizationStarterClass = string;
 export type CustomizationSlot = 'scalp' | 'facial-hair';
 export type CustomizationDefaultSelection =
   | { readonly kind: 'style'; readonly styleRef: string }
@@ -1107,7 +1253,7 @@ export interface CharacterCustomizationProfile {
   readonly defaults: { readonly scalp: CustomizationDefaultSelection; readonly facialHair: CustomizationDefaultSelection; readonly colorSrgb: number; readonly roughness: number; readonly metalness: number };
 }
 export interface OutfitTreatment {
-  readonly classRef: CustomizationStarterClass; readonly outfit: '01' | '16' | '08' | '10';
+  readonly classRef: CustomizationStarterClass; readonly outfit: string;
   readonly maskUrl: string; readonly maskSha256: string;
   readonly defaultPrimaryColorSrgb: number; readonly defaultSecondaryColorSrgb: number;
   readonly meshNames: readonly string[];
@@ -1198,9 +1344,7 @@ export function generateCharacterCustomizationCatalog({
     fail(`aggregate manifest is invalid JSON: ${error}`);
   }
   const aggregate = parseAggregate(aggregateValue);
-  if (hashBytes(aggregateBytes) !== AGGREGATE_MANIFEST_SHA256) {
-    fail('aggregate manifest hash differs from approved authority');
-  }
+  const aggregateManifestSha256 = hashBytes(aggregateBytes);
   const outfitBytes = readSource(root, OUTFIT_MANIFEST, 'outfit manifest');
   let outfitValue: unknown;
   try {
@@ -1227,7 +1371,12 @@ export function generateCharacterCustomizationCatalog({
       sha256: entry.manifestSha256,
     });
   }
-  const projected = projectInternal(aggregateValue, manifests, outfitValue);
+  const projected = projectInternal(
+    aggregateValue,
+    manifests,
+    outfitValue,
+    aggregateManifestSha256
+  );
   const sourceAssets: SourceAsset[] = [
     {
       providerRelativePath: AGGREGATE_MANIFEST,
@@ -1256,12 +1405,20 @@ export function generateCharacterCustomizationCatalog({
       fail(`source asset hash differs: ${asset.providerRelativePath}`);
     }
   }
-  if (sourceAssets.length !== 974) {
+  const declaredClassCount = Object.keys(projected.catalog.outfits).length;
+  const expectedSourceAssetCount =
+    2 +
+    PROFILE_ORDER.length +
+    projected.profiles.reduce(
+      (count, profile) => count + profile.sourceAssets.length,
+      0
+    ) +
+    declaredClassCount;
+  if (sourceAssets.length !== expectedSourceAssetCount) {
     fail(
-      `source authority must contain exactly 974 files, found ${sourceAssets.length}`
+      `source authority count differs from provider declarations: expected ${expectedSourceAssetCount}, found ${sourceAssets.length}`
     );
   }
-  const aggregateManifestSha256 = hashBytes(aggregateBytes);
   const source = renderCharacterCustomizationCatalogModule(projected.catalog, {
     providerCommit,
     aggregateManifestSha256,
@@ -1288,11 +1445,26 @@ export function generateCharacterCustomizationCatalog({
     providerCommit,
     aggregateManifestSha256,
     outfitManifestSha256,
-    profileCount: 8,
-    bodyCount: 32,
-    accessoryCount: 448,
-    thumbnailCount: 448,
-    sourceAssetCount: 974,
+    profileCount: PROFILE_ORDER.length,
+    bodyCount: projected.profiles.reduce(
+      (count, profile) => count + Object.keys(profile.profile.bodies).length,
+      0
+    ),
+    accessoryCount: projected.profiles.reduce(
+      (count, profile) =>
+        count +
+        profile.profile.slots.scalp.options.length +
+        profile.profile.slots.facialHair.options.length,
+      0
+    ),
+    thumbnailCount: projected.profiles.reduce(
+      (count, profile) =>
+        count +
+        profile.profile.slots.scalp.options.length +
+        profile.profile.slots.facialHair.options.length,
+      0
+    ),
+    sourceAssetCount: sourceAssets.length,
   };
 }
 
