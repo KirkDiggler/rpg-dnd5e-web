@@ -22,7 +22,10 @@ import {
   selectVisibleStory,
   type CombatPresentationState,
 } from './presentation';
-import { createAttackAuthorityFixture } from './presentation.test-fixtures';
+import {
+  createAttackAuthorityFixture,
+  debugText,
+} from './presentation.test-fixtures';
 
 /** Longer than the 128-byte presentation-id cap, so it fails validation. */
 const UNSAFE_PRESENTATION_ID = 'x'.repeat(129);
@@ -136,7 +139,7 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(reconciled)).toEqual([]);
     expect(selectVisibleResult(reconciled)).toBeUndefined();
     expect(selectLiveAnnouncement(reconciled)).toBeNull();
-    expect(reconciled.debug[0]).toContain('struck');
+    expect(debugText(reconciled.debug[0])).toContain('struck');
 
     const released = reduceCombatPresentation(
       reconciled,

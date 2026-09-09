@@ -21,6 +21,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -77,7 +78,7 @@ export interface UseSessionCombatExperienceResult {
   showTurnNotice: boolean;
   logMode: CombatExperienceLogMode;
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly string[];
+  debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll window is asking about, and the offer it was
    * recorded against. Null when no such beat is outstanding. */

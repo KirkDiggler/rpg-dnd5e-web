@@ -142,10 +142,18 @@ Story. Result presentation contains only provider roll, total, against,
 hit/critical, damage/type, and AttackRef facts—never a bonus equation, target
 `hpAfter`, peer exact HP, or client arithmetic.
 
-Story is always present in production. Raw Debug ingests immediately but is
-rendered only in development or on an explicitly enabled Concepts diagnostic
-surface. The closed/open Debug feed uses `aria-live="off"`; only Story owns the
-polite live log.
+Story is always available in production. The whole log can collapse to a
+small tab without stopping ingestion; reopening preserves its selected mode,
+reading position, and disclosure state. Focus moves to the visible toggle.
+Raw Debug ingests immediately but renders only in development or on an
+explicitly enabled Concepts diagnostic surface. The existing capped feed holds
+immutable typed event snapshots plus plain diagnostics, not a second event
+store. Compact rows expand inline and lazily format protobuf JSON with colored
+tokens and Copy JSON; uint64 values remain strings and bytes remain base64.
+Opaque payload bytes are not decoded as game facts. Opening an entry pauses
+auto-follow so new receipts do not pull it away. Plain diagnostics remain
+visible even when they have no JSON. Debug uses `aria-live="off"`; only Story
+owns the polite live log.
 
 ## Scope reset
 

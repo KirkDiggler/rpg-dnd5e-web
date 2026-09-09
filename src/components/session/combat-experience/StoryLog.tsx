@@ -1,6 +1,8 @@
 import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
-import { useEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import type { DebugFeedEntry } from '../debugLogLine';
 import styles from './CombatExperience.module.css';
+import { DebugEventRow } from './DebugEventRow';
 import { isCombatDebugEnabled } from './diagnostics';
 import type {
   CombatExperienceAttackOutcome,
@@ -11,7 +13,7 @@ import type {
 
 export interface StoryLogProps {
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly string[];
+  debug: readonly DebugFeedEntry[];
   mode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   onModeChange: (mode: CombatExperienceLogMode) => void;
@@ -93,14 +95,44 @@ export function StoryLog({
   // dependency so switching feeds re-pins the newly mounted one.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const savedScrollTop = useRef<number | undefined>(undefined);
+  const feedId = useId();
+  const expandButton = useRef<HTMLButtonElement>(null);
+  const collapseButton = useRef<HTMLButtonElement>(null);
+  const focusAfterToggle = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (focusAfterToggle.current) {
+      (collapsed ? expandButton : collapseButton).current?.focus();
+      focusAfterToggle.current = false;
+    }
     const el = scrollRef.current;
-    if (!el || !pinnedToBottom) return;
-    el.scrollTop = el.scrollHeight;
-  }, [story.length, result, debug.length, visibleMode, pinnedToBottom]);
+    if (!el || collapsed) return;
+    if (savedScrollTop.current !== undefined) {
+      el.scrollTop = savedScrollTop.current;
+      savedScrollTop.current = undefined;
+      setPinnedToBottom(
+        !isScrolledAwayFromBottom(
+          el.scrollTop,
+          el.scrollHeight,
+          el.clientHeight
+        )
+      );
+      return;
+    }
+    if (pinnedToBottom) el.scrollTop = el.scrollHeight;
+  }, [
+    story.length,
+    result,
+    debug.length,
+    visibleMode,
+    pinnedToBottom,
+    collapsed,
+  ]);
 
   const handleScroll = () => {
+    if (collapsed) return;
     const el = scrollRef.current;
     if (!el) return;
     setPinnedToBottom(
@@ -119,10 +151,25 @@ export function StoryLog({
   return (
     <aside
       data-testid="session-combat-log"
-      className={styles.storyLog}
+      className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''}`}
       aria-label="Story log"
     >
-      <header>
+      <button
+        type="button"
+        className={styles.logTab}
+        hidden={!collapsed}
+        aria-label="Expand combat log"
+        ref={expandButton}
+        aria-expanded={false}
+        aria-controls={feedId}
+        onClick={() => {
+          focusAfterToggle.current = true;
+          setCollapsed(false);
+        }}
+      >
+        ◀ Log
+      </button>
+      <header hidden={collapsed}>
         <div>
           <span className={styles.panelEyebrow}>
             {visibleMode === 'story' ? 'Encounter story' : 'Developer stream'}
@@ -131,11 +178,27 @@ export function StoryLog({
             {visibleMode === 'story' ? 'What happened' : 'Every wire fact'}
           </strong>
         </div>
-        <span
-          className={`${styles.liveBadge} ${streamState !== 'live' ? styles.caughtUpBadge : ''}`}
-        >
-          {streamLabel}
-        </span>
+        <div className={styles.logHeaderActions}>
+          <span
+            className={`${styles.liveBadge} ${streamState !== 'live' ? styles.caughtUpBadge : ''}`}
+          >
+            {streamLabel}
+          </span>
+          <button
+            type="button"
+            aria-label="Collapse combat log"
+            ref={collapseButton}
+            aria-expanded={true}
+            aria-controls={feedId}
+            onClick={() => {
+              savedScrollTop.current = scrollRef.current?.scrollTop;
+              focusAfterToggle.current = true;
+              setCollapsed(true);
+            }}
+          >
+            ▶
+          </button>
+        </div>
       </header>
 
       {visibleMode === 'story' ? (
@@ -144,6 +207,8 @@ export function StoryLog({
           data-testid="session-combat-log-scroll"
           onScroll={handleScroll}
           className={styles.storyEntries}
+          id={feedId}
+          hidden={collapsed}
           role="log"
           aria-live="polite"
           aria-relevant="additions"
@@ -165,17 +230,32 @@ export function StoryLog({
           data-testid="session-combat-log-scroll"
           onScroll={handleScroll}
           className={styles.debugFeed}
+          id={feedId}
+          hidden={collapsed}
           aria-label="Raw debug feed"
           aria-live="off"
         >
-          {debug.map((line, index) => (
-            <div key={`${index}-${line}`}>{line}</div>
-          ))}
+          {debug.map((entry, index) =>
+            typeof entry === 'string' ? (
+              <div
+                className={styles.debugDiagnostic}
+                key={`diagnostic-${index}-${entry}`}
+              >
+                {entry}
+              </div>
+            ) : (
+              <DebugEventRow
+                key={entry.id}
+                entry={entry}
+                onInspect={() => setPinnedToBottom(false)}
+              />
+            )
+          )}
         </div>
       )}
 
       {debugEnabled && (
-        <footer>
+        <footer hidden={collapsed}>
           <button
             type="button"
             className={visibleMode === 'story' ? '' : styles.quietButton}
