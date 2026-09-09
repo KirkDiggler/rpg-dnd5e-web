@@ -1,0 +1,126 @@
+{
+  "atlas": {
+    "dimensions": [1024, 1024],
+    "id": "01-a",
+    "sha256": "7f84972790e530f8d83b378eb95f3151e2664c7b4ac23b1d125a55e1efcecd62"
+  },
+  "channelEncoding": {
+    "overlapAllowed": false,
+    "preserve": "black",
+    "primary": "red",
+    "secondary": "green"
+  },
+  "classOrder": ["barbarian", "fighter", "monk", "rogue", "bard"],
+  "inventory": {
+    "maskCount": 5,
+    "runtimeFileCount": 6
+  },
+  "outfits": {
+    "barbarian": {
+      "classRef": "barbarian",
+      "defaultPrimarySrgb": 4810366,
+      "defaultSecondarySrgb": 13739084,
+      "mask": "characters/outfit-customization/v1/masks/barbarian-01.png",
+      "maskSha256": "fde645aec1ae6470c806515d1a2c254497edace9174906af58e1d8ff28415316",
+      "meshNames": [
+        "Chr_Torso_Male_01",
+        "Chr_Hips_Male_01",
+        "Chr_ArmUpperLeft_Male_01",
+        "Chr_ArmUpperRight_Male_01",
+        "Chr_ArmLowerLeft_Male_01",
+        "Chr_ArmLowerRight_Male_01",
+        "Chr_HandLeft_Male_01",
+        "Chr_HandRight_Male_01",
+        "Chr_LegLeft_Male_01",
+        "Chr_LegRight_Male_01"
+      ],
+      "outfit": "01"
+    },
+    "bard": {
+      "classRef": "bard",
+      "defaultPrimarySrgb": 4810366,
+      "defaultSecondarySrgb": 13739084,
+      "mask": "characters/outfit-customization/v1/masks/bard-bard.png",
+      "maskSha256": "45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef",
+      "meshNames": [
+        "Chr_Torso_Male_27",
+        "Chr_Hips_Male_27",
+        "Chr_ArmUpperLeft_Male_20",
+        "Chr_ArmUpperRight_Male_20",
+        "Chr_ArmLowerLeft_Male_18",
+        "Chr_ArmLowerRight_Male_18",
+        "Chr_HandLeft_Male_13",
+        "Chr_HandRight_Male_13",
+        "Chr_LegLeft_Male_11",
+        "Chr_LegRight_Male_11"
+      ],
+      "outfit": "bard"
+    },
+    "fighter": {
+      "classRef": "fighter",
+      "defaultPrimarySrgb": 4810366,
+      "defaultSecondarySrgb": 13739084,
+      "mask": "characters/outfit-customization/v1/masks/fighter-16.png",
+      "maskSha256": "64573ee074597ffd53f34a7d4e1f81537793298ac6fe08cfa14169b2b86b589c",
+      "meshNames": [
+        "Chr_Torso_Male_16",
+        "Chr_Hips_Male_16",
+        "Chr_ArmUpperLeft_Male_16",
+        "Chr_ArmUpperRight_Male_16",
+        "Chr_ArmLowerLeft_Male_16",
+        "Chr_ArmLowerRight_Male_16",
+        "Chr_HandLeft_Male_16",
+        "Chr_HandRight_Male_16",
+        "Chr_LegLeft_Male_16",
+        "Chr_LegRight_Male_16"
+      ],
+      "outfit": "16"
+    },
+    "monk": {
+      "classRef": "monk",
+      "defaultPrimarySrgb": 4810366,
+      "defaultSecondarySrgb": 13739084,
+      "mask": "characters/outfit-customization/v1/masks/monk-08.png",
+      "maskSha256": "45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef",
+      "meshNames": [
+        "Chr_Torso_Male_08",
+        "Chr_Hips_Male_08",
+        "Chr_ArmUpperLeft_Male_08",
+        "Chr_ArmUpperRight_Male_08",
+        "Chr_ArmLowerLeft_Male_08",
+        "Chr_ArmLowerRight_Male_08",
+        "Chr_HandLeft_Male_08",
+        "Chr_HandRight_Male_08",
+        "Chr_LegLeft_Male_08",
+        "Chr_LegRight_Male_08"
+      ],
+      "outfit": "08"
+    },
+    "rogue": {
+      "classRef": "rogue",
+      "defaultPrimarySrgb": 4810366,
+      "defaultSecondarySrgb": 13739084,
+      "mask": "characters/outfit-customization/v1/masks/rogue-10.png",
+      "maskSha256": "45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef",
+      "meshNames": [
+        "Chr_Torso_Male_10",
+        "Chr_Hips_Male_10",
+        "Chr_ArmUpperLeft_Male_10",
+        "Chr_ArmUpperRight_Male_10",
+        "Chr_ArmLowerLeft_Male_10",
+        "Chr_ArmLowerRight_Male_10",
+        "Chr_HandLeft_Male_10",
+        "Chr_HandRight_Male_10",
+        "Chr_LegLeft_Male_10",
+        "Chr_LegRight_Male_10"
+      ],
+      "outfit": "10"
+    }
+  },
+  "profileAuthority": {
+    "manifest": "characters/customization/manifest.json",
+    "sha256": "a1722f65c8b3a3b113197a19ac7c866148e30bf4ee4ba137c93808a7892489a5"
+  },
+  "schemaVersion": 1,
+  "workflowVersion": "class-outfit-colors-v1"
+}

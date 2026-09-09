@@ -1,0 +1,80 @@
+{
+  "inventory": {
+    "accessoryCount": 448,
+    "bodyCount": 40,
+    "compatibilityCheckCount": 2240,
+    "profileCount": 8,
+    "profileRuntimeFileCount": 956,
+    "thumbnailCount": 448
+  },
+  "profileOrder": [
+    "human",
+    "elf",
+    "dwarf",
+    "half-elf",
+    "tiefling",
+    "halfling",
+    "gnome",
+    "half-orc"
+  ],
+  "profiles": {
+    "dwarf": {
+      "manifest": "harness/models/synty/characters/customization/dwarf-v1/manifest.json",
+      "manifestSha256": "6e81dbfd9c4e500043e7e0beb0e9ebecf794bac8d6e469e609cdd8b7a54fb67c",
+      "profileRef": "modular-fantasy-hero-v1:dwarf",
+      "runtimeFileCount": 119,
+      "schemaVersion": 2
+    },
+    "elf": {
+      "manifest": "harness/models/synty/characters/customization/elf-v1/manifest.json",
+      "manifestSha256": "e736a57eb55e87496bfdba5db72cdcad1c51725895924d738b3de27fa834f86d",
+      "profileRef": "modular-fantasy-hero-v1:elf",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    },
+    "gnome": {
+      "manifest": "harness/models/synty/characters/customization/gnome-v1/manifest.json",
+      "manifestSha256": "86f2ebf7fea0af0fff6ca82b18d1ea8be330d238d0b02a0bca8cf5ba1859fdb8",
+      "profileRef": "modular-fantasy-hero-v1:gnome",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    },
+    "half-elf": {
+      "manifest": "harness/models/synty/characters/customization/half-elf-v1/manifest.json",
+      "manifestSha256": "88ad878256ff983fcb730065c630cdfddd57f639e77a928e6d65c5576d208006",
+      "profileRef": "modular-fantasy-hero-v1:half-elf",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    },
+    "half-orc": {
+      "manifest": "harness/models/synty/characters/customization/half-orc-v1/manifest.json",
+      "manifestSha256": "07ea6c168e788d5b4b5f7680f1127f2a9c35cdd67d42c81a89ba3110d90e795b",
+      "profileRef": "modular-fantasy-hero-v1:half-orc",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    },
+    "halfling": {
+      "manifest": "harness/models/synty/characters/customization/halfling-v1/manifest.json",
+      "manifestSha256": "61490bf4437b384ee9aa8e2ea857ea905a74e62bd33c58067194b0e8ba203615",
+      "profileRef": "modular-fantasy-hero-v1:halfling",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    },
+    "human": {
+      "manifest": "harness/models/synty/characters/customization/human-v1/manifest.json",
+      "manifestSha256": "81a197b846d1012fb466ab8184d42e01e6b7224a4e818ab0993d4a984cc1f900",
+      "profileRef": "modular-fantasy-hero-v1:human",
+      "runtimeFileCount": 123,
+      "schemaVersion": 3
+    },
+    "tiefling": {
+      "manifest": "harness/models/synty/characters/customization/tiefling-v1/manifest.json",
+      "manifestSha256": "fd58004ee717082bf000ecbb0a8921c1e3abfdd4467021927ddf988925286610",
+      "profileRef": "modular-fantasy-hero-v1:tiefling",
+      "runtimeFileCount": 119,
+      "schemaVersion": 3
+    }
+  },
+  "schemaVersion": 1,
+  "workflowVersion": "character-customization-profiles-v1"
+}

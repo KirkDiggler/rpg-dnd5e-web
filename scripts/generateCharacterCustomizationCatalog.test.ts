@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,8 +10,23 @@ const moduleUrl = new URL(
   import.meta.url
 );
 const providerRoot = process.env.RPG_GAME_ASSETS_PATH;
+const preparedProviderRoot = new URL(
+  './fixtures/provider-five-class/',
+  import.meta.url
+).pathname;
+const realPreparedProviderRoot = process.env.RPG_BARD_PREPARED_PROVIDER_PATH;
 const describeProvider =
   providerRoot && existsSync(moduleUrl) ? describe : describe.skip;
+const describeRealPreparedProvider =
+  realPreparedProviderRoot &&
+  existsSync(
+    join(
+      realPreparedProviderRoot,
+      'harness/models/synty/characters/customization/manifest.json'
+    )
+  )
+    ? describe
+    : describe.skip;
 const temporary: string[] = [];
 
 interface MutableProfileManifest {
@@ -24,12 +41,10 @@ afterEach(() => {
   for (const path of temporary.splice(0)) rmSync(path, { recursive: true });
 });
 
-function providerJson(relative: string): unknown {
-  return JSON.parse(readFileSync(join(providerRoot!, relative), 'utf8'));
-}
-
-function exactProviderAuthority() {
-  const aggregate = providerJson(
+function authorityAt(root: string) {
+  const readJson = (relative: string): unknown =>
+    JSON.parse(readFileSync(join(root, relative), 'utf8'));
+  const aggregate = readJson(
     'harness/models/synty/characters/customization/manifest.json'
   ) as {
     profileOrder: string[];
@@ -38,13 +53,17 @@ function exactProviderAuthority() {
   const manifests = Object.fromEntries(
     aggregate.profileOrder.map((raceRef) => [
       raceRef,
-      providerJson(aggregate.profiles[raceRef].manifest),
+      readJson(aggregate.profiles[raceRef].manifest),
     ])
   );
-  const outfits = providerJson(
+  const outfits = readJson(
     'harness/models/synty/characters/outfit-customization/v1/manifest.json'
   );
   return { aggregate, manifests, outfits };
+}
+
+function exactProviderAuthority() {
+  return authorityAt(providerRoot!);
 }
 
 describe('aggregate character customization catalog module', () => {
@@ -98,13 +117,12 @@ describeProvider('aggregate character customization catalog generator', () => {
       kind: 'style',
       styleRef: 'modular-fantasy-hero:hair:08',
     });
+    const classOrder = (outfits as { classOrder: string[] }).classOrder;
+    expect(classOrder).toEqual(
+      expect.arrayContaining(['barbarian', 'fighter', 'monk', 'rogue'])
+    );
     for (const profile of Object.values(catalog.profiles)) {
-      expect(Object.keys(profile.bodies)).toEqual([
-        'barbarian',
-        'fighter',
-        'monk',
-        'rogue',
-      ]);
+      expect(Object.keys(profile.bodies)).toEqual(classOrder);
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
     }
@@ -130,12 +148,7 @@ describeProvider('aggregate character customization catalog generator', () => {
         'Chr_LegRight_Male_16',
       ],
     });
-    expect(Object.keys(catalog.outfits)).toEqual([
-      'barbarian',
-      'fighter',
-      'monk',
-      'rogue',
-    ]);
+    expect(Object.keys(catalog.outfits)).toEqual(classOrder);
   });
 
   it('rejects an ambiguous none default and an incomplete aggregate before rendering source', async () => {
@@ -178,17 +191,55 @@ describeProvider('aggregate character customization catalog generator', () => {
       outputPath: second,
     });
 
+    const authority = exactProviderAuthority();
+    const catalog = (await generator()).projectCharacterCustomizationAuthority(
+      authority.aggregate,
+      authority.manifests,
+      authority.outfits
+    );
+    const classOrder = (authority.outfits as { classOrder: string[] })
+      .classOrder;
+    const referenceCount = Object.values(catalog.profiles).reduce(
+      (count, profile) =>
+        count +
+        Object.keys(profile.bodies).length * 2 +
+        profile.slots.scalp.options.length * 2 +
+        profile.slots.facialHair.options.length * 2,
+      Object.keys(catalog.outfits).length
+    );
+    const fileDigest = (relative: string) =>
+      createHash('sha256')
+        .update(readFileSync(join(providerRoot!, relative)))
+        .digest('hex');
     expect(firstReceipt).toEqual({
-      providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
-      aggregateManifestSha256:
-        '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
-      outfitManifestSha256:
-        '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
-      profileCount: 8,
-      bodyCount: 32,
-      accessoryCount: 448,
-      thumbnailCount: 448,
-      sourceAssetCount: 974,
+      providerCommit: execFileSync(
+        'git',
+        ['rev-parse', '--verify', 'HEAD^{commit}'],
+        { cwd: providerRoot!, encoding: 'utf8' }
+      ).trim(),
+      aggregateManifestSha256: fileDigest(
+        'harness/models/synty/characters/customization/manifest.json'
+      ),
+      outfitManifestSha256: fileDigest(
+        'harness/models/synty/characters/outfit-customization/v1/manifest.json'
+      ),
+      profileCount: catalog.profileOrder.length,
+      bodyCount: catalog.profileOrder.length * classOrder.length,
+      accessoryCount: catalog.profileOrder.reduce(
+        (count, raceRef) =>
+          count +
+          catalog.profiles[raceRef].slots.scalp.options.length +
+          catalog.profiles[raceRef].slots.facialHair.options.length,
+        0
+      ),
+      thumbnailCount: catalog.profileOrder.reduce(
+        (count, raceRef) =>
+          count +
+          catalog.profiles[raceRef].slots.scalp.options.length +
+          catalog.profiles[raceRef].slots.facialHair.options.length,
+        0
+      ),
+      sourceAssetCount: referenceCount + 10,
     });
     expect(secondReceipt).toEqual(firstReceipt);
     expect(readFileSync(second)).toEqual(readFileSync(first));
@@ -197,5 +248,167 @@ describeProvider('aggregate character customization catalog generator', () => {
     expect(source).toContain(firstReceipt.providerCommit);
     expect(source).toContain(firstReceipt.aggregateManifestSha256);
     expect(source).not.toMatch(/\/home\/|harness\/models\/|\.fbx|\.blend/i);
+  });
+});
+
+describe('sanitized five-class provider projection', () => {
+  async function generator() {
+    return import('./generateCharacterCustomizationCatalog');
+  }
+
+  function record(value: unknown): Record<string, unknown> {
+    return value as Record<string, unknown>;
+  }
+
+  it('projects all eight Bard declarations in normal CI', async () => {
+    const { projectCharacterCustomizationAuthority } = await generator();
+    const authority = authorityAt(preparedProviderRoot);
+    const catalog = projectCharacterCustomizationAuthority(
+      authority.aggregate,
+      authority.manifests,
+      authority.outfits
+    );
+
+    expect(Object.keys(catalog.outfits)).toEqual([
+      'barbarian',
+      'fighter',
+      'monk',
+      'rogue',
+      'bard',
+    ]);
+    expect(catalog.outfits.bard.outfit).toBe('bard');
+    expect(catalog.outfits.bard.meshNames).toHaveLength(10);
+    expect(catalog.outfits.bard.meshNames.join(' ')).not.toMatch(
+      /Hair|FacialHair|Head|Ear/i
+    );
+    for (const raceRef of catalog.profileOrder) {
+      const bard = catalog.profiles[raceRef].bodies.bard;
+      expect(bard.combination).toBe(`${raceRef}:bard`);
+      expect(bard.fallbackUrl).toBe(
+        `/models/synty/characters/customization/${raceRef}-v1/fallbacks/${raceRef}-bard-complete.glb`
+      );
+      expect(catalog.profiles[raceRef].slots.scalp.options).toHaveLength(38);
+      expect(catalog.profiles[raceRef].slots.facialHair.options).toHaveLength(
+        18
+      );
+    }
+  });
+
+  it('accepts a second added class through declarations alone', async () => {
+    const { projectCharacterCustomizationAuthority } = await generator();
+    const authority = structuredClone(authorityAt(preparedProviderRoot));
+    const aggregate = record(authority.aggregate);
+    const inventory = record(aggregate.inventory);
+    inventory.bodyCount = 48;
+    inventory.compatibilityCheckCount = 2688;
+    inventory.profileRuntimeFileCount = 972;
+    const aggregateProfiles = record(aggregate.profiles);
+
+    for (const raceRef of aggregate.profileOrder as string[]) {
+      const manifest = record(authority.manifests[raceRef]);
+      const bodies = record(manifest.bodies);
+      const wizard = structuredClone(record(bodies[`${raceRef}:bard`]));
+      wizard.class = 'wizard';
+      wizard.combination = `${raceRef}:wizard`;
+      wizard.outfit = 'wizard';
+      wizard.path = `bodies/${raceRef}-wizard-body.glb`;
+      const fallback = record(wizard.fallback);
+      fallback.path = `fallbacks/${raceRef}-wizard-complete.glb`;
+      bodies[`${raceRef}:wizard`] = wizard;
+
+      const aggregateProfile = record(aggregateProfiles[raceRef]);
+      aggregateProfile.runtimeFileCount =
+        Number(aggregateProfile.runtimeFileCount) + 2;
+    }
+
+    const outfitManifest = record(authority.outfits);
+    (outfitManifest.classOrder as string[]).push('wizard');
+    const outfitInventory = record(outfitManifest.inventory);
+    outfitInventory.maskCount = 6;
+    outfitInventory.runtimeFileCount = 7;
+    const outfits = record(outfitManifest.outfits);
+    const wizardOutfit = structuredClone(record(outfits.bard));
+    wizardOutfit.classRef = 'wizard';
+    wizardOutfit.outfit = 'wizard';
+    wizardOutfit.mask =
+      'characters/outfit-customization/v1/masks/wizard-wizard.png';
+    outfits.wizard = wizardOutfit;
+
+    const catalog = projectCharacterCustomizationAuthority(
+      aggregate,
+      authority.manifests,
+      outfitManifest
+    );
+    expect(Object.keys(catalog.outfits)).toContain('wizard');
+    for (const profile of Object.values(catalog.profiles)) {
+      expect(profile.bodies.wizard).toMatchObject({
+        classRef: 'wizard',
+        outfit: 'wizard',
+      });
+    }
+  });
+
+  it.each([
+    [
+      'profile-local fallback scope',
+      (authority: ReturnType<typeof authorityAt>) => {
+        const elf = record(authority.manifests.elf);
+        const bard = record(record(elf.bodies)['elf:bard']);
+        record(bard.fallback).path = 'fallbacks/elf-rogue-complete.glb';
+      },
+      /fallback\.path/,
+    ],
+    [
+      'body digest',
+      (authority: ReturnType<typeof authorityAt>) => {
+        const elf = record(authority.manifests.elf);
+        record(record(elf.bodies)['elf:bard']).sha256 = 'A'.repeat(64);
+      },
+      /sha256/,
+    ],
+    [
+      'outfit clothing role',
+      (authority: ReturnType<typeof authorityAt>) => {
+        const outfits = record(record(authority.outfits).outfits);
+        (record(outfits.bard).meshNames as string[]).push('Chr_Head_Male_00');
+      },
+      /clothing only/,
+    ],
+    [
+      'cross-profile outfit agreement',
+      (authority: ReturnType<typeof authorityAt>) => {
+        const elf = record(authority.manifests.elf);
+        record(record(elf.bodies)['elf:bard']).outfit = '01';
+      },
+      /outfit differs/,
+    ],
+  ] as const)(
+    'rejects malformed %s declarations',
+    async (_label, mutate, error) => {
+      const { projectCharacterCustomizationAuthority } = await generator();
+      const authority = structuredClone(authorityAt(preparedProviderRoot));
+      mutate(authority);
+      expect(() =>
+        projectCharacterCustomizationAuthority(
+          authority.aggregate,
+          authority.manifests,
+          authority.outfits
+        )
+      ).toThrow(error);
+    }
+  );
+});
+
+describeRealPreparedProvider('optional real prepared-provider probe', () => {
+  it('projects the private candidate with the same generic authority reader', async () => {
+    const { projectCharacterCustomizationAuthority } =
+      await import('./generateCharacterCustomizationCatalog');
+    const authority = authorityAt(realPreparedProviderRoot!);
+    const catalog = projectCharacterCustomizationAuthority(
+      authority.aggregate,
+      authority.manifests,
+      authority.outfits
+    );
+    expect(Object.keys(catalog.outfits)).toContain('bard');
   });
 });
