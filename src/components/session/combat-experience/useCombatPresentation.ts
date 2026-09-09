@@ -5,6 +5,7 @@ import type {
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type { AttackResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   emptyPresentation,
@@ -53,7 +54,7 @@ export interface UseCombatPresentationResult {
   /** Targets whose attack roll has not been revealed yet — the map holds
    * their downed reveal until it has (`downedReveal.ts`). */
   readonly unresolvedAttackTargets: ReadonlySet<string>;
-  readonly debug: readonly string[];
+  readonly debug: readonly DebugFeedEntry[];
   readonly diceEvents: readonly DicePresentationEvent[];
   readonly semanticFallback: boolean;
   readonly diceWitnessRole: 'roller' | 'spectator';

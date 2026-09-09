@@ -24,7 +24,7 @@ import type {
   DeathSaveContinuation,
   DeathSaveOutcome,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { formatDebugLine } from '../debugLogLine';
+import { formatDebugLine, type DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   buildCombatAttackOutcome,
@@ -238,7 +238,9 @@ export interface CombatPresentationState {
   readonly pendingLocalKeys: readonly string[];
   readonly diceEvents: readonly DicePresentationEvent[];
   /** Typed raw stream formatting occurs before Story reconciliation. */
-  readonly debug: readonly string[];
+  readonly debug: readonly DebugFeedEntry[];
+  /** Monotonic UI keys survive trimming and duplicate wire receipts. */
+  readonly nextDebugId: number;
   readonly diagnostics: readonly string[];
   readonly nextOrder: number;
 }
@@ -270,6 +272,7 @@ export function emptyPresentation(
     pendingLocalKeys: Object.freeze([]),
     diceEvents: Object.freeze([]),
     debug: Object.freeze([]),
+    nextDebugId: 0,
     diagnostics: Object.freeze([]),
     nextOrder: 0,
   });
@@ -733,9 +736,9 @@ function diceEventsFor(
 export const COMBAT_DEBUG_MAX_LINES = 500;
 
 function appendDebugLine(
-  debug: readonly string[],
-  line: string
-): readonly string[] {
+  debug: readonly DebugFeedEntry[],
+  line: DebugFeedEntry
+): readonly DebugFeedEntry[] {
   const start = Math.max(0, debug.length - COMBAT_DEBUG_MAX_LINES + 1);
   return Object.freeze([...debug.slice(start), line]);
 }
@@ -756,16 +759,26 @@ function appendRawDebug(
   state: CombatPresentationState,
   fact: CombatStreamFact
 ): CombatPresentationState {
-  let text: string;
+  let entry: DebugFeedEntry;
   try {
     const names = new Map(Object.entries(state.memberNames));
-    text = `${formatDebugLine(fact.event, names).text} source=${fact.metadata.source}`;
+    const line = formatDebugLine(fact.event, names);
+    const kind =
+      EventKind[fact.event.kind]?.toLowerCase() ?? String(fact.event.kind);
+    const members = line.ids.map((id) => names.get(id) ?? id).join(' · ');
+    entry = Object.freeze({
+      id: state.nextDebugId,
+      summary: `#${fact.event.seq} ${kind}${members ? ` · ${members}` : ''} · source=${fact.metadata.source}`,
+      text: `${line.text} source=${fact.metadata.source}`,
+      event: snapshotEvent(fact.event),
+    });
   } catch (error) {
-    text = `raw event formatting failed: ${error instanceof Error ? error.message : String(error)} source=${fact.metadata.source}`;
+    entry = `raw event formatting failed: ${error instanceof Error ? error.message : String(error)} source=${fact.metadata.source}`;
   }
   return Object.freeze({
     ...state,
-    debug: appendDebugLine(state.debug, text),
+    nextDebugId: state.nextDebugId + 1,
+    debug: appendDebugLine(state.debug, entry),
   });
 }
 

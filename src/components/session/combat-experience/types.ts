@@ -11,6 +11,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
+import type { DebugFeedEntry } from '../debugLogLine';
 
 /** Local interaction state. Provider facts remain in generated messages. */
 export interface CombatExperiencePresentationState {
@@ -126,7 +127,7 @@ interface CombatExperienceBaseProps {
   logMode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly string[];
+  debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll reaction window is asking about. Null when no
    * such beat is outstanding; the panel still poses the question without it. */
