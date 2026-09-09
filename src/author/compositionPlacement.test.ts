@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { compositionRef } from '@/compositions/compositionRef';
 import { describe, expect, it } from 'vitest';
 import {

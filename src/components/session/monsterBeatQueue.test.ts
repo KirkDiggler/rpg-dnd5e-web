@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { describe, expect, it } from 'vitest';
 import { beatActor, needsPacing, nextBeatStep } from './monsterBeatQueue';

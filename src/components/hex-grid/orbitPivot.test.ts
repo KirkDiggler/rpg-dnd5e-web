@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { sphericalCameraPosition } from '@/author/preview3d/playCameraRig';
 import { describe, expect, it } from 'vitest';
 import { rotateAboutPivot, type Vec3Like } from './orbitPivot';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * What the log says about a cast, a save, and what the save cost.
  *

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { DiceKind } from '../../components/ui/dice/diceRollGroup';
 import { parseDiceRollGroupInput } from '../../components/ui/dice/diceRollGroup';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { MainHandAttachmentStatus } from '@/components/hex-grid/mainHandPresentation';
 import type {
   SkinnedAccessoryMaterialEvidence,

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * wallGesture — what is left of the wall tool's pointer maths once the
  * wall stopped being a drag (rpg-project#360 slice 2).

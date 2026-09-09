@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { createVisualThrowProfile } from '../../components/ui/dice/visualThrowProfile';
 import { physicsLaunchFromProfile } from './physicsTraySpikeMotion';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * atlasPath tests — the edge-aware graph search a click builds a
  * `MoveRequest.path` from. Checked against small hand-built fixtures for

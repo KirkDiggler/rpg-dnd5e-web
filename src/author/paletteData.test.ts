@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS } from '@/components/hex-grid/propManifest';
 import { readFileSync } from 'node:fs';

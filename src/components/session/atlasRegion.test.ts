@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import { atlasRegionOwners, regionAt } from './atlasRegion';

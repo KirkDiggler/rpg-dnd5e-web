@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EconomySlot,

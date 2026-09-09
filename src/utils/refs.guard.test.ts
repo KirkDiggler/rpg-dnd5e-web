@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The audit guard for rpg-dnd5e-web#947.
  *

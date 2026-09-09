@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { selectAttackDieDevRoute } from './attackDiePerfRoute';
 describe('attack die real-route gate', () => {

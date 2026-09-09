@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { CHARACTER_CUSTOMIZATION_CATALOG } from '../../generated/characterCustomizationCatalog';
 import { resolveCharacterCustomizationModel } from './characterCustomization';

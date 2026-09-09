@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The event boundary (rpg-dnd5e-web#605).
  *
