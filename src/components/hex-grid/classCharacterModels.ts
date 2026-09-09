@@ -147,6 +147,16 @@ export function resolvePlayerCharacterModel(
 
   if (!isDowned) {
     const normalizedRaceRefId = normalizeRefId(raceRefId);
+    const raceClassResolution = resolveRaceClassCharacterModelResolution(
+      normalizedRaceRefId,
+      normalizedClassRefId
+    );
+    if (raceClassResolution) return raceClassResolution;
+
+    // The complete Bard mapping predates provider-declared Bard profile data.
+    // Keep it only as the standing fallback until a generated profile body is
+    // present; downed characters continue through the established visible
+    // MediumHumanoid fallback path.
     if (
       normalizedClassRefId === 'bard' &&
       normalizedRaceRefId &&
@@ -160,12 +170,6 @@ export function resolvePlayerCharacterModel(
         source: 'race-class',
       };
     }
-
-    const raceClassResolution = resolveRaceClassCharacterModelResolution(
-      normalizedRaceRefId,
-      normalizedClassRefId
-    );
-    if (raceClassResolution) return raceClassResolution;
   }
 
   return resolveClassCharacterModelResolutionFromNormalizedClassRefId(

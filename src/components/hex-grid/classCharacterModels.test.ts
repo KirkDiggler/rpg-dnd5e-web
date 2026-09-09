@@ -1,5 +1,8 @@
 // @vitest-environment node
-import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
+import {
+  CHARACTER_CUSTOMIZATION_CATALOG,
+  type CharacterCustomizationBody,
+} from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
 import type { PlayerCharacterModelResolution } from './classCharacterModels';
 import * as classCharacterModels from './classCharacterModels';
@@ -115,6 +118,39 @@ describe('resolvePlayerCharacterModel', () => {
       );
     }
   );
+
+  it('prefers a declared profile body over the legacy standing Bard mapping', () => {
+    const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf;
+    const bodies = profile.bodies as unknown as Record<
+      string,
+      CharacterCustomizationBody
+    >;
+    bodies.bard = {
+      ...profile.bodies.barbarian,
+      combination: 'elf:bard',
+      classRef: 'bard',
+      outfit: 'bard',
+      url: '/models/synty/characters/customization/elf-v1/bodies/elf-bard-body.glb',
+      fallbackUrl:
+        '/models/synty/characters/customization/elf-v1/fallbacks/elf-bard-complete.glb',
+    } as unknown as CharacterCustomizationBody;
+    try {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel('elf', 'bard', false)
+      ).toEqual(
+        asResolution({
+          url: bodies.bard.url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+          customizationProfileRef: profile.profileRef,
+          fallbackUrl: bodies.bard.fallbackUrl,
+          fallbackSha256: bodies.bard.fallbackSha256,
+        })
+      );
+    } finally {
+      delete bodies.bard;
+    }
+  });
 
   it.each(bardModels)(
     'keeps a downed/dead %s Bard unresolved for the established fallback',

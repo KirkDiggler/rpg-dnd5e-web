@@ -1,25 +1,37 @@
 ---
 name: integrating provider character appearances
-description: Worked example for the eight-race Bard appearance batch
+description: Worked example for provider-declared player classes
 updated: 2026-09-09
 ---
 
 # Integrating provider character appearances
 
-## Worked example: eight-race Bard
+## Worked example: Bard through the generic class path
 
-Private provider PR [rpg-game-assets#184](https://github.com/KirkDiggler/rpg-game-assets/pull/184) merged as `37c13c68b6cfc87ad6684351f934b4ff1fd83515`. From a clean provider checkout at that commit, run the existing Web sync without committing its licensed GLBs:
+The compatibility sequence is **tooling before data**. First land a Web generator that accepts a consistent provider-declared class set. Then publish the provider data. Only after the provider receipt names a real merged commit may the ordinary Web sync consume it. This avoids either a hand-edited catalog or a Web commit that pretends unpublished bytes are available.
+
+The receipt chain is:
+
+1. one parts/class recipe;
+2. provider build manifest;
+3. automatic export manifest;
+4. prepared provider receipt;
+5. published receipt tied to the private provider PR's verified merge SHA;
+6. ordinary Web `assets:sync`, which validates the clean provider checkout and writes the generated catalog;
+7. Web commit/PR and its normal CI/review receipt.
+
+Assets issue [rpg-game-assets#185](https://github.com/KirkDiggler/rpg-game-assets/issues/185) is the first fixture. Its current receipt is **prepared, unpublished, and unmerged**. It can prove the pure declaration projection, but it cannot authorize runtime sync or a Web publication claim.
+
+After the provider is genuinely merged, check out its verified merge commit cleanly and run the existing command (the same command for a human or an agent):
 
 ```bash
-RPG_GAME_ASSETS_PATH=/path/to/rpg-game-assets \
+RPG_GAME_ASSETS_PATH=/path/to/clean/rpg-game-assets \
 ASSETS_SYNC_SKIP_UPDATE=1 \
 npm run assets:sync
 ```
 
-The consumer mapping is deliberately small: `classCharacterModels.ts` maps dwarf, elf, gnome, half-elf, halfling, half-orc, human, and tiefling plus `bard` to `/models/synty/characters/race-class/<race>-bard.glb`. These complete models use rig `modular-fantasy-hero-v1`; the existing renderer selects `Idle_Relaxed` and `Walk_Forward` from their clips. They do not receive a `customizationProfileRef`, inferred hair, or inferred outfit.
+The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or legacy fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
 
-Missing or unknown races remain unresolved for the established `MediumHumanoid` fallback; never substitute Human. The provider has no Bard downed files, so unconscious/dead Bards also remain unresolved and use the existing visible tilted fallback. Body-centering belongs to future provider work in [rpg-game-assets#43](https://github.com/KirkDiggler/rpg-game-assets/issues/43#issuecomment-5586987725), not a Web translation patch.
+At runtime, a normal standing character prefers its race profile body and receives the existing `customizationProfileRef`. That activates the established hair/none, hair color, coat-primary, and trim-secondary controls. The old complete Bard mapping remains only a compatibility fallback until generated Bard profile data arrives. Downed Bards still skip profile customization and use the established visible `MediumHumanoid` fallback because no Bard downed URL is declared.
 
-Run the focused resolver, renderer, animation, and session tests, then the required `npm run ci-check`. Finally observe idle, walk, and downed presentation through the normal live route when WebGL and a live API are available. Unit tests are not visual proof.
-
-Provider merge, Web integration, and the later `dev` to `main` production release are separate events.
+Run focused generator, resolver, renderer, customization, and session tests, then the required `npm run ci-check`. Finally observe hair, none, coat, and trim through the normal live route when WebGL and a live API are available. Unit tests are not visual proof.
