@@ -38,9 +38,11 @@ function highlightedJson(json: string): ReactNode[] {
 export function DebugEventRow({
   entry,
   onInspect,
+  onWiden,
 }: {
   entry: DebugEventEntry;
   onInspect: () => void;
+  onWiden: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
@@ -109,6 +111,8 @@ export function DebugEventRow({
               aria-label="Formatted event JSON"
               className={styles.json}
               tabIndex={0}
+              onClick={onWiden}
+              onFocus={onWiden}
             >
               <code>{tokens}</code>
             </pre>

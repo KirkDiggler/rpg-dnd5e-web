@@ -6,6 +6,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import styles from './CombatExperience.module.css';
 import {
   COMBAT_DEBUG_MAX_LINES,
   emptyPresentation,
@@ -55,6 +56,47 @@ const base = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('inline Debug inspection', () => {
+  it.each(['click', 'focus'])(
+    'widens only Debug on JSON %s and can return to compact width',
+    async (action) => {
+      const state = stateFor();
+      const { rerender } = render(<StoryLog {...base} debug={state.debug} />);
+      fireEvent.click(
+        screen.getByRole('button', { name: /Inspect event.*struck/i })
+      );
+      await screen.findByRole('button', { name: 'Copy JSON' });
+      const log = screen.getByTestId('session-combat-log');
+      const json = screen.getByLabelText('Formatted event JSON');
+      expect(log.classList.contains(styles.storyLogWide)).toBe(false);
+      if (action === 'click') fireEvent.click(json);
+      else fireEvent.focus(json);
+      expect(log.classList.contains(styles.storyLogWide)).toBe(true);
+      expect(
+        screen.getByRole('button', { name: 'Narrow debug panel' })
+      ).toBeTruthy();
+      expect(fireEvent.click(json)).toBe(true);
+      expect(log.classList.contains(styles.storyLogWide)).toBe(true);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Collapse combat log' })
+      );
+      expect(log.classList.contains(styles.storyLogWide)).toBe(false);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Expand combat log' })
+      );
+      expect(log.classList.contains(styles.storyLogWide)).toBe(true);
+      rerender(<StoryLog {...base} mode="story" debug={state.debug} />);
+      expect(log.classList.contains(styles.storyLogWide)).toBe(false);
+      rerender(<StoryLog {...base} debug={state.debug} />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Narrow debug panel' })
+      );
+      expect(log.classList.contains(styles.storyLogWide)).toBe(false);
+      expect(
+        screen.getByRole('button', { name: 'Widen debug panel' })
+      ).toBeTruthy();
+    }
+  );
+
   it('expands the original event with precise IDs, safe highlighted JSON and copy', async () => {
     const source = event();
     const state = stateFor(source);

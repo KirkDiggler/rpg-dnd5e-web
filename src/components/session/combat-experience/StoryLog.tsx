@@ -96,6 +96,8 @@ export function StoryLog({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [jsonWide, setJsonWide] = useState(false);
+  const wideDebug = visibleMode === 'debug' && jsonWide && !collapsed;
   const savedScrollTop = useRef<number | undefined>(undefined);
   const feedId = useId();
   const expandButton = useRef<HTMLButtonElement>(null);
@@ -151,7 +153,7 @@ export function StoryLog({
   return (
     <aside
       data-testid="session-combat-log"
-      className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''}`}
+      className={`${styles.storyLog} ${collapsed ? styles.storyLogCollapsed : ''} ${wideDebug ? styles.storyLogWide : ''}`}
       aria-label="Story log"
     >
       <button
@@ -179,6 +181,16 @@ export function StoryLog({
           </strong>
         </div>
         <div className={styles.logHeaderActions}>
+          {visibleMode === 'debug' && (
+            <button
+              type="button"
+              aria-label={jsonWide ? 'Narrow debug panel' : 'Widen debug panel'}
+              aria-pressed={jsonWide}
+              onClick={() => setJsonWide((wide) => !wide)}
+            >
+              {jsonWide ? 'Narrow' : 'Widen'}
+            </button>
+          )}
           <span
             className={`${styles.liveBadge} ${streamState !== 'live' ? styles.caughtUpBadge : ''}`}
           >
@@ -248,6 +260,7 @@ export function StoryLog({
                 key={entry.id}
                 entry={entry}
                 onInspect={() => setPinnedToBottom(false)}
+                onWiden={() => setJsonWide(true)}
               />
             )
           )}

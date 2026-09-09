@@ -149,7 +149,10 @@ Raw Debug ingests immediately but renders only in development or on an
 explicitly enabled Concepts diagnostic surface. The existing capped feed holds
 immutable typed event snapshots plus plain diagnostics, not a second event
 store. Compact rows expand inline and lazily format protobuf JSON with colored
-tokens and Copy JSON; uint64 values remain strings and bytes remain base64.
+tokens and Copy JSON; clicking or keyboard-focusing the JSON widens only Debug
+to at most 640px, capped by its containing frame and viewport. The width control
+restores compact Debug without toggling width during text selection; Story keeps
+its original width. uint64 values remain strings and bytes remain base64.
 Opaque payload bytes are not decoded as game facts. Opening an entry pauses
 auto-follow so new receipts do not pull it away. Plain diagnostics remain
 visible even when they have no JSON. Debug uses `aria-live="off"`; only Story

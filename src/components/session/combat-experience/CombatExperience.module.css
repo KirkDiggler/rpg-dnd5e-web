@@ -663,6 +663,10 @@
   backdrop-filter: blur(8px);
 }
 
+.storyLog.storyLogWide {
+  width: min(640px, calc(100% - 28px), calc(100vw - 28px));
+}
+
 .storyLog.storyLogCollapsed {
   bottom: auto;
   width: auto;
@@ -674,7 +678,9 @@
 
 .storyLog > header > .logHeaderActions {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
