@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import { DiceRollSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { describe, expect, it } from 'vitest';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import {
   EventKind,
   type Event,

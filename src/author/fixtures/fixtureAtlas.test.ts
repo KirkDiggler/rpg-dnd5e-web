@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The fixture atlas is the Concepts Lab's stand-in for the server's
  * compile. It proves nothing about the real compiler — but it must model

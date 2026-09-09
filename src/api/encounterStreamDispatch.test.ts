@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { describe, expect, it, vi } from 'vitest';
 import {

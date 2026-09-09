@@ -1,3 +1,4 @@
+// @vitest-environment node
 import {
   GENERATED_WORLD_ASSETS,
   type GeneratedWorldAsset,

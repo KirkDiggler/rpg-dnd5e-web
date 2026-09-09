@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { WorldScene } from '@/concepts/world-building/types';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { describe, expect, it } from 'vitest';

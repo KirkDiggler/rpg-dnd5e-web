@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * atlasWallRuns tests — `segmentsToWallRuns` (rpg-project#360 slice 2,
  * "walls as lines"). The old suite pinned a chain-fitting engine

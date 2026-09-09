@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * atlasToScene3D tests — the axial<->cube bridge and floor-tile
  * placement. Wall-run geometry (envelope/connector runs, door gaps) has

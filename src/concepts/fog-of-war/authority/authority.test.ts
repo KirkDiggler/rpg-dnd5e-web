@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Fixture authority (rpg-dnd5e-web#605).
  *

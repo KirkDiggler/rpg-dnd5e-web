@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * AdvancedCharacterShader instancing-support regression tests
  *

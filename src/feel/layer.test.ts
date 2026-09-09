@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { FEEL_LAB_LAYER_Z } from './layer';
 

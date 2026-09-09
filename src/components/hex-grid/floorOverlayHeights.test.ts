@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Floor overlay Y-offset regression tests
  *

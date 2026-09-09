@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { describe, expect, it } from 'vitest';
 import {

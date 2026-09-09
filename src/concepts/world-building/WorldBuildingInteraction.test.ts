@@ -1,3 +1,4 @@
+// @vitest-environment node
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { dropTargetFromIntersections } from './worldBuildingPointer';

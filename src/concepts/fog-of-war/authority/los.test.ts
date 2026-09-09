@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The fixture's sightlines (rpg-dnd5e-web#605).
  *

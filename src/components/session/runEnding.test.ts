@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * What the player is told when the run is over (rpg-dnd5e-web#999).
  *

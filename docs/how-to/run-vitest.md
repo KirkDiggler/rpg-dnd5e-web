@@ -1,72 +1,94 @@
 ---
 name: running vitest
-description: How to run the test suite, understand coverage, and add new tests
-updated: 2026-05-02
+description: How to run the test suite and choose a per-file environment
+updated: 2026-09-09
 ---
 
-# Running vitest
+# Running Vitest
 
-## Run all tests
+Run commands from the repository root.
 
-```bash
-cd /home/kirk/personal/rpg-dnd5e-web
-npm test
-```
+## Run tests
 
-Tests run in ~1.5s (14 test files, 298 tests as of 2026-05-02).
-
-## Run a single file
+Run the complete suite once:
 
 ```bash
-npm test -- src/hooks/useDungeonMap.test.ts
-npm test -- src/utils/hexUtils.test.ts
+npm run test:run
 ```
 
-## Watch mode
+Run one file:
 
 ```bash
-npm test -- --watch
+npm run test:run -- src/hooks/useEncounterState.test.ts
 ```
 
-## Verbose output
+Watch a file while editing:
 
 ```bash
-npm test -- --reporter=verbose
+npm test -- src/hooks/useEncounterState.test.ts
 ```
 
-## Current test coverage
+Use a different reporter when diagnosing a failure:
 
-| Area                                             | Tests | Notes                                       |
-| ------------------------------------------------ | ----- | ------------------------------------------- |
-| `hexUtils.test.ts`                               | ~30   | BFS, A\*, cube coordinate math              |
-| `useMovementRange.test.ts`                       | 22    | Movement range, boundary edges, pathfinding |
-| `useDungeonMap.test.ts`                          | 20    | Room accumulation, wall dedup, entity merge |
-| `useEncounterState.test.ts`                      | ~10   | Snapshot/delta                              |
-| `characterMerge.test.ts`                         | —     | Character merge                             |
-| `monsterTurnUtils.test.ts`                       | —     | Monster turn formatting                     |
-| `entityHelpers.test.ts`                          | —     | Entity helper utilities                     |
-| `featureConditionMapping.test.ts`                | —     | Feature→condition map                       |
-| `conditionIcons.test.ts`, `featureIcons.test.ts` | —     | Icon mapping                                |
-| `diceCalculations.test.ts`                       | —     | Dice math                                   |
-| `conditionData.test.ts`, `featureData.test.ts`   | —     | Type guard tests                            |
-| `useHexInteraction.test.ts`                      | —     | Hex pointer events                          |
+```bash
+npm run test:run -- --reporter=verbose
+```
 
-**Not tested:** `useEncounterStream`, `LobbyView`, `BattleMapPanel`, `CombatPanel`, any gRPC hooks.
+Vitest discovers `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.ts` according
+to `vite.config.ts`.
 
-## Adding new tests
+## Test environments
 
-The `encounterStateTransforms.test.ts` on branch `test/room-reveal-transforms` (PR #378) is the best template. It shows:
+The default environment is `jsdom`. Keep it for component rendering, DOM and
+browser APIs, user interaction, React hooks that need a renderer, and any test
+whose browser dependency is unclear.
 
-- Testing pure functions with no React context required
-- Building minimal proto fixtures using `create()` from `@bufbuild/protobuf`
-- Structuring `describe` blocks by function name
+A self-contained pure test can avoid jsdom startup with a file-level opt-in as
+the first line:
 
-For hooks that need a React context, use `renderHook` from `@testing-library/react`. For components, React Testing Library would work but no examples exist in the codebase yet.
+```ts
+// @vitest-environment node
+```
 
-## CI check (mandatory before push)
+Use the Node opt-in only after reviewing the test intent and its runtime imports.
+Good candidates exercise deterministic parsing, transforms, state transitions,
+geometry, or contract validation without rendering or reading browser globals.
+Do not add the annotation merely because a test happens to pass once in Node.
+
+When changing an environment annotation, run the file directly and then run the
+complete suite. The suite must discover the same files and preserve every
+existing test identity and status.
+
+## Worker limits
+
+Vitest chooses workers from the available machine resources. On a shared local
+machine, cap workers deliberately rather than assuming the largest value is
+best. For example:
+
+```bash
+nice -n 10 npm run test:run -- --maxWorkers=8
+```
+
+Choose a cap appropriate to the machine and other running work; this example is
+a resource bound, not an optimal-concurrency promise.
+
+## Adding tests
+
+- Test pure functions directly with minimal fixtures.
+- Build proto fixtures with `create()` from `@bufbuild/protobuf`.
+- Use `renderHook` from Testing Library for hooks that require React context.
+- Use React Testing Library for component behavior.
+- Keep assertions focused on observable behavior rather than implementation
+  details.
+
+## Required pre-publication check
+
+Before opening or updating a pull request, run:
 
 ```bash
 npm run ci-check
 ```
 
-This runs: format check, lint, typecheck, build, and tests. All must pass. Never use `--no-verify`.
+It checks formatting, lint, types, the production build, build-specific guards,
+and the full test suite. All checks must pass. Never bypass Git hooks with
+`--no-verify`.

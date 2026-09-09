@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for authorGridHelpers — the `?authorGrid=1` overlay's pure
  * geometry. Real reference-tomb-shaped fixture (entrance width 6 ->

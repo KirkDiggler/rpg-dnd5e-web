@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { Scene3D } from '@/components/session/atlasToScene3D';
 import { describe, expect, it } from 'vitest';
 import { buildLocalWorldDieColliders } from './localWorldDieColliders';
