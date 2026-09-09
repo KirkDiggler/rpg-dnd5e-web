@@ -42,7 +42,6 @@ async function initRepository(root: string, remote: string) {
   await git(root, 'init', '--quiet');
   await git(root, 'config', 'user.name', 'Fixture');
   await git(root, 'config', 'user.email', 'fixture@example.invalid');
-  await git(root, 'config', 'core.hooksPath', join(root, '.no-hooks'));
   await git(root, 'remote', 'add', 'origin', remote);
 }
 
@@ -69,6 +68,7 @@ interface ReceiptFixture {
   generatedMetadata: ArtifactRow[];
   preservation: {
     addedFiles: string[];
+    changedCumulativeFiles: string[];
     allOtherPreExistingFilesByteIdentical: boolean;
   };
   provider: {
@@ -112,6 +112,7 @@ async function makeFixture(): Promise<Fixture> {
     provider,
     'git@github.com:KirkDiggler/rpg-game-assets.git'
   );
+  await put(join(provider, '.gitignore'), '.worktrees/\n');
 
   const installedArtifacts: ArtifactRow[] = [];
   const declarations: ArtifactRow[] = [];
@@ -163,7 +164,7 @@ async function makeFixture(): Promise<Fixture> {
   await add(
     declarations,
     'harness/models/synty/characters/outfit-customization/v1/manifest.json',
-    'outfits'
+    JSON.stringify({ classOrder: ['bard'] })
   );
   await add(generatedMetadata, 'harness/models/synty/mesh-stats.json', 'stats');
   await add(
@@ -197,6 +198,7 @@ async function makeFixture(): Promise<Fixture> {
       addedFiles: installedArtifacts
         .map((row) => row.path.replace('harness/models/synty/', ''))
         .sort(),
+      changedCumulativeFiles: [],
       allOtherPreExistingFilesByteIdentical: true,
     },
     provider: {
@@ -218,6 +220,13 @@ async function makeFixture(): Promise<Fixture> {
   const receiptPath = join(root, 'merged-provider-receipt.json');
   await put(receiptPath, JSON.stringify(receipt));
 
+  // The repository source deliberately advances and becomes dirty. Apply must
+  // consume a separate detached worktree without changing either state.
+  await put(join(provider, 'source-only.txt'), 'later source head\n');
+  await git(provider, 'add', 'source-only.txt');
+  await git(provider, 'commit', '--quiet', '-m', 'later source state');
+  await put(join(provider, 'dirty-source.txt'), 'preserve me\n');
+
   const webRemote = join(root, 'web-origin.git');
   await execFileAsync('git', ['init', '--bare', '--quiet', webRemote], {
     env: gitEnvironment,
@@ -229,7 +238,7 @@ async function makeFixture(): Promise<Fixture> {
     '// classOrder must declare at least one class\n'
   );
   await put(join(web, 'package.json'), '{"name":"fixture"}\n');
-  await put(join(web, '.gitignore'), 'public/models/\n');
+  await put(join(web, '.gitignore'), 'public/models/\n.husky/_/\n');
   await git(web, 'add', '.');
   await git(web, 'commit', '--quiet', '-m', 'web base');
   await git(web, 'branch', '-M', 'dev');
@@ -281,13 +290,20 @@ else if (args[0] === 'pr' && args[1] === 'view') {
   await put(
     fakeNpm,
     `#!/usr/bin/env node
-const fs = require('node:fs'); const path = require('node:path');
+const fs = require('node:fs'); const path = require('node:path'); const cp = require('node:child_process');
 const args = process.argv.slice(2); fs.appendFileSync(process.env.CALLS, 'npm ' + args.join(' ') + '\\n');
+if (args.join(' ') === 'run prepare') {
+  const hook = path.join(process.cwd(), '.husky/_/pre-commit');
+  fs.mkdirSync(path.dirname(hook), {recursive:true});
+  fs.writeFileSync(hook, '#!/bin/sh\\nexit 0\\n', {mode:0o755});
+  cp.execFileSync('git', ['-C', process.cwd(), 'config', 'core.hooksPath', '.husky/_']);
+}
 if (args.join(' ') === 'run assets:sync') {
   const output = path.join(process.cwd(),'src/generated/characterCustomizationCatalog.ts');
   fs.mkdirSync(path.dirname(output),{recursive:true});
-  fs.writeFileSync(output, process.env.MERGE_SHA + '\\nhuman:bard\\nelf:bard\\n');
-  if (process.env.WRITE_LICENSED === '1') { const p=path.join(process.cwd(),'public/models/synty/bard.glb'); fs.mkdirSync(path.dirname(p),{recursive:true}); fs.writeFileSync(p,'licensed'); require('node:child_process').execFileSync('git',['-C',process.cwd(),'add','-f',p]); }
+  fs.writeFileSync(output, "export const providerCommit = '" + process.env.MERGE_SHA + "';\\ncombination: 'human:bard'\\ncombination: 'elf:bard'\\n");
+  console.log('Generated aggregate customization catalog from ' + process.env.MERGE_SHA + ' (2 profiles, 15 source files).');
+  if (process.env.WRITE_LICENSED === '1') { const p=path.join(process.cwd(),'public/models/synty/bard.glb'); fs.mkdirSync(path.dirname(p),{recursive:true}); fs.writeFileSync(p,'licensed'); cp.execFileSync('git',['-C',process.cwd(),'add','-f',p]); }
 }
 `
   );
@@ -295,8 +311,11 @@ if (args.join(' ') === 'run assets:sync') {
   const fakeNpx = join(bin, 'npx');
   await put(
     fakeNpx,
-    `#!/bin/sh
-echo "npx $*" >> "$CALLS"
+    `#!/usr/bin/env node
+const fs = require('node:fs'); const path = require('node:path');
+fs.appendFileSync(process.env.CALLS, 'npx ' + process.argv.slice(2).join(' ') + '\\n');
+const catalog = fs.readFileSync(path.join(process.cwd(), 'src/generated/characterCustomizationCatalog.ts'), 'utf8');
+if (!catalog.includes(process.env.MERGE_SHA) || (catalog.match(/combination:/g) || []).length !== 2) process.exit(8);
 `
   );
   await chmod(fakeNpx, 0o755);
@@ -394,6 +413,48 @@ describe('receipt-driven provider exposure wrapper', () => {
     await expect(readFile(fixture.calls, 'utf8')).rejects.toThrow();
   });
 
+  it('derives the default Web worktree under the main checkout common-dir root', async () => {
+    const fixture = await makeFixture();
+    const result = await execFileAsync(
+      process.execPath,
+      [
+        cli,
+        '--provider-receipt',
+        fixture.receiptPath,
+        '--provider-repo',
+        fixture.provider,
+        '--web-repo',
+        fixture.web,
+        '--web-issue',
+        '1012',
+      ],
+      { cwd: repositoryRoot, env: fixture.env }
+    );
+    expect(JSON.parse(result.stdout).web.worktree).toBe(
+      join(fixture.web, '.worktrees', '1012-bard-provider-exposure')
+    );
+  });
+
+  it('accepts a same-class update preservation receipt without mutating dry-run', async () => {
+    const fixture = await makeFixture();
+    const changed = fixture.receipt.installedArtifacts[0].path.replace(
+      'harness/models/synty/',
+      ''
+    );
+    fixture.receipt.preservation.addedFiles =
+      fixture.receipt.preservation.addedFiles.filter(
+        (path) => path !== changed
+      );
+    fixture.receipt.preservation.changedCumulativeFiles = [changed];
+    await rewriteReceipt(fixture);
+    const result = await runCli(fixture);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      mode: 'dry-run',
+      mutationsPerformed: false,
+      ready: true,
+    });
+  });
+
   it('defaults to a machine-readable non-mutating plan from verified merged state', async () => {
     const fixture = await makeFixture();
     const before = (await git(fixture.web, 'rev-parse', 'HEAD')).stdout;
@@ -414,8 +475,20 @@ describe('receipt-driven provider exposure wrapper', () => {
     expect(await readFile(fixture.calls, 'utf8')).not.toContain('pr create');
   });
 
-  it('applies only through normal assets:sync, exact staging, checks, and dev PR readback', async () => {
+  it('applies from an automatic pinned provider worktree with hooks and exact gates', async () => {
     const fixture = await makeFixture();
+    const sourceHead = (await git(fixture.provider, 'rev-parse', 'HEAD'))
+      .stdout;
+    const sourceStatus = (
+      await git(
+        fixture.provider,
+        'status',
+        '--porcelain=v1',
+        '--untracked-files=all'
+      )
+    ).stdout;
+    expect(sourceHead.trim()).not.toBe(fixture.mergeSha);
+    expect(sourceStatus).toContain('dirty-source.txt');
     const result = await runCli(fixture, ['--apply']);
     const plan = JSON.parse(result.stdout);
     expect(plan).toMatchObject({
@@ -427,9 +500,15 @@ describe('receipt-driven provider exposure wrapper', () => {
       },
     });
     const calls = await readFile(fixture.calls, 'utf8');
+    expect(calls.indexOf('npm ci --ignore-scripts')).toBeLessThan(
+      calls.indexOf('npm run prepare')
+    );
+    expect(calls.indexOf('npm run prepare')).toBeLessThan(
+      calls.indexOf('npm run assets:sync')
+    );
     expect(calls).toContain('npm run assets:sync');
     expect(calls).toContain(
-      'npx vitest run scripts/generateCharacterCustomizationCatalog.test.ts src/components/hex-grid/classCharacterModels.test.ts'
+      'npx vitest run scripts/generateCharacterCustomizationCatalog.test.ts scripts/characterCustomizationPublication.test.ts src/components/hex-grid/classCharacterModels.test.ts'
     );
     expect(calls).toContain('npm run ci-check');
     const receipt = JSON.parse(await readFile(fixture.output, 'utf8'));
@@ -443,12 +522,27 @@ describe('receipt-driven provider exposure wrapper', () => {
         status: 'OPEN',
       },
       generation: {
+        huskySetup: 'npm run prepare',
+        preCommitHook: expect.stringContaining('.husky/_/pre-commit'),
         command: 'npm run assets:sync',
         providerHead: fixture.mergeSha,
         stagedPaths: ['src/generated/characterCustomizationCatalog.ts'],
         ciCheck: 'passed',
       },
     });
+    expect((await git(fixture.provider, 'rev-parse', 'HEAD')).stdout).toBe(
+      sourceHead
+    );
+    expect(
+      (
+        await git(
+          fixture.provider,
+          'status',
+          '--porcelain=v1',
+          '--untracked-files=all'
+        )
+      ).stdout
+    ).toBe(sourceStatus);
     expect(
       (
         await git(

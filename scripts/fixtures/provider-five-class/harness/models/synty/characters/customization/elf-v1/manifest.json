@@ -1,0 +1,1082 @@
+{
+  "animations": ["Idle_Relaxed", "Walk_Forward"],
+  "atlas": {
+    "dimensions": [1024, 1024],
+    "id": "01-a",
+    "sha256": "7f84972790e530f8d83b378eb95f3151e2664c7b4ac23b1d125a55e1efcecd62"
+  },
+  "bodies": {
+    "elf:barbarian": {
+      "animations": ["Idle_Relaxed", "Walk_Forward"],
+      "class": "barbarian",
+      "combination": "elf:barbarian",
+      "fallback": {
+        "path": "harness/models/synty/characters/race-class/elf-barbarian.glb",
+        "sha256": "e436883e6adf7e9912bffafc8734351cd970fb6154263e0fe96e842f490ef80d"
+      },
+      "outfit": "01",
+      "path": "bodies/elf-barbarian-body.glb",
+      "sha256": "4a9ef96d1dd1966d43cbc81109376223f77199977acb752b0ae98d1f16dbecb2",
+      "sourceMeshes": [
+        "Chr_Head_Male_00",
+        "Chr_Ear_Ear_03",
+        "Chr_Torso_Male_01",
+        "Chr_Hips_Male_01",
+        "Chr_ArmUpperLeft_Male_01",
+        "Chr_ArmUpperRight_Male_01",
+        "Chr_ArmLowerLeft_Male_01",
+        "Chr_ArmLowerRight_Male_01",
+        "Chr_HandLeft_Male_01",
+        "Chr_HandRight_Male_01",
+        "Chr_LegLeft_Male_01",
+        "Chr_LegRight_Male_01"
+      ]
+    },
+    "elf:bard": {
+      "animations": ["Idle_Relaxed", "Walk_Forward"],
+      "class": "bard",
+      "combination": "elf:bard",
+      "fallback": {
+        "path": "fallbacks/elf-bard-complete.glb",
+        "sha256": "bf256ab12b8402b8120d75b6e84e599a9f1ae3ccbde4434077eb9887c4608b5d"
+      },
+      "outfit": "bard",
+      "path": "bodies/elf-bard-body.glb",
+      "sha256": "43d969751f0a3aaa6bab232d49858c5332764c74e53368a1ad51367a9cb23941",
+      "sourceMeshes": [
+        "Chr_Head_Male_00",
+        "Chr_Ear_Ear_03",
+        "Chr_Torso_Male_27",
+        "Chr_Hips_Male_27",
+        "Chr_ArmUpperLeft_Male_20",
+        "Chr_ArmUpperRight_Male_20",
+        "Chr_ArmLowerLeft_Male_18",
+        "Chr_ArmLowerRight_Male_18",
+        "Chr_HandLeft_Male_13",
+        "Chr_HandRight_Male_13",
+        "Chr_LegLeft_Male_11",
+        "Chr_LegRight_Male_11"
+      ]
+    },
+    "elf:fighter": {
+      "animations": ["Idle_Relaxed", "Walk_Forward"],
+      "class": "fighter",
+      "combination": "elf:fighter",
+      "fallback": {
+        "path": "harness/models/synty/characters/race-class/elf-fighter.glb",
+        "sha256": "3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39"
+      },
+      "outfit": "16",
+      "path": "bodies/elf-fighter-body.glb",
+      "sha256": "dddb367b22e198683e7b1f5ed69864ae2dc39ecd88b50ed289c6730a77273b69",
+      "sourceMeshes": [
+        "Chr_Head_Male_00",
+        "Chr_Ear_Ear_03",
+        "Chr_Torso_Male_16",
+        "Chr_Hips_Male_16",
+        "Chr_ArmUpperLeft_Male_16",
+        "Chr_ArmUpperRight_Male_16",
+        "Chr_ArmLowerLeft_Male_16",
+        "Chr_ArmLowerRight_Male_16",
+        "Chr_HandLeft_Male_16",
+        "Chr_HandRight_Male_16",
+        "Chr_LegLeft_Male_16",
+        "Chr_LegRight_Male_16"
+      ]
+    },
+    "elf:monk": {
+      "animations": ["Idle_Relaxed", "Walk_Forward"],
+      "class": "monk",
+      "combination": "elf:monk",
+      "fallback": {
+        "path": "harness/models/synty/characters/race-class/elf-monk.glb",
+        "sha256": "4167695e5268a84dfdbf202a883c6012825216902afa60f7b88bbc6349236206"
+      },
+      "outfit": "08",
+      "path": "bodies/elf-monk-body.glb",
+      "sha256": "2c40028c14203797c836a5d890a5baddedc5f8b20785f7ca258f3d762a90531b",
+      "sourceMeshes": [
+        "Chr_Head_Male_00",
+        "Chr_Ear_Ear_03",
+        "Chr_Torso_Male_08",
+        "Chr_Hips_Male_08",
+        "Chr_ArmUpperLeft_Male_08",
+        "Chr_ArmUpperRight_Male_08",
+        "Chr_ArmLowerLeft_Male_08",
+        "Chr_ArmLowerRight_Male_08",
+        "Chr_HandLeft_Male_08",
+        "Chr_HandRight_Male_08",
+        "Chr_LegLeft_Male_08",
+        "Chr_LegRight_Male_08"
+      ]
+    },
+    "elf:rogue": {
+      "animations": ["Idle_Relaxed", "Walk_Forward"],
+      "class": "rogue",
+      "combination": "elf:rogue",
+      "fallback": {
+        "path": "harness/models/synty/characters/race-class/elf-rogue.glb",
+        "sha256": "939e38fbb1121a6b185e7edf427f6b0a7867597a004e94c41f0982db3df82365"
+      },
+      "outfit": "10",
+      "path": "bodies/elf-rogue-body.glb",
+      "sha256": "23b164c6c61d0b75945967d16a3141b97be99beb7d1e333a70477f8e9b4fc8d5",
+      "sourceMeshes": [
+        "Chr_Head_Male_00",
+        "Chr_Ear_Ear_03",
+        "Chr_Torso_Male_10",
+        "Chr_Hips_Male_10",
+        "Chr_ArmUpperLeft_Male_10",
+        "Chr_ArmUpperRight_Male_10",
+        "Chr_ArmLowerLeft_Male_10",
+        "Chr_ArmLowerRight_Male_10",
+        "Chr_HandLeft_Male_10",
+        "Chr_HandRight_Male_10",
+        "Chr_LegLeft_Male_10",
+        "Chr_LegRight_Male_10"
+      ]
+    }
+  },
+  "profileRef": "modular-fantasy-hero-v1:elf",
+  "proportions": [1.0, 1.0, 1.0],
+  "raceRef": "elf",
+  "rigFamily": "modular-fantasy-hero-v1",
+  "schemaVersion": 3,
+  "skeleton": {
+    "boneCount": 63,
+    "inverseBindSha256": "456511cf8689bcccf1874fc07463a3e7c5d117459bc5e69b0009093b80e2f75d"
+  },
+  "slots": {
+    "facial-hair": {
+      "defaultSelection": {
+        "kind": "none"
+      },
+      "options": [
+        {
+          "animations": [],
+          "label": "Facial Hair 01",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-01.glb",
+          "sha256": "31a1efaff865e02be08079ff17d07d6c6a31dcb80812f12e88277b5458c213f0",
+          "sourceMesh": "Chr_FacialHair_Male_01",
+          "styleRef": "modular-fantasy-hero:facial-hair:01",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-01.png",
+          "thumbnailSha256": "93cc71bb3a2fe1fca853aef1f614592f2b78cb05db7ad174840c86fdf7034509"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 02",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-02.glb",
+          "sha256": "9d99d689964e5a89d8f03f6a5c9053ba4091827dd8b9c4d1081a0bba24f184fd",
+          "sourceMesh": "Chr_FacialHair_Male_02",
+          "styleRef": "modular-fantasy-hero:facial-hair:02",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-02.png",
+          "thumbnailSha256": "991ba3beb500da958b91582f70587f62a55af9a434f2362a9a70eadf5f2ca8d5"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 03",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-03.glb",
+          "sha256": "ca6993ced13ed80bfc1e0b4d01469637103410fc7074704989f564765a567023",
+          "sourceMesh": "Chr_FacialHair_Male_03",
+          "styleRef": "modular-fantasy-hero:facial-hair:03",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-03.png",
+          "thumbnailSha256": "bcc72ab935c67dadc7cae3a625e0f733186e4e5b9ace1305a3986642ca4d28de"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 04",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-04.glb",
+          "sha256": "ca83528ac01ecccae96faab5236320186ec3050a35ca6276765627a7fa2a7866",
+          "sourceMesh": "Chr_FacialHair_Male_04",
+          "styleRef": "modular-fantasy-hero:facial-hair:04",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-04.png",
+          "thumbnailSha256": "be689c71cd654f1477c77b90daaddb032661f6b893d37918cc41d08916ac789d"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 05",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-05.glb",
+          "sha256": "1cf38523e4f956215a7ad30b1780e60e94d06f707d225bb55ec3d2ee4570c29d",
+          "sourceMesh": "Chr_FacialHair_Male_05",
+          "styleRef": "modular-fantasy-hero:facial-hair:05",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-05.png",
+          "thumbnailSha256": "7b96f57cd3abd65b4886e366701865bf2b7e4f8f3b6f1acb458edb87bc575d11"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 06",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-06.glb",
+          "sha256": "aad2d49744c5b4411f86479333487cb9fad614d2e7aa11477f7dc83c60453522",
+          "sourceMesh": "Chr_FacialHair_Male_06",
+          "styleRef": "modular-fantasy-hero:facial-hair:06",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-06.png",
+          "thumbnailSha256": "57fc9fc2c27b72429cda33ca798f953ec2b40147c09687bcc30fa614d00ce314"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 07",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-07.glb",
+          "sha256": "b0e72233829d06ebc3123a03d5fa47d611742a4e27fa53b12a714a14f492dbf5",
+          "sourceMesh": "Chr_FacialHair_Male_07",
+          "styleRef": "modular-fantasy-hero:facial-hair:07",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-07.png",
+          "thumbnailSha256": "06362de8f6144ac682453b0939d3a93a8c02ef1df8545ea8025220bda7843a2a"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 08",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-08.glb",
+          "sha256": "53b653c3ccd4f69d833dab4bdf1e7a5937a01c48ec6ce050b96e624f474ca3ed",
+          "sourceMesh": "Chr_FacialHair_Male_08",
+          "styleRef": "modular-fantasy-hero:facial-hair:08",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-08.png",
+          "thumbnailSha256": "5438df083fc451922e5246f8adccad6674c3f517874c19da0f3df35ed5a72c5e"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 09",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-09.glb",
+          "sha256": "e89a9b1b25777d20cb27b5f597e00eae2e84b8e6138ed3fff571349163e03c50",
+          "sourceMesh": "Chr_FacialHair_Male_09",
+          "styleRef": "modular-fantasy-hero:facial-hair:09",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-09.png",
+          "thumbnailSha256": "68dd8d36276826e3b5c7dda1a7b077389bff000b4d03aa24a35a86adc2859c75"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 10",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-10.glb",
+          "sha256": "9d4938a9e7a6c2cf6f1ac1f0e6d4ae29d7682361a3aae74bd5149e12d698f1e8",
+          "sourceMesh": "Chr_FacialHair_Male_10",
+          "styleRef": "modular-fantasy-hero:facial-hair:10",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-10.png",
+          "thumbnailSha256": "4dc43e555f98fe808adf32127054cb9b005b5ebe1117a7066934efab6b1c3658"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 11",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-11.glb",
+          "sha256": "d26d870c5ddc7e784b40ddfc45454a54d52a8beec9612030ed590f12b5e8bec3",
+          "sourceMesh": "Chr_FacialHair_Male_11",
+          "styleRef": "modular-fantasy-hero:facial-hair:11",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-11.png",
+          "thumbnailSha256": "7588b430d53ee4edf38ff1a182696b8503c48dda57ce08c9ffb100b2093783e3"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 12",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-12.glb",
+          "sha256": "021b6e1146ffa6b7b3e643046760c974b6f63e6e4853bc5433c0941d814831c9",
+          "sourceMesh": "Chr_FacialHair_Male_12",
+          "styleRef": "modular-fantasy-hero:facial-hair:12",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-12.png",
+          "thumbnailSha256": "1c92806d1a4c7b266cacee6a9cf95f3de4a996ae11c376d61699cb1c5a35e316"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 13",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-13.glb",
+          "sha256": "13f8256d3c886e2321168f895029009bb7a762db7b321369731af71ea7bbfba7",
+          "sourceMesh": "Chr_FacialHair_Male_13",
+          "styleRef": "modular-fantasy-hero:facial-hair:13",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-13.png",
+          "thumbnailSha256": "07ed00110776b435ed4859a228ab5a262cfe7b28f34ffaa6a85e4955019acd91"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 14",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-14.glb",
+          "sha256": "58eb561dd405061f6c311cb898738317062558bc46608c9776ebf5a994e29ad7",
+          "sourceMesh": "Chr_FacialHair_Male_14",
+          "styleRef": "modular-fantasy-hero:facial-hair:14",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-14.png",
+          "thumbnailSha256": "a66c0b12b0cff2f6fe3bba0069e2807c45f4a4ba655b49d57ab1fffb64f2b2d1"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 15",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-15.glb",
+          "sha256": "7257c6c0ca39e1c6b8f4f8b538ccdfa259cd23d76a39250cba31f9fd386ae256",
+          "sourceMesh": "Chr_FacialHair_Male_15",
+          "styleRef": "modular-fantasy-hero:facial-hair:15",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-15.png",
+          "thumbnailSha256": "b9d630add67d54422eabe22a9ddb3b0ab9a8c2cd17c66f488f82431a9504a7b7"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 16",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-16.glb",
+          "sha256": "aee0495b06342312ee76f243d240f07a7d16725d09443a879946c4a6f8e2a44c",
+          "sourceMesh": "Chr_FacialHair_Male_16",
+          "styleRef": "modular-fantasy-hero:facial-hair:16",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-16.png",
+          "thumbnailSha256": "cbc51e270a320f6c76dab05fad93a2103d8f575bc70887ecdf95728db4b45f3f"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 17",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-17.glb",
+          "sha256": "be633789ddc819d36828c4f85297325228bb77f170802828403d367fd5c717ae",
+          "sourceMesh": "Chr_FacialHair_Male_17",
+          "styleRef": "modular-fantasy-hero:facial-hair:17",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-17.png",
+          "thumbnailSha256": "d453c825f47f4032a703d1ea5e9b36b6ca18aaede224347a437f1c05a9cf588f"
+        },
+        {
+          "animations": [],
+          "label": "Facial Hair 18",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "facial-hair/facial-hair-18.glb",
+          "sha256": "9c703579dd55c9a7c8697fcdce06b25d0f9075211ec3a98d2ae3c914c26fe5a6",
+          "sourceMesh": "Chr_FacialHair_Male_18",
+          "styleRef": "modular-fantasy-hero:facial-hair:18",
+          "thumbnailPath": "thumbnails/facial-hair/facial-hair-18.png",
+          "thumbnailSha256": "4424a7150dea7fdfb0243110e0a8bd5e0f41a19c2f51d997eb363fd9ebac9bed"
+        }
+      ],
+      "slot": "facial-hair"
+    },
+    "scalp": {
+      "defaultSelection": {
+        "kind": "style",
+        "styleRef": "modular-fantasy-hero:hair:01"
+      },
+      "options": [
+        {
+          "animations": [],
+          "label": "Hair 01",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-01.glb",
+          "sha256": "f352eeab85bc1e1a1e018bb2fc3f27862056219e870d58ee43f10e899d7d1db5",
+          "sourceMesh": "Chr_Hair_01",
+          "styleRef": "modular-fantasy-hero:hair:01",
+          "thumbnailPath": "thumbnails/scalp/hair-01.png",
+          "thumbnailSha256": "c9b79464606025822e50eacd24af01d27ae16097606fa5d87b86364fb5a050b4"
+        },
+        {
+          "animations": [],
+          "label": "Hair 02",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-02.glb",
+          "sha256": "9d1188a216c16b8a169e21151b8c9b8fa3efa8633407c4294c07ea2cba514853",
+          "sourceMesh": "Chr_Hair_02",
+          "styleRef": "modular-fantasy-hero:hair:02",
+          "thumbnailPath": "thumbnails/scalp/hair-02.png",
+          "thumbnailSha256": "3bf1c236319af7f95bfacc4efc37d5b3027aed5837f5bad4daaf5d251219def6"
+        },
+        {
+          "animations": [],
+          "label": "Hair 03",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-03.glb",
+          "sha256": "ced6a91a65bd52f4c8e5bf87e6f70a9cfbd67909d5193203596e28728b5571f1",
+          "sourceMesh": "Chr_Hair_03",
+          "styleRef": "modular-fantasy-hero:hair:03",
+          "thumbnailPath": "thumbnails/scalp/hair-03.png",
+          "thumbnailSha256": "65b23a44f1d85237ca804963140534ba8c3970e3e4628295ea6d679ad344f8ee"
+        },
+        {
+          "animations": [],
+          "label": "Hair 04",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-04.glb",
+          "sha256": "48bf780a3ab9631ea7e6f616de1b496baa991e9281c4a10ab07f2cff342d28db",
+          "sourceMesh": "Chr_Hair_04",
+          "styleRef": "modular-fantasy-hero:hair:04",
+          "thumbnailPath": "thumbnails/scalp/hair-04.png",
+          "thumbnailSha256": "5fb479fd0f464c5fe5eab7458bace180098a1e24f05aa0e9f6d15457926db083"
+        },
+        {
+          "animations": [],
+          "label": "Hair 05",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-05.glb",
+          "sha256": "c64ffdea33af88953d118c9feee003fe44817bd70b56ad7ddf4698cd9deb7fdc",
+          "sourceMesh": "Chr_Hair_05",
+          "styleRef": "modular-fantasy-hero:hair:05",
+          "thumbnailPath": "thumbnails/scalp/hair-05.png",
+          "thumbnailSha256": "0a75bb9277a4977bc012e6c1afd32392d7af15fc9623dcf85752ac57cba9cbb2"
+        },
+        {
+          "animations": [],
+          "label": "Hair 06",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-06.glb",
+          "sha256": "2a97e2c6ab561b9ee9a3972c9fb6e010cc98b4297bf0ef4b938a8c4abd168eaf",
+          "sourceMesh": "Chr_Hair_06",
+          "styleRef": "modular-fantasy-hero:hair:06",
+          "thumbnailPath": "thumbnails/scalp/hair-06.png",
+          "thumbnailSha256": "5b1ab9bf3d47357456035b13290718c4f3dfaaf5c161b36455e7386abad18b45"
+        },
+        {
+          "animations": [],
+          "label": "Hair 07",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-07.glb",
+          "sha256": "e6369c11333eb9f9c36ede38013e2ad6b031870cd0bee725135a4559a2bc5454",
+          "sourceMesh": "Chr_Hair_07",
+          "styleRef": "modular-fantasy-hero:hair:07",
+          "thumbnailPath": "thumbnails/scalp/hair-07.png",
+          "thumbnailSha256": "c3a30c1b5b366c91d95783e4704f3dd01067dc8d599a035a81ce240b98d8df38"
+        },
+        {
+          "animations": [],
+          "label": "Hair 08",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-08.glb",
+          "sha256": "01fe9c82ba96fc27f855dd46fa305954aa0349154abc53f81e85656d56dfe3c1",
+          "sourceMesh": "Chr_Hair_08",
+          "styleRef": "modular-fantasy-hero:hair:08",
+          "thumbnailPath": "thumbnails/scalp/hair-08.png",
+          "thumbnailSha256": "72029d290b6474581decde6f8168103ba1f90b0de1ab8e49c1d4e1b6d46abfef"
+        },
+        {
+          "animations": [],
+          "label": "Hair 09",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-09.glb",
+          "sha256": "966ab05d9f989171ca04aad33803323a35e7d4b3596fa7d26fb5b62da8075c81",
+          "sourceMesh": "Chr_Hair_09",
+          "styleRef": "modular-fantasy-hero:hair:09",
+          "thumbnailPath": "thumbnails/scalp/hair-09.png",
+          "thumbnailSha256": "779af1364e7d20f46cb5f2a1cbf0c935bf3fd896b903a747bd3fd7a63f4096e4"
+        },
+        {
+          "animations": [],
+          "label": "Hair 10",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-10.glb",
+          "sha256": "398c475146646874a707071beb0d7495ae9f1ecb0afea599b076333353865cf5",
+          "sourceMesh": "Chr_Hair_10",
+          "styleRef": "modular-fantasy-hero:hair:10",
+          "thumbnailPath": "thumbnails/scalp/hair-10.png",
+          "thumbnailSha256": "a343f03baa5886ed0905996599aebf6fcb9d9ecb7511d00e42bb683c3fbfccb4"
+        },
+        {
+          "animations": [],
+          "label": "Hair 11",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-11.glb",
+          "sha256": "aa9e724d086485fb236ce00a557a5a4ba5c3e4f9b5bc140ce2e3a06d131c3f2c",
+          "sourceMesh": "Chr_Hair_11",
+          "styleRef": "modular-fantasy-hero:hair:11",
+          "thumbnailPath": "thumbnails/scalp/hair-11.png",
+          "thumbnailSha256": "6ae4d5f6910903e4cdb5a3d743295e7b3e7bbd8aae936d5cbd015b08bd29bf97"
+        },
+        {
+          "animations": [],
+          "label": "Hair 12",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-12.glb",
+          "sha256": "aebe3a79aa0a6e1ef4a54bc8baf7061dfcaa13bb05c4745943631339e3766f79",
+          "sourceMesh": "Chr_Hair_12",
+          "styleRef": "modular-fantasy-hero:hair:12",
+          "thumbnailPath": "thumbnails/scalp/hair-12.png",
+          "thumbnailSha256": "0062dcb148ed35b4e5a8b217ac9ad0d4341f19c2479afc82341ef4e106598fcb"
+        },
+        {
+          "animations": [],
+          "label": "Hair 13",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-13.glb",
+          "sha256": "a9cc65d10bbd3e72cdb31efc131df8a546d1e6c328847f4fc20638b682e7bd20",
+          "sourceMesh": "Chr_Hair_13",
+          "styleRef": "modular-fantasy-hero:hair:13",
+          "thumbnailPath": "thumbnails/scalp/hair-13.png",
+          "thumbnailSha256": "db9f9687be95dfc9a677b0660bc3aa98647eda0a389feb2abb07acf9d4e38389"
+        },
+        {
+          "animations": [],
+          "label": "Hair 14",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-14.glb",
+          "sha256": "c932026b582289e4b09b3514a58ed1606b066564f6857615fc03d1cd3a169e06",
+          "sourceMesh": "Chr_Hair_14",
+          "styleRef": "modular-fantasy-hero:hair:14",
+          "thumbnailPath": "thumbnails/scalp/hair-14.png",
+          "thumbnailSha256": "faacc232b5543681058dadf9b13ea0e680c054a8e0694298e1c6ca2d2c4a3341"
+        },
+        {
+          "animations": [],
+          "label": "Hair 15",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-15.glb",
+          "sha256": "44452cdc5b20b526f5fac83d7e7ebe4134a87e1739fdcac2c15b772af9ff709e",
+          "sourceMesh": "Chr_Hair_15",
+          "styleRef": "modular-fantasy-hero:hair:15",
+          "thumbnailPath": "thumbnails/scalp/hair-15.png",
+          "thumbnailSha256": "101311cd86a86a56f25e5efc27b875fc47e0ff9e6d8ec99fb8a30097e9853039"
+        },
+        {
+          "animations": [],
+          "label": "Hair 16",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-16.glb",
+          "sha256": "6fda922a7a08e399b537df553bff0d568728cefd33ccfaa69a4e18ab64fbc959",
+          "sourceMesh": "Chr_Hair_16",
+          "styleRef": "modular-fantasy-hero:hair:16",
+          "thumbnailPath": "thumbnails/scalp/hair-16.png",
+          "thumbnailSha256": "dbedb3a4aa5eba57e57f0dc3c57d779a1da8550ebcf7e5a133f2494b9674fe3f"
+        },
+        {
+          "animations": [],
+          "label": "Hair 17",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-17.glb",
+          "sha256": "2665262771e71907875ae2ab7d6ee61886d3035b43af852bf6edc4304ea02adc",
+          "sourceMesh": "Chr_Hair_17",
+          "styleRef": "modular-fantasy-hero:hair:17",
+          "thumbnailPath": "thumbnails/scalp/hair-17.png",
+          "thumbnailSha256": "84113d89a095c887ef06116f76a97064df50574a83ce3b0ef7724a89d25bb7a6"
+        },
+        {
+          "animations": [],
+          "label": "Hair 18",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-18.glb",
+          "sha256": "d55309f7ceaca74d6f6c37a2736b36c17fd7515c4a890f4e51a45ce8987b75ac",
+          "sourceMesh": "Chr_Hair_18",
+          "styleRef": "modular-fantasy-hero:hair:18",
+          "thumbnailPath": "thumbnails/scalp/hair-18.png",
+          "thumbnailSha256": "15b9a5e93d0cb571ea947fdc8338506c96a2d2b72da038ae1d71d87fe8444bdd"
+        },
+        {
+          "animations": [],
+          "label": "Hair 19",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-19.glb",
+          "sha256": "f0bf71f3ee3196594a8db5b7c80a6c5066cab2137dc696978d67d14b84e0f42b",
+          "sourceMesh": "Chr_Hair_19",
+          "styleRef": "modular-fantasy-hero:hair:19",
+          "thumbnailPath": "thumbnails/scalp/hair-19.png",
+          "thumbnailSha256": "8eeda30aa229c65216bd6f6497a6bd621d051beb3d2b9d47f5626805385cf7be"
+        },
+        {
+          "animations": [],
+          "label": "Hair 20",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-20.glb",
+          "sha256": "74ae4f1af926cc7aa0f2af94ca030d78b79d68e2944a7310ad76bb68ad833d36",
+          "sourceMesh": "Chr_Hair_20",
+          "styleRef": "modular-fantasy-hero:hair:20",
+          "thumbnailPath": "thumbnails/scalp/hair-20.png",
+          "thumbnailSha256": "f75271745653fda11f4522243017db93f5f39be9ed2f56272e247e70cb55e9ea"
+        },
+        {
+          "animations": [],
+          "label": "Hair 21",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-21.glb",
+          "sha256": "b1636d3e16eef32c7f9c6e69c19c629dcce78479f4566b64e411279f9ec9cee5",
+          "sourceMesh": "Chr_Hair_21",
+          "styleRef": "modular-fantasy-hero:hair:21",
+          "thumbnailPath": "thumbnails/scalp/hair-21.png",
+          "thumbnailSha256": "5a70ecbadb603e0a2aa53a58f07d43202bd07dca29729c429cc34a3a05eb92a7"
+        },
+        {
+          "animations": [],
+          "label": "Hair 22",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-22.glb",
+          "sha256": "e1e5c0c06a89c504c3e3905acfa2e97ce602cdaca29f693b0ee9c350fbb42c50",
+          "sourceMesh": "Chr_Hair_22",
+          "styleRef": "modular-fantasy-hero:hair:22",
+          "thumbnailPath": "thumbnails/scalp/hair-22.png",
+          "thumbnailSha256": "4b2ff2c4ce346948966f59b05bfa58d55179105608fc1dc220f354bb0fd6e9e9"
+        },
+        {
+          "animations": [],
+          "label": "Hair 23",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-23.glb",
+          "sha256": "c2aa169407056c14eb9efec88c32e53de82acddcb552996ddf46d342b31ebdbc",
+          "sourceMesh": "Chr_Hair_23",
+          "styleRef": "modular-fantasy-hero:hair:23",
+          "thumbnailPath": "thumbnails/scalp/hair-23.png",
+          "thumbnailSha256": "b459859563151a3e997216012f83d034d79cb45a0643276793fa03f36420500d"
+        },
+        {
+          "animations": [],
+          "label": "Hair 24",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-24.glb",
+          "sha256": "7f19b76c28780b3ceafd80fb5b6c85d773a380bbbd7a213f33ef154a2f1fe7b5",
+          "sourceMesh": "Chr_Hair_24",
+          "styleRef": "modular-fantasy-hero:hair:24",
+          "thumbnailPath": "thumbnails/scalp/hair-24.png",
+          "thumbnailSha256": "9b786373ca424a1b2f132c4cab3d34269f7281352bcd168a84577066bdad2a95"
+        },
+        {
+          "animations": [],
+          "label": "Hair 25",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-25.glb",
+          "sha256": "e48e89a1f5017642ca1599aac549910feb3f1e974d3e8beef61e34ac04c4cc59",
+          "sourceMesh": "Chr_Hair_25",
+          "styleRef": "modular-fantasy-hero:hair:25",
+          "thumbnailPath": "thumbnails/scalp/hair-25.png",
+          "thumbnailSha256": "a376958f89566506477651415147c4fb8e9d800e6432fe0a910ce362deed07f1"
+        },
+        {
+          "animations": [],
+          "label": "Hair 26",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-26.glb",
+          "sha256": "b9d9bf6604d125bd37bef85211c403e91b90f90e3e35652a91037a43bcfbb9b8",
+          "sourceMesh": "Chr_Hair_26",
+          "styleRef": "modular-fantasy-hero:hair:26",
+          "thumbnailPath": "thumbnails/scalp/hair-26.png",
+          "thumbnailSha256": "3fc12dff1c78c97eeb49e471c6498c889fca5cf0ccc8c0a2a7ca532aa18bbe67"
+        },
+        {
+          "animations": [],
+          "label": "Hair 27",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-27.glb",
+          "sha256": "b31a3a686bc6d1d34b15f3b01456ef386785ce9f36b60642f835b95763db0868",
+          "sourceMesh": "Chr_Hair_27",
+          "styleRef": "modular-fantasy-hero:hair:27",
+          "thumbnailPath": "thumbnails/scalp/hair-27.png",
+          "thumbnailSha256": "f4f8560e2abdb01440179ec79729fb1423e9ef02071f1089b851264e876204d0"
+        },
+        {
+          "animations": [],
+          "label": "Hair 28",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-28.glb",
+          "sha256": "d1408376eb7d3495743d6e1171aa48fbd6ca6651ab677140c3ac3b89acd3b880",
+          "sourceMesh": "Chr_Hair_28",
+          "styleRef": "modular-fantasy-hero:hair:28",
+          "thumbnailPath": "thumbnails/scalp/hair-28.png",
+          "thumbnailSha256": "08cfbe3fd60b2b8d8af21987c3b3da6ab13637b35450eb2bec7816ded15f19ab"
+        },
+        {
+          "animations": [],
+          "label": "Hair 29",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-29.glb",
+          "sha256": "0c5c8c1eb3bcf06ddf18cbfb675c22495aa085afa09429abb87722f4413d8392",
+          "sourceMesh": "Chr_Hair_29",
+          "styleRef": "modular-fantasy-hero:hair:29",
+          "thumbnailPath": "thumbnails/scalp/hair-29.png",
+          "thumbnailSha256": "174f2d96de5560bffec0d40062794c30a069da8869dbe6760e8e30e1287de231"
+        },
+        {
+          "animations": [],
+          "label": "Hair 30",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-30.glb",
+          "sha256": "24107d301656af36fdd2516e5f026a5ef39af20b065399466e2a9e4867265767",
+          "sourceMesh": "Chr_Hair_30",
+          "styleRef": "modular-fantasy-hero:hair:30",
+          "thumbnailPath": "thumbnails/scalp/hair-30.png",
+          "thumbnailSha256": "1bc3b7bf6ef3492b38cf4b6fa045b930097cbe0cf87d7d8ce9e72fe71e721506"
+        },
+        {
+          "animations": [],
+          "label": "Hair 31",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-31.glb",
+          "sha256": "e7b447b47668951fa570ad06ab9e3b74cff6a61c24972ded6f5380a802807a60",
+          "sourceMesh": "Chr_Hair_31",
+          "styleRef": "modular-fantasy-hero:hair:31",
+          "thumbnailPath": "thumbnails/scalp/hair-31.png",
+          "thumbnailSha256": "a4eb95c6b6c6a6aa594667f846b7ee1c845da7bc3df123d3727d277cc3003f01"
+        },
+        {
+          "animations": [],
+          "label": "Hair 32",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-32.glb",
+          "sha256": "8ce84ac8056a5b1b75ad4a12eb6286f7dc41b9de1d9a9fc294a939fc8a6c6502",
+          "sourceMesh": "Chr_Hair_32",
+          "styleRef": "modular-fantasy-hero:hair:32",
+          "thumbnailPath": "thumbnails/scalp/hair-32.png",
+          "thumbnailSha256": "2a1c95d4753e58807a94b18c603a128b3795de144223da949dd13a6c7bc0a278"
+        },
+        {
+          "animations": [],
+          "label": "Hair 33",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-33.glb",
+          "sha256": "8cadecbbbe334ea2439f2ac79f5f8effe86562e8a84a4c4af87899e67f0106a1",
+          "sourceMesh": "Chr_Hair_33",
+          "styleRef": "modular-fantasy-hero:hair:33",
+          "thumbnailPath": "thumbnails/scalp/hair-33.png",
+          "thumbnailSha256": "4e1ee9edcad5b4781b6194c0bd6474d018e8c96a415cfcbe81861f8f5658a541"
+        },
+        {
+          "animations": [],
+          "label": "Hair 34",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-34.glb",
+          "sha256": "e55654cf16c57e6b71d15ac535d37fc58249774e4214b35f214bde0bb3cf3987",
+          "sourceMesh": "Chr_Hair_34",
+          "styleRef": "modular-fantasy-hero:hair:34",
+          "thumbnailPath": "thumbnails/scalp/hair-34.png",
+          "thumbnailSha256": "5c0117a278fe1f655027c5a38beb112bf3b188d4b003685b74d43cadc32db7d8"
+        },
+        {
+          "animations": [],
+          "label": "Hair 35",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-35.glb",
+          "sha256": "6ff02fefb46e2f9e9ec1edc204f1f7cee35868998f697ebc06f9f76eca504be1",
+          "sourceMesh": "Chr_Hair_35",
+          "styleRef": "modular-fantasy-hero:hair:35",
+          "thumbnailPath": "thumbnails/scalp/hair-35.png",
+          "thumbnailSha256": "f5485454903cfb6a7c83140bf892aad6d4bff9f550d124694913b94983f1e434"
+        },
+        {
+          "animations": [],
+          "label": "Hair 36",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-36.glb",
+          "sha256": "955d2d662a617847889f5cd4c3412883f1c4cf6044b19348d289eee1bb6ddf19",
+          "sourceMesh": "Chr_Hair_36",
+          "styleRef": "modular-fantasy-hero:hair:36",
+          "thumbnailPath": "thumbnails/scalp/hair-36.png",
+          "thumbnailSha256": "5071b6a3aaff385d4954ef067028fee9cff4f66163445af6da962de04878cdb6"
+        },
+        {
+          "animations": [],
+          "label": "Hair 37",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-37.glb",
+          "sha256": "f3fee4f94e6263ff228079aa465aae1c394cbd56f469ab643d7252293c5b5b90",
+          "sourceMesh": "Chr_Hair_37",
+          "styleRef": "modular-fantasy-hero:hair:37",
+          "thumbnailPath": "thumbnails/scalp/hair-37.png",
+          "thumbnailSha256": "08338fff16e5c6ede4c39dab517bbea0a17787c369e56a80e901f81d5867636c"
+        },
+        {
+          "animations": [],
+          "label": "Hair 38",
+          "material": {
+            "count": 1,
+            "mode": "uniform-pbr-v1",
+            "opaque": true,
+            "textureCount": 0
+          },
+          "path": "scalp/hair-38.glb",
+          "sha256": "2c964ef3110917633d7795b3b9fddf17e26d693d4b1382cd61fe8c6746f26b1d",
+          "sourceMesh": "Chr_Hair_38",
+          "styleRef": "modular-fantasy-hero:hair:38",
+          "thumbnailPath": "thumbnails/scalp/hair-38.png",
+          "thumbnailSha256": "5f3b7efc2685283ad50529be6a5f87c787aebf345aa9fa97f53fbbeb8e334751"
+        }
+      ],
+      "slot": "scalp"
+    }
+  },
+  "socketProfile": {
+    "bone": "Hand_R",
+    "boneUnitMeters": 0.01,
+    "id": "modular-fantasy-hero-main-hand-v1",
+    "positionMeters": [-0.113634511828, 0.043524894863, -0.006868128199],
+    "rotationQuaternion": [
+      -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+      0.47490151020194044
+    ],
+    "scale": 1.0
+  },
+  "surface": {
+    "defaultColorSrgb": 5912613,
+    "defaultMetalness": 0.0,
+    "defaultRoughness": 0.72,
+    "mode": "uniform-pbr-v1"
+  },
+  "workflowVersion": "character-customization-profile-v1"
+}

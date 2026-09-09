@@ -17,36 +17,35 @@ The receipt chain is:
 3. automatic export manifest;
 4. prepared provider receipt;
 5. published receipt tied to the private provider PR's verified merge SHA;
-6. ordinary Web `assets:sync`, which validates the clean provider checkout and writes the generated catalog;
+6. ordinary Web `assets:sync`, which consumes an automatically created clean detached provider worktree and writes the generated catalog;
 7. Web commit/PR and its normal CI/review receipt.
 
 Assets issue [rpg-game-assets#185](https://github.com/KirkDiggler/rpg-game-assets/issues/185) is the first fixture. Its current receipt is **prepared, unpublished, and unmerged**. It can prove the pure declaration projection, but it cannot authorize runtime sync or a Web publication claim.
 
-After the provider is genuinely merged, use the publisher's `resolve` command to produce a new merged receipt; never edit the prepared or publication JSON by hand. Check out the private provider repository cleanly at that receipt's exact `provider.mergeSha`. The Web wrapper takes an explicit existing Web issue number in this initial version and defaults to a machine-readable dry-run plan:
+After the provider is genuinely merged, use the publisher's `resolve` command to produce a new merged receipt; never edit the prepared or publication JSON by hand. The Web wrapper takes an explicit existing Web issue number and defaults to a machine-readable dry-run plan. It finds the normal sibling `rpg-game-assets` repository by default; `--provider-repo` may instead identify any existing source worktree, which may be dirty or at another commit:
 
 ```bash
 : "${WEB_ISSUE_NUMBER:?set this to an existing open Web issue on Project 19}"
 npm run assets:expose-provider-appearances -- \
   --provider-receipt /path/to/merged-provider-receipt.json \
-  --provider-repo /path/to/clean/rpg-game-assets-at-merge-sha \
   --web-issue "$WEB_ISSUE_NUMBER"
 ```
 
-That command verifies the receipt shape and source-handoff binding, the private provider repository and merged PR readback, the clean checkout's exact merge SHA, and every receipt-owned provider hash. It also verifies the Web issue is open on Project 19, the canonical UI/UX signature, the `origin/dev` base, and that the generic class tooling has landed. It performs no checkout, sync, write, branch, push, or PR mutation.
+That command verifies the receipt shape and source-handoff binding, private provider repository identity and merged PR readback, and (when the merge object is already local) every receipt-owned provider hash directly from that commit. It also verifies the Web issue is open on Project 19, the canonical UI/UX signature, the `origin/dev` base, and that the generic class tooling has landed. Dry-run performs no fetch, checkout/worktree creation, sync, write, branch, push, or PR mutation. If the merge object is absent, the plan reports that apply will fetch it.
 
 Only after reviewing that plan, opt into the ordinary sync and Web publication explicitly. Choose a fresh receipt path; existing output and branch/worktree/PR state is retained and reported rather than overwritten or silently retried:
 
 ```bash
 npm run assets:expose-provider-appearances -- \
   --provider-receipt /path/to/merged-provider-receipt.json \
-  --provider-repo /path/to/clean/rpg-game-assets-at-merge-sha \
+  --provider-repo /path/to/existing/rpg-game-assets-worktree \
   --web-issue "$WEB_ISSUE_NUMBER" \
   --worktree-root "/path/to/rpg-dnd5e-web/.worktrees/${WEB_ISSUE_NUMBER}-bard-provider-exposure" \
   --output /path/to/web-receipt.json \
   --apply
 ```
 
-Apply creates the isolated numbered Web worktree from fresh `origin/dev`, delegates exactly to `npm run assets:sync` with the verified provider checkout and update suppression, stages only its tracked generated customization catalog, runs focused generator/resolver tests and the normal `ci-check`, then uses ordinary commit/push/PR operations against `dev`. The emitted Web receipt records the verified merged provider SHA and class/races, Web base/branch/head/PR readback, and normal generation/check results. Licensed GLB/BLEND/runtime bytes remain ignored and must never be staged.
+Apply fetches the receipt merge SHA only if needed, creates a fresh detached private-provider worktree at that SHA without changing the source worktree's HEAD or dirty state, and verifies every owned hash there. It then creates the isolated numbered Web worktree from fresh `origin/dev`, installs with `npm ci --ignore-scripts`, explicitly runs the trusted repository Husky setup, verifies the configured pre-commit is executable, delegates exactly to `npm run assets:sync` with the pinned provider and update suppression, stages only its tracked generated customization catalog, runs focused generator/resolver tests and the normal `ci-check`, then uses ordinary commit/push/PR operations against `dev`. The emitted Web receipt records the verified merged provider SHA and class/races, Web base/branch/head/PR readback, and normal generation/check results. Licensed GLB/BLEND/runtime bytes remain ignored and must never be staged.
 
 The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or legacy fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
 

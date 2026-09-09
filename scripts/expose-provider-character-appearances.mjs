@@ -6,7 +6,13 @@
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -317,13 +323,39 @@ function validateReceipt(receiptPath) {
     );
   }
   const added = receipt.preservation?.addedFiles;
-  const expectedAdded = [...expectedArtifacts.keys()]
-    .map((path) => path.replace('harness/models/synty/', ''))
-    .sort();
+  const changed = receipt.preservation?.changedCumulativeFiles;
+  const expectedArtifactInventoryPaths = new Set(
+    [...expectedArtifacts.keys()].map((path) =>
+      path.replace('harness/models/synty/', '')
+    )
+  );
+  const expectedOwnedInventoryPaths = new Set(
+    owned
+      .filter((row) => row.path.startsWith('harness/models/synty/'))
+      .map((row) => row.path.replace('harness/models/synty/', ''))
+  );
   requireCondition(
-    JSON.stringify(added) === JSON.stringify(expectedAdded) &&
+    Array.isArray(added) &&
+      new Set(added).size === added.length &&
+      added.every(
+        (path) =>
+          typeof path === 'string' && expectedArtifactInventoryPaths.has(path)
+      ),
+    'preservation.addedFiles contains a duplicate or non-artifact path'
+  );
+  requireCondition(
+    Array.isArray(changed) &&
+      new Set(changed).size === changed.length &&
+      changed.every(
+        (path) =>
+          typeof path === 'string' && expectedOwnedInventoryPaths.has(path)
+      ),
+    'preservation.changedCumulativeFiles contains a duplicate or unowned path'
+  );
+  requireCondition(
+    added.every((path) => !changed.includes(path)) &&
       receipt.preservation?.allOtherPreExistingFilesByteIdentical === true,
-    'preservation binding differs from installed artifacts'
+    'preservation state is contradictory or incomplete'
   );
   return {
     blocked: false,
@@ -339,30 +371,22 @@ function validateReceipt(receiptPath) {
   };
 }
 
-function verifyProvider(validated, providerRepo) {
+function verifyProviderSource(validated, providerRepo) {
   const root = realpathSync(resolve(providerRepo));
   requireCondition(
     lstatSync(root).isDirectory() && !lstatSync(root).isSymbolicLink(),
-    'provider checkout must be a real directory'
+    'provider repository source must be a real directory'
   );
   requireCondition(
     realpathSync(git(root, 'rev-parse', '--show-toplevel')) === root,
-    '--provider-repo must be the provider Git worktree root'
+    '--provider-repo must be an existing provider Git worktree root'
   );
   requireCondition(
     remoteMatches(
       git(root, 'config', '--get', 'remote.origin.url'),
       PROVIDER_REPOSITORY
     ),
-    'provider checkout origin differs from receipt repository'
-  );
-  requireCondition(
-    git(root, 'rev-parse', 'HEAD^{commit}') === validated.mergeSha,
-    'provider checkout HEAD must be pinned to the verified merge SHA'
-  );
-  requireCondition(
-    git(root, 'status', '--porcelain=v1', '--untracked-files=all') === '',
-    'provider checkout must be exactly clean'
+    'provider repository source origin differs from receipt repository'
   );
   const repo = parseJson(
     gh(
@@ -399,6 +423,77 @@ function verifyProvider(validated, providerRepo) {
       pr.mergeCommit?.oid === validated.mergeSha,
     'provider PR merged identity differs from receipt'
   );
+  const commonDir = realpathSync(
+    git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+  );
+  const mainRoot = dirname(commonDir);
+  const objectProbe = spawnSync(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['cat-file', '-e', `${validated.mergeSha}^{commit}`],
+    { cwd: root }
+  );
+  const needsFetch = objectProbe.status !== 0;
+  if (!needsFetch) {
+    for (const row of validated.owned) {
+      const blob = spawnSync(
+        process.env.RPG_EXPOSURE_GIT || 'git',
+        ['show', `${validated.mergeSha}:${row.path}`],
+        { cwd: root }
+      );
+      requireCondition(
+        blob.status === 0 &&
+          blob.stdout.length === row.sizeBytes &&
+          digest(blob.stdout) === row.sha256,
+        `provider artifact hash/size differs at verified merge: ${row.path}`
+      );
+    }
+  }
+  return {
+    root,
+    pr,
+    commonDir,
+    mainRoot,
+    needsFetch,
+    worktree: join(
+      mainRoot,
+      '.worktrees',
+      `.provider-${validated.classRef}-${validated.mergeSha.slice(0, 12)}`
+    ),
+  };
+}
+
+function pinProvider(validated, source, created) {
+  if (source.needsFetch) {
+    git(source.root, 'fetch', 'origin', validated.mergeSha);
+    requireCondition(
+      git(source.root, 'rev-parse', 'FETCH_HEAD^{commit}') ===
+        validated.mergeSha,
+      'provider fetch did not resolve the verified receipt merge SHA'
+    );
+  }
+  requireCondition(
+    !statProbe(source.worktree),
+    `isolated provider worktree already exists: ${source.worktree}`
+  );
+  mkdirSync(dirname(source.worktree), { recursive: true });
+  git(
+    source.root,
+    'worktree',
+    'add',
+    '--detach',
+    source.worktree,
+    validated.mergeSha
+  );
+  created.push(`provider worktree ${source.worktree}`);
+  const root = realpathSync(source.worktree);
+  requireCondition(
+    git(root, 'rev-parse', 'HEAD^{commit}') === validated.mergeSha,
+    'isolated provider worktree is not pinned to the verified merge SHA'
+  );
+  requireCondition(
+    git(root, 'status', '--porcelain=v1', '--untracked-files=all') === '',
+    'isolated provider worktree must be exactly clean'
+  );
   for (const row of validated.owned) {
     const path = join(root, ...row.path.split('/'));
     const file = realFile(path, `receipt-owned provider path ${row.path}`);
@@ -413,7 +508,7 @@ function verifyProvider(validated, providerRepo) {
       `provider artifact hash/size differs: ${row.path}`
     );
   }
-  return { root, pr };
+  return { ...source, root };
 }
 
 function webPreflight(webRepo, issue, classRef, worktreeRoot) {
@@ -524,7 +619,10 @@ function webPreflight(webRepo, issue, classRef, worktreeRoot) {
     branch,
     worktree: resolve(
       worktreeRoot ||
-        join(dirname(root), `.worktrees/${issue}-${classRef}-provider-exposure`)
+        join(
+          dirname(commonDir),
+          `.worktrees/${issue}-${classRef}-provider-exposure`
+        )
     ),
   };
 }
@@ -535,7 +633,30 @@ function changedPaths(root) {
   return output.split('\n').map((line) => line.slice(3));
 }
 
-function apply(validated, provider, web, output) {
+function effectivePreCommit(root) {
+  const hook = git(
+    root,
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    'hooks/pre-commit'
+  );
+  let status;
+  try {
+    status = lstatSync(hook);
+  } catch {
+    throw new ExposureError(
+      `Husky setup did not create the configured pre-commit hook: ${hook}`
+    );
+  }
+  requireCondition(
+    status.isFile() && !status.isSymbolicLink() && (status.mode & 0o111) !== 0,
+    `configured pre-commit hook is not an executable real file: ${hook}`
+  );
+  return hook;
+}
+
+function apply(validated, providerSource, web, output) {
   const created = [];
   try {
     git(web.root, 'fetch', 'origin', 'dev');
@@ -552,6 +673,7 @@ function apply(validated, provider, web, output) {
       generator.includes('classOrder must declare at least one class'),
       'generic class tooling is not merged in fresh origin/dev; merge/review tooling before provider data'
     );
+    const provider = pinProvider(validated, providerSource, created);
     requireCondition(
       !statProbe(web.worktree),
       `Web publication worktree already exists: ${web.worktree}`
@@ -591,7 +713,9 @@ function apply(validated, provider, web, output) {
       ASSETS_SYNC_SKIP_UPDATE: '1',
     };
     npm(web.worktree, ['ci', '--ignore-scripts'], syncEnv);
-    npm(web.worktree, ['run', 'assets:sync'], syncEnv);
+    npm(web.worktree, ['run', 'prepare'], syncEnv);
+    const preCommitHook = effectivePreCommit(web.worktree);
+    const syncOutput = npm(web.worktree, ['run', 'assets:sync'], syncEnv);
     const paths = changedPaths(web.worktree);
     requireCondition(
       paths.length > 0,
@@ -613,15 +737,49 @@ function apply(validated, provider, web, output) {
     );
     for (const race of validated.races)
       requireCondition(
-        catalog.includes(`${race}:${validated.classRef}`),
+        catalog.includes(`combination: '${race}:${validated.classRef}'`),
         `generated catalog omitted ${race}:${validated.classRef}`
       );
+    const outfitManifest = parseJson(
+      readFileSync(
+        join(
+          provider.root,
+          'harness/models/synty/characters/outfit-customization/v1/manifest.json'
+        ),
+        'utf8'
+      ),
+      'pinned provider outfit manifest'
+    );
+    requireCondition(
+      Array.isArray(outfitManifest.classOrder) &&
+        outfitManifest.classOrder.length > 0 &&
+        outfitManifest.classOrder.every(
+          (classRef) =>
+            typeof classRef === 'string' && IDENTIFIER.test(classRef)
+        ) &&
+        new Set(outfitManifest.classOrder).size ===
+          outfitManifest.classOrder.length,
+      'pinned provider classOrder must contain unique class identifiers'
+    );
+    const classCount = outfitManifest.classOrder.length;
+    const combinations = catalog.match(/combination: '[^']+'/g) || [];
+    requireCondition(
+      combinations.length === validated.races.length * classCount,
+      `generated body count differs from provider declarations: expected ${validated.races.length * classCount}, found ${combinations.length}`
+    );
+    requireCondition(
+      /Generated aggregate customization catalog from [0-9a-f]{40} \([0-9]+ profiles, [0-9]+ source files\)\./.test(
+        syncOutput
+      ),
+      'ordinary assets:sync did not report actual aggregate generation counts'
+    );
     npx(
       web.worktree,
       [
         'vitest',
         'run',
         'scripts/generateCharacterCustomizationCatalog.test.ts',
+        'scripts/characterCustomizationPublication.test.ts',
         'src/components/hex-grid/classCharacterModels.test.ts',
       ],
       syncEnv
@@ -727,12 +885,15 @@ function apply(validated, provider, web, output) {
       },
       generation: {
         dependencyInstall: 'npm ci --ignore-scripts',
+        huskySetup: 'npm run prepare',
+        preCommitHook,
         command: 'npm run assets:sync',
         providerCheckout: provider.root,
         providerHead: validated.mergeSha,
         stagedPaths: staged,
         focusedTests: [
           'scripts/generateCharacterCustomizationCatalog.test.ts',
+          'scripts/characterCustomizationPublication.test.ts',
           'src/components/hex-grid/classCharacterModels.test.ts',
         ],
         ciCheck: 'passed',
@@ -786,8 +947,8 @@ function args(argv) {
     else throw new ExposureError(`unknown argument: ${key}`);
   }
   requireCondition(
-    parsed.providerReceipt && parsed.providerRepo && parsed.webIssue,
-    '--provider-receipt, --provider-repo, and explicit --web-issue are required'
+    parsed.providerReceipt && parsed.webIssue,
+    '--provider-receipt and explicit --web-issue are required'
   );
   const issue = Number(parsed.webIssue);
   requireCondition(
@@ -819,13 +980,22 @@ function main() {
       );
     return;
   }
-  const provider = verifyProvider(validated, options.providerRepo);
   const web = webPreflight(
     options.webRepo,
     options.webIssue,
     validated.classRef,
     options.worktreeRoot
   );
+  const webCommonDir = git(
+    web.root,
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-common-dir'
+  );
+  const providerRepo =
+    options.providerRepo ||
+    join(dirname(dirname(webCommonDir)), 'rpg-game-assets');
+  const provider = verifyProviderSource(validated, providerRepo);
   const blockers = web.toolingReady
     ? []
     : [
@@ -860,9 +1030,14 @@ function main() {
       receipt: output,
     },
     plannedMutations: [
+      ...(provider.needsFetch
+        ? ['fetch the verified provider merge SHA during apply only']
+        : []),
+      'create a fresh detached private-provider worktree at the verified merge SHA',
       'fetch fresh origin/dev',
       'create isolated numbered Web issue worktree/branch',
       'install the lockfile-pinned Web dependencies without lifecycle scripts',
+      'run trusted repository Husky setup and verify the configured executable pre-commit hook',
       'run ordinary npm run assets:sync with the verified pinned provider checkout',
       'stage only the generated customization catalog',
       'run focused tests and mandatory ci-check',

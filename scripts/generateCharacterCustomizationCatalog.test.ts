@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,19 +10,23 @@ const moduleUrl = new URL(
   import.meta.url
 );
 const providerRoot = process.env.RPG_GAME_ASSETS_PATH;
-const preparedProviderRoot =
-  process.env.RPG_BARD_PREPARED_PROVIDER_PATH ??
-  '/home/kirk/game-dev/rpg-game-assets/.worktrees/185-bard-customization/.stage/provider-bard-prepared-20260909-final';
+const preparedProviderRoot = new URL(
+  './fixtures/provider-five-class/',
+  import.meta.url
+).pathname;
+const realPreparedProviderRoot = process.env.RPG_BARD_PREPARED_PROVIDER_PATH;
 const describeProvider =
   providerRoot && existsSync(moduleUrl) ? describe : describe.skip;
-const describePreparedProvider = existsSync(
-  join(
-    preparedProviderRoot,
-    'harness/models/synty/characters/customization/manifest.json'
+const describeRealPreparedProvider =
+  realPreparedProviderRoot &&
+  existsSync(
+    join(
+      realPreparedProviderRoot,
+      'harness/models/synty/characters/customization/manifest.json'
+    )
   )
-)
-  ? describe
-  : describe.skip;
+    ? describe
+    : describe.skip;
 const temporary: string[] = [];
 
 interface MutableProfileManifest {
@@ -111,13 +117,12 @@ describeProvider('aggregate character customization catalog generator', () => {
       kind: 'style',
       styleRef: 'modular-fantasy-hero:hair:08',
     });
+    const classOrder = (outfits as { classOrder: string[] }).classOrder;
+    expect(classOrder).toEqual(
+      expect.arrayContaining(['barbarian', 'fighter', 'monk', 'rogue'])
+    );
     for (const profile of Object.values(catalog.profiles)) {
-      expect(Object.keys(profile.bodies)).toEqual([
-        'barbarian',
-        'fighter',
-        'monk',
-        'rogue',
-      ]);
+      expect(Object.keys(profile.bodies)).toEqual(classOrder);
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
     }
@@ -143,12 +148,7 @@ describeProvider('aggregate character customization catalog generator', () => {
         'Chr_LegRight_Male_16',
       ],
     });
-    expect(Object.keys(catalog.outfits)).toEqual([
-      'barbarian',
-      'fighter',
-      'monk',
-      'rogue',
-    ]);
+    expect(Object.keys(catalog.outfits)).toEqual(classOrder);
   });
 
   it('rejects an ambiguous none default and an incomplete aggregate before rendering source', async () => {
@@ -191,17 +191,55 @@ describeProvider('aggregate character customization catalog generator', () => {
       outputPath: second,
     });
 
+    const authority = exactProviderAuthority();
+    const catalog = (await generator()).projectCharacterCustomizationAuthority(
+      authority.aggregate,
+      authority.manifests,
+      authority.outfits
+    );
+    const classOrder = (authority.outfits as { classOrder: string[] })
+      .classOrder;
+    const referenceCount = Object.values(catalog.profiles).reduce(
+      (count, profile) =>
+        count +
+        Object.keys(profile.bodies).length * 2 +
+        profile.slots.scalp.options.length * 2 +
+        profile.slots.facialHair.options.length * 2,
+      Object.keys(catalog.outfits).length
+    );
+    const fileDigest = (relative: string) =>
+      createHash('sha256')
+        .update(readFileSync(join(providerRoot!, relative)))
+        .digest('hex');
     expect(firstReceipt).toEqual({
-      providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
-      aggregateManifestSha256:
-        '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
-      outfitManifestSha256:
-        '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
-      profileCount: 8,
-      bodyCount: 32,
-      accessoryCount: 448,
-      thumbnailCount: 448,
-      sourceAssetCount: 974,
+      providerCommit: execFileSync(
+        'git',
+        ['rev-parse', '--verify', 'HEAD^{commit}'],
+        { cwd: providerRoot!, encoding: 'utf8' }
+      ).trim(),
+      aggregateManifestSha256: fileDigest(
+        'harness/models/synty/characters/customization/manifest.json'
+      ),
+      outfitManifestSha256: fileDigest(
+        'harness/models/synty/characters/outfit-customization/v1/manifest.json'
+      ),
+      profileCount: catalog.profileOrder.length,
+      bodyCount: catalog.profileOrder.length * classOrder.length,
+      accessoryCount: catalog.profileOrder.reduce(
+        (count, raceRef) =>
+          count +
+          catalog.profiles[raceRef].slots.scalp.options.length +
+          catalog.profiles[raceRef].slots.facialHair.options.length,
+        0
+      ),
+      thumbnailCount: catalog.profileOrder.reduce(
+        (count, raceRef) =>
+          count +
+          catalog.profiles[raceRef].slots.scalp.options.length +
+          catalog.profiles[raceRef].slots.facialHair.options.length,
+        0
+      ),
+      sourceAssetCount: referenceCount + 10,
     });
     expect(secondReceipt).toEqual(firstReceipt);
     expect(readFileSync(second)).toEqual(readFileSync(first));
@@ -213,7 +251,7 @@ describeProvider('aggregate character customization catalog generator', () => {
   });
 });
 
-describePreparedProvider('prepared Bard provider projection', () => {
+describe('sanitized five-class provider projection', () => {
   async function generator() {
     return import('./generateCharacterCustomizationCatalog');
   }
@@ -222,7 +260,7 @@ describePreparedProvider('prepared Bard provider projection', () => {
     return value as Record<string, unknown>;
   }
 
-  it('projects all eight real prepared Bard declarations without treating them as published', async () => {
+  it('projects all eight Bard declarations in normal CI', async () => {
     const { projectCharacterCustomizationAuthority } = await generator();
     const authority = authorityAt(preparedProviderRoot);
     const catalog = projectCharacterCustomizationAuthority(
@@ -359,4 +397,18 @@ describePreparedProvider('prepared Bard provider projection', () => {
       ).toThrow(error);
     }
   );
+});
+
+describeRealPreparedProvider('optional real prepared-provider probe', () => {
+  it('projects the private candidate with the same generic authority reader', async () => {
+    const { projectCharacterCustomizationAuthority } =
+      await import('./generateCharacterCustomizationCatalog');
+    const authority = authorityAt(realPreparedProviderRoot!);
+    const catalog = projectCharacterCustomizationAuthority(
+      authority.aggregate,
+      authority.manifests,
+      authority.outfits
+    );
+    expect(Object.keys(catalog.outfits)).toContain('bard');
+  });
 });
