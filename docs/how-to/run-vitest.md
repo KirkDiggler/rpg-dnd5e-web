@@ -37,6 +37,28 @@ npm run test:run -- --reporter=verbose
 Vitest discovers `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.ts` according
 to `vite.config.ts`.
 
+## When to run broader tests
+
+Run a known related test file directly when editing. For example:
+
+```bash
+npm run test:run -- src/utils/money.test.ts
+npm run test:run -- src/hooks/useEncounterState.test.ts
+```
+
+During an edit-test-edit loop, watch the narrow area instead:
+
+```bash
+npm test -- src/utils/money.test.ts
+npm test -- src/hooks/useEncounterState.test.ts
+```
+
+Focused runs are iteration aids, not proof that the complete suite is correct.
+Run broader checks when the change affects shared setup or configuration,
+dependencies, external services, filesystem fixtures, or has unclear impact.
+At the pull-request boundary, use `npm run ci-check`; it includes the full test
+suite. Do not run a duplicate standalone full suite immediately before that gate.
+
 ## Test environments
 
 The default environment is `jsdom`. Keep it for component rendering, DOM and
@@ -83,12 +105,14 @@ a resource bound, not an optimal-concurrency promise.
 
 ## Required pre-publication check
 
-Before opening or updating a pull request, run:
+Before opening or updating a pull request, run one complete gate:
 
 ```bash
 npm run ci-check
 ```
 
 It checks formatting, lint, types, the production build, build-specific guards,
-and the full test suite. All checks must pass. Never bypass Git hooks with
-`--no-verify`.
+and the full test suite. Do not run a standalone full suite immediately before
+it; the gate already includes one. Run the gate at the pull-request boundary,
+not after every edit, commit, or push. All checks must pass, and pull-request CI
+remains authoritative. Never bypass Git hooks with `--no-verify`.

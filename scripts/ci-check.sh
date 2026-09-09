@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CI Pre-flight Check Script
-# Run this before pushing to catch CI failures early
+# Run this once before opening or updating a pull request
 
 set -e
 
@@ -94,11 +94,11 @@ fi
 # Summary
 echo ""
 if [ $FAILED -eq 0 ]; then
-  echo -e "${GREEN}✅ All CI checks passed! Safe to push.${NC}"
+  echo -e "${GREEN}✅ All CI checks passed! Local pull-request gate is green.${NC}"
   exit 0
 else
-  echo -e "${RED}❌ Some CI checks failed. Fix issues before pushing.${NC}"
+  echo -e "${RED}❌ Some CI checks failed. Fix issues before updating the pull request.${NC}"
   echo ""
-  echo "💡 Tip: Run 'npm run ci-checks' to see detailed output"
+  echo "💡 Tip: Run the individual checks above to see detailed output"
   exit 1
 fi
