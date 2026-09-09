@@ -16,11 +16,27 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
-const TOOL = 'expose-provider-character-appearances@1';
-const PUBLISHER = 'publish-modular-customization-provider@1';
-const PREPARER = 'prepare-modular-customization-provider@1';
+const TOOL = 'expose-provider-character-appearances@2';
+const PUBLISHER = 'publish-modular-customization-provider@2';
+const PREPARER = 'prepare-modular-customization-provider@2';
 const PROVIDER_REPOSITORY = 'KirkDiggler/rpg-game-assets';
 const WEB_REPOSITORY = 'KirkDiggler/rpg-dnd5e-web';
+const CURRENT_OVERLAY_PATH = 'evidence/117-all-race-hair/verification.json';
+const CURRENT_OVERLAY_KIND = 'live-117-provider-metadata-overlay';
+const CURRENT_OVERLAY_ALLOWED_FIELDS = [
+  'providerMetadata.inventory.path',
+  'providerMetadata.inventory.sizeBytes',
+  'providerMetadata.inventory.sha256',
+  'providerMetadata.inventory.fileCount',
+  'providerMetadata.inventory.treeSha256',
+  'providerMetadata.meshStats.path',
+  'providerMetadata.meshStats.sizeBytes',
+  'providerMetadata.meshStats.sha256',
+  'providerMetadata.meshStats.assetCount',
+  'providerMetadata.runtime.fileCount',
+  'providerMetadata.runtime.treeSha256',
+];
+const GENERATED_CATALOG = 'src/generated/characterCustomizationCatalog.ts';
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -107,6 +123,23 @@ function safeRelative(value, label) {
   );
   return value;
 }
+function sourceReceiptPath(value, label) {
+  requireCondition(
+    typeof value === 'string' &&
+      value &&
+      !value.includes('\\') &&
+      !value.includes('\0'),
+    `${label} must be a non-empty POSIX path`
+  );
+  const absolute = value.startsWith('/');
+  const parts = value.split('/').slice(absolute ? 1 : 0);
+  requireCondition(
+    parts.length > 0 &&
+      parts.every((part) => part && part !== '.' && part !== '..'),
+    `${label} is unsafe or non-canonical`
+  );
+  return value;
+}
 function identifier(value, label) {
   requireCondition(
     typeof value === 'string' && IDENTIFIER.test(value),
@@ -145,6 +178,49 @@ function receiptRows(value, label) {
   );
   return value;
 }
+function jsonField(document, dotted, label = 'current compatibility overlay') {
+  let target = document;
+  for (const part of dotted.split('.')) {
+    requireCondition(
+      target &&
+        typeof target === 'object' &&
+        !Array.isArray(target) &&
+        Object.hasOwn(target, part),
+      `${label} is missing allowed field: ${dotted}`
+    );
+    target = target[part];
+  }
+  return target;
+}
+function setJsonField(document, dotted, value, label) {
+  const parts = dotted.split('.');
+  let target = document;
+  for (const part of parts.slice(0, -1)) {
+    requireCondition(
+      target &&
+        typeof target === 'object' &&
+        !Array.isArray(target) &&
+        Object.hasOwn(target, part),
+      `${label} is missing field parent: ${dotted}`
+    );
+    target = target[part];
+  }
+  requireCondition(
+    target &&
+      typeof target === 'object' &&
+      !Array.isArray(target) &&
+      Object.hasOwn(target, parts.at(-1)),
+    `${label} is missing field: ${dotted}`
+  );
+  target[parts.at(-1)] = value;
+}
+function positiveInteger(value, label, { allowZero = false } = {}) {
+  requireCondition(
+    Number.isSafeInteger(value) && (allowZero ? value >= 0 : value > 0),
+    `${label} must be ${allowZero ? 'a non-negative' : 'a positive'} integer`
+  );
+  return value;
+}
 
 function validateReceipt(receiptPath) {
   const path = realFile(receiptPath, 'provider receipt');
@@ -152,6 +228,7 @@ function validateReceipt(receiptPath) {
   const receipt = parseJson(bytes.toString('utf8'), 'provider receipt');
   const status = receipt.status;
   if (
+    receipt.schemaVersion === 2 &&
     receipt.tool === PREPARER &&
     status?.provider === 'prepared' &&
     status?.published === false &&
@@ -168,14 +245,16 @@ function validateReceipt(receiptPath) {
     };
   }
   requireCondition(
-    receipt.schemaVersion === 1 && receipt.tool === PUBLISHER,
-    'input must be a publisher-produced merged provider receipt'
+    receipt.schemaVersion === 2 && receipt.tool === PUBLISHER,
+    'input must be a schema-v2 publisher-produced merged provider receipt'
   );
   requireCondition(
     status?.provider === 'merged' &&
       status?.published === true &&
-      status?.merged === true,
-    'provider receipt must truthfully report published and merged state'
+      status?.merged === true &&
+      status?.currentProviderCompatibilityReady === true &&
+      status?.webCompatibilityReady === false,
+    'provider receipt must truthfully report merged current-provider state before Web exposure'
   );
   const provider = receipt.provider;
   const selection = receipt.selection;
@@ -192,6 +271,7 @@ function validateReceipt(receiptPath) {
   );
   const providerHead = commit(provider.head, 'provider.head');
   const mergeSha = commit(provider.mergeSha, 'provider.mergeSha');
+  const baselineHead = commit(provider.baselineHead, 'provider.baselineHead');
   requireCondition(
     typeof provider.pullRequest === 'string' &&
       /^https:\/\/github\.com\/KirkDiggler\/rpg-game-assets\/pull\/[0-9]+$/.test(
@@ -217,13 +297,22 @@ function validateReceipt(receiptPath) {
     'sourceProviderReceiptSha256'
   );
   requireCondition(
-    publication?.status === 'merged' &&
+    publication?.implemented === true &&
+      publication?.operatorJsonEditingRequired === false &&
+      publication?.status === 'merged' &&
+      publication?.project === 19 &&
+      Number.isSafeInteger(publication?.issue) &&
+      publication.issue > 0 &&
       publication.sourceProviderReceiptSha256 === sourceReceiptSha256,
-    'publication provenance differs from the source prepared-receipt hash'
+    'publication provenance differs from the corrected publisher receipt chain'
   );
-  hash(
+  const resolvedFromReceiptSha256 = hash(
     publication.resolvedFromReceiptSha256,
     'publication.resolvedFromReceiptSha256'
+  );
+  requireCondition(
+    resolvedFromReceiptSha256 !== sourceReceiptSha256,
+    'published and prepared receipt hashes must identify distinct chain links'
   );
   requireCondition(
     publication.readback?.state === 'MERGED',
@@ -234,7 +323,7 @@ function validateReceipt(receiptPath) {
     handoff && typeof handoff === 'object',
     'sourceExportManifest handoff is missing'
   );
-  safeRelative(handoff.path, 'sourceExportManifest.path');
+  sourceReceiptPath(handoff.path, 'sourceExportManifest.path');
   hash(handoff.sha256, 'sourceExportManifest.sha256');
   requireCondition(
     Array.isArray(handoff.exports) && handoff.exports.length === races.length,
@@ -247,7 +336,10 @@ function validateReceipt(receiptPath) {
           row?.race === races[index],
           `source export handoff race ${index} differs from selection`
         );
-        safeRelative(row.path, `sourceExportManifest.exports[${index}].path`);
+        sourceReceiptPath(
+          row.path,
+          `sourceExportManifest.exports[${index}].path`
+        );
         hash(row.sha256, `sourceExportManifest.exports[${index}].sha256`);
         return true;
       })
@@ -283,12 +375,14 @@ function validateReceipt(receiptPath) {
     'harness/models/synty/mesh-stats.json',
     'harness/catalogs/synty-complete-inventory.json',
   ]);
+  const expectedCurrentOverlays = new Set([CURRENT_OVERLAY_PATH]);
   const seen = new Set();
   const owned = [];
   for (const [key, expected] of [
     ['installedArtifacts', new Set(expectedArtifacts.keys())],
     ['declarations', expectedDeclarations],
     ['generatedMetadata', expectedMetadata],
+    ['currentCompatibilityOverlays', expectedCurrentOverlays],
   ]) {
     const actual = new Set();
     for (const [index, row] of receiptRows(receipt[key], key).entries()) {
@@ -304,11 +398,46 @@ function validateReceipt(receiptPath) {
         Number.isSafeInteger(row.sizeBytes) && row.sizeBytes > 0,
         `${key}[${index}].sizeBytes must be positive`
       );
-      if (key === 'installedArtifacts')
+      if (key === 'installedArtifacts') {
         requireCondition(
           row.role === expectedArtifacts.get(artifactPath),
           `artifact role/path is unbound: ${artifactPath}`
         );
+      } else if (key === 'currentCompatibilityOverlays') {
+        requireCondition(
+          JSON.stringify(Object.keys(row).sort()) ===
+            JSON.stringify(
+              [
+                'allowedJsonFields',
+                'baselineHead',
+                'baselineSha256',
+                'kind',
+                'path',
+                'schemaVersion',
+                'sha256',
+                'sizeBytes',
+              ].sort()
+            ),
+          'current compatibility overlay record keys differ from the corrected provider interface'
+        );
+        requireCondition(
+          row.schemaVersion === 1 && row.kind === CURRENT_OVERLAY_KIND,
+          'current compatibility overlay kind/version differs'
+        );
+        requireCondition(
+          row.baselineHead === baselineHead,
+          'current compatibility overlay baselineHead differs from provider baseline'
+        );
+        hash(
+          row.baselineSha256,
+          'currentCompatibilityOverlays[0].baselineSha256'
+        );
+        requireCondition(
+          JSON.stringify(row.allowedJsonFields) ===
+            JSON.stringify(CURRENT_OVERLAY_ALLOWED_FIELDS),
+          'current compatibility overlay allowedJsonFields differ from the exact #117 scope'
+        );
+      }
       owned.push({
         path: artifactPath,
         sha256,
@@ -365,10 +494,244 @@ function validateReceipt(receiptPath) {
     provider,
     providerHead,
     mergeSha,
+    baselineHead,
     classRef,
     races,
     owned,
+    currentOverlay: receipt.currentCompatibilityOverlays[0],
   };
+}
+
+function gitBlob(root, revision, path, label) {
+  const result = spawnSync(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['show', `${revision}:${path}`],
+    { cwd: root }
+  );
+  requireCondition(result.status === 0, `missing ${label}: ${path}`);
+  return result.stdout;
+}
+function gitBlobOrNull(root, revision, path) {
+  const result = spawnSync(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['show', `${revision}:${path}`],
+    { cwd: root }
+  );
+  if (result.status !== 0) return null;
+  return result.stdout;
+}
+
+function parseJsonBytes(bytes, label) {
+  return parseJson(bytes.toString('utf8'), label);
+}
+
+function gitCustomizationTreeMetadata(root, revision) {
+  const prefix = 'harness/models/synty/characters/customization';
+  const output = run(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['ls-tree', '-r', '-l', revision, '--', prefix],
+    { cwd: root }
+  );
+  const rows = output ? output.split('\n') : [];
+  const records = rows.map((line) => {
+    const match = /^(\d+) (\w+) ([0-9a-f]{40})\s+(\d+)\t(.+)$/.exec(line);
+    requireCondition(
+      match,
+      `invalid Git tree row for current runtime: ${line}`
+    );
+    const [, mode, type, oid, sizeText, path] = match;
+    requireCondition(
+      type === 'blob' && (mode === '100644' || mode === '100755'),
+      `current runtime contains a non-file or symbolic path: ${path}`
+    );
+    requireCondition(
+      path.startsWith(`${prefix}/`),
+      `current runtime path escapes its exact root: ${path}`
+    );
+    const size = positiveInteger(
+      Number(sizeText),
+      `current runtime size for ${path}`
+    );
+    const blob = spawnSync(
+      process.env.RPG_EXPOSURE_GIT || 'git',
+      ['cat-file', 'blob', oid],
+      { cwd: root }
+    );
+    requireCondition(
+      blob.status === 0 && blob.stdout.length === size,
+      `could not hash current runtime blob: ${path}`
+    );
+    return {
+      path: path.slice(prefix.length + 1),
+      size,
+      sha256: digest(blob.stdout),
+    };
+  });
+  const tree = createHash('sha256');
+  for (const row of records.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  )) {
+    tree.update(row.path);
+    tree.update('\0');
+    tree.update(String(row.size));
+    tree.update('\0');
+    tree.update(row.sha256);
+    tree.update('\n');
+  }
+  return { fileCount: records.length, treeSha256: tree.digest('hex') };
+}
+
+function validateMergedCurrentOverlay(validated, root) {
+  git(
+    root,
+    'merge-base',
+    '--is-ancestor',
+    validated.baselineHead,
+    validated.mergeSha
+  );
+  const row = validated.currentOverlay;
+  const baselineBytes = gitBlob(
+    root,
+    validated.baselineHead,
+    CURRENT_OVERLAY_PATH,
+    'Git-baseline #117 compatibility receipt'
+  );
+  requireCondition(
+    digest(baselineBytes) === row.baselineSha256,
+    'current compatibility overlay baseline hash differs from Git'
+  );
+  const overlayBytes = gitBlob(
+    root,
+    validated.mergeSha,
+    CURRENT_OVERLAY_PATH,
+    'merged #117 compatibility overlay'
+  );
+  requireCondition(
+    overlayBytes.length === row.sizeBytes &&
+      digest(overlayBytes) === row.sha256,
+    'merged #117 compatibility overlay hash/size differs from receipt'
+  );
+  const baseline = parseJsonBytes(
+    baselineBytes,
+    'Git-baseline #117 compatibility receipt'
+  );
+  const overlay = parseJsonBytes(
+    overlayBytes,
+    'merged #117 compatibility overlay'
+  );
+  requireCondition(
+    Buffer.compare(Buffer.from(canonical(overlay)), overlayBytes) === 0,
+    'merged #117 compatibility overlay is not canonical JSON'
+  );
+  const scoped = structuredClone(baseline);
+  for (const field of CURRENT_OVERLAY_ALLOWED_FIELDS) {
+    setJsonField(
+      scoped,
+      field,
+      jsonField(overlay, field),
+      'Git-baseline #117 compatibility receipt'
+    );
+  }
+  requireCondition(
+    JSON.stringify(scoped) === JSON.stringify(overlay),
+    'current compatibility overlay changes JSON outside its exact allowed fields'
+  );
+
+  const ownedMetadata = new Map(
+    validated.owned
+      .filter((owned) => owned.group === 'generatedMetadata')
+      .map((owned) => [owned.path, owned])
+  );
+  const inventoryPath = 'harness/catalogs/synty-complete-inventory.json';
+  const meshStatsPath = 'harness/models/synty/mesh-stats.json';
+  const inventoryRow = ownedMetadata.get(inventoryPath);
+  const meshStatsRow = ownedMetadata.get(meshStatsPath);
+  const inventory = parseJsonBytes(
+    gitBlob(
+      root,
+      validated.mergeSha,
+      inventoryPath,
+      'merged inventory metadata'
+    ),
+    'merged inventory metadata'
+  );
+  const meshStats = parseJsonBytes(
+    gitBlob(
+      root,
+      validated.mergeSha,
+      meshStatsPath,
+      'merged mesh-stats metadata'
+    ),
+    'merged mesh-stats metadata'
+  );
+  const expected = {
+    'providerMetadata.inventory.path': inventoryPath,
+    'providerMetadata.inventory.sizeBytes': inventoryRow.sizeBytes,
+    'providerMetadata.inventory.sha256': inventoryRow.sha256,
+    'providerMetadata.inventory.fileCount': inventory.fileCount,
+    'providerMetadata.inventory.treeSha256': inventory.treeSha256,
+    'providerMetadata.meshStats.path': meshStatsPath,
+    'providerMetadata.meshStats.sizeBytes': meshStatsRow.sizeBytes,
+    'providerMetadata.meshStats.sha256': meshStatsRow.sha256,
+    'providerMetadata.meshStats.assetCount': meshStats.assetCount,
+  };
+  Object.assign(
+    expected,
+    Object.fromEntries(
+      Object.entries(
+        gitCustomizationTreeMetadata(root, validated.mergeSha)
+      ).map(([key, value]) => [`providerMetadata.runtime.${key}`, value])
+    )
+  );
+  for (const [field, value] of Object.entries(expected)) {
+    requireCondition(
+      jsonField(overlay, field) === value,
+      `current compatibility overlay field differs from merged provider: ${field}`
+    );
+  }
+}
+
+function verifyMergedProviderCommit(validated, root) {
+  for (const row of validated.owned) {
+    const blob = gitBlob(
+      root,
+      validated.mergeSha,
+      row.path,
+      `receipt-owned provider path at verified merge`
+    );
+    requireCondition(
+      blob.length === row.sizeBytes && digest(blob) === row.sha256,
+      `provider artifact hash/size differs at verified merge: ${row.path}`
+    );
+  }
+  const syntyPrefix = 'harness/models/synty/';
+  const expectedAdded = validated.owned
+    .filter(
+      (row) =>
+        row.group === 'installedArtifacts' &&
+        gitBlobOrNull(root, validated.baselineHead, row.path) === null
+    )
+    .map((row) => row.path.slice(syntyPrefix.length))
+    .sort();
+  const expectedChanged = validated.owned
+    .filter((row) => row.path.startsWith(syntyPrefix))
+    .filter((row) => {
+      const baseline = gitBlobOrNull(root, validated.baselineHead, row.path);
+      return baseline !== null && digest(baseline) !== row.sha256;
+    })
+    .map((row) => row.path.slice(syntyPrefix.length))
+    .sort();
+  requireCondition(
+    JSON.stringify(validated.receipt.preservation.addedFiles) ===
+      JSON.stringify(expectedAdded),
+    'preservation.addedFiles differs from the Git baseline/merged provider'
+  );
+  requireCondition(
+    JSON.stringify(validated.receipt.preservation.changedCumulativeFiles) ===
+      JSON.stringify(expectedChanged),
+    'preservation.changedCumulativeFiles differs from the Git baseline/merged provider'
+  );
+  validateMergedCurrentOverlay(validated, root);
 }
 
 function verifyProviderSource(validated, providerRepo) {
@@ -433,21 +796,7 @@ function verifyProviderSource(validated, providerRepo) {
     { cwd: root }
   );
   const needsFetch = objectProbe.status !== 0;
-  if (!needsFetch) {
-    for (const row of validated.owned) {
-      const blob = spawnSync(
-        process.env.RPG_EXPOSURE_GIT || 'git',
-        ['show', `${validated.mergeSha}:${row.path}`],
-        { cwd: root }
-      );
-      requireCondition(
-        blob.status === 0 &&
-          blob.stdout.length === row.sizeBytes &&
-          digest(blob.stdout) === row.sha256,
-        `provider artifact hash/size differs at verified merge: ${row.path}`
-      );
-    }
-  }
+  if (!needsFetch) verifyMergedProviderCommit(validated, root);
   return {
     root,
     pr,
@@ -470,6 +819,7 @@ function pinProvider(validated, source, created) {
         validated.mergeSha,
       'provider fetch did not resolve the verified receipt merge SHA'
     );
+    verifyMergedProviderCommit(validated, source.root);
   }
   requireCondition(
     !statProbe(source.worktree),
@@ -722,15 +1072,10 @@ function apply(validated, providerSource, web, output) {
       'ordinary assets:sync produced no tracked Web output'
     );
     requireCondition(
-      paths.every(
-        (path) => path === 'src/generated/characterCustomizationCatalog.ts'
-      ),
+      paths.length === 1 && paths[0] === GENERATED_CATALOG,
       `assets:sync changed files outside its generated catalog: ${paths.join(', ')}`
     );
-    const catalog = readFileSync(
-      join(web.worktree, 'src/generated/characterCustomizationCatalog.ts'),
-      'utf8'
-    );
+    const catalog = readFileSync(join(web.worktree, GENERATED_CATALOG), 'utf8');
     requireCondition(
       catalog.includes(validated.mergeSha),
       'generated catalog does not bind the verified provider merge SHA'
@@ -785,13 +1130,18 @@ function apply(validated, providerSource, web, output) {
       syncEnv
     );
     npm(web.worktree, ['run', 'ci-check'], syncEnv);
-    git(web.worktree, 'add', '--', ...paths);
+    const finalPaths = changedPaths(web.worktree);
+    requireCondition(
+      finalPaths.length === 1 && finalPaths[0] === GENERATED_CATALOG,
+      `checks changed files outside the actual generated catalog: ${finalPaths.join(', ')}`
+    );
+    git(web.worktree, 'add', '--', GENERATED_CATALOG);
     const staged = git(web.worktree, 'diff', '--cached', '--name-only')
       .split('\n')
       .filter(Boolean);
     requireCondition(
-      JSON.stringify(staged.sort()) === JSON.stringify([...paths].sort()),
-      'staged paths differ from exact generated outputs'
+      JSON.stringify(staged) === JSON.stringify([GENERATED_CATALOG]),
+      'staged paths differ from the exact generated Web catalog'
     );
     requireCondition(
       !staged.some(
@@ -866,11 +1216,25 @@ function apply(validated, providerSource, web, output) {
       sourceProviderReceiptSha256: validated.sha256,
       provider: {
         repository: PROVIDER_REPOSITORY,
+        baselineHead: validated.baselineHead,
         mergeSha: validated.mergeSha,
         publishedHead: validated.providerHead,
         pullRequest: validated.provider.pullRequest,
         class: validated.classRef,
         races: validated.races,
+        receiptChain: {
+          preparedReceiptSha256: validated.receipt.sourceProviderReceiptSha256,
+          publishedReceiptSha256:
+            validated.receipt.publication.resolvedFromReceiptSha256,
+          mergedReceiptSha256: validated.sha256,
+        },
+        currentCompatibilityOverlay: {
+          kind: CURRENT_OVERLAY_KIND,
+          path: CURRENT_OVERLAY_PATH,
+          sha256: validated.currentOverlay.sha256,
+          baselineSha256: validated.currentOverlay.baselineSha256,
+          allowedJsonFields: CURRENT_OVERLAY_ALLOWED_FIELDS,
+        },
       },
       web: {
         repository: WEB_REPOSITORY,
@@ -1015,9 +1379,23 @@ function main() {
     sourceProviderReceiptSha256: validated.sha256,
     provider: {
       repository: PROVIDER_REPOSITORY,
+      baselineHead: validated.baselineHead,
       mergeSha: validated.mergeSha,
       class: validated.classRef,
       races: validated.races,
+      receiptChain: {
+        preparedReceiptSha256: validated.receipt.sourceProviderReceiptSha256,
+        publishedReceiptSha256:
+          validated.receipt.publication.resolvedFromReceiptSha256,
+        mergedReceiptSha256: validated.sha256,
+      },
+      currentCompatibilityOverlay: {
+        kind: CURRENT_OVERLAY_KIND,
+        path: CURRENT_OVERLAY_PATH,
+        sha256: validated.currentOverlay.sha256,
+        baselineSha256: validated.currentOverlay.baselineSha256,
+        allowedJsonFields: CURRENT_OVERLAY_ALLOWED_FIELDS,
+      },
     },
     web: {
       repository: WEB_REPOSITORY,

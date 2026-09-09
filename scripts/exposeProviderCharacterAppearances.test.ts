@@ -6,7 +6,9 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
+  stat,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,13 +28,71 @@ const cli = join(
 const temporaryRoots: string[] = [];
 const gitEnvironment = withoutGitLocalEnvironment(process.env);
 const races = ['human', 'elf'];
+const currentOverlayPath = 'evidence/117-all-race-hair/verification.json';
+const currentOverlayAllowedFields = [
+  'providerMetadata.inventory.path',
+  'providerMetadata.inventory.sizeBytes',
+  'providerMetadata.inventory.sha256',
+  'providerMetadata.inventory.fileCount',
+  'providerMetadata.inventory.treeSha256',
+  'providerMetadata.meshStats.path',
+  'providerMetadata.meshStats.sizeBytes',
+  'providerMetadata.meshStats.sha256',
+  'providerMetadata.meshStats.assetCount',
+  'providerMetadata.runtime.fileCount',
+  'providerMetadata.runtime.treeSha256',
+];
 
 async function put(path: string, contents: string) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, contents);
 }
-function sha256(contents: string) {
+function sha256(contents: string | Buffer) {
   return createHash('sha256').update(contents).digest('hex');
+}
+function canonicalProviderJson(value: unknown): string {
+  const sorted = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(sorted);
+    if (item && typeof item === 'object')
+      return Object.fromEntries(
+        Object.entries(item)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, child]) => [key, sorted(child)])
+      );
+    return item;
+  };
+  return `${JSON.stringify(sorted(value), null, 2)}\n`;
+}
+async function treeMetadata(root: string) {
+  const rows: { path: string; size: number; sha256: string }[] = [];
+  async function walk(directory: string, prefix = ''): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(path, relative);
+      else {
+        const bytes = await readFile(path);
+        rows.push({
+          path: relative,
+          size: (await stat(path)).size,
+          sha256: sha256(bytes),
+        });
+      }
+    }
+  }
+  await walk(root);
+  const digest = createHash('sha256');
+  for (const row of rows.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  )) {
+    digest.update(row.path);
+    digest.update('\0');
+    digest.update(String(row.size));
+    digest.update('\0');
+    digest.update(row.sha256);
+    digest.update('\n');
+  }
+  return { fileCount: rows.length, treeSha256: digest.digest('hex') };
 }
 async function git(root: string, ...args: string[]) {
   return execFileAsync('git', args, { cwd: root, env: gitEnvironment });
@@ -66,6 +126,13 @@ interface ReceiptFixture {
   installedArtifacts: ArtifactRow[];
   declarations: ArtifactRow[];
   generatedMetadata: ArtifactRow[];
+  currentCompatibilityOverlays: (ArtifactRow & {
+    schemaVersion: number;
+    kind: string;
+    baselineSha256: string;
+    baselineHead: string;
+    allowedJsonFields: string[];
+  })[];
   preservation: {
     addedFiles: string[];
     changedCumulativeFiles: string[];
@@ -73,15 +140,28 @@ interface ReceiptFixture {
   };
   provider: {
     repository: string;
+    baselineRef: string;
+    baselineHead: string;
+    candidateRoot: string;
     base: string;
     branch: string;
     head: string;
     pullRequest: string;
     mergeSha: string | null;
   };
-  status: { provider: string; published: boolean; merged: boolean };
+  status: {
+    provider: string;
+    published: boolean;
+    merged: boolean;
+    currentProviderCompatibilityReady: boolean;
+    webCompatibilityReady: boolean;
+  };
   publication: {
+    implemented: boolean;
+    operatorJsonEditingRequired: boolean;
     status: string;
+    issue: number;
+    project: number;
     sourceProviderReceiptSha256: string;
     resolvedFromReceiptSha256: string;
     readback: { state: string };
@@ -100,7 +180,9 @@ interface Fixture {
   output: string;
 }
 
-async function makeFixture(): Promise<Fixture> {
+async function makeFixture(
+  options: { existingClass?: boolean } = {}
+): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'web-provider-exposure-'));
   temporaryRoots.push(root);
   const provider = join(root, 'provider');
@@ -113,6 +195,58 @@ async function makeFixture(): Promise<Fixture> {
     'git@github.com:KirkDiggler/rpg-game-assets.git'
   );
   await put(join(provider, '.gitignore'), '.worktrees/\n');
+
+  const declarationPaths = [
+    ...races.map(
+      (race) =>
+        `harness/models/synty/characters/customization/${race}-v1/manifest.json`
+    ),
+    'harness/models/synty/characters/customization/manifest.json',
+    'harness/models/synty/characters/outfit-customization/v1/manifest.json',
+  ];
+  const inventoryPath = 'harness/catalogs/synty-complete-inventory.json';
+  const meshStatsPath = 'harness/models/synty/mesh-stats.json';
+  const artifactPaths = [
+    ...races.flatMap((race) => [
+      `harness/models/synty/characters/customization/${race}-v1/bodies/${race}-bard-body.glb`,
+      `harness/models/synty/characters/customization/${race}-v1/fallbacks/${race}-bard-complete.glb`,
+    ]),
+    'harness/models/synty/characters/outfit-customization/v1/masks/bard-bard.png',
+  ];
+  for (const path of declarationPaths)
+    await put(join(provider, path), `baseline ${path}\n`);
+  await put(
+    join(provider, inventoryPath),
+    '{"fileCount":1,"treeSha256":"old"}\n'
+  );
+  await put(join(provider, meshStatsPath), '{"assetCount":1}\n');
+  if (options.existingClass)
+    for (const path of artifactPaths)
+      await put(join(provider, path), `prior ${path}\n`);
+  const baselineOverlay = canonicalProviderJson({
+    historicalApproval: { quote: 'preserve me', status: 'accepted' },
+    providerMetadata: {
+      inventory: {
+        fileCount: 1,
+        path: inventoryPath,
+        sha256: 'a'.repeat(64),
+        sizeBytes: 1,
+        treeSha256: 'b'.repeat(64),
+      },
+      meshStats: {
+        assetCount: 1,
+        path: meshStatsPath,
+        sha256: 'c'.repeat(64),
+        sizeBytes: 1,
+      },
+      preservation: { historicalFact: true },
+      runtime: { fileCount: 1, treeSha256: 'd'.repeat(64) },
+    },
+  });
+  await put(join(provider, currentOverlayPath), baselineOverlay);
+  await git(provider, 'add', '.');
+  await git(provider, 'commit', '--quiet', '-m', 'provider baseline');
+  const baselineHead = (await git(provider, 'rev-parse', 'HEAD')).stdout.trim();
 
   const installedArtifacts: ArtifactRow[] = [];
   const declarations: ArtifactRow[] = [];
@@ -166,52 +300,114 @@ async function makeFixture(): Promise<Fixture> {
     'harness/models/synty/characters/outfit-customization/v1/manifest.json',
     JSON.stringify({ classOrder: ['bard'] })
   );
-  await add(generatedMetadata, 'harness/models/synty/mesh-stats.json', 'stats');
-  await add(
-    generatedMetadata,
-    'harness/catalogs/synty-complete-inventory.json',
-    'inventory'
+  const runtime = await treeMetadata(
+    join(provider, 'harness/models/synty/characters/customization')
   );
+  const inventoryContents = canonicalProviderJson({
+    fileCount: 9,
+    treeSha256: 'e'.repeat(64),
+  });
+  const meshStatsContents = canonicalProviderJson({ assetCount: 7 });
+  await add(generatedMetadata, meshStatsPath, meshStatsContents);
+  await add(generatedMetadata, inventoryPath, inventoryContents);
+  const overlayDocument = JSON.parse(baselineOverlay);
+  overlayDocument.providerMetadata.inventory = {
+    fileCount: 9,
+    path: inventoryPath,
+    sha256: sha256(inventoryContents),
+    sizeBytes: Buffer.byteLength(inventoryContents),
+    treeSha256: 'e'.repeat(64),
+  };
+  overlayDocument.providerMetadata.meshStats = {
+    assetCount: 7,
+    path: meshStatsPath,
+    sha256: sha256(meshStatsContents),
+    sizeBytes: Buffer.byteLength(meshStatsContents),
+  };
+  overlayDocument.providerMetadata.runtime = runtime;
+  const overlayContents = canonicalProviderJson(overlayDocument);
+  await put(join(provider, currentOverlayPath), overlayContents);
+  const currentCompatibilityOverlays = [
+    {
+      schemaVersion: 1,
+      kind: 'live-117-provider-metadata-overlay',
+      path: currentOverlayPath,
+      sha256: sha256(overlayContents),
+      sizeBytes: Buffer.byteLength(overlayContents),
+      baselineSha256: sha256(baselineOverlay),
+      baselineHead,
+      allowedJsonFields: [...currentOverlayAllowedFields],
+    },
+  ];
   await git(provider, 'add', '.');
   await git(provider, 'commit', '--quiet', '-m', 'merged provider');
   const mergeSha = (await git(provider, 'rev-parse', 'HEAD')).stdout.trim();
 
+  // This is the corrected provider's prepare@2 -> publish@2 -> resolve shape:
+  // every chain link is distinct and the merged receipt is bound to the Git
+  // baseline, merged provider commit, and exact owned #117 overlay.
   const sourceProviderReceiptSha256 = 'a'.repeat(64);
   const receipt: ReceiptFixture = {
-    schemaVersion: 1,
-    tool: 'publish-modular-customization-provider@1',
+    schemaVersion: 2,
+    tool: 'publish-modular-customization-provider@2',
     sourceProviderReceiptSha256,
     selection: { class: 'bard', outfitRecipe: 'bard', races },
     sourceExportManifest: {
-      path: '.stage/export/export-manifest.json',
+      path: join(root, 'exports', 'export-manifest.json'),
       sha256: 'b'.repeat(64),
       exports: races.map((race) => ({
         race,
-        path: `.stage/export/${race}/export-manifest.json`,
+        path: join(root, 'exports', race, 'export-manifest.json'),
         sha256: 'c'.repeat(64),
       })),
     },
     installedArtifacts,
     declarations,
     generatedMetadata,
+    currentCompatibilityOverlays,
     preservation: {
-      addedFiles: installedArtifacts
+      addedFiles: options.existingClass
+        ? []
+        : installedArtifacts
+            .map((row) => row.path.replace('harness/models/synty/', ''))
+            .sort(),
+      changedCumulativeFiles: declarations
         .map((row) => row.path.replace('harness/models/synty/', ''))
+        .concat(
+          'mesh-stats.json',
+          ...(options.existingClass
+            ? installedArtifacts.map((row) =>
+                row.path.replace('harness/models/synty/', '')
+              )
+            : [])
+        )
         .sort(),
-      changedCumulativeFiles: [],
       allOtherPreExistingFilesByteIdentical: true,
     },
     provider: {
       repository: 'KirkDiggler/rpg-game-assets',
+      baselineRef: baselineHead,
+      baselineHead,
+      candidateRoot: '.',
       base: 'main',
       branch: 'asset/185-bard-provider',
       head: mergeSha,
       pullRequest: 'https://github.com/KirkDiggler/rpg-game-assets/pull/186',
       mergeSha,
     },
-    status: { provider: 'merged', published: true, merged: true },
+    status: {
+      provider: 'merged',
+      published: true,
+      merged: true,
+      currentProviderCompatibilityReady: true,
+      webCompatibilityReady: false,
+    },
     publication: {
+      implemented: true,
+      operatorJsonEditingRequired: false,
       status: 'merged',
+      issue: 185,
+      project: 19,
       sourceProviderReceiptSha256,
       resolvedFromReceiptSha256: 'd'.repeat(64),
       readback: { state: 'MERGED' },
@@ -382,11 +578,13 @@ afterEach(async () => {
 describe('receipt-driven provider exposure wrapper', () => {
   it('reports a prepared input as an unpublished dependency without mutations', async () => {
     const fixture = await makeFixture();
-    fixture.receipt.tool = 'prepare-modular-customization-provider@1';
+    fixture.receipt.tool = 'prepare-modular-customization-provider@2';
     fixture.receipt.status = {
       provider: 'prepared',
       published: false,
       merged: false,
+      currentProviderCompatibilityReady: true,
+      webCompatibilityReady: false,
     };
     await rewriteReceipt(fixture);
     const result = await execFileAsync(
@@ -435,18 +633,8 @@ describe('receipt-driven provider exposure wrapper', () => {
     );
   });
 
-  it('accepts a same-class update preservation receipt without mutating dry-run', async () => {
-    const fixture = await makeFixture();
-    const changed = fixture.receipt.installedArtifacts[0].path.replace(
-      'harness/models/synty/',
-      ''
-    );
-    fixture.receipt.preservation.addedFiles =
-      fixture.receipt.preservation.addedFiles.filter(
-        (path) => path !== changed
-      );
-    fixture.receipt.preservation.changedCumulativeFiles = [changed];
-    await rewriteReceipt(fixture);
+  it('accepts a corrected same-class update receipt without mutating dry-run', async () => {
+    const fixture = await makeFixture({ existingClass: true });
     const result = await runCli(fixture);
     expect(JSON.parse(result.stdout)).toMatchObject({
       mode: 'dry-run',
@@ -455,7 +643,7 @@ describe('receipt-driven provider exposure wrapper', () => {
     });
   });
 
-  it('defaults to a machine-readable non-mutating plan from verified merged state', async () => {
+  it('cross-reads the corrected prepare@2/publish@2 merged shape with fake GitHub', async () => {
     const fixture = await makeFixture();
     const before = (await git(fixture.web, 'rev-parse', 'HEAD')).stdout;
     const result = await runCli(fixture);
@@ -464,15 +652,54 @@ describe('receipt-driven provider exposure wrapper', () => {
       mutationsPerformed: false,
       ready: true,
       provider: {
+        baselineHead: fixture.receipt.provider.baselineHead,
         mergeSha: fixture.mergeSha,
         class: 'bard',
         races,
+        receiptChain: {
+          preparedReceiptSha256: fixture.receipt.sourceProviderReceiptSha256,
+          publishedReceiptSha256:
+            fixture.receipt.publication.resolvedFromReceiptSha256,
+          mergedReceiptSha256: sha256(await readFile(fixture.receiptPath)),
+        },
+        currentCompatibilityOverlay: {
+          kind: 'live-117-provider-metadata-overlay',
+          path: currentOverlayPath,
+          allowedJsonFields: currentOverlayAllowedFields,
+        },
       },
       web: { base: 'dev', issue: 1012, project: 19 },
     });
     expect((await git(fixture.web, 'rev-parse', 'HEAD')).stdout).toBe(before);
     await expect(readFile(fixture.output, 'utf8')).rejects.toThrow();
     expect(await readFile(fixture.calls, 'utf8')).not.toContain('pr create');
+  });
+
+  it('rejects an otherwise hash-bound overlay that changes historical #117 facts', async () => {
+    const fixture = await makeFixture();
+    const overlayPath = join(fixture.provider, currentOverlayPath);
+    const overlay = JSON.parse(await readFile(overlayPath, 'utf8'));
+    overlay.historicalApproval.quote = 'tampered outside current metadata';
+    const bytes = canonicalProviderJson(overlay);
+    await writeFile(overlayPath, bytes);
+    await git(fixture.provider, 'add', currentOverlayPath);
+    await git(fixture.provider, 'commit', '--quiet', '-m', 'tampered merge');
+    const mergeSha = (
+      await git(fixture.provider, 'rev-parse', 'HEAD')
+    ).stdout.trim();
+    fixture.receipt.provider.head = mergeSha;
+    fixture.receipt.provider.mergeSha = mergeSha;
+    fixture.receipt.currentCompatibilityOverlays[0].sha256 = sha256(bytes);
+    fixture.receipt.currentCompatibilityOverlays[0].sizeBytes =
+      Buffer.byteLength(bytes);
+    fixture.env.MERGE_SHA = mergeSha;
+    await rewriteReceipt(fixture);
+
+    await expect(runCli(fixture)).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining('outside its exact allowed fields'),
+    });
+    expect(await readFile(fixture.calls, 'utf8')).not.toContain('npm ');
   });
 
   it('applies from an automatic pinned provider worktree with hooks and exact gates', async () => {
@@ -565,6 +792,8 @@ describe('receipt-driven provider exposure wrapper', () => {
           provider: 'published',
           published: true,
           merged: false,
+          currentProviderCompatibilityReady: true,
+          webCompatibilityReady: false,
         };
         fixture.receipt.provider.mergeSha = null;
         fixture.receipt.publication.status = 'published';
@@ -592,6 +821,29 @@ describe('receipt-driven provider exposure wrapper', () => {
       'source handoff',
       (fixture: Fixture) => {
         fixture.receipt.sourceExportManifest.exports[0].race = 'elf';
+      },
+    ],
+    [
+      'arbitrary evidence path',
+      (fixture: Fixture) => {
+        fixture.receipt.currentCompatibilityOverlays[0].path =
+          'evidence/999-unrelated/proof.json';
+      },
+    ],
+    [
+      'broadened current overlay scope',
+      (fixture: Fixture) => {
+        fixture.receipt.currentCompatibilityOverlays[0].allowedJsonFields.push(
+          'historicalApproval.quote'
+        );
+      },
+    ],
+    [
+      'broken prepared/publication hash chain',
+      (fixture: Fixture) => {
+        fixture.receipt.publication.sourceProviderReceiptSha256 = 'f'.repeat(
+          64
+        );
       },
     ],
   ])(
