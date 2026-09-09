@@ -582,13 +582,6 @@ function gitCustomizationTreeMetadata(root, revision) {
 }
 
 function validateMergedCurrentOverlay(validated, root) {
-  git(
-    root,
-    'merge-base',
-    '--is-ancestor',
-    validated.baselineHead,
-    validated.mergeSha
-  );
   const row = validated.currentOverlay;
   const baselineBytes = gitBlob(
     root,

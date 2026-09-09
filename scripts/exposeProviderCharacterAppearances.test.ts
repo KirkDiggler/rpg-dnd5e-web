@@ -340,8 +340,37 @@ async function makeFixture(
     },
   ];
   await git(provider, 'add', '.');
-  await git(provider, 'commit', '--quiet', '-m', 'merged provider');
-  const mergeSha = (await git(provider, 'rev-parse', 'HEAD')).stdout.trim();
+  await git(provider, 'commit', '--quiet', '-m', 'provider publication head');
+  const providerHead = (await git(provider, 'rev-parse', 'HEAD')).stdout.trim();
+  const providerTree = (
+    await git(provider, 'rev-parse', `${providerHead}^{tree}`)
+  ).stdout.trim();
+  const unrelatedMain = (
+    await git(
+      provider,
+      'commit-tree',
+      '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+      '-m',
+      'unrelated main fixture'
+    )
+  ).stdout.trim();
+  const mergeSha = (
+    await git(
+      provider,
+      'commit-tree',
+      providerTree,
+      '-p',
+      unrelatedMain,
+      '-m',
+      'squash-merged provider fixture'
+    )
+  ).stdout.trim();
+  await git(
+    provider,
+    'update-ref',
+    'refs/heads/merged-provider-fixture',
+    mergeSha
+  );
 
   // This is the corrected provider's prepare@2 -> publish@2 -> resolve shape:
   // every chain link is distinct and the merged receipt is bound to the Git
@@ -391,7 +420,7 @@ async function makeFixture(
       candidateRoot: '.',
       base: 'main',
       branch: 'asset/185-bard-provider',
-      head: mergeSha,
+      head: providerHead,
       pullRequest: 'https://github.com/KirkDiggler/rpg-game-assets/pull/186',
       mergeSha,
     },
@@ -473,7 +502,7 @@ else if (args[0] === 'api' && args[1] === 'user') console.log(JSON.stringify({lo
 else if (args[0] === 'api') console.log(JSON.stringify({data:{repository:{issue:{number:1012,state:'OPEN',title:'fixture',url:'https://example/1012',projectItems:{nodes:[{project:{number:19}}]}}}}}));
 else if (args[0] === 'pr' && args[1] === 'list') console.log('[]');
 else if (args[0] === 'pr' && args[1] === 'create') console.log('https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1013');
-else if (args[0] === 'pr' && args[1] === 'view' && args[2].includes('rpg-game-assets')) console.log(JSON.stringify({number:186,url:'https://github.com/KirkDiggler/rpg-game-assets/pull/186',state:'MERGED',headRefName:'asset/185-bard-provider',headRefOid:process.env.MERGE_SHA,baseRefName:'main',mergedAt:'2026-09-09T00:00:00Z',mergeCommit:{oid:process.env.MERGE_SHA}}));
+else if (args[0] === 'pr' && args[1] === 'view' && args[2].includes('rpg-game-assets')) console.log(JSON.stringify({number:186,url:'https://github.com/KirkDiggler/rpg-game-assets/pull/186',state:'MERGED',headRefName:'asset/185-bard-provider',headRefOid:process.env.PROVIDER_HEAD,baseRefName:'main',mergedAt:'2026-09-09T00:00:00Z',mergeCommit:{oid:process.env.MERGE_SHA}}));
 else if (args[0] === 'pr' && args[1] === 'view') {
   const git = require('node:child_process').execFileSync;
   const head = git('git',['-C',process.env.WEB_WORKTREE,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -525,6 +554,7 @@ if (!catalog.includes(process.env.MERGE_SHA) || (catalog.match(/combination:/g) 
     RPG_EXPOSURE_NPX: fakeNpx,
     CALLS: calls,
     MERGE_SHA: mergeSha,
+    PROVIDER_HEAD: providerHead,
     WEB_WORKTREE: worktree,
   };
   return {
@@ -645,6 +675,15 @@ describe('receipt-driven provider exposure wrapper', () => {
 
   it('cross-reads the corrected prepare@2/publish@2 merged shape with fake GitHub', async () => {
     const fixture = await makeFixture();
+    await expect(
+      git(
+        fixture.provider,
+        'merge-base',
+        '--is-ancestor',
+        fixture.receipt.provider.baselineHead,
+        fixture.mergeSha
+      )
+    ).rejects.toThrow();
     const before = (await git(fixture.web, 'rev-parse', 'HEAD')).stdout;
     const result = await runCli(fixture);
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -693,6 +732,7 @@ describe('receipt-driven provider exposure wrapper', () => {
     fixture.receipt.currentCompatibilityOverlays[0].sizeBytes =
       Buffer.byteLength(bytes);
     fixture.env.MERGE_SHA = mergeSha;
+    fixture.env.PROVIDER_HEAD = mergeSha;
     await rewriteReceipt(fixture);
 
     await expect(runCli(fixture)).rejects.toMatchObject({
