@@ -17,13 +17,16 @@ the API sends; it never calculates game rules.
 
 # Claude AI Development Guidelines
 
-## 🚨 CRITICAL: ALWAYS RUN CI CHECKS BEFORE PUSHING 🚨
+## 🚨 CRITICAL: RUN CI CHECKS AT THE PULL-REQUEST BOUNDARY 🚨
 
-**MANDATORY before EVERY push:**
+**Run one complete local gate before opening or updating a pull request:**
 
 ```bash
-npm run ci-check  # MUST PASS before pushing
+npm run ci-check
 ```
+
+Do not run it after every edit, commit, or push. Do not run a standalone full
+suite immediately beforehand because `ci-check` already includes one.
 
 This catches:
 
@@ -65,12 +68,12 @@ git push
 
 This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as a Discord Activity. It connects to the rpg-api gRPC server to provide character creation, combat, and game board visualization.
 
-## 🚨 CRITICAL: CI Pre-flight Checks
+## 🚨 CRITICAL: Pull Request Pre-flight Checks
 
-**ALWAYS run CI checks locally before pushing to prevent CI failures:**
+**Run CI checks locally once before opening or updating a pull request:**
 
 ```bash
-npm run ci-check  # Quick summary of all checks
+npm run ci-check  # Complete local gate; pull-request CI is authoritative
 npm run ci-fix    # Auto-fix issues where possible
 ```
 
@@ -82,7 +85,7 @@ The `ci-check` script runs:
 - Build verification
 - Test suite
 
-If any check fails, fix the issues before pushing. This prevents:
+If any check fails, fix the issues before opening or updating the pull request. This prevents:
 
 - Broken CI builds
 - Failed PRs
@@ -146,12 +149,13 @@ React StrictMode (enabled in `src/main.tsx`) intentionally double-mounts compone
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
+- `npm run test:run -- path/to/file.test.ts` - Run a focused test file once
+- `npm test -- path/to/file.test.ts` - Watch a focused test file while editing
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - TypeScript type checking
 - `npm run format` - Format code with Prettier
 - `npm run format:check` - Check code formatting
-- `npm run pre-commit` - Run format, lint, and typecheck (use before committing!)
-- `npm run ci-checks` - Run all CI checks (format:check, lint, typecheck, build)
+- `npm run ci-checks` - Run format, lint, typecheck, and build checks
 
 ## Architecture Principles
 
