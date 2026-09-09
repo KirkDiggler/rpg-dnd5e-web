@@ -19,13 +19,13 @@ npm run test:run
 Run one file:
 
 ```bash
-npm run test:run -- src/hooks/useDungeonMap.test.ts
+npm run test:run -- src/hooks/useEncounterState.test.ts
 ```
 
 Watch a file while editing:
 
 ```bash
-npm test -- src/hooks/useDungeonMap.test.ts
+npm test -- src/hooks/useEncounterState.test.ts
 ```
 
 Use a different reporter when diagnosing a failure:
