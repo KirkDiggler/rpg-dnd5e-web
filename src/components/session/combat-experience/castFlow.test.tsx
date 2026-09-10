@@ -418,3 +418,28 @@ describe('sending the cast', () => {
     expect(hoisted.castFn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a declaration that fires on the click clears whatever was armed', () => {
+  it('unarms a creature-target cast when an immediate cast is clicked', () => {
+    const mockery = mockeryDeclaration();
+    const trueStrike = trueStrikeDeclaration();
+    render(<Harness declarations={[mockery, trueStrike]} />);
+
+    // Arm the one that names a creature, the way a player would before
+    // changing their mind.
+    act(() => latest.onSelectDeclaration(mockery));
+    expect(screen.getByTestId('armed').textContent).toBe(mockery.id);
+
+    // Then click one that needs nobody. It fires immediately — and the row
+    // that was armed has to stop being armed.
+    act(() => latest.onSelectDeclaration(trueStrike));
+
+    expect(hoisted.castFn).toHaveBeenCalled();
+    // THE BUG THIS PINS: the immediate path used to call runCast without
+    // clearing the interaction, so the spell went out on the wire while the
+    // panel still showed Vicious Mockery selected and the target surface still
+    // open. Move and Death Save always cleared; the cast and activate paths
+    // did not, and nothing the player could see said which action had gone.
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+});

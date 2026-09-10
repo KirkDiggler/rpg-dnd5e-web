@@ -626,6 +626,16 @@ export function useSessionCombatExperience({
           setTargeting(true);
           return;
         }
+        // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHAT WAS ARMED.
+        // Every branch that arms sets an interaction, and every branch that
+        // resolves immediately has to put it back — MOVE does at the PATH
+        // branch above, DEATH_SAVE and REACT do at theirs. These two did not,
+        // so arming a creature-target row and then clicking one that fires
+        // straight away left the FIRST row armed and `targeting` true: the
+        // spell went out on the wire while the panel still showed the other
+        // one selected, and nothing the player could click looked wrong.
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
         runActivateRef.current(candidate);
         return;
       }
@@ -652,6 +662,16 @@ export function useSessionCombatExperience({
           setTargeting(true);
           return;
         }
+        // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHAT WAS ARMED.
+        // Every branch that arms sets an interaction, and every branch that
+        // resolves immediately has to put it back — MOVE does at the PATH
+        // branch above, DEATH_SAVE and REACT do at theirs. These two did not,
+        // so arming a creature-target row and then clicking one that fires
+        // straight away left the FIRST row armed and `targeting` true: the
+        // spell went out on the wire while the panel still showed the other
+        // one selected, and nothing the player could click looked wrong.
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
         runCastRef.current(candidate);
       }
     },
