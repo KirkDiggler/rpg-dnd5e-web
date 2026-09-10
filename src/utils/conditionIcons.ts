@@ -196,6 +196,12 @@ const BUFF_CONDITIONS: Record<string, ConditionDisplay> = {
     description:
       'Can add Bardic Inspiration die to ability check, attack, or save',
   },
+  true_strike: {
+    icon: '🎯',
+    label: 'True Strike',
+    color: '#ec4899',
+    description: 'Foreknowledge applied to an authoritative resolved attack',
+  },
 };
 
 /**

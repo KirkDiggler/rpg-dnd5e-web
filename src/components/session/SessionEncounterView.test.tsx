@@ -15,6 +15,7 @@ import {
   EventKind,
   EventSchema,
   HealingAppliedSchema,
+  RollWindowOpenedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -33,6 +34,7 @@ import {
   HexLayout,
   LifeState,
   MemberKind,
+  ReactionRefSchema,
   ShortfallReason,
   ShortfallSchema,
   Slot,
@@ -401,6 +403,20 @@ function readyScene() {
   hoisted.atlasResult.loading = false;
   hoisted.whereResult.position = { x: 0, y: 0 };
   hoisted.whereResult.loading = false;
+}
+
+function postRollWindowDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.postroll.1',
+    verb: Verb.REACT,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.NONE,
+    reaction: create(ReactionRefSchema, {
+      ref: 'dnd5e:conditions:inspired',
+      name: 'Bardic Inspiration',
+    }),
+  });
 }
 
 function readyTurn(
@@ -2342,6 +2358,117 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('local-world-die-tile')).toBeNull()
     );
+  });
+
+  it('reveals a post-roll choice only after the matching actor d20 settles', async () => {
+    const initialDeclarations = [
+      attackDeclaration(),
+      moveDeclaration(),
+      endTurnDeclaration(),
+    ];
+    readyTurn(initialDeclarations);
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        declarations: initialDeclarations,
+      })
+      .mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [postRollWindowDeclaration()],
+      });
+    const live = steppedEventStream(1);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    hoisted.attackFn.mockResolvedValue({
+      seq: 7n,
+      roll: 9,
+      total: 13,
+      against: 0,
+      hit: false,
+      critical: false,
+      damage: 0,
+      attack: attackDeclaration().attack,
+      presentationId: 'presentation_postroll-choice',
+    });
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      return {
+        plan: create(DiceThrowPlanSchema, {
+          schemaVersion: draft.schemaVersion,
+          session: input.session,
+          presentationId: draft.presentationId,
+          authoritySeq: draft.authoritySeq,
+          roller: input.member,
+          attempt: draft.attempt,
+          physicsSchema: draft.physicsSchema,
+          colliderFingerprint: draft.colliderFingerprint,
+          bodies: draft.bodies,
+          contacts: draft.contacts,
+          terminal: draft.terminal,
+        }),
+      };
+    });
+
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    await screen.findByText('Preparing shared d20');
+
+    await act(async () => {
+      live.publish(
+        event(
+          EventKind.ROLL_WINDOW_OPENED,
+          {
+            case: 'rollWindowOpened',
+            value: create(RollWindowOpenedSchema, {
+              presentationId: 'presentation_postroll-choice',
+              audience: 'char-1',
+              offer: create(ReactionRefSchema, {
+                ref: 'dnd5e:conditions:inspired',
+                name: 'Bardic Inspiration',
+              }),
+              roll: 9,
+              total: 13,
+            }),
+          },
+          7n
+        )
+      );
+    });
+    expect(await screen.findByTestId('roll-window-settling')).toBeTruthy();
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.queryByTestId('reaction-strike')).toBeNull();
+    expect(screen.queryByTestId('reaction-hold')).toBeNull();
+
+    const readyLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(readyLayer)) {
+        readyLayer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({ kind: 'released' })
+    );
+    const rollingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(rollingLayer)) {
+        rollingLayer.props.onTerminal('settled');
+      }
+    });
+
+    const choice = await screen.findByTestId('reaction-window');
+    expect(choice.textContent).toContain('You rolled d20 9 + 4 = 13');
+    expect(screen.getByTestId('reaction-strike').textContent).toContain(
+      'Spend'
+    );
+    expect(screen.getByTestId('reaction-hold').textContent).toContain('Keep');
   });
 
   it('offers explicit semantic completion when local planning fails', async () => {

@@ -29,6 +29,7 @@ import {
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
+import { storyId } from './story';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -56,6 +57,19 @@ interface StaleRecovery {
   readonly declarationId: string;
   readonly verb: Verb;
   readonly target?: string;
+}
+
+interface ReceivedRollWindow {
+  readonly presentationId?: string;
+  readonly storyId: string;
+  readonly offerRef: string;
+  readonly roll: number;
+  readonly total: number;
+  readonly session: string;
+  readonly seq: bigint;
+  readonly source: SessionEventDeliveryMetadata['source'];
+  readonly receivedDuringLocalAttack: boolean;
+  readonly bypassDiceSettlement?: boolean;
 }
 
 export interface UseSessionCombatExperienceArgs {
@@ -199,8 +213,8 @@ export function useSessionCombatExperience({
    * moment the window closes, and it is matched to the offer it was recorded
    * for so a second window's panel can never borrow the first's numbers.
    */
-  const [rollWindow, setRollWindow] =
-    useState<CombatExperienceRollWindow | null>(null);
+  const [receivedRollWindow, setReceivedRollWindow] =
+    useState<ReceivedRollWindow | null>(null);
   const [showTurnNotice, setShowTurnNotice] = useState(false);
   const [pendingDeathSaveResponse, setPendingDeathSaveResponse] =
     useState<DeathSaveResponse>();
@@ -242,6 +256,40 @@ export function useSessionCombatExperience({
     memberNames: presentationMemberNames,
     memberRoles: presentationMemberRoles,
   });
+  const rollWindow = useMemo<CombatExperienceRollWindow | null>(() => {
+    const received = receivedRollWindow;
+    if (!received || received.session !== session) return null;
+    const matchingPresentation = presentation.state.presentations.find(
+      (record) =>
+        !record.conflicted &&
+        (record.responseAccepted ||
+          record.event?.body.case === 'rollWindowOpened') &&
+        record.localPlayerOwned &&
+        record.authority.kind === 'attack' &&
+        record.session === received.session &&
+        (received.presentationId
+          ? record.presentationId === received.presentationId
+          : record.seq === received.seq) &&
+        record.authority.roller === member &&
+        record.authority.roll === received.roll &&
+        record.authority.total === received.total
+    );
+    const awaitsDiceSettlement =
+      !received.bypassDiceSettlement &&
+      received.source === 'live' &&
+      (received.receivedDuringLocalAttack ||
+        (matchingPresentation !== undefined &&
+          matchingPresentation.settlement !== 'auto'));
+    return {
+      storyId: received.storyId,
+      offerRef: received.offerRef,
+      roll: received.roll,
+      total: received.total,
+      presentationId:
+        received.presentationId ?? matchingPresentation?.presentationId,
+      awaitsDiceSettlement,
+    };
+  }, [member, presentation.state.presentations, receivedRollWindow, session]);
   manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
     member,
@@ -441,7 +489,7 @@ export function useSessionCombatExperience({
             // The window is answered and its numbers are spent with it. The
             // next one brings its own beat; a leftover roll shown under a
             // later question would be a number from a die already resolved.
-            setRollWindow(null);
+            setReceivedRollWindow(null);
             invalidateAuthority();
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } catch (error) {
@@ -766,6 +814,16 @@ export function useSessionCombatExperience({
             // Keep the honest error, but never leave pre-command authority
             // armed or executable and never replay the mutation.
             const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            // A legacy window cannot identify its die without the response;
+            // keep that already-open choice answerable after response loss.
+            // A current window carries its own provider ID and can still roll.
+            setReceivedRollWindow((current) =>
+              current?.session === session &&
+              current.receivedDuringLocalAttack &&
+              !current.presentationId
+                ? { ...current, bypassDiceSettlement: true }
+                : current
+            );
             invalidateAuthority();
             setInteraction({
               ...EMPTY_INTERACTION,
@@ -1072,10 +1130,16 @@ export function useSessionCombatExperience({
         event.body.value.audience === member
       ) {
         const opened = event.body.value;
-        setRollWindow({
+        setReceivedRollWindow({
+          presentationId: opened.presentationId || undefined,
+          storyId: storyId(event),
           offerRef: opened.offer?.ref ?? '',
           roll: opened.roll,
           total: opened.total,
+          session: event.session,
+          seq: event.seq,
+          source: metadata.source,
+          receivedDuringLocalAttack: attackInFlightRef.current,
         });
       }
     },
