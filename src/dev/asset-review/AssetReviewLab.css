@@ -326,10 +326,20 @@
 }
 
 .asset-review-actions,
-.asset-review-export-actions {
+.asset-review-export-actions,
+.asset-review-batch-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.asset-review-batch-controls {
+  align-items: end;
+  padding-top: 4px;
+}
+
+.asset-review-batch-controls label {
+  flex: 1 1 210px;
 }
 
 .asset-review-actions .asset-review-ready {
