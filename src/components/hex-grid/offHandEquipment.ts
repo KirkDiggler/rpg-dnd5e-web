@@ -139,7 +139,23 @@ export function resolveOffHandPresentation(
 ): OffHandPresentationResolution {
   const ref = equipped.off_hand;
   if (!ref) return { code: 'empty-off-hand' };
-  const key = refKey(ref);
+  return resolveOffHandPresentationByRefKey(refKey(ref));
+}
+
+/**
+ * The same projection, keyed by an already-formatted ref string — the shape
+ * the sight seam sends a peer's observed hands in (`Seen.equipment`,
+ * rpg-toolkit#1615). Both entry points share one lookup so a peer and the
+ * local player cannot resolve the same shield differently.
+ *
+ * An empty string is a hand observed holding nothing. Having no observation at
+ * all is a different claim and never reaches this function; see
+ * `SightedMember.equipment`.
+ */
+export function resolveOffHandPresentationByRefKey(
+  key: string
+): OffHandPresentationResolution {
+  if (!key) return { code: 'empty-off-hand' };
   const item = ITEM_BY_REF.get(key);
   if (!item) return { code: 'unmapped-ref', ref: key };
   return {

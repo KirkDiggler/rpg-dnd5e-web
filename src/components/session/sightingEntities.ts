@@ -86,6 +86,23 @@ export interface SightedMember {
    * presumptuous reading; a producer bug here is the server's, not a
    * reason to draw a live monster face-down. */
   standing: Standing;
+  /**
+   * What this subject was observed holding, as ref strings the weapon and
+   * off-hand tables are keyed by (rpg-toolkit#1615).
+   *
+   * UNDEFINED IS NOT EMPTY HANDS. Undefined means nobody looked, or there was
+   * nothing with hands to look at — a skeleton has no character sheet. An
+   * object whose strings are empty means the hands WERE observed and they were
+   * empty. Drawing the first as the second would show a peer whose data has
+   * not arrived as a peer standing there unarmed, which is the exact confusion
+   * the seam carries this distinction to prevent.
+   *
+   * Read straight off `Sighting.seen.equipment`, which is per-observer
+   * testimony snapshotted when this subject was seen — so a remembered
+   * sighting keeps the hands it last saw rather than reporting a swap nobody
+   * witnessed.
+   */
+  equipment: { mainHand: string; offHand: string } | undefined;
 }
 
 /** Strips a subject id's trailing `-<ordinal>` (e.g. "skeleton-1" ->
@@ -123,6 +140,12 @@ export function sightingsToEntities(
       position: positionToCube(sighting.seen.position),
       remembered: sighting.currentVia.length === 0,
       standing: sighting.seen.standing,
+      equipment: sighting.seen.equipment
+        ? {
+            mainHand: sighting.seen.equipment.mainHand,
+            offHand: sighting.seen.equipment.offHand,
+          }
+        : undefined,
     });
   }
   return entities;
