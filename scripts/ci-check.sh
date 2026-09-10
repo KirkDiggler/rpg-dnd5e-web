@@ -80,11 +80,18 @@ fi
 echo ""
 echo "🧪 Running tests..."
 if npm run | grep -q "test"; then
-  if npm test -- --run > /dev/null 2>&1; then
+  # Keep the full test transcript in a user-owned temporary directory so a
+  # wrapper can inspect assertion output without making successful runs noisy.
+  TEST_LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rpg-dnd5e-web-ci-check.XXXXXX")
+  TEST_LOG="${TEST_LOG_DIR}/tests.log"
+  if npm test -- --run >"${TEST_LOG}" 2>&1; then
     echo -e "${GREEN}✓ Tests passed${NC}"
   else
-    echo -e "${RED}✗ Tests failed${NC}"
-    echo -e "${YELLOW}  Run 'npm test' to see failures${NC}"
+    echo -e "${RED}✗ Tests failed${NC}" >&2
+    echo -e "${YELLOW}  Full test output: ${TEST_LOG}${NC}" >&2
+    if ! cat "${TEST_LOG}" >&2; then
+      echo -e "${RED}  Unable to read the full test output above${NC}" >&2
+    fi
     FAILED=1
   fi
 else
