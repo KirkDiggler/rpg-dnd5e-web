@@ -39,6 +39,10 @@ Attack is panel-first in the first production cut:
 4. either an available canvas ring or target button echoes the exact declaration
    ID and member target.
 
+The targeting availability panel sits at the upper-left below the room label,
+not over the lower-map click area. Its height is capped and long candidate lists
+scroll internally; other context notices keep their existing positions.
+
 Unavailable candidate buttons are disabled, stay readable with provider
 `why.text`, and remain absent from canvas rings. Keyboard and screen-reader
 players therefore have the same panel-first target authority. They cannot
