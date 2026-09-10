@@ -22,6 +22,7 @@ export interface TargetSurfaceProps {
   location: { name: string; area: string };
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
+  onConfirmTargets?: () => void;
 }
 
 export function TargetSurface({
@@ -36,6 +37,7 @@ export function TargetSurface({
   location,
   renderMap,
   onTargetClick,
+  onConfirmTargets,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
   // WHICH SIDE A CANDIDATE IS ON IS NOT A QUESTION ASKED HERE. Afford already
@@ -70,6 +72,13 @@ export function TargetSurface({
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;
+  const selectedTargets = selection?.selectedCandidates ?? [];
+  const isMultiTargetCast =
+    declaration?.verb === Verb.CAST && declaration.maxTargets > 1;
+  const castCost = declaration?.cost
+    .filter((component) => component.needed > 0 && component.label)
+    .map((component) => `${component.needed} ${component.label}`)
+    .join(', ');
 
   return (
     <>
@@ -103,18 +112,40 @@ export function TargetSurface({
       {phase === 'targeting' && isMemberTargeted && (
         <div className={styles.contextPrompt} data-phase="targeting">
           <span className={styles.turnPromptKicker}>{armedName} armed</span>
-          <strong>Choose a target</strong>
+          <strong>
+            {declaration.verb === Verb.CAST
+              ? declaration.minTargets === 1 && declaration.maxTargets === 1
+                ? 'Choose a target'
+                : declaration.minTargets === declaration.maxTargets
+                  ? `Choose ${declaration.minTargets} targets`
+                  : `Choose ${declaration.minTargets}–${declaration.maxTargets} targets`
+              : 'Choose a target'}
+          </strong>
           <span>
-            {availableTargets.length} highlighted target
-            {availableTargets.length === 1 ? '' : 's'}
+            {isMultiTargetCast
+              ? `${selectedTargets.length}/${declaration.maxTargets} selected`
+              : `${availableTargets.length} highlighted target${availableTargets.length === 1 ? '' : 's'}`}
           </span>
+          {castCost && <span>{castCost}</span>}
           <ul className={styles.targetList} aria-label={`${armedName} targets`}>
             {declaration.candidates.map((candidate, index) => {
               const name =
                 memberNames.get(candidate.member) || candidate.member;
-              const status = candidate.available
-                ? 'Available'
-                : `Unavailable: ${candidate.why?.text || 'Unavailable'}`;
+              const selectedIndex = selectedTargets.findIndex(
+                (selected) => selected.member === candidate.member
+              );
+              const atTargetLimit =
+                isMultiTargetCast &&
+                selectedTargets.length >= declaration.maxTargets &&
+                selectedIndex < 0;
+              const status =
+                selectedIndex >= 0
+                  ? `Selected ${selectedIndex + 1}`
+                  : atTargetLimit
+                    ? 'Target limit reached'
+                    : candidate.available
+                      ? 'Available'
+                      : `Unavailable: ${candidate.why?.text || 'Unavailable'}`;
               return (
                 <li key={`${candidate.member}:${index}`}>
                   <button
@@ -124,9 +155,11 @@ export function TargetSurface({
                         ? styles.targetChoice
                         : `${styles.targetChoice} ${styles.targetChoiceUnavailable}`
                     }
-                    disabled={!candidate.available}
+                    disabled={!candidate.available || atTargetLimit}
                     onClick={() => {
-                      if (candidate.available) onTargetClick(candidate.member);
+                      if (candidate.available && !atTargetLimit) {
+                        onTargetClick(candidate.member);
+                      }
                     }}
                   >
                     {name}: {status}
@@ -135,6 +168,19 @@ export function TargetSurface({
               );
             })}
           </ul>
+          {isMultiTargetCast && onConfirmTargets && (
+            <button
+              type="button"
+              className={styles.targetChoice}
+              disabled={
+                selectedTargets.length < declaration.minTargets ||
+                selectedTargets.length > declaration.maxTargets
+              }
+              onClick={onConfirmTargets}
+            >
+              Cast at selected targets
+            </button>
+          )}
         </div>
       )}
       {phase === 'awaiting-roll' && targetName && (

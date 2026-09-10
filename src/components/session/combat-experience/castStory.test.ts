@@ -58,7 +58,7 @@ function castEvent(seq = 40n) {
       value: create(CastSchema, {
         actor: 'bard-1',
         spell: viciousMockery(),
-        target: 'skeleton-1',
+        targets: ['skeleton-1'],
       }),
     },
   });
@@ -95,6 +95,45 @@ function savedEvent({
         dc,
         succeeded,
         ...(withSource ? { source: viciousMockery() } : {}),
+        calculation: create(RollCalculationSchema, {
+          total,
+          components: [
+            create(RollComponentSchema, {
+              dice: create(DiceTraceSchema, {
+                notation: '1d20',
+                dieSize: 20,
+                originalRolls: [roll],
+                finalRolls: [roll],
+                subtotal: roll,
+              }),
+              source: create(RollSourceSchema, {
+                label: 'Saving throw',
+                sourceId: 'skeleton-1',
+              }),
+            }),
+            create(RollComponentSchema, {
+              modifier: 5,
+              source: create(RollSourceSchema, {
+                label: 'Wisdom modifier',
+                sourceId: 'skeleton-1',
+              }),
+            }),
+            create(RollComponentSchema, {
+              dice: create(DiceTraceSchema, {
+                notation: '1d4',
+                dieSize: 4,
+                originalRolls: [3],
+                finalRolls: [3],
+                subtotal: 3,
+              }),
+              subtractDice: true,
+              source: create(RollSourceSchema, {
+                name: 'Bane',
+                sourceId: 'bard-1',
+              }),
+            }),
+          ],
+        }),
       }),
     },
   });
@@ -155,6 +194,22 @@ describe('the cast beat', () => {
     expect(entry?.detail).toContain('Skeleton is the target');
   });
 
+  it('renders multiple cast targets in provider order', () => {
+    const event = castEvent();
+    if (event.body.case === 'cast') {
+      event.body.value.targets = ['skeleton-2', 'skeleton-1'];
+    }
+    const [entry] = buildCombatStory([visible(event)], {
+      ...context,
+      memberNames: {
+        ...context.memberNames,
+        'skeleton-2': 'Second Skeleton',
+      },
+    });
+
+    expect(entry?.detail).toBe('Targets in order: Second Skeleton, Skeleton.');
+  });
+
   it('narrates a cast that selects nobody without inventing a target', () => {
     const event = castEvent();
     event.body = {
@@ -165,7 +220,7 @@ describe('the cast beat', () => {
           ref: 'dnd5e:spells:true-strike',
           name: 'True Strike',
         }),
-        target: '',
+        targets: [],
       }),
     };
 
@@ -182,7 +237,11 @@ describe('the save beat', () => {
 
     expect(entry?.eyebrow).toBe('Skeleton · Vicious Mockery');
     expect(entry?.headline).toBe('Skeleton saves vs Vicious Mockery');
-    expect(entry?.detail).toBe('d20 7 + 2 = 9 against DC 13 · Failed');
+    expect(entry?.detail).toContain('1d20 [7]');
+    expect(entry?.detail).toContain('Saving throw (Skeleton)');
+    expect(entry?.detail).toContain('+ 5 Wisdom modifier (Skeleton)');
+    expect(entry?.detail).toContain('- 1d4 [3] Bane (Lyric)');
+    expect(entry?.detail).toContain('= 9 against DC 13 · Failed');
     expect(entry?.tone).toBe('danger');
   });
 
@@ -210,13 +269,15 @@ describe('the save beat', () => {
     expect(entry?.eyebrow).toBe('Skeleton · Saving throw');
   });
 
-  it('shows a negative modifier as a subtraction', () => {
-    const [entry] = buildCombatStory(
-      [visible(savedEvent({ roll: 12, total: 11 }))],
-      context
-    );
+  it('prints the calculation total the provider authored', () => {
+    const event = savedEvent({ roll: 12, total: 41 });
+    if (event.body.case === 'saved' && event.body.value.calculation) {
+      event.body.value.calculation.total = 41;
+    }
+    const [entry] = buildCombatStory([visible(event)], context);
 
-    expect(entry?.detail).toContain('d20 12 - 1 = 11');
+    expect(entry?.detail).toContain('= 41 against DC 13');
+    expect(entry?.detail).not.toContain('d20 12 + 29');
   });
 });
 

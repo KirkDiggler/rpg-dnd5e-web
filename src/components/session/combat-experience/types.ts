@@ -17,6 +17,8 @@ import type { DebugFeedEntry } from '../debugLogLine';
 export interface CombatExperiencePresentationState {
   armedDeclarationId: string | null;
   selectedCandidateMember: string | null;
+  /** Ordered cast targets; absent on legacy fixtures and unrelated verbs. */
+  selectedCandidateMembers?: readonly string[];
   changedOptionNotice: string | null;
 }
 
@@ -148,6 +150,7 @@ interface CombatExperienceBaseProps {
    * it as a candidate. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (targetId: string) => void;
+  onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onOpenEquipment?: () => void;

@@ -1706,6 +1706,7 @@ function SessionEncounterScope({
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
             onTargetClick={combat.onTargetClick}
+            onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
             // The log's own mode switch is deliberately NOT gated on the run
             // having ended: changing what the log shows is reading, and

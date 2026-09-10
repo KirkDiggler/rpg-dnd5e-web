@@ -7,14 +7,23 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
-function providerText(source: RollSource | undefined): string {
+type ResolveSourceName = (sourceId: string) => string | undefined;
+
+function providerText(
+  source: RollSource | undefined,
+  resolveSourceName?: ResolveSourceName
+): string {
   const value = source?.label || source?.name || '';
-  if (!value) return '';
   const requiresJsonQuoting =
     value.includes('"') ||
     value.includes('\\') ||
     [...value].some((character) => character.charCodeAt(0) <= 0x1f);
-  return requiresJsonQuoting ? JSON.stringify(value) : value;
+  const label = requiresJsonQuoting ? JSON.stringify(value) : value;
+  const contributor = source?.sourceId
+    ? (resolveSourceName?.(source.sourceId) ?? source.sourceId)
+    : '';
+  if (label && contributor) return `${label} (${contributor})`;
+  return label || contributor;
 }
 
 function rollFaces(trace: DiceTrace): string {
@@ -51,22 +60,39 @@ function formatDice(trace: DiceTrace | undefined): string | undefined {
 }
 
 type AdditiveTerm =
-  | { readonly kind: 'dice'; readonly text: string }
+  | {
+      readonly kind: 'dice';
+      readonly text: string;
+      readonly source: string;
+      readonly subtract: boolean;
+    }
   | {
       readonly kind: 'modifier';
       readonly value: number;
       readonly source: string;
     };
 
-function componentTerms(component: RollComponent): AdditiveTerm[] {
+function componentTerms(
+  component: RollComponent,
+  resolveSourceName?: ResolveSourceName
+): AdditiveTerm[] {
   const terms: AdditiveTerm[] = [];
   const dice = formatDice(component.dice);
-  if (dice) terms.push({ kind: 'dice', text: dice });
+  const source = providerText(component.source, resolveSourceName);
+  if (dice) {
+    terms.push({
+      kind: 'dice',
+      text: dice,
+      source:
+        component.subtractDice || component.source?.sourceId ? source : '',
+      subtract: component.subtractDice,
+    });
+  }
   if (component.modifier !== undefined) {
     terms.push({
       kind: 'modifier',
       value: component.modifier,
-      source: providerText(component.source),
+      source,
     });
   }
   return terms;
@@ -74,7 +100,9 @@ function componentTerms(component: RollComponent): AdditiveTerm[] {
 
 function appendAdditiveTerm(text: string, term: AdditiveTerm): string {
   if (term.kind === 'dice') {
-    return `${text}${text ? ' + ' : ''}${term.text}`;
+    const source = term.source ? ` ${term.source}` : '';
+    if (!text) return `${term.subtract ? '-' : ''}${term.text}${source}`;
+    return `${text} ${term.subtract ? '-' : '+'} ${term.text}${source}`;
   }
 
   const source = term.source ? ` ${term.source}` : '';
@@ -95,11 +123,14 @@ function formatAdditiveTerms(
  * It deliberately does not parse refs, validate rules, or derive any subtotal.
  */
 export function formatRollCalculation(
-  calculation: RollCalculation
+  calculation: RollCalculation,
+  resolveSourceName?: ResolveSourceName
 ): string | undefined {
   if (!calculation) return undefined;
   const expression = formatAdditiveTerms(
-    (calculation.components ?? []).flatMap(componentTerms)
+    (calculation.components ?? []).flatMap((component) =>
+      componentTerms(component, resolveSourceName)
+    )
   );
   return expression ? `${expression} = ${calculation.total}` : undefined;
 }

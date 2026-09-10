@@ -158,6 +158,7 @@ export function CombatExperience({
   renderMap,
   onSelectDeclaration,
   onTargetClick,
+  onConfirmTargets,
   onEndTurn,
   onLogModeChange,
   onOpenEquipment,
@@ -339,6 +340,7 @@ export function CombatExperience({
             location={location}
             renderMap={renderMap}
             onTargetClick={onTargetClick}
+            onConfirmTargets={onConfirmTargets}
           />
         </div>
 

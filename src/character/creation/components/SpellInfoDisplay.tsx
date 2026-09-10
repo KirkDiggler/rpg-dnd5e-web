@@ -15,12 +15,15 @@ interface SpellInfoDisplayProps {
    * rpg-project#405, §10). This section only reports what was chosen.
    */
   knownCantripRefs?: readonly string[];
+  /** Provider-declared levelled spell refs chosen with the class. */
+  knownSpellRefs?: readonly string[];
 }
 
 export function SpellInfoDisplay({
   spellcastingInfo,
   className,
   knownCantripRefs,
+  knownSpellRefs,
 }: SpellInfoDisplayProps) {
   const getAbilityDisplayName = (ability: string) => {
     const abilityMap: Record<string, string> = {
@@ -197,6 +200,34 @@ export function SpellInfoDisplay({
           </div>
           <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {knownCantripRefs.map((ref) => (
+              <li key={ref}>{spellRefLabel(ref)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {knownSpellRefs && knownSpellRefs.length > 0 && (
+        <div
+          className="p-3 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--bg-secondary)',
+            borderColor: 'var(--border-primary)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <BookOpen
+              className="w-4 h-4"
+              style={{ color: 'var(--accent-primary)' }}
+            />
+            <span
+              className="text-sm font-medium"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              Spells
+            </span>
+          </div>
+          <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {knownSpellRefs.map((ref) => (
               <li key={ref}>{spellRefLabel(ref)}</li>
             ))}
           </ul>
