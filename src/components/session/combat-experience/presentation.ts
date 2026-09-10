@@ -119,13 +119,14 @@ interface AuthoritySnapshot {
   readonly roller: string;
   /** Attack compatibility alias. Death Saves use roller directly. */
   readonly attacker: string;
-  readonly target: string;
+  /** A roll window has no target or outcome facts; absence is not a miss. */
+  readonly target?: string;
   readonly roll: number;
   readonly total: number;
-  readonly against: number;
-  readonly hit: boolean;
-  readonly critical: boolean;
-  readonly damage: number;
+  readonly against?: number;
+  readonly hit?: boolean;
+  readonly critical?: boolean;
+  readonly damage?: number;
   readonly attack?: AttackSnapshot;
   readonly deathSave?: DeathSaveSnapshot;
   readonly save?: SaveSnapshot;
@@ -202,6 +203,8 @@ export interface CombatPresentationRecord {
   readonly authority: AuthoritySnapshot;
   readonly responseAccepted: boolean;
   readonly eventAccepted: boolean;
+  /** Final outcome replaced this provisional response's presentation duties. */
+  readonly supersededByOutcome?: string;
   readonly event?: Event;
   /** Exact typed attack-body identity, including every nested roll fact. */
   readonly eventFacts?: string;
@@ -367,6 +370,27 @@ function authorityFromDeathSaveResponse(
 }
 
 function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
+  if (
+    event.body.case === 'rollWindowOpened' &&
+    event.kind === EventKind.ROLL_WINDOW_OPENED
+  ) {
+    const window = event.body.value;
+    // Legacy windows remain Story-only. A current window already carries
+    // the roll; its provider token joins it to the existing physical throw.
+    if (!window.presentationId) return undefined;
+    return freezeRecord({
+      kind: 'attack' as const,
+      session: event.session,
+      seq: event.seq,
+      authoritySeq: event.seq,
+      presentationId: window.presentationId,
+      roller: window.audience,
+      attacker: window.audience,
+      roll: window.roll,
+      total: window.total,
+      die: COMBAT_D20,
+    });
+  }
   if (event.body.case === 'struck' && event.kind === EventKind.STRUCK) {
     const struck = event.body.value;
     // The same token the attacker received on their AttackResponse. This
@@ -577,7 +601,8 @@ function attackEventFacts(event: Event): string | undefined {
     event.body.case !== 'struck' &&
     event.body.case !== 'missed' &&
     event.body.case !== 'deathSaveRolled' &&
-    event.body.case !== 'saved'
+    event.body.case !== 'saved' &&
+    event.body.case !== 'rollWindowOpened'
   ) {
     return undefined;
   }
@@ -595,14 +620,18 @@ function sameAuthority(
     first.presentationId === later.presentationId &&
     first.roller === later.roller &&
     first.attacker === later.attacker &&
-    first.target === later.target &&
     Object.is(first.roll, later.roll) &&
     Object.is(first.total, later.total) &&
-    Object.is(first.against, later.against) &&
-    first.hit === later.hit &&
-    first.critical === later.critical &&
-    Object.is(first.damage, later.damage) &&
-    sameAttack(first.attack, later.attack) &&
+    // The existing window is roll-only; the paired actor response may also
+    // identify the target/attack. Compare final facts only when both have them.
+    ((first.kind === 'attack' &&
+      (first.against === undefined || later.against === undefined)) ||
+      (first.target === later.target &&
+        Object.is(first.against, later.against) &&
+        first.hit === later.hit &&
+        first.critical === later.critical &&
+        Object.is(first.damage, later.damage) &&
+        sameAttack(first.attack, later.attack))) &&
     canonicalTypedIdentity(first.deathSave) ===
       canonicalTypedIdentity(later.deathSave) &&
     canonicalTypedIdentity(first.save) === canonicalTypedIdentity(later.save) &&
@@ -726,7 +755,7 @@ function diceEventsFor(
   for (const record of [...presentations].sort(
     (left, right) => left.order - right.order
   )) {
-    if (record.conflicted) continue;
+    if (record.conflicted || record.supersededByOutcome) continue;
     if (record.request) events.push(record.request);
     if (record.release) events.push(record.release);
   }
@@ -923,8 +952,57 @@ function addAttackRecord(
   }
 ): CombatPresentationState {
   const key = authorityKey(authority);
-  const { record, pending } = initialRecord(state, authority, options);
-  const presentations = Object.freeze([...state.presentations, record]);
+  const initial = initialRecord(state, authority, options);
+  // A post-roll choice has two Story beats but only one physical throw. The
+  // paused response's seq names its window; the eventual Struck/Missed has a
+  // later seq and may include an inspiration bonus. Its provider token still
+  // names the d20 the actor already settled, not a second throw to enqueue.
+  const settledResponse =
+    options.event &&
+    authority.kind === 'attack' &&
+    isDicePresentationIdentifier(authority.presentationId)
+      ? state.presentations.find(
+          (prior) =>
+            !prior.conflicted &&
+            (prior.responseAccepted ||
+              prior.event?.body.case === 'rollWindowOpened') &&
+            (!prior.eventAccepted ||
+              prior.event?.body.case === 'rollWindowOpened') &&
+            (prior.settlement === 'released' || prior.settlement === 'auto') &&
+            prior.authority.kind === 'attack' &&
+            prior.session === authority.session &&
+            prior.presentationId === authority.presentationId &&
+            prior.authority.attacker === authority.attacker &&
+            (prior.authority.target === undefined ||
+              prior.authority.target === authority.target) &&
+            prior.authority.roll === authority.roll &&
+            (!prior.authority.attack ||
+              prior.authority.attack.ref === authority.attack?.ref)
+        )
+      : undefined;
+  const record = settledResponse
+    ? Object.freeze({
+        ...initial.record,
+        request: settledResponse.request,
+        release: settledResponse.release,
+        settlement: settledResponse.settlement,
+        semanticFallback: settledResponse.semanticFallback,
+        locallyArmedResponse: false,
+      })
+    : initial.record;
+  const pending = initial.pending && !settledResponse;
+  // Retain the original response for duplicate/conflict checks, but retire its
+  // provisional presentation duties. It will never get an event at its own
+  // seq: without this transition it hides the target as "unresolved" forever,
+  // even after the final outcome and the monster's downed state have arrived.
+  const presentations = Object.freeze([
+    ...state.presentations.map((prior) =>
+      prior === settledResponse
+        ? Object.freeze({ ...prior, supersededByOutcome: key })
+        : prior
+    ),
+    record,
+  ]);
   return Object.freeze({
     ...state,
     identities: addIdentity(state, key, authority.kind),
@@ -1008,7 +1086,9 @@ function acceptResponse(
           ...current.authority,
           authoritySeq: authority.authoritySeq,
         })
-      : current.authority;
+      : current.authority.against === undefined
+        ? authority
+        : current.authority;
   const upgradedRequest = createRequest(state, upgradedAuthority);
   return replacePresentation(state, index, {
     ...current,
@@ -1515,7 +1595,16 @@ function acceptOtherEvent(
   fact: CombatStreamFact,
   relevantFacts: RelevantOtherEvent
 ): CombatPresentationState {
-  const key = storyAuthorityKey(fact.event.session, fact.event.seq);
+  // A paused AttackResponse and its RollWindowOpened beat legitimately share
+  // the attacker's recipient-local sequence: the response supplies the die
+  // presentation while the beat supplies the question. Keep the beat in the
+  // same ordered Story lane without treating those complementary facts as two
+  // competing bodies for one identity.
+  const storyKey = storyAuthorityKey(fact.event.session, fact.event.seq);
+  const key =
+    fact.event.body.case === 'rollWindowOpened'
+      ? `roll-window:${storyKey}`
+      : storyKey;
   const factsIdentity = canonicalTypedIdentity(relevantFacts);
   const identity = identityAt(state, key);
   if (identity) {
@@ -1940,7 +2029,13 @@ export function selectUnresolvedAttackTargets(
 ): ReadonlySet<string> {
   const targets = new Set<string>();
   for (const record of state.presentations) {
-    if (record.conflicted || record.authority.kind !== 'attack') continue;
+    if (
+      record.conflicted ||
+      record.supersededByOutcome ||
+      record.authority.kind !== 'attack' ||
+      !record.authority.target
+    )
+      continue;
     if (isVisible(record)) continue;
     targets.add(record.authority.target);
   }

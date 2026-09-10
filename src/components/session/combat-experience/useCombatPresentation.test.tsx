@@ -1834,7 +1834,7 @@ describe('StoryLog developer diagnostics gate', () => {
             round: 2,
             eyebrow: 'Aldric · Longsword',
             headline: 'Skeleton Guard evades Aldric',
-            detail: 'd20 3 · total 8 against AC 13 · Miss',
+            detail: 'd20 3 + 5 = 8 · Miss',
             tone: 'neutral',
           },
         ]}

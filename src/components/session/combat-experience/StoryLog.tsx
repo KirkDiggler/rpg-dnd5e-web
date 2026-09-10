@@ -4,6 +4,10 @@ import type { DebugFeedEntry } from '../debugLogLine';
 import styles from './CombatExperience.module.css';
 import { DebugEventRow } from './DebugEventRow';
 import { isCombatDebugEnabled } from './diagnostics';
+import {
+  formatAttackModifierSource,
+  formatAttackRollArithmetic,
+} from './story';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -40,7 +44,7 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
     : result.hit
       ? 'Hit'
       : 'Miss';
-  const rollDetail = `d20 ${result.d20} · total ${result.total} against AC ${result.against} · ${verdict}`;
+  const rollDetail = `${formatAttackRollArithmetic(result.d20, result.total)} · ${verdict}`;
   return (
     <article className={`${styles.storyEntry} ${styles.storyResult}`}>
       <span>
@@ -53,6 +57,25 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
           : `${result.target} evades ${result.actor}`}
       </strong>
       <p>{rollDetail}</p>
+      {result.modifierSources && result.modifierSources.length > 0 && (
+        <ul
+          className={styles.attackModifierSources}
+          aria-label="Attack roll influences"
+        >
+          {result.modifierSources.map((source, index) => (
+            <li
+              key={`${source.kind}:${source.sourceRef}:${source.sourceMemberId ?? ''}:${index}`}
+              data-source-ref={source.sourceRef}
+              data-influence={source.kind}
+            >
+              <span>
+                {source.kind === 'advantage' ? 'Advantage' : 'Disadvantage'}
+              </span>
+              <strong>{formatAttackModifierSource(source)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
       {result.hit && result.damage !== undefined && (
         <div className={styles.damageSummary}>
           <span>−{result.damage}</span>
