@@ -9,6 +9,7 @@ import { resolveRuntimeDiceSettlement } from '@/components/ui/dice/diceSettlemen
 import { RuntimeDiceMesh } from '@/components/ui/dice/RuntimeDiceMesh';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import { TrayPlaneProjectionBridge } from '@/components/ui/dice/TrayPlaneProjectionBridge';
+import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useFrame } from '@react-three/fiber';
@@ -22,6 +23,7 @@ import {
   type RapierRigidBody,
 } from '@react-three/rapier';
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -456,7 +458,42 @@ function DieBody({
   );
 }
 
-export function LocalWorldDieLayer({
+/** Warm the existing caches at scene entry, without a roll, body, or outcome.
+ * Mounting Physics primes Rapier's own Suspense cache (importing its module
+ * alone does not). Release the empty paused world once initialization commits.
+ * Failures are best-effort here; a real attempt retains its normal fallback.
+ */
+export function LocalWorldDieWarmup() {
+  const [physicsWarm, setPhysicsWarm] = useState(false);
+  const handleWarm = useCallback(() => setPhysicsWarm(true), []);
+  useEffect(() => {
+    // The provider retains failures; the actual roll handles that snapshot.
+    void preloadDiceRuntimePreset(PRESET_ID).catch(() => undefined);
+  }, []);
+  return (
+    <ErrorBoundary fallback={<></>}>
+      <Suspense fallback={null}>
+        {!physicsWarm && (
+          <Physics paused>
+            <WorldReady onReady={handleWarm} />
+          </Physics>
+        )}
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+export function LocalWorldDieLayer(props: LocalWorldDieLayerProps) {
+  return (
+    <ErrorBoundary fallback={<></>} onError={() => props.onTerminal('failure')}>
+      <Suspense fallback={null}>
+        <LocalWorldDieAttempt {...props} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function LocalWorldDieAttempt({
   command,
   scene,
   colliders,

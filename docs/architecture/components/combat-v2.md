@@ -132,6 +132,15 @@ also fences reversed responses and key changes like Afford.
 
 ## Story, dice, and diagnostics
 
+At session-scene entry, `LocalWorldDieWarmup` primes the existing dice asset
+provider and Rapier's own initialization cache. Its empty physics world is
+paused and released after initialization; no die, outcome, or roll command is
+created. A real attempt still owns its scene/collider snapshot and readiness.
+Both warmup and attempt have local Suspense boundaries so a cold or overlapping
+load cannot hide the dungeon. Warmup is best-effort: asset failures remain in
+the provider snapshot, and actual physics failures report the existing die
+failure terminal rather than replacing the game screen.
+
 The presentation reducer keeps recipient-local Story ordering while the
 provider's opaque `presentation_id` names one shared d20 across phases and
 recipients. An identified RollWindowOpened already supplies the rolled face to

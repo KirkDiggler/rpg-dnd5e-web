@@ -52,6 +52,10 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
   return { ...actual, useLoader };
 });
 
+vi.mock('./local-world-die/LocalWorldDieLayer', () => ({
+  LocalWorldDieWarmup: () => <group name="dice-runtime-entry-warmup" />,
+}));
+
 const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
@@ -570,6 +574,10 @@ describe('SessionScene', () => {
       />
     );
 
+    // Entry warming must mount even with no roll/presentation layer.
+    expect(
+      renderer.scene.findByProps({ name: 'dice-runtime-entry-warmup' })
+    ).toBeDefined();
     const doorGroup = renderer.scene.find((node) => {
       if (
         node.fiber.type !== 'group' ||
