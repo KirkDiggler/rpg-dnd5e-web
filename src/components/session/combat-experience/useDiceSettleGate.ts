@@ -71,7 +71,7 @@ export interface UseDiceSettleGateResult {
 export interface DiceChoiceSettlementGate {
   /** A caught-up/recovered window has no local physical die to await. */
   awaitsDiceSettlement: boolean;
-  /** The window's paired provider presentation token, absent event-first. */
+  /** The window's provider token; absent for an unpaired legacy window. */
   presentationId?: string;
   /** The presentation currently mounted in the local world-die path. */
   activePresentationId?: string;

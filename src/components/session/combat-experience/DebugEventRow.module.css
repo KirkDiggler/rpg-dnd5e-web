@@ -1,0 +1,75 @@
+.row {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.row > summary {
+  overflow: hidden;
+  padding: 4px 2px;
+  color: #c5dce8;
+  cursor: pointer;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row > summary:focus-visible,
+.copy:focus-visible {
+  outline: 2px solid #88cffa;
+  outline-offset: 2px;
+}
+
+.copy {
+  margin: 6px 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(136, 207, 250, 0.4);
+  border-radius: 4px;
+  color: #d1e8f4;
+  background: #15232b;
+  cursor: pointer;
+  font: inherit;
+}
+
+.json {
+  max-height: 340px;
+  margin: 0 0 6px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 4px;
+  color: #c6ced4;
+  background: #080f14;
+  font:
+    11px/1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre;
+  user-select: text;
+}
+
+.json [data-json-token='key'] {
+  color: #88cffa;
+}
+.json [data-json-token='string'] {
+  color: #a8dfbb;
+}
+.json [data-json-token='number'] {
+  color: #f6c77d;
+}
+.json [data-json-token='boolean'] {
+  color: #d8acff;
+}
+.json [data-json-token='null'] {
+  color: #c1c7cc;
+}
+
+.notice {
+  margin: 4px 0;
+  color: #f6c77d;
+}
+
+.fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

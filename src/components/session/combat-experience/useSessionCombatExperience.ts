@@ -21,6 +21,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -59,6 +60,7 @@ interface StaleRecovery {
 }
 
 interface ReceivedRollWindow {
+  readonly presentationId?: string;
   readonly storyId: string;
   readonly offerRef: string;
   readonly roll: number;
@@ -90,7 +92,7 @@ export interface UseSessionCombatExperienceResult {
   showTurnNotice: boolean;
   logMode: CombatExperienceLogMode;
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly string[];
+  debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll window is asking about, and the offer it was
    * recorded against. Null when no such beat is outstanding. */
@@ -260,11 +262,14 @@ export function useSessionCombatExperience({
     const matchingPresentation = presentation.state.presentations.find(
       (record) =>
         !record.conflicted &&
-        record.responseAccepted &&
+        (record.responseAccepted ||
+          record.event?.body.case === 'rollWindowOpened') &&
         record.localPlayerOwned &&
         record.authority.kind === 'attack' &&
         record.session === received.session &&
-        record.seq === received.seq &&
+        (received.presentationId
+          ? record.presentationId === received.presentationId
+          : record.seq === received.seq) &&
         record.authority.roller === member &&
         record.authority.roll === received.roll &&
         record.authority.total === received.total
@@ -273,13 +278,15 @@ export function useSessionCombatExperience({
       !received.bypassDiceSettlement &&
       received.source === 'live' &&
       (received.receivedDuringLocalAttack ||
-        matchingPresentation !== undefined);
+        (matchingPresentation !== undefined &&
+          matchingPresentation.settlement !== 'auto'));
     return {
       storyId: received.storyId,
       offerRef: received.offerRef,
       roll: received.roll,
       total: received.total,
-      presentationId: matchingPresentation?.presentationId,
+      presentationId:
+        received.presentationId ?? matchingPresentation?.presentationId,
       awaitsDiceSettlement,
     };
   }, [member, presentation.state.presentations, receivedRollWindow, session]);
@@ -807,11 +814,13 @@ export function useSessionCombatExperience({
             // Keep the honest error, but never leave pre-command authority
             // armed or executable and never replay the mutation.
             const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
-            // A live window can beat a lost Attack response onto the stream.
-            // No provider token or physical throw can then arrive, so keep the
-            // backend's already-open choice answerable without a timeout.
+            // A legacy window cannot identify its die without the response;
+            // keep that already-open choice answerable after response loss.
+            // A current window carries its own provider ID and can still roll.
             setReceivedRollWindow((current) =>
-              current?.session === session && current.receivedDuringLocalAttack
+              current?.session === session &&
+              current.receivedDuringLocalAttack &&
+              !current.presentationId
                 ? { ...current, bypassDiceSettlement: true }
                 : current
             );
@@ -1122,6 +1131,7 @@ export function useSessionCombatExperience({
       ) {
         const opened = event.body.value;
         setReceivedRollWindow({
+          presentationId: opened.presentationId || undefined,
           storyId: storyId(event),
           offerRef: opened.offer?.ref ?? '',
           roll: opened.roll,

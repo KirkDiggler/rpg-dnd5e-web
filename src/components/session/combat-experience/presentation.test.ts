@@ -22,7 +22,10 @@ import {
   selectVisibleStory,
   type CombatPresentationState,
 } from './presentation';
-import { createAttackAuthorityFixture } from './presentation.test-fixtures';
+import {
+  createAttackAuthorityFixture,
+  debugText,
+} from './presentation.test-fixtures';
 
 /** Longer than the 128-byte presentation-id cap, so it fails validation. */
 const UNSAFE_PRESENTATION_ID = 'x'.repeat(129);
@@ -115,7 +118,84 @@ function expectConflictClosed(state: CombatPresentationState) {
   expect(selectCurrentPresentation(state)).toBe(state.presentations[0]);
 }
 
+function identifiedWindowFact() {
+  return {
+    type: 'stream-event' as const,
+    event: create(EventSchema, {
+      session: 'crypt-run',
+      seq: 23n,
+      kind: EventKind.ROLL_WINDOW_OPENED,
+      body: {
+        case: 'rollWindowOpened' as const,
+        value: create(RollWindowOpenedSchema, {
+          presentationId: 'shared-window-roll',
+          audience: 'aldric',
+          roll: 9,
+          total: 13,
+          offer: {
+            ref: 'dnd5e:conditions:inspired',
+            name: 'Bardic Inspiration',
+          },
+        }),
+      },
+    }),
+    metadata: { source: 'live' as const },
+  };
+}
+
 describe('combat presentation authority reconciliation', () => {
+  it('supplies the spectator die from the existing identified window before an outcome', () => {
+    const state = reduceCombatPresentation(
+      emptyPresentation({ ...config, viewerMember: 'mira' }),
+      identifiedWindowFact()
+    );
+    expect(selectCurrentDiceEvents(state)[0]).toMatchObject({
+      presentationId: 'shared-window-roll',
+      roller: { entityId: 'aldric', role: 'player' },
+      die: { authoritativeResult: 9 },
+    });
+    expect(selectVisibleResult(state)).toBeUndefined();
+    expect(selectCurrentPresentation(state)?.authority.target).toBeUndefined();
+    expect(selectCurrentPresentation(state)?.authority.hit).toBeUndefined();
+  });
+
+  it.each(['event-first', 'response-first'])(
+    'reconciles the owner window %s without another die',
+    (order) => {
+      const response = createAttackAuthorityFixture({
+        presentationId: 'shared-window-roll',
+        roll: 9,
+        total: 13,
+        against: 0,
+        hit: false,
+        damage: 0,
+      }).responseFact;
+      const facts =
+        order === 'event-first'
+          ? [identifiedWindowFact(), response]
+          : [response, identifiedWindowFact()];
+      let state = emptyPresentation(config);
+      for (const fact of facts) state = reduceCombatPresentation(state, fact);
+      expect(state.presentations).toHaveLength(1);
+      expect(selectCurrentPresentation(state)?.conflicted).toBe(false);
+      expect(selectCurrentPresentation(state)?.authority.target).toBe(
+        'skeleton-guard'
+      );
+      expect(requestCount(state)).toBe(1);
+      state = reduceCombatPresentation(state, releaseFact(state));
+      const outcome = createAttackAuthorityFixture({
+        seq: 24n,
+        presentationId: 'shared-window-roll',
+        roll: 9,
+        total: 17,
+      });
+      state = reduceCombatPresentation(state, outcome.streamFact());
+      expect(selectVisibleResult(state)).toMatchObject({ d20: 9, total: 17 });
+      expect(selectCurrentPresentation(state)?.settlement).toBe('released');
+      expect(requestCount(state)).toBe(1);
+    }
+  );
+
   it('does not re-arm a settled post-roll d20 when its outcome arrives at a later sequence', () => {
     const paused = createAttackAuthorityFixture({
       seq: 23n,
@@ -214,7 +294,7 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(reconciled)).toEqual([]);
     expect(selectVisibleResult(reconciled)).toBeUndefined();
     expect(selectLiveAnnouncement(reconciled)).toBeNull();
-    expect(reconciled.debug[0]).toContain('struck');
+    expect(debugText(reconciled.debug[0])).toContain('struck');
 
     const released = reduceCombatPresentation(
       reconciled,

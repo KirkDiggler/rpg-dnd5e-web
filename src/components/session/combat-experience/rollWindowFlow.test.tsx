@@ -150,7 +150,12 @@ function movementWindowDeclaration(): Declaration {
   });
 }
 
-function rollWindowBeat(audience: string, roll: number, total: number) {
+function rollWindowBeat(
+  audience: string,
+  roll: number,
+  total: number,
+  presentationId = ''
+) {
   return create(EventSchema, {
     session: 'crypt-run',
     recipient: audience,
@@ -159,6 +164,7 @@ function rollWindowBeat(audience: string, roll: number, total: number) {
     body: {
       case: 'rollWindowOpened',
       value: create(RollWindowOpenedSchema, {
+        presentationId,
         audience,
         roll,
         total,
@@ -441,6 +447,41 @@ describe('answering a post-roll window on your own d20', () => {
     expect(hoisted.reactFn.mock.calls[0][0].choice).toBe(ReactChoice.HOLD);
     expect(hoisted.reactFn.mock.calls[0][0].choice).not.toBe(
       ReactChoice.UNSPECIFIED
+    );
+  });
+
+  it('uses the identified window for a witness die without exposing owner controls', async () => {
+    const beat = rollWindowBeat('fighter-1', 9, 13, 'provider~window-die');
+    beat.recipient = 'bard-1';
+    render(<Harness viewer="bard-1" declarations={[]} beat={beat} />);
+    await screen.findByText('yes');
+    expect(screen.getByTestId('active-dice-presentation-id').textContent).toBe(
+      'provider~window-die'
+    );
+    expect(screen.getByTestId('roll-window-presentation-id').textContent).toBe(
+      ''
+    );
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(hoisted.reactFn).not.toHaveBeenCalled();
+  });
+
+  it('arms the identified owner window before its RPC response exists', async () => {
+    render(
+      <Harness
+        declarations={[rollWindowDeclaration()]}
+        beat={rollWindowBeat('fighter-1', 9, 13, 'provider~early-window')}
+      />
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('active-dice-presentation-id').textContent
+      ).toBe('provider~early-window')
+    );
+    expect(screen.getByTestId('roll-window-presentation-id').textContent).toBe(
+      'provider~early-window'
+    );
+    expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+      'yes'
     );
   });
 

@@ -2427,6 +2427,7 @@ describe('SessionEncounterView production combat integration', () => {
           {
             case: 'rollWindowOpened',
             value: create(RollWindowOpenedSchema, {
+              presentationId: 'presentation_postroll-choice',
               audience: 'char-1',
               offer: create(ReactionRefSchema, {
                 ref: 'dnd5e:conditions:inspired',
