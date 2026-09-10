@@ -140,7 +140,12 @@ function uniqueCurrentDeclaration(
   declarations: readonly Declaration[],
   candidate: Declaration,
   verb: Verb,
-  targetKind: TargetKind
+  // ONE OR MORE KINDS, because a verb can have more than one shape that means
+  // "resolve now". A cast fires immediately whether it names nobody (True
+  // Strike, on the caster) or names a shape and lets the server work out who
+  // is standing in it (Thunderclap). A rest parameter widens this without
+  // touching the single-kind callers.
+  ...targetKinds: readonly TargetKind[]
 ): Declaration | undefined {
   const matches = declarations.filter(
     (declaration) => declaration.id === candidate.id
@@ -151,7 +156,7 @@ function uniqueCurrentDeclaration(
     !current ||
     current.id.length === 0 ||
     current.verb !== verb ||
-    current.targetKind !== targetKind ||
+    !targetKinds.includes(current.targetKind) ||
     !current.available
   ) {
     return undefined;
@@ -644,6 +649,12 @@ export function useSessionCombatExperience({
       // does. Vicious Mockery names a creature, so it arms and waits for a
       // candidate the server ruled; True Strike is cast on the caster, so
       // there is nothing to wait for and it fires on the click.
+      //
+      // AREA fires on the click too, for a different reason worth keeping
+      // straight: not that the spell lands on the caster, but that nobody is
+      // chosen at all. The server derives who is caught from the shape the
+      // spell declares, so the declaration carries no candidates and there is
+      // nothing here to prompt for.
       if (candidate.verb === Verb.CAST) {
         if (candidate.targetKind === TargetKind.MEMBER) {
           const current = uniqueCurrentDeclaration(
@@ -1074,7 +1085,8 @@ export function useSessionCombatExperience({
         declarationsRef.current,
         candidate,
         Verb.CAST,
-        TargetKind.NONE
+        TargetKind.NONE,
+        TargetKind.AREA
       );
       if (!current) return;
 

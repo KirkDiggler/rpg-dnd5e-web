@@ -130,6 +130,24 @@ function trueStrikeDeclaration(): Declaration {
   });
 }
 
+/**
+ * An AREA cast: the content declares a shape and the SERVER works out who is
+ * standing in it, so the declaration carries no candidates at all.
+ */
+function thunderclapDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.thunderclap',
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.AREA,
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderclap',
+      name: 'Thunderclap',
+    }),
+  });
+}
+
 /** A fighter's swing, for the rows that must not change. */
 function attackDeclaration(): Declaration {
   return create(DeclarationSchema, {
@@ -440,6 +458,42 @@ describe('a declaration that fires on the click clears whatever was armed', () =
     // panel still showed Vicious Mockery selected and the target surface still
     // open. Move and Death Save always cleared; the cast and activate paths
     // did not, and nothing the player could see said which action had gone.
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+});
+
+describe('an area cast fires on the click', () => {
+  // Its own reset: the mock-clearing beforeEach above belongs to 'sending the
+  // cast', and a shared spy that counts calls from a previous block reports a
+  // failure that has nothing to do with this test.
+  beforeEach(() => {
+    hoisted.castFn.mockReset();
+    hoisted.castFn.mockResolvedValue({});
+  });
+
+  it('sends no targets, because nobody was chosen', async () => {
+    const declaration = thunderclapDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(declaration);
+      await Promise.resolve();
+    });
+
+    // THE BUG THIS PINS: onCast used to demand TargetKind.NONE exactly, so an
+    // AREA declaration failed the guard and returned bare — the row drew, the
+    // click did nothing, and nothing was logged. It reached a player as a
+    // spell that simply would not cast.
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'crypt-run',
+      member: 'bard-1',
+      declarationId: 'selector.cast.thunderclap',
+      target: '',
+      targets: [],
+    });
+    // Nothing armed and no prompt: an area cast chooses nobody, which is a
+    // different reason from True Strike's but the same outcome here.
     expect(screen.getByTestId('armed').textContent).toBe('none');
   });
 });
