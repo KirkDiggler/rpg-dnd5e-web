@@ -619,42 +619,6 @@ function generatedCatalog(fixture: Fixture) {
   return `export const providerCommit = '${fixture.mergeSha}';\ncombination: 'human:bard'\ncombination: 'elf:bard'\n`;
 }
 
-async function writeResumeMarker(fixture: Fixture, webWorktree: string) {
-  const markerPath = (
-    await git(
-      webWorktree,
-      'rev-parse',
-      '--path-format=absolute',
-      '--git-path',
-      'exposure-provider-appearances-guard-failure.json'
-    )
-  ).stdout.trim();
-  const catalog = await readFile(
-    join(webWorktree, 'src/generated/characterCustomizationCatalog.ts')
-  );
-  const marker = {
-    schemaVersion: 1,
-    tool: 'expose-provider-character-appearances@2',
-    phase: 'assets-sync-catalog-path-guard-failed',
-    issue: 1012,
-    branch: 'feat/1012-bard-provider-exposure',
-    webHead: (
-      await git(webWorktree, 'rev-parse', 'HEAD^{commit}')
-    ).stdout.trim(),
-    providerHead: fixture.mergeSha,
-    receiptSha256: sha256(await readFile(fixture.receiptPath)),
-    catalogSha256: sha256(catalog),
-    statusEntries: [
-      {
-        status: ' M',
-        path: 'src/generated/characterCustomizationCatalog.ts',
-      },
-    ],
-  };
-  await writeFile(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
-  return markerPath;
-}
-
 async function prepareResumeFixture(fixture: Fixture) {
   const providerWorktree = join(
     fixture.provider,
@@ -685,8 +649,7 @@ async function prepareResumeFixture(fixture: Fixture) {
     generatedCatalog(fixture)
   );
   fixture.env.WEB_WORKTREE = webWorktree;
-  const markerPath = await writeResumeMarker(fixture, webWorktree);
-  return { providerWorktree, webWorktree, markerPath };
+  return { providerWorktree, webWorktree };
 }
 
 async function advanceWebDev(fixture: Fixture) {
@@ -986,25 +949,6 @@ describe('receipt-driven provider exposure wrapper', () => {
       code: expect.any(Number),
       stderr: expect.stringContaining('package.json'),
     });
-    const markerPath = (
-      await git(
-        join(fixture.root, 'web-worktree'),
-        'rev-parse',
-        '--path-format=absolute',
-        '--git-path',
-        'exposure-provider-appearances-guard-failure.json'
-      )
-    ).stdout.trim();
-    const marker = JSON.parse(await readFile(markerPath, 'utf8'));
-    expect(marker).toMatchObject({
-      phase: 'assets-sync-catalog-path-guard-failed',
-      statusEntries: [
-        expect.objectContaining({
-          path: 'src/generated/characterCustomizationCatalog.ts',
-          originalPath: 'package.json',
-        }),
-      ],
-    });
   });
 
   it('plans a read-only pre-commit resume from the exact owned state', async () => {
@@ -1032,39 +976,56 @@ describe('receipt-driven provider exposure wrapper', () => {
     expect(await readFile(fixture.calls, 'utf8')).not.toContain('npm ');
   });
 
-  it('rejects resume without a verified guard-failure marker', async () => {
-    const fixture = await makeFixture();
-    const { markerPath } = await prepareResumeFixture(fixture);
-    await rm(markerPath);
-
-    await expect(runCli(fixture, ['--resume'])).rejects.toMatchObject({
-      code: expect.any(Number),
-      stderr: expect.stringContaining(
-        'requires a verified catalog-path guard-failure marker'
-      ),
-    });
-  });
-
   it.each([
     ['focused tests', 'FAIL_FOCUSED'],
     ['CI', 'FAIL_CI'],
   ])(
-    'does not treat a resumed %s failure as another resumable path-guard failure',
+    'stops a still-failing %s before staging and allows recovered retry',
     async (_phase, environment) => {
       const fixture = await makeFixture();
       await prepareResumeFixture(fixture);
       fixture.env[environment] = '1';
+
       await expect(
         runCli(fixture, ['--apply', '--resume'])
       ).rejects.toBeDefined();
-      delete fixture.env[environment];
+      const firstCalls = await readFile(fixture.calls, 'utf8');
+      expect(firstCalls).not.toContain('pr create');
+      expect(
+        (
+          await git(
+            join(fixture.root, 'web-worktree'),
+            'diff',
+            '--cached',
+            '--name-only'
+          )
+        ).stdout
+      ).toBe('');
+      if (environment === 'FAIL_FOCUSED')
+        expect(firstCalls).not.toContain('npm run ci-check');
+      else expect(firstCalls).toContain('npm run ci-check');
 
-      await expect(runCli(fixture, ['--resume'])).rejects.toMatchObject({
-        code: expect.any(Number),
-        stderr: expect.stringContaining(
-          'requires a verified catalog-path guard-failure marker'
-        ),
-      });
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).rejects.toBeDefined();
+      const stillFailedCalls = await readFile(fixture.calls, 'utf8');
+      expect(stillFailedCalls).not.toContain('pr create');
+      expect(
+        (
+          await git(
+            join(fixture.root, 'web-worktree'),
+            'diff',
+            '--cached',
+            '--name-only'
+          )
+        ).stdout
+      ).toBe('');
+
+      delete fixture.env[environment];
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).resolves.toBeDefined();
+      expect(await readFile(fixture.calls, 'utf8')).toContain('pr create');
     }
   );
 
@@ -1075,7 +1036,6 @@ describe('receipt-driven provider exposure wrapper', () => {
       join(webWorktree, 'src/generated/characterCustomizationCatalog.ts'),
       Buffer.from([0x80])
     );
-    await writeResumeMarker(fixture, webWorktree);
     fixture.env.COLLIDING_BYTES = '1';
 
     await expect(
@@ -1158,7 +1118,7 @@ describe('receipt-driven provider exposure wrapper', () => {
           'not provider output\n'
         );
       },
-      'resume phase marker does not match',
+      'does not match fresh generator output from the verified provider',
     ],
     [
       'a staged later phase',
