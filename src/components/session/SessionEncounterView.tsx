@@ -632,7 +632,13 @@ function SessionEncounterScope({
       : 1;
   const [localWorldDieWitnessActive, setLocalWorldDieWitnessActive] =
     useState(false);
-  const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
+  const [
+    localWorldDieSettledPresentationId,
+    setLocalWorldDieSettledPresentationId,
+  ] = useState<string>();
+  const localWorldDieSettled =
+    localWorldDieSettledPresentationId !== undefined &&
+    localWorldDieSettledPresentationId === localWorldDieRequest?.presentationId;
   const [localWorldDiePresentationFailed, setLocalWorldDiePresentationFailed] =
     useState(false);
   const localWorldDiePhysical =
@@ -756,7 +762,7 @@ function SessionEncounterScope({
     });
     admittedWitnessPlans.current.clear();
     setLocalWorldDieWitnessActive(false);
-    setLocalWorldDieSettled(false);
+    setLocalWorldDieSettledPresentationId(undefined);
     setLocalWorldDiePresentationFailed(false);
     setLocalWorldDiePendingRoll(false);
     localWorldDieProfile.current = undefined;
@@ -953,7 +959,7 @@ function SessionEncounterScope({
       );
     setLocalWorldDiePresentationFailed(false);
     setLocalWorldDiePendingRoll(false);
-    setLocalWorldDieSettled(true);
+    setLocalWorldDieSettledPresentationId(request.presentationId);
     setLocalWorldDieRolling(false);
     setLocalWorldDieCommand({
       id: localWorldDieCommandId.current++,
@@ -1000,7 +1006,7 @@ function SessionEncounterScope({
       const request = localWorldDieRequest;
       const profile = localWorldDieProfile.current;
       if (!request || !profile) return;
-      setLocalWorldDieSettled(true);
+      setLocalWorldDieSettledPresentationId(request.presentationId);
       setLocalWorldDieRolling(false);
       setLocalWorldDieCommand({
         id: localWorldDieCommandId.current++,
@@ -1651,6 +1657,9 @@ function SessionEncounterScope({
             diceRollerName={combat.diceRollerName}
             localWorldDieControl={localWorldDieControl}
             localWorldDieSettled={localWorldDieSettled}
+            localWorldDieSettledPresentationId={
+              localWorldDieSettledPresentationId
+            }
             location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (

@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-31
+updated: 2026-09-08
 confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -62,11 +62,18 @@ let it rot.
   likewise retains an in-flight invalidation for a trailing owner snapshot.
   Query generations fence reversed/key-stale completions and disposed refresh
   schedulers are inert. Actor Story/dice remain concealed until release;
-  witnesses/history auto-settle. Story is always available; raw Debug renders
-  only in development/explicit Concepts diagnostics and has no live region.
-  Run-ended presentation closes equipment immediately, places an inert/hidden
-  game surface beneath the focused `aria-modal` action, and layers the modal
-  above every panel. A transient private refresh error keeps the last confirmed
+  witnesses/history auto-settle. Post-roll Spend/Keep waits without a timer for
+  the exact provider-tokened local d20 terminal, handles either arrival order,
+  and passes through reconnect/catch-up or explicit no-animation paths.
+  Player-facing attack lines show
+  `d20 + modifier = total` and omit target AC; raw Debug retains the provider
+  `against` field. Resolved Struck advantage/disadvantage sources use only typed
+  source ref/member and attacker/target facts, with absent facts left absent.
+  Story is always available; raw Debug renders only in development/explicit
+  Concepts diagnostics and has no live region.
+  Run-ended presentation closes equipment immediately and shows a toast
+  (#1001), preserving camera and log access while disabling gameplay verbs.
+  A transient private refresh error keeps the last confirmed
   CharacterData and cannot freeze newer door/path state. Typed
   Activated/ActivationResult events render one ordered Story entry per event:
   provider names drive abilities and conditions, healing reports the applied HP

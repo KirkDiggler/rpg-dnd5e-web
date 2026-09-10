@@ -158,8 +158,8 @@
 .localWorldDieControlLayer {
   position: absolute;
   z-index: 7;
-  top: 104px;
-  right: 346px;
+  bottom: 188px;
+  left: 14px;
 }
 
 .localWorldDieTile {
@@ -382,10 +382,25 @@
 }
 
 .contextPrompt[data-phase='targeting'] {
+  top: 136px;
+  bottom: auto;
+  left: 24px;
+  width: min(300px, calc(100% - 48px));
+  min-width: 0;
+  max-width: 300px;
+  max-height: min(320px, calc(100% - 152px));
+  overflow: hidden;
+  transform: none;
   border-color: rgba(249, 115, 22, 0.72);
   box-shadow:
     0 0 0 2px rgba(249, 115, 22, 0.12),
     0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.contextPrompt[data-phase='targeting'] > .targetList {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .contextPrompt[data-phase='awaiting-roll'] {
@@ -767,6 +782,35 @@
   color: var(--sc-muted);
   font-size: 10px;
   line-height: 1.35;
+}
+
+.attackModifierSources {
+  display: grid;
+  gap: 4px;
+  margin: 7px 0 0;
+  padding: 7px 0 0;
+  border-top: 1px solid var(--sc-line);
+  list-style: none;
+}
+
+.attackModifierSources li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.attackModifierSources span {
+  color: var(--sc-gold);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.attackModifierSources strong {
+  margin: 0;
+  font-size: 10px;
 }
 
 .story_success {

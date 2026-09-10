@@ -51,6 +51,25 @@ export interface CombatExperienceStoryExchange {
 }
 
 /** Presentation projection of an already-authoritative typed attack event. */
+export interface CombatExperienceAttackModifierSource {
+  /** Whether this source granted advantage or imposed disadvantage. */
+  kind: 'advantage' | 'disadvantage';
+  /** Exact canonical source ref from the resolved strike. */
+  sourceRef: string;
+  /** Presentation label resolved from the canonical ref. */
+  label: string;
+  /** Exact member id attributed by the rules owner, when present. */
+  sourceMemberId?: string;
+  /** Public-roster name for sourceMemberId, never inferred from the ref. */
+  sourceMemberName?: string;
+  /** The resolved attack's authoritative attacker and target. */
+  attackerId: string;
+  targetId: string;
+  attackerName: string;
+  targetName: string;
+  sourceIsViewer: boolean;
+}
+
 export interface CombatExperienceAttackOutcome {
   attackId: string;
   session?: string;
@@ -71,6 +90,8 @@ export interface CombatExperienceAttackOutcome {
   critical: boolean;
   damage?: number;
   damageType?: string;
+  /** Typed Struck attribution. Missed cannot supply this on the current wire. */
+  modifierSources?: readonly CombatExperienceAttackModifierSource[];
   /** Whether the viewer is the one being hit. Resolved from the raw member
    * id at projection time, never by matching display names — two members may
    * share a name, and "was that me?" must not depend on that. */
@@ -93,6 +114,12 @@ export interface CombatExperienceRollWindow {
   roll: number;
   /** The face plus the attacker's bonuses, and nothing the answer would add. */
   total: number;
+  /** Exact Story entry to conceal alongside the pending choice. */
+  storyId?: string;
+  /** Existing window token, or paired legacy response token; never built from seq. */
+  presentationId?: string;
+  /** True only while this live locally initiated attack has a die to settle. */
+  awaitsDiceSettlement?: boolean;
 }
 
 export interface CombatExperienceMapRenderProps {
@@ -141,6 +168,8 @@ interface CombatExperienceBaseProps {
   localWorldDieControl?: ReactNode;
   /** The actor-only world die has already reached its visible terminal. */
   localWorldDieSettled?: boolean;
+  /** Provider token for that terminal; prevents stale release of a new window. */
+  localWorldDieSettledPresentationId?: string;
   location: { name: string; area: string };
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;

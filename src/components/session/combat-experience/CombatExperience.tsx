@@ -1,3 +1,4 @@
+import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import { useDiceDials } from '@/feel/useFeelDials';
 import {
   ClockKind,
@@ -22,7 +23,10 @@ import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
-import { useDiceSettleGate } from './useDiceSettleGate';
+import {
+  isDiceChoiceSettlementReady,
+  useDiceSettleGate,
+} from './useDiceSettleGate';
 import { useRollFlash } from './useRollFlash';
 
 function portraitOf(name: string): string {
@@ -153,6 +157,7 @@ export function CombatExperience({
   diceWitnessRole,
   localWorldDieControl,
   localWorldDieSettled = false,
+  localWorldDieSettledPresentationId,
   location,
   pacingNotice,
   renderMap,
@@ -197,6 +202,25 @@ export function CombatExperience({
     result,
     diePresented,
   });
+  const rollWindowRequest = rollWindow?.presentationId
+    ? diceEvents.find(
+        (event): event is DicePresentationRequestedEvent =>
+          event.type === 'dice-presentation-requested' &&
+          event.presentationId === rollWindow.presentationId
+      )
+    : undefined;
+  const rollWindowReady = Boolean(
+    rollWindow &&
+    isDiceChoiceSettlementReady({
+      awaitsDiceSettlement: rollWindow.awaitsDiceSettlement === true,
+      presentationId: rollWindow.presentationId,
+      activePresentationId: rollWindowRequest?.presentationId,
+      settledPresentationId: localWorldDieSettledPresentationId,
+      physicalPresentationAvailable:
+        rollWindowRequest?.authoritySeq !== undefined,
+      semanticFallback: diceSemanticFallback === true,
+    })
+  );
   const damageToasts = useDamageToasts(settledResult);
   // `?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). `settledResult` is
   // the SAME signal useDamageToasts uses — see rollFlash.ts's own doc
@@ -212,8 +236,11 @@ export function CombatExperience({
   // damage, and the downed line that follows still spoiling the roll from the
   // log — see storyReveal.ts.
   const revealedStory = holdStoryUntilSettled(
-    story,
-    result && !settledResult ? result.attackId : undefined
+    holdStoryUntilSettled(
+      story,
+      result && !settledResult ? result.attackId : undefined
+    ),
+    rollWindowReady ? undefined : rollWindow?.storyId
   );
   const activeParticipant = participants.find(
     (participant) => participant.active
@@ -512,6 +539,7 @@ export function CombatExperience({
             }
             memberNames={memberNames}
             rollWindow={rollWindow}
+            rollWindowReady={rollWindowReady}
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
             standingActions={standingActions}

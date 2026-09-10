@@ -1,6 +1,12 @@
 import { SESSION_COMBAT_FIXTURES } from '@/concepts/session-combat/fixtures';
+import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
+  DeclarationSchema,
+  ReactChoice,
+  ReactionRefSchema,
+  Slot,
+  TargetKind,
   Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -81,6 +87,55 @@ function tooltipOf(button: HTMLElement): HTMLElement {
   return tooltip;
 }
 
+const ROLL_WINDOW_PRESENTATION_ID = 'presentation~bardic-window';
+
+function rollWindowExperienceProps(
+  overrides: Partial<CombatExperienceProps> = {}
+): CombatExperienceProps {
+  const reaction = create(DeclarationSchema, {
+    id: 'selector.postroll.1',
+    verb: Verb.REACT,
+    slot: Slot.NONE,
+    targetKind: TargetKind.NONE,
+    available: true,
+    reaction: create(ReactionRefSchema, {
+      ref: 'dnd5e:conditions:inspired',
+      name: 'Bardic Inspiration',
+    }),
+  });
+  return {
+    ...propsFor(fresh),
+    declarations: [reaction],
+    phase: 'released-waiting-event',
+    diceWitnessRole: 'roller',
+    onDiceReleaseRequest: vi.fn(),
+    onDiceSemanticReleaseRequest: vi.fn(),
+    rollWindow: {
+      offerRef: 'dnd5e:conditions:inspired',
+      roll: 9,
+      total: 13,
+      presentationId: ROLL_WINDOW_PRESENTATION_ID,
+      awaitsDiceSettlement: true,
+    },
+    diceEvents: [
+      {
+        schemaVersion: 1,
+        type: 'dice-presentation-requested',
+        eventId: 'request:postroll',
+        presentationId: ROLL_WINDOW_PRESENTATION_ID,
+        authoritySeq: 7n,
+        roller: { entityId: fresh.viewerMember, role: 'player' },
+        die: {
+          kind: 'd20',
+          presetId: 'dice.original.carved.d20',
+          authoritativeResult: 9,
+        },
+      },
+    ],
+    ...overrides,
+  } as CombatExperienceProps;
+}
+
 describe('CombatExperience shared production shell', () => {
   it('keeps dice UI absent while no local attack roll is armed', () => {
     render(<CombatExperience {...propsFor()} />);
@@ -111,6 +166,150 @@ describe('CombatExperience shared production shell', () => {
     expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
     expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
+  });
+
+  it('holds a post-roll choice until the exact displayed d20 settles', () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <CombatExperience
+        {...rollWindowExperienceProps({ onSelectDeclaration: onSelect })}
+      />
+    );
+
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.getByTestId('roll-window-settling')).toBeTruthy();
+    expect(screen.queryByText('Spend')).toBeNull();
+    expect(screen.queryByText('Keep')).toBeNull();
+
+    rerender(
+      <CombatExperience
+        {...rollWindowExperienceProps({
+          onSelectDeclaration: onSelect,
+          localWorldDieSettled: true,
+          localWorldDieSettledPresentationId: 'presentation~stale-roll',
+        })}
+      />
+    );
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+
+    rerender(
+      <CombatExperience
+        {...rollWindowExperienceProps({
+          onSelectDeclaration: onSelect,
+          localWorldDieSettled: true,
+          localWorldDieSettledPresentationId: ROLL_WINDOW_PRESENTATION_ID,
+        })}
+      />
+    );
+    expect(screen.getByTestId('reaction-window').textContent).toContain(
+      'You rolled d20 9 + 4 = 13'
+    );
+    fireEvent.click(screen.getByTestId('reaction-strike'));
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'selector.postroll.1' }),
+      ReactChoice.STRIKE
+    );
+  });
+
+  it('withholds the pending roll Story and its tail until the same die settles', () => {
+    const base = rollWindowExperienceProps();
+    const props = rollWindowExperienceProps({
+      rollWindow: { ...base.rollWindow!, storyId: 'pending-roll-story' },
+      story: [
+        {
+          id: 'before',
+          eyebrow: 'Turn',
+          headline: 'Earlier turn',
+          detail: '',
+          tone: 'turn',
+        },
+        {
+          id: 'pending-roll-story',
+          eyebrow: 'Inspiration',
+          headline: 'Aldric rolled d20 9 + 4 = 13',
+          detail: '',
+          tone: 'turn',
+        },
+        {
+          id: 'after',
+          eyebrow: 'Turn',
+          headline: 'Later story',
+          detail: '',
+          tone: 'turn',
+        },
+      ],
+    });
+    const { rerender } = render(<CombatExperience {...props} />);
+    expect(screen.getByText('Earlier turn')).toBeTruthy();
+    expect(screen.queryByText('Aldric rolled d20 9 + 4 = 13')).toBeNull();
+    expect(screen.queryByText('Later story')).toBeNull();
+    rerender(
+      <CombatExperience {...props} localWorldDieSettledPresentationId="stale" />
+    );
+    expect(screen.queryByText('Aldric rolled d20 9 + 4 = 13')).toBeNull();
+    rerender(
+      <CombatExperience
+        {...props}
+        localWorldDieSettledPresentationId={ROLL_WINDOW_PRESENTATION_ID}
+      />
+    );
+    expect(screen.getByText('Aldric rolled d20 9 + 4 = 13')).toBeTruthy();
+    expect(screen.getByText('Later story')).toBeTruthy();
+  });
+
+  it('opens when settlement arrives before its matching window', () => {
+    const settled = {
+      localWorldDieSettled: true,
+      localWorldDieSettledPresentationId: ROLL_WINDOW_PRESENTATION_ID,
+    };
+    const { rerender } = render(
+      <CombatExperience
+        {...rollWindowExperienceProps({ ...settled, rollWindow: null })}
+      />
+    );
+
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    rerender(<CombatExperience {...rollWindowExperienceProps(settled)} />);
+    expect(screen.getByTestId('reaction-window').textContent).toContain(
+      'You rolled d20 9 + 4 = 13'
+    );
+  });
+
+  it('does not hang caught-up or unavailable-animation roll windows', () => {
+    const { rerender } = render(
+      <CombatExperience
+        {...rollWindowExperienceProps({
+          rollWindow: {
+            offerRef: 'dnd5e:conditions:inspired',
+            roll: 9,
+            total: 13,
+            awaitsDiceSettlement: false,
+          },
+          diceEvents: [],
+        })}
+      />
+    );
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
+
+    rerender(
+      <CombatExperience
+        {...rollWindowExperienceProps({ diceSemanticFallback: true })}
+      />
+    );
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
+
+    const noPhysicalRequest = rollWindowExperienceProps().diceEvents.map(
+      (event) =>
+        event.type === 'dice-presentation-requested'
+          ? { ...event, authoritySeq: undefined }
+          : event
+    );
+    rerender(
+      <CombatExperience
+        {...rollWindowExperienceProps({ diceEvents: noPhysicalRequest })}
+      />
+    );
+    expect(screen.getByTestId('reaction-window')).toBeTruthy();
   });
 
   it('keeps the local tile actor-only and preserves explicit semantic reveal', () => {
@@ -422,6 +621,10 @@ describe('CombatExperience responsive and accessibility contract', () => {
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(css).toContain('height: 768px');
     expect(css).toContain('overflow-x: auto');
+    expect(css).toMatch(
+      /\.localWorldDieControlLayer\s*\{[^}]*bottom:\s*188px;[^}]*left:\s*14px;/s
+    );
+    expect(css).not.toMatch(/\.localWorldDieControlLayer\s*\{[^}]*top:/s);
     expect(css).not.toMatch(/\.combatExperience\s+\.gameFrame\s*\{/);
     expect(css).toMatch(
       /\.combatExperienceFillParent\s+\.gameFrame\s*\{[^}]*height:\s*100%;[^}]*border-radius:\s*0;/s
@@ -459,6 +662,52 @@ describe('damage toasts', () => {
     expect(toasts.textContent).toContain('8 slashing damage');
     expect(toasts.textContent).toContain('Skeleton Guard');
     expect(toasts.textContent).toContain('−8');
+    const log = screen.getByTestId('session-combat-log');
+    expect(log.textContent).toContain('d20 18 + 5 = 23');
+    expect(log.textContent).not.toContain('AC');
+  });
+
+  it('shows authoritative modifier source, owner and attack target in the result', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-true-strike',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+            modifierSources: [
+              {
+                kind: 'advantage',
+                sourceRef: 'dnd5e:conditions:true_strike',
+                label: 'True Strike',
+                sourceMemberId: fresh.viewerMember,
+                sourceMemberName: 'Aldric Vale',
+                attackerId: fresh.viewerMember,
+                targetId: 'skeleton-guard',
+                attackerName: 'Aldric Vale',
+                targetName: 'Skeleton Guard',
+                sourceIsViewer: true,
+              },
+            ],
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('Your True Strike → Skeleton Guard')).toBeTruthy();
+    expect(
+      screen.getByText('Your True Strike → Skeleton Guard').closest('li')
+        ?.dataset.sourceRef
+    ).toBe('dnd5e:conditions:true_strike');
   });
 
   it('says nothing on a miss', () => {

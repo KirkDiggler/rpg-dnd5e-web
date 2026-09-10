@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CombatExperienceAttackOutcome } from './types';
 import {
   DICE_SETTLE_FALLBACK_MS,
+  isDiceChoiceSettlementReady,
   useDiceSettleGate,
 } from './useDiceSettleGate';
 
@@ -47,6 +48,87 @@ function gate(initial: Props) {
     initialProps: initial,
   });
 }
+
+describe('isDiceChoiceSettlementReady', () => {
+  it('opens only for the exact settled presentation when a physical die is expected', () => {
+    const input = {
+      awaitsDiceSettlement: true,
+      presentationId: 'presentation:current',
+      activePresentationId: 'presentation:current',
+      physicalPresentationAvailable: true,
+      semanticFallback: false,
+    } as const;
+
+    expect(
+      isDiceChoiceSettlementReady({
+        ...input,
+        settledPresentationId: undefined,
+      })
+    ).toBe(false);
+    expect(
+      isDiceChoiceSettlementReady({
+        ...input,
+        settledPresentationId: 'presentation:stale',
+      })
+    ).toBe(false);
+    expect(
+      isDiceChoiceSettlementReady({
+        ...input,
+        settledPresentationId: 'presentation:current',
+      })
+    ).toBe(true);
+  });
+
+  it('does not let an unrelated active presentation satisfy the gate', () => {
+    expect(
+      isDiceChoiceSettlementReady({
+        awaitsDiceSettlement: true,
+        presentationId: 'presentation:window',
+        activePresentationId: 'presentation:other',
+        settledPresentationId: 'presentation:window',
+        physicalPresentationAvailable: true,
+        semanticFallback: false,
+      })
+    ).toBe(false);
+  });
+
+  it('passes through catch-up and explicit non-physical fallbacks without a timer', () => {
+    expect(
+      isDiceChoiceSettlementReady({
+        awaitsDiceSettlement: false,
+        physicalPresentationAvailable: false,
+        semanticFallback: false,
+      })
+    ).toBe(true);
+    expect(
+      isDiceChoiceSettlementReady({
+        awaitsDiceSettlement: true,
+        presentationId: 'presentation:fallback',
+        physicalPresentationAvailable: false,
+        semanticFallback: true,
+      })
+    ).toBe(true);
+    expect(
+      isDiceChoiceSettlementReady({
+        awaitsDiceSettlement: true,
+        presentationId: 'presentation:disabled',
+        activePresentationId: 'presentation:disabled',
+        physicalPresentationAvailable: false,
+        semanticFallback: false,
+      })
+    ).toBe(true);
+  });
+
+  it('keeps an event-first live window closed until its presentation arrives', () => {
+    expect(
+      isDiceChoiceSettlementReady({
+        awaitsDiceSettlement: true,
+        physicalPresentationAvailable: true,
+        semanticFallback: false,
+      })
+    ).toBe(false);
+  });
+});
 
 describe('useDiceSettleGate', () => {
   it('withholds the outcome while the die is still tumbling', () => {

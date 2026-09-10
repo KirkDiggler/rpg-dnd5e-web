@@ -11,6 +11,40 @@ export interface AssetReviewSource {
   glbSha256: string;
 }
 
+export interface AssetReviewPortableDigest {
+  path: string;
+  sha256: string;
+}
+
+export interface AssetReviewPaletteSelection {
+  descriptorVersion: 1;
+  comparisonId: string;
+  palette: string;
+  paletteDescriptor: AssetReviewPortableDigest;
+  packConfigSha256: string;
+  atlas: AssetReviewPortableDigest;
+  selectedGlb: AssetReviewPortableDigest;
+}
+
+export interface AssetReviewPlannedRuntimeImage {
+  index: number;
+  name: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  width: number;
+  height: number;
+  decodedBytes: number;
+  decodedMiB: number;
+}
+
+export interface AssetReviewPaletteAlternative extends AssetReviewPaletteSelection {
+  url: string;
+  dimensionsMeters: [number, number, number];
+  plannedRuntimeImages: AssetReviewPlannedRuntimeImage[];
+  readyEligible: boolean;
+  reasons: string[];
+}
+
 export interface AssetReviewCandidate {
   source: AssetReviewSource;
   url: string;
@@ -24,10 +58,11 @@ export interface AssetReviewCandidate {
   readyEligible: boolean;
   reviewStatus: ReviewStatus;
   reasons: string[];
+  paletteAlternatives?: AssetReviewPaletteAlternative[];
 }
 
 export interface AssetReviewCatalog {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   candidates: AssetReviewCandidate[];
 }
 
@@ -56,10 +91,12 @@ export interface AssetReviewEntry {
   supportsDecoration: boolean;
   notes: string;
   deferReason: string;
+  paletteAlternatives?: AssetReviewPaletteAlternative[];
+  paletteSelection?: AssetReviewPaletteSelection | null;
 }
 
 export interface AssetReviewBatch {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   batchId: string;
   entries: AssetReviewEntry[];
 }
@@ -67,7 +104,10 @@ export interface AssetReviewBatch {
 export interface MergeResult {
   batch: AssetReviewBatch;
   staleSourceKeys: string[];
+  staleAppearanceKeys: string[];
 }
+
+export type AssetReviewLoadStatus = 'loading' | 'success' | 'error';
 
 export interface ProviderFieldPatch {
   displayName?: string;
@@ -102,6 +142,35 @@ const CANDIDATE_KEYS = [
   'reviewStatus',
   'reasons',
 ] as const;
+const V2_CANDIDATE_KEYS = [...CANDIDATE_KEYS, 'paletteAlternatives'] as const;
+const PALETTE_SELECTION_KEYS = [
+  'descriptorVersion',
+  'comparisonId',
+  'palette',
+  'paletteDescriptor',
+  'packConfigSha256',
+  'atlas',
+  'selectedGlb',
+] as const;
+const PALETTE_ALTERNATIVE_KEYS = [
+  ...PALETTE_SELECTION_KEYS,
+  'url',
+  'dimensionsMeters',
+  'plannedRuntimeImages',
+  'readyEligible',
+  'reasons',
+] as const;
+const DIGEST_KEYS = ['path', 'sha256'] as const;
+const PLANNED_IMAGE_KEYS = [
+  'index',
+  'name',
+  'sourceWidth',
+  'sourceHeight',
+  'width',
+  'height',
+  'decodedBytes',
+  'decodedMiB',
+] as const;
 const SOURCE_KEYS = [
   'packSlug',
   'packVersion',
@@ -132,6 +201,15 @@ const ENTRY_KEYS = [
   'deferReason',
 ] as const;
 const PORTABLE_ENTRY_KEYS = ENTRY_KEYS.filter((key) => key !== 'url');
+const V2_PORTABLE_ENTRY_KEYS = [
+  ...PORTABLE_ENTRY_KEYS,
+  'paletteSelection',
+] as const;
+const V2_RUNTIME_ENTRY_KEYS = [
+  ...ENTRY_KEYS,
+  'paletteAlternatives',
+  'paletteSelection',
+] as const;
 const CALIBRATION_KEYS = ['scale', 'yawDegrees', 'fineOffsetMeters'] as const;
 const PROVIDER_PATCH_KEYS = [
   'displayName',
@@ -395,10 +473,193 @@ function parseDecision(value: unknown, label: string): ReviewDecision {
   return value as ReviewDecision;
 }
 
-function parseCandidate(value: unknown, index: number): AssetReviewCandidate {
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  requireValue(
+    typeof value === 'number' && Number.isInteger(value) && value >= 0,
+    `${label} must be a non-negative integer`
+  );
+  return value;
+}
+
+function requirePortablePath(
+  value: unknown,
+  label: string,
+  suffix?: string
+): string {
+  const path = requireString(value, label, { nonEmpty: true });
+  requireValue(
+    !path.startsWith('/') &&
+      !path.includes('\\') &&
+      path
+        .split('/')
+        .every((part) => part !== '' && part !== '.' && part !== '..'),
+    `${label} must be a normalized relative POSIX path`
+  );
+  if (suffix) {
+    requireValue(
+      path.toLowerCase().endsWith(suffix),
+      `${label} must end in ${suffix}`
+    );
+  }
+  return path;
+}
+
+function parseDigest(
+  value: unknown,
+  label: string,
+  suffix?: string
+): AssetReviewPortableDigest {
+  assertRecord(value, label);
+  assertExactKeys(value, DIGEST_KEYS, label);
+  return {
+    path: requirePortablePath(value.path, `${label}.path`, suffix),
+    sha256: requireString(value.sha256, `${label}.sha256`, {
+      pattern: SHA256_PATTERN,
+    }),
+  };
+}
+
+function parsePaletteSelection(
+  value: unknown,
+  label: string
+): AssetReviewPaletteSelection | null {
+  if (value === null) return null;
+  assertRecord(value, label);
+  assertExactKeys(value, PALETTE_SELECTION_KEYS, label);
+  requireValue(
+    value.descriptorVersion === 1,
+    `${label}.descriptorVersion must be the integer 1`
+  );
+  return {
+    descriptorVersion: 1,
+    comparisonId: requireString(value.comparisonId, `${label}.comparisonId`, {
+      nonEmpty: true,
+    }),
+    palette: requireString(value.palette, `${label}.palette`, {
+      nonEmpty: true,
+    }),
+    paletteDescriptor: parseDigest(
+      value.paletteDescriptor,
+      `${label}.paletteDescriptor`,
+      '.json'
+    ),
+    packConfigSha256: requireString(
+      value.packConfigSha256,
+      `${label}.packConfigSha256`,
+      { pattern: SHA256_PATTERN }
+    ),
+    atlas: parseDigest(value.atlas, `${label}.atlas`),
+    selectedGlb: parseDigest(value.selectedGlb, `${label}.selectedGlb`, '.glb'),
+  };
+}
+
+function parsePlannedRuntimeImage(
+  value: unknown,
+  label: string
+): AssetReviewPlannedRuntimeImage {
+  assertRecord(value, label);
+  assertExactKeys(value, PLANNED_IMAGE_KEYS, label);
+  return {
+    index: requireNonNegativeInteger(value.index, `${label}.index`),
+    name: requireString(value.name, `${label}.name`, { nonEmpty: true }),
+    sourceWidth: requireNonNegativeInteger(
+      value.sourceWidth,
+      `${label}.sourceWidth`
+    ),
+    sourceHeight: requireNonNegativeInteger(
+      value.sourceHeight,
+      `${label}.sourceHeight`
+    ),
+    width: requireNonNegativeInteger(value.width, `${label}.width`),
+    height: requireNonNegativeInteger(value.height, `${label}.height`),
+    decodedBytes: requireNonNegativeInteger(
+      value.decodedBytes,
+      `${label}.decodedBytes`
+    ),
+    decodedMiB: requireFiniteNumber(value.decodedMiB, `${label}.decodedMiB`),
+  };
+}
+
+function selectionValue(
+  alternative: AssetReviewPaletteAlternative
+): AssetReviewPaletteSelection {
+  return {
+    descriptorVersion: alternative.descriptorVersion,
+    comparisonId: alternative.comparisonId,
+    palette: alternative.palette,
+    paletteDescriptor: { ...alternative.paletteDescriptor },
+    packConfigSha256: alternative.packConfigSha256,
+    atlas: { ...alternative.atlas },
+    selectedGlb: { ...alternative.selectedGlb },
+  };
+}
+
+function parsePaletteAlternative(
+  value: unknown,
+  label: string,
+  source: AssetReviewSource
+): AssetReviewPaletteAlternative {
+  assertRecord(value, label);
+  assertExactKeys(value, PALETTE_ALTERNATIVE_KEYS, label);
+  const selection = parsePaletteSelection(
+    Object.fromEntries(PALETTE_SELECTION_KEYS.map((key) => [key, value[key]])),
+    label
+  );
+  requireValue(selection !== null, `${label} must be an object`);
+  const url = requireString(value.url, `${label}.url`);
+  const expectedFilename = `${selection.selectedGlb.sha256.slice(0, 12)}-${source.sourcePath.split('/').at(-1)!.slice(0, -4)}.glb`;
+  requireValue(
+    url === `/models/synty/asset-review/${expectedFilename}`,
+    `${label}.url must be the content-addressed selected GLB URL`
+  );
+  requireValue(
+    typeof value.readyEligible === 'boolean',
+    `${label}.readyEligible must be boolean`
+  );
+  requireValue(
+    Array.isArray(value.plannedRuntimeImages),
+    `${label}.plannedRuntimeImages must be an array`
+  );
+  const reasons = requireStringArray(value.reasons, `${label}.reasons`);
+  if (value.readyEligible) {
+    requireValue(
+      reasons.length === 0,
+      `${label}: eligible alternatives must not include blocking reasons`
+    );
+  } else {
+    requireValue(
+      reasons.length > 0,
+      `${label}: ineligible alternatives must include a reason`
+    );
+  }
+  return {
+    ...selection,
+    url,
+    dimensionsMeters: requireReviewDimensions(
+      value.dimensionsMeters,
+      `${label}.dimensionsMeters`,
+      value.readyEligible
+    ),
+    plannedRuntimeImages: value.plannedRuntimeImages.map((item, index) =>
+      parsePlannedRuntimeImage(item, `${label}.plannedRuntimeImages[${index}]`)
+    ),
+    readyEligible: value.readyEligible,
+    reasons,
+  };
+}
+
+function parseCandidate(
+  value: unknown,
+  index: number,
+  schemaVersion: 1 | 2
+): AssetReviewCandidate {
   const label = `candidate[${index}]`;
   assertRecord(value, label);
-  assertExactKeys(value, CANDIDATE_KEYS, label);
+  assertExactKeys(
+    value,
+    schemaVersion === 1 ? CANDIDATE_KEYS : V2_CANDIDATE_KEYS,
+    label
+  );
 
   const source = parseSource(value.source, `${label}.source`);
   const url = requireString(value.url, `${label}.url`);
@@ -441,6 +702,34 @@ function parseCandidate(value: unknown, index: number): AssetReviewCandidate {
     );
   }
 
+  const paletteAlternatives =
+    schemaVersion === 2
+      ? (() => {
+          requireValue(
+            Array.isArray(value.paletteAlternatives),
+            `${label}.paletteAlternatives must be an array`
+          );
+          const alternatives = value.paletteAlternatives.map(
+            (item, alternativeIndex) =>
+              parsePaletteAlternative(
+                item,
+                `${label}.paletteAlternatives[${alternativeIndex}]`,
+                source
+              )
+          );
+          const keys = new Set<string>();
+          for (const alternative of alternatives) {
+            const key = `${alternative.comparisonId}\u0000${alternative.palette}`;
+            requireValue(
+              !keys.has(key),
+              `${label}.paletteAlternatives contains duplicate comparison/palette ${alternative.comparisonId}/${alternative.palette}`
+            );
+            keys.add(key);
+          }
+          return alternatives;
+        })()
+      : undefined;
+
   return {
     source,
     url,
@@ -477,6 +766,7 @@ function parseCandidate(value: unknown, index: number): AssetReviewCandidate {
     readyEligible,
     reviewStatus,
     reasons,
+    ...(paletteAlternatives === undefined ? {} : { paletteAlternatives }),
   };
 }
 
@@ -527,6 +817,28 @@ function entryFromCandidate(candidate: AssetReviewCandidate): AssetReviewEntry {
 
   return {
     ...base,
+    ...(candidate.paletteAlternatives === undefined
+      ? {}
+      : {
+          paletteAlternatives: candidate.paletteAlternatives.map(
+            (alternative) => ({
+              ...alternative,
+              paletteDescriptor: { ...alternative.paletteDescriptor },
+              atlas: { ...alternative.atlas },
+              selectedGlb: { ...alternative.selectedGlb },
+              dimensionsMeters: [...alternative.dimensionsMeters] as [
+                number,
+                number,
+                number,
+              ],
+              plannedRuntimeImages: alternative.plannedRuntimeImages.map(
+                (fact) => ({ ...fact })
+              ),
+              reasons: [...alternative.reasons],
+            })
+          ),
+          paletteSelection: null,
+        }),
     decision: 'undecided',
     loadedSuccessfully: false,
     displayName: candidate.suggestedDisplayName,
@@ -560,11 +872,25 @@ function parseCalibration(
   };
 }
 
-function parseReviewEntry(value: unknown, index: number): AssetReviewEntry {
+function parseReviewEntry(
+  value: unknown,
+  index: number,
+  schemaVersion: 1 | 2
+): AssetReviewEntry {
   const label = `review entry[${index}]`;
   assertRecord(value, label);
   const hasUrl = Object.hasOwn(value, 'url');
-  assertExactKeys(value, hasUrl ? ENTRY_KEYS : PORTABLE_ENTRY_KEYS, label);
+  assertExactKeys(
+    value,
+    schemaVersion === 1
+      ? hasUrl
+        ? ENTRY_KEYS
+        : PORTABLE_ENTRY_KEYS
+      : hasUrl
+        ? V2_RUNTIME_ENTRY_KEYS
+        : V2_PORTABLE_ENTRY_KEYS,
+    label
+  );
 
   const source = parseSource(value.source, `${label}.source`);
   const readyEligible = value.readyEligible;
@@ -580,6 +906,39 @@ function parseReviewEntry(value: unknown, index: number): AssetReviewEntry {
     typeof value.supportsDecoration === 'boolean',
     `${label}.supportsDecoration must be boolean`
   );
+
+  let paletteSelection: AssetReviewPaletteSelection | null | undefined;
+  let paletteAlternatives: AssetReviewPaletteAlternative[] | undefined;
+  if (schemaVersion === 2) {
+    paletteSelection = parsePaletteSelection(
+      value.paletteSelection,
+      `${label}.paletteSelection`
+    );
+    if (hasUrl) {
+      requireValue(
+        Array.isArray(value.paletteAlternatives),
+        `${label}.paletteAlternatives must be an array`
+      );
+      paletteAlternatives = value.paletteAlternatives.map(
+        (item, alternativeIndex) =>
+          parsePaletteAlternative(
+            item,
+            `${label}.paletteAlternatives[${alternativeIndex}]`,
+            source
+          )
+      );
+      if (paletteSelection !== null) {
+        requireValue(
+          paletteAlternatives.some(
+            (alternative) =>
+              JSON.stringify(selectionValue(alternative)) ===
+              JSON.stringify(paletteSelection)
+          ),
+          `${label}.paletteSelection must match one current palette alternative`
+        );
+      }
+    }
+  }
 
   return {
     source,
@@ -621,6 +980,12 @@ function parseReviewEntry(value: unknown, index: number): AssetReviewEntry {
     supportsDecoration: value.supportsDecoration,
     notes: requireString(value.notes, `${label}.notes`),
     deferReason: requireString(value.deferReason, `${label}.deferReason`),
+    ...(schemaVersion === 2
+      ? {
+          paletteSelection: paletteSelection ?? null,
+          ...(paletteAlternatives === undefined ? {} : { paletteAlternatives }),
+        }
+      : {}),
   };
 }
 
@@ -628,9 +993,10 @@ function parseReviewBatch(value: unknown): AssetReviewBatch {
   assertRecord(value, 'review batch');
   assertExactKeys(value, BATCH_KEYS, 'review batch');
   requireValue(
-    value.schemaVersion === 1,
-    'review batch schemaVersion must be 1'
+    value.schemaVersion === 1 || value.schemaVersion === 2,
+    'review batch schemaVersion must be 1 or 2'
   );
+  const schemaVersion = value.schemaVersion;
   const batchId = requireString(value.batchId, 'review batch.batchId', {
     pattern: BATCH_ID_PATTERN,
   });
@@ -638,7 +1004,9 @@ function parseReviewBatch(value: unknown): AssetReviewBatch {
     Array.isArray(value.entries),
     'review batch.entries must be an array'
   );
-  const entries = value.entries.map(parseReviewEntry);
+  const entries = value.entries.map((entry, index) =>
+    parseReviewEntry(entry, index, schemaVersion)
+  );
   const sourceKeys = new Set<string>();
   for (const reviewEntry of entries) {
     const key = stableSourceKey(reviewEntry.source);
@@ -648,7 +1016,7 @@ function parseReviewBatch(value: unknown): AssetReviewBatch {
     );
     sourceKeys.add(key);
   }
-  return { schemaVersion: 1, batchId, entries };
+  return { schemaVersion, batchId, entries };
 }
 
 function defaultBatchId(catalog: AssetReviewCatalog): string {
@@ -694,15 +1062,18 @@ export function parseAssetReviewCatalog(value: unknown): AssetReviewCatalog {
   assertRecord(value, 'asset review catalog');
   assertExactKeys(value, CATALOG_KEYS, 'asset review catalog');
   requireValue(
-    value.schemaVersion === 1,
-    'asset review catalog schemaVersion must be 1'
+    value.schemaVersion === 1 || value.schemaVersion === 2,
+    'asset review catalog schemaVersion must be 1 or 2'
   );
+  const schemaVersion = value.schemaVersion;
   requireValue(
     Array.isArray(value.candidates),
     'asset review catalog candidates must be an array'
   );
 
-  const candidates = value.candidates.map(parseCandidate);
+  const candidates = value.candidates.map((candidate, index) =>
+    parseCandidate(candidate, index, schemaVersion)
+  );
   const sourceKeys = new Set<string>();
   const urls = new Set<string>();
   for (const candidate of candidates) {
@@ -719,7 +1090,99 @@ export function parseAssetReviewCatalog(value: unknown): AssetReviewCatalog {
     urls.add(candidate.url);
   }
 
-  return { schemaVersion: 1, candidates };
+  return { schemaVersion, candidates };
+}
+
+function selectedAlternative(
+  entry: Pick<AssetReviewEntry, 'paletteAlternatives' | 'paletteSelection'>
+): AssetReviewPaletteAlternative | undefined {
+  if (!entry.paletteSelection) return undefined;
+  const identity = JSON.stringify(entry.paletteSelection);
+  return entry.paletteAlternatives?.find(
+    (alternative) => JSON.stringify(selectionValue(alternative)) === identity
+  );
+}
+
+export function appearanceIdentity(entry: AssetReviewEntry): string {
+  return JSON.stringify({
+    source: entry.source,
+    paletteSelection: entry.paletteSelection ?? null,
+  });
+}
+
+export function entryPreviewUrl(entry: AssetReviewEntry): string {
+  if (!entry.paletteSelection) return entry.url;
+  const alternative = selectedAlternative(entry);
+  requireValue(
+    alternative !== undefined,
+    'Selected palette appearance is not present in current alternatives'
+  );
+  return alternative.url;
+}
+
+export function entryAppearanceFacts(
+  entry: AssetReviewEntry
+): Pick<
+  AssetReviewEntry,
+  'dimensionsMeters' | 'readyEligible' | 'reviewStatus' | 'reasons'
+> & { plannedRuntimeImages: AssetReviewPlannedRuntimeImage[] } {
+  const alternative = selectedAlternative(entry);
+  requireValue(
+    !entry.paletteSelection || alternative !== undefined,
+    'Selected palette appearance is not present in current alternatives'
+  );
+  return {
+    dimensionsMeters: alternative?.dimensionsMeters ?? entry.dimensionsMeters,
+    readyEligible: alternative?.readyEligible ?? entry.readyEligible,
+    reviewStatus: entry.reviewStatus,
+    reasons: alternative?.reasons ?? entry.reasons,
+    plannedRuntimeImages: alternative?.plannedRuntimeImages ?? [],
+  };
+}
+
+export function selectPaletteAppearance(
+  entry: AssetReviewEntry,
+  comparisonId: string,
+  palette: string
+): AssetReviewEntry {
+  let paletteSelection: AssetReviewPaletteSelection | null;
+  if (comparisonId === '' && palette === '') {
+    paletteSelection = null;
+  } else {
+    const alternative = entry.paletteAlternatives?.find(
+      (item) => item.comparisonId === comparisonId && item.palette === palette
+    );
+    requireValue(
+      alternative !== undefined,
+      `Unknown palette appearance ${comparisonId}/${palette}`
+    );
+    paletteSelection = selectionValue(alternative);
+  }
+  const updated: AssetReviewEntry = { ...entry, paletteSelection };
+  if (appearanceIdentity(updated) === appearanceIdentity(entry)) return updated;
+  return {
+    ...updated,
+    decision: entry.decision === 'ready' ? 'keep' : entry.decision,
+    loadedSuccessfully: false,
+  };
+}
+
+export function recordPreviewLoad(
+  entry: AssetReviewEntry,
+  url: string,
+  status: AssetReviewLoadStatus
+): AssetReviewEntry {
+  requireValue(
+    status === 'loading' || status === 'success' || status === 'error',
+    'Unknown preview load status'
+  );
+  if (url !== entryPreviewUrl(entry)) return entry;
+  if (status === 'success') return { ...entry, loadedSuccessfully: true };
+  return {
+    ...entry,
+    loadedSuccessfully: false,
+    decision: entry.decision === 'ready' ? 'keep' : entry.decision,
+  };
 }
 
 export function mergeCatalogWithReview(
@@ -738,18 +1201,40 @@ export function mergeCatalogWithReview(
     )
   );
 
+  const staleAppearanceKeys: string[] = [];
   const entries = parsedCatalog.candidates
     .map((candidate) => {
-      const fresh = entryFromCandidate(candidate);
+      let fresh = entryFromCandidate(candidate);
       const imported = importedBySource.get(stableSourceKey(candidate.source));
       if (!imported) {
         return fresh;
       }
 
+      if (imported.paletteSelection) {
+        const matching = fresh.paletteAlternatives?.find(
+          (alternative) =>
+            JSON.stringify(selectionValue(alternative)) ===
+            JSON.stringify(imported.paletteSelection)
+        );
+        if (matching) {
+          fresh = {
+            ...fresh,
+            paletteSelection: selectionValue(matching),
+          };
+        }
+      }
+      const appearanceMatches =
+        appearanceIdentity(fresh) === appearanceIdentity(imported);
+      if (!appearanceMatches) {
+        staleAppearanceKeys.push(appearanceIdentity(imported));
+      }
+
       const merged: AssetReviewEntry = {
         ...fresh,
-        decision: imported.decision,
-        loadedSuccessfully: imported.loadedSuccessfully,
+        decision: appearanceMatches ? imported.decision : 'keep',
+        loadedSuccessfully: appearanceMatches
+          ? imported.loadedSuccessfully
+          : false,
         displayName: imported.displayName,
         category: imported.category,
         ref: visualRef({ ...fresh, category: imported.category }),
@@ -779,11 +1264,12 @@ export function mergeCatalogWithReview(
 
   return {
     batch: {
-      schemaVersion: 1,
+      schemaVersion: parsedCatalog.schemaVersion,
       batchId: parsedReview?.batchId ?? defaultBatchId(parsedCatalog),
       entries,
     },
     staleSourceKeys,
+    staleAppearanceKeys: staleAppearanceKeys.sort(compareText),
   };
 }
 
@@ -795,7 +1281,8 @@ export function visualRef(
 
 export function validateReady(entry: AssetReviewEntry): FieldErrors {
   const errors: FieldErrors = {};
-  if (!entry.readyEligible || entry.reviewStatus !== 'trusted') {
+  const appearance = entryAppearanceFacts(entry);
+  if (!appearance.readyEligible || appearance.reviewStatus !== 'trusted') {
     errors.readyEligible = 'Source is not eligible for Ready';
   }
   if (
@@ -892,7 +1379,7 @@ export function validateReady(entry: AssetReviewEntry): FieldErrors {
     });
   }
 
-  const dimensions = entry.dimensionsMeters;
+  const dimensions = appearance.dimensionsMeters;
   if (
     !Array.isArray(dimensions) ||
     dimensions.length !== 3 ||
@@ -1060,13 +1547,59 @@ export function filterReviewEntries(
     .sort(compareEntries);
 }
 
+export function setBatchId(
+  batch: AssetReviewBatch,
+  value: string
+): AssetReviewBatch {
+  const batchId = requireString(value, 'Batch ID', {
+    pattern: BATCH_ID_PATTERN,
+  });
+  return { ...batch, batchId };
+}
+
+export function generateBatchId(
+  referencePack: string,
+  uuid: string = crypto.randomUUID(),
+  date: Date = new Date()
+): string {
+  requireValue(
+    PACK_SLUG_PATTERN.test(referencePack),
+    'referencePack has an invalid format'
+  );
+  requireValue(!Number.isNaN(date.getTime()), 'date must be valid');
+  const generated = `${referencePack}-world-assets-${date
+    .toISOString()
+    .slice(0, 10)
+    .replaceAll('-', '')}-${uuid}`;
+  return setBatchId(
+    { schemaVersion: 1, batchId: 'temporary', entries: [] },
+    generated
+  ).batchId;
+}
+
 export function serializeReviewProgress(batch: AssetReviewBatch): string {
   const parsed = parseReviewBatch(batch);
   return `${JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: parsed.schemaVersion,
       batchId: parsed.batchId,
-      entries: parsed.entries.map(portableReviewEntry),
+      entries: parsed.entries.map((entry) => ({
+        ...portableReviewEntry(entry),
+        ...(parsed.schemaVersion === 2
+          ? {
+              paletteSelection: entry.paletteSelection
+                ? {
+                    ...entry.paletteSelection,
+                    paletteDescriptor: {
+                      ...entry.paletteSelection.paletteDescriptor,
+                    },
+                    atlas: { ...entry.paletteSelection.atlas },
+                    selectedGlb: { ...entry.paletteSelection.selectedGlb },
+                  }
+                : null,
+            }
+          : {}),
+      })),
     },
     null,
     2
@@ -1103,7 +1636,7 @@ export function serializeReadyProviderBatch(batch: AssetReviewBatch): string {
 
   return `${JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: parsed.schemaVersion,
       batchId: parsed.batchId,
       entries: readyEntries.map((entry) => ({
         source: { ...entry.source },
@@ -1117,6 +1650,20 @@ export function serializeReadyProviderBatch(batch: AssetReviewBatch): string {
         tags: [...entry.tags],
         supportsDecoration: entry.supportsDecoration,
         notes: entry.notes,
+        ...(parsed.schemaVersion === 2
+          ? {
+              paletteSelection: entry.paletteSelection
+                ? {
+                    ...entry.paletteSelection,
+                    paletteDescriptor: {
+                      ...entry.paletteSelection.paletteDescriptor,
+                    },
+                    atlas: { ...entry.paletteSelection.atlas },
+                    selectedGlb: { ...entry.paletteSelection.selectedGlb },
+                  }
+                : null,
+            }
+          : {}),
       })),
     },
     null,

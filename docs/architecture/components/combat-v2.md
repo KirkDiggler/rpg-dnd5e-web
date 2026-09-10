@@ -1,7 +1,7 @@
 ---
 name: production session combat experience
 description: Shared CombatExperience renderer, exact declarations, private character data, event recovery, and presentation gating
-updated: 2026-08-26
+updated: 2026-09-08
 confidence: high — production and concept import the same renderer; focused route/controller/recovery suites pass
 ---
 
@@ -38,6 +38,10 @@ Attack is panel-first in the first production cut:
    list of native target buttons using public-roster names;
 4. either an available canvas ring or target button echoes the exact declaration
    ID and member target.
+
+The targeting availability panel sits at the upper-left below the room label,
+not over the lower-map click area. Its height is capped and long candidate lists
+scroll internally; other context notices keep their existing positions.
 
 Unavailable candidate buttons are disabled, stay readable with provider
 `why.text`, and remain absent from canvas rings. Keyboard and screen-reader
@@ -128,19 +132,46 @@ also fences reversed responses and key changes like Afford.
 
 ## Story, dice, and diagnostics
 
-The presentation reducer keys authority by `(session, seq)` and reconciles
-AttackResponse with typed Struck/Missed events. Stable public-roster roles and
-names are the only dice/Story identity authority; Turn participants never
+The presentation reducer keeps recipient-local Story ordering while the
+provider's opaque `presentation_id` names one shared d20 across phases and
+recipients. An identified RollWindowOpened already supplies the rolled face to
+the existing actor/witness dice path before Struck/Missed; its missing target
+and outcome fields remain absent, not a fabricated miss. The paired response
+can fill in known attack facts. A later same-ID outcome retains settlement and
+retires provisional target holds instead of requesting another d20. Legacy
+ID-less windows remain in their separate Story identity beside the response.
+Stable public-roster roles and names are the only dice/Story identity authority; Turn participants never
 supply or overwrite identity. Unknown roles remain unresolved with no inferred
 ownership, and late roster facts may authorize them. Once a local player roll
 is armed, FightEnded or a transient empty participant/roster snapshot cannot
 revoke or auto-settle it. The acting player sees no current Story verdict,
 result, or live announcement until the authoritative d20 presentation is
-explicitly released. Other known players, monsters, and catch-up history
-auto-settle. Conflicting facts fail closed; raw payload bytes never become
-Story. Result presentation contains only provider roll, total, against,
-hit/critical, damage/type, and AttackRef facts—never a bonus equation, target
-`hpAfter`, peer exact HP, or client arithmetic.
+explicitly released. A local live RollWindowOpened choice uses its own token
+(or the paired legacy response token) and stays on a no-timer gate until that `presentation_id` reaches
+its visible terminal; stale terminals cannot open it. The same gate conceals
+that window's Story entry and its tail via the existing Story suffix helper,
+so the log cannot reveal the roll before the choice does. Event-first and
+response-first arrivals converge, while catch-up/reconnect, semantic fallback,
+explicitly non-physical presentation, and a lost response do not wedge the
+provider's answerable window. Other known players, monsters, and catch-up
+history auto-settle. Conflicting facts fail closed; raw payload bytes never
+become Story. Player-facing attack Story/result presentation shows the provider roll,
+the display-only difference between provider roll and total, and provider total
+as `d20 + modifier = total`; it omits target AC while raw Debug retains the
+provider `against` field. A resolved Struck result also labels authoritative
+advantage/disadvantage source refs and source members against the event's exact
+attacker/target relationship. Missing source facts remain absent rather than
+being inferred. Target `hpAfter` and peer exact HP are never shown. The existing
+local die pickup control shares the bottom-left personal-tray position rather
+than floating beside the upper-right Story rail.
+
+Remaining #996 scope: no persistent pre-attack True Strike target marker or
+advantage/disadvantage preview is provided here. The pinned active
+`ConditionView` has ref/name/detail/source member but no affected-target field;
+a historical Cast target alone does not establish current eligibility. Resolved
+Struck attribution is not a substitute for this marker, and Missed currently
+has no modifier-source arrays. Do not infer live eligibility from display prose
+or duplicate the toolkit's condition rules in the client.
 
 Story is always available in production. The whole log can collapse to a
 small tab without stopping ingestion; reopening preserves its selected mode,
@@ -165,6 +196,6 @@ session/member/authenticated-player. Selection, presentation, Story/Debug,
 equipment-open state, private data,
 timers, and callbacks therefore reset synchronously. Controller and query
 generations fence late completions and stale map callbacks. ENDED closes
-Equipment immediately, marks the preserved game surface inert and hidden,
-layers the correctly labelled `aria-modal` dialog above every panel, and focuses
-its Leave action so underlying pointer/keyboard actions cannot fire.
+Equipment immediately and announces the ending through `RunEndedToast` (#1001).
+The camera and Story/Debug stay readable; gameplay verbs are blocked at their
+own call sites rather than making the whole game surface inert.

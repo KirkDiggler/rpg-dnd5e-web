@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -39,9 +40,31 @@ vi.mock('./AssetReviewScene', () => ({
       data-offset={fineOffsetMeters.join(',')}
     >
       {url && (
-        <button type="button" onClick={() => onLoadStateChange(url, 'success')}>
-          Report scene success
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => onLoadStateChange(url, 'success')}
+          >
+            Report scene success
+          </button>
+          <button
+            type="button"
+            onClick={() => onLoadStateChange(url, 'error', 'fixture error')}
+          >
+            Report scene error
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onLoadStateChange(
+                '/models/synty/asset-review/111111111111-A_Brazier_01.glb',
+                'success'
+              )
+            }
+          >
+            Report stale palette A success
+          </button>
+        </>
       )}
     </div>
   ),
@@ -139,7 +162,11 @@ beforeEach(() => {
 });
 
 async function renderLab() {
-  render(<AssetReviewLab />);
+  // Flush the async catalog hydration and its passive keyboard-handler effect
+  // before a test sends a shortcut to the newly displayed selection.
+  await act(async () => {
+    render(<AssetReviewLab />);
+  });
   await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
 }
 
@@ -562,5 +589,170 @@ describe('AssetReviewLab decisions and property sheet', () => {
     expect(provider.entries).toHaveLength(1);
     expect(provider.entries[0]).not.toHaveProperty('decision');
     expect(provider.entries[0]).not.toHaveProperty('url');
+  });
+});
+
+const PALETTE_A_URL =
+  '/models/synty/asset-review/111111111111-A_Brazier_01.glb';
+const PALETTE_B_URL =
+  '/models/synty/asset-review/222222222222-A_Brazier_01.glb';
+
+function paletteAlternative(palette: 'A' | 'B') {
+  const hash = (palette === 'A' ? '1' : '2').repeat(64);
+  return {
+    descriptorVersion: 1,
+    comparisonId: 'braziers',
+    palette,
+    paletteDescriptor: {
+      path: `palette-variants/braziers/${palette}/palette.json`,
+      sha256: '3'.repeat(64),
+    },
+    packConfigSha256: '4'.repeat(64),
+    atlas: {
+      path: `SourceFiles/DarkFortress/Texture/Atlas_${palette}.png`,
+      sha256: '5'.repeat(64),
+    },
+    selectedGlb: {
+      path: `palette-variants/braziers/${palette}/glbs/models/SourceFiles/DarkFortress/FBX/A_Brazier_01.glb`,
+      sha256: hash,
+    },
+    url: palette === 'A' ? PALETTE_A_URL : PALETTE_B_URL,
+    dimensionsMeters: palette === 'A' ? [2, 3, 4] : [4, 5, 6],
+    plannedRuntimeImages: [
+      {
+        index: 0,
+        name: `Atlas_${palette}`,
+        sourceWidth: 64,
+        sourceHeight: 64,
+        width: 64,
+        height: 64,
+        decodedBytes: 16384,
+        decodedMiB: 0.016,
+      },
+    ],
+    readyEligible: true,
+    reasons: [],
+  };
+}
+
+async function renderPaletteLab() {
+  const v2Catalog = {
+    schemaVersion: 2,
+    candidates: [
+      {
+        ...candidate(0),
+        paletteAlternatives: [paletteAlternative('B'), paletteAlternative('A')],
+      },
+    ],
+  } as unknown as AssetReviewCatalog;
+  vi.mocked(fetch).mockResolvedValue({
+    ok: true,
+    json: async () => v2Catalog,
+  } as Response);
+  await act(async () => {
+    render(<AssetReviewLab />);
+  });
+  await screen.findByDisplayValue(v2Catalog.candidates[0]!.source.sourcePath);
+}
+
+describe('AssetReviewLab palette appearances and batch controls', () => {
+  it('offers one sorted palette control and requires the newly selected GLB to load', async () => {
+    await renderPaletteLab();
+
+    const palette = screen.getByLabelText('Palette');
+    expect(screen.getAllByLabelText('Palette')).toHaveLength(1);
+    expect(
+      within(palette)
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual(['Original / default', 'A', 'B']);
+    fireEvent.change(palette, { target: { value: 'braziers\u0000A' } });
+    expect(screen.getByTestId('asset-review-scene').dataset.url).toBe(
+      PALETTE_A_URL
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Ready' }));
+    fireEvent.change(palette, { target: { value: 'braziers\u0000B' } });
+
+    expect(screen.getByTestId('current-decision').textContent).toBe('Keep');
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(screen.getByTestId('asset-review-scene').dataset.url).toBe(
+      PALETTE_B_URL
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report stale palette A success' })
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Ready' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Report scene error' }));
+    expect(screen.getByTestId('current-decision').textContent).toBe('Keep');
+  });
+
+  it('edits, validates, and explicitly generates a collision-safe batch ID', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(
+      '123e4567-e89b-12d3-a456-426614174000'
+    );
+    await renderPaletteLab();
+
+    const batchId = screen.getByLabelText('Batch ID') as HTMLInputElement;
+    fireEvent.change(batchId, { target: { value: 'bad batch id' } });
+    expect(screen.getByText(/Batch ID has an invalid format/i)).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Export review JSON',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.change(batchId, { target: { value: 'edited-batch' } });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Export review JSON',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate batch ID' }));
+    expect(batchId.value).toMatch(
+      /^dark-fortress-world-assets-\d{8}-123e4567-e89b-12d3-a456-426614174000$/
+    );
+  });
+
+  it('downloads schema-v2 provider selection without local preview fields', async () => {
+    await renderPaletteLab();
+    fireEvent.change(screen.getByLabelText('Palette'), {
+      target: { value: 'braziers\u0000A' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Ready' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export Ready provider JSON' })
+    );
+
+    const text = await blobText(downloadedBlobs.at(-1)!);
+    const provider = JSON.parse(text);
+    expect(provider.schemaVersion).toBe(2);
+    expect(provider.entries[0].source.glbSha256).toBe(hashes[0]);
+    expect(provider.entries[0].paletteSelection.selectedGlb.sha256).toBe(
+      '1'.repeat(64)
+    );
+    expect(text).not.toMatch(/"url"|localhost|blob:/i);
   });
 });
