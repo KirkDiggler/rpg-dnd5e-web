@@ -527,6 +527,7 @@ if (args.join(' ') === 'run prepare') {
   fs.writeFileSync(hook, '#!/bin/sh\\nexit 0\\n', {mode:0o755});
   cp.execFileSync('git', ['-C', process.cwd(), 'config', 'core.hooksPath', '.husky/_']);
 }
+if (args.join(' ') === 'run ci-check' && process.env.FAIL_CI === '1') process.exit(7);
 if (args.join(' ') === 'run assets:sync') {
   const output = path.join(process.cwd(),'src/generated/characterCustomizationCatalog.ts');
   fs.mkdirSync(path.dirname(output),{recursive:true});
@@ -536,6 +537,7 @@ if (args.join(' ') === 'run assets:sync') {
   if (process.env.WRITE_EXTRA === '1') fs.writeFileSync(path.join(process.cwd(),'unexpected.txt'),'unexpected');
   if (process.env.WRITE_MULTIPLE === '1') { fs.appendFileSync(path.join(process.cwd(),'package.json'),' '); fs.writeFileSync(path.join(process.cwd(),'unexpected.txt'),'unexpected'); }
   if (process.env.RENAME_TRACKED === '1') cp.execFileSync('git',['-C',process.cwd(),'mv','package.json','renamed-package.json']);
+  if (process.env.RENAME_TO_CATALOG === '1') { fs.rmSync(output); cp.execFileSync('git',['-C',process.cwd(),'mv','package.json','src/generated/characterCustomizationCatalog.ts']); }
   if (process.env.WRITE_LICENSED === '1') { const p=path.join(process.cwd(),'public/models/synty/bard.glb'); fs.mkdirSync(path.dirname(p),{recursive:true}); fs.writeFileSync(p,'licensed'); cp.execFileSync('git',['-C',process.cwd(),'add','-f',p]); }
 }
 `
@@ -550,8 +552,10 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.CALLS, 'npx ' + args.join(' ') + '\\n');
 const outputIndex = args.indexOf('--output');
 if (outputIndex !== -1) {
-  fs.writeFileSync(args[outputIndex + 1], "export const providerCommit = '" + process.env.MERGE_SHA + "';\\ncombination: 'human:bard'\\ncombination: 'elf:bard'\\n");
+  if (process.env.COLLIDING_BYTES === '1') fs.writeFileSync(args[outputIndex + 1], Buffer.from([0x81]));
+  else fs.writeFileSync(args[outputIndex + 1], "export const providerCommit = '" + process.env.MERGE_SHA + "';\\ncombination: 'human:bard'\\ncombination: 'elf:bard'\\n");
 } else {
+  if (process.env.FAIL_FOCUSED === '1') process.exit(8);
   const catalog = fs.readFileSync(path.join(process.cwd(), 'src/generated/characterCustomizationCatalog.ts'), 'utf8');
   if (!catalog.includes(process.env.MERGE_SHA) || (catalog.match(/combination:/g) || []).length !== 2) process.exit(8);
 }
@@ -615,6 +619,42 @@ function generatedCatalog(fixture: Fixture) {
   return `export const providerCommit = '${fixture.mergeSha}';\ncombination: 'human:bard'\ncombination: 'elf:bard'\n`;
 }
 
+async function writeResumeMarker(fixture: Fixture, webWorktree: string) {
+  const markerPath = (
+    await git(
+      webWorktree,
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      'exposure-provider-appearances-guard-failure.json'
+    )
+  ).stdout.trim();
+  const catalog = await readFile(
+    join(webWorktree, 'src/generated/characterCustomizationCatalog.ts')
+  );
+  const marker = {
+    schemaVersion: 1,
+    tool: 'expose-provider-character-appearances@2',
+    phase: 'assets-sync-catalog-path-guard-failed',
+    issue: 1012,
+    branch: 'feat/1012-bard-provider-exposure',
+    webHead: (
+      await git(webWorktree, 'rev-parse', 'HEAD^{commit}')
+    ).stdout.trim(),
+    providerHead: fixture.mergeSha,
+    receiptSha256: sha256(await readFile(fixture.receiptPath)),
+    catalogSha256: sha256(catalog),
+    statusEntries: [
+      {
+        status: ' M',
+        path: 'src/generated/characterCustomizationCatalog.ts',
+      },
+    ],
+  };
+  await writeFile(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
+  return markerPath;
+}
+
 async function prepareResumeFixture(fixture: Fixture) {
   const providerWorktree = join(
     fixture.provider,
@@ -645,7 +685,8 @@ async function prepareResumeFixture(fixture: Fixture) {
     generatedCatalog(fixture)
   );
   fixture.env.WEB_WORKTREE = webWorktree;
-  return { providerWorktree, webWorktree };
+  const markerPath = await writeResumeMarker(fixture, webWorktree);
+  return { providerWorktree, webWorktree, markerPath };
 }
 
 async function advanceWebDev(fixture: Fixture) {
@@ -922,6 +963,50 @@ describe('receipt-driven provider exposure wrapper', () => {
     }
   );
 
+  it('rejects a rename into the allowlisted destination and reports its source path', async () => {
+    const fixture = await makeFixture();
+    await git(
+      fixture.web,
+      'rm',
+      '--quiet',
+      'src/generated/characterCustomizationCatalog.ts'
+    );
+    await git(
+      fixture.web,
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture without catalog'
+    );
+    await git(fixture.web, 'push', '--quiet', 'origin', 'dev');
+    await git(fixture.web, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+    fixture.env.RENAME_TO_CATALOG = '1';
+
+    await expect(runCli(fixture, ['--apply'])).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining('package.json'),
+    });
+    const markerPath = (
+      await git(
+        join(fixture.root, 'web-worktree'),
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-path',
+        'exposure-provider-appearances-guard-failure.json'
+      )
+    ).stdout.trim();
+    const marker = JSON.parse(await readFile(markerPath, 'utf8'));
+    expect(marker).toMatchObject({
+      phase: 'assets-sync-catalog-path-guard-failed',
+      statusEntries: [
+        expect.objectContaining({
+          path: 'src/generated/characterCustomizationCatalog.ts',
+          originalPath: 'package.json',
+        }),
+      ],
+    });
+  });
+
   it('plans a read-only pre-commit resume from the exact owned state', async () => {
     const fixture = await makeFixture();
     const { providerWorktree, webWorktree } =
@@ -945,6 +1030,62 @@ describe('receipt-driven provider exposure wrapper', () => {
       webBefore
     );
     expect(await readFile(fixture.calls, 'utf8')).not.toContain('npm ');
+  });
+
+  it('rejects resume without a verified guard-failure marker', async () => {
+    const fixture = await makeFixture();
+    const { markerPath } = await prepareResumeFixture(fixture);
+    await rm(markerPath);
+
+    await expect(runCli(fixture, ['--resume'])).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining(
+        'requires a verified catalog-path guard-failure marker'
+      ),
+    });
+  });
+
+  it.each([
+    ['focused tests', 'FAIL_FOCUSED'],
+    ['CI', 'FAIL_CI'],
+  ])(
+    'does not treat a resumed %s failure as another resumable path-guard failure',
+    async (_phase, environment) => {
+      const fixture = await makeFixture();
+      await prepareResumeFixture(fixture);
+      fixture.env[environment] = '1';
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).rejects.toBeDefined();
+      delete fixture.env[environment];
+
+      await expect(runCli(fixture, ['--resume'])).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining(
+          'requires a verified catalog-path guard-failure marker'
+        ),
+      });
+    }
+  );
+
+  it('compares preserved and generated catalogs as raw bytes', async () => {
+    const fixture = await makeFixture();
+    const { webWorktree } = await prepareResumeFixture(fixture);
+    await writeFile(
+      join(webWorktree, 'src/generated/characterCustomizationCatalog.ts'),
+      Buffer.from([0x80])
+    );
+    await writeResumeMarker(fixture, webWorktree);
+    fixture.env.COLLIDING_BYTES = '1';
+
+    await expect(
+      runCli(fixture, ['--apply', '--resume'])
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining(
+        'does not match fresh generator output from the verified provider'
+      ),
+    });
   });
 
   it('resumes the existing owned worktrees without duplicate creation', async () => {
@@ -1017,7 +1158,7 @@ describe('receipt-driven provider exposure wrapper', () => {
           'not provider output\n'
         );
       },
-      'does not match fresh generator output',
+      'resume phase marker does not match',
     ],
     [
       'a staged later phase',

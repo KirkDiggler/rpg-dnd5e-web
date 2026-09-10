@@ -40,6 +40,17 @@ const CURRENT_OVERLAY_ALLOWED_FIELDS = [
   'providerMetadata.runtime.treeSha256',
 ];
 const GENERATED_CATALOG = 'src/generated/characterCustomizationCatalog.ts';
+const RESUME_MARKER = 'exposure-provider-appearances-guard-failure.json';
+const LEGACY_BARD_GUARD_FAILURE = Object.freeze({
+  issue: 1024,
+  branch: 'feat/1024-bard-provider-exposure',
+  webHead: '466600d75e4f0ad3c3d06487ef6c34cb43c8da65',
+  providerHead: '37d2efa96fdc935b95fdb0d0c3efd3b6cf4736c7',
+  receiptSha256:
+    '54b427ee101a1a5add0ed9e28cb0c0aeff95644eb57a20dcd2da21611e480301',
+  catalogSha256:
+    '146818d4f77422dda4a707617120141b3cf1ce878d8bbfc87a1373320b0c632f',
+});
 const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -992,20 +1003,87 @@ function statusEntries(root) {
       record.length >= 4 && record[2] === ' ',
       'Git returned malformed porcelain status output'
     );
-    entries.push({ status: record.slice(0, 2), path: record.slice(3) });
+    const entry = { status: record.slice(0, 2), path: record.slice(3) };
     if ('RC'.includes(record[0]) || 'RC'.includes(record[1])) {
       index += 1;
       requireCondition(
         index < records.length && records[index].length > 0,
         'Git returned malformed rename/copy status output'
       );
+      entry.originalPath = records[index];
     }
+    entries.push(entry);
   }
   return entries;
 }
 
 function changedPaths(root) {
-  return statusEntries(root).map((entry) => entry.path);
+  return statusEntries(root).flatMap((entry) =>
+    entry.originalPath ? [entry.path, entry.originalPath] : [entry.path]
+  );
+}
+
+function resumeMarkerPath(root) {
+  return git(
+    root,
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    RESUME_MARKER
+  );
+}
+
+function guardFailureMarker(validated, web, root, providerHead, entries) {
+  const catalogPath = join(root, GENERATED_CATALOG);
+  return {
+    schemaVersion: 1,
+    tool: TOOL,
+    phase: 'assets-sync-catalog-path-guard-failed',
+    issue: web.issue.number,
+    branch: web.branch,
+    webHead: git(root, 'rev-parse', 'HEAD^{commit}'),
+    providerHead,
+    receiptSha256: validated.sha256,
+    catalogSha256: statProbe(catalogPath)
+      ? digest(readFileSync(catalogPath))
+      : null,
+    statusEntries: entries,
+  };
+}
+
+function writeGuardFailureMarker(validated, web, root, providerHead, entries) {
+  writeFileSync(
+    resumeMarkerPath(root),
+    canonical(guardFailureMarker(validated, web, root, providerHead, entries)),
+    { flag: 'wx', mode: 0o600 }
+  );
+}
+
+function markerMatchesState(marker, validated, web, root, head, entries) {
+  const catalogPath = join(root, GENERATED_CATALOG);
+  return (
+    marker?.schemaVersion === 1 &&
+    marker.tool === TOOL &&
+    marker.phase === 'assets-sync-catalog-path-guard-failed' &&
+    marker.issue === web.issue.number &&
+    marker.branch === web.branch &&
+    marker.webHead === head &&
+    marker.providerHead === validated.mergeSha &&
+    marker.receiptSha256 === validated.sha256 &&
+    marker.catalogSha256 === digest(readFileSync(catalogPath)) &&
+    JSON.stringify(marker.statusEntries) === JSON.stringify(entries)
+  );
+}
+
+function isLegacyBardGuardFailure(validated, web, head, catalogSha256) {
+  return (
+    web.issue.number === LEGACY_BARD_GUARD_FAILURE.issue &&
+    web.branch === LEGACY_BARD_GUARD_FAILURE.branch &&
+    head === LEGACY_BARD_GUARD_FAILURE.webHead &&
+    validated.mergeSha === LEGACY_BARD_GUARD_FAILURE.providerHead &&
+    validated.sha256 === LEGACY_BARD_GUARD_FAILURE.receiptSha256 &&
+    catalogSha256 === LEGACY_BARD_GUARD_FAILURE.catalogSha256
+  );
 }
 
 function effectivePreCommit(root) {
@@ -1155,10 +1233,41 @@ function resumeState(validated, providerSource, web, baseHead) {
   requireCondition(
     entries.length === 1 &&
       entries[0].path === GENERATED_CATALOG &&
+      !entries[0].originalPath &&
       entries[0].status === ' M',
     'pre-commit resume requires an unstaged dirty set containing only the generated catalog'
   );
-  return { provider: { ...providerSource, root: providerRoot }, webRoot, head };
+  const markerPath = resumeMarkerPath(webRoot);
+  const catalogSha256 = digest(readFileSync(join(webRoot, GENERATED_CATALOG)));
+  let legacyMarker = false;
+  if (statProbe(markerPath)) {
+    const marker = parseJson(
+      readFileSync(realFile(markerPath, 'resume phase marker'), 'utf8'),
+      'resume phase marker'
+    );
+    requireCondition(
+      markerMatchesState(marker, validated, web, webRoot, head, entries),
+      'resume phase marker does not match the exact preserved guard-failure state'
+    );
+  } else {
+    legacyMarker = isLegacyBardGuardFailure(
+      validated,
+      web,
+      head,
+      catalogSha256
+    );
+    requireCondition(
+      legacyMarker,
+      'pre-commit resume requires a verified catalog-path guard-failure marker'
+    );
+  }
+  return {
+    provider: { ...providerSource, root: providerRoot },
+    webRoot,
+    head,
+    markerPath,
+    legacyMarker,
+  };
 }
 
 function apply(validated, providerSource, web, output, resume = false) {
@@ -1179,9 +1288,11 @@ function apply(validated, providerSource, web, output, resume = false) {
       'generic class tooling is not merged in fresh origin/dev; merge/review tooling before provider data'
     );
     let provider;
+    let resumeMarker;
     if (resume) {
       const state = resumeState(validated, providerSource, web, freshBase);
       provider = state.provider;
+      resumeMarker = state.legacyMarker ? null : state.markerPath;
       if (state.head !== freshBase)
         git(state.webRoot, 'merge', '--ff-only', freshBase);
       created.push(`resumed existing worktree ${state.webRoot}`);
@@ -1247,24 +1358,40 @@ function apply(validated, providerSource, web, output, resume = false) {
           syncEnv
         );
         requireCondition(
-          readFileSync(join(web.worktree, GENERATED_CATALOG), 'utf8') ===
-            readFileSync(generated, 'utf8'),
+          readFileSync(join(web.worktree, GENERATED_CATALOG)).equals(
+            readFileSync(generated)
+          ),
           'existing generated catalog does not match fresh generator output from the verified provider'
         );
+        if (resumeMarker) rmSync(resumeMarker, { force: true });
       } finally {
         rmSync(temporary, { recursive: true, force: true });
       }
     }
     const syncOutput = npm(web.worktree, ['run', 'assets:sync'], syncEnv);
-    const paths = changedPaths(web.worktree);
-    requireCondition(
-      paths.length > 0,
-      'ordinary assets:sync produced no tracked Web output'
+    const entries = statusEntries(web.worktree);
+    const paths = entries.flatMap((entry) =>
+      entry.originalPath ? [entry.path, entry.originalPath] : [entry.path]
     );
-    requireCondition(
-      paths.length === 1 && paths[0] === GENERATED_CATALOG,
-      `assets:sync changed files outside its generated catalog: ${paths.join(', ')}`
-    );
+    try {
+      requireCondition(
+        paths.length > 0,
+        'ordinary assets:sync produced no tracked Web output'
+      );
+      requireCondition(
+        paths.length === 1 && paths[0] === GENERATED_CATALOG,
+        `assets:sync changed files outside its generated catalog: ${paths.join(', ')}`
+      );
+    } catch (error) {
+      writeGuardFailureMarker(
+        validated,
+        web,
+        web.worktree,
+        git(provider.root, 'rev-parse', 'HEAD^{commit}'),
+        entries
+      );
+      throw error;
+    }
     const catalog = readFileSync(join(web.worktree, GENERATED_CATALOG), 'utf8');
     requireCondition(
       catalog.includes(validated.mergeSha),
