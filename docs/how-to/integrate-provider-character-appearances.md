@@ -49,6 +49,23 @@ npm run assets:expose-provider-appearances -- \
 
 Apply fetches the receipt merge SHA only if needed, validates that fetched commit and the scoped #117 hash chain, creates a fresh detached private-provider worktree at that SHA without changing the source worktree's HEAD or dirty state, and verifies every owned hash there. It then creates the isolated numbered Web worktree from fresh `origin/dev`, installs with `npm ci --ignore-scripts`, explicitly runs the trusted repository Husky setup, verifies the configured pre-commit is executable, delegates exactly to `npm run assets:sync` with the pinned provider and update suppression, stages only the actual tracked `src/generated/characterCustomizationCatalog.ts` change, runs focused generator/resolver tests and the normal `ci-check`, then uses ordinary commit/push/PR operations against `dev`. The emitted Web receipt records all three provider receipt-chain hashes, the exact #117 overlay binding, the verified merged provider SHA and class/races, Web base/branch/head/PR readback, and normal generation/check results. Licensed GLB/BLEND/runtime bytes remain ignored and must never be staged.
 
+### Resume after the pre-commit catalog-path guard
+
+`--resume` supports only the state preserved when the first `assets:sync` completed but the exact generated-catalog path guard stopped the run before focused tests, CI, staging, or commit. It is not a general recovery state machine. A later failure must be inspected instead of resumed.
+
+For the Bard run stopped on `rc/generated/characterCustomizationCatalog.ts`, first inspect the read-only resume plan with the same receipt, issue, worktree, and output inputs:
+
+```bash
+npm run assets:expose-provider-appearances -- \
+  --provider-receipt /home/kirk/game-dev/rpg-game-assets/.worktrees/189-bard-provider-publication-merged/.stage/provider-bard-prepared-189-20260910/publication-receipt-issue189-20260910-054450-merged.json \
+  --web-issue 1024 \
+  --worktree-root /home/kirk/game-dev/rpg-dnd5e-web/.worktrees/1024-bard-provider-exposure \
+  --output /home/kirk/game-dev/rpg-game-assets/.worktrees/189-bard-provider-publication-merged/.stage/provider-bard-prepared-189-20260910/publication-receipt-issue189-20260910-054450-merged-web.json \
+  --resume
+```
+
+After reviewing a ready plan, repeat that exact command with `--apply` appended. Mutation requires both flags: `--apply --resume`. Resume requires the expected issue-derived branch and worktree, the existing detached provider worktree at the receipt merge SHA, a clean provider, no Git operation/index lock, no Web commits ahead of the base, and an unstaged dirty set containing only the generated catalog. It fetches current `dev`, stops if the old Web head is not its ancestor or if upstream changed the catalog, and otherwise fast-forwards without force/reset/stash. It refreshes dependencies and Husky normally, generates a temporary catalog from the verified provider and compares it byte-for-byte with the preserved catalog before ordinary `assets:sync` can replace it, then continues at the focused tests, mandatory `ci-check`, exact staging, normal hooked commit, push, PR readback, and receipt write.
+
 The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or legacy fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
 
 At runtime, a normal standing character prefers its race profile body and receives the existing `customizationProfileRef`. That activates the established hair/none, hair color, coat-primary, and trim-secondary controls. The old complete Bard mapping remains only a compatibility fallback until generated Bard profile data arrives. Downed Bards still skip profile customization and use the established visible `MediumHumanoid` fallback because no Bard downed URL is declared.

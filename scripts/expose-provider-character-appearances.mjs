@@ -9,10 +9,13 @@ import { createHash } from 'node:crypto';
 import {
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -62,7 +65,7 @@ function run(command, args, options = {}) {
       result.stderr?.trim() || result.stdout?.trim() || `exit ${result.status}`;
     throw new ExposureError(`${command} ${args.join(' ')} failed: ${detail}`);
   }
-  return result.stdout.trim();
+  return options.raw ? result.stdout : result.stdout.trim();
 }
 function git(root, ...args) {
   return run(process.env.RPG_EXPOSURE_GIT || 'git', args, { cwd: root });
@@ -970,10 +973,39 @@ function webPreflight(webRepo, issue, classRef, worktreeRoot) {
   };
 }
 
-function changedPaths(root) {
-  const output = git(root, 'status', '--porcelain=v1', '--untracked-files=all');
+function statusEntries(root) {
+  const output = run(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+    { cwd: root, raw: true }
+  );
   if (!output) return [];
-  return output.split('\n').map((line) => line.slice(3));
+  const records = output.split('\0');
+  requireCondition(
+    records.pop() === '',
+    'Git returned unterminated porcelain status output'
+  );
+  const entries = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    requireCondition(
+      record.length >= 4 && record[2] === ' ',
+      'Git returned malformed porcelain status output'
+    );
+    entries.push({ status: record.slice(0, 2), path: record.slice(3) });
+    if ('RC'.includes(record[0]) || 'RC'.includes(record[1])) {
+      index += 1;
+      requireCondition(
+        index < records.length && records[index].length > 0,
+        'Git returned malformed rename/copy status output'
+      );
+    }
+  }
+  return entries;
+}
+
+function changedPaths(root) {
+  return statusEntries(root).map((entry) => entry.path);
 }
 
 function effectivePreCommit(root) {
@@ -999,7 +1031,137 @@ function effectivePreCommit(root) {
   return hook;
 }
 
-function apply(validated, providerSource, web, output) {
+function resumeState(validated, providerSource, web, baseHead) {
+  requireCondition(
+    statProbe(providerSource.worktree),
+    `expected pinned provider worktree is missing: ${providerSource.worktree}`
+  );
+  const providerRoot = realpathSync(providerSource.worktree);
+  requireCondition(
+    realpathSync(
+      git(
+        providerRoot,
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir'
+      )
+    ) === providerSource.commonDir,
+    'pinned provider worktree belongs to an unexpected repository/common root'
+  );
+  requireCondition(
+    git(providerRoot, 'rev-parse', 'HEAD^{commit}') === validated.mergeSha,
+    'pinned provider worktree is not at the receipt merge SHA'
+  );
+  requireCondition(
+    changedPaths(providerRoot).length === 0,
+    'pinned provider worktree must be exactly clean'
+  );
+  for (const state of [
+    'MERGE_HEAD',
+    'rebase-merge',
+    'rebase-apply',
+    'index.lock',
+  ]) {
+    const path = git(
+      providerRoot,
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      state
+    );
+    requireCondition(
+      !statProbe(path),
+      `resume refuses provider Git operation or lock state: ${state}`
+    );
+  }
+  verifyMergedProviderCommit(validated, providerRoot);
+
+  requireCondition(
+    statProbe(web.worktree),
+    `expected issue-owned Web worktree is missing: ${web.worktree}`
+  );
+  const webRoot = realpathSync(web.worktree);
+  requireCondition(
+    webRoot === resolve(web.worktree) &&
+      realpathSync(git(webRoot, 'rev-parse', '--show-toplevel')) === webRoot,
+    'resume Web worktree path is not the exact expected repository root'
+  );
+  const expectedCommon = realpathSync(
+    git(web.root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+  );
+  requireCondition(
+    realpathSync(
+      git(webRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    ) === expectedCommon,
+    'resume Web worktree belongs to an unexpected repository/common root'
+  );
+  requireCondition(
+    git(webRoot, 'branch', '--show-current') === web.branch,
+    `resume Web worktree is not on expected issue-derived branch ${web.branch}`
+  );
+  const remoteBranch = spawnSync(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['ls-remote', '--exit-code', '--heads', 'origin', web.branch],
+    { cwd: webRoot }
+  );
+  requireCondition(
+    remoteBranch.status === 2,
+    `remote Web branch already exists or could not be safely checked: ${web.branch}`
+  );
+  for (const state of [
+    'MERGE_HEAD',
+    'rebase-merge',
+    'rebase-apply',
+    'index.lock',
+  ]) {
+    const path = git(
+      webRoot,
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      state
+    );
+    requireCondition(
+      !statProbe(path),
+      `resume refuses active Git operation or lock state: ${state}`
+    );
+  }
+  const head = commit(
+    git(webRoot, 'rev-parse', 'HEAD^{commit}'),
+    'resume Web head'
+  );
+  const ancestor = spawnSync(
+    process.env.RPG_EXPOSURE_GIT || 'git',
+    ['merge-base', '--is-ancestor', head, baseHead],
+    { cwd: webRoot }
+  );
+  requireCondition(
+    ancestor.status === 0,
+    'resume v1 requires no Web commits ahead of the current dev base'
+  );
+  requireCondition(
+    git(
+      webRoot,
+      'diff',
+      '--name-only',
+      head,
+      baseHead,
+      '--',
+      GENERATED_CATALOG
+    ) === '',
+    'current dev changed the generated catalog; resume cannot overwrite upstream or user data'
+  );
+  const entries = statusEntries(webRoot);
+  requireCondition(
+    entries.length === 1 &&
+      entries[0].path === GENERATED_CATALOG &&
+      entries[0].status === ' M',
+    'pre-commit resume requires an unstaged dirty set containing only the generated catalog'
+  );
+  return { provider: { ...providerSource, root: providerRoot }, webRoot, head };
+}
+
+function apply(validated, providerSource, web, output, resume = false) {
   const created = [];
   try {
     git(web.root, 'fetch', 'origin', 'dev');
@@ -1016,39 +1178,48 @@ function apply(validated, providerSource, web, output) {
       generator.includes('classOrder must declare at least one class'),
       'generic class tooling is not merged in fresh origin/dev; merge/review tooling before provider data'
     );
-    const provider = pinProvider(validated, providerSource, created);
-    requireCondition(
-      !statProbe(web.worktree),
-      `Web publication worktree already exists: ${web.worktree}`
-    );
-    const localBranch = spawnSync(
-      process.env.RPG_EXPOSURE_GIT || 'git',
-      ['show-ref', '--verify', '--quiet', `refs/heads/${web.branch}`],
-      { cwd: web.root }
-    );
-    requireCondition(
-      localBranch.status === 1,
-      `local Web branch already exists: ${web.branch}`
-    );
-    const remoteBranch = spawnSync(
-      process.env.RPG_EXPOSURE_GIT || 'git',
-      ['ls-remote', '--exit-code', '--heads', 'origin', web.branch],
-      { cwd: web.root }
-    );
-    requireCondition(
-      remoteBranch.status === 2,
-      `remote Web branch already exists or could not be safely checked: ${web.branch}`
-    );
-    git(
-      web.root,
-      'worktree',
-      'add',
-      '-b',
-      web.branch,
-      web.worktree,
-      'origin/dev'
-    );
-    created.push(`branch ${web.branch}`, `worktree ${web.worktree}`);
+    let provider;
+    if (resume) {
+      const state = resumeState(validated, providerSource, web, freshBase);
+      provider = state.provider;
+      if (state.head !== freshBase)
+        git(state.webRoot, 'merge', '--ff-only', freshBase);
+      created.push(`resumed existing worktree ${state.webRoot}`);
+    } else {
+      provider = pinProvider(validated, providerSource, created);
+      requireCondition(
+        !statProbe(web.worktree),
+        `Web publication worktree already exists: ${web.worktree}`
+      );
+      const localBranch = spawnSync(
+        process.env.RPG_EXPOSURE_GIT || 'git',
+        ['show-ref', '--verify', '--quiet', `refs/heads/${web.branch}`],
+        { cwd: web.root }
+      );
+      requireCondition(
+        localBranch.status === 1,
+        `local Web branch already exists: ${web.branch}`
+      );
+      const remoteBranch = spawnSync(
+        process.env.RPG_EXPOSURE_GIT || 'git',
+        ['ls-remote', '--exit-code', '--heads', 'origin', web.branch],
+        { cwd: web.root }
+      );
+      requireCondition(
+        remoteBranch.status === 2,
+        `remote Web branch already exists or could not be safely checked: ${web.branch}`
+      );
+      git(
+        web.root,
+        'worktree',
+        'add',
+        '-b',
+        web.branch,
+        web.worktree,
+        'origin/dev'
+      );
+      created.push(`branch ${web.branch}`, `worktree ${web.worktree}`);
+    }
     const syncEnv = {
       ...process.env,
       RPG_GAME_ASSETS_PATH: provider.root,
@@ -1058,6 +1229,32 @@ function apply(validated, providerSource, web, output) {
     npm(web.worktree, ['ci', '--ignore-scripts'], syncEnv);
     npm(web.worktree, ['run', 'prepare'], syncEnv);
     const preCommitHook = effectivePreCommit(web.worktree);
+    if (resume) {
+      const temporary = mkdtempSync(join(tmpdir(), 'web-exposure-resume-'));
+      const generated = join(temporary, 'characterCustomizationCatalog.ts');
+      try {
+        npx(
+          web.worktree,
+          [
+            '--no-install',
+            'tsx',
+            'scripts/generateCharacterCustomizationCatalog.ts',
+            '--provider-root',
+            provider.root,
+            '--output',
+            generated,
+          ],
+          syncEnv
+        );
+        requireCondition(
+          readFileSync(join(web.worktree, GENERATED_CATALOG), 'utf8') ===
+            readFileSync(generated, 'utf8'),
+          'existing generated catalog does not match fresh generator output from the verified provider'
+        );
+      } finally {
+        rmSync(temporary, { recursive: true, force: true });
+      }
+    }
     const syncOutput = npm(web.worktree, ['run', 'assets:sync'], syncEnv);
     const paths = changedPaths(web.worktree);
     requireCondition(
@@ -1284,11 +1481,13 @@ function statProbe(path) {
 function args(argv) {
   const parsed = {
     apply: false,
+    resume: false,
     webRepo: resolve(new URL('..', import.meta.url).pathname),
   };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (key === '--apply') parsed.apply = true;
+    else if (key === '--resume') parsed.resume = true;
     else if (
       [
         '--provider-receipt',
@@ -1361,10 +1560,23 @@ function main() {
   const output = resolve(
     options.output || join(dirname(validated.path), 'web-receipt.json')
   );
+  if (options.resume) {
+    requireCondition(
+      !statProbe(output),
+      `Web receipt output already exists: ${output}`
+    );
+    resumeState(validated, provider, web, web.baseHead);
+  }
   const plan = {
     schemaVersion: 1,
     tool: TOOL,
-    mode: options.apply ? 'apply' : 'dry-run',
+    mode: options.resume
+      ? options.apply
+        ? 'resume-apply'
+        : 'resume-dry-run'
+      : options.apply
+        ? 'apply'
+        : 'dry-run',
     mutationsPerformed: false,
     ready: blockers.length === 0,
     blockers,
@@ -1404,9 +1616,17 @@ function main() {
       ...(provider.needsFetch
         ? ['fetch the verified provider merge SHA during apply only']
         : []),
-      'create a fresh detached private-provider worktree at the verified merge SHA',
-      'fetch fresh origin/dev',
-      'create isolated numbered Web issue worktree/branch',
+      ...(options.resume
+        ? [
+            'revalidate the existing pinned provider and issue-owned Web worktrees',
+            'fetch fresh origin/dev and fast-forward only when the old Web head is its ancestor and the upstream catalog is unchanged',
+            'compare the preserved catalog to fresh generator output before ordinary sync',
+          ]
+        : [
+            'create a fresh detached private-provider worktree at the verified merge SHA',
+            'fetch fresh origin/dev',
+            'create isolated numbered Web issue worktree/branch',
+          ]),
       'install the lockfile-pinned Web dependencies without lifecycle scripts',
       'run trusted repository Husky setup and verify the configured executable pre-commit hook',
       'run ordinary npm run assets:sync with the verified pinned provider checkout',
@@ -1427,7 +1647,7 @@ function main() {
     blockers.length === 0,
     `exposure blocked: ${blockers.join('; ')}`
   );
-  const result = apply(validated, provider, web, output);
+  const result = apply(validated, provider, web, output, options.resume);
   process.stdout.write(
     canonical({
       ...plan,
