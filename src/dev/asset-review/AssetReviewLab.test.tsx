@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -139,7 +140,11 @@ beforeEach(() => {
 });
 
 async function renderLab() {
-  render(<AssetReviewLab />);
+  // Flush the async catalog hydration and its passive keyboard-handler effect
+  // before a test sends a shortcut to the newly displayed selection.
+  await act(async () => {
+    render(<AssetReviewLab />);
+  });
   await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
 }
 

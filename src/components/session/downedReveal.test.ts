@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The reveal order bug: a monster hit the floor while the d20 that felled it
  * was still tumbling, because `struck`/`downed` both refresh 'view' the

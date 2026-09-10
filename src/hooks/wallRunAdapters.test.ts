@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for wallRunAdapters — the wire-shape <-> wallRuns.ts seam and the
  * W2 "positive category rule" (design.md).

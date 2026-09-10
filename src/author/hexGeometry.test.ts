@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import { hexCenter } from '../concepts/session-tomb/atlas';

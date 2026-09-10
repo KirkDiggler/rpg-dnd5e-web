@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { EquippedMap } from '@/components/game/equipment/equipmentTypes';
 import { describe, expect, it } from 'vitest';
 import type { MainHandSocket } from './mainHandPresentation';

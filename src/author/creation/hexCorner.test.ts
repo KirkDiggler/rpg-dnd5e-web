@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * hexCorner — corner-lattice addressing pins (#804). Adapted from the
  * pre-restart module's own test (`git show

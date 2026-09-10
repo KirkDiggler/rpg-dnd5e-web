@@ -39,32 +39,26 @@ npm install
 npm run dev
 ```
 
-### 🚨 IMPORTANT: Pre-Push CI Checks
+### Pull Request Checks
 
-**ALWAYS run CI checks before pushing:**
+Use an explicit focused test file and watch mode during the edit-test-edit loop.
+For example, run `src/utils/money.test.ts` or
+`src/hooks/useEncounterState.test.ts` directly; see
+[Running Vitest](docs/how-to/run-vitest.md) for the commands and their limits.
 
-```bash
-npm run ci-check  # Run this BEFORE git push
-```
-
-We have multiple safeguards in place:
-
-1. **Pre-push hook** - Automatically runs CI checks when you `git push`
-2. **Safe push script** - Use `./scripts/safe-push.sh` or `git safepush`
-3. **CI check script** - Quick local CI validation with `npm run ci-check`
-
-#### Quick Commands
+Before opening or updating a pull request, run one complete local gate:
 
 ```bash
-# Check if your code will pass CI
 npm run ci-check
-
-# Auto-fix common issues
-npm run ci-fix
-
-# Safe push with automatic checks
-git safepush origin feature-branch
 ```
+
+Do not run it after every edit, commit, or push, and do not run a standalone full
+test suite immediately before it because the gate already includes the suite.
+Pull-request CI remains authoritative.
+
+There is no pre-push hook. The pre-commit hook runs `lint-staged` automatically;
+do not replace it by manually running `npm run pre-commit`, and never bypass it
+with `--no-verify`.
 
 ### Building
 

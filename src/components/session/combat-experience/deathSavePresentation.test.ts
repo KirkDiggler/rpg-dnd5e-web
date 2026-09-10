@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
 import {

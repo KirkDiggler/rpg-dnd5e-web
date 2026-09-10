@@ -979,7 +979,7 @@ describe('SessionEncounterView production combat integration', () => {
 
     const dock = await screen.findByTestId('session-combat-dock');
     within(dock).getByText('You');
-    within(dock).getByText(/level 3 adventurer/i);
+    await within(dock).findByText(/level 3 adventurer/i);
     expect(within(dock).queryByText('Private Turn Name')).toBeNull();
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');

@@ -39,6 +39,10 @@ Attack is panel-first in the first production cut:
 4. either an available canvas ring or target button echoes the exact declaration
    ID and member target.
 
+The targeting availability panel sits at the upper-left below the room label,
+not over the lower-map click area. Its height is capped and long candidate lists
+scroll internally; other context notices keep their existing positions.
+
 Unavailable candidate buttons are disabled, stay readable with provider
 `why.text`, and remain absent from canvas rings. Keyboard and screen-reader
 players therefore have the same panel-first target authority. They cannot
@@ -128,19 +132,22 @@ also fences reversed responses and key changes like Afford.
 
 ## Story, dice, and diagnostics
 
-The presentation reducer reconciles each recipient's AttackResponse and typed
-Struck/Missed event in its local `(session, seq)` lane while the provider's
-opaque `presentation_id` names the shared attack d20 across recipients. A
-same-sequence RollWindowOpened beat occupies its own typed identity beside the
-paused response rather than conflicting with it. Stable public-roster roles and
-names are the only dice/Story identity authority; Turn participants never
+The presentation reducer keeps recipient-local Story ordering while the
+provider's opaque `presentation_id` names one shared d20 across phases and
+recipients. An identified RollWindowOpened already supplies the rolled face to
+the existing actor/witness dice path before Struck/Missed; its missing target
+and outcome fields remain absent, not a fabricated miss. The paired response
+can fill in known attack facts. A later same-ID outcome retains settlement and
+retires provisional target holds instead of requesting another d20. Legacy
+ID-less windows remain in their separate Story identity beside the response.
+Stable public-roster roles and names are the only dice/Story identity authority; Turn participants never
 supply or overwrite identity. Unknown roles remain unresolved with no inferred
 ownership, and late roster facts may authorize them. Once a local player roll
 is armed, FightEnded or a transient empty participant/roster snapshot cannot
 revoke or auto-settle it. The acting player sees no current Story verdict,
 result, or live announcement until the authoritative d20 presentation is
-explicitly released. A local live RollWindowOpened choice is paired to that
-response and stays on a no-timer gate until the same `presentation_id` reaches
+explicitly released. A local live RollWindowOpened choice uses its own token
+(or the paired legacy response token) and stays on a no-timer gate until that `presentation_id` reaches
 its visible terminal; stale terminals cannot open it. The same gate conceals
 that window's Story entry and its tail via the existing Story suffix helper,
 so the log cannot reveal the roll before the choice does. Event-first and

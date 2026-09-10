@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { createVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { describe, expect, it } from 'vitest';
 import { localWorldDieLaunch } from './localWorldDieMotion';

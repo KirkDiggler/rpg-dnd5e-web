@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The save's d20 reaching the table.
  *

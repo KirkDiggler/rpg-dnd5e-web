@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Two independent discriminators, matching `facingYaw.ts`'s own doc
  * comment split:

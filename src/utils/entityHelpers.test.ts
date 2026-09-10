@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { ConditionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';

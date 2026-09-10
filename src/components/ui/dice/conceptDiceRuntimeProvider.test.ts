@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { createHash } from 'node:crypto';
 import { Group, Object3D } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { Vector3 } from 'three';
 import { expect, it } from 'vitest';
 import { lookAtQuaternion } from './offHandCamera';

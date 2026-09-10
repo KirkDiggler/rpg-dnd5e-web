@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { damageToastFor, damageToastText } from './damageToasts';
 import type { CombatExperienceAttackOutcome } from './types';

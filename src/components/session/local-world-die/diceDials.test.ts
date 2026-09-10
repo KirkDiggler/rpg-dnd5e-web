@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
   BASE_DIE_HOLD_HEIGHT_DEFAULT,

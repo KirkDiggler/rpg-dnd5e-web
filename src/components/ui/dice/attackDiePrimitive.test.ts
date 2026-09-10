@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { BufferGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { validSidecar } from './attackDieContract.test';

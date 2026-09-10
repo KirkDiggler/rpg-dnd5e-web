@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { HEX_SIZE, hexCorners, hexEdgeBetween } from './hexMath';
 

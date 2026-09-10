@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for PlaytestMap's pure helper functions.
  *

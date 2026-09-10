@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Behavioral tests for the equipment fixture reducer — the reducer is the
  * acceptance spec for CONTRACT.md §6 (occupancy semantics the server must

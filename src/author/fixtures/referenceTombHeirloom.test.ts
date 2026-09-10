@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { emitDungeon, intelHolders, parseDungeon } from '../dungeonYaml';
 import { referenceTombDoc } from './referenceTomb';

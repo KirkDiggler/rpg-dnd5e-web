@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { resolveOutfitPresentation } from '@/character/customization/outfitCustomization';
 import { create } from '@bufbuild/protobuf';
 import { OutfitCustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
