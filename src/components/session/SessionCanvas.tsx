@@ -76,6 +76,7 @@ import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
+import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
@@ -582,6 +583,7 @@ export function SessionScene({
         <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
         <meshBasicMaterial visible={false} />
       </mesh>
+      <LocalWorldDieWarmup />
       {presentationLayer}
       {attackableRingPositions.map((member) => (
         <PathPreview
