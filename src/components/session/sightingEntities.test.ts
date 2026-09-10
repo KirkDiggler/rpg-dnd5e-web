@@ -186,3 +186,50 @@ describe('isSightedDowned', () => {
     expect(isSightedDowned(Standing.UNSPECIFIED)).toBe(false);
   });
 });
+
+describe("SightedMember.equipment (a peer's observed hands)", () => {
+  it('carries the observed hands as ref keys the weapon tables use', () => {
+    const [member] = sightingsToEntities(
+      [
+        sighting({
+          seen: seen({
+            equipment: {
+              mainHand: 'dnd5e:item:longsword',
+              offHand: 'dnd5e:item:shield',
+            },
+          } as Partial<Seen>),
+        }),
+      ],
+      'alice'
+    );
+
+    expect(member.equipment).toEqual({
+      mainHand: 'dnd5e:item:longsword',
+      offHand: 'dnd5e:item:shield',
+    });
+  });
+
+  // The distinction the whole seam exists to carry: nobody looked, versus
+  // looked and the hands were empty. A client that collapses them draws a peer
+  // whose data has not arrived as a peer standing there unarmed.
+  it('stays undefined when the hands were never observed', () => {
+    const [member] = sightingsToEntities([sighting({ seen: seen() })], 'alice');
+    expect(member.equipment).toBeUndefined();
+  });
+
+  it('is present with empty strings when the hands were observed and empty', () => {
+    const [member] = sightingsToEntities(
+      [
+        sighting({
+          seen: seen({
+            equipment: { mainHand: '', offHand: '' },
+          } as Partial<Seen>),
+        }),
+      ],
+      'alice'
+    );
+
+    expect(member.equipment).toEqual({ mainHand: '', offHand: '' });
+    expect(member.equipment).not.toBeUndefined();
+  });
+});

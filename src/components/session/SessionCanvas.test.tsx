@@ -1568,6 +1568,7 @@ describe('SessionScene', () => {
       position: { x: 1, y: -1, z: 0 },
       remembered: false,
       standing: Standing.UP,
+      equipment: undefined,
     };
 
     it('a PLAYER-kind member with a roster entry mounts their exact public Elf Rogue GLB, not the neutral placeholder', async () => {
@@ -2088,6 +2089,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           roster={
@@ -2149,6 +2151,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2178,6 +2181,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2203,6 +2207,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              equipment: undefined,
             },
           ]}
         />
@@ -2228,6 +2233,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2269,6 +2275,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2501,6 +2508,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2547,6 +2555,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2580,6 +2589,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2607,6 +2617,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2639,6 +2650,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2687,6 +2699,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              equipment: undefined,
             },
           ]}
         />
@@ -2760,6 +2773,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        equipment: undefined,
       },
     ];
 
@@ -2937,6 +2951,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        equipment: undefined,
       },
     ];
 
@@ -3117,6 +3132,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           onHoverEntity={onHoverEntity}
@@ -3149,6 +3165,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           onHoverEntity={onHoverEntity}

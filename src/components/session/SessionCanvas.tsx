@@ -68,7 +68,9 @@ import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
+import { resolveMainHandPresentationByRefKey } from '../hex-grid/mainHandWeapons';
 import type { OffHandPresentation } from '../hex-grid/offHandEquipment';
+import { resolveOffHandPresentationByRefKey } from '../hex-grid/offHandEquipment';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -147,11 +149,15 @@ export interface SessionCanvasProps {
   /** Public turn-participant standing for the local player; never derived from
    * owner-private HP state. */
   localIsDowned?: boolean;
-  /** Owner-authoritative equipped main-hand presentation for the local player.
-   * Never applied to `otherMembers`, whose equipment is not public today. */
+  /** Owner-authoritative equipped main-hand presentation for the LOCAL player,
+   * resolved from their own private sheet. A peer's hands are not this: they
+   * come from that peer's sighting, per observer and snapshotted when they were
+   * seen (`SightedMember.equipment`, rpg-toolkit#1615), and are resolved in the
+   * `otherMembers` branch below. Never pass this one to a peer — it is the
+   * truth, and what a peer is entitled to is testimony. */
   mainHandPresentation?: MainHandPresentation;
-  /** Owner-authoritative reviewed off-hand presentation for the local player.
-   * Never applied to peers. */
+  /** Owner-authoritative reviewed off-hand presentation for the LOCAL player.
+   * A peer's off hand comes from their sighting; see above. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
   /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
@@ -693,6 +699,25 @@ export function SessionScene({
             roster?.get(member.subject)?.faction ?? ''
           )}
           knowledgeState={member.remembered ? 'remembered' : undefined}
+          // Observed hands, not the peer's sheet — this component never
+          // fetches another player's sheet, and could not honestly draw from
+          // one anyway: what a viewer is entitled to see is what their own
+          // sighting recorded (rpg-toolkit#1615). Undefined equipment means
+          // nobody looked, or there was nothing with hands to look at, and it
+          // stays undefined rather than resolving to "unarmed" — a peer whose
+          // observation has not arrived must not be drawn empty-handed.
+          mainHandPresentation={
+            member.equipment
+              ? resolveMainHandPresentationByRefKey(member.equipment.mainHand)
+                  .presentation
+              : undefined
+          }
+          offHandPresentation={
+            member.equipment
+              ? resolveOffHandPresentationByRefKey(member.equipment.offHand)
+                  .presentation
+              : undefined
+          }
           isDowned={
             member.kind === MemberKind.PLAYER &&
             isSightedDowned(member.standing)
