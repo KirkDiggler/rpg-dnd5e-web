@@ -47,6 +47,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(8, 5),
       remembered: false,
       standing: Standing.UP,
+      equipment: undefined,
     },
     {
       subject: 'skeleton-guard',
@@ -56,6 +57,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(10, 4),
       remembered: false,
       standing: Standing.UP,
+      equipment: undefined,
     },
     {
       subject: 'skeleton-archer',
@@ -65,6 +67,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(13, 3),
       remembered: false,
       standing: Standing.UP,
+      equipment: undefined,
     },
   ]),
 });
