@@ -56,6 +56,8 @@ export interface SelectedCombatExperience {
   declaration: Declaration | null;
   /** Exact generated member only when both offer and candidate are available. */
   candidate: TargetCandidate | null;
+  /** Ordered CAST candidates, copied from the provider's candidate universe. */
+  selectedCandidates?: readonly TargetCandidate[];
   /** Provider-authored refusal text selected by precedence, or no copy. */
   whyText: string | null;
 }
@@ -105,6 +107,19 @@ export function selectCombatExperience(
     if (!candidate.member) return null;
   }
 
+  const selectedCandidates: TargetCandidate[] = [];
+  if (declaration.verb === Verb.CAST) {
+    const selectedMembers = state.selectedCandidateMembers ?? [];
+    if (new Set(selectedMembers).size !== selectedMembers.length) return null;
+    for (const member of selectedMembers) {
+      const matches = declaration.candidates.filter(
+        (target) => target.member === member
+      );
+      if (matches.length !== 1 || !matches[0]?.member) return null;
+      selectedCandidates.push(matches[0]);
+    }
+  }
+
   if (!declaration.available) {
     return {
       declaration: null,
@@ -120,6 +135,18 @@ export function selectCombatExperience(
       whyText: candidate.why?.text ?? null,
     };
   }
+  const unavailableSelected = selectedCandidates.find(
+    (selected) => !selected.available
+  );
+  if (unavailableSelected) {
+    return {
+      declaration,
+      candidate: null,
+      whyText: unavailableSelected.why?.text ?? null,
+    };
+  }
 
-  return { declaration, candidate, whyText: null };
+  return selectedCandidates.length > 0
+    ? { declaration, candidate, selectedCandidates, whyText: null }
+    : { declaration, candidate, whyText: null };
 }

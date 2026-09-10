@@ -581,13 +581,23 @@ function buildOtherStory(
       if (event.kind !== EventKind.CAST) return undefined;
       const cast = event.body.value;
       const actor = memberName(cast.actor, context);
+      const targetIds =
+        cast.targets.length > 0
+          ? cast.targets
+          : cast.target
+            ? [cast.target]
+            : [];
+      const targets = targetIds.map((target) => memberName(target, context));
       return Object.freeze({
         ...base,
         eyebrow: 'Spell',
         headline: `${actor} casts ${spellName(cast.spell) ?? 'a spell'}`,
-        detail: cast.target
-          ? `${memberName(cast.target, context)} is the target.`
-          : `Story sequence ${event.seq}.`,
+        detail:
+          targets.length === 1
+            ? `${targets[0]} is the target.`
+            : targets.length > 1
+              ? `Targets in order: ${targets.join(', ')}.`
+              : `Story sequence ${event.seq}.`,
         tone: 'neutral',
       });
     }
@@ -600,10 +610,13 @@ function buildOtherStory(
       const saved = event.body.value;
       const saver = memberName(saved.saver, context);
       const source = spellName(saved.source);
-      const bonus = saved.total - saved.roll;
-      const sign = bonus < 0 ? '-' : '+';
+      const arithmetic = saved.calculation
+        ? formatRollCalculation(saved.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
       const detail =
-        `d20 ${saved.roll} ${sign} ${Math.abs(bonus)} = ${saved.total} against ` +
+        `${arithmetic ?? `d20 ${saved.roll} · total ${saved.total}`} against ` +
         `DC ${saved.dc} · ${saved.succeeded ? 'Succeeded' : 'Failed'}`;
       // THE SAVER IS HOLDING THIS SPELL, NOT RESISTING IT. Same six fields on
       // the wire either way, so the log reads it off a cast it watched: the

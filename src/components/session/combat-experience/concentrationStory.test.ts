@@ -14,8 +14,12 @@ import {
   CastSchema,
   ConcentrationEndedSchema,
   ConditionRemovedSchema,
+  DiceTraceSchema,
   EventKind,
   EventSchema,
+  RollCalculationSchema,
+  RollComponentSchema,
+  RollSourceSchema,
   SavedSchema,
   StruckSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -261,6 +265,31 @@ describe('the whole break, as the story tells it', () => {
           dc: 10,
           succeeded,
           source: trueStrike(),
+          calculation: create(RollCalculationSchema, {
+            total,
+            components: [
+              create(RollComponentSchema, {
+                dice: create(DiceTraceSchema, {
+                  notation: '1d20',
+                  dieSize: 20,
+                  originalRolls: [roll],
+                  finalRolls: [roll],
+                  subtotal: roll,
+                }),
+                source: create(RollSourceSchema, {
+                  label: 'Concentration check',
+                  sourceId: 'staniel',
+                }),
+              }),
+              create(RollComponentSchema, {
+                modifier: 1,
+                source: create(RollSourceSchema, {
+                  label: 'Constitution modifier',
+                  sourceId: 'staniel',
+                }),
+              }),
+            ],
+          }),
         }),
       },
     });
@@ -335,7 +364,9 @@ describe('the whole break, as the story tells it', () => {
     const [, , check] = run([castBeat(), struckBeat(), checkBeat()]);
 
     expect(check?.eyebrow).toBe('staniel · Concentration check');
-    expect(check?.detail).toBe('d20 4 + 1 = 5 against DC 10 · Failed');
+    expect(check?.detail).toBe(
+      '1d20 [4] Concentration check (staniel) + 1 Constitution modifier (staniel) = 5 against DC 10 · Failed'
+    );
     expect(check?.tone).toBe('danger');
   });
 
@@ -353,7 +384,9 @@ describe('the whole break, as the story tells it', () => {
       'Skeleton strikes staniel',
       'staniel holds True Strike',
     ]);
-    expect(story[2]?.detail).toBe('d20 14 + 1 = 15 against DC 10 · Succeeded');
+    expect(story[2]?.detail).toBe(
+      '1d20 [14] Concentration check (staniel) + 1 Constitution modifier (staniel) = 15 against DC 10 · Succeeded'
+    );
     expect(story[2]?.tone).toBe('success');
   });
 

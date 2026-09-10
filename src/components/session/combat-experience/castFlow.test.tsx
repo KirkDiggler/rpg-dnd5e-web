@@ -15,6 +15,8 @@
 import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
+  CostComponentSchema,
+  Currency,
   DeclarationSchema,
   MemberKind,
   ParticipantSchema,
@@ -70,12 +72,45 @@ function mockeryDeclaration(): Declaration {
     slot: Slot.ACTION,
     available: true,
     targetKind: TargetKind.MEMBER,
+    minTargets: 1,
+    maxTargets: 1,
     candidates: [
       create(TargetCandidateSchema, { member: 'skeleton-1', available: true }),
     ],
     spell: create(SpellRefSchema, {
       ref: 'dnd5e:spells:vicious-mockery',
       name: 'Vicious Mockery',
+    }),
+  });
+}
+
+/** Bane: one to three ordered creatures, priced by the provider. */
+function baneDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.bane',
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    minTargets: 1,
+    maxTargets: 3,
+    candidates: [
+      create(TargetCandidateSchema, { member: 'skeleton-1', available: true }),
+      create(TargetCandidateSchema, { member: 'skeleton-2', available: true }),
+      create(TargetCandidateSchema, { member: 'skeleton-3', available: true }),
+      create(TargetCandidateSchema, { member: 'skeleton-4', available: true }),
+      create(TargetCandidateSchema, { member: 'ghost-1', available: false }),
+    ],
+    cost: [
+      create(CostComponentSchema, {
+        currency: Currency.CHARGES,
+        needed: 1,
+        label: 'Level 1 spell slot',
+      }),
+    ],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:bane',
+      name: 'Bane',
     }),
   });
 }
@@ -248,9 +283,10 @@ describe('sending the cast', () => {
       session: 'crypt-run',
       member: 'bard-1',
       declarationId: 'selector.cast.true-strike',
-      // EMPTY, NOT ABSENT. A populated target on a TARGET_KIND_NONE cast is
-      // INVALID_ARGUMENT rather than a value quietly ignored.
+      // The legacy scalar remains empty; current cast code uses the canonical
+      // ordered field, including the empty list for a no-target spell.
       target: '',
+      targets: [],
     });
     // Nothing armed and no target prompt: there was nothing to wait for.
     expect(screen.getByTestId('armed').textContent).toBe('none');
@@ -271,7 +307,8 @@ describe('sending the cast', () => {
       session: 'crypt-run',
       member: 'bard-1',
       declarationId: 'selector.cast.mockery',
-      target: 'skeleton-1',
+      target: '',
+      targets: ['skeleton-1'],
     });
     expect(hoisted.activateFn).not.toHaveBeenCalled();
     expect(hoisted.attackFn).not.toHaveBeenCalled();
@@ -305,6 +342,69 @@ describe('sending the cast', () => {
    * TARGET_KIND_NONE cast — leaves the bard holding a spell with no candidate
    * to click, which is the dead-button shape slice one's walk kept finding.
    */
+  it('collects Bane targets in click order, caps them at the provider maximum, and submits once', async () => {
+    const declaration = baneDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    act(() => latest.onSelectDeclaration(declaration));
+    act(() => latest.onTargetClick('skeleton-1'));
+    act(() => latest.onTargetClick('skeleton-1')); // duplicate
+    act(() => latest.onTargetClick('ghost-1')); // unavailable
+    act(() => latest.onTargetClick('skeleton-2'));
+    act(() => latest.onTargetClick('skeleton-3'));
+    act(() => latest.onTargetClick('skeleton-4')); // fourth
+
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-1',
+      'skeleton-2',
+      'skeleton-3',
+    ]);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latest.onConfirmTargets();
+      latest.onConfirmTargets();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'crypt-run',
+      member: 'bard-1',
+      declarationId: 'selector.cast.bane',
+      target: '',
+      targets: ['skeleton-1', 'skeleton-2', 'skeleton-3'],
+    });
+  });
+
+  it('shows Bane target cardinality and provider-authored cost', () => {
+    const declaration = baneDeclaration();
+    const selection = selectCombatExperience([declaration], {
+      armedDeclarationId: declaration.id,
+      selectedCandidateMember: null,
+      selectedCandidateMembers: ['skeleton-1'],
+      changedOptionNotice: null,
+    });
+
+    render(
+      <TargetSurface
+        phase="targeting"
+        selection={selection}
+        isViewerTurn
+        showTurnNotice={false}
+        memberNames={new Map()}
+        location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+        renderMap={() => null}
+        onTargetClick={() => {}}
+        onConfirmTargets={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Choose 1–3 targets')).toBeTruthy();
+    expect(screen.getByText('1 Level 1 spell slot')).toBeTruthy();
+    expect(screen.getByText('1/3 selected')).toBeTruthy();
+  });
+
   it('a self cast never arms', async () => {
     const declaration = trueStrikeDeclaration();
     render(<Harness declarations={[declaration]} />);

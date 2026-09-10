@@ -48,6 +48,7 @@ import { useCombatStoryPacing } from './useCombatStoryPacing';
 const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   armedDeclarationId: null,
   selectedCandidateMember: null,
+  selectedCandidateMembers: Object.freeze([]),
   changedOptionNotice: null,
 });
 
@@ -115,6 +116,7 @@ export interface UseSessionCombatExperienceResult {
    * an open reaction window. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (target: string) => void;
+  onConfirmTargets: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
@@ -644,6 +646,7 @@ export function useSessionCombatExperience({
           setInteraction({
             armedDeclarationId: current.id,
             selectedCandidateMember: null,
+            selectedCandidateMembers: [],
             changedOptionNotice: null,
           });
           setTargeting(true);
@@ -678,6 +681,42 @@ export function useSessionCombatExperience({
       ) {
         return;
       }
+      const armed = declarationsRef.current.filter(
+        (declaration) => declaration.id === presentationState.armedDeclarationId
+      );
+      const castDeclaration = armed.length === 1 ? armed[0] : undefined;
+      if (
+        castDeclaration?.verb === Verb.CAST &&
+        castDeclaration.targetKind === TargetKind.MEMBER
+      ) {
+        const matches = castDeclaration.candidates.filter(
+          (candidate) => candidate.member === target
+        );
+        const selectedTarget = matches.length === 1 ? matches[0] : undefined;
+        const currentTargets = presentationState.selectedCandidateMembers ?? [];
+        if (
+          !selectedTarget?.available ||
+          currentTargets.includes(target) ||
+          castDeclaration.maxTargets <= 0 ||
+          currentTargets.length >= castDeclaration.maxTargets
+        ) {
+          return;
+        }
+        const targets = [...currentTargets, target];
+        if (castDeclaration.maxTargets === 1) {
+          runCastTargetsRef.current(castDeclaration, targets);
+          return;
+        }
+        setInteraction({
+          armedDeclarationId: castDeclaration.id,
+          selectedCandidateMember: null,
+          selectedCandidateMembers: targets,
+          changedOptionNotice: null,
+        });
+        setTargeting(true);
+        return;
+      }
+
       const currentState = {
         ...presentationState,
         selectedCandidateMember: target,
@@ -692,8 +731,7 @@ export function useSessionCombatExperience({
       // ruled, echo the selector back. Only the RPC differs.
       const targetTakingVerb =
         selected?.declaration?.verb === Verb.ATTACK ||
-        selected?.declaration?.verb === Verb.ACTIVATE ||
-        selected?.declaration?.verb === Verb.CAST;
+        selected?.declaration?.verb === Verb.ACTIVATE;
       if (
         !selected?.declaration ||
         !targetTakingVerb ||
@@ -713,39 +751,6 @@ export function useSessionCombatExperience({
       const exactTarget = selected.candidate.member;
       setInteraction(currentState);
       setTargeting(false);
-
-      if (declaration.verb === Verb.CAST) {
-        castInFlightRef.current = true;
-        void (async () => {
-          try {
-            await cast({
-              session,
-              member,
-              declarationId: declaration.id,
-              target: exactTarget,
-            });
-            if (!mountedRef.current) return;
-            invalidateAuthority();
-            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-          } catch (error) {
-            if (!mountedRef.current) return;
-            if (isStaleDeclarationRefusal(error)) {
-              recoverStaleDeclaration(declaration.id, Verb.CAST, exactTarget);
-            } else {
-              const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
-              invalidateAuthority();
-              setInteraction({
-                ...EMPTY_INTERACTION,
-                changedOptionNotice: notice,
-              });
-              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-            }
-          } finally {
-            castInFlightRef.current = false;
-          }
-        })();
-        return;
-      }
 
       if (declaration.verb === Verb.ACTIVATE) {
         activateInFlightRef.current = true;
@@ -839,7 +844,6 @@ export function useSessionCombatExperience({
     [
       activate,
       attack,
-      cast,
       invalidateAuthority,
       member,
       presentation,
@@ -924,6 +928,99 @@ export function useSessionCombatExperience({
 
   runActivateRef.current = onActivate;
 
+  const runCastTargetsRef = useRef<
+    (candidate: Declaration, targets: readonly string[]) => void
+  >(() => {});
+
+  const onCastTargets = useCallback(
+    (candidate: Declaration, targets: readonly string[]) => {
+      if (
+        !mountedRef.current ||
+        castInFlightRef.current ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member
+      ) {
+        return;
+      }
+      const current = uniqueCurrentDeclaration(
+        declarationsRef.current,
+        candidate,
+        Verb.CAST,
+        TargetKind.MEMBER
+      );
+      if (
+        !current ||
+        current.minTargets < 0 ||
+        current.maxTargets < current.minTargets ||
+        targets.length < current.minTargets ||
+        targets.length > current.maxTargets ||
+        new Set(targets).size !== targets.length
+      ) {
+        return;
+      }
+      const candidatesAreCurrent = targets.every((target) => {
+        const matches = current.candidates.filter(
+          (candidateTarget) => candidateTarget.member === target
+        );
+        return matches.length === 1 && matches[0]?.available;
+      });
+      if (!candidatesAreCurrent) return;
+
+      castInFlightRef.current = true;
+      setTargeting(false);
+      void (async () => {
+        try {
+          await cast({
+            session,
+            member,
+            declarationId: current.id,
+            targets,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.CAST, targets[0]);
+          } else {
+            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          }
+        } finally {
+          castInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      cast,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
+  );
+
+  runCastTargetsRef.current = onCastTargets;
+
+  const onConfirmTargets = useCallback(() => {
+    const matches = declarationsRef.current.filter(
+      (declaration) => declaration.id === presentationState.armedDeclarationId
+    );
+    if (matches.length !== 1 || !matches[0]) return;
+    runCastTargetsRef.current(
+      matches[0],
+      presentationState.selectedCandidateMembers ?? []
+    );
+  }, [presentationState]);
+
   // runCast is held in a ref for the same reason runActivate is: it and
   // onSelectDeclaration are mutually recursive through the dock's single
   // onSelect handler.
@@ -968,6 +1065,7 @@ export function useSessionCombatExperience({
             session,
             member,
             declarationId: current.id,
+            targets: [],
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
@@ -1171,6 +1269,7 @@ export function useSessionCombatExperience({
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onTargetClick,
+      onConfirmTargets,
       onEndTurn,
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
@@ -1187,6 +1286,7 @@ export function useSessionCombatExperience({
       onEndTurn,
       onSelectDeclaration,
       onTargetClick,
+      onConfirmTargets,
       pacing.notice,
       pacing.result,
       pacing.story,

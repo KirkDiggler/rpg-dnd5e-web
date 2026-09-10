@@ -172,7 +172,7 @@ export function ChoiceRenderer({
     );
   }
 
-  // Cantrips - use EnumChoice, off the REF STRINGS and never the enum.
+  // Spell choices - use EnumChoice, off the REF STRINGS and never the enum.
   //
   // `SpellOptions.available` is deprecated and no producer writes it (design
   // rpg-project#405, R8); `available_refs` is the live field. The count drives
@@ -184,7 +184,8 @@ export function ChoiceRenderer({
   // options message carries no names. Every place the server DOES author a
   // spell's name — the cast row, the save beat — uses that name verbatim.
   if (
-    choice.choiceType === ChoiceCategory.CANTRIPS &&
+    (choice.choiceType === ChoiceCategory.CANTRIPS ||
+      choice.choiceType === ChoiceCategory.SPELLS) &&
     choice.options?.case === 'spellOptions'
   ) {
     return (

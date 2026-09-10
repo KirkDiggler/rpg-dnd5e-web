@@ -10,6 +10,7 @@ import {
   CharacterDraftSchema,
   ClassInfoSchema,
   RaceInfoSchema,
+  SpellcastingInfoSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
@@ -21,6 +22,7 @@ import {
   EquipmentOptionsSchema,
   EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
+  SpellSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   Armor,
@@ -54,7 +56,17 @@ vi.mock('./ClassSelectionModal', () => ({ ClassSelectionModal: () => null }));
 vi.mock('./RaceSelectionModal', () => ({ RaceSelectionModal: () => null }));
 vi.mock('./SpellSelectionModal', () => ({ SpellSelectionModal: () => null }));
 vi.mock('./components/SpellInfoDisplay', () => ({
-  SpellInfoDisplay: () => null,
+  SpellInfoDisplay: ({
+    knownCantripRefs = [],
+    knownSpellRefs = [],
+  }: {
+    knownCantripRefs?: readonly string[];
+    knownSpellRefs?: readonly string[];
+  }) => (
+    <div data-testid="spell-info">
+      cantrips:{knownCantripRefs.join(',')}|spells:{knownSpellRefs.join(',')}
+    </div>
+  ),
 }));
 vi.mock('./sections/AbilityScoresSection', () => ({
   AbilityScoresSection: () => null,
@@ -406,5 +418,54 @@ describe('InteractiveCharacterSheet persisted mixed-bundle round trip (rpg-toolk
     expect(finalize.getAttribute('disabled')).not.toBeNull();
     fireEvent.click(finalize);
     expect(finalizeDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('InteractiveCharacterSheet spell choice rehydration', () => {
+  it('passes persisted cantrips and levelled spells through the existing spell summary', () => {
+    const choices = [
+      create(ChoiceDataSchema, {
+        choiceId: 'bard-cantrips-1',
+        category: ChoiceCategory.CANTRIPS,
+        selection: {
+          case: 'spells',
+          value: create(SpellSelectionSchema, {
+            spellRefs: ['dnd5e:spells:vicious-mockery'],
+          }),
+        },
+      }),
+      create(ChoiceDataSchema, {
+        choiceId: 'bard-spells-1',
+        category: ChoiceCategory.SPELLS,
+        selection: {
+          case: 'spells',
+          value: create(SpellSelectionSchema, {
+            spellRefs: ['dnd5e:spells:bane'],
+          }),
+        },
+      }),
+    ];
+
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(vi.fn(), {
+          classInfo: create(ClassInfoSchema, {
+            name: 'Bard',
+            spellcasting: create(SpellcastingInfoSchema, {
+              spellcastingAbility: 'charisma',
+              cantripsKnown: 1,
+              spellsKnown: 1,
+            }),
+          }),
+          classChoices: choices,
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    expect(screen.getByTestId('spell-info').textContent).toBe(
+      'cantrips:dnd5e:spells:vicious-mockery|spells:dnd5e:spells:bane'
+    );
   });
 });

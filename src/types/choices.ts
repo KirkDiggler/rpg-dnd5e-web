@@ -67,6 +67,12 @@ export interface CantripChoice {
   spellRefs: string[];
 }
 
+/** A provider-declared levelled spell choice, using the same ref shape. */
+export interface SpellChoice {
+  choiceId: string;
+  spellRefs: string[];
+}
+
 export interface TraitChoice {
   choiceId: string;
   traits: string[];
@@ -82,6 +88,7 @@ export interface CharacterChoices {
   expertise: ExpertiseChoice[];
   traits: TraitChoice[];
   cantrips: CantripChoice[];
+  spells: SpellChoice[];
 }
 
 // For race/class modals that return partial choices
@@ -103,6 +110,7 @@ export interface ClassModalChoices {
   expertise?: ExpertiseChoice[];
   traits?: TraitChoice[];
   cantrips?: CantripChoice[]; // Cantrip choices (Bard, and every caster after)
+  spells?: SpellChoice[]; // Provider-declared levelled spell choices
   proficiencies?: string[]; // Other proficiency choices (weapons, armor)
 }
 

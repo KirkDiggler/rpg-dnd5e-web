@@ -37,6 +37,7 @@ import {
   convertFeatureChoiceToProto,
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
+  convertSpellChoiceToProto,
   convertToolChoiceToProto,
   convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
@@ -233,6 +234,7 @@ export function InteractiveCharacterSheet({
       expertise: [],
       traits: [],
       cantrips: [],
+      spells: [],
       proficiencies: [],
     };
 
@@ -289,6 +291,14 @@ export function InteractiveCharacterSheet({
           spellRefs: choice.selection.value.spellRefs || [],
         });
       } else if (
+        choice.category === ChoiceCategory.SPELLS &&
+        choice.selection?.case === 'spells'
+      ) {
+        choices.spells?.push({
+          choiceId: choice.choiceId,
+          spellRefs: choice.selection.value.spellRefs || [],
+        });
+      } else if (
         choice.category === ChoiceCategory.FIGHTING_STYLE &&
         choice.selection?.case === 'fightingStyle'
       ) {
@@ -315,6 +325,13 @@ export function InteractiveCharacterSheet({
   const knownCantripRefs = useMemo(
     () =>
       (structuredClassChoices.cantrips ?? []).flatMap(
+        (choice) => choice.spellRefs
+      ),
+    [structuredClassChoices]
+  );
+  const knownSpellRefs = useMemo(
+    () =>
+      (structuredClassChoices.spells ?? []).flatMap(
         (choice) => choice.spellRefs
       ),
     [structuredClassChoices]
@@ -1430,6 +1447,7 @@ export function InteractiveCharacterSheet({
                               character.selectedClass.spellcasting
                             }
                             knownCantripRefs={knownCantripRefs}
+                            knownSpellRefs={knownSpellRefs}
                           />
                         </motion.div>
                       )}
@@ -1903,6 +1921,14 @@ export function InteractiveCharacterSheet({
             choices.cantrips.forEach((cantripChoice) => {
               choiceData.push(
                 convertCantripChoiceToProto(cantripChoice, ChoiceSource.CLASS)
+              );
+            });
+          }
+
+          if (choices.spells) {
+            choices.spells.forEach((spellChoice) => {
+              choiceData.push(
+                convertSpellChoiceToProto(spellChoice, ChoiceSource.CLASS)
               );
             });
           }

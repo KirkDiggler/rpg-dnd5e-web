@@ -20,6 +20,7 @@ import type {
   FeatureChoice,
   LanguageChoice,
   SkillChoice,
+  SpellChoice,
   ToolChoice,
 } from '../types/choices';
 
@@ -91,9 +92,24 @@ export function convertCantripChoiceToProto(
   choice: CantripChoice,
   source: ChoiceSource
 ): ChoiceData {
+  return convertSpellRefsChoiceToProto(choice, source, ChoiceCategory.CANTRIPS);
+}
+
+export function convertSpellChoiceToProto(
+  choice: SpellChoice,
+  source: ChoiceSource
+): ChoiceData {
+  return convertSpellRefsChoiceToProto(choice, source, ChoiceCategory.SPELLS);
+}
+
+function convertSpellRefsChoiceToProto(
+  choice: CantripChoice | SpellChoice,
+  source: ChoiceSource,
+  category: ChoiceCategory
+): ChoiceData {
   return create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
-    category: ChoiceCategory.CANTRIPS,
+    category,
     source,
     selection: {
       case: 'spells',
@@ -222,6 +238,16 @@ export function convertProtoToLanguageChoice(
 export function convertProtoToCantripChoice(
   data: ChoiceData
 ): CantripChoice | null {
+  return convertProtoToSpellRefsChoice(data);
+}
+
+export function convertProtoToSpellChoice(
+  data: ChoiceData
+): SpellChoice | null {
+  return convertProtoToSpellRefsChoice(data);
+}
+
+function convertProtoToSpellRefsChoice(data: ChoiceData): SpellChoice | null {
   if (data.selection?.case !== 'spells') return null;
 
   return {

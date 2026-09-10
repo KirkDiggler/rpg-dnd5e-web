@@ -16,15 +16,9 @@ export interface CastParams {
    * R1).
    */
   declarationId: string;
-  /**
-   * Who the spell lands on, for a declaration whose `targetKind` is MEMBER.
-   *
-   * OPTIONAL HERE, ALWAYS SENT ON THE WIRE, exactly as Activate's is:
-   * `CastRequest.target` is a proto3 scalar, so omitting it sends `''`, which
-   * IS how the contract spells "no target". A populated target on a
-   * TARGET_KIND_NONE declaration is `INVALID_ARGUMENT` rather than a value
-   * quietly ignored, so a self cast must leave this unset.
-   */
+  /** Ordered provider-validated targets for this one cast. */
+  targets: readonly string[];
+  /** Deprecated scalar retained only for callers still crossing the old seam. */
   target?: string;
 }
 
@@ -63,7 +57,8 @@ export function useSessionCast(): UseCastResult {
           session: params.session,
           member: params.member,
           declarationId: params.declarationId,
-          target: params.target ?? '',
+          target: '',
+          targets: [...params.targets],
         });
       } catch (err) {
         const wrapped =
