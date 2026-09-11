@@ -190,6 +190,13 @@ export interface PaletteMonster {
  * `pickStableCandidateIndex` choose per entity; Kirk narrowed that to a single
  * look, so the palette entry and the rendered result now agree exactly.
  *
+ * `thumbs/zombie.png` was rebaked in that same change. The committed thumbnail
+ * was verified (byte-identical to a fresh bake of `zombie-mutant.glb`) to be
+ * the HULKING look — so leaving it would have made the palette preview a model
+ * the game no longer renders. Rebaked from `zombie-peasant-female.glb` through
+ * the same `?thumbGlb=` harness at the same 128x128, which reproduces the
+ * original bakes byte-for-byte.
+ *
  * The author still places the REF, not the look — that has not changed, and it
  * is the reason a second look could never be an authoring choice under the
  * current dungeonspec: a `place:` line carries a ref and nothing else. If
