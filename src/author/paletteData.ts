@@ -184,15 +184,17 @@ export interface PaletteMonster {
  *   reason — GLB without a ref is equally unauthorable; the palette can't
  *   place a reference that doesn't exist.
  *
- * `zombie` gets ONE palette entry despite `MONSTER_REF_MODELS.zombie`
- * holding TWO candidate GLBs (`zombie-mutant.glb`/hulking,
- * `zombie-peasant-female.glb`/gaunt) — the author places the REF, not the
- * look; which look a given placed zombie renders is a per-entity
- * client-side pick (`pickStableCandidateIndex`), not an authoring choice,
- * exactly as `monsterModels.ts`'s own doc comment establishes for the
- * game's real combat route. See this concept's CONTRACT.md "palette
- * content sync" entry for the thumbnail treatment this implies (one
- * representative look, disclosed in `sub`, not a fabricated split image).
+ * `zombie` gets ONE palette entry, and as of 2026-09-11 it maps to ONE look
+ * (`zombie-peasant-female.glb`/gaunt). rpg-dnd5e-web#673 had briefly mapped
+ * two (`zombie-mutant.glb`/hulking alongside it) and let
+ * `pickStableCandidateIndex` choose per entity; Kirk narrowed that to a single
+ * look, so the palette entry and the rendered result now agree exactly.
+ *
+ * The author still places the REF, not the look — that has not changed, and it
+ * is the reason a second look could never be an authoring choice under the
+ * current dungeonspec: a `place:` line carries a ref and nothing else. If
+ * per-placement appearance is ever wanted, it is a dungeonspec question first
+ * and a palette question second, not another array entry.
  */
 export const PALETTE_MONSTERS: PaletteMonster[] = (
   [
@@ -216,7 +218,7 @@ export const PALETTE_MONSTERS: PaletteMonster[] = (
       refId: 'zombie',
       short: 'Zo',
       label: 'zombie',
-      sub: 'flags forced off, same as every monster place: entry · renders as one of 2 promoted looks (hulking/gaunt), picked per-entity — rpg-dnd5e-web#673',
+      sub: 'flags forced off, same as every monster place: entry · renders as the gaunt look',
     },
   ] satisfies PaletteMonster[]
 ).filter(
