@@ -1284,6 +1284,12 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
     return undefined;
   }
+  // A SIGHTING IS NOT A ROW IN THE STORY. Sighted names who entered and left
+  // this recipient's view and carries no testimony about them, so there is no
+  // beat to narrate — the map changes, and the log does not. It is left out of
+  // `EXPECTED_OTHER_KIND` for the same reason, and refused here so it cannot
+  // reach the other-story path by any route.
+  if (bodyCase === 'sighted') return undefined;
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
 
   switch (bodyCase) {

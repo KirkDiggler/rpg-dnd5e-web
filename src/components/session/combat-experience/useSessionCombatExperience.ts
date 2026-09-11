@@ -118,6 +118,13 @@ export interface UseSessionCombatExperienceResult {
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (target: string) => void;
   onConfirmTargets: () => void;
+  /** The cell an armed caster-edge cast is aimed toward, in the wire's own
+   * axial coordinates. A reference the engine reads, never a computed shape:
+   * which cells the spell covers is derived server-side. */
+  onCellClick: (cell: { x: number; y: number }) => void;
+  /** Whether a floor click belongs to an armed cast rather than to walking.
+   * The one fact the map's single ground-click seam routes on. */
+  cellCastArmed: boolean;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;

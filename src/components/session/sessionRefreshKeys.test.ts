@@ -9,6 +9,7 @@ import {
   MovedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
+  SightedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -200,5 +201,22 @@ describe('the concentration break’s row (design rpg-project#407, R11)', () => 
       'characterData',
       'turn',
     ]);
+  });
+});
+
+describe('a sighting is a nudge, not a patch', () => {
+  it('re-reads the view and nothing else', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.SIGHTED,
+      body: {
+        case: 'sighted',
+        value: create(SightedSchema, { gained: ['scout'] }),
+      },
+    });
+
+    // The beat carries names and no testimony: what the recipient now
+    // perceives about those members is answered, member-scoped, by GetView.
+    // Nobody spent an action and no card changed, so nothing else is re-read.
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['view']);
   });
 });

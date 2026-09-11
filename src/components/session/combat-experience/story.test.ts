@@ -696,7 +696,10 @@ describe('typed combat Story', () => {
     // names something. A row that reported the rulebook's requested distance
     // would narrate the wrong one every time something was in the way.
     expect(story).toMatchObject([
-      { headline: 'Skeleton Guard slides 2 cells', detail: undefined },
+      {
+        headline: 'Skeleton Guard slides 2 cells',
+        detail: 'Pushed by Aldric.',
+      },
       {
         headline: 'Skeleton Guard slides 1 cell',
         detail: 'Stopped by dnd5e:props:pillar.',

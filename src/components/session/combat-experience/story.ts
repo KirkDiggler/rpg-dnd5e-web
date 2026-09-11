@@ -269,7 +269,7 @@ function buildActivationResultStory(
       // to add.
       const detail = move.stoppedBy
         ? `Stopped by ${memberName(move.stoppedBy, context)}.`
-        : undefined;
+        : `Pushed by ${actor}.`;
       return Object.freeze({
         ...base,
         headline:

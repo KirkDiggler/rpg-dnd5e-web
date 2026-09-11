@@ -135,6 +135,13 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
+    // PERCEPTION CHANGED, SO RE-READ IT — the beat's own instruction. Sighted
+    // carries names and no testimony: what the recipient now perceives about
+    // those members is answered, member-scoped, by GetView, and a body
+    // restating it would be a second computation of the same answer. Nothing
+    // else moved: nobody spent an action and no card changed.
+    case 'sighted':
+      return ['view'];
     case 'looted':
     case 'activated':
     case 'exited':
