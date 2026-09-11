@@ -38,6 +38,7 @@ import {
   ShortfallReason,
   ShortfallSchema,
   Slot,
+  SpellRefSchema,
   Standing,
   TargetCandidateSchema,
   TargetKind,
@@ -108,6 +109,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  castFn: vi.fn(),
   deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
   getCharacterDataFn: vi.fn(),
@@ -163,6 +165,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    cast: hoisted.castFn,
     deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
   },
@@ -272,6 +275,25 @@ function endTurnDeclaration(id = 'v1.end'): Declaration {
     available: true,
     targetKind: TargetKind.NONE,
     candidates: [],
+  });
+}
+
+/**
+ * Thunderwave: a cast the caster AIMS. No candidates, and still not an area
+ * cast — the cube's direction is the one thing the player has left to say.
+ */
+function cellCastDeclaration(id = 'v1.cast.thunderwave'): Declaration {
+  return create(DeclarationSchema, {
+    id,
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.CELL,
+    candidates: [],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderwave',
+      name: 'Thunderwave',
+    }),
   });
 }
 
@@ -495,6 +517,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.castFn,
     hoisted.deathSaveFn,
     hoisted.endTurnFn,
     hoisted.getCharacterDataFn,
@@ -4929,5 +4952,86 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     expect(
       hoisted.lastCanvasProps.current?.movements?.get('char-1')
     ).toBeUndefined();
+  });
+});
+
+/**
+ * ONE FLOOR-CLICK SEAM, TWO MEANINGS. The map has exactly one handler for a
+ * click that lands on the ground, and what it means depends on whether the
+ * player is holding a spell that needs aiming. Walking is what it means the
+ * rest of the time, which is nearly always.
+ */
+describe('the ground click while a cell cast is armed', () => {
+  function armedTurn() {
+    readyTurn([cellCastDeclaration(), moveDeclaration(), endTurnDeclaration()]);
+  }
+
+  it('sends the clicked cell to the cast and walks nowhere', async () => {
+    armedTurn();
+    hoisted.castFn.mockResolvedValue({ caught: [] });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /thunderwave/i })
+    );
+
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.cast.thunderwave',
+      target: '',
+      targets: [],
+      // The same cube-to-wire conversion a walk's own path cells go through,
+      // reused rather than re-derived: one coordinate space, one converter.
+      cell: { x: 1, y: 0 },
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('still walks when nothing is armed', async () => {
+    armedTurn();
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await screen.findByRole('button', { name: /thunderwave/i });
+
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: 'v1.move' })
+    );
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when a creature is clicked instead of the ground', async () => {
+    armedTurn();
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /thunderwave/i })
+    );
+
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      await Promise.resolve();
+    });
+
+    // Entity clicks win over the ground in the canvas, so this one never
+    // reaches the floor handler at all. A skeleton is not a cell, and the
+    // cast stays where it was: armed, waiting for a place.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
   });
 });
