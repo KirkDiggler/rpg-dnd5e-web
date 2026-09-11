@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
+import { caughtNotice } from './caughtNotice';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
   isStaleDeclarationRefusal,
@@ -1093,7 +1094,7 @@ export function useSessionCombatExperience({
       castInFlightRef.current = true;
       void (async () => {
         try {
-          await cast({
+          const response = await cast({
             session,
             member,
             declarationId: current.id,
@@ -1101,6 +1102,27 @@ export function useSessionCombatExperience({
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
+          // WHO THE SPELL REACHED AND COULD NOT TOUCH.
+          //
+          // An area cast derives its own recipients, and some of what it
+          // catches has no sheet behind it — the shopkeeper standing in a
+          // thunderclap. Saying nothing would make that identical to casting
+          // into an empty room, which is the one thing this field exists to
+          // prevent: a missing capability must not read as a spell that
+          // missed.
+          //
+          // Shown to the CASTER only, because it arrives on the RPC response.
+          // The multiplayer-correct home is the event stream — everyone in the
+          // room watched the blast wash over the merchant — and that needs the
+          // composition to record an unresolved member as a beat, which it
+          // cannot yet.
+          const caught = caughtNotice(response.caught);
+          if (caught) {
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: caught,
+            });
+          }
           scheduleRefresh(['characterData', 'turn', 'afford']);
         } catch (error) {
           if (!mountedRef.current) return;
