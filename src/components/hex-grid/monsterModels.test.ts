@@ -75,17 +75,14 @@ describe('resolveMonsterModelUrl', () => {
     ).toBeUndefined();
   });
 
-  it("resolves the zombie ref (v1alpha1 MonsterType.ZOMBIE) to a mapped GLB, superseding rpg-dnd5e-web#559's no-zombie-GLB plan (rpg-dnd5e-web#673)", () => {
+  it("resolves the zombie ref (v1alpha1 MonsterType.ZOMBIE) to the gaunt GLB, superseding rpg-dnd5e-web#559's no-zombie-GLB plan", () => {
     const url = resolveMonsterModelUrl(
       undefined,
       MonsterType.ZOMBIE,
       false,
       'zombie-1'
     );
-    expect(url).toBeDefined();
-    expect(url).toMatch(
-      /^\/models\/synty\/npcs\/zombie-(mutant|peasant-female)\.glb$/
-    );
+    expect(url).toBe('/models/synty/npcs/zombie-peasant-female.glb');
   });
 
   it('returns undefined for an unmapped MonsterType with no promoted GLB (ghoul, skeleton-archer)', () => {
@@ -109,14 +106,17 @@ describe('resolveMonsterModelUrl', () => {
   });
 });
 
-describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
+describe('zombie renders one look (gaunt) for every entity', () => {
   // A representative spread of entity ids -- not hand-picked to land on a
   // particular hash bucket, just plausible real ids (server-issued UUID-ish
-  // strings plus a couple of harness-style short ids). If a future change to
-  // fnv1aHash/pickStableCandidateIndex collapses the zombie ref back down to
-  // "always style 0", the coverage tests below (which assert BOTH styles
-  // appear across this sample) go red -- proving discrimination rather than
-  // asserting it.
+  // strings plus a couple of harness-style short ids).
+  //
+  // rpg-dnd5e-web#673 mapped TWO zombie looks and used this same sample to
+  // prove the resolver DISCRIMINATED between them. Kirk narrowed the ref to
+  // one look on 2026-09-11, so the sample now proves the opposite property:
+  // no entity id, however it hashes, can produce anything but the gaunt GLB.
+  // Keeping the spread matters more than before -- a single 'zombie-1' would
+  // pass even if a second candidate were reintroduced by accident.
   const SAMPLE_ENTITY_IDS = [
     'zombie-1',
     'zombie-2',
@@ -132,16 +132,18 @@ describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
     '9b8e7d6c-5a4b-3c2d-1e0f-a1b2c3d4e5f6',
   ];
 
-  it('resolves both promoted zombie styles across a spread of entity ids -- discrimination, not a single default', () => {
+  it('resolves the gaunt GLB for every sampled entity id -- one look, not a per-entity pick', () => {
     const urls = new Set(
       SAMPLE_ENTITY_IDS.map((id) =>
         resolveMonsterModelUrl('zombie', undefined, false, id)
       )
     );
-    expect(urls).toContain('/models/synty/npcs/zombie-mutant.glb');
-    expect(urls).toContain('/models/synty/npcs/zombie-peasant-female.glb');
-    // Exactly the two promoted styles -- no undefined, no third url.
-    expect(urls.size).toBe(2);
+    // One url across the whole spread. The hulking look (zombie-mutant.glb)
+    // is still a promoted asset in rpg-game-assets but is deliberately not
+    // mapped here, so it must never come back out of the resolver.
+    expect(urls).toEqual(
+      new Set(['/models/synty/npcs/zombie-peasant-female.glb'])
+    );
   });
 
   it('is stable for a single entity id across many repeated calls -- no per-render flicker', () => {
@@ -155,35 +157,21 @@ describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
     }
   });
 
-  it('lets two different zombie entities coexist with different styles in the same call sequence', () => {
-    // Simulates rendering a two-zombie encounter: both resolved back-to-back,
-    // neither call's result depends on call order or on the other entity.
-    const mutantId = SAMPLE_ENTITY_IDS.find(
-      (id) =>
-        resolveMonsterModelUrl('zombie', undefined, false, id) ===
-        '/models/synty/npcs/zombie-mutant.glb'
-    )!;
-    const peasantId = SAMPLE_ENTITY_IDS.find(
-      (id) =>
-        resolveMonsterModelUrl('zombie', undefined, false, id) ===
-        '/models/synty/npcs/zombie-peasant-female.glb'
-    )!;
-    expect(mutantId).toBeDefined();
-    expect(peasantId).toBeDefined();
+  it('gives two zombies in one encounter the same look, resolved in either order', () => {
+    // The inverse of what #673 asserted here. Two zombies standing next to
+    // each other are now the same creature twice over, and call order still
+    // cannot change either answer.
+    const [first, second] = SAMPLE_ENTITY_IDS;
+    const gaunt = '/models/synty/npcs/zombie-peasant-female.glb';
 
-    // Interleave calls in both orders -- neither entity's resolved url
-    // shifts because the other one was resolved first or in between.
-    expect(resolveMonsterModelUrl('zombie', undefined, false, mutantId)).toBe(
-      '/models/synty/npcs/zombie-mutant.glb'
+    expect(resolveMonsterModelUrl('zombie', undefined, false, first)).toBe(
+      gaunt
     );
-    expect(resolveMonsterModelUrl('zombie', undefined, false, peasantId)).toBe(
-      '/models/synty/npcs/zombie-peasant-female.glb'
+    expect(resolveMonsterModelUrl('zombie', undefined, false, second)).toBe(
+      gaunt
     );
-    expect(resolveMonsterModelUrl('zombie', undefined, false, mutantId)).toBe(
-      '/models/synty/npcs/zombie-mutant.glb'
-    );
-    expect(resolveMonsterModelUrl('zombie', undefined, false, peasantId)).toBe(
-      '/models/synty/npcs/zombie-peasant-female.glb'
+    expect(resolveMonsterModelUrl('zombie', undefined, false, first)).toBe(
+      gaunt
     );
   });
 
@@ -200,7 +188,7 @@ describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
     }
   });
 
-  it('MonsterType.ZOMBIE fallback goes through the same stable per-entity selection as the v1alpha2 monsterRefId path', () => {
+  it('MonsterType.ZOMBIE fallback resolves identically to the v1alpha2 monsterRefId path', () => {
     for (const id of SAMPLE_ENTITY_IDS) {
       const viaRefId = resolveMonsterModelUrl('zombie', undefined, false, id);
       const viaType = resolveMonsterModelUrl(
@@ -213,7 +201,7 @@ describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
     }
   });
 
-  it('single-candidate refs (skeleton, skeleton-captain) ignore entityId entirely -- unaffected by #673', () => {
+  it('every mapped ref now ignores entityId entirely -- skeleton, skeleton-captain and zombie alike', () => {
     for (const id of SAMPLE_ENTITY_IDS) {
       expect(resolveMonsterModelUrl('skeleton', undefined, false, id)).toBe(
         '/models/synty/npcs/skeleton-soldier-01.glb'
@@ -221,6 +209,9 @@ describe('rpg-dnd5e-web#673: stable per-entity zombie style selection', () => {
       expect(
         resolveMonsterModelUrl('skeleton-captain', undefined, false, id)
       ).toBe('/models/synty/npcs/skeleton-knight.glb');
+      expect(resolveMonsterModelUrl('zombie', undefined, false, id)).toBe(
+        '/models/synty/npcs/zombie-peasant-female.glb'
+      );
     }
   });
 });

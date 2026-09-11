@@ -1,13 +1,18 @@
 /**
- * Zombie rendering: stable per-entity style selection through the REAL
- * render path (rpg-dnd5e-web#673).
+ * Zombie rendering through the REAL render path.
+ *
+ * rpg-dnd5e-web#673 mapped two promoted zombie looks and this file proved the
+ * per-entity discrimination between them survived the real component chain.
+ * Kirk narrowed the ref to ONE look (gaunt) on 2026-09-11, so every assertion
+ * here now proves the opposite property — no entity id produces anything but
+ * `zombie-peasant-female.glb`. The render-path plumbing this file exercises is
+ * unchanged and is why it was worth keeping rather than deleting.
  *
  * monsterModels.test.ts already proves the pure resolver
- * (resolveMonsterModelUrl / pickStableCandidateIndex) discriminates
- * between the two promoted zombie styles and is stable per entity id. This
- * file proves that same discrimination survives all the way through the
- * REAL component chain a zombie entity actually mounts through on the game
- * screen:
+ * (resolveMonsterModelUrl / pickStableCandidateIndex) returns the single
+ * mapped look for any entity id. This file proves that result survives all
+ * the way through the REAL component chain a zombie entity actually mounts
+ * through on the game screen:
  *
  *   HexEntity -> resolveMonsterModelUrl(...) -> ClassCharacterModel(url)
  *     -> useGLTF(url)
@@ -73,8 +78,9 @@ vi.mock('@react-three/drei', () => ({
 import { HexEntity } from './HexEntity';
 import { resolveMonsterModelUrl } from './monsterModels';
 
-const ZOMBIE_MUTANT_URL = '/models/synty/npcs/zombie-mutant.glb';
-const ZOMBIE_PEASANT_URL = '/models/synty/npcs/zombie-peasant-female.glb';
+const ZOMBIE_GAUNT_URL = '/models/synty/npcs/zombie-peasant-female.glb';
+const ZOMBIE_GAUNT_DOWNED_URL =
+  '/models/synty/npcs/zombie-peasant-female-downed.glb';
 
 const base = {
   name: 'Zombie',
@@ -85,32 +91,15 @@ const base = {
 };
 
 /**
- * Find two entity ids that the REAL resolver maps to the two different
- * promoted zombie styles. Deliberately NOT hardcoded ids picked by hand --
- * searching a small id space with the real resolver means this fixture
- * stays correct even if the hash function's internals change (as long as
- * it still discriminates), and the search itself is an assertion: if the
- * resolver stops discriminating, this throws before any test body's own
- * assertions get a chance to run.
+ * Entity ids whose hashes landed on DIFFERENT candidates back when `zombie`
+ * mapped to two looks (rpg-dnd5e-web#673's `findIdsForBothStyles` search
+ * found this pair). Kept as the sample precisely because of that history:
+ * if a second candidate were ever reintroduced by accident, these two are
+ * the ids most likely to diverge, so asserting they agree is a sharper
+ * check than two arbitrary strings would be.
  */
-function findIdsForBothStyles(): { mutantId: string; peasantId: string } {
-  let mutantId: string | undefined;
-  let peasantId: string | undefined;
-  for (let i = 0; i < 500 && (!mutantId || !peasantId); i++) {
-    const id = `zombie-entity-${i}`;
-    const url = resolveMonsterModelUrl('zombie', undefined, false, id);
-    if (url === ZOMBIE_MUTANT_URL && !mutantId) mutantId = id;
-    if (url === ZOMBIE_PEASANT_URL && !peasantId) peasantId = id;
-  }
-  if (!mutantId || !peasantId) {
-    throw new Error(
-      'could not find sample entity ids resolving to both zombie styles -- ' +
-        'resolveMonsterModelUrl / pickStableCandidateIndex may no longer ' +
-        'discriminate (this throw IS the red signal, not a test bug)'
-    );
-  }
-  return { mutantId, peasantId };
-}
+const DIVERGENT_ID_A = 'zombie-entity-0';
+const DIVERGENT_ID_B = 'zombie-entity-1';
 
 /**
  * Every unique url `useGLTF` was called with across the render, in call
@@ -130,7 +119,7 @@ function uniqueCalledUrls(): string[] {
   return Array.from(new Set(calledUrls()));
 }
 
-describe('HexEntity zombie rendering (rpg-dnd5e-web#673, real render path)', () => {
+describe('HexEntity zombie rendering (one look, real render path)', () => {
   beforeEach(() => {
     hoisted.useGLTFSpy.mockClear();
   });
@@ -148,39 +137,33 @@ describe('HexEntity zombie rendering (rpg-dnd5e-web#673, real render path)', () 
     // Exactly one DISTINCT url across however many render passes -- the
     // mocked loader was never asked to load two different things for one
     // stable entity.
-    expect(urls.length).toBe(1);
-    expect(urls[0]).toMatch(
-      /^\/models\/synty\/npcs\/zombie-(mutant|peasant-female)\.glb$/
-    );
+    expect(urls).toEqual([ZOMBIE_GAUNT_URL]);
     // At least one Mesh -- the mocked GLB scene's Box. A MediumHumanoid
     // fallback render contributes zero (its mocked OBJLoader groups carry
     // no geometry) -- see this file's module doc comment.
     expect(renderer.scene.findAllByType('Mesh').length).toBeGreaterThan(0);
   });
 
-  it('renders two different zombie entities with two different resolved styles, simultaneously, in one scene', async () => {
-    const { mutantId, peasantId } = findIdsForBothStyles();
-
+  it('renders two zombie entities with the SAME look, simultaneously, in one scene', async () => {
+    // The inverse of what rpg-dnd5e-web#673 asserted here, through the same
+    // real render path and with the same pair of ids that used to diverge.
     await ReactThreeTestRenderer.create(
       <>
-        <HexEntity {...base} entityId={mutantId} onClick={() => {}} />
-        <HexEntity {...base} entityId={peasantId} onClick={() => {}} />
+        <HexEntity {...base} entityId={DIVERGENT_ID_A} onClick={() => {}} />
+        <HexEntity {...base} entityId={DIVERGENT_ID_B} onClick={() => {}} />
       </>
     );
 
-    const urls = uniqueCalledUrls().sort();
-    expect(urls).toEqual([ZOMBIE_MUTANT_URL, ZOMBIE_PEASANT_URL].sort());
+    expect(uniqueCalledUrls()).toEqual([ZOMBIE_GAUNT_URL]);
   });
 
-  it('keeps the SAME resolved style for the SAME entity across a rerender -- no flicker', async () => {
-    const { mutantId } = findIdsForBothStyles();
-
+  it('keeps the SAME resolved model for the SAME entity across a rerender -- no flicker', async () => {
     const renderer = await ReactThreeTestRenderer.create(
-      <HexEntity {...base} entityId={mutantId} onClick={() => {}} />
+      <HexEntity {...base} entityId={DIVERGENT_ID_A} onClick={() => {}} />
     );
     const firstUrls = uniqueCalledUrls();
     expect(firstUrls).toEqual([
-      resolveMonsterModelUrl('zombie', undefined, false, mutantId),
+      resolveMonsterModelUrl('zombie', undefined, false, DIVERGENT_ID_A),
     ]);
 
     hoisted.useGLTFSpy.mockClear();
@@ -188,40 +171,37 @@ describe('HexEntity zombie rendering (rpg-dnd5e-web#673, real render path)', () 
     // this entity would go through on the game screen (selection, HP tick,
     // reconnect replay), not a remount with a fresh id.
     await renderer.update(
-      <HexEntity {...base} entityId={mutantId} isSelected onClick={() => {}} />
+      <HexEntity
+        {...base}
+        entityId={DIVERGENT_ID_A}
+        isSelected
+        onClick={() => {}}
+      />
     );
     expect(uniqueCalledUrls()).toEqual(firstUrls);
   });
 
-  it("downed variant resolves the entity's OWN style's downed GLB, not the other style's", async () => {
-    const { mutantId, peasantId } = findIdsForBothStyles();
-    const mutantStandingUrl = resolveMonsterModelUrl(
-      'zombie',
-      undefined,
-      false,
-      mutantId
-    )!;
-    const peasantStandingUrl = resolveMonsterModelUrl(
-      'zombie',
-      undefined,
-      false,
-      peasantId
-    )!;
-
+  it('downed variant resolves the gaunt downed GLB, for any entity id', async () => {
     await ReactThreeTestRenderer.create(
-      <HexEntity {...base} entityId={mutantId} isDead onClick={() => {}} />
+      <HexEntity
+        {...base}
+        entityId={DIVERGENT_ID_A}
+        isDead
+        onClick={() => {}}
+      />
     );
-    expect(uniqueCalledUrls()).toEqual([
-      mutantStandingUrl.replace(/\.glb$/, '-downed.glb'),
-    ]);
+    expect(uniqueCalledUrls()).toEqual([ZOMBIE_GAUNT_DOWNED_URL]);
 
     hoisted.useGLTFSpy.mockClear();
     await ReactThreeTestRenderer.create(
-      <HexEntity {...base} entityId={peasantId} isDead onClick={() => {}} />
+      <HexEntity
+        {...base}
+        entityId={DIVERGENT_ID_B}
+        isDead
+        onClick={() => {}}
+      />
     );
-    expect(uniqueCalledUrls()).toEqual([
-      peasantStandingUrl.replace(/\.glb$/, '-downed.glb'),
-    ]);
+    expect(uniqueCalledUrls()).toEqual([ZOMBIE_GAUNT_DOWNED_URL]);
   });
 
   it('leaves a non-zombie monster (skeleton) on its single deterministic GLB, unaffected by entityId', async () => {
