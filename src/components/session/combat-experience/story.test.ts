@@ -15,6 +15,7 @@ import {
   EventSchema,
   FightEndedSchema,
   HealingAppliedSchema,
+  MoveImposedSchema,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
@@ -650,6 +651,61 @@ describe('typed combat Story', () => {
       },
     ]);
     expect(JSON.stringify(story)).not.toContain('provider-slug');
+  });
+
+  it('tells the table how far a shove actually got and what stopped it', () => {
+    const shoved = (
+      seq: bigint,
+      target: string,
+      movedCells: number,
+      stoppedBy: string
+    ) =>
+      visible(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq,
+          kind: EventKind.ACTIVATION_RESULT,
+          body: {
+            case: 'activationResult',
+            value: create(ActivationResultSchema, {
+              actor: 'aldric',
+              result: {
+                case: 'moveImposed',
+                value: create(MoveImposedSchema, {
+                  target,
+                  movedCells,
+                  stoppedBy,
+                }),
+              },
+            }),
+          },
+        })
+      );
+
+    const story = buildCombatStory(
+      [
+        shoved(30n, 'skeleton-guard', 2, ''),
+        shoved(31n, 'skeleton-guard', 1, 'dnd5e:props:pillar'),
+        shoved(32n, 'skeleton-guard', 0, 'aldric'),
+      ],
+      context
+    );
+
+    // HOW FAR IT GOT, NOT HOW FAR IT WAS ASKED FOR. "The push was weak" and
+    // "the push was stopped" are different stories, and only the second one
+    // names something. A row that reported the rulebook's requested distance
+    // would narrate the wrong one every time something was in the way.
+    expect(story).toMatchObject([
+      { headline: 'Skeleton Guard slides 2 cells', detail: undefined },
+      {
+        headline: 'Skeleton Guard slides 1 cell',
+        detail: 'Stopped by dnd5e:props:pillar.',
+      },
+      {
+        headline: 'Skeleton Guard is pushed but does not move',
+        detail: 'Stopped by Aldric.',
+      },
+    ]);
   });
 
   it('omits a buffered actor event rather than falling back to payload prose', () => {

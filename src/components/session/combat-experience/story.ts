@@ -255,6 +255,31 @@ function buildActivationResultStory(
         tone: 'neutral',
       });
     }
+    // A CREATURE MOVED WHO DID NOT CHOOSE TO. Thunderwave's shove is the
+    // first of these: the spell decided the direction and the distance, and
+    // this says what the floor allowed. The cells entered arrive separately
+    // as ordinary MOVED beats, so nothing here repeats the route.
+    case 'moveImposed': {
+      const move = event.body.value.result.value;
+      const target = memberName(move.target, context);
+      // NAMED, NOT COUNTED. `stopped_by` is whatever the rulebook authored —
+      // a creature standing in the way resolves to their name, a prop keeps
+      // the ref the rulebook wrote. Empty means nothing stopped it and the
+      // whole budget was spent, which is a different sentence with nothing
+      // to add.
+      const detail = move.stoppedBy
+        ? `Stopped by ${memberName(move.stoppedBy, context)}.`
+        : undefined;
+      return Object.freeze({
+        ...base,
+        headline:
+          move.movedCells === 0
+            ? `${target} is pushed but does not move`
+            : `${target} slides ${move.movedCells} cell${move.movedCells === 1 ? '' : 's'}`,
+        detail,
+        tone: move.target === context.viewerMember ? 'danger' : 'neutral',
+      });
+    }
     case 'capacityGranted': {
       const capacity = event.body.value.result.value;
       return Object.freeze({
