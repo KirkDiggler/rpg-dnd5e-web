@@ -1271,6 +1271,11 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.CAST,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
+  // Typed, so a SIGHTED arriving with no body is dropped rather than
+  // falling through as a bodyless 'none' row. The server only publishes one
+  // when it names somebody, so a bodyless one is a beat that should not
+  // exist — and it is not story either way (see relevantOtherEvent).
+  EventKind.SIGHTED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1284,12 +1289,19 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
     return undefined;
   }
-  // A SIGHTING IS NOT A ROW IN THE STORY. Sighted names who entered and left
-  // this recipient's view and carries no testimony about them, so there is no
-  // beat to narrate — the map changes, and the log does not. It is left out of
-  // `EXPECTED_OTHER_KIND` for the same reason, and refused here so it cannot
-  // reach the other-story path by any route.
-  if (bodyCase === 'sighted') return undefined;
+  // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
+  // reason rather than by oversight. It is a nudge addressed to this viewer
+  // alone — "what you perceive changed, read it again" — and the reading is
+  // what the canvas already draws. It also fires on every ghost transition,
+  // so a row per sighting would narrate the viewer's own bookkeeping back at
+  // them while somebody is still mid-swing.
+  //
+  // Excluded HERE rather than by leaving a hole in the table: an unlisted
+  // body case is a type error at the index below, which is the guard that
+  // makes every new body a decision somebody wrote down.
+  if (bodyCase === 'sighted') {
+    return undefined;
+  }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
 
   switch (bodyCase) {

@@ -71,6 +71,26 @@ export function refreshKeysFor(
       return ['doors', 'atlas'];
     case 'regionRevealed':
       return ['atlas'];
+    // THIS VIEWER'S OWN PERCEPTION CHANGED: somebody came into their view,
+    // or left it. `view` and nothing else — sightings are the only thing it
+    // touches. Nobody moved, nothing was spent, no card changed, so
+    // refetching `afford`, `turn` or `characterData` would be work for a
+    // beat that changed none of them.
+    //
+    // THE POINT OF THE ROW IS THE CASE `moved` CANNOT COVER. A peer walking
+    // back into view is only visible today because `moved` goes to the whole
+    // roster and this client refetches on every peer step — so it learns
+    // about the re-acquisition on the same frame, by accident. The moment
+    // the server narrows that audience, the step happens on an event this
+    // client never receives and its picture of that peer stays whatever it
+    // was when they left. This row is what survives the narrowing.
+    //
+    // AND IT DOES NOT REMOVE ANYBODY. A member in `lost` is not gone; they
+    // are a GHOST — what this viewer last saw, at the moment they last saw
+    // it — and GetView still serves them. Refetching is the whole response;
+    // there is deliberately no local pruning here to go out of step with it.
+    case 'sighted':
+      return ['view'];
     // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
     // held atlas in the same frame in the view; this refetch is the
     // server's own answer landing behind it, exactly as the reveal beats do.
@@ -135,13 +155,6 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
-    // PERCEPTION CHANGED, SO RE-READ IT — the beat's own instruction. Sighted
-    // carries names and no testimony: what the recipient now perceives about
-    // those members is answered, member-scoped, by GetView, and a body
-    // restating it would be a second computation of the same answer. Nothing
-    // else moved: nobody spent an action and no card changed.
-    case 'sighted':
-      return ['view'];
     case 'looted':
     case 'activated':
     case 'exited':
