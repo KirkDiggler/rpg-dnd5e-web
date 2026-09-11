@@ -117,6 +117,7 @@ import type {
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
 import { resolveName } from './participantNames';
+import { cubeToPosition } from './positionBridge';
 import { RunEndedToast } from './RunEndedToast';
 import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
@@ -553,6 +554,29 @@ function SessionEncounterScope({
     participants: turnParticipants,
     characterData,
   });
+  // THE FLOOR HAS ONE HANDLER AND TWO MEANINGS. A click on the ground walks,
+  // unless the player is holding a cast that still needs aiming — Thunderwave
+  // arms and then waits for the direction its cube points. Routing here, at
+  // the single seam the canvas already reports a floor click through, is what
+  // keeps the canvas ignorant of spells and the walk hook ignorant of casts.
+  //
+  // Entity clicks never arrive here: `SessionCanvas` gives a creature's own
+  // cell to `onEntityClick` first, so clicking a skeleton while a cell cast is
+  // armed is refused by the combat hook rather than misread as a cell.
+  const handleGroundClick = useCallback(
+    (coord: CubeCoord) => {
+      if (combat.cellCastArmed) {
+        // The exact conversion a walk's path cells go through — one
+        // coordinate space, one converter, no second opinion about which of
+        // cube's three axes the wire carries.
+        combat.onCellClick(cubeToPosition(coord));
+        return;
+      }
+      walkTo(coord);
+    },
+    [combat, walkTo]
+  );
+
   staleMoveRecoveryRef.current = (declarationId) =>
     combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
   moveAcceptedRef.current = () => {
@@ -1696,7 +1720,7 @@ function SessionEncounterScope({
                   }
                   myPosition={displayPosition ?? lastGoodPositionRef.current!}
                   movements={moves.movements}
-                  onHexClick={runEnded === null ? walkTo : undefined}
+                  onHexClick={runEnded === null ? handleGroundClick : undefined}
                   onEntityClick={runEnded === null ? onTargetClick : undefined}
                   onMovementPainted={
                     runEnded === null ? handleMovementPainted : undefined

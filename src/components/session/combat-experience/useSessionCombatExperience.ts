@@ -118,6 +118,13 @@ export interface UseSessionCombatExperienceResult {
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (target: string) => void;
   onConfirmTargets: () => void;
+  /** The cell an armed caster-edge cast is aimed toward, in the wire's own
+   * axial coordinates. A reference the engine reads, never a computed shape:
+   * which cells the spell covers is derived server-side. */
+  onCellClick: (cell: { x: number; y: number }) => void;
+  /** Whether a floor click belongs to an armed cast rather than to walking.
+   * The one fact the map's single ground-click seam routes on. */
+  cellCastArmed: boolean;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
@@ -394,15 +401,26 @@ export function useSessionCombatExperience({
     // with no RPC sent and nothing for the player to review: the offer was
     // unchanged, and two reads of Afford return it byte for byte.
     const armedVerb = armedMatches[0]?.verb;
+    const armedKind = armedMatches[0]?.targetKind;
+    const promptsForMember =
+      (armedVerb === Verb.ATTACK ||
+        armedVerb === Verb.ACTIVATE ||
+        armedVerb === Verb.CAST) &&
+      armedKind === TargetKind.MEMBER;
+    // A CELL CAST ARMS FOR THE SAME REASON AND IS JUDGED THE SAME WAY. What
+    // it waits for is a place rather than a creature, which changes what the
+    // next click means and nothing about whether holding the offer is
+    // coherent. Left out of this check, Thunderwave armed and was torn down
+    // one render later as "that option changed" — the exact failure the
+    // comment above records for Bardic Inspiration.
+    const promptsForCell =
+      armedVerb === Verb.CAST && armedKind === TargetKind.CELL;
     const current =
       authorityFresh &&
       clock === ClockKind.TURN &&
       active === member &&
       armedMatches.length === 1 &&
-      (armedVerb === Verb.ATTACK ||
-        armedVerb === Verb.ACTIVATE ||
-        armedVerb === Verb.CAST) &&
-      armedMatches[0]?.targetKind === TargetKind.MEMBER &&
+      (promptsForMember || promptsForCell) &&
       armedMatches[0]?.available;
     return {
       armedIsCurrent: current,
@@ -657,6 +675,28 @@ export function useSessionCombatExperience({
       // spell declares, so the declaration carries no candidates and there is
       // nothing here to prompt for.
       if (candidate.verb === Verb.CAST) {
+        // A CELL CAST ARMS AND WAITS FOR THE GROUND. It carries no candidates,
+        // like an area cast, and that resemblance is the trap: Thunderclap
+        // fires on the row click because nobody and nothing is chosen, while
+        // Thunderwave still needs the direction its cube points. Firing here
+        // would send a cast the server refuses for a missing cell.
+        if (candidate.targetKind === TargetKind.CELL) {
+          const current = uniqueCurrentDeclaration(
+            declarationsRef.current,
+            candidate,
+            Verb.CAST,
+            TargetKind.CELL
+          );
+          if (!current) return;
+          setInteraction({
+            armedDeclarationId: current.id,
+            selectedCandidateMember: null,
+            selectedCandidateMembers: [],
+            changedOptionNotice: null,
+          });
+          setTargeting(true);
+          return;
+        }
         if (candidate.targetKind === TargetKind.MEMBER) {
           const current = uniqueCurrentDeclaration(
             declarationsRef.current,
@@ -717,6 +757,19 @@ export function useSessionCombatExperience({
         (declaration) => declaration.id === presentationState.armedDeclarationId
       );
       const castDeclaration = armed.length === 1 ? armed[0] : undefined;
+      // A CREATURE IS NOT A CELL. Entity clicks take priority over the ground
+      // in the canvas, so a player who clicks a skeleton while Thunderwave is
+      // armed arrives here holding an offer that names no candidates at all.
+      // Reading that as a member target would send a cast the server refuses;
+      // falling through to the selection path below would tear the arm down
+      // and tell them their option changed, which it did not. The click means
+      // nothing, and nothing is what it does.
+      if (
+        castDeclaration?.verb === Verb.CAST &&
+        castDeclaration.targetKind === TargetKind.CELL
+      ) {
+        return;
+      }
       if (
         castDeclaration?.verb === Verb.CAST &&
         castDeclaration.targetKind === TargetKind.MEMBER
@@ -1053,6 +1106,121 @@ export function useSessionCombatExperience({
     );
   }, [presentationState]);
 
+  /**
+   * A CAST THE CASTER AIMS, answered by a click on the floor.
+   *
+   * Thunderwave's cube starts at the caster's own edge and points somewhere,
+   * so the one thing left to say after arming is a direction — named as the
+   * cell the shape is aimed toward, never as the cells it covers. Deriving
+   * coverage is the engine's work and putting any of it here would be this
+   * client calculating a rule.
+   *
+   * NO TARGETS GO WITH IT. A cell cast chooses nobody for the same reason an
+   * area cast does: the server works out who is standing in the shape. The
+   * empty list is sent, not omitted, exactly as the area path sends it.
+   *
+   * ARMED BY ID, and re-read from the CURRENT declarations at click time. The
+   * offer may have gone stale between arming and the click; the same
+   * availability fact that gates every other verb gates this one.
+   */
+  const onCellClick = useCallback(
+    (cell: { x: number; y: number }) => {
+      if (
+        !mountedRef.current ||
+        castInFlightRef.current ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member
+      ) {
+        return;
+      }
+      const armed = declarationsRef.current.filter(
+        (declaration) => declaration.id === presentationState.armedDeclarationId
+      );
+      const current = armed.length === 1 ? armed[0] : undefined;
+      if (
+        !current ||
+        current.verb !== Verb.CAST ||
+        current.targetKind !== TargetKind.CELL ||
+        !current.available
+      ) {
+        return;
+      }
+
+      castInFlightRef.current = true;
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      void (async () => {
+        try {
+          const response = await cast({
+            session,
+            member,
+            declarationId: current.id,
+            targets: [],
+            cell,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          // A cell cast derives its recipients the way an area cast does, so
+          // it reaches the same creatures with no sheet behind them and owes
+          // the caster the same sentence about them.
+          const caught = caughtNotice(response.caught);
+          if (caught) {
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: caught,
+            });
+          }
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.CAST);
+          } else {
+            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          }
+        } finally {
+          castInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      cast,
+      invalidateAuthority,
+      member,
+      presentationState.armedDeclarationId,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
+  );
+
+  /**
+   * Whether the ground click belongs to a cast rather than to walking.
+   *
+   * THE CALLER OWNS ONE SEAM, NOT TWO. `SessionEncounterView` has exactly one
+   * floor-click handler, and this is the fact it routes on — asked here,
+   * where the armed offer and the declarations already live, rather than
+   * reconstructed by a caller that would have to learn what a target kind is.
+   */
+  const cellCastArmed = useMemo(() => {
+    if (presentationState.armedDeclarationId === null) return false;
+    const armed = declarations.filter(
+      (declaration) => declaration.id === presentationState.armedDeclarationId
+    );
+    return (
+      armed.length === 1 &&
+      armed[0]!.verb === Verb.CAST &&
+      armed[0]!.targetKind === TargetKind.CELL
+    );
+  }, [declarations, presentationState.armedDeclarationId]);
+
   // runCast is held in a ref for the same reason runActivate is: it and
   // onSelectDeclaration are mutually recursive through the dock's single
   // onSelect handler.
@@ -1324,6 +1492,8 @@ export function useSessionCombatExperience({
       onSelectDeclaration,
       onTargetClick,
       onConfirmTargets,
+      onCellClick,
+      cellCastArmed,
       onEndTurn,
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
@@ -1335,8 +1505,10 @@ export function useSessionCombatExperience({
     }),
     [
       acceptStreamEvent,
+      cellCastArmed,
       invalidateAuthority,
       logMode,
+      onCellClick,
       onEndTurn,
       onSelectDeclaration,
       onTargetClick,

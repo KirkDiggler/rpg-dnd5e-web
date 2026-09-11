@@ -149,6 +149,33 @@ function thunderclapDeclaration(): Declaration {
   });
 }
 
+/**
+ * A CELL cast: the caster AIMS the shape. Thunderwave's cube starts at the
+ * caster's own edge and points at a cell the player picks off the ground, so
+ * the declaration carries no candidates and still cannot fire on the row
+ * click — there is exactly one thing left to say, and it is not a creature.
+ */
+function thunderwaveDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.thunderwave',
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.CELL,
+    cost: [
+      create(CostComponentSchema, {
+        currency: Currency.CHARGES,
+        needed: 1,
+        label: 'Level 1 spell slot',
+      }),
+    ],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderwave',
+      name: 'Thunderwave',
+    }),
+  });
+}
+
 /** A fighter's swing, for the rows that must not change. */
 function attackDeclaration(): Declaration {
   return create(DeclarationSchema, {
@@ -522,5 +549,111 @@ describe('an area cast fires on the click', () => {
     expect(latest.presentationState.changedOptionNotice).toContain(
       'demo-merchant-1'
     );
+  });
+});
+
+describe('a cast that aims at a cell', () => {
+  beforeEach(() => {
+    hoisted.castFn.mockReset();
+    hoisted.castFn.mockResolvedValue({ caught: [] });
+  });
+
+  it('arms on the row click and sends nothing yet', async () => {
+    const declaration = thunderwaveDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(declaration);
+      await Promise.resolve();
+    });
+
+    // NOT AREA, THOUGH IT CARRIES NO CANDIDATES EITHER. Thunderclap fires on
+    // the row click because nobody and nothing is chosen; Thunderwave still
+    // needs the direction the cube points, so it waits exactly as a
+    // creature-target cast waits.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
+    expect(latest.cellCastArmed).toBe(true);
+  });
+
+  it('sends the clicked cell with the armed selector and disarms', async () => {
+    const declaration = thunderwaveDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onCellClick({ x: 2, y: -1 });
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'crypt-run',
+      member: 'bard-1',
+      declarationId: 'selector.cast.thunderwave',
+      target: '',
+      targets: [],
+      cell: { x: 2, y: -1 },
+    });
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+    expect(latest.cellCastArmed).toBe(false);
+  });
+
+  it('ignores a creature click while it is armed', async () => {
+    const declaration = thunderwaveDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onTargetClick('skeleton-1');
+      await Promise.resolve();
+    });
+
+    // A CREATURE IS NOT A CELL. Entity clicks win over the ground in the
+    // canvas, so clicking a skeleton while this is armed must not be read as
+    // a member target and must not tear the arm down either — the player is
+    // still one ground click away from casting.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(screen.getByTestId('armed').textContent).toBe(declaration.id);
+    expect(latest.presentationState.changedOptionNotice).toBeNull();
+  });
+
+  it('sends nothing when no cell cast is armed', async () => {
+    const declaration = thunderwaveDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    await act(async () => {
+      latest.onCellClick({ x: 2, y: -1 });
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('asks for a cell rather than a target', () => {
+    const declaration = thunderwaveDeclaration();
+    const selection = selectCombatExperience([declaration], {
+      armedDeclarationId: declaration.id,
+      selectedCandidateMember: null,
+      selectedCandidateMembers: [],
+      changedOptionNotice: null,
+    });
+
+    render(
+      <TargetSurface
+        phase="targeting"
+        selection={selection}
+        isViewerTurn
+        showTurnNotice={false}
+        memberNames={new Map()}
+        location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+        renderMap={() => null}
+        onTargetClick={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Thunderwave armed')).toBeTruthy();
+    expect(screen.getByText('Pick a cell to aim toward')).toBeTruthy();
+    expect(screen.queryByText('Choose a target')).toBeNull();
   });
 });

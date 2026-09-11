@@ -18,6 +18,21 @@ export interface CastParams {
   declarationId: string;
   /** Ordered provider-validated targets for this one cast. */
   targets: readonly string[];
+  /**
+   * The cell a caster-edge shape is aimed toward, in the same dungeon-absolute
+   * coordinates every other verb speaks.
+   *
+   * A REFERENCE, NEVER A SHAPE. Thunderwave's cube starts at the caster's own
+   * edge and points somewhere; the player names the direction by clicking a
+   * cell and the engine derives which cells the cube covers. Sending anything
+   * more than the aimed-at cell would be this client computing coverage, which
+   * is the one thing it must not do.
+   *
+   * Set only for a declaration whose `target_kind` is CELL — the server
+   * refuses a cell on any other kind, exactly as it refuses targets on an
+   * area cast.
+   */
+  cell?: { x: number; y: number };
   /** Deprecated scalar retained only for callers still crossing the old seam. */
   target?: string;
 }
@@ -59,6 +74,7 @@ export function useSessionCast(): UseCastResult {
           declarationId: params.declarationId,
           target: '',
           targets: [...params.targets],
+          cell: params.cell,
         });
       } catch (err) {
         const wrapped =
