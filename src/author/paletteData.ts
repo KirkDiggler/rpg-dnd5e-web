@@ -184,6 +184,15 @@ export interface PaletteMonster {
  *   reason — GLB without a ref is equally unauthorable; the palette can't
  *   place a reference that doesn't exist.
  *
+ * `animated-armor` passes the ref-AND-GLB test as of 2026-09-11 and is the
+ * first CONSTRUCT here — everything else is undead. It spent time in the
+ * GLB-without-a-ref bucket above (rpg-game-assets#172 published the
+ * appearance with `rulesRef: null`, leaving the gameplay association to the
+ * game team) until rpg-toolkit#1663 added the ref and constructor. It is
+ * also the first entry whose model is standing-only: it vanishes when it
+ * drops rather than showing a downed pose, which `sub` discloses because an
+ * author placing one should know that before they build a scene around it.
+ *
  * `zombie` gets ONE palette entry, and as of 2026-09-11 it maps to ONE look
  * (`zombie-peasant-female.glb`/gaunt). rpg-dnd5e-web#673 had briefly mapped
  * two (`zombie-mutant.glb`/hulking alongside it) and let
@@ -226,6 +235,13 @@ export const PALETTE_MONSTERS: PaletteMonster[] = (
       short: 'Zo',
       label: 'zombie',
       sub: 'flags forced off, same as every monster place: entry · renders as the gaunt look',
+    },
+    {
+      ref: 'dnd5e:monsters:animated-armor',
+      refId: 'animated-armor',
+      short: 'Aa',
+      label: 'animated-armor',
+      sub: 'flags forced off, same as every monster place: entry · vanishes when it drops — no downed model exists',
     },
   ] satisfies PaletteMonster[]
 ).filter(
