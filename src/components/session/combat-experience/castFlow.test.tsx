@@ -25,6 +25,7 @@ import {
   Standing,
   TargetCandidateSchema,
   TargetKind,
+  UnresolvedReason,
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -495,5 +496,31 @@ describe('an area cast fires on the click', () => {
     // Nothing armed and no prompt: an area cast chooses nobody, which is a
     // different reason from True Strike's but the same outcome here.
     expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+
+  it('tells the caster who it reached and could not touch', async () => {
+    hoisted.castFn.mockResolvedValue({
+      caught: [
+        {
+          member: 'demo-merchant-1',
+          kind: MemberKind.WORLD,
+          reason: UnresolvedReason.NO_SHEET,
+        },
+      ],
+    });
+    const declaration = thunderclapDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    await act(async () => {
+      latest.onSelectDeclaration(declaration);
+      await Promise.resolve();
+    });
+
+    // WITHOUT THIS the response is discarded and a shopkeeper standing in the
+    // blast is indistinguishable from an empty room — a missing capability
+    // wearing the appearance of a spell that missed.
+    expect(latest.presentationState.changedOptionNotice).toContain(
+      'demo-merchant-1'
+    );
   });
 });
