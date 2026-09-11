@@ -20,9 +20,11 @@
  *
  * Phase 1 had one deterministic candidate per mapped reference: Soldier01
  * for skeleton, Knight for skeleton-captain. rpg-dnd5e-web#673 added a
- * second shape: `zombie` maps to TWO candidates (zombieMutant/hulking,
- * zombiePeasantFemale/gaunt), picked per-entity rather than always [0] —
- * see `pickStableCandidateIndex` below. Every mapped reference's standing
+ * second shape — `zombie` mapping to TWO candidates picked per-entity — and
+ * on 2026-09-11 that was narrowed back to one look (gaunt), so every mapped
+ * reference has exactly one candidate again. The list-valued table and
+ * `pickStableCandidateIndex` below remain, because the SHAPE is still right:
+ * one ref may legitimately have several looks. Every mapped reference's standing
  * asset exports `Idle_Relaxed` or a same-shaped idle clip plus an in-place
  * `Walk_Forward`; only mapped assets are runtime-selectable here.
  *
@@ -61,19 +63,21 @@
  * Both signals resolve into the SAME ref-id key space before the single
  * table lookup below, so "resolved model" only ever needs one table.
  *
- * "zombie" (rpg-dnd5e-web#673, superseding #559's original plan): rather
- * than one green-tinted class-model reuse, rpg-game-assets#41 promoted TWO
- * genuinely distinct zombie looks — Style A/"hulking" (zombieMutant) and
- * Style B/"gaunt" (zombiePeasantFemale) — both mapped to the same toolkit
- * ref (`zombie`) because both represent the same SRD monster; which look a
- * given zombie ENTITY renders is a client-side pick, not an asset or rules
- * decision (rpg-game-assets manifest.json's own `rulesRefNote` for both
- * entries says exactly this). `MONSTER_REF_MODELS.zombie` therefore holds
- * TWO candidates instead of one, and `resolveMonsterModelUrl` picks between
- * them deterministically from the entity's own id (`pickStableCandidateIndex`
- * below) rather than always taking candidate 0 — every ref with exactly one
- * candidate (skeleton, skeleton-captain) is unaffected: `x % 1` is always
- * `0`, so single-candidate resolution is unchanged bit-for-bit.
+ * "zombie" (rpg-dnd5e-web#673, then narrowed 2026-09-11): rpg-game-assets#41
+ * promoted TWO genuinely distinct zombie looks — Style A/"hulking"
+ * (zombieMutant) and Style B/"gaunt" (zombiePeasantFemale) — both mapped to
+ * the same toolkit ref (`zombie`) because both represent the same SRD
+ * monster, and #673 let `pickStableCandidateIndex` choose between them per
+ * entity. Kirk narrowed that to ONE look (gaunt): a zombie should read as one
+ * creature on the board, not two. `MONSTER_REF_MODELS.zombie` therefore holds
+ * a single candidate again, like every other ref here.
+ *
+ * `pickStableCandidateIndex` is still called on every resolve and still
+ * documents the multi-candidate contract — it is not dead code, it simply has
+ * no multi-candidate ref to exercise today (`x % 1` is always `0`). It is kept
+ * rather than inlined because `MONSTER_REF_MODELS` is genuinely a
+ * ref→candidate-LIST table and the next multi-look ref would need exactly this
+ * behavior back, unchanged.
  *
  * Deliberately NOT mapped (rpg-dnd5e-web#559 issue thread):
  * - "ghost" / "specter": Character_Ghost_01/02 and Character_Tormented_Soul
@@ -108,10 +112,19 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // not the asset. Filed under the boss's real ref id, not a "wight"
   // placeholder.
   'skeleton-captain': ['skeleton-knight.glb'],
-  // Two genuinely distinct looks for the one `zombie` ref (rpg-dnd5e-web#673,
-  // rpg-game-assets#41) — Style A/hulking, Style B/gaunt. Order fixed here;
-  // `resolveMonsterModelUrl` picks between them per-entity, not always [0].
-  zombie: ['zombie-mutant.glb', 'zombie-peasant-female.glb'],
+  // One look, Style B/gaunt. rpg-dnd5e-web#673 mapped TWO promoted looks here
+  // (Style A/hulking `zombie-mutant.glb` alongside this one) and let
+  // `pickStableCandidateIndex` choose per-entity. Kirk's call, 2026-09-11: a
+  // zombie is one thing on the board, so the hulking look is unmapped and every
+  // zombie renders gaunt. `zombie-mutant.glb` remains promoted in
+  // rpg-game-assets — nothing was deleted there, and remapping it is a
+  // one-element edit if that call is ever revisited.
+  //
+  // Worth knowing before adding it back: the reason two looks were a CLIENT
+  // pick is that the author cannot express "this one is hulking" — the
+  // dungeonspec `place:` line carries a ref, not an appearance. Letting the
+  // builder choose a look is a real design slice, not a second array entry.
+  zombie: ['zombie-peasant-female.glb'],
 };
 
 /** The MonsterType enum values with a promoted GLB, mapped into the same
@@ -144,11 +157,16 @@ function fnv1aHash(input: string): number {
 
 /**
  * Pick a stable index into a `count`-length candidate list from an entity's
- * own id — the whole point of rpg-dnd5e-web#673: a zombie's rendered style
+ * own id — the whole point of rpg-dnd5e-web#673: a monster's rendered style
  * must be a pure function of its identity, not of render order, mount
- * order, or which client is watching, so two zombies in the same encounter
- * can show both styles at once with neither one flickering between them on
- * a rerender.
+ * order, or which client is watching, so two monsters of one ref in the same
+ * encounter can show different styles at once with neither one flickering
+ * between them on a rerender.
+ *
+ * No ref maps to more than one candidate today (the zombie pair was narrowed
+ * to gaunt-only on 2026-09-11), so in practice this returns 0 for every call
+ * the app makes. Kept because the table it indexes is still a candidate LIST,
+ * and this is the behavior a future multi-look ref needs back verbatim.
  *
  * `count <= 1` always returns `0` without even looking at `entityId` — every
  * existing single-candidate ref (skeleton, skeleton-captain) is provably
@@ -202,7 +220,8 @@ function withDownedSuffix(file: string): string {
  * (rpg-dnd5e-web#479 boundary lineage, same as resolveClassCharacterModelUrl).
  *
  * `entityId` (rpg-dnd5e-web#673) selects WHICH candidate a multi-candidate
- * ref (today, only `zombie`) renders — see `pickStableCandidateIndex`.
+ * ref renders — see `pickStableCandidateIndex`. No ref has more than one
+ * candidate today, so it currently changes nothing for any real call.
  * Single-candidate refs ignore it entirely (`x % 1 === 0` always), so every
  * pre-#673 caller/behavior is unchanged whether or not it passes one.
  *
@@ -213,8 +232,7 @@ function withDownedSuffix(file: string): string {
  * resolveMonsterModelUrl(undefined, MonsterType.SKELETON_CAPTAIN, true, 'boss-1');
  * // '/models/synty/npcs/skeleton-knight-downed.glb'
  * resolveMonsterModelUrl('zombie', undefined, false, 'zombie-1');
- * // '/models/synty/npcs/zombie-mutant.glb' OR
- * // '/models/synty/npcs/zombie-peasant-female.glb' -- stable per entityId
+ * // '/models/synty/npcs/zombie-peasant-female.glb' -- one look for every zombie
  * resolveMonsterModelUrl('goblin', undefined, false, 'goblin-1');
  * // undefined — no crypt-roster GLB mapped for goblin
  * ```

@@ -1271,6 +1271,11 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.CAST,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
+  // Typed, so a SIGHTED arriving with no body is dropped rather than
+  // falling through as a bodyless 'none' row. The server only publishes one
+  // when it names somebody, so a bodyless one is a beat that should not
+  // exist — and it is not story either way (see relevantOtherEvent).
+  EventKind.SIGHTED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1282,6 +1287,19 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // The bodies that become authority instead: they carry a die, so they are
   // presentation records rather than other-story rows.
   if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
+    return undefined;
+  }
+  // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
+  // reason rather than by oversight. It is a nudge addressed to this viewer
+  // alone — "what you perceive changed, read it again" — and the reading is
+  // what the canvas already draws. It also fires on every ghost transition,
+  // so a row per sighting would narrate the viewer's own bookkeeping back at
+  // them while somebody is still mid-swing.
+  //
+  // Excluded HERE rather than by leaving a hole in the table: an unlisted
+  // body case is a type error at the index below, which is the guard that
+  // makes every new body a decision somebody wrote down.
+  if (bodyCase === 'sighted') {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
