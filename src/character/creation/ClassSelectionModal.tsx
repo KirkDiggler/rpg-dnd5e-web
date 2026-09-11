@@ -156,6 +156,8 @@ export function ClassSelectionModal({
     features: [],
     expertise: [],
     traits: [],
+    cantrips: [],
+    spells: [],
     proficiencies: [],
   };
 
@@ -422,6 +424,47 @@ export function ClassSelectionModal({
       if (selected.length !== choice.chooseCount) {
         setErrorMessage(
           `Please select ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''} for expertise: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate cantrip choices
+    //
+    // THE SAME SHAPE AS EVERY OTHER COUNT-DRIVEN REQUIREMENT. A bard chooses
+    // 2 of its cantrips and the refusal reads like the skills one; nothing
+    // about a spell makes the door different (design rpg-project#405, §10).
+    const cantripChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.CANTRIPS
+      ) || [];
+
+    for (const choice of cantripChoices) {
+      const cantripChoice = currentClassChoices.cantrips?.find(
+        (cc) => cc.choiceId === choice.id
+      );
+      const selected = cantripChoice?.spellRefs || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} cantrip${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    const spellChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.SPELLS
+      ) || [];
+
+    for (const choice of spellChoices) {
+      const spellChoice = currentClassChoices.spells?.find(
+        (candidate) => candidate.choiceId === choice.id
+      );
+      const selected = spellChoice?.spellRefs || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} spell${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
         );
         return;
       }
@@ -1326,6 +1369,153 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Cantrip Choices */}
+                    {(() => {
+                      const cantripChoices =
+                        choicesSource?.filter(
+                          (choice) =>
+                            choice.choiceType === ChoiceCategory.CANTRIPS
+                        ) || [];
+
+                      if (cantripChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Cantrips{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {cantripChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.cantrips?.find(
+                                    (cc) => cc.choiceId === choice.id
+                                  )?.spellRefs || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  // Selections are `dnd5e:spells:<id>` refs.
+                                  const spellRefs = selections as string[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      equipment: [],
+                                      features: [],
+                                    };
+                                    const updatedCantrips =
+                                      currentChoices.cantrips?.filter(
+                                        (cc) => cc.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (spellRefs.length > 0) {
+                                      updatedCantrips.push({
+                                        choiceId: choice.id,
+                                        spellRefs,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        cantrips: updatedCantrips,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Levelled Spell Choices */}
+                    {(() => {
+                      const spellChoices =
+                        choicesSource?.filter(
+                          (choice) =>
+                            choice.choiceType === ChoiceCategory.SPELLS
+                        ) || [];
+
+                      if (spellChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Spells{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {spellChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.spells?.find(
+                                    (candidate) =>
+                                      candidate.choiceId === choice.id
+                                  )?.spellRefs || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  const spellRefs = selections as string[];
+                                  setClassChoicesMap((previous) => {
+                                    const current = previous[choiceKey] || {};
+                                    const spells =
+                                      current.spells?.filter(
+                                        (candidate) =>
+                                          candidate.choiceId !== choice.id
+                                      ) || [];
+                                    if (spellRefs.length > 0) {
+                                      spells.push({
+                                        choiceId: choice.id,
+                                        spellRefs,
+                                      });
+                                    }
+                                    return {
+                                      ...previous,
+                                      [choiceKey]: { ...current, spells },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Tool Proficiency Choices */}
                     {(() => {
                       const toolChoices =
@@ -1805,7 +1995,9 @@ export function ClassSelectionModal({
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
                             choice.choiceType !==
                               ChoiceCategory.FIGHTING_STYLE &&
-                            choice.choiceType !== ChoiceCategory.EXPERTISE
+                            choice.choiceType !== ChoiceCategory.EXPERTISE &&
+                            choice.choiceType !== ChoiceCategory.CANTRIPS &&
+                            choice.choiceType !== ChoiceCategory.SPELLS
                         ) || [];
 
                       if (otherChoices.length === 0) return null;

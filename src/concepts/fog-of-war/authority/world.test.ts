@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Fixture geometry (rpg-dnd5e-web#605).
  *

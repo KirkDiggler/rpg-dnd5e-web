@@ -1,4 +1,8 @@
-import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
+// @vitest-environment node
+import {
+  CHARACTER_CUSTOMIZATION_CATALOG,
+  type CharacterCustomizationBody,
+} from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
 import type { PlayerCharacterModelResolution } from './classCharacterModels';
 import * as classCharacterModels from './classCharacterModels';
@@ -85,6 +89,95 @@ describe('resolveIdleClipName', () => {
 });
 
 describe('resolvePlayerCharacterModel', () => {
+  const bardModels = [
+    ['dwarf', '/models/synty/characters/race-class/dwarf-bard.glb'],
+    ['elf', '/models/synty/characters/race-class/elf-bard.glb'],
+    ['gnome', '/models/synty/characters/race-class/gnome-bard.glb'],
+    ['half-elf', '/models/synty/characters/race-class/half-elf-bard.glb'],
+    ['halfling', '/models/synty/characters/race-class/halfling-bard.glb'],
+    ['half-orc', '/models/synty/characters/race-class/half-orc-bard.glb'],
+    ['human', '/models/synty/characters/race-class/human-bard.glb'],
+    ['tiefling', '/models/synty/characters/race-class/tiefling-bard.glb'],
+  ] as const;
+
+  it.each(bardModels)(
+    'resolves the exact standing %s Bard as a non-customizable modular model',
+    (raceRefId, url) => {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          raceRefId,
+          'bard',
+          false
+        )
+      ).toEqual(
+        asResolution({
+          url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+        })
+      );
+    }
+  );
+
+  it('prefers a declared profile body over the legacy standing Bard mapping', () => {
+    const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf;
+    const bodies = profile.bodies as unknown as Record<
+      string,
+      CharacterCustomizationBody
+    >;
+    bodies.bard = {
+      ...profile.bodies.barbarian,
+      combination: 'elf:bard',
+      classRef: 'bard',
+      outfit: 'bard',
+      url: '/models/synty/characters/customization/elf-v1/bodies/elf-bard-body.glb',
+      fallbackUrl:
+        '/models/synty/characters/customization/elf-v1/fallbacks/elf-bard-complete.glb',
+    } as unknown as CharacterCustomizationBody;
+    try {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel('elf', 'bard', false)
+      ).toEqual(
+        asResolution({
+          url: bodies.bard.url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+          customizationProfileRef: profile.profileRef,
+          fallbackUrl: bodies.bard.fallbackUrl,
+          fallbackSha256: bodies.bard.fallbackSha256,
+        })
+      );
+    } finally {
+      delete bodies.bard;
+    }
+  });
+
+  it.each(bardModels)(
+    'keeps a downed/dead %s Bard unresolved for the established fallback',
+    (raceRefId) => {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          raceRefId,
+          'bard',
+          true
+        )
+      ).toBeUndefined();
+    }
+  );
+
+  it('does not substitute Human for a missing or unknown Bard race', () => {
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(undefined, 'bard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(
+        'dragonborn',
+        'bard',
+        false
+      )
+    ).toBeUndefined();
+  });
+
   it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
     'resolves the exact standing Elf %s race-class model',
     (classRefId) => {

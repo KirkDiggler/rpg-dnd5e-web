@@ -233,6 +233,12 @@ promotion shape.
 
 ## Shared renderer and asset receipt
 
+Generated catalog entries receive palette thumbnails automatically from the
+browser's existing serial composition-thumbnail capture surface, using the
+exact asset ref and promoted GLB hash as cache identity. There is no operator
+bake, thumbnail promotion, persisted composition, or second asset pipeline;
+legacy baked PNGs (including the Skeleton Dog Plushie) remain unchanged.
+
 `PropModel` retains its default `source-origin` behavior for every existing game
 caller. The concept opts into `bounds-floor-center`, measured from the loaded
 mesh, to center the visible bounds and rest their base on the dungeon surface.

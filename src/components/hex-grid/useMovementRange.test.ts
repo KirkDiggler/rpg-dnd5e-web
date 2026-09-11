@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for useMovementRange hook calculations
  * Tests the pure calculation functions used by the hook

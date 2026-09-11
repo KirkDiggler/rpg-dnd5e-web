@@ -1,3 +1,4 @@
+import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import { useDiceDials } from '@/feel/useFeelDials';
 import {
   ClockKind,
@@ -22,7 +23,10 @@ import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
-import { useDiceSettleGate } from './useDiceSettleGate';
+import {
+  isDiceChoiceSettlementReady,
+  useDiceSettleGate,
+} from './useDiceSettleGate';
 import { useRollFlash } from './useRollFlash';
 
 function portraitOf(name: string): string {
@@ -84,9 +88,10 @@ function InitiativeEntry({
   const you = participant.member === viewerMember;
   return (
     <div
-      className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === Standing.DOWNED ? styles.initiativeEntryDowned : ''}`}
-      title={`${participant.name}${you ? ' (you)' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}`}
+      className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === Standing.DOWNED ? styles.initiativeEntryDowned : ''} ${participant.concentrating ? styles.initiativeEntryConcentrating : ''}`}
+      title={`${participant.name}${you ? ' (you)' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}${participant.concentrating ? ' · concentrating' : ''}`}
       data-active={participant.active}
+      data-concentrating={participant.concentrating}
     >
       <span className={styles.initiativePortrait}>
         {portraitOf(participant.name)}
@@ -152,11 +157,13 @@ export function CombatExperience({
   diceWitnessRole,
   localWorldDieControl,
   localWorldDieSettled = false,
+  localWorldDieSettledPresentationId,
   location,
   pacingNotice,
   renderMap,
   onSelectDeclaration,
   onTargetClick,
+  onConfirmTargets,
   onEndTurn,
   onLogModeChange,
   onOpenEquipment,
@@ -195,6 +202,25 @@ export function CombatExperience({
     result,
     diePresented,
   });
+  const rollWindowRequest = rollWindow?.presentationId
+    ? diceEvents.find(
+        (event): event is DicePresentationRequestedEvent =>
+          event.type === 'dice-presentation-requested' &&
+          event.presentationId === rollWindow.presentationId
+      )
+    : undefined;
+  const rollWindowReady = Boolean(
+    rollWindow &&
+    isDiceChoiceSettlementReady({
+      awaitsDiceSettlement: rollWindow.awaitsDiceSettlement === true,
+      presentationId: rollWindow.presentationId,
+      activePresentationId: rollWindowRequest?.presentationId,
+      settledPresentationId: localWorldDieSettledPresentationId,
+      physicalPresentationAvailable:
+        rollWindowRequest?.authoritySeq !== undefined,
+      semanticFallback: diceSemanticFallback === true,
+    })
+  );
   const damageToasts = useDamageToasts(settledResult);
   // `?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). `settledResult` is
   // the SAME signal useDamageToasts uses — see rollFlash.ts's own doc
@@ -210,8 +236,11 @@ export function CombatExperience({
   // damage, and the downed line that follows still spoiling the roll from the
   // log — see storyReveal.ts.
   const revealedStory = holdStoryUntilSettled(
-    story,
-    result && !settledResult ? result.attackId : undefined
+    holdStoryUntilSettled(
+      story,
+      result && !settledResult ? result.attackId : undefined
+    ),
+    rollWindowReady ? undefined : rollWindow?.storyId
   );
   const activeParticipant = participants.find(
     (participant) => participant.active
@@ -338,6 +367,7 @@ export function CombatExperience({
             location={location}
             renderMap={renderMap}
             onTargetClick={onTargetClick}
+            onConfirmTargets={onConfirmTargets}
           />
         </div>
 
@@ -509,6 +539,7 @@ export function CombatExperience({
             }
             memberNames={memberNames}
             rollWindow={rollWindow}
+            rollWindowReady={rollWindowReady}
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
             standingActions={standingActions}

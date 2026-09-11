@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { EquippedMap } from '@/components/game/equipment/equipmentTypes';
 import { describe, expect, it } from 'vitest';
 import type { MainHandSocket } from './mainHandPresentation';
@@ -7,6 +8,7 @@ const {
   CURRENT_MAIN_HAND_WEAPONS,
   TOWNFOLK_MAIN_HAND_SOCKET,
   resolveMainHandPresentation,
+  resolveMainHandPresentationByRefKey,
 } = mainHandWeapons;
 
 const itemRef = (id: string) => ({ module: 'dnd5e', type: 'item', id });
@@ -174,5 +176,37 @@ describe('production main-hand weapon presentation', () => {
     expect(
       task8MainHandWeapons.mainHandSocketForRigFamily('modular-fantasy-hero-v1')
     ).toBe(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET);
+  });
+});
+
+describe('resolveMainHandPresentationByRefKey', () => {
+  it('resolves a ref key the sight seam sends for a peer', () => {
+    const resolution = resolveMainHandPresentationByRefKey(
+      'dnd5e:item:longsword'
+    );
+    expect(resolution.code).toBe('mapped');
+    expect(resolution.presentation?.ref).toBe('dnd5e:item:longsword');
+  });
+
+  // An empty string is a hand observed holding nothing. Having no observation
+  // at all never reaches this function -- SessionCanvas keeps that undefined.
+  it('reads an empty key as unarmed rather than as a lookup miss', () => {
+    expect(resolveMainHandPresentationByRefKey('').code).toBe('unarmed');
+  });
+
+  it('reports an unmapped ref rather than inventing a model', () => {
+    const resolution = resolveMainHandPresentationByRefKey(
+      'dnd5e:item:not-a-real-weapon'
+    );
+    expect(resolution.code).toBe('unmapped-ref');
+    expect(resolution.presentation).toBeUndefined();
+  });
+
+  it('agrees with the local-player path for the same weapon', () => {
+    const local = resolveMainHandPresentation({
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    });
+    const peer = resolveMainHandPresentationByRefKey('dnd5e:item:longsword');
+    expect(peer.presentation).toEqual(local.presentation);
   });
 });

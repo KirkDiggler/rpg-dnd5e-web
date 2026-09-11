@@ -21,6 +21,7 @@ import {
 } from '../prop-calibration/previewTransform';
 import { SceneErrorBoundary } from '../prop-calibration/SceneErrorBoundary';
 import { disposeObjectResources } from './disposeObjectResources';
+import type { AssetReviewLoadStatus } from './model';
 
 const FLOOR_TILES = new Map<string, AbsoluteFloorTile>([
   ['0,0,0', { x: 0, y: 0, z: 0, roomId: 'asset-review' }],
@@ -29,7 +30,7 @@ const FLOOR_TILES = new Map<string, AbsoluteFloorTile>([
 ]);
 const FIGHTER_URL = resolveClassCharacterModelUrl('fighter', false);
 
-export type AssetReviewLoadStatus = 'loading' | 'success' | 'error';
+export type { AssetReviewLoadStatus } from './model';
 
 export interface AssetReviewSceneProps {
   url?: string;

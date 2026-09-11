@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners, type CubeCoord } from './hexMath';

@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './AssetReviewLab.css';
+import { AssetReviewScene } from './AssetReviewScene';
 import {
-  AssetReviewScene,
-  type AssetReviewLoadStatus,
-} from './AssetReviewScene';
-import {
+  entryAppearanceFacts,
+  entryPreviewUrl,
   filterReviewEntries,
+  generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  recordPreviewLoad,
+  selectPaletteAppearance,
   serializeReadyProviderBatch,
   serializeReviewProgress,
+  setBatchId,
   transitionDecision,
   updateProviderFields,
   validateReady,
   type AssetReviewBatch,
   type AssetReviewCatalog,
   type AssetReviewEntry,
+  type AssetReviewLoadStatus,
   type ProviderFieldPatch,
   type ReviewDecision,
   type ReviewFilter,
@@ -111,6 +115,9 @@ export function AssetReviewLab() {
   const [notice, setNotice] = useState('');
   const [importError, setImportError] = useState('');
   const [staleSources, setStaleSources] = useState<string[]>([]);
+  const [staleAppearances, setStaleAppearances] = useState<string[]>([]);
+  const [batchIdValue, setBatchIdValue] = useState('');
+  const [batchIdError, setBatchIdError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [sourceFamilyFilter, setSourceFamilyFilter] = useState('');
@@ -152,7 +159,9 @@ export function AssetReviewLab() {
         const merged = mergeCatalogWithReview(loadedCatalog, review);
         setCatalog(loadedCatalog);
         setBatch(merged.batch);
+        setBatchIdValue(merged.batch.batchId);
         setStaleSources(merged.staleSourceKeys);
+        setStaleAppearances(merged.staleAppearanceKeys);
         setSelectedKey(
           merged.batch.entries[0] ? sourceKey(merged.batch.entries[0]) : ''
         );
@@ -326,23 +335,13 @@ export function AssetReviewLab() {
         ...current,
         [url]: { status, detail },
       }));
-      if (status === 'loading') return;
       setBatch((current) => {
         if (!current) return current;
         return {
           ...current,
-          entries: current.entries.map((entry) => {
-            if (entry.url !== url) return entry;
-            const loadedSuccessfully = status === 'success';
-            return {
-              ...entry,
-              loadedSuccessfully,
-              decision:
-                !loadedSuccessfully && entry.decision === 'ready'
-                  ? 'keep'
-                  : entry.decision,
-            };
-          }),
+          entries: current.entries.map((entry) =>
+            recordPreviewLoad(entry, url, status)
+          ),
         };
       });
     },
@@ -355,7 +354,10 @@ export function AssetReviewLab() {
       const imported = JSON.parse(await readFileText(file)) as AssetReviewBatch;
       const merged = mergeCatalogWithReview(catalog, imported);
       setBatch(merged.batch);
+      setBatchIdValue(merged.batch.batchId);
+      setBatchIdError('');
       setStaleSources(merged.staleSourceKeys);
+      setStaleAppearances(merged.staleAppearanceKeys);
       setSelectedKey(
         merged.batch.entries[0] ? sourceKey(merged.batch.entries[0]) : ''
       );
@@ -385,7 +387,38 @@ export function AssetReviewLab() {
   const readyErrors = activeEntry ? validateReady(activeEntry) : {};
   const canMarkReady = activeEntry && Object.keys(readyErrors).length === 0;
   const readyCount = statusCounts.ready;
-  const sceneState = activeEntry ? sceneStates[activeEntry.url] : undefined;
+  const previewUrl = activeEntry ? entryPreviewUrl(activeEntry) : '';
+  const appearanceFacts = activeEntry
+    ? entryAppearanceFacts(activeEntry)
+    : undefined;
+  const sceneState = previewUrl ? sceneStates[previewUrl] : undefined;
+  const selectedGlbSha256 =
+    activeEntry?.paletteSelection?.selectedGlb.sha256 ??
+    activeEntry?.source.glbSha256 ??
+    '';
+  const paletteValue = activeEntry?.paletteSelection
+    ? `${activeEntry.paletteSelection.comparisonId}\u0000${activeEntry.paletteSelection.palette}`
+    : '';
+  const sortedPalettes = [...(activeEntry?.paletteAlternatives ?? [])].sort(
+    (left, right) =>
+      left.palette.localeCompare(right.palette) ||
+      left.comparisonId.localeCompare(right.comparisonId)
+  );
+
+  const updateBatchId = (value: string) => {
+    setBatchIdValue(value);
+    try {
+      setBatch(setBatchId(batch, value));
+      setBatchIdError('');
+    } catch (error) {
+      setBatchIdError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const generateNewBatchId = () => {
+    const referencePack = activeEntry?.referencePack ?? 'world-assets';
+    updateBatchId(generateBatchId(referencePack));
+  };
 
   return (
     <main className="asset-review-lab" aria-label="Asset Review Lab">
@@ -543,7 +576,7 @@ export function AssetReviewLab() {
         <div className="asset-review-canvas">
           {activeEntry ? (
             <AssetReviewScene
-              url={activeEntry.url}
+              url={previewUrl}
               scale={activeEntry.calibration.scale}
               yawDegrees={activeEntry.calibration.yawDegrees + facingDegrees}
               fineOffsetMeters={activeEntry.calibration.fineOffsetMeters}
@@ -652,8 +685,34 @@ export function AssetReviewLab() {
                   value={activeEntry.source.sourcePath}
                 />
               </label>
+              {(activeEntry.paletteAlternatives?.length ?? 0) > 0 && (
+                <label>
+                  Palette
+                  <select
+                    aria-label="Palette"
+                    value={paletteValue}
+                    onChange={(event) => {
+                      const [comparisonId = '', palette = ''] =
+                        event.target.value.split('\u0000');
+                      replaceEntry(sourceKey(activeEntry), (entry) =>
+                        selectPaletteAppearance(entry, comparisonId, palette)
+                      );
+                    }}
+                  >
+                    <option value="">Original / default</option>
+                    {sortedPalettes.map((alternative) => (
+                      <option
+                        key={`${alternative.comparisonId}/${alternative.palette}`}
+                        value={`${alternative.comparisonId}\u0000${alternative.palette}`}
+                      >
+                        {alternative.palette}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
-                GLB SHA-256
+                Original GLB SHA-256
                 <input
                   aria-label="GLB SHA-256"
                   readOnly
@@ -661,18 +720,26 @@ export function AssetReviewLab() {
                 />
               </label>
               <label>
+                Selected GLB SHA-256
+                <input
+                  aria-label="Selected GLB SHA-256"
+                  readOnly
+                  value={selectedGlbSha256}
+                />
+              </label>
+              <label>
                 Measured bounds (m)
                 <input
                   aria-label="Measured bounds"
                   readOnly
-                  value={activeEntry.dimensionsMeters.join(' × ')}
+                  value={appearanceFacts?.dimensionsMeters.join(' × ') ?? ''}
                 />
               </label>
               <div className="asset-review-reasons">
                 <strong>Blocking reasons</strong>
-                {activeEntry.reasons.length > 0 ? (
+                {(appearanceFacts?.reasons.length ?? 0) > 0 ? (
                   <ul>
-                    {activeEntry.reasons.map((reason) => (
+                    {appearanceFacts?.reasons.map((reason) => (
                       <li key={reason}>{reason}</li>
                     ))}
                   </ul>
@@ -893,6 +960,18 @@ export function AssetReviewLab() {
             </ul>
           </details>
         )}
+        {staleAppearances.length > 0 && (
+          <details className="asset-review-notice">
+            <summary>
+              {staleAppearances.length} stale imported appearance(s)
+            </summary>
+            <ul>
+              {staleAppearances.map((appearance) => (
+                <li key={appearance}>{appearance}</li>
+              ))}
+            </ul>
+          </details>
+        )}
         {importError && <p role="alert">Import failed: {importError}</p>}
         <label className="asset-review-import">
           Import review JSON
@@ -903,9 +982,24 @@ export function AssetReviewLab() {
             onChange={(event) => void importReview(event.target.files?.[0])}
           />
         </label>
+        <div className="asset-review-batch-controls">
+          <label>
+            Batch ID
+            <input
+              aria-label="Batch ID"
+              value={batchIdValue}
+              onChange={(event) => updateBatchId(event.target.value)}
+            />
+            <FieldError message={batchIdError} />
+          </label>
+          <button type="button" onClick={generateNewBatchId}>
+            Generate batch ID
+          </button>
+        </div>
         <div className="asset-review-export-actions">
           <button
             type="button"
+            disabled={batchIdError !== ''}
             onClick={() =>
               download(
                 `${batch.batchId}-review.json`,
@@ -917,7 +1011,7 @@ export function AssetReviewLab() {
           </button>
           <button
             type="button"
-            disabled={readyCount === 0}
+            disabled={readyCount === 0 || batchIdError !== ''}
             onClick={() =>
               download(
                 `${batch.batchId}-provider.json`,

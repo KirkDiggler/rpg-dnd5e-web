@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { describe, expect, it } from 'vitest';
 import {

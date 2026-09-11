@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
   getAllConditions,
@@ -54,6 +55,12 @@ describe('conditionIcons', () => {
       it('returns display info for hasted', () => {
         const display = getConditionDisplay('hasted');
         expect(display.icon).toBe('⚡');
+      });
+
+      it('names True Strike from its canonical condition id', () => {
+        const display = getConditionDisplay('true_strike');
+        expect(display.label).toBe('True Strike');
+        expect(display.icon).not.toBe('❓');
       });
     });
 

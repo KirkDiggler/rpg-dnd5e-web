@@ -47,6 +47,33 @@ const PRESENTATION_BY_REF: Readonly<
     icon: '🎵',
     tone: 'warm',
   }),
+  // THE TWO HALVES OF THE CAST DOOR (design rpg-project#405, R5 and R2).
+  // Both are ordinary rows in this table, not components of their own: the
+  // provider authors the name, the detail and who holds it, and this only
+  // says which glyph and tone the generic condition list draws them with.
+  //
+  // A GRANT AND A PENALTY READ DIFFERENTLY. True Strike sits on the caster and
+  // helps their next swing, so it is warm like the inspiration die; Vicious
+  // Mockery's rider sits on the target and hurts its next attack, so it is
+  // the danger tone — the same distinction a player would make at the table.
+  'dnd5e:conditions:true_strike': Object.freeze({
+    icon: '🎯',
+    tone: 'warm',
+  }),
+  'dnd5e:conditions:vicious_mockery': Object.freeze({
+    icon: '🃏',
+    tone: 'danger',
+  }),
+  // THE OWNING CONDITION (design rpg-project#407, R11). One more row in the
+  // same table and the whole of the caster's own status: the api already
+  // ships this condition through the status view, and the provider authors
+  // which spell it names. Cool rather than warm — it is a thing being held,
+  // not a bonus in hand, and it is what the player watches to know the spell
+  // is still up.
+  'dnd5e:conditions:concentrating': Object.freeze({
+    icon: '🌀',
+    tone: 'cool',
+  }),
 });
 
 export type PresentedFeature = FeatureView & CharacterPresentationStyle;

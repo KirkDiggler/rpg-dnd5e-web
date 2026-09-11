@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS } from '@/components/hex-grid/propManifest';
 import { readFileSync } from 'node:fs';
@@ -91,9 +92,14 @@ describe('categoryForProp — Lighting category (8 keys, shared manifest)', () =
 });
 
 describe('PALETTE_MONSTERS (2026-08-07 palette content sync — ref-AND-GLB test)', () => {
-  it('includes skeleton, skeleton-captain, and zombie — every ref with a promoted GLB', () => {
+  it('includes skeleton, skeleton-captain, zombie and animated-armor — every ref with a promoted GLB', () => {
     const refIds = PALETTE_MONSTERS.map((m) => m.refId).sort();
-    expect(refIds).toEqual(['skeleton', 'skeleton-captain', 'zombie']);
+    expect(refIds).toEqual([
+      'animated-armor',
+      'skeleton',
+      'skeleton-captain',
+      'zombie',
+    ]);
   });
 
   it('excludes ghoul and skeleton-archer — real toolkit refs, no promoted GLB', () => {
@@ -119,6 +125,16 @@ describe('PALETTE_MONSTERS (2026-08-07 palette content sync — ref-AND-GLB test
     expect(PALETTE_MONSTERS.filter((m) => m.refId === 'zombie')).toHaveLength(
       1
     );
+  });
+
+  it('animated-armor discloses in `sub` that it vanishes when downed', () => {
+    // The palette is where an author picks what to build a scene around, and
+    // the armor is the only entry whose body disappears on death (no downed
+    // model exists). A thumbnail and a name cannot convey that; the sub-label
+    // is the only place it reaches the author before they place one.
+    const armor = PALETTE_MONSTERS.find((m) => m.refId === 'animated-armor');
+    expect(armor).toBeDefined();
+    expect(armor!.sub).toMatch(/vanishes when it drops/);
   });
 
   it('only skeleton-captain is marked bossable — narrower scope, not extended to skeleton/zombie this round', () => {

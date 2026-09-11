@@ -54,6 +54,25 @@ export interface ExpertiseChoice {
   skills: Skill[];
 }
 
+/**
+ * The cantrips a class chose at creation, as `dnd5e:spells:<id>` refs.
+ *
+ * REFS, NOT `Spell` ENUM VALUES. The enum is deprecated on both choice fields
+ * and cannot name a spell the catalog learned after it was generated (design
+ * rpg-project#405, R8), so the client neither reads nor writes it. The toolkit
+ * refuses an unknown ref at compile, which is where that check belongs.
+ */
+export interface CantripChoice {
+  choiceId: string;
+  spellRefs: string[];
+}
+
+/** A provider-declared levelled spell choice, using the same ref shape. */
+export interface SpellChoice {
+  choiceId: string;
+  spellRefs: string[];
+}
+
 export interface TraitChoice {
   choiceId: string;
   traits: string[];
@@ -68,6 +87,8 @@ export interface CharacterChoices {
   features: FeatureChoice[];
   expertise: ExpertiseChoice[];
   traits: TraitChoice[];
+  cantrips: CantripChoice[];
+  spells: SpellChoice[];
 }
 
 // For race/class modals that return partial choices
@@ -88,6 +109,8 @@ export interface ClassModalChoices {
   features?: FeatureChoice[];
   expertise?: ExpertiseChoice[];
   traits?: TraitChoice[];
+  cantrips?: CantripChoice[]; // Cantrip choices (Bard, and every caster after)
+  spells?: SpellChoice[]; // Provider-declared levelled spell choices
   proficiencies?: string[]; // Other proficiency choices (weapons, armor)
 }
 

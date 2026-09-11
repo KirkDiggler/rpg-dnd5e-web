@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { DungeonShellArtifact } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import * as THREE from 'three';

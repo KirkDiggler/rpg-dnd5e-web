@@ -1,11 +1,15 @@
 import { create } from '@bufbuild/protobuf';
 import {
   ArrivedSchema,
+  CastSchema,
+  ConcentrationEndedSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
   MovedSchema,
   RollWindowOpenedSchema,
+  SavedSchema,
+  SightedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -33,6 +37,49 @@ describe('the refresh table (lifted from SessionEncounterView)', () => {
       body: { case: 'joined', value: create(JoinedSchema, { member: 'p2' }) },
     });
     expect(refreshKeysFor(joined, VIEWER)).toEqual(['roster']);
+  });
+});
+
+describe('the cast door’s two rows (design rpg-project#405)', () => {
+  it('CAST refreshes the card, what is still declarable, and the scene', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.CAST,
+      body: {
+        case: 'cast',
+        value: create(CastSchema, { actor: VIEWER, target: 'skeleton-1' }),
+      },
+    });
+    // The same three an activation's result refreshes: a cantrip spends the
+    // action Afford priced and its effects land on somebody's card.
+    expect(refreshKeysFor(event, VIEWER)).toEqual([
+      'characterData',
+      'afford',
+      'view',
+    ]);
+  });
+
+  it('SAVED refreshes too, even though the save delivers nothing itself', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.SAVED,
+      body: {
+        case: 'saved',
+        value: create(SavedSchema, {
+          saver: 'skeleton-1',
+          ability: 'wis',
+          roll: 7,
+          total: 9,
+          dc: 13,
+          succeeded: false,
+        }),
+      },
+    });
+    // The beats that carry what the save cost arrive separately; refreshing
+    // here keeps the card and the log from disagreeing across that gap.
+    expect(refreshKeysFor(event, VIEWER)).toEqual([
+      'characterData',
+      'afford',
+      'view',
+    ]);
   });
 });
 
@@ -125,5 +172,90 @@ describe('the reaction window row (rpg-project#316)', () => {
     // `view` is deliberately absent: this window has no mover and no cells,
     // so the scene is exactly what it was.
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford']);
+  });
+});
+
+describe('the concentration break’s row (design rpg-project#407, R11)', () => {
+  const broke = create(EventSchema, {
+    kind: EventKind.CONCENTRATION_ENDED,
+    body: {
+      case: 'concentrationEnded',
+      value: create(ConcentrationEndedSchema, {
+        caster: VIEWER,
+        reason: 'damage',
+      }),
+    },
+  });
+
+  it('re-reads the cards the strip emptied and the roster the flag lives on', () => {
+    // `turn`, NOT `roster`. The concentrating bool rides GetTurn's
+    // participants — the roster row the initiative strip draws — so a
+    // refresh of GetRoster would leave the marker standing after the break.
+    expect(refreshKeysFor(broke, VIEWER)).toEqual(['characterData', 'turn']);
+  });
+
+  it('refreshes for a break that is somebody else’s', () => {
+    // The child conditions come off OTHER members' sheets, so a viewer who
+    // is not the caster still has a card to re-read.
+    expect(refreshKeysFor(broke, 'someone-else')).toEqual([
+      'characterData',
+      'turn',
+    ]);
+  });
+});
+
+describe('the sighting row (perception stream, slice 1)', () => {
+  const sighted = (
+    gained: string[],
+    lost: string[] = [],
+    changed: string[] = []
+  ) =>
+    create(EventSchema, {
+      kind: EventKind.SIGHTED,
+      body: {
+        case: 'sighted',
+        value: create(SightedSchema, { gained, lost, changed }),
+      },
+    });
+
+  it('refetches the scene and nothing else — nobody moved and nothing was spent', () => {
+    expect(refreshKeysFor(sighted(['goblin-2']), VIEWER)).toEqual(['view']);
+  });
+
+  it('reads the same whichever way perception went', () => {
+    // Somebody arriving and somebody leaving are one question to this
+    // client: what do I perceive now? Both answers come from GetView, so
+    // both rows are the same row.
+    expect(refreshKeysFor(sighted([], ['wolf-3']), VIEWER)).toEqual(['view']);
+    expect(refreshKeysFor(sighted(['orc-1'], ['wolf-3']), VIEWER)).toEqual([
+      'view',
+    ]);
+  });
+
+  it('reads the same for a peer who changed under us', () => {
+    // The third list: somebody still in view whose weapon moved. Not a
+    // transition — we could see them before and can see them now — but the
+    // same answer, because what we may now perceive of them is only in the
+    // view we are about to re-read.
+    expect(refreshKeysFor(sighted([], [], ['goblin-2']), VIEWER)).toEqual([
+      'view',
+    ]);
+    expect(
+      refreshKeysFor(sighted(['orc-1'], ['wolf-3'], ['goblin-2']), VIEWER)
+    ).toEqual(['view']);
+  });
+
+  it('does not pull the card, the turn or what is affordable', () => {
+    // The guard for the tempting "refresh everything, it is cheap" edit. A
+    // sighting spends no action, moves nobody and changes no sheet, so
+    // anything beyond `view` is work for a beat that changed none of it.
+    const keys = refreshKeysFor(
+      sighted(['goblin-2'], ['wolf-3'], ['orc-1']),
+      VIEWER
+    );
+    expect(keys).not.toContain('characterData');
+    expect(keys).not.toContain('afford');
+    expect(keys).not.toContain('turn');
+    expect(keys).not.toContain('roster');
   });
 });

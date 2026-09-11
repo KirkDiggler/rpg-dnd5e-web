@@ -15,6 +15,7 @@ import {
   EventKind,
   EventSchema,
   HealingAppliedSchema,
+  RollWindowOpenedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -33,9 +34,11 @@ import {
   HexLayout,
   LifeState,
   MemberKind,
+  ReactionRefSchema,
   ShortfallReason,
   ShortfallSchema,
   Slot,
+  SpellRefSchema,
   Standing,
   TargetCandidateSchema,
   TargetKind,
@@ -106,6 +109,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  castFn: vi.fn(),
   deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
   getCharacterDataFn: vi.fn(),
@@ -161,6 +165,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    cast: hoisted.castFn,
     deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
   },
@@ -270,6 +275,25 @@ function endTurnDeclaration(id = 'v1.end'): Declaration {
     available: true,
     targetKind: TargetKind.NONE,
     candidates: [],
+  });
+}
+
+/**
+ * Thunderwave: a cast the caster AIMS. No candidates, and still not an area
+ * cast — the cube's direction is the one thing the player has left to say.
+ */
+function cellCastDeclaration(id = 'v1.cast.thunderwave'): Declaration {
+  return create(DeclarationSchema, {
+    id,
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.CELL,
+    candidates: [],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:thunderwave',
+      name: 'Thunderwave',
+    }),
   });
 }
 
@@ -403,6 +427,20 @@ function readyScene() {
   hoisted.whereResult.loading = false;
 }
 
+function postRollWindowDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.postroll.1',
+    verb: Verb.REACT,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.NONE,
+    reaction: create(ReactionRefSchema, {
+      ref: 'dnd5e:conditions:inspired',
+      name: 'Bardic Inspiration',
+    }),
+  });
+}
+
 function readyTurn(
   declarations: Declaration[] = [
     attackDeclaration(),
@@ -479,6 +517,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.castFn,
     hoisted.deathSaveFn,
     hoisted.endTurnFn,
     hoisted.getCharacterDataFn,
@@ -539,6 +578,7 @@ const struck = () =>
       total: 20,
       against: 16,
       damage: 7,
+      presentationId: 'presentation_skeleton-strike',
       attack: {
         ref: 'dnd5e:weapons:shortsword',
         name: 'Shortsword',
@@ -962,7 +1002,7 @@ describe('SessionEncounterView production combat integration', () => {
 
     const dock = await screen.findByTestId('session-combat-dock');
     within(dock).getByText('You');
-    within(dock).getByText(/level 3 adventurer/i);
+    await within(dock).findByText(/level 3 adventurer/i);
     expect(within(dock).queryByText('Private Turn Name')).toBeNull();
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
@@ -1312,6 +1352,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_declaration-echo',
     });
     renderView();
     await waitFor(() => screen.getByRole('button', { name: /longsword/i }));
@@ -2141,6 +2182,7 @@ describe('SessionEncounterView production combat integration', () => {
             damage: 6,
             attack: attackDeclaration().attack,
             critical: false,
+            presentationId: 'presentation_actor-strike',
           },
         } as SessionEvent['body'],
         7n
@@ -2156,6 +2198,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_actor-strike',
     });
     renderView();
     await screen.findByRole('button', { name: /longsword/i });
@@ -2227,6 +2270,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_actor-throw',
     });
     hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
       const draft = input.draft!;
@@ -2297,7 +2341,7 @@ describe('SessionEncounterView production combat integration', () => {
       session: 'enc-1',
       member: 'char-1',
       draft: {
-        presentationId: 'session:enc-1:7',
+        presentationId: 'presentation_actor-throw',
         authoritySeq: 7n,
         attempt: 1,
       },
@@ -2339,6 +2383,117 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
+  it('reveals a post-roll choice only after the matching actor d20 settles', async () => {
+    const initialDeclarations = [
+      attackDeclaration(),
+      moveDeclaration(),
+      endTurnDeclaration(),
+    ];
+    readyTurn(initialDeclarations);
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        declarations: initialDeclarations,
+      })
+      .mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [postRollWindowDeclaration()],
+      });
+    const live = steppedEventStream(1);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    hoisted.attackFn.mockResolvedValue({
+      seq: 7n,
+      roll: 9,
+      total: 13,
+      against: 0,
+      hit: false,
+      critical: false,
+      damage: 0,
+      attack: attackDeclaration().attack,
+      presentationId: 'presentation_postroll-choice',
+    });
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      return {
+        plan: create(DiceThrowPlanSchema, {
+          schemaVersion: draft.schemaVersion,
+          session: input.session,
+          presentationId: draft.presentationId,
+          authoritySeq: draft.authoritySeq,
+          roller: input.member,
+          attempt: draft.attempt,
+          physicsSchema: draft.physicsSchema,
+          colliderFingerprint: draft.colliderFingerprint,
+          bodies: draft.bodies,
+          contacts: draft.contacts,
+          terminal: draft.terminal,
+        }),
+      };
+    });
+
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    await screen.findByText('Preparing shared d20');
+
+    await act(async () => {
+      live.publish(
+        event(
+          EventKind.ROLL_WINDOW_OPENED,
+          {
+            case: 'rollWindowOpened',
+            value: create(RollWindowOpenedSchema, {
+              presentationId: 'presentation_postroll-choice',
+              audience: 'char-1',
+              offer: create(ReactionRefSchema, {
+                ref: 'dnd5e:conditions:inspired',
+                name: 'Bardic Inspiration',
+              }),
+              roll: 9,
+              total: 13,
+            }),
+          },
+          7n
+        )
+      );
+    });
+    expect(await screen.findByTestId('roll-window-settling')).toBeTruthy();
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.queryByTestId('reaction-strike')).toBeNull();
+    expect(screen.queryByTestId('reaction-hold')).toBeNull();
+
+    const readyLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(readyLayer)) {
+        readyLayer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({ kind: 'released' })
+    );
+    const rollingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(rollingLayer)) {
+        rollingLayer.props.onTerminal('settled');
+      }
+    });
+
+    const choice = await screen.findByTestId('reaction-window');
+    expect(choice.textContent).toContain('You rolled d20 9 + 4 = 13');
+    expect(screen.getByTestId('reaction-strike').textContent).toContain(
+      'Spend'
+    );
+    expect(screen.getByTestId('reaction-hold').textContent).toContain('Keep');
+  });
+
   it('offers explicit semantic completion when local planning fails', async () => {
     readyTurn();
     hoisted.attackFn.mockResolvedValue({
@@ -2350,6 +2505,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 4,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_planning-fails',
     });
     vi.spyOn(
       localWorldDiePreSimulation,
@@ -2426,6 +2582,7 @@ describe('SessionEncounterView production combat integration', () => {
             damage: 5,
             attack: attackDeclaration().attack,
             critical: false,
+            presentationId: 'presentation_witness-strike',
           },
         } as SessionEvent['body'],
         42n
@@ -2462,7 +2619,7 @@ describe('SessionEncounterView production combat integration', () => {
       terminalState,
     };
     const draft = localWorldDieDraft({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       authoritySeq: 42n,
       attempt: 1,
       plan: planned,
@@ -2491,7 +2648,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
     const command = currentLocalWorldDieCommand();
     expect(command?.kind === 'witness' && command.plan).toMatchObject({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       roller: 'char-2',
       attempt: 1,
     });
@@ -2509,7 +2666,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
 
     const retryDraft = localWorldDieDraft({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       authoritySeq: 42n,
       attempt: 2,
       plan: { ...planned, kind: 'settled' },
@@ -4169,7 +4326,11 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
-  it('isolates a run-ended modal above an open equipment panel and focuses only its primary action', async () => {
+  it('announces the ending in a toast that seals nothing off, and leaves the log readable', async () => {
+    // KIRK'S WALL (rpg-dnd5e-web#999). This used to assert the opposite: a
+    // dialog with `aria-modal`, `inert` over the whole scene, and focus
+    // dragged onto Leave. "no chance to look at the log. a toast we won or we
+    // lost is sufficient. if we won maybe we wanna look around."
     readyTurn();
     const ended = deferredStream([
       event(EventKind.ENDED, {
@@ -4181,26 +4342,36 @@ describe('SessionEncounterView production combat integration', () => {
     const onBack = vi.fn();
     renderView({ onBack });
     await screen.findByTestId('session-combat-equipment-button');
-    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
-    await screen.findByTestId('equipment-popover');
     const underlyingEndTurn = screen.getByRole('button', { name: /end turn/i });
 
     ended.release();
 
-    const dialog = await screen.findByRole('dialog', {
-      name: /tomb is cleared/i,
-    });
-    expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(screen.queryByTestId('equipment-popover')).toBeNull();
-    const overlay = screen.getByTestId('run-ended-overlay');
-    expect(Number(overlay.style.zIndex)).toBeGreaterThan(40);
+    const toast = await screen.findByTestId('run-ended-toast');
+    expect(toast.dataset.outcome).toBe('won');
+    expect(toast.textContent).toContain('You won');
+    expect(toast.textContent).toContain('The tomb is cleared.');
+
+    // NOTHING IS SEALED OFF. No overlay, no dialog, no inert, no aria-hidden,
+    // and the scene is still drawn and still reachable.
+    expect(screen.queryByTestId('run-ended-overlay')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     const underlying = screen.getByTestId('session-encounter-content');
-    expect(underlying.hasAttribute('inert')).toBe(true);
-    expect(underlying.getAttribute('aria-hidden')).toBe('true');
+    expect(underlying.hasAttribute('inert')).toBe(false);
+    expect(underlying.getAttribute('aria-hidden')).toBeNull();
+    expect(underlying.style.pointerEvents).toBe('');
     screen.getByTestId('session-canvas');
 
-    const leave = screen.getByRole('button', { name: 'Leave' });
-    await waitFor(() => expect(document.activeElement).toBe(leave));
+    // THE LOG IS STILL THERE AND STILL SWITCHABLE. Reading is not playing.
+    screen.getByTestId('session-combat-log');
+
+    // FOCUS STAYS WHERE THE PLAYER LEFT IT. A status is announced, not seized.
+    await waitFor(() => screen.getByTestId('run-ended-toast'));
+    expect(document.activeElement).not.toBe(
+      screen.getByRole('button', { name: 'Leave' })
+    );
+
+    // The verbs are still refused — visibly, now that the scene is live.
+    expect(underlyingEndTurn.hasAttribute('disabled')).toBe(true);
     fireEvent.click(underlyingEndTurn);
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
     act(() => {
@@ -4210,8 +4381,55 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.openDoorFn).not.toHaveBeenCalled();
 
-    fireEvent.click(leave);
+    // The modal's primary action kept its place and lost its power to gate.
+    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the party fell when the run ended in a wipe, and nothing leaves on its own', async () => {
+    // `party_defeated` had NO case in the old table, so a wipe read "The run
+    // has ended." — the one ending a player most wants named.
+    readyTurn();
+    const ended = deferredStream([
+      event(EventKind.ENDED, {
+        case: 'ended',
+        value: { ending: 'party_defeated' },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(ended.stream);
+    const onBack = vi.fn();
+    renderView({ onBack });
+    await screen.findByTestId('session-combat-equipment-button');
+
+    ended.release();
+
+    const toast = await screen.findByTestId('run-ended-toast');
+    expect(toast.dataset.outcome).toBe('lost');
+    expect(toast.textContent).toContain('You lost');
+    expect(toast.textContent).toContain('The party fell.');
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('lets the player dismiss the toast and keep looking around', async () => {
+    readyTurn();
+    const ended = deferredStream([
+      event(EventKind.ENDED, {
+        case: 'ended',
+        value: { ending: 'boss-down' },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(ended.stream);
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+
+    ended.release();
+    await screen.findByTestId('run-ended-toast');
+
+    fireEvent.click(screen.getByTestId('run-ended-toast-dismiss'));
+
+    expect(screen.queryByTestId('run-ended-toast')).toBeNull();
+    screen.getByTestId('session-canvas');
+    screen.getByTestId('session-combat-log');
   });
 
   it('synchronously disables declarations and movement preview when an event invalidates authority, then waits for both current snapshots', async () => {
@@ -4734,5 +4952,86 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     expect(
       hoisted.lastCanvasProps.current?.movements?.get('char-1')
     ).toBeUndefined();
+  });
+});
+
+/**
+ * ONE FLOOR-CLICK SEAM, TWO MEANINGS. The map has exactly one handler for a
+ * click that lands on the ground, and what it means depends on whether the
+ * player is holding a spell that needs aiming. Walking is what it means the
+ * rest of the time, which is nearly always.
+ */
+describe('the ground click while a cell cast is armed', () => {
+  function armedTurn() {
+    readyTurn([cellCastDeclaration(), moveDeclaration(), endTurnDeclaration()]);
+  }
+
+  it('sends the clicked cell to the cast and walks nowhere', async () => {
+    armedTurn();
+    hoisted.castFn.mockResolvedValue({ caught: [] });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /thunderwave/i })
+    );
+
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.cast.thunderwave',
+      target: '',
+      targets: [],
+      // The same cube-to-wire conversion a walk's own path cells go through,
+      // reused rather than re-derived: one coordinate space, one converter.
+      cell: { x: 1, y: 0 },
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('still walks when nothing is armed', async () => {
+    armedTurn();
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await screen.findByRole('button', { name: /thunderwave/i });
+
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: 'v1.move' })
+    );
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when a creature is clicked instead of the ground', async () => {
+    armedTurn();
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /thunderwave/i })
+    );
+
+    await act(async () => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      await Promise.resolve();
+    });
+
+    // Entity clicks win over the ground in the canvas, so this one never
+    // reaches the floor handler at all. A skeleton is not a cell, and the
+    // cast stays where it was: armed, waiting for a place.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
   });
 });

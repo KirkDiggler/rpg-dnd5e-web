@@ -78,6 +78,17 @@ export interface DebugLogLine {
   ids: readonly string[];
 }
 
+/** A retained raw event and its presentation labels, in the existing bounded feed. */
+export interface DebugEventEntry {
+  readonly id: number;
+  readonly summary: string;
+  readonly text: string;
+  readonly event: Event;
+}
+
+/** Plain diagnostics/legacy fixtures have no structured event to inspect. */
+export type DebugFeedEntry = string | DebugEventEntry;
+
 function displayName(names: Map<string, string>, id: string): string {
   return names.get(id) ?? id;
 }

@@ -52,6 +52,10 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
   return { ...actual, useLoader };
 });
 
+vi.mock('./local-world-die/LocalWorldDieLayer', () => ({
+  LocalWorldDieWarmup: () => <group name="dice-runtime-entry-warmup" />,
+}));
+
 const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
@@ -570,6 +574,10 @@ describe('SessionScene', () => {
       />
     );
 
+    // Entry warming must mount even with no roll/presentation layer.
+    expect(
+      renderer.scene.findByProps({ name: 'dice-runtime-entry-warmup' })
+    ).toBeDefined();
     const doorGroup = renderer.scene.find((node) => {
       if (
         node.fiber.type !== 'group' ||
@@ -752,6 +760,75 @@ describe('SessionScene', () => {
       }
     }
   );
+
+  it('mounts a resolved Bard through the real model and modular-rig path', async () => {
+    const bardUrl = '/models/synty/characters/race-class/human-bard.glb';
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Human Bard"
+        classRefId="bard"
+        raceRefId="human"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+        mainHandPresentation={{
+          ref: 'dnd5e:item:longsword',
+          weaponUrl: '/models/synty/weapons/longsword.glb',
+          socket: TOWNFOLK_MAIN_HAND_SOCKET,
+        }}
+      />
+    );
+
+    expect(gltfMockState.requests).toContain(bardUrl);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(bardUrl)
+      ).length
+    ).toBeGreaterThan(0);
+
+    const attached = attachedMainHandRoot(renderer);
+    const unitsPerMeter =
+      1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
+    expectVectorCloseTo(attached.position.toArray(), [
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+    ]);
+    expectVectorCloseTo(attached.quaternion.toArray(), [
+      ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
+    ]);
+    await renderer.unmount();
+  });
+
+  it('keeps a downed Bard visible and tilted through MediumHumanoid without requesting a Bard GLB', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Human Bard',
+          classRefId: 'bard',
+          raceRefId: 'human',
+          localIsDowned: true,
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localIsDowned: boolean;
+        })}
+      />
+    );
+
+    const fallback = mediumHumanoidMarkers(renderer);
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]!.parent?.rotation.z).toBeCloseTo(Math.PI / 3);
+    expect(gltfMockState.requests.some((url) => url.includes('bard'))).toBe(
+      false
+    );
+    await renderer.unmount();
+  });
 
   it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
     const renderer = await ReactThreeTestRenderer.create(
@@ -1491,6 +1568,7 @@ describe('SessionScene', () => {
       position: { x: 1, y: -1, z: 0 },
       remembered: false,
       standing: Standing.UP,
+      equipment: undefined,
     };
 
     it('a PLAYER-kind member with a roster entry mounts their exact public Elf Rogue GLB, not the neutral placeholder', async () => {
@@ -2011,6 +2089,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           roster={
@@ -2072,6 +2151,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2101,6 +2181,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2126,6 +2207,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              equipment: undefined,
             },
           ]}
         />
@@ -2151,6 +2233,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2192,6 +2275,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2424,6 +2508,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2470,6 +2555,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2503,6 +2589,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2530,6 +2617,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
         />
@@ -2562,6 +2650,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           attackableTargets={['skeleton-1']}
@@ -2610,6 +2699,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              equipment: undefined,
             },
           ]}
         />
@@ -2683,6 +2773,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        equipment: undefined,
       },
     ];
 
@@ -2860,6 +2951,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        equipment: undefined,
       },
     ];
 
@@ -3040,6 +3132,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           onHoverEntity={onHoverEntity}
@@ -3072,6 +3165,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              equipment: undefined,
             },
           ]}
           onHoverEntity={onHoverEntity}

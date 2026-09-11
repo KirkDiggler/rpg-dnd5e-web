@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { Scene3D } from '@/components/session/atlasToScene3D';
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { describe, expect, it } from 'vitest';

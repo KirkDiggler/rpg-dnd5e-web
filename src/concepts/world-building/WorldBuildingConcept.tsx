@@ -1,3 +1,4 @@
+import { useSerialThumbnailQueue } from '@/author/useSerialThumbnailQueue';
 import { compositionMetadata } from '@/compositions/compositionMetadata';
 import {
   compositionErrorMessage,
@@ -8,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
+  type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
 import {
   addProp,
@@ -46,6 +48,8 @@ import type {
   WorldPointLight,
   WorldScene,
 } from './types';
+import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
+import { WorldAssetThumbnailRenderer } from './WorldAssetThumbnailRenderer';
 import './worldBuilding.css';
 import {
   writeWorldBuildingDragPayload,
@@ -71,6 +75,14 @@ const DEFAULT_POINT_LIGHT: WorldPointLight = {
   intensity: 1.1,
   range: 2.6,
 };
+
+const GENERATED_THUMBNAIL_QUEUE = WORLD_BUILDING_CATALOG.filter(
+  (entry): entry is GeneratedWorldBuildingCatalogEntry =>
+    entry.source === 'generated'
+).map((entry) => ({
+  entry,
+  key: worldAssetThumbnailKey(entry.asset),
+}));
 
 const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -147,6 +159,9 @@ export function WorldBuildingConcept({
   const compositionList = useCompositionList(
     compositionSource,
     compositionRefresh
+  );
+  const generatedThumbnails = useSerialThumbnailQueue(
+    GENERATED_THUMBNAIL_QUEUE
   );
 
   useEffect(() => {
@@ -674,22 +689,42 @@ export function WorldBuildingConcept({
                 kind: 'prop',
                 id: entry.ref,
               };
+              const generatedThumbnail =
+                entry.source === 'generated'
+                  ? generatedThumbnails.results[
+                      worldAssetThumbnailKey(entry.asset)
+                    ]
+                  : undefined;
+              const thumbnail =
+                entry.thumbnail ??
+                (generatedThumbnail?.status === 'ready'
+                  ? generatedThumbnail.image
+                  : undefined);
+              const thumbnailState =
+                entry.source === 'legacy'
+                  ? 'legacy'
+                  : (generatedThumbnail?.status ?? 'loading');
               return (
                 <article
                   key={entry.ref}
                   className="wb-palette-entry"
                   draggable
                   aria-label={`Drag ${entry.label} into scene`}
+                  data-thumbnail-state={thumbnailState}
+                  data-asset-ref={entry.ref}
                   onDragStart={(event) => {
                     writeWorldBuildingDragPayload(event.dataTransfer, payload);
                     setActiveDrag(payload);
                   }}
                   onDragEnd={() => setActiveDrag(null)}
                 >
-                  {entry.thumbnail ? (
-                    <img src={entry.thumbnail} alt="" draggable={false} />
+                  {thumbnail ? (
+                    <img src={thumbnail} alt="" draggable={false} />
                   ) : (
-                    <span className="wb-swatch">{entry.label.slice(0, 2)}</span>
+                    <span className="wb-swatch">
+                      {entry.label.slice(0, 2)}
+                      {generatedThumbnail?.status === 'error' ? ' !' : ''}
+                    </span>
                   )}
                   <span>
                     <strong>{entry.label}</strong>
@@ -698,11 +733,29 @@ export function WorldBuildingConcept({
                       {entry.source === 'legacy' ? entry.role : entry.category}
                       {entry.supportsDecoration ? ' · surface' : ''}
                     </small>
+                    {entry.source === 'generated' && (
+                      <span className="sr-only">
+                        {generatedThumbnail?.status === 'error'
+                          ? `Thumbnail unavailable${generatedThumbnail.message ? `: ${generatedThumbnail.message}` : ''}`
+                          : generatedThumbnail?.status === 'ready'
+                            ? 'Thumbnail ready'
+                            : 'Thumbnail loading'}
+                      </span>
+                    )}
                   </span>
                 </article>
               );
             })}
           </div>
+          {generatedThumbnails.active && (
+            <WorldAssetThumbnailRenderer
+              entry={generatedThumbnails.active.entry}
+              requestKey={generatedThumbnails.active.key}
+              onComplete={generatedThumbnails.recordComplete}
+              onError={generatedThumbnails.recordError}
+              onRootError={generatedThumbnails.recordRootError}
+            />
+          )}
         </aside>
 
         <main className="wb-stage">

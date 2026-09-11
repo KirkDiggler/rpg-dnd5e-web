@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Fog of War reducer contract (rpg-dnd5e-web#605).
  *

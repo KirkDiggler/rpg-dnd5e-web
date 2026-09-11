@@ -12,6 +12,7 @@ import {
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
+import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -25,6 +26,7 @@ import {
   standingActionsBlocked,
   type StandingAction,
 } from './standingActions';
+import { formatAttackRollArithmetic } from './story';
 import type { CombatExperienceRollWindow } from './types';
 
 function CostBadge({ slot }: { slot: Slot }) {
@@ -68,6 +70,11 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.REACT) {
     return declaration.reaction?.name || 'Reaction';
   }
+  // The spell names its own row; `castLabel` is the single place that answer
+  // lives, and the only place the pending protos field changes anything.
+  if (declaration.verb === Verb.CAST) {
+    return castLabel(declaration);
+  }
   return 'Move';
 }
 
@@ -87,10 +94,7 @@ function rollWindowHeadline(
   roll: CombatExperienceRollWindow | undefined | null
 ): string {
   if (!roll) return 'Your roll is on the table';
-  const bonus = roll.total - roll.roll;
-  if (bonus === 0) return `You rolled ${roll.total} (d20 ${roll.roll})`;
-  const sign = bonus > 0 ? '+' : '−';
-  return `You rolled ${roll.total} (d20 ${roll.roll} ${sign} ${Math.abs(bonus)})`;
+  return `You rolled ${formatAttackRollArithmetic(roll.roll, roll.total)}`;
 }
 
 function declarationIcon(declaration: Declaration): string {
@@ -98,6 +102,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ACTIVATE) return '✦';
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   if (declaration.verb === Verb.REACT) return '⚡';
+  if (declaration.verb === Verb.CAST) return '✧';
   return '➜';
 }
 
@@ -245,6 +250,8 @@ export interface ActionDockProps {
    * whole decision (post-roll design R7).
    */
   rollWindow?: CombatExperienceRollWindow | null;
+  /** False while the matching live local d20 is still visibly settling. */
+  rollWindowReady?: boolean;
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
@@ -336,6 +343,7 @@ export function ActionDock({
   armedDeclarationId,
   memberNames,
   rollWindow,
+  rollWindowReady = true,
   onSelectDeclaration,
   onEndTurn,
   standingActions = [],
@@ -387,6 +395,22 @@ export function ActionDock({
   const reactionWindow = reactionWindowDeclaration(declarations);
   if (reactionWindow) {
     const windowKind = reactionWindowKind(reactionWindow);
+    if (windowKind === 'roll' && !rollWindowReady) {
+      return (
+        <div className={styles.actionRow}>
+          <div
+            className={styles.passiveActionRow}
+            data-testid="roll-window-settling"
+            role="status"
+            aria-live="polite"
+          >
+            <span>Attack roll</span>
+            <strong>Your d20 is settling</strong>
+            <small>The choice follows the matching die.</small>
+          </div>
+        </div>
+      );
+    }
     const answers = reactionWindowAnswers(windowKind);
     const moverId = reactionWindowMover(reactionWindow);
     const moverName =
@@ -509,6 +533,12 @@ export function ActionDock({
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
+      // A CAST IS DRAWN LIKE EVERY OTHER OFFER. Afford mints one row per
+      // cantrip this build can actually cast and none for one it cannot
+      // (design rpg-project#405, R9), so a bard with two behaviourless
+      // cantrips — and every fighter — gets no Cast rows without the client
+      // deciding anything.
+      declaration.verb === Verb.CAST ||
       (declaration.verb === Verb.DEATH_SAVE &&
         isDeathSaveExecutableShape(declaration, 'display'))
   );

@@ -18,6 +18,7 @@ import {
 const fixture = vi.hoisted(() => ({
   scene: undefined as THREE.Group | undefined,
   animations: [] as THREE.AnimationClip[],
+  played: [] as string[],
 }));
 vi.mock('@react-three/drei', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@react-three/drei')>();
@@ -29,7 +30,15 @@ vi.mock('@react-three/drei', async (importOriginal) => {
       const actions = useMemo(
         () =>
           Object.fromEntries(
-            clips.map((clip) => [clip.name, mixer.clipAction(clip)])
+            clips.map((clip) => {
+              const action = mixer.clipAction(clip);
+              const play = action.play.bind(action);
+              action.play = () => {
+                fixture.played.push(clip.name);
+                return play();
+              };
+              return [clip.name, action];
+            })
           ),
         [clips, mixer]
       );
@@ -68,6 +77,7 @@ beforeEach(() => {
   mesh.name = 'MotionTarget';
   fixture.scene = new THREE.Group();
   fixture.scene.add(mesh);
+  fixture.played.length = 0;
   fixture.animations = [
     new THREE.AnimationClip('Idle_Relaxed', 1, [
       new THREE.NumberKeyframeTrack('MotionTarget.position[x]', [0, 1], [0, 1]),
@@ -94,6 +104,28 @@ function motionTarget(
     (node) => (node.instance as THREE.Object3D).name === 'MotionTarget'
   ).instance as THREE.Object3D;
 }
+
+describe('Bard idle/walk playback through ClassCharacterModel', () => {
+  it('plays the exact supplied idle clip while stationary and walk clip while moving', async () => {
+    fixture.animations = [
+      new THREE.AnimationClip('Idle_Relaxed', 1, []),
+      new THREE.AnimationClip('Walk_Forward', 1, []),
+    ];
+    const bard = (isMoving: boolean) => (
+      <ClassCharacterModel
+        url="/models/synty/characters/race-class/human-bard.glb"
+        isMoving={isMoving}
+      />
+    );
+
+    const renderer = await ReactThreeTestRenderer.create(bard(false));
+    expect(fixture.played.at(-1)).toBe('Idle_Relaxed');
+
+    await renderer.update(bard(true));
+    expect(fixture.played.at(-1)).toBe('Walk_Forward');
+    await renderer.unmount();
+  });
+});
 
 describe('remembered animated models stay frozen', () => {
   it('does not animate or request another frame when mounted as a memory', async () => {

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import {
   GetAtlasResponseSchema,
@@ -33,6 +34,7 @@ function sighted(
     position: at(cell[0], cell[1]),
     remembered,
     standing,
+    equipment: undefined,
   };
 }
 

@@ -26,6 +26,7 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
+import { castLabel } from './castLabel';
 
 export interface ActionTooltipLine {
   label: string;
@@ -73,14 +74,22 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
         ? declaration.ability?.name || 'Ability'
         : declaration.verb === Verb.DEATH_SAVE
           ? declaration.deathSave?.name || 'Death Save'
-          : 'Move';
+          : declaration.verb === Verb.CAST
+            ? castLabel(declaration)
+            : 'Move';
 
   const lines: ActionTooltipLine[] = [];
 
   const damage = damageLine(declaration);
   if (damage) lines.push(damage);
 
-  lines.push({ label: 'Costs', value: slotLabel(declaration.slot) });
+  const providerCosts = (declaration.cost ?? [])
+    .filter((component) => component.needed > 0 && component.label)
+    .map((component) => `${component.needed} ${component.label}`);
+  lines.push({
+    label: 'Costs',
+    value: [slotLabel(declaration.slot), ...providerCosts].join(', '),
+  });
 
   if (declaration.verb === Verb.MOVE && declaration.remaining !== undefined) {
     // Verbatim, per the field's own contract: display this number, do not
@@ -88,6 +97,16 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
     lines.push({
       label: 'Movement',
       value: `${declaration.remaining} ft left`,
+    });
+  }
+
+  if (declaration.verb === Verb.CAST && declaration.maxTargets > 0) {
+    lines.push({
+      label: 'Targets',
+      value:
+        declaration.minTargets === declaration.maxTargets
+          ? `${declaration.minTargets}`
+          : `${declaration.minTargets}–${declaration.maxTargets}`,
     });
   }
 

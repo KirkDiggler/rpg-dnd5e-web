@@ -71,6 +71,26 @@ export function refreshKeysFor(
       return ['doors', 'atlas'];
     case 'regionRevealed':
       return ['atlas'];
+    // THIS VIEWER'S OWN PERCEPTION CHANGED: somebody came into their view,
+    // or left it. `view` and nothing else — sightings are the only thing it
+    // touches. Nobody moved, nothing was spent, no card changed, so
+    // refetching `afford`, `turn` or `characterData` would be work for a
+    // beat that changed none of them.
+    //
+    // THE POINT OF THE ROW IS THE CASE `moved` CANNOT COVER. A peer walking
+    // back into view is only visible today because `moved` goes to the whole
+    // roster and this client refetches on every peer step — so it learns
+    // about the re-acquisition on the same frame, by accident. The moment
+    // the server narrows that audience, the step happens on an event this
+    // client never receives and its picture of that peer stays whatever it
+    // was when they left. This row is what survives the narrowing.
+    //
+    // AND IT DOES NOT REMOVE ANYBODY. A member in `lost` is not gone; they
+    // are a GHOST — what this viewer last saw, at the moment they last saw
+    // it — and GetView still serves them. Refetching is the whole response;
+    // there is deliberately no local pruning here to go out of step with it.
+    case 'sighted':
+      return ['view'];
     // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
     // held atlas in the same frame in the view; this refetch is the
     // server's own answer landing behind it, exactly as the reveal beats do.
@@ -81,6 +101,19 @@ export function refreshKeysFor(
     // changed; the fight that dissolves because of it has its own row.
     case 'stanceChanged':
       return ['afford', 'view'];
+    // A SPELL WAS CAST, AND WHAT IT FORCED CAME BACK AS A SAVE
+    // (design rpg-project#405). Both refetch what an activation's result
+    // does, and for the same reasons: a cantrip spends the action Afford
+    // priced, its conditions land on somebody's card, and what the caster
+    // may still do this turn is only in Afford.
+    //
+    // `saved` REFETCHES TOO, even though it delivers nothing by itself. The
+    // save decides whether the effects that follow it happen at all, and the
+    // beats that carry them are separate; refetching on the save keeps the
+    // card and the log from disagreeing for the width of that gap.
+    case 'cast':
+    case 'saved':
+      return ['characterData', 'afford', 'view'];
     // A REACTION WINDOW OPENED AND THE SEAM IS FROZEN ON ITS ANSWER
     // (rpg-project#316). `afford` is what the beat is FOR: the audience's
     // new VERB_REACT offer and everyone else's WINDOW_OPEN shortfalls are
@@ -110,6 +143,18 @@ export function refreshKeysFor(
     // fruitful loot would need. What the looter gained arrives as
     // their own DOOR_REVEALED beat, which refetches on its own line
     // above — the same bytes a successful search produces.
+    // CONCENTRATION BROKE, AND THINGS CAME OFF SHEETS (design rpg-project#407).
+    // `characterData` because the caster's own concentrating badge clears and
+    // the child conditions the spell was holding come off whoever was carrying
+    // them — including members other than the caster. `turn` because the
+    // roster row's `concentrating` bool (R11) is read off GetTurn's
+    // participants, not GetRoster's.
+    //
+    // `afford` and `view` are NOT here. Nothing was spent and nobody moved: a
+    // break costs no action and changes no cell, so refetching either would be
+    // work for a beat that changed neither.
+    case 'concentrationEnded':
+      return ['characterData', 'turn'];
     case 'looted':
     case 'activated':
     case 'exited':

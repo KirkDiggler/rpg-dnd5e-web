@@ -117,6 +117,8 @@ import type {
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
 import { resolveName } from './participantNames';
+import { cubeToPosition } from './positionBridge';
+import { RunEndedToast } from './RunEndedToast';
 import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
@@ -140,19 +142,6 @@ export interface SessionEncounterViewProps {
   playerId: string;
   onBack: () => void;
   compositionSource?: CompositionSource;
-}
-
-function endingHeadline(ending: string): string {
-  switch (ending) {
-    case 'boss-down':
-      return 'The tomb is cleared.';
-    case 'withdrawn':
-      return 'The party withdrew.';
-    case 'abandoned':
-      return 'The run was abandoned.';
-    default:
-      return 'The run has ended.';
-  }
 }
 
 function CenteredCard({ children }: { children: React.ReactNode }) {
@@ -295,22 +284,17 @@ function SessionEncounterScope({
   } | null>(null);
   const [vendorNotice, setVendorNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
-  const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    const underlying = encounterContentRef.current;
-    if (runEnded === null) {
-      underlying?.removeAttribute('inert');
-      return;
-    }
-
-    // Native inert removes every underlying canvas/panel control from pointer
-    // and sequential-focus interaction. aria-hidden mirrors that isolation for
-    // assistive technology while focus moves to the modal's one primary action.
-    underlying?.setAttribute('inert', '');
-    leaveRunButtonRef.current?.focus();
-    return () => underlying?.removeAttribute('inert');
-  }, [runEnded]);
+  // THE RUN ENDING NO LONGER TAKES THE SCREEN AWAY (rpg-dnd5e-web#999). What
+  // used to live here — `inert` on the whole scene, `aria-hidden` over it, and
+  // focus dragged onto the modal's one button — is gone. Nothing is sealed off
+  // and nothing is stolen; the ending announces itself in a toast and the
+  // player keeps the log, the story and the camera.
+  //
+  // WHAT STAYS SEALED IS THE VERBS, and each one at its own call site below,
+  // the way doors, hexes, loot and search were already gated. Reading is not
+  // playing: a run that has ended still declares nothing, spends no turn and
+  // opens no door, but it can be looked at for as long as the player likes.
 
   // The searcher's own current region, resolved from data this member's
   // own atlas already carries — never chosen, never guessed (the law: "a
@@ -570,6 +554,29 @@ function SessionEncounterScope({
     participants: turnParticipants,
     characterData,
   });
+  // THE FLOOR HAS ONE HANDLER AND TWO MEANINGS. A click on the ground walks,
+  // unless the player is holding a cast that still needs aiming — Thunderwave
+  // arms and then waits for the direction its cube points. Routing here, at
+  // the single seam the canvas already reports a floor click through, is what
+  // keeps the canvas ignorant of spells and the walk hook ignorant of casts.
+  //
+  // Entity clicks never arrive here: `SessionCanvas` gives a creature's own
+  // cell to `onEntityClick` first, so clicking a skeleton while a cell cast is
+  // armed is refused by the combat hook rather than misread as a cell.
+  const handleGroundClick = useCallback(
+    (coord: CubeCoord) => {
+      if (combat.cellCastArmed) {
+        // The exact conversion a walk's path cells go through — one
+        // coordinate space, one converter, no second opinion about which of
+        // cube's three axes the wire carries.
+        combat.onCellClick(cubeToPosition(coord));
+        return;
+      }
+      walkTo(coord);
+    },
+    [combat, walkTo]
+  );
+
   staleMoveRecoveryRef.current = (declarationId) =>
     combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
   moveAcceptedRef.current = () => {
@@ -609,7 +616,22 @@ function SessionEncounterScope({
   const localWorldDiePlanningOperation = useRef(0);
   const admittedWitnessPlans = useRef(new Set<string>());
   const witnessInbox = useRef(
-    new LocalWorldDieWitnessInbox({ ttlMs: 1_500, capacity: 16 })
+    new LocalWorldDieWitnessInbox({
+      ttlMs: 1_500,
+      capacity: 16,
+      // A peer published a throw and this client never matched it to a roll.
+      // Nothing else on this path is audible, so without this the feature can
+      // die completely and look exactly like nobody having rolled.
+      onExpired: (plan) =>
+        console.warn(
+          'shared die: a peer published a throw this client never matched',
+          {
+            presentationId: plan.presentationId,
+            roller: plan.roller,
+            attempt: plan.attempt,
+          }
+        ),
+    })
   );
   const witnessExpectationRef = useRef<
     LocalWorldDieWitnessExpectation | undefined
@@ -634,7 +656,13 @@ function SessionEncounterScope({
       : 1;
   const [localWorldDieWitnessActive, setLocalWorldDieWitnessActive] =
     useState(false);
-  const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
+  const [
+    localWorldDieSettledPresentationId,
+    setLocalWorldDieSettledPresentationId,
+  ] = useState<string>();
+  const localWorldDieSettled =
+    localWorldDieSettledPresentationId !== undefined &&
+    localWorldDieSettledPresentationId === localWorldDieRequest?.presentationId;
   const [localWorldDiePresentationFailed, setLocalWorldDiePresentationFailed] =
     useState(false);
   const localWorldDiePhysical =
@@ -742,7 +770,10 @@ function SessionEncounterScope({
         );
         if (plan) playWitnessPlan(plan);
       },
-      onUnavailable: () => {},
+      // Shared dice are decorative: losing the stream must never stop play.
+      // But it must not be inaudible either — say it once, then carry on.
+      onUnavailable: () =>
+        console.warn('shared die: witness plan stream unavailable'),
     });
     return () => controller.abort();
   }, [member, playWitnessPlan, sessionId]);
@@ -755,7 +786,7 @@ function SessionEncounterScope({
     });
     admittedWitnessPlans.current.clear();
     setLocalWorldDieWitnessActive(false);
-    setLocalWorldDieSettled(false);
+    setLocalWorldDieSettledPresentationId(undefined);
     setLocalWorldDiePresentationFailed(false);
     setLocalWorldDiePendingRoll(false);
     localWorldDieProfile.current = undefined;
@@ -848,10 +879,12 @@ function SessionEncounterScope({
                 plan: terminal,
               });
               if (localWorldDiePlanningOperation.current !== operation) return;
-            } catch {
+            } catch (error) {
               if (localWorldDiePlanningOperation.current !== operation) return;
               // Decorative transport failure keeps the authoritative actor
-              // functional through the same local planned playback.
+              // functional through the same local planned playback — but it
+              // means nobody else will see this throw, which is worth saying.
+              console.warn('shared die: publishing this throw failed', error);
             }
           }
           setLocalWorldDieCommand({
@@ -950,7 +983,7 @@ function SessionEncounterScope({
       );
     setLocalWorldDiePresentationFailed(false);
     setLocalWorldDiePendingRoll(false);
-    setLocalWorldDieSettled(true);
+    setLocalWorldDieSettledPresentationId(request.presentationId);
     setLocalWorldDieRolling(false);
     setLocalWorldDieCommand({
       id: localWorldDieCommandId.current++,
@@ -997,7 +1030,7 @@ function SessionEncounterScope({
       const request = localWorldDieRequest;
       const profile = localWorldDieProfile.current;
       if (!request || !profile) return;
-      setLocalWorldDieSettled(true);
+      setLocalWorldDieSettledPresentationId(request.presentationId);
       setLocalWorldDieRolling(false);
       setLocalWorldDieCommand({
         id: localWorldDieCommandId.current++,
@@ -1608,22 +1641,7 @@ function SessionEncounterScope({
         <div
           ref={encounterContentRef}
           data-testid="session-encounter-content"
-          aria-hidden={runEnded !== null ? true : undefined}
-          onClickCapture={(event) => {
-            if (runEnded === null) return;
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onKeyDownCapture={(event) => {
-            if (runEnded === null) return;
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: runEnded !== null ? 'none' : undefined,
-          }}
+          style={{ position: 'absolute', inset: 0 }}
         >
           <CombatExperience
             layout="fill-parent"
@@ -1642,7 +1660,13 @@ function SessionEncounterScope({
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
-            endTurnBlocked={combat.endTurnBlocked}
+            // ENDING A TURN IN A RUN THAT IS OVER IS REFUSED VISIBLY. The
+            // scene-wide `inert` used to swallow this click along with
+            // everything else (#999); with the scene readable again the button
+            // has to say for itself that it is spent, rather than looking live
+            // and quietly doing nothing. Every other verb on this call is
+            // already withheld the same way, by being handed nothing to do.
+            endTurnBlocked={combat.endTurnBlocked || runEnded !== null}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -1657,6 +1681,9 @@ function SessionEncounterScope({
             diceRollerName={combat.diceRollerName}
             localWorldDieControl={localWorldDieControl}
             localWorldDieSettled={localWorldDieSettled}
+            localWorldDieSettledPresentationId={
+              localWorldDieSettledPresentationId
+            }
             location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
@@ -1693,7 +1720,7 @@ function SessionEncounterScope({
                   }
                   myPosition={displayPosition ?? lastGoodPositionRef.current!}
                   movements={moves.movements}
-                  onHexClick={runEnded === null ? walkTo : undefined}
+                  onHexClick={runEnded === null ? handleGroundClick : undefined}
                   onEntityClick={runEnded === null ? onTargetClick : undefined}
                   onMovementPainted={
                     runEnded === null ? handleMovementPainted : undefined
@@ -1712,7 +1739,11 @@ function SessionEncounterScope({
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
             onTargetClick={combat.onTargetClick}
+            onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
+            // The log's own mode switch is deliberately NOT gated on the run
+            // having ended: changing what the log shows is reading, and
+            // reading is the whole point of #999.
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
               visibleCharacterData
@@ -1823,48 +1854,21 @@ function SessionEncounterScope({
         </div>
 
         {runEnded !== null && (
-          <div
-            data-testid="run-ended-overlay"
-            style={{
-              position: 'absolute',
-              zIndex: 1000,
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.72)',
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="run-ended-headline"
-              style={{
-                textAlign: 'center',
-                padding: '32px 48px',
-                borderRadius: 12,
-                background: 'var(--bg-secondary, #1c1c22)',
-              }}
-            >
-              <h2 id="run-ended-headline">{endingHeadline(runEnded)}</h2>
-              {/* Names the carrier when one walked out through an authored
-                  exit holding something, and says nothing about one
-                  otherwise — a run that ended for any other reason had no
-                  carrier, and the overlay must not invent one. */}
-              {carrier ? (
-                <p data-testid="run-ended-carrier">
-                  {`${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
+          <RunEndedToast
+            ending={runEnded}
+            // Names the carrier when one walked out through an authored exit
+            // holding something, and says nothing about one otherwise — a run
+            // that ended for any other reason had no carrier, and the toast
+            // must not invent one.
+            carrierLine={
+              carrier
+                ? `${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
                     carrier.holding
-                  )} out through the ${authoredWords(carrier.exit)}.`}
-                </p>
-              ) : (
-                <p>The encounter is over — the outcome is recorded.</p>
-              )}
-              <Button ref={leaveRunButtonRef} size="sm" onClick={onBack}>
-                Leave
-              </Button>
-            </div>
-          </div>
+                  )} out through the ${authoredWords(carrier.exit)}.`
+                : undefined
+            }
+            onLeave={onBack}
+          />
         )}
       </div>
     );

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import {
   CharacterDataSchema,
@@ -116,5 +117,95 @@ describe('character presentation', () => {
         ...GENERIC_CHARACTER_PRESENTATION,
       }),
     ]);
+  });
+});
+
+describe('the cast door’s two conditions (design rpg-project#405)', () => {
+  function conditionRow(id: string, name: string) {
+    return create(ConditionViewSchema, {
+      ref: create(RefSchema, { module: 'dnd5e', type: 'conditions', id }),
+      name,
+      detail: 'Provider-authored detail.',
+    });
+  }
+
+  it('draws each with its own icon, and copies the provider’s words', () => {
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        conditionRow('true_strike', 'True Strike'),
+        conditionRow('vicious_mockery', 'Vicious Mockery'),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    // TWO ROWS IN ONE TABLE, not two components. The provider authors the
+    // name and detail; this only says which glyph and tone the generic
+    // condition list draws them with.
+    expect(presented.conditions[0]).toMatchObject({
+      name: 'True Strike',
+      detail: 'Provider-authored detail.',
+      tone: 'warm',
+    });
+    expect(presented.conditions[1]).toMatchObject({
+      name: 'Vicious Mockery',
+      tone: 'danger',
+    });
+    expect(presented.conditions[0]!.icon).not.toBe(
+      presented.conditions[1]!.icon
+    );
+    expect(presented.conditions[0]!.icon).not.toBe(
+      GENERIC_CHARACTER_PRESENTATION.icon
+    );
+  });
+
+  it('a grant and a penalty do not read the same', () => {
+    // The distinction a player makes at the table: True Strike helps the
+    // caster's next swing, Vicious Mockery's rider hurts the target's.
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        conditionRow('true_strike', 'True Strike'),
+        conditionRow('vicious_mockery', 'Vicious Mockery'),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    expect(presented.conditions[0]!.tone).not.toBe(
+      presented.conditions[1]!.tone
+    );
+  });
+});
+
+describe('the owning condition (design rpg-project#407)', () => {
+  it('gives the caster a badge of its own, with the provider’s words', () => {
+    // ONE ROW, AND THAT IS THE WHOLE CASTER-SIDE CHANGE. The api already
+    // ships this condition through the status view; this only says which
+    // glyph and tone the generic list draws it with, and the spell it names
+    // stays the provider's text.
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        create(ConditionViewSchema, {
+          ref: create(RefSchema, {
+            module: 'dnd5e',
+            type: 'conditions',
+            id: 'concentrating',
+          }),
+          name: 'Concentrating',
+          detail: 'Holding True Strike.',
+        }),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    expect(presented.conditions[0]).toMatchObject({
+      name: 'Concentrating',
+      detail: 'Holding True Strike.',
+      tone: 'cool',
+    });
+    expect(presented.conditions[0]!.icon).not.toBe(
+      GENERIC_CHARACTER_PRESENTATION.icon
+    );
   });
 });

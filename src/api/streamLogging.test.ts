@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { StreamResponse } from '@connectrpc/connect';
 import { HexState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

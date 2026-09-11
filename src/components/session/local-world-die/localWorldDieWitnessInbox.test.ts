@@ -79,6 +79,57 @@ describe('LocalWorldDieWitnessInbox', () => {
     expect(inbox.reconsider(expected, 2_501)).toBeUndefined();
   });
 
+  // A peer published a throw, it sat here, and its window closed without ever
+  // matching. That is the ONLY observable symptom of a broken correlation —
+  // shared dice went unnoticed for a week in exactly this state, because
+  // nothing on this path says a word when a plan is dropped.
+  it('reports a plan whose window closed without ever being matched', () => {
+    const expired: string[] = [];
+    const inbox = new LocalWorldDieWitnessInbox({
+      ttlMs: 1_500,
+      capacity: 4,
+      onExpired: (plan) => expired.push(plan.presentationId),
+    });
+
+    inbox.offer(wirePlan(), undefined, 1_000);
+    expect(expired).toEqual([]);
+
+    inbox.reconsider(expected, 2_501);
+
+    expect(expired).toEqual(['session:session-1:42']);
+  });
+
+  it('does not report a plan that was admitted', () => {
+    const expired: string[] = [];
+    const inbox = new LocalWorldDieWitnessInbox({
+      ttlMs: 1_500,
+      capacity: 4,
+      onExpired: (plan) => expired.push(plan.presentationId),
+    });
+
+    inbox.offer(wirePlan(), undefined, 1_000);
+    expect(inbox.reconsider(expected, 1_100)).toBeDefined();
+    inbox.reconsider(expected, 5_000);
+
+    expect(expired).toEqual([]);
+  });
+
+  it('reports each expired plan once, not on every later prune', () => {
+    const expired: string[] = [];
+    const inbox = new LocalWorldDieWitnessInbox({
+      ttlMs: 1_500,
+      capacity: 4,
+      onExpired: (plan) => expired.push(plan.presentationId),
+    });
+
+    inbox.offer(wirePlan(), undefined, 1_000);
+    inbox.reconsider(expected, 2_501);
+    inbox.reconsider(expected, 2_502);
+    inbox.reconsider(expected, 9_000);
+
+    expect(expired).toEqual(['session:session-1:42']);
+  });
+
   it('bounds unmatched future plans and retains the newest candidates', () => {
     const inbox = new LocalWorldDieWitnessInbox({ ttlMs: 1_500, capacity: 2 });
 

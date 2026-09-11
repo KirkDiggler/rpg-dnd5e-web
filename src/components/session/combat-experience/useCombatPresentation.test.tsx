@@ -43,7 +43,10 @@ import { StrictMode, type PropsWithChildren } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { isCombatDebugEnabled } from './diagnostics';
 import { DiceDrawer } from './DiceDrawer';
-import { createAttackAuthorityFixture } from './presentation.test-fixtures';
+import {
+  createAttackAuthorityFixture,
+  debugText,
+} from './presentation.test-fixtures';
 import { StoryLog } from './StoryLog';
 import { useCombatPresentation } from './useCombatPresentation';
 
@@ -629,7 +632,7 @@ describe('useCombatPresentation', () => {
     );
 
     expect(result.current.state.presentations[0]?.eventAccepted).toBe(true);
-    expect(result.current.debug[0]).toContain('roll=12');
+    expect(debugText(result.current.debug[0])).toContain('roll=12');
     expect(result.current.story).toEqual([]);
     expect(result.current.result).toBeUndefined();
     expect(result.current.liveAnnouncement).toBeNull();
@@ -769,8 +772,10 @@ describe('useCombatPresentation', () => {
       'Aldric recovers 2 HP',
     ]);
     expect(result.current.debug).toHaveLength(2);
-    expect(result.current.debug[0]).toContain('activated actor=Aldric');
-    expect(result.current.debug[1]).toContain(
+    expect(debugText(result.current.debug[0])).toContain(
+      'activated actor=Aldric'
+    );
+    expect(debugText(result.current.debug[1])).toContain(
       'activation_result actor=Aldric result=healing_applied'
     );
     expect(result.current.liveAnnouncement).toBeNull();
@@ -796,7 +801,9 @@ describe('useCombatPresentation', () => {
           '2 applied (8 → 10 HP).'
       );
       expect(result.current.diceEvents).toEqual([]);
-      expect(result.current.debug[0]).toContain('calculation={components=[');
+      expect(debugText(result.current.debug[0])).toContain(
+        'calculation={components=['
+      );
     }
   );
 
@@ -912,7 +919,7 @@ describe('useCombatPresentation', () => {
       'Skeleton Guard is no longer Provider Ward',
       'Aldric gains capacity',
     ]);
-    expect(result.current.debug).toEqual([
+    expect(result.current.debug.map(debugText)).toEqual([
       expect.stringContaining('result=healing_applied'),
       expect.stringContaining('result=condition_applied'),
       expect.stringContaining('result=condition_removed'),
@@ -1493,7 +1500,7 @@ describe('useCombatPresentation', () => {
     expect(result.current.state.identities).toMatchObject([
       { category: 'other', conflicted: false },
     ]);
-    expect(result.current.debug).toEqual([
+    expect(result.current.debug.map(debugText)).toEqual([
       'seq=30 clock=0 kind=UNKNOWN body=null source=catchup',
     ]);
     expect(result.current.state.diagnostics).toEqual([]);
@@ -1827,7 +1834,7 @@ describe('StoryLog developer diagnostics gate', () => {
             round: 2,
             eyebrow: 'Aldric · Longsword',
             headline: 'Skeleton Guard evades Aldric',
-            detail: 'd20 3 · total 8 against AC 13 · Miss',
+            detail: 'd20 3 + 5 = 8 · Miss',
             tone: 'neutral',
           },
         ]}

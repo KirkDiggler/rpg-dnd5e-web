@@ -1,11 +1,18 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import {
+  appearanceIdentity,
+  entryPreviewUrl,
   filterReviewEntries,
+  generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  recordPreviewLoad,
+  selectPaletteAppearance,
   serializeReadyProviderBatch,
   serializeReviewProgress,
+  setBatchId,
   transitionDecision,
   updateProviderFields,
   validateReady,
@@ -1066,5 +1073,304 @@ describe('portable exports', () => {
         entries: [{ ...readyEntry(), ...patch }],
       })
     ).toThrow(/calibration\.scale|displayName|tags/i);
+  });
+});
+
+const PALETTE_A_SHA = '1'.repeat(64);
+const PALETTE_B_SHA = '2'.repeat(64);
+const DESCRIPTOR_A_SHA = '3'.repeat(64);
+const CONFIG_SHA = '4'.repeat(64);
+const ATLAS_A_SHA = '5'.repeat(64);
+
+function paletteAlternative(
+  palette: 'A' | 'B',
+  overrides: Record<string, unknown> = {}
+) {
+  const selectedSha = palette === 'A' ? PALETTE_A_SHA : PALETTE_B_SHA;
+  return {
+    descriptorVersion: 1,
+    comparisonId: 'braziers',
+    palette,
+    paletteDescriptor: {
+      path: `palette-variants/braziers/${palette}/palette.json`,
+      sha256: DESCRIPTOR_A_SHA,
+    },
+    packConfigSha256: CONFIG_SHA,
+    atlas: {
+      path: `SourceFiles/DarkFortress/Texture/Alts/Atlas_${palette}.png`,
+      sha256: ATLAS_A_SHA,
+    },
+    selectedGlb: {
+      path: `palette-variants/braziers/${palette}/glbs/models/SourceFiles/DarkFortress/FBX/SM_Prop_Brazier_01.glb`,
+      sha256: selectedSha,
+    },
+    url: `/models/synty/asset-review/${selectedSha.slice(0, 12)}-SM_Prop_Brazier_01.glb`,
+    dimensionsMeters: palette === 'A' ? [2, 3, 4] : [4, 5, 6],
+    plannedRuntimeImages: [
+      {
+        index: 0,
+        name: `Atlas_${palette}`,
+        sourceWidth: 64,
+        sourceHeight: 64,
+        width: 64,
+        height: 64,
+        decodedBytes: 16384,
+        decodedMiB: 0.016,
+      },
+    ],
+    readyEligible: palette === 'A',
+    reasons: palette === 'A' ? [] : ['selected image budget exceeded'],
+    ...overrides,
+  };
+}
+
+function paletteCatalog(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 2,
+    candidates: [
+      {
+        ...candidate(),
+        paletteAlternatives: [
+          paletteAlternative('A', overrides),
+          paletteAlternative('B'),
+        ],
+      },
+    ],
+  };
+}
+
+describe('palette-aware schema v2', () => {
+  it('parses exact alternatives and uses selected appearance facts and identity', () => {
+    const parsed = parseAssetReviewCatalog(paletteCatalog());
+    const initial = mergeCatalogWithReview(parsed).batch.entries[0]!;
+    const selected = selectPaletteAppearance(initial, 'braziers', 'B');
+
+    expect(entryPreviewUrl(selected)).toContain(PALETTE_B_SHA.slice(0, 12));
+    expect(appearanceIdentity(selected)).toContain(PALETTE_B_SHA);
+    expect(
+      validateReady({ ...selected, loadedSuccessfully: true })
+    ).toMatchObject({ readyEligible: expect.stringMatching(/not eligible/i) });
+  });
+
+  it('demotes Ready, clears preview success, and ignores stale URL callbacks', () => {
+    const initial = mergeCatalogWithReview(
+      parseAssetReviewCatalog(paletteCatalog())
+    ).batch.entries[0]!;
+    const selectedA = selectPaletteAppearance(initial, 'braziers', 'A');
+    const loadedA = recordPreviewLoad(
+      selectedA,
+      entryPreviewUrl(selectedA),
+      'success'
+    );
+    const readyA = transitionDecision(loadedA, 'ready');
+    const selectedB = selectPaletteAppearance(readyA, 'braziers', 'B');
+
+    expect(selectedB).toMatchObject({
+      decision: 'keep',
+      loadedSuccessfully: false,
+    });
+    expect(
+      recordPreviewLoad(selectedB, entryPreviewUrl(selectedA), 'success')
+    ).toEqual(selectedB);
+    expect(
+      recordPreviewLoad(
+        { ...selectedA, decision: 'ready' },
+        entryPreviewUrl(selectedA),
+        'error'
+      )
+    ).toMatchObject({ decision: 'keep', loadedSuccessfully: false });
+  });
+
+  it('never restores Ready when imported appearance identity is stale', () => {
+    const current = parseAssetReviewCatalog(paletteCatalog());
+    const initial = mergeCatalogWithReview(current).batch.entries[0]!;
+    const selected = selectPaletteAppearance(initial, 'braziers', 'A');
+    const ready = transitionDecision(
+      recordPreviewLoad(selected, entryPreviewUrl(selected), 'success'),
+      'ready'
+    );
+    const imported = JSON.parse(
+      serializeReviewProgress({
+        schemaVersion: 2,
+        batchId: 'palette-review',
+        entries: [ready],
+      })
+    ) as AssetReviewBatch;
+    const changed = parseAssetReviewCatalog(
+      paletteCatalog({
+        paletteDescriptor: {
+          path: 'palette-variants/braziers/A/palette.json',
+          sha256: '9'.repeat(64),
+        },
+      })
+    );
+    const merged = mergeCatalogWithReview(changed, imported);
+
+    expect(merged.batch.entries[0]).toMatchObject({
+      decision: 'keep',
+      loadedSuccessfully: false,
+    });
+    expect(merged.staleAppearanceKeys).toHaveLength(1);
+  });
+
+  it.each([
+    ['descriptor', 'paletteDescriptor', 'sha256'],
+    ['config', null, 'packConfigSha256'],
+    ['atlas', 'atlas', 'sha256'],
+    ['selected GLB', 'selectedGlb', 'sha256'],
+  ] as const)(
+    'demotes imported Ready when the %s hash changed',
+    (_label, nested, key) => {
+      const current = parseAssetReviewCatalog(paletteCatalog());
+      const initial = mergeCatalogWithReview(current).batch.entries[0]!;
+      const selected = selectPaletteAppearance(initial, 'braziers', 'A');
+      const ready = transitionDecision(
+        recordPreviewLoad(selected, entryPreviewUrl(selected), 'success'),
+        'ready'
+      );
+      const imported = JSON.parse(
+        serializeReviewProgress({
+          schemaVersion: 2,
+          batchId: 'palette-review',
+          entries: [ready],
+        })
+      ) as AssetReviewBatch;
+      const rawSelection = imported.entries[0]!
+        .paletteSelection as unknown as Record<string, unknown>;
+      if (nested) {
+        (rawSelection[nested] as Record<string, unknown>)[key] = '9'.repeat(64);
+      } else {
+        rawSelection[key] = '9'.repeat(64);
+      }
+
+      const merged = mergeCatalogWithReview(current, imported);
+      expect(merged.batch.entries[0]).toMatchObject({
+        decision: 'keep',
+        loadedSuccessfully: false,
+      });
+      expect(merged.staleAppearanceKeys).toHaveLength(1);
+    }
+  );
+
+  it('requires explicit strict paletteSelection in schema-v2 progress', () => {
+    const batch = mergeCatalogWithReview(
+      parseAssetReviewCatalog(paletteCatalog())
+    ).batch;
+    const portable = JSON.parse(serializeReviewProgress(batch)) as Record<
+      string,
+      unknown
+    >;
+    const entries = portable.entries as Array<Record<string, unknown>>;
+    delete entries[0]!.paletteSelection;
+    expect(() =>
+      mergeCatalogWithReview(
+        parseAssetReviewCatalog(paletteCatalog()),
+        portable as unknown as AssetReviewBatch
+      )
+    ).toThrow(/review entry.*keys/i);
+
+    const extra = JSON.parse(serializeReviewProgress(batch)) as Record<
+      string,
+      unknown
+    >;
+    const extraSelection = (
+      extra.entries as Array<Record<string, unknown>>
+    )[0]!;
+    extraSelection.paletteSelection = { unexpected: true };
+    expect(() =>
+      mergeCatalogWithReview(
+        parseAssetReviewCatalog(paletteCatalog()),
+        extra as unknown as AssetReviewBatch
+      )
+    ).toThrow(/paletteSelection.*keys/i);
+  });
+
+  it('rejects unknown/missing nested keys and malformed selected paths and URLs', () => {
+    const extra = paletteCatalog();
+    const alternative = (extra.candidates[0] as Record<string, unknown>)
+      .paletteAlternatives as Array<Record<string, unknown>>;
+    alternative[0]!.atlas = {
+      ...(alternative[0]!.atlas as object),
+      unknown: true,
+    };
+    expect(() => parseAssetReviewCatalog(extra)).toThrow(/atlas.*keys/i);
+
+    const missing = paletteCatalog();
+    const selected = (
+      (missing.candidates[0] as Record<string, unknown>)
+        .paletteAlternatives as Array<Record<string, unknown>>
+    )[0]!.selectedGlb as Record<string, unknown>;
+    delete selected.sha256;
+    expect(() => parseAssetReviewCatalog(missing)).toThrow(
+      /selectedGlb.*keys/i
+    );
+
+    const mismatch = paletteCatalog({
+      url: '/models/synty/asset-review/aaaaaaaaaaaa-SM_Prop_Brazier_01.glb',
+    });
+    expect(() => parseAssetReviewCatalog(mismatch)).toThrow(/url/i);
+  });
+
+  it('exports a mixed Ready schema-v2 provider batch with null/default and exact selection', () => {
+    const parsed = parseAssetReviewCatalog({
+      ...paletteCatalog(),
+      candidates: [
+        ...paletteCatalog().candidates,
+        {
+          ...candidate({
+            source: {
+              sourcePath: 'SourceFiles/DarkFortress/FBX/Second.fbx',
+              glbSha256: '8'.repeat(64),
+            },
+            url: `/models/synty/asset-review/${'8'.repeat(12)}-Second.glb`,
+            refSuffix: 'second',
+          }),
+          paletteAlternatives: [],
+        },
+      ],
+    });
+    const batch = mergeCatalogWithReview(parsed).batch;
+    const alternate = selectPaletteAppearance(
+      batch.entries[0]!,
+      'braziers',
+      'A'
+    );
+    batch.entries[0] = transitionDecision(
+      recordPreviewLoad(alternate, entryPreviewUrl(alternate), 'success'),
+      'ready'
+    );
+    batch.entries[1] = transitionDecision(
+      recordPreviewLoad(
+        batch.entries[1]!,
+        entryPreviewUrl(batch.entries[1]!),
+        'success'
+      ),
+      'ready'
+    );
+    const exported = JSON.parse(serializeReadyProviderBatch(batch));
+
+    expect(exported.schemaVersion).toBe(2);
+    expect(exported.entries[0].source.glbSha256).toBe(SOURCE_HASH);
+    expect(exported.entries[0].paletteSelection.selectedGlb.sha256).toBe(
+      PALETTE_A_SHA
+    );
+    expect(exported.entries[1].paletteSelection).toBeNull();
+    expect(JSON.stringify(exported)).not.toMatch(/"url"|localhost|blob:/i);
+  });
+
+  it('retains schema-v1 bytes and supports validated deterministic batch IDs', () => {
+    const legacy = mergeCatalogWithReview(catalog()).batch;
+    expect(JSON.parse(serializeReviewProgress(legacy)).schemaVersion).toBe(1);
+    expect(setBatchId(legacy, 'edited.batch-1').batchId).toBe('edited.batch-1');
+    expect(() => setBatchId(legacy, 'bad batch')).toThrow(/batch/i);
+    expect(
+      generateBatchId(
+        'dark-fortress',
+        '123e4567-e89b-12d3-a456-426614174000',
+        new Date('2026-09-10T23:59:59Z')
+      )
+    ).toBe(
+      'dark-fortress-world-assets-20260910-123e4567-e89b-12d3-a456-426614174000'
+    );
   });
 });

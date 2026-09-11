@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { PerspectiveCamera } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AnchoredHeldRollGroupState } from './anchoredRollGroupGestureController';

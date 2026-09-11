@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Reduced-motion CSS contract for the combat-pacing beat stage
  * (rpg-dnd5e-web#561, PR #579 review). `.beat-stage--reduced-motion`

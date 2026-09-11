@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * The discriminator for `toOffset`/`fromOffset` (plan W, `offsetBridge`
  * test): an L-shaped region under BOTH orientations, one named cell,

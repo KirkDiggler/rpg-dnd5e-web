@@ -1,7 +1,10 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
+import { preloadDiceRuntimePreset } from '@/components/ui/dice/diceRuntimeProvider';
+import '@testing-library/jest-dom/vitest';
 import { act, render, screen } from '@testing-library/react';
 import {
   forwardRef,
+  Suspense,
   useEffect,
   useImperativeHandle,
   type PropsWithChildren,
@@ -12,10 +15,14 @@ import {
   DIE_FLASH_TOTAL_MS,
   LOCAL_WORLD_DIE_RESULT_HOLD_MS,
   LocalWorldDieLayer,
+  LocalWorldDieWarmup,
   type LocalWorldDieLayerProps,
 } from './LocalWorldDieLayer';
 
 const mocks = vi.hoisted(() => ({
+  physicsPending: undefined as Promise<void> | undefined,
+  physicsError: undefined as Error | undefined,
+  physicsPaused: [] as Array<boolean | undefined>,
   afterPhysicsSteps: [] as Array<() => void>,
   frames: [] as Array<(state: unknown, delta: number) => void>,
   rigidBodyType: Object.freeze({
@@ -55,7 +62,15 @@ vi.mock('@react-three/rapier', () => {
   return {
     ConvexHullCollider: () => null,
     CuboidCollider: () => null,
-    Physics: ({ children }: PropsWithChildren) => <>{children}</>,
+    Physics: ({
+      children,
+      paused,
+    }: PropsWithChildren<{ paused?: boolean }>) => {
+      mocks.physicsPaused.push(paused);
+      if (mocks.physicsError) throw mocks.physicsError;
+      if (mocks.physicsPending) throw mocks.physicsPending;
+      return <div data-testid="physics-world">{children}</div>;
+    },
     RigidBody,
     useAfterPhysicsStep: (callback: () => void) => {
       mocks.afterPhysicsSteps.push(callback);
@@ -170,6 +185,10 @@ function reachLandedResultHold() {
 describe('LocalWorldDieLayer', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.mocked(preloadDiceRuntimePreset).mockClear();
+    mocks.physicsPending = undefined;
+    mocks.physicsError = undefined;
+    mocks.physicsPaused.length = 0;
     mocks.afterPhysicsSteps.length = 0;
     mocks.frames.length = 0;
     for (const method of Object.values(mocks.body)) method.mockClear();
@@ -177,6 +196,86 @@ describe('LocalWorldDieLayer', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('keeps the surrounding scene visible while cold physics suspends', () => {
+    mocks.physicsPending = new Promise(() => {});
+    render(
+      <Suspense fallback={<div>Entire scene loading</div>}>
+        <div data-testid="scene">Dungeon</div>
+        <LocalWorldDieLayer {...layerProps(vi.fn(), resetCommand)} />
+      </Suspense>
+    );
+    expect(screen.getByTestId('scene')).toBeVisible();
+    expect(screen.queryByText('Entire scene loading')).not.toBeInTheDocument();
+  });
+
+  it('warms assets and paused physics before any roll, then releases the idle world', async () => {
+    vi.useRealTimers();
+    let finish!: () => void;
+    mocks.physicsPending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    render(
+      <Suspense fallback={<div>Entire scene loading</div>}>
+        <div data-testid="scene">Dungeon</div>
+        <LocalWorldDieWarmup />
+      </Suspense>
+    );
+    expect(preloadDiceRuntimePreset).toHaveBeenCalledWith(
+      'dice.original.carved.d20'
+    );
+    expect(screen.getByTestId('scene')).toBeVisible();
+    expect(mocks.physicsPaused.length).toBeGreaterThan(0);
+    expect(mocks.physicsPaused.every((paused) => paused === true)).toBe(true);
+    await act(async () => {
+      mocks.physicsPending = undefined;
+      finish();
+    });
+    expect(screen.queryByTestId('physics-world')).not.toBeInTheDocument();
+    expect(screen.getByTestId('scene')).toBeVisible();
+  });
+
+  it('keeps entry usable when best-effort warmup fails', async () => {
+    vi.useRealTimers();
+    mocks.physicsError = new Error('physics unavailable');
+    vi.mocked(preloadDiceRuntimePreset).mockRejectedValueOnce(
+      new Error('asset unavailable')
+    );
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await act(async () => {
+        render(
+          <>
+            <div data-testid="scene">Dungeon</div>
+            <LocalWorldDieWarmup />
+          </>
+        );
+      });
+      expect(screen.getByTestId('scene')).toBeVisible();
+      expect(screen.queryByTestId('physics-world')).not.toBeInTheDocument();
+      expect(mocks.body.setTranslation).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('reports physics initialization failure through the existing terminal path', () => {
+    mocks.physicsError = new Error('physics unavailable');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onTerminal = vi.fn();
+    try {
+      render(
+        <>
+          <div data-testid="scene">Dungeon</div>
+          <LocalWorldDieLayer {...layerProps(onTerminal, resetCommand)} />
+        </>
+      );
+      expect(screen.getByTestId('scene')).toBeVisible();
+      expect(onTerminal).toHaveBeenCalledExactlyOnceWith('failure');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('still reports settlement when its parent rerenders during the landed-result hold', () => {

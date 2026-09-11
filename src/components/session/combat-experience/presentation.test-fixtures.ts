@@ -17,6 +17,12 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { AttackResponseFact, CombatStreamFact } from './presentation';
 
+export function debugText(
+  entry: import('../debugLogLine').DebugFeedEntry | undefined
+): string | undefined {
+  return typeof entry === 'string' ? entry : entry?.text;
+}
+
 export interface AttackAuthorityFixtureOptions {
   session?: string;
   seq?: bigint;
@@ -36,6 +42,23 @@ export interface AttackAuthorityFixtureOptions {
   /** Set to record the strike as a reaction (rpg-toolkit#1548 populates it). */
   reactionRef?: string;
   reactionName?: string;
+  /**
+   * The opaque token the provider mints once per swing. The SAME value reaches
+   * the attacker on AttackResponse and every recipient on Struck/Missed, and
+   * it is the only thing two different clients can agree on for one roll.
+   */
+  presentationId?: string;
+  /**
+   * This recipient's OWN number for the beat, when it differs from the
+   * attacker's — which, for anyone but the attacker, it always does.
+   *
+   * `seq` is per recipient. The attacker's response seq is the attacker's own
+   * number and matches the attacker's own event, so it defaults to `seq` here.
+   * A witness holds a different number for the very same beat, and a fixture
+   * that gives both sides one seq quietly asserts the falsehood that broke
+   * shared dice. Pass this to build an honest witness.
+   */
+  eventSeq?: bigint;
 }
 
 export interface AttackAuthorityFixture {
@@ -65,6 +88,13 @@ export function createAttackAuthorityFixture(
   const hit = options.hit ?? true;
   const critical = options.critical ?? false;
   const damage = options.damage ?? (hit ? 8 : 0);
+  // One token per swing, so two fixtures are two different rolls unless a test
+  // deliberately says otherwise. Derived from the attacker's own numbers purely
+  // to keep fixtures distinct and readable — the real token is opaque, and
+  // nothing may parse it.
+  const presentationId =
+    options.presentationId ?? `presentation~${session}~${seq}`;
+  const eventSeq = options.eventSeq ?? seq;
   const attack = create(AttackRefSchema, {
     ref: options.attackRef ?? 'dnd5e:weapons:longsword',
     name: options.attackName ?? 'Longsword',
@@ -86,10 +116,11 @@ export function createAttackAuthorityFixture(
     damage,
     seq,
     attack,
+    presentationId,
   });
   const event = create(EventSchema, {
     session,
-    seq,
+    seq: eventSeq,
     at,
     recipient,
     kind: hit ? EventKind.STRUCK : EventKind.MISSED,
@@ -106,6 +137,7 @@ export function createAttackAuthorityFixture(
             attack,
             critical,
             reaction,
+            presentationId,
           }),
         }
       : {
@@ -118,6 +150,7 @@ export function createAttackAuthorityFixture(
             against,
             attack,
             reaction,
+            presentationId,
           }),
         },
   });

@@ -23,12 +23,6 @@ const GENERATED_FORMAT_PATH = fileURLToPath(
   new URL('../src/generated/dwarfCustomizationCatalog.ts', import.meta.url)
 );
 
-const CLASSES = [
-  ['barbarian', '01'],
-  ['fighter', '16'],
-  ['monk', '08'],
-  ['rogue', '10'],
-] as const;
 const ANIMATIONS = ['Idle_Relaxed', 'Walk_Forward'] as const;
 const PROPORTIONS = [1.08, 0.78, 1.08] as const;
 const EXACT_INVERSE_BIND_SHA256 =
@@ -93,7 +87,7 @@ const OPTION_KEYS = [
   'thumbnailSha256',
 ] as const;
 
-export type DwarfStarterClass = (typeof CLASSES)[number][0];
+export type DwarfStarterClass = string;
 export type DwarfCustomizationSlot = 'scalp' | 'facial-hair';
 
 export interface DwarfStyleOption {
@@ -196,7 +190,7 @@ interface GenerateCatalogInput {
 }
 
 export interface GeneratedCatalogReceipt extends CatalogAuthority {
-  readonly bodyCount: 4;
+  readonly bodyCount: number;
   readonly scalpCount: 38;
   readonly facialHairCount: 18;
 }
@@ -319,19 +313,38 @@ function exactRuntimeUrl(
   return { path, url: WEB_RUNTIME_ROOT + path };
 }
 
-function exactFallbackUrl(
+function classRef(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !/^[a-z][a-z0-9-]*$/.test(value)) {
+    fail(`${label} must be a lowercase opaque class ref`);
+  }
+  return value;
+}
+
+function outfitRef(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(value)) {
+    fail(`${label} must be an opaque lowercase outfit ref`);
+  }
+  return value;
+}
+
+function fallbackUrl(
   value: unknown,
-  expected: string,
+  className: string,
   label: string
 ): { readonly path: string; readonly url: string } {
   const path = portablePath(value, label);
-  if (path !== expected || !path.startsWith(PROVIDER_SYNTY_ROOT)) {
-    fail(
-      `${label} must use the exact harness/models/synty/ provider-relative base`
-    );
+  const local = `fallbacks/dwarf-${className}-complete.glb`;
+  const legacy = `${PROVIDER_SYNTY_ROOT}characters/race-class/dwarf-${className}.glb`;
+  if (path === local) return { path, url: WEB_RUNTIME_ROOT + path };
+  if (path === legacy) {
+    return {
+      path,
+      url: WEB_SYNTY_ROOT + path.slice(PROVIDER_SYNTY_ROOT.length),
+    };
   }
-  const relative = path.slice(PROVIDER_SYNTY_ROOT.length);
-  return { path, url: WEB_SYNTY_ROOT + relative };
+  fail(
+    `${label} must be the profile-local complete fallback or legacy race-class fallback`
+  );
 }
 
 function styleRef(value: unknown, expected: string, label: string): string {
@@ -346,25 +359,6 @@ function styleRef(value: unknown, expected: string, label: string): string {
   }
   if (value !== expected) fail(`${label} must be ${expected}`);
   return value;
-}
-
-function expectedBodyMeshes(outfit: string): string[] {
-  return [
-    'Chr_Head_Male_00',
-    'Chr_Ear_Ear_01',
-    ...[
-      'Torso',
-      'Hips',
-      'ArmUpperLeft',
-      'ArmUpperRight',
-      'ArmLowerLeft',
-      'ArmLowerRight',
-      'HandLeft',
-      'HandRight',
-      'LegLeft',
-      'LegRight',
-    ].map((part) => `Chr_${part}_Male_${outfit}`),
-  ];
 }
 
 function expectedOption(slot: DwarfCustomizationSlot, index: number) {
@@ -499,28 +493,40 @@ function parseManifest(value: unknown): ParsedManifest {
     sourceAssets.push({ providerRelativePath, sha256: digest });
   };
 
-  const bodySource = exactObject(
-    manifest.bodies,
-    CLASSES.map(([classRef]) => `dwarf:${classRef}`),
-    'manifest.bodies'
-  );
+  const bodySource = object(manifest.bodies, 'manifest.bodies');
+  if (Object.keys(bodySource).length === 0) {
+    fail('manifest.bodies must declare at least one class body');
+  }
   const bodies = {} as Record<DwarfStarterClass, DwarfCustomizationBody>;
-  for (const [classRef, outfit] of CLASSES) {
-    const combination = `dwarf:${classRef}`;
+  for (const [combination, bodyValue] of Object.entries(bodySource)) {
     const label = `manifest.bodies.${combination}`;
-    const body = exactObject(bodySource[combination], BODY_KEYS, label);
-    exactString(body.combination, combination, `${label}.combination`);
-    exactString(body.class, classRef, `${label}.class`);
-    exactString(body.outfit, outfit, `${label}.outfit`);
-    exactStringArray(
-      body.sourceMeshes,
-      expectedBodyMeshes(outfit),
-      `${label}.sourceMeshes`
-    );
+    const body = exactObject(bodyValue, BODY_KEYS, label);
+    const bodyClass = classRef(body.class, `${label}.class`);
+    const expectedCombination = `dwarf:${bodyClass}`;
+    exactString(body.combination, expectedCombination, `${label}.combination`);
+    if (combination !== expectedCombination) {
+      fail(`${label} key must match ${expectedCombination}`);
+    }
+    const outfit = outfitRef(body.outfit, `${label}.outfit`);
+    if (
+      !Array.isArray(body.sourceMeshes) ||
+      body.sourceMeshes.length === 0 ||
+      body.sourceMeshes.some(
+        (mesh) =>
+          typeof mesh !== 'string' ||
+          mesh.length === 0 ||
+          /(?:Hair|FacialHair)/i.test(mesh)
+      ) ||
+      new Set(body.sourceMeshes).size !== body.sourceMeshes.length
+    ) {
+      fail(
+        `${label}.sourceMeshes must be unique, non-empty hairless mesh names`
+      );
+    }
     exactStringArray(body.animations, ANIMATIONS, `${label}.animations`);
     const runtime = exactRuntimeUrl(
       body.path,
-      `bodies/dwarf-${classRef}-body.glb`,
+      `bodies/dwarf-${bodyClass}-body.glb`,
       `${label}.path`
     );
     const bodySha256 = sha256(body.sha256, `${label}.sha256`);
@@ -534,16 +540,16 @@ function parseManifest(value: unknown): ParsedManifest {
       ['path', 'sha256'],
       `${label}.fallback`
     );
-    const fallbackPath = exactFallbackUrl(
+    const fallbackPath = fallbackUrl(
       fallback.path,
-      `harness/models/synty/characters/race-class/dwarf-${classRef}.glb`,
+      bodyClass,
       `${label}.fallback.path`
     );
     const fallbackSha256 = sha256(fallback.sha256, `${label}.fallback.sha256`);
     addAsset(fallbackPath.path, fallbackSha256, `${label}.fallback.path`);
-    bodies[classRef] = {
-      combination,
-      classRef,
+    bodies[bodyClass] = {
+      combination: expectedCombination,
+      classRef: bodyClass,
       outfit,
       url: runtime.url,
       sha256: bodySha256,
@@ -676,9 +682,10 @@ function parseManifest(value: unknown): ParsedManifest {
     'modular-fantasy-hero:facial-hair:02'
   );
   if (seenRefs.size !== 56) fail('manifest must contain 56 unique style refs');
-  if (sourceAssets.length !== 120) {
+  const expectedSourceAssetCount = Object.keys(bodies).length * 2 + 112;
+  if (sourceAssets.length !== expectedSourceAssetCount) {
     fail(
-      'manifest must resolve 4 body, 4 fallback, 56 accessory, and 56 thumbnail files'
+      `manifest must resolve two body files per declared class plus 56 accessories and 56 thumbnails`
     );
   }
 
@@ -729,7 +736,7 @@ export function projectDwarfCustomizationManifest(
   return parseManifest(value).catalog;
 }
 
-const GENERATED_TYPES = `export type DwarfStarterClass = 'barbarian' | 'fighter' | 'monk' | 'rogue';
+const GENERATED_TYPES = `export type DwarfStarterClass = string;
 export type DwarfCustomizationSlot = 'scalp' | 'facial-hair';
 
 export interface DwarfStyleOption {
@@ -946,7 +953,7 @@ export function generateDwarfCustomizationCatalog({
   return {
     providerCommit,
     manifestSha256,
-    bodyCount: 4,
+    bodyCount: Object.keys(parsed.catalog.bodies).length,
     scalpCount: 38,
     facialHairCount: 18,
   };

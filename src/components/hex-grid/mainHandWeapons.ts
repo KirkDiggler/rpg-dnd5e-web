@@ -276,8 +276,28 @@ export function resolveMainHandPresentation(
 ): MainHandPresentationResolution {
   const ref = equipped.main_hand;
   if (!ref) return { code: 'unarmed' };
+  return resolveMainHandPresentationByRefKey(refKey(ref));
+}
 
-  const key = refKey(ref);
+/**
+ * The same projection, keyed by an already-formatted ref string.
+ *
+ * The sight seam sends a peer's observed hands as plain ref strings rather
+ * than `Ref` messages (`Seen.equipment`, rpg-toolkit#1615), and that string is
+ * already exactly the key this table is built on. Both entry points share one
+ * lookup so a peer and the local player can never resolve the same weapon
+ * differently.
+ *
+ * An empty string is a hand observed holding nothing — `unarmed`, the same
+ * answer an absent local ref gives. It is NOT the same as the caller having no
+ * observation at all, which never reaches this function: see
+ * `SightedMember.equipment`.
+ */
+export function resolveMainHandPresentationByRefKey(
+  key: string
+): MainHandPresentationResolution {
+  if (!key) return { code: 'unarmed' };
+
   const weapon = WEAPON_BY_REF.get(key);
   if (!weapon) return { code: 'unmapped-ref', ref: key };
 

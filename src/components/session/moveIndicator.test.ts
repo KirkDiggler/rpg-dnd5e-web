@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { buildAtlasPathIndex, findAtlasPath } from './atlasPath';
 import { affordableCellCount, selectMoveIndicator } from './moveIndicator';

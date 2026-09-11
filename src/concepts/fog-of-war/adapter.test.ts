@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Fog of War adapter (rpg-dnd5e-web#605).
  *

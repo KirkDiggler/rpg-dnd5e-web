@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * atlas tests — the geometry the new wire needs, checked without a browser.
  *

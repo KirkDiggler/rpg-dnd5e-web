@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { Scene3D } from '../../components/session/atlasToScene3D';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';

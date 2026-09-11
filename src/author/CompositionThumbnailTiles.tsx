@@ -4,14 +4,9 @@ import { compositionThumbnailKey } from '@/compositions/compositionThumbnailKey'
 import { CompositionThumbnailRenderer } from '@/compositions/CompositionThumbnailRenderer';
 import { refInitials } from '@/utils/refs';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import type { BoardTool, PaletteItem } from './types';
-
-interface ThumbnailResult {
-  status: 'ready' | 'error';
-  image?: string;
-  message?: string;
-}
+import { useSerialThumbnailQueue } from './useSerialThumbnailQueue';
 
 export interface CompositionThumbnailTilesProps {
   sourceWorldId: string;
@@ -68,50 +63,8 @@ export function CompositionThumbnailTiles({
     () => entries.filter((entry) => entry.status === 'ready'),
     [entries]
   );
-  const desiredKeys = useMemo(
-    () => new Set(supported.map((entry) => entry.key)),
-    [supported]
-  );
-  const desiredKeysRef = useRef(desiredKeys);
-  desiredKeysRef.current = desiredKeys;
-  const supportedRef = useRef(supported);
-  supportedRef.current = supported;
-  const [results, setResults] = useState<Record<string, ThumbnailResult>>({});
-
-  useEffect(() => {
-    setResults((current) =>
-      Object.fromEntries(
-        Object.entries(current).filter(([key]) => desiredKeys.has(key))
-      )
-    );
-  }, [desiredKeys]);
-
-  const active = supported.find((entry) => results[entry.key] === undefined);
-  const recordResult = useCallback((key: string, result: ThumbnailResult) => {
-    if (!desiredKeysRef.current.has(key)) return;
-    setResults((current) =>
-      current[key] === undefined ? { ...current, [key]: result } : current
-    );
-  }, []);
-  const recordComplete = useCallback(
-    (key: string, image: string) =>
-      recordResult(key, { status: 'ready', image }),
-    [recordResult]
-  );
-  const recordError = useCallback(
-    (key: string, message: string) =>
-      recordResult(key, { status: 'error', message }),
-    [recordResult]
-  );
-  const recordRootError = useCallback((message: string) => {
-    setResults((current) => {
-      const next = { ...current };
-      for (const entry of supportedRef.current) {
-        next[entry.key] ??= { status: 'error', message };
-      }
-      return next;
-    });
-  }, []);
+  const { active, results, recordComplete, recordError, recordRootError } =
+    useSerialThumbnailQueue(supported);
 
   return (
     <>

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import {
   ClockKind,
   LifeState,
@@ -55,11 +56,17 @@ describe('session combat generated-shape review fixtures', () => {
     });
   });
 
-  it('contains only authoritative roll/total/outcome facts with no bonus equation, target HP, or peer-private exact HP', () => {
+  it('uses roll-plus-modifier display arithmetic without target AC, target HP, or peer-private exact HP', () => {
     for (const fixture of SESSION_COMBAT_FIXTURES) {
       const serialized = JSON.stringify(fixture);
       expect(serialized, fixture.id).not.toMatch(/"bonus"|"hpAfter"/);
-      expect(serialized, fixture.id).not.toMatch(/\b\d+\s*\+\s*\d+\s*=\s*\d+/);
+      expect(
+        fixture.story.some((entry) => entry.detail === 'd20 9 + 4 = 13 · Miss'),
+        fixture.id
+      ).toBe(true);
+      expect(fixture.story.map((entry) => entry.detail).join(' ')).not.toMatch(
+        /against AC/
+      );
       expect(serialized, fixture.id).not.toMatch(
         /Skeleton (?:Guard|Archer).*\b\d+\/\d+\s*HP/i
       );

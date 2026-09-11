@@ -3,6 +3,7 @@ import {
   ActivatedSchema,
   ActivationResultSchema,
   ArrivedSchema,
+  AttackModifierSourceSchema,
   CapacityGrantedSchema,
   ConditionAppliedSchema,
   ConditionRemovedSchema,
@@ -14,6 +15,7 @@ import {
   EventSchema,
   FightEndedSchema,
   HealingAppliedSchema,
+  MoveImposedSchema,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
@@ -273,9 +275,10 @@ describe('typed combat Story', () => {
     const [entry] = buildCombatStory([visible(facts.event)], context);
 
     expect(entry?.detail).toBe(
-      'd20 15 · total 20 against AC 13 · Hit · ' +
+      'd20 15 + 5 = 20 · Hit · ' +
         'Greatsword rolled 2d6 [1 → 4, 5] + 3 Strength = 12 slashing damage'
     );
+    expect(entry?.detail).not.toContain('AC');
   });
 
   it('keeps legacy damage on its aggregate fallback without fabricating a trace', () => {
@@ -294,9 +297,7 @@ describe('typed combat Story', () => {
 
     const [entry] = buildCombatStory([visible(facts.event)], context);
 
-    expect(entry?.detail).toBe(
-      'd20 12 · total 17 against AC 13 · Hit · 12 slashing damage'
-    );
+    expect(entry?.detail).toBe('d20 12 + 5 = 17 · Hit · 12 slashing damage');
     expect(entry?.detail).not.toContain('2d6');
   });
 
@@ -324,9 +325,7 @@ describe('typed combat Story', () => {
 
     const [entry] = buildCombatStory([visible(facts.event)], context);
 
-    expect(entry?.detail).toBe(
-      'd20 12 · total 17 against AC 13 · Hit · 12 slashing damage'
-    );
+    expect(entry?.detail).toBe('d20 12 + 5 = 17 · Hit · 12 slashing damage');
     expect(entry?.detail).not.toContain('3 Strength = 12');
   });
 
@@ -341,9 +340,105 @@ describe('typed combat Story', () => {
     const outcome = buildCombatAttackOutcome(facts.event, context);
 
     expect(entry?.headline).toBe('Skeleton Guard evades Aldric');
-    expect(entry?.detail).toBe('d20 3 · total 8 against AC 13 · Miss');
+    expect(entry?.detail).toBe('d20 3 + 5 = 8 · Miss');
+    expect(entry?.detail).not.toContain('AC');
     expect(outcome).not.toHaveProperty('damage');
     expect(outcome?.hit).toBe(false);
+  });
+
+  it.each([
+    { roll: 15, total: 13, arithmetic: 'd20 15 − 2 = 13' },
+    { roll: 15, total: 15, arithmetic: 'd20 15 + 0 = 15' },
+  ])(
+    'shows the signed attack modifier in $arithmetic',
+    ({ roll, total, arithmetic }) => {
+      const facts = createAttackAuthorityFixture({ roll, total, damage: 12 });
+      const [entry] = buildCombatStory([visible(facts.event)], context);
+
+      expect(entry?.detail).toContain(arithmetic);
+      expect(entry?.detail).not.toContain('AC');
+    }
+  );
+
+  it('attributes a resolved advantage to its exact source, owner and target', () => {
+    const facts = createAttackAuthorityFixture({ damage: 12 });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.advantageSources = [
+      create(AttackModifierSourceSchema, {
+        sourceRef: 'dnd5e:conditions:true_strike',
+        sourceId: 'aldric',
+      }),
+      create(AttackModifierSourceSchema, {
+        sourceRef: 'dnd5e:conditions:helped',
+        sourceId: 'mira',
+      }),
+    ];
+    const namedContext = {
+      ...context,
+      memberNames: { ...context.memberNames, mira: 'Mira' },
+    };
+
+    const [entry] = buildCombatStory([visible(facts.event)], namedContext);
+    const outcome = buildCombatAttackOutcome(facts.event, namedContext);
+
+    expect(entry?.detail).toContain(
+      'Advantage: Your True Strike → Skeleton Guard; Helped · source Mira · Aldric → Skeleton Guard'
+    );
+    expect(outcome?.modifierSources).toEqual([
+      expect.objectContaining({
+        kind: 'advantage',
+        sourceRef: 'dnd5e:conditions:true_strike',
+        label: 'True Strike',
+        sourceMemberId: 'aldric',
+        sourceMemberName: 'Aldric',
+        attackerId: 'aldric',
+        targetId: 'skeleton-guard',
+        sourceIsViewer: true,
+      }),
+      expect.objectContaining({
+        kind: 'advantage',
+        label: 'Helped',
+        sourceMemberName: 'Mira',
+        sourceIsViewer: false,
+      }),
+    ]);
+  });
+
+  it('attributes resolved disadvantage to its exact source, owner and target', () => {
+    const facts = createAttackAuthorityFixture({ damage: 12 });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.disadvantageSources = [
+      create(AttackModifierSourceSchema, {
+        sourceRef: 'dnd5e:conditions:dodging',
+        sourceId: 'skeleton-guard',
+      }),
+    ];
+
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+    const outcome = buildCombatAttackOutcome(facts.event, context);
+
+    expect(entry?.detail).toContain(
+      'Disadvantage: Dodging · source Skeleton Guard · Aldric → Skeleton Guard'
+    );
+    expect(outcome?.modifierSources).toEqual([
+      expect.objectContaining({
+        kind: 'disadvantage',
+        sourceRef: 'dnd5e:conditions:dodging',
+        label: 'Dodging',
+        sourceMemberId: 'skeleton-guard',
+        sourceMemberName: 'Skeleton Guard',
+        attackerId: 'aldric',
+        targetId: 'skeleton-guard',
+        sourceIsViewer: false,
+      }),
+    ]);
+  });
+
+  it('keeps missing Missed attribution absent instead of inferring it', () => {
+    const facts = createAttackAuthorityFixture({ hit: false, damage: 0 });
+    const outcome = buildCombatAttackOutcome(facts.event, context);
+
+    expect(outcome?.modifierSources).toBeUndefined();
   });
 
   it('renders Activated and each healing result as ordered separate entries with applied HP and positive arithmetic', () => {
@@ -558,6 +653,64 @@ describe('typed combat Story', () => {
     expect(JSON.stringify(story)).not.toContain('provider-slug');
   });
 
+  it('tells the table how far a shove actually got and what stopped it', () => {
+    const shoved = (
+      seq: bigint,
+      target: string,
+      movedCells: number,
+      stoppedBy: string
+    ) =>
+      visible(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq,
+          kind: EventKind.ACTIVATION_RESULT,
+          body: {
+            case: 'activationResult',
+            value: create(ActivationResultSchema, {
+              actor: 'aldric',
+              result: {
+                case: 'moveImposed',
+                value: create(MoveImposedSchema, {
+                  target,
+                  movedCells,
+                  stoppedBy,
+                }),
+              },
+            }),
+          },
+        })
+      );
+
+    const story = buildCombatStory(
+      [
+        shoved(30n, 'skeleton-guard', 2, ''),
+        shoved(31n, 'skeleton-guard', 1, 'dnd5e:props:pillar'),
+        shoved(32n, 'skeleton-guard', 0, 'aldric'),
+      ],
+      context
+    );
+
+    // HOW FAR IT GOT, NOT HOW FAR IT WAS ASKED FOR. "The push was weak" and
+    // "the push was stopped" are different stories, and only the second one
+    // names something. A row that reported the rulebook's requested distance
+    // would narrate the wrong one every time something was in the way.
+    expect(story).toMatchObject([
+      {
+        headline: 'Skeleton Guard slides 2 cells',
+        detail: 'Pushed by Aldric.',
+      },
+      {
+        headline: 'Skeleton Guard slides 1 cell',
+        detail: 'Stopped by dnd5e:props:pillar.',
+      },
+      {
+        headline: 'Skeleton Guard is pushed but does not move',
+        detail: 'Stopped by Aldric.',
+      },
+    ]);
+  });
+
   it('omits a buffered actor event rather than falling back to payload prose', () => {
     const facts = createAttackAuthorityFixture();
     facts.event.payload = new TextEncoder().encode(
@@ -739,7 +892,7 @@ describe('the Story log on the hold-out beats (rpg-project#375 §5)', () => {
       context
     );
     expect(entry.eyebrow).toBe('Bardic Inspiration');
-    expect(entry.headline).toBe('Aldric rolled 9 for 13');
+    expect(entry.headline).toBe('Aldric rolled d20 9 + 4 = 13');
     expect(entry.tone).toBe('turn');
     // NO OUTCOME IS NARRATED. The swing has not landed and the beat that says
     // whether it did comes after the answer.
