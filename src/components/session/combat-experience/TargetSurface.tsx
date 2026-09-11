@@ -55,6 +55,13 @@ export function TargetSurface({
       declaration?.verb === Verb.ACTIVATE ||
       declaration?.verb === Verb.CAST) &&
     declaration.targetKind === TargetKind.MEMBER;
+  // A CAST THE CASTER AIMS PROMPTS TOO, and prompts for a place. It names no
+  // candidates, so none of the member machinery below applies to it — no
+  // highlighted ring, no list, no cardinality. What it needs is the one
+  // sentence telling the player the next click goes on the floor.
+  const isCellTargeted =
+    declaration?.verb === Verb.CAST &&
+    declaration.targetKind === TargetKind.CELL;
   const availableTargets =
     phase === 'targeting' && isMemberTargeted
       ? declaration.candidates
@@ -107,6 +114,13 @@ export function TargetSurface({
           {movementRemainingFeet !== undefined && (
             <span>{movementRemainingFeet} ft remaining</span>
           )}
+        </div>
+      )}
+      {phase === 'targeting' && isCellTargeted && (
+        <div className={styles.contextPrompt} data-phase="targeting">
+          <span className={styles.turnPromptKicker}>{armedName} armed</span>
+          <strong>Pick a cell to aim toward</strong>
+          {castCost && <span>{castCost}</span>}
         </div>
       )}
       {phase === 'targeting' && isMemberTargeted && (
