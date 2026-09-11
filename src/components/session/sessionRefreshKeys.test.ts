@@ -9,6 +9,7 @@ import {
   MovedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
+  SightedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -200,5 +201,38 @@ describe('the concentration break’s row (design rpg-project#407, R11)', () => 
       'characterData',
       'turn',
     ]);
+  });
+});
+
+describe('the sighting row (perception stream, slice 1)', () => {
+  const sighted = (gained: string[], lost: string[] = []) =>
+    create(EventSchema, {
+      kind: EventKind.SIGHTED,
+      body: { case: 'sighted', value: create(SightedSchema, { gained, lost }) },
+    });
+
+  it('refetches the scene and nothing else — nobody moved and nothing was spent', () => {
+    expect(refreshKeysFor(sighted(['goblin-2']), VIEWER)).toEqual(['view']);
+  });
+
+  it('reads the same whichever way perception went', () => {
+    // Somebody arriving and somebody leaving are one question to this
+    // client: what do I perceive now? Both answers come from GetView, so
+    // both rows are the same row.
+    expect(refreshKeysFor(sighted([], ['wolf-3']), VIEWER)).toEqual(['view']);
+    expect(refreshKeysFor(sighted(['orc-1'], ['wolf-3']), VIEWER)).toEqual([
+      'view',
+    ]);
+  });
+
+  it('does not pull the card, the turn or what is affordable', () => {
+    // The guard for the tempting "refresh everything, it is cheap" edit. A
+    // sighting spends no action, moves nobody and changes no sheet, so
+    // anything beyond `view` is work for a beat that changed none of it.
+    const keys = refreshKeysFor(sighted(['goblin-2'], ['wolf-3']), VIEWER);
+    expect(keys).not.toContain('characterData');
+    expect(keys).not.toContain('afford');
+    expect(keys).not.toContain('turn');
+    expect(keys).not.toContain('roster');
   });
 });
