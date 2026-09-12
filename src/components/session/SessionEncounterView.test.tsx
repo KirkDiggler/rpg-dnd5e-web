@@ -30,6 +30,9 @@ import {
   DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
+  FootprintOrigin,
+  FootprintSchema,
+  FootprintShape,
   GridKind,
   HexLayout,
   LifeState,
@@ -293,6 +296,11 @@ function cellCastDeclaration(id = 'v1.cast.thunderwave'): Declaration {
     spell: create(SpellRefSchema, {
       ref: 'dnd5e:spells:thunderwave',
       name: 'Thunderwave',
+    }),
+    footprint: create(FootprintSchema, {
+      shape: FootprintShape.BOX,
+      sizeFeet: 15,
+      origin: FootprintOrigin.CASTER_EDGE,
     }),
   });
 }
@@ -1198,6 +1206,27 @@ describe('SessionEncounterView production combat integration', () => {
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('threads only the armed CELL declaration footprint to the canvas and clears it on cancel or switch', async () => {
+    const cellCast = cellCastDeclaration();
+    readyTurn([cellCast, attackDeclaration(), endTurnDeclaration()]);
+    renderView();
+    const spell = await screen.findByRole('button', { name: /thunderwave/i });
+    const attack = screen.getByRole('button', { name: /longsword/i });
+
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    fireEvent.click(spell);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBe(
+      cellCast.footprint
+    );
+
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+
+    fireEvent.click(spell);
+    fireEvent.click(attack);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
   });
 
   it('map cancellation clears Move, Attack, and spell targeting without dispatching', async () => {

@@ -18,6 +18,7 @@ import {
   TargetKind,
   Verb,
   type Declaration,
+  type Footprint,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -133,6 +134,8 @@ export interface UseSessionCombatExperienceResult {
   /** Whether a floor click belongs to an armed cast rather than to walking.
    * The one fact the map's single ground-click seam routes on. */
   cellCastArmed: boolean;
+  /** Provider-authored presentation data from that exact armed CELL cast. */
+  cellCastFootprint?: Footprint;
   /** Combat movement preview/intent is available only after explicit Move. */
   movementEnabled: boolean;
   /** Clear a selected action locally; also bound to Escape. */
@@ -1495,17 +1498,19 @@ export function useSessionCombatExperience({
    * where the armed offer and the declarations already live, rather than
    * reconstructed by a caller that would have to learn what a target kind is.
    */
-  const cellCastArmed = useMemo(() => {
-    if (presentationState.armedDeclarationId === null) return false;
+  const armedCellCast = useMemo(() => {
+    if (presentationState.armedDeclarationId === null) return undefined;
     const armed = declarations.filter(
       (declaration) => declaration.id === presentationState.armedDeclarationId
     );
-    return (
-      armed.length === 1 &&
+    return armed.length === 1 &&
       armed[0]!.verb === Verb.CAST &&
       armed[0]!.targetKind === TargetKind.CELL
-    );
+      ? armed[0]
+      : undefined;
   }, [declarations, presentationState.armedDeclarationId]);
+  const cellCastArmed = armedCellCast !== undefined;
+  const cellCastFootprint = armedCellCast?.footprint;
 
   const movementEnabled = useMemo(() => {
     if (
@@ -1821,6 +1826,7 @@ export function useSessionCombatExperience({
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
+      cellCastFootprint,
       movementEnabled,
       onCancelSelection,
       onEndTurn,
@@ -1835,6 +1841,7 @@ export function useSessionCombatExperience({
     [
       acceptStreamEvent,
       cellCastArmed,
+      cellCastFootprint,
       invalidateAuthority,
       movementEnabled,
       onCancelSelection,

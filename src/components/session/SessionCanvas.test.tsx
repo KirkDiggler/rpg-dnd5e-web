@@ -15,8 +15,13 @@ import {
   StyleSelectionSchema,
   type HairCustomization,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
-import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  Footprint,
+  PublicMemberInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  FootprintOrigin,
+  FootprintShape,
   MemberKind,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -2383,6 +2388,43 @@ describe('SessionScene', () => {
           ) < 0.001
       ) as Array<{ instance: THREE.Mesh }>;
     }
+
+    it('uses the existing effective hover to aim a provider box and clears it for self-cell aim', async () => {
+      const areaFootprint: Footprint = {
+        $typeName: 'dnd5e.api.session.v1alpha1.Footprint',
+        shape: FootprintShape.BOX,
+        sizeFeet: 15,
+        origin: FootprintOrigin.CASTER_EDGE,
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          movementPreviewEnabled={false}
+          areaFootprint={areaFootprint}
+        />
+      );
+
+      expect(
+        renderer.scene.findAllByProps({ name: 'area-footprint-preview' })
+      ).toHaveLength(0);
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const preview = renderer.scene.findByProps({
+        name: 'area-footprint-preview',
+      });
+      expect(preview.instance.position.x).toBeCloseTo(2 * Math.sqrt(3));
+      expect(preview.instance.position.z).toBeCloseTo(0);
+
+      await hoverAt(renderer, { x: 0, y: 0, z: 0 });
+      expect(
+        renderer.scene.findAllByProps({ name: 'area-footprint-preview' })
+      ).toHaveLength(0);
+    });
 
     it('nothing is drawn before any hover', async () => {
       const renderer = await ReactThreeTestRenderer.create(

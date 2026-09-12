@@ -1742,6 +1742,9 @@ function SessionEncounterScope({
                     (experienceClock === ClockKind.TURN &&
                       combat.movementEnabled)
                   }
+                  areaFootprint={
+                    runEnded === null ? combat.cellCastFootprint : undefined
+                  }
                   turnLocked={turnLocked}
                   movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
                   presentationLayer={localWorldDieLayer}

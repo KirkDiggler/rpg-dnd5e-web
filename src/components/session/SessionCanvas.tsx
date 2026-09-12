@@ -53,6 +53,7 @@ import { refId } from '@/utils/refs';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
+  Footprint,
   PublicMemberInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -75,6 +76,7 @@ import { resolveOffHandPresentationByRefKey } from '../hex-grid/offHandEquipment
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
+import { AreaFootprintPreview } from './AreaFootprintPreview';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
@@ -253,6 +255,9 @@ export interface SessionCanvasProps {
    * Combat passes true only after the player explicitly selects Move; callers
    * that omit it retain the exploration/default canvas behavior. */
   movementPreviewEnabled?: boolean;
+  /** Provider-authored outline for the exact armed CELL cast. Placement uses
+   * the existing effective floor/entity hover and never derives coverage. */
+  areaFootprint?: Footprint;
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -300,6 +305,7 @@ export function SessionScene({
   reactionMover,
   pathIndex = null,
   movementPreviewEnabled = true,
+  areaFootprint,
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -612,6 +618,12 @@ export function SessionScene({
       </mesh>
       <LocalWorldDieWarmup />
       {presentationLayer}
+      <AreaFootprintPreview
+        footprint={areaFootprint}
+        caster={myPosition}
+        aimed={effectiveHoveredHex}
+        hexSize={hexSize}
+      />
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}
