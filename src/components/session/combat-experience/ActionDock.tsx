@@ -643,29 +643,48 @@ export function ActionDock({
 
   return (
     <div className={styles.actionRow}>
-      <div className={styles.actionGroupWithDivider}>
-        <div className={styles.actionGroup}>
-          <span className={styles.groupLabel}>Actions</span>
-          {executableDeclarations.map((declaration, index) => (
-            <ActionDeclaration
-              key={`${declaration.id}:${index}`}
-              declaration={declaration}
-              armed={armedDeclarationId === declaration.id}
-              authorityFresh={authorityFresh}
-              index={index}
-              onSelect={onSelectDeclaration}
-            />
-          ))}
-        </div>
-      </div>
-      {optionDeclaration && onSelectCastOption && (
+      {/* THE QUESTION TAKES THE PLACE OF THE OFFERS, it does not queue behind
+          them. Drawn as one more group in this row, the menu landed past the
+          right edge: `.actionRow` is a nowrap flex line inside a dock fixed at
+          174px, the Actions group alone measured 1250px wide, and the four
+          option buttons started at x=1272 — clipped at 1600px and entirely
+          offscreen at 1280 and below. Kirk's walk read that as the row
+          deselecting and nothing appearing, which is exactly what it looked
+          like (2026-09-12).
+
+          NOT A CLAIM THAT NOTHING ELSE IS DECLARABLE. The reaction window
+          replaces the dock because every other verb really is refused while it
+          is open; this replaces it only because the question and the offers
+          cannot both fit, and every one of those offers is still perfectly
+          castable — which is why Cancel is part of the menu rather than an
+          afterthought. One click back and the rows return. */}
+      {optionDeclaration && onSelectCastOption ? (
         <CastOptionGroup
           declaration={optionDeclaration}
           authorityFresh={authorityFresh}
           onSelectOption={onSelectCastOption}
           onCancel={onCancelCastOption}
         />
+      ) : (
+        <div className={styles.actionGroupWithDivider}>
+          <div className={styles.actionGroup}>
+            <span className={styles.groupLabel}>Actions</span>
+            {executableDeclarations.map((declaration, index) => (
+              <ActionDeclaration
+                key={`${declaration.id}:${index}`}
+                declaration={declaration}
+                armed={armedDeclarationId === declaration.id}
+                authorityFresh={authorityFresh}
+                index={index}
+                onSelect={onSelectDeclaration}
+              />
+            ))}
+          </div>
+        </div>
       )}
+      {/* The Explore verbs stay. They are drawn in every clock state and are
+          nothing to do with the cast; the menu plus this group measures well
+          under the row even at 1024. */}
       {standing}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">

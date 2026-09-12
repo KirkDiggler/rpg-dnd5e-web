@@ -780,6 +780,36 @@ describe('a cast that lists options asks for one before sending', () => {
     expect(hoisted.castFn).not.toHaveBeenCalled();
   });
 
+  it('puts the menu where the action rows were, not beside them', () => {
+    render(
+      <CommandHarness
+        declarations={[commandDeclaration(), mockeryDeclaration()]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+
+    // THE BUG THIS PINS, from Kirk's walk 2026-09-12: drawn as one more group
+    // beside the rows, the menu landed past the right edge of a nowrap dock
+    // line that the action rows had already filled — clipped at 1600px wide
+    // and entirely offscreen at 1280 and below. The player saw their previous
+    // row deselect and nothing appear. jsdom has no layout, so what is
+    // asserted is the arrangement that makes the overflow impossible: while
+    // the question is open it OCCUPIES the row rather than queueing after it.
+    expect(screen.getByTestId('cast-options')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^Vicious Mockery/ })
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Command/ })).toBeNull();
+
+    // And the rows come straight back, because none of them was ever refused.
+    fireEvent.click(screen.getByTestId('cast-option-cancel'));
+    expect(
+      screen.getByRole('button', { name: /^Vicious Mockery/ })
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Command/ })).toBeTruthy();
+  });
+
   it('arms on the chosen word and sends its id with the target', async () => {
     render(<CommandHarness declarations={[commandDeclaration()]} />);
 
