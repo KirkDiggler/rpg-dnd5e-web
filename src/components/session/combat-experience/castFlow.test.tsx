@@ -14,6 +14,7 @@
  */
 import { create } from '@bufbuild/protobuf';
 import {
+  CastOptionSchema,
   ClockKind,
   CostComponentSchema,
   Currency,
@@ -29,7 +30,7 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionDock } from './ActionDock';
 import { selectCombatExperience } from './selection';
@@ -655,5 +656,256 @@ describe('a cast that aims at a cell', () => {
     expect(screen.getByText('Thunderwave armed')).toBeTruthy();
     expect(screen.getByText('Pick a cell to aim toward')).toBeTruthy();
     expect(screen.queryByText('Choose a target')).toBeNull();
+  });
+});
+
+/**
+ * A CAST-TIME CHOICE, AND THE FIRST SPELL TO HAVE ONE.
+ *
+ * Command speaks one of three words and is ONE declaration with one selector,
+ * not three rows — the declaration carries the menu and the request carries the
+ * answer, exactly as Thunderwave's declaration says a cell is needed and the
+ * request brings one (design ideas/spells/command/design.md §3). Everything
+ * here is "draw what was sent": the ids are echoed, the labels are drawn, and
+ * nothing in this client knows what any of the three words does.
+ */
+function commandDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.cast.command',
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    minTargets: 1,
+    maxTargets: 1,
+    candidates: [
+      create(TargetCandidateSchema, { member: 'skeleton-1', available: true }),
+    ],
+    cost: [
+      create(CostComponentSchema, {
+        currency: Currency.CHARGES,
+        needed: 1,
+        label: 'Level 1 spell slot',
+      }),
+    ],
+    options: [
+      create(CastOptionSchema, { id: 'approach', label: 'Approach' }),
+      create(CastOptionSchema, { id: 'flee', label: 'Flee' }),
+      create(CastOptionSchema, { id: 'grovel', label: 'Grovel' }),
+    ],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:command',
+      name: 'Command',
+    }),
+  });
+}
+
+/**
+ * The hook driving a real dock, so the menu is CLICKED rather than called.
+ *
+ * The picker lives in the dock and its state lives in the hook, and the bug
+ * this shape catches is one that only shows up across that seam: a menu the
+ * hook opens but the dock never draws is a cast the player cannot finish, and
+ * calling `onSelectCastOption` directly would pass with nothing rendered at
+ * all.
+ */
+function CommandHarness({
+  declarations,
+}: {
+  declarations: readonly Declaration[];
+}) {
+  const combat = useSessionCombatExperience({
+    session: 'crypt-run',
+    member: 'bard-1',
+    clock: ClockKind.TURN,
+    active: 'bard-1',
+    authorityFresh: true,
+    memberNames: new Map([
+      ['bard-1', 'Lyric'],
+      ['skeleton-1', 'Skeleton'],
+    ]),
+    participants: [bard, skeleton],
+    declarations,
+    invalidateAuthoritySnapshots: () => {},
+    scheduleRefresh: () => {},
+  });
+  latest = combat;
+  return (
+    <>
+      <span data-testid="armed">
+        {combat.presentationState.armedDeclarationId ?? 'none'}
+      </span>
+      <ActionDock
+        clock={ClockKind.TURN}
+        viewerMember="bard-1"
+        participants={[bard, skeleton]}
+        declarations={declarations}
+        armedDeclarationId={
+          combat.presentationState.armedDeclarationId ?? undefined
+        }
+        authorityFresh
+        rollWindow={null}
+        onSelectDeclaration={combat.onSelectDeclaration}
+        optionDeclarationId={
+          combat.presentationState.optionDeclarationId ?? undefined
+        }
+        onSelectCastOption={combat.onSelectCastOption}
+        onCancelCastOption={combat.onCancelCastOption}
+        onEndTurn={combat.onEndTurn}
+      />
+    </>
+  );
+}
+
+describe('a cast that lists options asks for one before sending', () => {
+  beforeEach(() => {
+    hoisted.castFn.mockReset();
+    hoisted.castFn.mockResolvedValue({ caught: [] });
+  });
+
+  it('draws one button per option the server sent, labelled as the server labelled it', () => {
+    render(<CommandHarness declarations={[commandDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+
+    // THE MENU THAT WAS SENT, AND ONLY IT. No grouping, no submenus, and no
+    // id-to-name table: a client that turned `grovel` into "Grovel" itself
+    // would be authoring the spell's vocabulary.
+    expect(screen.getByTestId('cast-options')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approach' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Flee' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Grovel' })).toBeTruthy();
+    // Nothing is armed and nothing is sent while the question is open.
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('arms on the chosen word and sends its id with the target', async () => {
+    render(<CommandHarness declarations={[commandDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Flee' }));
+
+    // The word answered, the creature still to pick: a MEMBER cast arms after
+    // the menu exactly as one with no menu arms on the row click.
+    expect(screen.getByTestId('armed').textContent).toBe(
+      'selector.cast.command'
+    );
+    expect(screen.queryByTestId('cast-options')).toBeNull();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latest.onTargetClick('skeleton-1');
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'crypt-run',
+      member: 'bard-1',
+      declarationId: 'selector.cast.command',
+      target: '',
+      targets: ['skeleton-1'],
+      // ECHOED VERBATIM. The id is the server's and means nothing here.
+      option: 'flee',
+    });
+  });
+
+  it('sends nothing when the menu is cancelled after a word was read', async () => {
+    render(<CommandHarness declarations={[commandDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+    expect(screen.getByRole('button', { name: 'Grovel' })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('cast-option-cancel'));
+      await Promise.resolve();
+    });
+
+    // THE WHOLE POINT OF ASKING FIRST. Nothing has gone out, so backing out is
+    // free — and it has to be reachable, or a player who opened the menu by
+    // mistake can only leave it by casting something they did not mean.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('cast-options')).toBeNull();
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+
+  it('sends nothing for a word the current declaration does not list', async () => {
+    render(<CommandHarness declarations={[commandDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+    await act(async () => {
+      latest.onSelectCastOption('halt');
+      await Promise.resolve();
+    });
+
+    // FAIL CLOSED RATHER THAN LEARN BY REFUSAL. An id the declaration does not
+    // list is INVALID_ARGUMENT on the wire; the declaration already said which
+    // ids exist, so there is nothing to find out by sending it.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(screen.getByTestId('armed').textContent).toBe('none');
+  });
+
+  it('sends nothing when the word stops being offered between the pick and the click', async () => {
+    const { rerender } = render(
+      <CommandHarness declarations={[commandDeclaration()]} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Command/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Flee' }));
+    expect(screen.getByTestId('armed').textContent).toBe(
+      'selector.cast.command'
+    );
+
+    // Afford re-mints the row between the word and the creature, and the new
+    // menu no longer has the word in it.
+    const narrowed = commandDeclaration();
+    narrowed.options = narrowed.options.filter(
+      (option) => option.id !== 'flee'
+    );
+    rerender(<CommandHarness declarations={[narrowed]} />);
+
+    await act(async () => {
+      latest.onTargetClick('skeleton-1');
+      await Promise.resolve();
+    });
+
+    // THE WORD IS RE-READ AT SEND TIME, not trusted from the render that drew
+    // the menu — the same freshness rule the armed selector itself lives
+    // under. Without this the client sends a word the current declaration
+    // does not list and learns it was wrong from an INVALID_ARGUMENT.
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('leaves a cast with no options exactly as it was', async () => {
+    render(<CommandHarness declarations={[mockeryDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Vicious Mockery/ }));
+
+    // NO MENU, BECAUSE NONE WAS SENT. Zero options is not "the menu has not
+    // arrived"; it is a spell that asks for no word, and every cast that
+    // shipped before this one is that spell.
+    expect(screen.queryByTestId('cast-options')).toBeNull();
+    expect(screen.getByTestId('armed').textContent).toBe(
+      'selector.cast.mockery'
+    );
+
+    await act(async () => {
+      latest.onTargetClick('skeleton-1');
+      await Promise.resolve();
+    });
+
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    // No `option` on the request at all — the server refuses one on a
+    // declaration that lists none, exactly as it refuses a cell on a
+    // declaration that does not aim.
+    expect(hoisted.castFn.mock.calls[0]![0].option).toBeUndefined();
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'crypt-run',
+      member: 'bard-1',
+      declarationId: 'selector.cast.mockery',
+      target: '',
+      targets: ['skeleton-1'],
+    });
   });
 });

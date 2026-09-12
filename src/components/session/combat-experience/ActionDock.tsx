@@ -255,6 +255,17 @@ export interface ActionDockProps {
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /**
+   * The selector of the cast whose option menu is open, or undefined when none
+   * is. Held as an id rather than a declaration for the same reason
+   * `armedDeclarationId` is: the row is looked back up in the CURRENT
+   * declarations, so a menu whose offer has gone stops being drawn.
+   */
+  optionDeclarationId?: string;
+  /** Answer the open menu with one of the ids the declaration listed. */
+  onSelectCastOption?: (optionId: string) => void;
+  /** Close the menu without casting. */
+  onCancelCastOption?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
@@ -319,6 +330,74 @@ function StandingActionGroup({
   );
 }
 
+/**
+ * The menu a cast declared, drawn exactly as it was sent.
+ *
+ * ONE BUTTON PER OPTION THE SERVER LISTED, labelled with the label it
+ * authored. There is deliberately no id-to-name table and no grouping here:
+ * "Grovel" is no more derivable from `grovel` than "Vicious Mockery" is from
+ * its ref, and a client that assembled Command's vocabulary would be authoring
+ * 5e content — the same reason `castLabel` refuses to prettify a spell ref.
+ *
+ * THE REACTION WINDOW IS THE SHAPE THIS COPIES: a question posed in the dock
+ * with its answers beside it. What differs is where the answers come from —
+ * the window's two are implied by the verb, and these arrive on the wire.
+ *
+ * CANCEL IS AN ANSWER TOO. Nothing has been sent while this is open, so
+ * backing out has to be reachable without casting something the player did not
+ * mean; a menu whose only exit is picking a word is a trap.
+ */
+function CastOptionGroup({
+  declaration,
+  authorityFresh,
+  onSelectOption,
+  onCancel,
+}: {
+  declaration: Declaration;
+  authorityFresh: boolean;
+  onSelectOption: (optionId: string) => void;
+  onCancel?: () => void;
+}) {
+  return (
+    <div className={styles.actionGroup} data-testid="cast-options">
+      <span className={styles.groupLabel}>{castLabel(declaration)}</span>
+      {declaration.options.map((option, index) => (
+        <span className={styles.actionOfferSlot} key={`${option.id}:${index}`}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid={`cast-option-${option.id}`}
+            disabled={!authorityFresh}
+            onClick={() => onSelectOption(option.id)}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              {declarationIcon(declaration)}
+            </span>
+            <span className={styles.actionLabel}>{option.label}</span>
+          </button>
+        </span>
+      ))}
+      {onCancel && (
+        <span className={styles.actionOfferSlot}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid="cast-option-cancel"
+            onClick={onCancel}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              ✕
+            </span>
+            {/* NO COST BADGE. Backing out spends nothing, and a badge here
+                would price a refusal. */}
+            <span className={styles.actionLabel}>Cancel</span>
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
 // now that a verb can compile many offers. End Turn compiles exactly one, so
 // "more than one" there really is a producer defect. VERB_ACTIVATE routinely
@@ -345,6 +424,9 @@ export function ActionDock({
   rollWindow,
   rollWindowReady = true,
   onSelectDeclaration,
+  optionDeclarationId,
+  onSelectCastOption,
+  onCancelCastOption,
   onEndTurn,
   standingActions = [],
 }: ActionDockProps) {
@@ -543,6 +625,21 @@ export function ActionDock({
         isDeathSaveExecutableShape(declaration, 'display'))
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
+  // LOOKED BACK UP IN THE CURRENT DECLARATIONS, never held as the row that was
+  // clicked. A menu drawn from a captured declaration would go on offering a
+  // word after Afford withdrew the spell that had it — the same staleness the
+  // armed row is judged for one render later, and the reason this is an id.
+  const optionMatches = optionDeclarationId
+    ? executableDeclarations.filter(
+        (declaration) =>
+          declaration.id === optionDeclarationId &&
+          declaration.verb === Verb.CAST &&
+          declaration.available &&
+          declaration.options.length > 0
+      )
+    : [];
+  const optionDeclaration =
+    optionMatches.length === 1 ? optionMatches[0] : undefined;
 
   return (
     <div className={styles.actionRow}>
@@ -561,6 +658,14 @@ export function ActionDock({
           ))}
         </div>
       </div>
+      {optionDeclaration && onSelectCastOption && (
+        <CastOptionGroup
+          declaration={optionDeclaration}
+          authorityFresh={authorityFresh}
+          onSelectOption={onSelectCastOption}
+          onCancel={onCancelCastOption}
+        />
+      )}
       {standing}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">
