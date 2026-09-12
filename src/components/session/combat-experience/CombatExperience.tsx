@@ -164,6 +164,7 @@ export function CombatExperience({
   onSelectDeclaration,
   onSelectCastOption,
   onCancelCastOption,
+  onCancelSelection,
   onTargetClick,
   onConfirmTargets,
   onEndTurn,
@@ -548,6 +549,7 @@ export function CombatExperience({
             }
             onSelectCastOption={onSelectCastOption}
             onCancelCastOption={onCancelCastOption}
+            onCancelSelection={onCancelSelection}
             onEndTurn={onEndTurn}
             standingActions={standingActions}
           />

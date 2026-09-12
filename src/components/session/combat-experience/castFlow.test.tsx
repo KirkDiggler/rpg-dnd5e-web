@@ -485,8 +485,8 @@ describe('a declaration that fires on the click clears whatever was armed', () =
     // THE BUG THIS PINS: the immediate path used to call runCast without
     // clearing the interaction, so the spell went out on the wire while the
     // panel still showed Vicious Mockery selected and the target surface still
-    // open. Move and Death Save always cleared; the cast and activate paths
-    // did not, and nothing the player could see said which action had gone.
+    // open. Immediate declarations must replace any prior selected action,
+    // including the persistent Move mode.
     expect(screen.getByTestId('armed').textContent).toBe('none');
   });
 });

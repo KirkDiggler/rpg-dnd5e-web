@@ -8,9 +8,11 @@
  * the focus target, because the policy data being right is worth nothing if
  * the effect ignores it.
  */
+import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { useEffect } from 'react';
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseCameraDials } from './cameraDials';
 import { useCameraControls } from './useCameraControls';
 
@@ -19,10 +21,15 @@ const dials = parseCameraDials('');
 function Probe({
   target,
   focusTarget,
+  onQuickRightClick,
+  onCanvas,
 }: {
   target: THREE.Vector3;
   focusTarget: THREE.Vector3;
+  onQuickRightClick?: () => void;
+  onCanvas?: (canvas: HTMLCanvasElement) => void;
 }) {
+  const { gl } = useThree();
   useCameraControls({
     target,
     focusTarget,
@@ -32,7 +39,11 @@ function Probe({
     perspective: false,
     minDistance: dials.minDistance,
     maxDistance: dials.maxDistance,
+    onQuickRightClick,
   });
+  useEffect(() => {
+    onCanvas?.(gl.domElement);
+  }, [gl.domElement, onCanvas]);
   return null;
 }
 
@@ -55,6 +66,91 @@ async function targetDriftAfterMove(zoom: number): Promise<number> {
 
   return target.distanceTo(before);
 }
+
+describe('right mouse gesture', () => {
+  async function mountGesture(onQuickRightClick: () => void) {
+    let canvas: HTMLCanvasElement | undefined;
+    const target = new THREE.Vector3(0, 0, 0);
+    const renderer = await ReactThreeTestRenderer.create(
+      <Probe
+        target={target}
+        focusTarget={new THREE.Vector3(0, 0, 0)}
+        onQuickRightClick={onQuickRightClick}
+        onCanvas={(element) => {
+          canvas = element;
+        }}
+      />,
+      { orthographic: true }
+    );
+    if (!canvas) throw new Error('camera canvas was not captured');
+    return { canvas, renderer, target };
+  }
+
+  it('reports a quick right click', async () => {
+    const cancel = vi.fn();
+    const { canvas } = await mountGesture(cancel);
+
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
+    canvas.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 43, clientY: 64 })
+    );
+    const menu = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(menu);
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(menu.defaultPrevented).toBe(true);
+
+    // The camera listens on its own map canvas, not on global UI surfaces.
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
+    );
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('pans without cancelling after an out-and-back right drag', async () => {
+    const cancel = vi.fn();
+    const { canvas, target } = await mountGesture(cancel);
+
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 50, clientY: 60 })
+    );
+    expect(target.length()).toBeGreaterThan(0);
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 40, clientY: 60 })
+    );
+    canvas.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
+    );
+
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('removes quick-right-click listeners on cleanup', async () => {
+    const cancel = vi.fn();
+    const { canvas, renderer } = await mountGesture(cancel);
+    await renderer.unmount();
+
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
+    canvas.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
+    );
+
+    expect(cancel).not.toHaveBeenCalled();
+  });
+});
 
 describe('auto-centre respects the camera band', () => {
   it('stays put in the tactical band', async () => {

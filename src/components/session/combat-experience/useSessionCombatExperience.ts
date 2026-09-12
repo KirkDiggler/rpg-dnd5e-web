@@ -49,6 +49,7 @@ import { useCombatStoryPacing } from './useCombatStoryPacing';
 const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   armedDeclarationId: null,
   selectedCandidateMember: null,
+  movementSelected: false,
   selectedCandidateMembers: Object.freeze([]),
   optionDeclarationId: null,
   selectedOption: null,
@@ -132,6 +133,10 @@ export interface UseSessionCombatExperienceResult {
   /** Whether a floor click belongs to an armed cast rather than to walking.
    * The one fact the map's single ground-click seam routes on. */
   cellCastArmed: boolean;
+  /** Combat movement preview/intent is available only after explicit Move. */
+  movementEnabled: boolean;
+  /** Clear a selected action locally; also bound to Escape. */
+  onCancelSelection: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
@@ -278,6 +283,12 @@ export function useSessionCombatExperience({
   const declarationsRef = useRef(declarations);
   const staleRecoveryRef = useRef<StaleRecovery | null>(null);
   const authorityRef = useRef({ clock, active, fresh: authorityFresh });
+  // WORLD movement is already the active interaction. Remember that concrete
+  // clock across the transient UNSPECIFIED synchronization bubble so entering
+  // combat can carry the intent exactly once instead of looking like a fresh
+  // turn default.
+  const previousConcreteClockRef = useRef(clock);
+  const carryWorldMovementRef = useRef(clock === ClockKind.WORLD);
   declarationsRef.current = declarations;
   authorityRef.current = { clock, active, fresh: authorityFresh };
 
@@ -288,6 +299,28 @@ export function useSessionCombatExperience({
       mountedRef.current = false;
     };
   }, []);
+
+  const onCancelSelection = useCallback(() => {
+    // A deliberate cancellation also consumes any not-yet-materialized WORLD
+    // carry. A later routine TURN refresh must not silently bring Move back.
+    carryWorldMovementRef.current = false;
+    setInteraction(EMPTY_INTERACTION);
+    setTargeting(false);
+  }, []);
+
+  const selectionIsCancellable =
+    interaction.movementSelected === true ||
+    targeting ||
+    interaction.optionDeclarationId != null;
+  useEffect(() => {
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectionIsCancellable) {
+        onCancelSelection();
+      }
+    };
+    window.addEventListener('keydown', cancelOnEscape);
+    return () => window.removeEventListener('keydown', cancelOnEscape);
+  }, [onCancelSelection, selectionIsCancellable]);
 
   const presentationMemberNames = useMemo(
     () => Object.fromEntries(memberNames ?? []),
@@ -362,7 +395,9 @@ export function useSessionCombatExperience({
             changedOptionNotice:
               current.changedOptionNotice ?? staleDeclarationMessage(),
           }
-        : EMPTY_INTERACTION
+        : current.movementSelected
+          ? current
+          : EMPTY_INTERACTION
     );
     setTargeting(false);
   }, [invalidateAuthoritySnapshots]);
@@ -397,6 +432,44 @@ export function useSessionCombatExperience({
     });
   }, [authorityFresh, declarations]);
 
+  useEffect(() => {
+    if (clock === ClockKind.WORLD) {
+      if (previousConcreteClockRef.current !== ClockKind.WORLD) {
+        carryWorldMovementRef.current = true;
+      }
+      previousConcreteClockRef.current = ClockKind.WORLD;
+      return;
+    }
+    // Keep WORLD as the last concrete state while Turn/Afford disagree during
+    // the fight-start bubble. UNSPECIFIED is synchronization, not a new mode.
+    if (clock !== ClockKind.TURN) return;
+
+    previousConcreteClockRef.current = ClockKind.TURN;
+    if (!authorityFresh || !carryWorldMovementRef.current) return;
+    carryWorldMovementRef.current = false;
+    // Never overwrite an action the player managed to choose while snapshots
+    // settled. That choice supersedes free-roam movement.
+    if (
+      interaction.armedDeclarationId !== null ||
+      interaction.optionDeclarationId != null
+    ) {
+      return;
+    }
+    const moves = declarations.filter(
+      (declaration) =>
+        declaration.verb === Verb.MOVE &&
+        declaration.targetKind === TargetKind.PATH &&
+        declaration.id.length > 0
+    );
+    if (moves.length !== 1) return;
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      armedDeclarationId: moves[0]!.id,
+      movementSelected: true,
+    });
+    setTargeting(false);
+  }, [authorityFresh, clock, declarations, interaction]);
+
   // A selector is only fenced for the authoritative generation in which it
   // was attempted. Stale/loading snapshots retain the fence because their
   // last-good declarations cannot prove that generation advanced. A fresh
@@ -419,6 +492,42 @@ export function useSessionCombatExperience({
   }, [authorityFresh, declarations]);
 
   const { armedIsCurrent, presentationState } = useMemo(() => {
+    if (interaction.movementSelected) {
+      // Movement is a chosen interaction mode, not ownership of one snapshot's
+      // selector. Keep it selected while routine Turn/Afford refreshes are in
+      // flight, then bind it to the refreshed Move declaration. This preserves
+      // the player's choice after a walk without making stale authority
+      // executable or automatically selecting Move on a later turn.
+      if (!authorityFresh) {
+        return { armedIsCurrent: true, presentationState: interaction };
+      }
+      const moveDeclarations = declarations.filter(
+        (declaration) =>
+          declaration.verb === Verb.MOVE &&
+          declaration.targetKind === TargetKind.PATH &&
+          declaration.id.length > 0
+      );
+      const availableMoves = moveDeclarations.filter(
+        (declaration) => declaration.available
+      );
+      const currentMove =
+        availableMoves.length === 1
+          ? availableMoves[0]
+          : availableMoves.length === 0 && moveDeclarations.length === 1
+            ? moveDeclarations[0]
+            : undefined;
+      const current = clock === ClockKind.TURN && currentMove !== undefined;
+      return {
+        armedIsCurrent: current,
+        presentationState: current
+          ? {
+              ...interaction,
+              armedDeclarationId: currentMove.id,
+            }
+          : EMPTY_INTERACTION,
+      };
+    }
+
     const armedMatches =
       interaction.armedDeclarationId === null
         ? []
@@ -470,11 +579,22 @@ export function useSessionCombatExperience({
   }, [active, authorityFresh, clock, declarations, interaction, member]);
 
   useEffect(() => {
-    if (interaction.armedDeclarationId !== null && !armedIsCurrent) {
+    const remappedMovement =
+      interaction.movementSelected &&
+      interaction.armedDeclarationId !== presentationState.armedDeclarationId;
+    if (
+      interaction.armedDeclarationId !== null &&
+      (!armedIsCurrent || remappedMovement)
+    ) {
       setInteraction(presentationState);
       setTargeting(false);
     }
-  }, [armedIsCurrent, interaction.armedDeclarationId, presentationState]);
+  }, [
+    armedIsCurrent,
+    interaction.armedDeclarationId,
+    interaction.movementSelected,
+    presentationState,
+  ]);
 
   const previousActiveRef = useRef<string | null>(null);
   useEffect(() => {
@@ -557,13 +677,10 @@ export function useSessionCombatExperience({
         return;
       }
       // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHATEVER WAS ARMED.
-      // Every branch that arms sets an interaction, and every branch that
-      // resolves immediately has to put it back — MOVE does at the PATH branch,
-      // DEATH_SAVE and REACT do at theirs. The cast and activate paths did not,
-      // so arming a creature-target row and then clicking one that fires
-      // straight away left the FIRST row armed and `targeting` true: the spell
-      // went out on the wire while the panel still showed the other one
-      // selected, and nothing the player could click looked wrong.
+      // Targeted actions replace the interaction with their own arm, while
+      // immediate actions have to empty it before sending. Otherwise a spell
+      // could go out on the wire while the panel still showed the previous
+      // Attack or Move selection.
       setInteraction(EMPTY_INTERACTION);
       setTargeting(false);
       runCastRef.current(candidate, option);
@@ -589,6 +706,9 @@ export function useSessionCombatExperience({
       ) {
         return;
       }
+      // Any explicit declaration supersedes a pending free-roam carry. This
+      // stays false across ordinary refreshed declarations.
+      carryWorldMovementRef.current = false;
 
       if (answeringWindow) {
         // UNSPECIFIED IS NOT A DEFAULT. The dock sends one of the two
@@ -728,7 +848,11 @@ export function useSessionCombatExperience({
           TargetKind.PATH
         );
         if (!current) return;
-        setInteraction(EMPTY_INTERACTION);
+        setInteraction({
+          ...EMPTY_INTERACTION,
+          armedDeclarationId: current.id,
+          movementSelected: true,
+        });
         setTargeting(false);
         return;
       }
@@ -758,13 +882,10 @@ export function useSessionCombatExperience({
           return;
         }
         // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHAT WAS ARMED.
-        // Every branch that arms sets an interaction, and every branch that
-        // resolves immediately has to put it back — MOVE does at the PATH
-        // branch above, DEATH_SAVE and REACT do at theirs. These two did not,
-        // so arming a creature-target row and then clicking one that fires
-        // straight away left the FIRST row armed and `targeting` true: the
-        // spell went out on the wire while the panel still showed the other
-        // one selected, and nothing the player could click looked wrong.
+        // Targeted actions replace the interaction with their own arm, while
+        // immediate actions have to empty it before sending. Otherwise an
+        // ability could resolve while Move or a target-taking action remained
+        // visibly selected.
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
         runActivateRef.current(candidate);
@@ -872,9 +993,8 @@ export function useSessionCombatExperience({
    * turn starts in rather than an undo of anything.
    */
   const onCancelCastOption = useCallback(() => {
-    setInteraction(EMPTY_INTERACTION);
-    setTargeting(false);
-  }, []);
+    onCancelSelection();
+  }, [onCancelSelection]);
 
   const onTargetClick = useCallback(
     (target: string) => {
@@ -1387,6 +1507,34 @@ export function useSessionCombatExperience({
     );
   }, [declarations, presentationState.armedDeclarationId]);
 
+  const movementEnabled = useMemo(() => {
+    if (
+      !presentationState.movementSelected ||
+      presentationState.armedDeclarationId === null ||
+      !authorityFresh ||
+      clock !== ClockKind.TURN ||
+      active !== member
+    ) {
+      return false;
+    }
+    const armed = declarations.filter(
+      (declaration) =>
+        declaration.id === presentationState.armedDeclarationId &&
+        declaration.verb === Verb.MOVE &&
+        declaration.targetKind === TargetKind.PATH &&
+        declaration.available
+    );
+    return armed.length === 1;
+  }, [
+    active,
+    authorityFresh,
+    clock,
+    declarations,
+    member,
+    presentationState.armedDeclarationId,
+    presentationState.movementSelected,
+  ]);
+
   // runCast is held in a ref for the same reason runActivate is: it and
   // onSelectDeclaration are mutually recursive through the dock's single
   // onSelect handler.
@@ -1520,6 +1668,10 @@ export function useSessionCombatExperience({
       );
       if (!current || endTurns.length !== 1) return;
 
+      // End Turn is another explicit action choice. Clear Move (or any target
+      // arm) before sending so completion or cancellation cannot reveal an old
+      // movement mode underneath it.
+      onCancelSelection();
       endTurnInFlightRef.current = true;
       void (async () => {
         try {
@@ -1556,6 +1708,7 @@ export function useSessionCombatExperience({
       endTurn,
       invalidateAuthority,
       member,
+      onCancelSelection,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
@@ -1668,6 +1821,8 @@ export function useSessionCombatExperience({
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
+      movementEnabled,
+      onCancelSelection,
       onEndTurn,
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
@@ -1681,6 +1836,8 @@ export function useSessionCombatExperience({
       acceptStreamEvent,
       cellCastArmed,
       invalidateAuthority,
+      movementEnabled,
+      onCancelSelection,
       logMode,
       onCancelCastOption,
       onCellClick,
