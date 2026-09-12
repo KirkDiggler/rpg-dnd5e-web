@@ -49,7 +49,24 @@ npm run assets:expose-provider-appearances -- \
 
 Apply fetches the receipt merge SHA only if needed, validates that fetched commit and the scoped #117 hash chain, creates a fresh detached private-provider worktree at that SHA without changing the source worktree's HEAD or dirty state, and verifies every owned hash there. It then creates the isolated numbered Web worktree from fresh `origin/dev`, installs with `npm ci --ignore-scripts`, explicitly runs the trusted repository Husky setup, verifies the configured pre-commit is executable, delegates exactly to `npm run assets:sync` with the pinned provider and update suppression, stages only the actual tracked `src/generated/characterCustomizationCatalog.ts` change, runs focused generator/resolver tests and the normal `ci-check`, then uses ordinary commit/push/PR operations against `dev`. The emitted Web receipt records all three provider receipt-chain hashes, the exact #117 overlay binding, the verified merged provider SHA and class/races, Web base/branch/head/PR readback, and normal generation/check results. Licensed GLB/BLEND/runtime bytes remain ignored and must never be staged.
 
-The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or legacy fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
+### Resume a controlled pre-commit state
+
+`--resume` accepts any otherwise-valid controlled state after the provider worktree is verified and ordinary `assets:sync` has left an unstaged generated catalog. It requires the expected issue-derived branch and worktree, the existing detached provider worktree at the receipt merge SHA, a clean provider, no Git operation/index lock, no Web commits ahead of the base, an unstaged dirty set containing only the generated catalog, and unchanged upstream catalog bytes. It does not require provenance identifying which earlier check stopped.
+
+First inspect the read-only resume plan with the same receipt, issue, worktree, and output inputs:
+
+```bash
+npm run assets:expose-provider-appearances -- \
+  --provider-receipt /path/to/merged-provider-receipt.json \
+  --web-issue "$WEB_ISSUE_NUMBER" \
+  --worktree-root "/path/to/rpg-dnd5e-web/.worktrees/${WEB_ISSUE_NUMBER}-bard-provider-exposure" \
+  --output /path/to/web-receipt.json \
+  --resume
+```
+
+After reviewing a ready plan, repeat that exact command with `--apply` appended. Mutation requires both flags: `--apply --resume`. Resume fetches current `dev`, stops if the old Web head is not its ancestor or if upstream changed the catalog, and otherwise fast-forwards without force/reset/stash. It generates a temporary catalog from the verified provider and compares the raw file buffers byte-for-byte with the preserved catalog before ordinary `assets:sync` can replace it. All focused tests, `ci-check`, exact staging, normal hooked commit, push, PR readback, and receipt gates rerun. A prior focused-test or CI failure does not make this state unsafe: a still-failing gate stops again before staging, commit, or PR, while a recovered gate continues normally. Rename/copy status records contribute both pathnames to every exact-path guard.
+
+The existing aggregate and outfit manifests declare class refs, profile bodies, profile-local or fallback paths, outfit identities, recolor masks, and clothing mesh allowlists. The existing generator checks those declarations agree across all eight profiles, verifies paths and SHA-256 values, and derives counts. Adding the next class is provider data only; it does not require another generator or a hand-maintained Web class enum.
 
 At runtime, a normal standing character prefers its race profile body and receives the existing `customizationProfileRef`. That activates the established hair/none, hair color, coat-primary, and trim-secondary controls. The old complete Bard mapping remains only a compatibility fallback until generated Bard profile data arrives. Downed Bards still skip profile customization and use the established visible `MediumHumanoid` fallback because no Bard downed URL is declared.
 
