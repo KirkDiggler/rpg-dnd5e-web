@@ -33,6 +33,20 @@ export interface CastParams {
    * area cast.
    */
   cell?: { x: number; y: number };
+  /**
+   * Which of the declaration's options this cast means — the word a Command
+   * speaks, echoed verbatim from `Declaration.options`.
+   *
+   * A CAST-TIME INPUT, THE WAY `cell` IS ONE. The declaration says a choice is
+   * needed and the request brings one; it is not a spell of its own and not a
+   * row of its own. Which ids exist is the server's list, and what a chosen id
+   * buys is the server's answer — this client only carries it back.
+   *
+   * Set only for a declaration that listed options. The server refuses an
+   * option on a declaration that lists none, exactly as it refuses a cell on a
+   * declaration that does not aim.
+   */
+  option?: string;
   /** Deprecated scalar retained only for callers still crossing the old seam. */
   target?: string;
 }
@@ -75,6 +89,11 @@ export function useSessionCast(): UseCastResult {
           target: '',
           targets: [...params.targets],
           cell: params.cell,
+          // LEFT UNSET RATHER THAN SENT EMPTY, the shape `cell` already keeps.
+          // An empty string on a declaration that lists no options is a value
+          // the server has to decide is harmless; absence says the same thing
+          // and cannot be misread.
+          option: params.option,
         });
       } catch (err) {
         const wrapped =
