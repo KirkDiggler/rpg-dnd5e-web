@@ -19,6 +19,25 @@ export interface CombatExperiencePresentationState {
   selectedCandidateMember: string | null;
   /** Ordered cast targets; absent on legacy fixtures and unrelated verbs. */
   selectedCandidateMembers?: readonly string[];
+  /**
+   * The cast whose option menu is open — the selector of a declaration that
+   * listed `options`, held while the player answers which of them they mean.
+   *
+   * A THIRD WAITING STATE, BESIDE ARMING AND TARGETING. Arming holds an offer
+   * waiting for a creature or a cell; this holds one waiting for a word, and
+   * the two are separate because a Command that names a creature needs both,
+   * in that order. Null whenever no menu is open, which is every cast that
+   * offers no choice.
+   */
+  optionDeclarationId?: string | null;
+  /**
+   * The option id the player picked, echoed verbatim on the cast request.
+   *
+   * OPAQUE, AND NEVER READ FOR A RULE. It is one of the ids the declaration
+   * listed; what the word does is the engine's answer, and a client that
+   * branched on it would be authoring 5e.
+   */
+  selectedOption?: string | null;
   changedOptionNotice: string | null;
 }
 
@@ -178,6 +197,16 @@ interface CombatExperienceBaseProps {
    * reaction window, which the verb implies rather than the server offering
    * it as a candidate. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /**
+   * Answer the open option menu with one of the ids the declaration listed.
+   *
+   * THE MENU IS DRAWN, NEVER ASSEMBLED. `Declaration.options` carries both the
+   * ids and the labels; this hands one id back and the cast goes on from
+   * wherever it would have gone had there been no menu at all.
+   */
+  onSelectCastOption?: (optionId: string) => void;
+  /** Close the option menu without casting. Nothing has been sent yet. */
+  onCancelCastOption?: () => void;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;

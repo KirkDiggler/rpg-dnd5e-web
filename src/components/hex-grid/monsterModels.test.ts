@@ -2,6 +2,7 @@
 import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { describe, expect, it } from 'vitest';
 import {
+  monsterHidesWhenDowned,
   pickStableCandidateIndex,
   resolveMonsterModelUrl,
 } from './monsterModels';
@@ -260,5 +261,59 @@ describe('pickStableCandidateIndex', () => {
         expect(idx).toBeLessThan(count);
       }
     }
+  });
+});
+
+describe('animated armor — mapped, and standing-only', () => {
+  it('resolves the open-helm GLB while standing', () => {
+    expect(
+      resolveMonsterModelUrl('animated-armor', undefined, false, 'armor-1')
+    ).toBe('/models/synty/npcs/animated-armor-open-helm.glb');
+  });
+
+  it('resolves NO url once downed -- never derives a -downed.glb that 404s', () => {
+    expect(
+      resolveMonsterModelUrl('animated-armor', undefined, true, 'armor-1')
+    ).toBeUndefined();
+    // Specifically not the suffix-derived url every other ref would get.
+    expect(
+      resolveMonsterModelUrl('animated-armor', undefined, true, 'armor-1')
+    ).not.toBe('/models/synty/npcs/animated-armor-open-helm-downed.glb');
+  });
+
+  it('reports that it hides when downed, so an undefined url is read as "draw nothing"', () => {
+    expect(monsterHidesWhenDowned('animated-armor', undefined)).toBe(true);
+  });
+
+  // The distinction the whole mechanism rests on: three refs all resolve to
+  // undefined when downed, for three different reasons, and only one of them
+  // should render nothing. Without monsterHidesWhenDowned, HexEntity cannot
+  // tell them apart and an unmapped monster would silently vanish instead of
+  // showing its placeholder.
+  it('does not claim hidden for refs that merely lack a mapping', () => {
+    expect(monsterHidesWhenDowned('ghost', undefined)).toBe(false);
+    expect(monsterHidesWhenDowned(undefined, undefined)).toBe(false);
+    expect(monsterHidesWhenDowned('', undefined)).toBe(false);
+  });
+
+  it('does not claim hidden for refs that DO ship a downed sibling', () => {
+    for (const ref of ['skeleton', 'skeleton-captain', 'zombie']) {
+      expect(monsterHidesWhenDowned(ref, undefined)).toBe(false);
+      expect(resolveMonsterModelUrl(ref, undefined, true, 'entity-1')).toMatch(
+        /-downed\.glb$/
+      );
+    }
+  });
+
+  it('has no v1alpha1 MonsterType enum value -- the ref-id path is the only way in', () => {
+    // The sealed enum predates constructs entirely; nothing maps to
+    // 'animated-armor', so an enum-only caller resolves nothing. Documents
+    // why no enum entry was added rather than leaving it looking forgotten.
+    const viaEnumOnly = Object.values(MonsterType)
+      .filter((v): v is MonsterType => typeof v === 'number')
+      .map((t) => resolveMonsterModelUrl(undefined, t, false, 'armor-1'));
+    expect(viaEnumOnly).not.toContain(
+      '/models/synty/npcs/animated-armor-open-helm.glb'
+    );
   });
 });

@@ -125,7 +125,43 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // dungeonspec `place:` line carries a ref, not an appearance. Letting the
   // builder choose a look is a real design slice, not a second array entry.
   zombie: ['zombie-peasant-female.glb'],
+  // rpg-game-assets#172, a human-authored open-helmet suit. Standing-only:
+  // no `-downed.glb` sibling exists and none was requested — see
+  // MONSTER_REFS_HIDDEN_WHEN_DOWNED below.
+  'animated-armor': ['animated-armor-open-helm.glb'],
 };
+
+/**
+ * Refs whose model VANISHES when the entity drops, instead of swapping to a
+ * `-downed.glb`.
+ *
+ * `animated-armor` is the first ref promoted standing-only, which is exactly
+ * the case the TODO on `withDownedSuffix` predicted: every other mapped ref
+ * ships a downed sibling, so deriving one by suffix was safe until now. Left
+ * alone, a dying animated armor would request a 404 and HexEntity's
+ * ErrorBoundary would degrade it all the way to a generic MediumHumanoid —
+ * losing the monster's identity entirely, which is worse than showing
+ * nothing (rpg-dnd5e-web#595).
+ *
+ * Hiding is the deliberate answer, not a workaround for the missing asset.
+ * rpg-game-assets asked for it explicitly when publishing the appearance
+ * ("Requested disappearance when downed requires explicit consumer
+ * handling"), and Kirk confirmed it on 2026-09-11: there is no downed model
+ * and there is not going to be one. A suit of animated armor that stops
+ * being animated is just a heap on the floor, and no heap was authored.
+ *
+ * This is deliberately NOT the general fix #595 proposes (a tilted-standing
+ * fallback tier for any ref missing a downed sibling). That would make every
+ * future standing-only ref silently fall back instead of failing loudly; this
+ * set names the one ref where vanishing is the intended behavior, so a ref
+ * that is standing-only by ACCIDENT still surfaces as a broken load.
+ *
+ * The entity itself is untouched — it still occupies its cell, still takes a
+ * click, still appears in turn order. Only the body stops being drawn.
+ */
+const MONSTER_REFS_HIDDEN_WHEN_DOWNED: ReadonlySet<string> = new Set([
+  'animated-armor',
+]);
 
 /** The MonsterType enum values with a promoted GLB, mapped into the same
  * ref-id key space MONSTER_REF_MODELS is keyed by. Every other enum value
@@ -136,6 +172,26 @@ const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   [MonsterType.SKELETON_CAPTAIN]: 'skeleton-captain',
   [MonsterType.ZOMBIE]: 'zombie',
 };
+
+/**
+ * Collapse the two wire identity signals into the single ref-id key space
+ * every table here is keyed by. Extracted so `resolveMonsterModelUrl` and
+ * `monsterHidesWhenDowned` cannot drift apart on precedence — a
+ * monsterRefId that is present but unmapped must still beat a mapped enum
+ * (richer signal wins outright), and that rule now lives in one place.
+ */
+function resolveMonsterRefId(
+  monsterRefId: string | undefined,
+  monsterType: MonsterType | undefined
+): string | undefined {
+  const trimmedRefId = monsterRefId?.trim().toLowerCase();
+  return (
+    trimmedRefId ||
+    (monsterType !== undefined
+      ? MONSTER_TYPE_TO_REF_ID[monsterType]
+      : undefined)
+  );
+}
 
 /**
  * Deterministic string hash (FNV-1a, 32-bit) — used only to turn an entity
@@ -256,17 +312,42 @@ export function resolveMonsterModelUrl(
    * parameter exists to prevent. */
   entityId?: string
 ): string | undefined {
-  const trimmedRefId = monsterRefId?.trim().toLowerCase();
-  const refId =
-    trimmedRefId ||
-    (monsterType !== undefined
-      ? MONSTER_TYPE_TO_REF_ID[monsterType]
-      : undefined);
+  const refId = resolveMonsterRefId(monsterRefId, monsterType);
   if (!refId) return undefined;
+  // A standing-only ref never derives a downed url. Returning undefined here
+  // is NOT the same as "unmapped" for the caller: HexEntity pairs this with
+  // monsterHidesWhenDowned() and renders no body at all, rather than letting
+  // undefined fall through to the MediumHumanoid placeholder.
+  if (isDowned && MONSTER_REFS_HIDDEN_WHEN_DOWNED.has(refId)) return undefined;
   const candidates = MONSTER_REF_MODELS[refId];
   if (!candidates || candidates.length === 0) return undefined;
   const file =
     candidates[pickStableCandidateIndex(entityId, candidates.length)];
   if (!file) return undefined;
   return MONSTER_MODEL_BASE + (isDowned ? withDownedSuffix(file) : file);
+}
+
+/**
+ * Does this monster ref vanish when it drops, instead of showing a downed
+ * model?
+ *
+ * True only for refs in `MONSTER_REFS_HIDDEN_WHEN_DOWNED`. Callers MUST pair
+ * this with `resolveMonsterModelUrl` rather than reading the url alone: both
+ * "hidden because standing-only" and "unmapped ref" resolve to `undefined`,
+ * and those two want opposite renders — nothing at all versus the generic
+ * MediumHumanoid placeholder.
+ *
+ * @example
+ * ```typescript
+ * monsterHidesWhenDowned('animated-armor', undefined); // true
+ * monsterHidesWhenDowned('skeleton', undefined);       // false — has a -downed.glb
+ * monsterHidesWhenDowned('ghost', undefined);          // false — unmapped, not hidden
+ * ```
+ */
+export function monsterHidesWhenDowned(
+  monsterRefId: string | undefined,
+  monsterType: MonsterType | undefined
+): boolean {
+  const refId = resolveMonsterRefId(monsterRefId, monsterType);
+  return refId !== undefined && MONSTER_REFS_HIDDEN_WHEN_DOWNED.has(refId);
 }

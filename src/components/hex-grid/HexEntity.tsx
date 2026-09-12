@@ -42,7 +42,10 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
 import type { MainHandPresentation } from './mainHandPresentation';
 import { mainHandSocketForRigFamily } from './mainHandWeapons';
 import { MediumHumanoid } from './MediumHumanoid';
-import { resolveMonsterModelUrl } from './monsterModels';
+import {
+  monsterHidesWhenDowned,
+  resolveMonsterModelUrl,
+} from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import {
   offHandSocketForRigFamily,
@@ -546,6 +549,16 @@ export function HexEntity({
       type === 'monster'
         ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
         : undefined;
+    // A standing-only monster (today: animated armor) draws NO body once it
+    // drops — see MONSTER_REFS_HIDDEN_WHEN_DOWNED. This must be an explicit
+    // flag rather than "monsterModelUrl is undefined", because an unmapped
+    // ref is also undefined and wants the opposite treatment: the generic
+    // MediumHumanoid placeholder. Only the body is suppressed — the raycast
+    // proxy below still mounts, so the cell stays clickable and selectable.
+    const hidesBodyWhenDowned =
+      type === 'monster' &&
+      isDead &&
+      monsterHidesWhenDowned(monsterRefId, monsterType);
     // Explicit temporary proof, not NPC template/appearance inference. No
     // downed asset exists for this non-combatant model; an unexpected dead
     // NPC keeps the existing placeholder treatment instead.
@@ -687,7 +700,7 @@ export function HexEntity({
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            {effectiveModelUrl ? (
+            {hidesBodyWhenDowned ? null : effectiveModelUrl ? (
               <ErrorBoundary
                 key={effectiveModelUrl}
                 fallback={mediumHumanoidElement}
