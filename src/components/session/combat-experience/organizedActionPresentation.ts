@@ -2,6 +2,7 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 
 /**
  * Presentation-only ordering hints. They are supplied by the concept (or a
@@ -52,7 +53,8 @@ export function organizeDeclarations(
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
       declaration.verb === Verb.CAST ||
-      declaration.verb === Verb.DEATH_SAVE
+      (declaration.verb === Verb.DEATH_SAVE &&
+        isDeathSaveExecutableShape(declaration, 'display'))
   );
   const byId = new Map(
     executable.map((declaration) => [declaration.id, declaration])
@@ -99,6 +101,7 @@ export function currentExecutableDeclaration(
         declaration.verb === Verb.MOVE ||
         declaration.verb === Verb.ACTIVATE ||
         declaration.verb === Verb.CAST ||
-        declaration.verb === Verb.DEATH_SAVE)
+        (declaration.verb === Verb.DEATH_SAVE &&
+          isDeathSaveExecutableShape(declaration, 'display')))
   );
 }

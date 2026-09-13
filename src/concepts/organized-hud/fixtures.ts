@@ -1,11 +1,16 @@
 import { create } from '@bufbuild/protobuf';
 import {
   AbilityRefSchema,
+  AttackRefSchema,
+  CastOptionSchema,
+  CostComponentSchema,
+  Currency,
   DeclarationSchema,
   ShortfallReason,
   ShortfallSchema,
   Slot,
   SpellRefSchema,
+  TargetCandidateSchema,
   TargetKind,
   Verb,
   type Declaration,
@@ -15,6 +20,15 @@ import { SESSION_COMBAT_FIXTURES } from '../session-combat/fixtures';
 const base = SESSION_COMBAT_FIXTURES[0]!;
 const refused = (text: string) =>
   create(ShortfallSchema, { reason: ShortfallReason.NO_BUDGET, text });
+const targets = [
+  create(TargetCandidateSchema, { member: 'skeleton-guard', available: true }),
+  create(TargetCandidateSchema, { member: 'skeleton-archer', available: true }),
+  create(TargetCandidateSchema, {
+    member: 'mira',
+    available: false,
+    why: refused('Mira is not a valid target for this declaration.'),
+  }),
+];
 const spell = (id: string, name: string, available = true): Declaration =>
   create(DeclarationSchema, {
     id,
@@ -25,9 +39,11 @@ const spell = (id: string, name: string, available = true): Declaration =>
       ? undefined
       : refused('Level 1 spell slot: 1 needed, 0 left.'),
     targetKind: TargetKind.MEMBER,
+    minTargets: 1,
+    maxTargets: 1,
+    candidates: targets,
     spell: create(SpellRefSchema, { ref: `dnd5e:spells:${id}`, name }),
   });
-
 const ability = (id: string, name: string): Declaration =>
   create(DeclarationSchema, {
     id,
@@ -37,15 +53,47 @@ const ability = (id: string, name: string): Declaration =>
     targetKind: TargetKind.NONE,
     ability: create(AbilityRefSchema, { ref: `dnd5e:abilities:${id}`, name }),
   });
-
+const secondWeapon = create(DeclarationSchema, {
+  id: 'shortbow',
+  verb: Verb.ATTACK,
+  slot: Slot.ACTION,
+  available: true,
+  targetKind: TargetKind.MEMBER,
+  candidates: targets,
+  attack: create(AttackRefSchema, {
+    ref: 'dnd5e:weapons:shortbow',
+    name: 'Shortbow',
+  }),
+});
+const bane = create(DeclarationSchema, {
+  ...spell('bane', 'Bane'),
+  minTargets: 1,
+  maxTargets: 2,
+  candidates: targets,
+  cost: [
+    create(CostComponentSchema, {
+      currency: Currency.CHARGES,
+      needed: 1,
+      label: 'Level 1 spell slot',
+    }),
+  ],
+});
+const command = create(DeclarationSchema, {
+  ...spell('command', 'Command'),
+  options: [
+    create(CastOptionSchema, { id: 'grovel', label: 'Grovel' }),
+    create(CastOptionSchema, { id: 'flee', label: 'Flee' }),
+  ],
+});
 const crowded = [
   ...base.declarations,
+  secondWeapon,
   ability('dash', 'Dash'),
   ability('dodge', 'Dodge'),
   spell('mockery', 'Vicious Mockery'),
-  spell('bane', 'Bane'),
+  bane,
   spell('fire-bolt', 'Fire Bolt'),
-  spell('command', 'Command', false),
+  command,
   spell('guidance', 'Guidance'),
 ];
 
@@ -57,7 +105,7 @@ export const ORGANIZED_HUD_FIXTURES = Object.freeze([
     id: 'full-slots',
     label: 'Full slots',
     description:
-      'Fresh Afford offers with crowded spells and repeatable shortcuts.',
+      'Fresh Afford offers with crowded spells, target cardinality, and server-authored cast options.',
     declarations: crowded,
   },
   {
@@ -104,12 +152,9 @@ export const ORGANIZED_HUD_FIXTURES = Object.freeze([
  * not infer cantrips, level, or legality from generated facts.
  */
 export const ORGANIZED_HUD_PRESENTATION = {
-  quickDeclarationIds: [
-    'offer:aldric:move',
-    'offer:aldric:longsword:action',
-    'mockery',
-    'guidance',
-  ],
+  // Stable two-offer capacity at phone widths. The omitted spell shortcuts
+  // remain in Spells, and the extra weapon remains in All actions.
+  quickDeclarationIds: ['offer:aldric:move', 'offer:aldric:longsword:action'],
   sectionByDeclarationId: {
     mockery: 'spells',
     bane: 'spells',

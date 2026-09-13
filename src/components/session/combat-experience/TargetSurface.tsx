@@ -23,6 +23,8 @@ export interface TargetSurfaceProps {
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
+  /** Clears a local selection only; no command is sent. */
+  onCancelSelection?: () => void;
 }
 
 export function TargetSurface({
@@ -38,6 +40,7 @@ export function TargetSurface({
   renderMap,
   onTargetClick,
   onConfirmTargets,
+  onCancelSelection,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
   // WHICH SIDE A CANDIDATE IS ON IS NOT A QUESTION ASKED HERE. Afford already
@@ -121,6 +124,15 @@ export function TargetSurface({
           <span className={styles.turnPromptKicker}>{armedName} armed</span>
           <strong>Pick a cell to aim toward</strong>
           {castCost && <span>{castCost}</span>}
+          {onCancelSelection && (
+            <button
+              type="button"
+              className={styles.targetChoice}
+              onClick={onCancelSelection}
+            >
+              Cancel targeting
+            </button>
+          )}
         </div>
       )}
       {phase === 'targeting' && isMemberTargeted && (
@@ -193,6 +205,15 @@ export function TargetSurface({
               onClick={onConfirmTargets}
             >
               Cast at selected targets
+            </button>
+          )}
+          {onCancelSelection && (
+            <button
+              type="button"
+              className={styles.targetChoice}
+              onClick={onCancelSelection}
+            >
+              Cancel targeting
             </button>
           )}
         </div>

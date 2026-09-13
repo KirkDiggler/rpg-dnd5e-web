@@ -700,7 +700,9 @@ export function ActionDock({
           declarations={declarations}
           authorityFresh={authorityFresh}
           presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
           onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
           onOpenEquipment={onOpenEquipment}
         />
       ) : (

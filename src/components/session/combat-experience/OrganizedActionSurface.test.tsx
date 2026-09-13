@@ -7,6 +7,7 @@ import {
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OrganizedActionSurface } from './OrganizedActionSurface';
@@ -51,7 +52,7 @@ describe('OrganizedActionSurface', () => {
     ).toBeNull();
   });
 
-  it('does not dispatch denied or stale offers, while exposing refusal text', () => {
+  it('visibly inspects a denied offer without hover or dispatch', () => {
     const onSelect = vi.fn();
     render(
       <OrganizedActionSurface
@@ -63,8 +64,50 @@ describe('OrganizedActionSurface', () => {
     );
     const button = screen.getByRole('button', { name: /attack/i });
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.getAttribute('aria-label')).toContain('Action spent.');
-    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(
+      screen.getByRole('region', { name: 'Attack details' })
+    ).toHaveTextContent('Unavailable: Action spent.');
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('renders an explicit cancel for an armed action', () => {
+    const onCancel = vi.fn();
+    render(
+      <OrganizedActionSurface
+        declarations={[offer('move', Verb.MOVE)]}
+        authorityFresh
+        armedDeclarationId="move"
+        presentation={{ quickDeclarationIds: ['move'] }}
+        onSelectDeclaration={vi.fn()}
+        onCancelSelection={onCancel}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel action' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('does not leave an empty tray when the open section is withdrawn', () => {
+    const view = render(
+      <OrganizedActionSurface
+        declarations={[offer('dash', Verb.ACTIVATE)]}
+        authorityFresh
+        onSelectDeclaration={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /abilities 1/i }));
+    expect(
+      screen.getByRole('region', { name: 'Abilities collection' })
+    ).toBeTruthy();
+    view.rerender(
+      <OrganizedActionSurface
+        declarations={[]}
+        authorityFresh
+        onSelectDeclaration={vi.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole('region', { name: 'Abilities collection' })
+    ).toBeNull();
   });
 });

@@ -373,6 +373,11 @@ export function CombatExperience({
             renderMap={renderMap}
             onTargetClick={onTargetClick}
             onConfirmTargets={onConfirmTargets}
+            onCancelSelection={
+              actionPresentation?.mode === 'organized-hud'
+                ? onCancelSelection
+                : undefined
+            }
           />
         </div>
 

@@ -182,6 +182,9 @@ export interface SessionCanvasProps {
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
    * here; this component only owns the raycast. */
   onHexClick?: (coord: CubeCoord) => void;
+  /** Presentation callers may temporarily yield pointer hit-testing to an
+   * overlaid target/option surface without changing scene/camera behavior. */
+  interactionEnabled?: boolean;
   /** Local map-selection cancel invoked only by a quick right click. The
    * camera owns click-vs-drag classification so right-drag remains pan. */
   onCancelSelection?: () => void;
@@ -821,7 +824,11 @@ export function SessionCanvas(props: SessionCanvasProps) {
           ? { fov: cameraDials.fovDeg }
           : { zoom: cameraDials.zoomStart }),
       }}
-      style={{ width: '100%', height: '100%' }}
+      style={{
+        width: '100%',
+        height: '100%',
+        pointerEvents: props.interactionEnabled === false ? 'none' : 'auto',
+      }}
     >
       <SessionScene {...props} />
     </Canvas>
