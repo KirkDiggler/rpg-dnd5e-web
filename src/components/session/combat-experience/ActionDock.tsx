@@ -1,5 +1,6 @@
 import {
   ClockKind,
+  LifeState,
   ReactChoice,
   Slot,
   Verb,
@@ -610,7 +611,13 @@ export function ActionDock({
           <strong>
             {activeParticipant?.name ?? 'Another participant'}’s turn
           </strong>
-          <small>Your commands return when the initiative reaches you.</small>
+          <small>
+            {participants.find(
+              (participant) => participant.member === viewerMember
+            )?.lifeState === LifeState.STABILIZED
+              ? 'You are stable. Waiting for recovery.'
+              : 'Your commands return when the initiative reaches you.'}
+          </small>
         </div>
         {standing}
       </div>

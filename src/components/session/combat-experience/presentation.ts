@@ -1539,6 +1539,15 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     case 'activationResult': {
       const activation = event.body.value;
       switch (activation.result.case) {
+        case 'stabilized':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            // Keep every provider field, including progress presence, zeros and false.
+            stabilized: activation.result.value,
+          });
         case 'healingApplied':
           return Object.freeze({
             kind: event.kind,

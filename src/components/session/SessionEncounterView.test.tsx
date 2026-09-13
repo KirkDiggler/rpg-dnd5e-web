@@ -49,6 +49,7 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { CharacterDataSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -3263,6 +3264,94 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
     await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+  });
+
+  it('refreshes a stabilized owner at zero HP and removes the provider death-save offer', async () => {
+    readyDyingTurn();
+    const result = create(EventSchema, {
+      session: 'enc-1',
+      recipient: 'char-1',
+      seq: 1n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'cleric',
+          result: {
+            case: 'stabilized',
+            value: {
+              target: 'char-1',
+              sourceName: 'Spare the Dying',
+              sourceRef: 'dnd5e:spells:spare_the_dying',
+              before: LifeState.DYING,
+              after: LifeState.STABILIZED,
+              hitPoints: 0,
+              progress: {
+                successes: 0,
+                failures: 0,
+                successesNeeded: 3,
+                failuresRemaining: 3,
+                stabilized: true,
+                dead: false,
+              },
+            },
+          },
+        },
+      },
+    });
+    const live = deferredStream([result]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await screen.findByRole('button', { name: /^death save/i });
+    expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(2);
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [],
+    });
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'skeleton-1',
+      round: 2,
+      participants: [
+        participant('char-1', {
+          standing: Standing.DOWNED,
+          lifeState: LifeState.STABILIZED,
+          deathSaves: create(DeathSaveProgressSchema, {
+            successes: 0,
+            failures: 0,
+            successesNeeded: 3,
+            failuresRemaining: 3,
+            stabilized: true,
+            dead: false,
+          }),
+        }),
+        participant('skeleton-1', { active: true }),
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: create(CharacterDataSchema, {
+        lifeState: LifeState.STABILIZED,
+        hitPoints: { current: 0, max: 10 },
+        deathSaves: {
+          successes: 0,
+          failures: 0,
+          successesNeeded: 3,
+          failuresRemaining: 3,
+          stabilized: true,
+          dead: false,
+        },
+      }),
+    });
+    live.release();
+    await screen.findByText('Aldric is stabilized');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull()
+    );
+    await waitFor(() => expect(screen.getAllByText('Stable')).toHaveLength(2));
+    expect(screen.queryByTestId('death-save-failure-pip')).toBeNull();
+    expect(screen.queryByTestId('death-save-success-pip')).toBeNull();
+    expect(screen.getByText('0/10')).toBeTruthy();
+    expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
   });
 
   it('refreshes CharacterData, Afford, and View for ActivationResult through the unconditional funnel', async () => {
