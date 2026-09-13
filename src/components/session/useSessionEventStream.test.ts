@@ -1,11 +1,18 @@
+import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
   EventKind,
+  EventSchema,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_CONFIG } from '../../api/streamReconnect';
+import {
+  emptyPresentation,
+  reduceCombatPresentation,
+  selectVisibleStory,
+} from './combat-experience/presentation';
 
 const hoisted = vi.hoisted(() => ({
   streamEventsFn: vi.fn(),
@@ -128,6 +135,90 @@ afterEach(() => {
 });
 
 describe('useSessionEventStream', () => {
+  it('recovers ordered mixed Bless effects and misses through the presentation reducer, deduplicating buffered live delivery', async () => {
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const recovery = deferred<{ entries: Event[] }>();
+    hoisted.getStoryFn.mockReturnValueOnce(recovery.promise);
+    const spell = { ref: 'dnd5e:spells:bless', name: 'Bless' };
+    const cast = create(EventSchema, {
+      session: 'enc-1',
+      recipient: 'char-1',
+      seq: 1n,
+      kind: EventKind.CAST,
+      body: {
+        case: 'cast',
+        value: { actor: 'char-1', spell, targets: ['ally', 'absent'] },
+      },
+    });
+    const effect = create(EventSchema, {
+      session: 'enc-1',
+      recipient: 'char-1',
+      seq: 2n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: {
+            case: 'conditionApplied',
+            value: {
+              target: 'ally',
+              ref: 'dnd5e:conditions:blessed',
+              name: 'Bless',
+              sourceId: 'char-1',
+            },
+          },
+        },
+      },
+    });
+    const miss = create(EventSchema, {
+      session: 'enc-1',
+      recipient: 'char-1',
+      seq: 3n,
+      kind: EventKind.CAST_MISSED,
+      body: {
+        case: 'castMissed',
+        value: { actor: 'char-1', target: 'absent', spell },
+      },
+    });
+    let presentation = reduceCombatPresentation(emptyPresentation(), {
+      type: 'configure',
+      session: 'enc-1',
+      viewerMember: 'char-1',
+      memberNames: { 'char-1': 'Mercy', ally: 'Ally', absent: 'Robin' },
+      rollerRoles: {},
+    });
+    const onEvent = vi.fn(
+      (event: Event, metadata: { source: 'live' | 'catchup' }) => {
+        presentation = reduceCombatPresentation(presentation, {
+          type: 'stream-event',
+          event,
+          metadata,
+        });
+      }
+    );
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(1));
+    stream.push(miss);
+    recovery.resolve({ entries: [miss, cast, effect] });
+    await waitFor(() => expect(result.current).toBe('live'));
+    expect(onEvent.mock.calls.map(([event]) => event.seq)).toEqual([
+      1n,
+      2n,
+      3n,
+    ]);
+    expect(
+      selectVisibleStory(presentation).map((entry) => entry.headline)
+    ).toEqual([
+      'Mercy casts Bless',
+      'Ally begins Bless',
+      "Mercy's Bless missed Robin",
+    ]);
+    expect(presentation.diceEvents).toEqual([]);
+  });
   it('does not subscribe or fetch while session or member is empty', () => {
     renderHook(() => useSessionEventStream('', 'char-1', () => {}));
     renderHook(() => useSessionEventStream('enc-1', '', () => {}));

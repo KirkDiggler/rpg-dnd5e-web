@@ -30,7 +30,14 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionDock } from './ActionDock';
 import { selectCombatExperience } from './selection';
@@ -231,6 +238,171 @@ function Dock({ declarations }: { declarations: readonly Declaration[] }) {
     />
   );
 }
+
+function ClericHarness({
+  declarations,
+}: {
+  declarations: readonly Declaration[];
+}) {
+  const names = new Map([
+    ['cleric', 'Mercy'],
+    ['ally', 'Ally'],
+    ['remembered', 'Robin'],
+    ['unavailable', 'Ash'],
+  ]);
+  const participants = [
+    create(ParticipantSchema, {
+      member: 'cleric',
+      name: 'Mercy',
+      kind: MemberKind.PLAYER,
+      standing: Standing.UP,
+      active: true,
+    }),
+  ];
+  const experience = useSessionCombatExperience({
+    session: 'cleric-run',
+    member: 'cleric',
+    clock: ClockKind.TURN,
+    active: 'cleric',
+    authorityFresh: true,
+    memberNames: names,
+    participants,
+    declarations,
+    invalidateAuthoritySnapshots: () => {},
+    scheduleRefresh: () => {},
+  });
+  const selection = selectCombatExperience(
+    declarations,
+    experience.presentationState
+  );
+  return (
+    <>
+      <ActionDock
+        clock={ClockKind.TURN}
+        viewerMember="cleric"
+        participants={participants}
+        declarations={declarations}
+        armedDeclarationId={
+          experience.presentationState.armedDeclarationId ?? undefined
+        }
+        authorityFresh
+        rollWindow={null}
+        onSelectDeclaration={experience.onSelectDeclaration}
+        onEndTurn={() => {}}
+      />
+      <TargetSurface
+        phase="targeting"
+        selection={selection}
+        isViewerTurn
+        showTurnNotice={false}
+        memberNames={names}
+        location={{ name: 'Tomb', area: 'Chamber' }}
+        renderMap={() => null}
+        onTargetClick={experience.onTargetClick}
+        onConfirmTargets={experience.onConfirmTargets}
+      />
+    </>
+  );
+}
+
+describe('Cleric spell buttons through the casting RPC', () => {
+  beforeEach(() => {
+    hoisted.castFn.mockReset();
+    hoisted.castFn.mockResolvedValue({});
+  });
+
+  it('casts Bless at ordered public candidates even when they have no visible participant or position', async () => {
+    const declaration = create(DeclarationSchema, {
+      id: 'provider-bless',
+      verb: Verb.CAST,
+      slot: Slot.ACTION,
+      available: true,
+      targetKind: TargetKind.MEMBER,
+      minTargets: 1,
+      maxTargets: 3,
+      spell: { ref: 'dnd5e:spells:bless', name: 'Bless' },
+      candidates: [
+        { member: 'ally', available: true },
+        { member: 'remembered', available: true },
+        {
+          member: 'unavailable',
+          available: false,
+          why: { text: 'Target is no longer available' },
+        },
+      ],
+      cost: [
+        { currency: Currency.CHARGES, needed: 1, label: 'Level 1 spell slot' },
+      ],
+    });
+    render(<ClericHarness declarations={[declaration]} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Bless/ }));
+    expect(
+      screen.getByRole('button', {
+        name: 'Ash: Unavailable: Target is no longer available',
+      })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Cast at selected targets' })
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Robin: Available' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ally: Available' }));
+    expect(
+      screen.getByRole('button', { name: 'Robin: Selected 1' })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Ally: Selected 2' })
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cast at selected targets' })
+    );
+    await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+    expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+      session: 'cleric-run',
+      member: 'cleric',
+      declarationId: 'provider-bless',
+      target: '',
+      targets: ['remembered', 'ally'],
+    });
+  });
+
+  it.each([
+    ['Cure Wounds', Slot.ACTION, 'Action'],
+    ['Healing Word', Slot.BONUS, 'Bonus action'],
+  ] as const)(
+    'casts %s using its provider action slot and chosen target',
+    async (name, slot, label) => {
+      const declaration = create(DeclarationSchema, {
+        id: `provider-${name}`,
+        verb: Verb.CAST,
+        slot,
+        available: true,
+        targetKind: TargetKind.MEMBER,
+        minTargets: 1,
+        maxTargets: 1,
+        spell: {
+          ref: `dnd5e:spells:${name.toLowerCase().replace(' ', '-')}`,
+          name,
+        },
+        candidates: [{ member: 'ally', available: true }],
+      });
+      render(<ClericHarness declarations={[declaration]} />);
+      expect(screen.getByTitle(label)).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: new RegExp(`^${name}`) })
+      );
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Ally: Available' }));
+      await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+      expect(hoisted.castFn.mock.calls[0]![0]).toEqual({
+        session: 'cleric-run',
+        member: 'cleric',
+        declarationId: declaration.id,
+        target: '',
+        targets: ['ally'],
+      });
+    }
+  );
+});
 
 describe('the dock draws a Cast row per castable cantrip', () => {
   it('draws one row for each of the two cantrips, priced as an action', () => {

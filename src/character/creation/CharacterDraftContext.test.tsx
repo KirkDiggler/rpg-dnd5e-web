@@ -6,12 +6,25 @@ import {
 import {
   AppearanceSchema,
   CharacterDraftSchema,
+  ClassInfoSchema,
   CreateDraftResponseSchema,
+  SubclassInfoSchema,
   UpdateAppearanceResponseSchema,
+  UpdateClassResponseSchema,
   type Appearance,
   type CharacterDraft,
   type UpdateAppearanceResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  ChoiceCategory,
+  ChoiceDataSchema,
+  ChoiceSource,
+  SpellSelectionSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  Class,
+  Subclass,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { act, render } from '@testing-library/react';
 import { useContext } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +37,7 @@ import {
 const api = vi.hoisted(() => ({
   createDraft: vi.fn(),
   updateAppearance: vi.fn(),
+  updateClass: vi.fn(),
   noop: vi.fn(),
   emptyList: [] as never[],
 }));
@@ -43,7 +57,7 @@ vi.mock('../../api/hooks', () => ({
     updateAppearance: api.updateAppearance,
   }),
   useUpdateDraftBackground: () => ({ updateBackground: api.noop }),
-  useUpdateDraftClass: () => ({ updateClass: api.noop }),
+  useUpdateDraftClass: () => ({ updateClass: api.updateClass }),
   useUpdateDraftName: () => ({ updateName: api.noop }),
   useUpdateDraftRace: () => ({ updateRace: api.noop }),
 }));
@@ -107,7 +121,99 @@ beforeEach(() => {
   current = null;
   api.createDraft.mockReset();
   api.updateAppearance.mockReset();
+  api.updateClass.mockReset();
   api.noop.mockReset();
+});
+
+describe('Cleric class persistence', () => {
+  it('sends the chosen domain and open spell refs and retains the authoritative returned draft', async () => {
+    renderProvider();
+    await loadInitial(draft('cleric-draft', 0));
+    const choices = [
+      create(ChoiceDataSchema, {
+        choiceId: 'cleric-spells',
+        source: ChoiceSource.CLASS,
+        category: ChoiceCategory.SPELLS,
+        selection: {
+          case: 'spells',
+          value: create(SpellSelectionSchema, {
+            spellRefs: [
+              'dnd5e:spells:bless',
+              'dnd5e:spells:cure-wounds',
+              'dnd5e:spells:healing-word',
+            ],
+          }),
+        },
+      }),
+    ];
+    const saved = create(CharacterDraftSchema, {
+      id: 'cleric-draft',
+      class: Class.CLERIC,
+      subclass: Subclass.LIFE_DOMAIN,
+      choices,
+    });
+    api.updateClass.mockResolvedValue(
+      create(UpdateClassResponseSchema, { draft: saved })
+    );
+    const selected = {
+      ...create(ClassInfoSchema, { classId: Class.CLERIC, name: 'Cleric' }),
+      selectedSubclass: create(SubclassInfoSchema, {
+        subclassId: Subclass.LIFE_DOMAIN,
+        name: 'Life Domain',
+      }),
+    };
+    await act(async () => {
+      await current!.setClass(selected, choices);
+    });
+    expect(api.updateClass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftId: 'cleric-draft',
+        class: Class.CLERIC,
+        subclass: Subclass.LIFE_DOMAIN,
+        classChoices: choices,
+      })
+    );
+    expect(current!.draft).toBe(saved);
+    expect(current!.draft?.subclass).toBe(Subclass.LIFE_DOMAIN);
+    expect(current!.classChoices).toEqual(choices);
+  });
+});
+
+describe('CharacterDraftContext saved subclass', () => {
+  it('retains a saved domain without provider options and clears it when changing class', async () => {
+    renderProvider();
+    const saved = create(CharacterDraftSchema, {
+      id: 'cleric-domain',
+      class: Class.CLERIC,
+      subclass: Subclass.LIFE_DOMAIN,
+    });
+    await loadInitial(saved);
+    api.updateClass.mockResolvedValue(
+      create(UpdateClassResponseSchema, { draft: saved })
+    );
+    await act(async () => {
+      await current!.setClass(
+        create(ClassInfoSchema, { classId: Class.CLERIC, name: 'Cleric' })
+      );
+    });
+    expect(api.updateClass).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        class: Class.CLERIC,
+        subclass: Subclass.LIFE_DOMAIN,
+      })
+    );
+    await act(async () => {
+      await current!.setClass(
+        create(ClassInfoSchema, { classId: Class.FIGHTER, name: 'Fighter' })
+      );
+    });
+    expect(api.updateClass).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        class: Class.FIGHTER,
+        subclass: Subclass.UNSPECIFIED,
+      })
+    );
+  });
 });
 
 describe('CharacterDraftContext updateAppearance response authority', () => {

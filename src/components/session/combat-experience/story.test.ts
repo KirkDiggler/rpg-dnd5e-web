@@ -899,3 +899,93 @@ describe('the Story log on the hold-out beats (rpg-project#375 §5)', () => {
     expect(entry.headline).not.toMatch(/hit|miss/i);
   });
 });
+
+describe('attack roll source breakdown', () => {
+  it.each([true, false])(
+    'prints Bless and Bane contributions for hit=%s in live and recovered Story',
+    (hit) => {
+      const { event } = createAttackAuthorityFixture({
+        hit,
+        roll: 10,
+        total: 15,
+      });
+      if (event.body.case !== 'struck' && event.body.case !== 'missed')
+        throw Error('expected attack');
+      event.body.value.calculation = create(RollCalculationSchema, {
+        total: 15,
+        components: [
+          create(RollComponentSchema, {
+            source: { label: 'Attack', sourceId: 'aldric' },
+            dice: {
+              notation: '1d20',
+              dieSize: 20,
+              originalRolls: [10],
+              finalRolls: [10],
+              subtotal: 10,
+            },
+          }),
+          create(RollComponentSchema, {
+            source: { label: 'Attack bonus' },
+            modifier: 4,
+          }),
+          create(RollComponentSchema, {
+            source: { name: 'Bless' },
+            dice: {
+              notation: '1d4',
+              dieSize: 4,
+              originalRolls: [3],
+              finalRolls: [3],
+              subtotal: 3,
+            },
+          }),
+          create(RollComponentSchema, {
+            source: { name: 'Bane' },
+            subtractDice: true,
+            dice: {
+              notation: '1d4',
+              dieSize: 4,
+              originalRolls: [2],
+              finalRolls: [2],
+              subtotal: 2,
+            },
+          }),
+        ],
+      });
+      const live = buildCombatStory([visible(event)], context);
+      expect(live[0]?.detail).toContain(
+        '1d20 [10] Attack (Aldric) + 4 Attack bonus + 1d4 [3] Bless - 1d4 [2] Bane = 15'
+      );
+      expect(live[0]?.detail).toContain(hit ? 'Hit' : 'Miss');
+      expect(buildCombatStory([visible(event, 'catchup')], context)).toEqual(
+        live
+      );
+      // The total belongs to the provider, even if components appear inconsistent.
+      event.body.value.calculation.total = 99;
+      expect(buildCombatStory([visible(event)], context)[0]?.detail).toContain(
+        '= 99'
+      );
+    }
+  );
+
+  it.each([true, false])(
+    'retains legacy arithmetic for absent or empty calculation, hit=%s',
+    (hit) => {
+      const { event } = createAttackAuthorityFixture({
+        hit,
+        roll: 10,
+        total: 18,
+      });
+      if (event.body.case !== 'struck' && event.body.case !== 'missed')
+        throw Error('expected attack');
+      expect(buildCombatStory([visible(event)], context)[0]?.detail).toContain(
+        'd20 10 + 8 = 18'
+      );
+      event.body.value.calculation = create(RollCalculationSchema, {
+        total: 18,
+      });
+      expect(buildCombatStory([visible(event)], context)[0]?.detail).toContain(
+        'd20 10 + 8 = 18'
+      );
+    }
+  );
+});

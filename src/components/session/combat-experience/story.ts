@@ -4,6 +4,7 @@ import {
   EventKind,
   type AttackModifierSource,
   type Event,
+  type RollCalculation,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DeathSaveOutcome,
@@ -308,8 +309,16 @@ function attackTone(
 
 export function formatAttackRollArithmetic(
   roll: number,
-  total: number
+  total: number,
+  calculation?: RollCalculation,
+  resolveSourceName?: (sourceId: string) => string | undefined
 ): string {
+  const breakdown =
+    calculation &&
+    formatRollCalculation(calculation, resolveSourceName, {
+      showDiceSources: true,
+    });
+  if (breakdown) return breakdown;
   const modifier = total - roll;
   const sign = modifier < 0 ? '−' : '+';
   return `d20 ${roll} ${sign} ${Math.abs(modifier)} = ${total}`;
@@ -413,7 +422,7 @@ function buildAttackStory(
       eyebrow: attackEyebrow(actor, struck.attack, struck.reaction),
       headline: `${actor} strikes ${target}`,
       detail:
-        `${formatAttackRollArithmetic(struck.roll, struck.total)} · ` +
+        `${formatAttackRollArithmetic(struck.roll, struck.total, struck.calculation, (sourceId) => memberName(sourceId, context))} · ` +
         `${struck.critical ? 'Critical hit' : 'Hit'} · ${damageDetail}` +
         attackModifierDetail(modifierSources),
       tone: attackTone(struck.attacker, struck.target, true, context),
@@ -428,7 +437,7 @@ function buildAttackStory(
       id: storyId(event),
       eyebrow: attackEyebrow(actor, missed.attack, missed.reaction),
       headline: `${target} evades ${actor}`,
-      detail: `${formatAttackRollArithmetic(missed.roll, missed.total)} · Miss`,
+      detail: `${formatAttackRollArithmetic(missed.roll, missed.total, missed.calculation, (sourceId) => memberName(sourceId, context))} · Miss`,
       tone: 'neutral',
       attack: attackSnapshot(missed.attack),
     });
@@ -626,6 +635,17 @@ function buildOtherStory(
         tone: 'neutral',
       });
     }
+    case 'castMissed': {
+      if (event.kind !== EventKind.CAST_MISSED) return undefined;
+      const missed = event.body.value;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Spell',
+        headline: `${memberName(missed.actor, context)}'s ${spellName(missed.spell) ?? 'spell'} missed ${memberName(missed.target, context)}`,
+        detail: '',
+        tone: 'neutral',
+      });
+    }
     // ONE CREATURE'S SAVING THROW, WHOLE. Every number the player needs to
     // believe the outcome is on the beat, and `succeeded` is the rulebook's
     // own reading: the client shows both numbers and never compares them
@@ -783,7 +803,7 @@ function buildOtherStory(
       return Object.freeze({
         ...base,
         eyebrow: reactionLabel(window.offer) ?? 'Reaction',
-        headline: `${audience} rolled ${formatAttackRollArithmetic(window.roll, window.total)}`,
+        headline: `${audience} rolled ${formatAttackRollArithmetic(window.roll, window.total, window.calculation, (sourceId) => memberName(sourceId, context))}`,
         detail: `Story sequence ${event.seq}.`,
         tone: 'turn',
       });
@@ -882,6 +902,12 @@ export function buildCombatAttackOutcome(
       action: attackName(struck.attack),
       attackRef: struck.attack?.ref || undefined,
       reaction: reactionLabel(struck.reaction),
+      rollArithmetic: formatAttackRollArithmetic(
+        struck.roll,
+        struck.total,
+        struck.calculation,
+        (sourceId) => memberName(sourceId, context)
+      ),
       d20: struck.roll,
       total: struck.total,
       against: struck.against,
@@ -905,6 +931,12 @@ export function buildCombatAttackOutcome(
       action: attackName(missed.attack),
       attackRef: missed.attack?.ref || undefined,
       reaction: reactionLabel(missed.reaction),
+      rollArithmetic: formatAttackRollArithmetic(
+        missed.roll,
+        missed.total,
+        missed.calculation,
+        (sourceId) => memberName(sourceId, context)
+      ),
       d20: missed.roll,
       total: missed.total,
       against: missed.against,
