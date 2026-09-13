@@ -795,7 +795,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           } else {
             // This is just a base ClassInfo (no subclass selected)
             baseClassName = classInfo.name;
-            subclassEnum = undefined;
+            // A provider may omit subclass options on a later read. Keep the
+            // saved choice when editing that same class, never across classes.
+            subclassEnum =
+              draft?.class === getClassEnum(baseClassName)
+                ? draft.subclass
+                : undefined;
           }
 
           const request = create(UpdateClassRequestSchema, {
@@ -806,6 +811,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           });
 
           const response = await updateClassAPI(request);
+
+          if (response?.draft) {
+            setDraft(response.draft);
+          }
 
           // Update local state with the response choices
           // The backend returns the full ChoiceData including resolved equipment items
@@ -829,6 +838,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     [
       draftId,
       updateClassAPI,
+      draft?.class,
+      draft?.subclass,
       saving,
       currentClassInfo,
       classChoices,

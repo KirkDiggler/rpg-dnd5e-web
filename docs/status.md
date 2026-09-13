@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-08
+updated: 2026-09-13
 confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -11,6 +11,24 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Cleric spellcasting handoff** — Cleric is available in the class picker;
+  provider domain choices and base spell choices stay together and saved domains
+  survive draft updates/reopening. Spell refs remain visible when the provider
+  omits spellcasting summary metadata; uncategorized saved spell selections use
+  the matching provider choice definition. Protos are pinned to `v0.1.189`
+  (includes protos #333). Typed `CastMissed` joins ordered live/recovered Story,
+  invalidates private/action/view reads, and never invents dice or refunds.
+  Cast identity includes ordered targets; condition identity includes source ID.
+  Focused coverage exercises provider-owned Bless targets, Cure Wounds action,
+  Healing Word bonus action, authoritative healing, and reconnect deduplication.
+  **Live acceptance is blocked:** the tested API dev image
+  `d1f7b2d7d3017f032fa635b2cf5dcfa30ddb851b` returns no Cleric subclasses while
+  finalization requires Divine Domain. A disposable draft finalized only after
+  API-seeding Life Domain; its Reference Tomb encounter then returned
+  `character data unavailable` and exposed only exploration controls. Successful
+  live casts and both stale-target host policies remain unverified. See
+  [verification notes](how-to/cleric-spellcasting-verification.md).
 
 - **Guild-bound world composition library / World Builder (#974, project
   #399)** — normal Discord auth requests `guilds.members.read` consent and uses

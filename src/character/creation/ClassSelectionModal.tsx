@@ -8,6 +8,7 @@ import {
   Class,
   Language,
   Skill,
+  type Subclass,
   Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -26,17 +27,15 @@ import { VisualCarousel } from './components/VisualCarousel';
 
 // Only show these classes in the selection (pre-alpha simplification).
 //
-// A CLASS IS ADDED HERE WHEN IT HAS BEHAVIOUR, not when it has data. Every
-// class is data-complete in the toolkit and reaches this modal through
-// ListClasses; this set is what has something to DO at level 1. The bard joins
-// with Bardic Inspiration (rpg-project#397) — a granted die and a post-roll
-// window — and with no spells on the sheet, which is that slice's own ruling.
+// Classes join this set as their level-one actions reach the session API.
+// Choice options and spell declarations remain provider-owned.
 const ALLOWED_CLASSES = new Set([
   Class.FIGHTER,
   Class.MONK,
   Class.ROGUE,
   Class.BARBARIAN,
   Class.BARD,
+  Class.CLERIC,
 ]);
 
 // Helper to get CSS variable values for portals
@@ -94,6 +93,7 @@ function getSubclassTypeDisplayName(subclassType: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
+  currentSubclass?: Subclass;
   existingChoices?: ClassModalChoices;
   onSelect: (
     classData: ClassInfo | (ClassInfo & { selectedSubclass: SubclassInfo }),
@@ -105,6 +105,7 @@ interface ClassSelectionModalProps {
 export function ClassSelectionModal({
   isOpen,
   currentClass: currentClassParam,
+  currentSubclass: currentSubclassParam,
   existingChoices,
   onSelect,
   onClose,
@@ -207,6 +208,8 @@ export function ClassSelectionModal({
       // Clear previous choices when opening modal
       setClassChoicesMap({});
 
+      let restoredSubclassIndex: number | null = null;
+      let restoredClass: ClassInfo | undefined;
       // Set selected index based on current class (could be class name, class ID, or subclass ID)
       if (currentClassParam && classes.length > 0) {
         // First try to find by class name or ID
@@ -226,7 +229,7 @@ export function ClassSelectionModal({
               );
               if (subclassIndex >= 0) {
                 classIndex = i;
-                setSelectedSubclassIndex(subclassIndex);
+                restoredSubclassIndex = subclassIndex;
                 break;
               }
             }
@@ -235,37 +238,38 @@ export function ClassSelectionModal({
 
         if (classIndex >= 0) {
           setSelectedClassIndex(classIndex);
+          restoredClass = classes[classIndex];
+          if (currentSubclassParam) {
+            const index =
+              restoredClass?.subclasses.findIndex(
+                (sub) => sub.subclassId === currentSubclassParam
+              ) ?? -1;
+            restoredSubclassIndex = index >= 0 ? index : null;
+          }
         }
       }
 
       // Initialize with existing choices if provided
       if (existingChoices && currentClassParam) {
-        // Find the actual class name to use as key (handles both name and ID)
-        const foundClass = classes.find(
-          (cls) =>
-            cls.name === currentClassParam ||
-            String(cls.classId) === currentClassParam
-        );
-        const classKey = foundClass?.name || currentClassParam;
+        const classKey =
+          (restoredSubclassIndex !== null
+            ? restoredClass?.subclasses[restoredSubclassIndex]?.name
+            : restoredClass?.name) || currentClassParam;
 
         setClassChoicesMap({
           [classKey]: existingChoices,
         });
       }
 
-      // Reset subclass selection if not already set above
-      if (
-        !currentClassParam ||
-        classes.findIndex(
-          (cls) =>
-            cls.name === currentClassParam ||
-            String(cls.classId) === currentClassParam
-        ) >= 0
-      ) {
-        setSelectedSubclassIndex(null);
-      }
+      setSelectedSubclassIndex(restoredSubclassIndex);
     }
-  }, [isOpen, currentClassParam, classes, existingChoices]);
+  }, [
+    isOpen,
+    currentClassParam,
+    currentSubclassParam,
+    classes,
+    existingChoices,
+  ]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -322,9 +326,16 @@ export function ClassSelectionModal({
   // The data we're currently displaying (could be class or subclass)
   const currentDisplayData = currentSubclass || selectedClass;
 
-  // Use the appropriate data source for choices (subclass choices take precedence)
-  const choicesSource =
-    currentSubclass?.additionalChoices || selectedClass?.choices || [];
+  // Keep base acquisition choices when a domain adds or overrides a choice.
+  const choicesSource = [
+    ...(selectedClass?.choices || []).filter(
+      (choice) =>
+        !currentSubclass?.additionalChoices.some(
+          (extra) => extra.id === choice.id
+        )
+    ),
+    ...(currentSubclass?.additionalChoices || []),
+  ];
 
   const handleSelect = () => {
     setErrorMessage(''); // Clear any previous errors

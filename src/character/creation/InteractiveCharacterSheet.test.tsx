@@ -422,6 +422,51 @@ describe('InteractiveCharacterSheet persisted mixed-bundle round trip (rpg-toolk
 });
 
 describe('InteractiveCharacterSheet spell choice rehydration', () => {
+  it('recovers omitted spell categories from matching provider choices even without spellcasting metadata', () => {
+    const classInfo = create(ClassInfoSchema, {
+      name: 'Cleric',
+      choices: [
+        create(ChoiceSchema, {
+          id: 'cleric-cantrips-1',
+          choiceType: ChoiceCategory.CANTRIPS,
+        }),
+        create(ChoiceSchema, {
+          id: 'cleric-spells-1',
+          choiceType: ChoiceCategory.SPELLS,
+        }),
+      ],
+    });
+    const classChoices = [
+      create(ChoiceDataSchema, {
+        choiceId: 'cleric-cantrips-1',
+        selection: {
+          case: 'spells',
+          value: { spellRefs: ['dnd5e:spells:light'] },
+        },
+      }),
+      create(ChoiceDataSchema, {
+        choiceId: 'cleric-spells-1',
+        selection: {
+          case: 'spells',
+          value: { spellRefs: ['dnd5e:spells:bless'] },
+        },
+      }),
+      create(ChoiceDataSchema, {
+        choiceId: 'unknown-choice',
+        selection: { case: 'spells', value: { spellRefs: ['unknown:spell'] } },
+      }),
+    ];
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(vi.fn(), { classInfo, classChoices })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+    expect(screen.getByTestId('spell-info').textContent).toBe(
+      'cantrips:dnd5e:spells:light|spells:dnd5e:spells:bless'
+    );
+  });
   it('passes persisted cantrips and levelled spells through the existing spell summary', () => {
     const choices = [
       create(ChoiceDataSchema, {

@@ -80,7 +80,7 @@ import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
 import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
-import { MoveIndicator } from './MoveIndicator';
+import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { startAzimuth } from './startAzimuth';

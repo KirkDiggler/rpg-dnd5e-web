@@ -626,6 +626,17 @@ function buildOtherStory(
         tone: 'neutral',
       });
     }
+    case 'castMissed': {
+      if (event.kind !== EventKind.CAST_MISSED) return undefined;
+      const missed = event.body.value;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Spell',
+        headline: `${memberName(missed.actor, context)}'s ${spellName(missed.spell) ?? 'spell'} missed ${memberName(missed.target, context)}`,
+        detail: '',
+        tone: 'neutral',
+      });
+    }
     // ONE CREATURE'S SAVING THROW, WHOLE. Every number the player needs to
     // believe the outcome is on the beat, and `succeeded` is the rulebook's
     // own reading: the client shows both numbers and never compares them

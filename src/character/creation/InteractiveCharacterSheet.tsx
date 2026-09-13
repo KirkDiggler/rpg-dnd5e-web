@@ -240,6 +240,13 @@ export function InteractiveCharacterSheet({
 
     // Parse draft.classChoices which is now ChoiceSubmission[]
     (draft.classChoices || []).forEach((choice) => {
+      // Older API draft projections omit spell categories. Recover only from
+      // the matching provider declaration, never from spell names or levels.
+      const spellCategory =
+        choice.category ||
+        classChoiceDefinitions(draft.classInfo).find(
+          (definition) => definition.id === choice.choiceId
+        )?.choiceType;
       if (
         choice.category === ChoiceCategory.EQUIPMENT &&
         choice.selection?.case === 'equipment'
@@ -280,7 +287,7 @@ export function InteractiveCharacterSheet({
           });
         }
       } else if (
-        choice.category === ChoiceCategory.CANTRIPS &&
+        spellCategory === ChoiceCategory.CANTRIPS &&
         choice.selection?.case === 'spells'
       ) {
         // REFS ONLY. The deprecated `spells` enum field is never read back,
@@ -291,7 +298,7 @@ export function InteractiveCharacterSheet({
           spellRefs: choice.selection.value.spellRefs || [],
         });
       } else if (
-        choice.category === ChoiceCategory.SPELLS &&
+        spellCategory === ChoiceCategory.SPELLS &&
         choice.selection?.case === 'spells'
       ) {
         choices.spells?.push({
@@ -1433,7 +1440,9 @@ export function InteractiveCharacterSheet({
 
                     {/* Spell Information - display if class has spellcasting */}
                     {isClassInfo(character.selectedClass) &&
-                      character.selectedClass.spellcasting && (
+                      (character.selectedClass.spellcasting ||
+                        knownCantripRefs.length > 0 ||
+                        knownSpellRefs.length > 0) && (
                         <motion.div
                           style={{
                             padding: '12px',
@@ -1847,6 +1856,7 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name || draft.classInfo?.name}
+        currentSubclass={draft.draft?.subclass}
         existingChoices={structuredClassChoices}
         onSelect={async (classData, choices) => {
           setCharacter((prev) => ({

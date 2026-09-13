@@ -1,5 +1,12 @@
 [
   {
+    "id": "cleric-provider-draft-metadata",
+    "date": "2026-09-13",
+    "lesson": "Cleric catalog data does not prove native creation readiness: the tested API dev image omitted subclass options while finalization required Divine Domain. Saved spell choices also omitted category, and class spellcasting summary metadata was absent.",
+    "fix": "Keep server domain/ref state; resolve missing saved-choice category only through its provider choice definition ID. Render known refs without synthesizing spellcasting statistics. Require a native creation and live casting pass before declaring end-to-end readiness.",
+    "context": "See docs/how-to/cleric-spellcasting-verification.md for the image revision, seeded probe boundary and remaining acceptance."
+  },
+  {
     "id": "wsl-vite-stale-watcher",
     "date": "2026-07-18",
     "lesson": "Vite dev server running inside WSL does not see file changes when the repo lives on /mnt/c (DrvFs has no inotify). Edits typecheck fine but the browser keeps getting the stale transform-cache module - it looks exactly like your change 'didn't work'.",

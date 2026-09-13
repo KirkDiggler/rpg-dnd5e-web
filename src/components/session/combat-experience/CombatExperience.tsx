@@ -13,7 +13,7 @@ import {
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
-import { DamageToasts } from './DamageToasts';
+import { DamageToasts } from './DamageToasts.tsx';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
