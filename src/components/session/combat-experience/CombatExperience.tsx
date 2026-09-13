@@ -142,6 +142,7 @@ export function CombatExperience({
   privateStatusMessage,
   onRetryPrivateStatus,
   authorityFresh,
+  actionPresentation,
   endTurnBlocked = false,
   presentationState,
   phase,
@@ -351,6 +352,7 @@ export function CombatExperience({
     <div
       className={`${styles.combatExperience} ${layout === 'fill-parent' ? styles.combatExperienceFillParent : ''}`}
       data-layout={layout}
+      data-action-presentation={actionPresentation?.mode}
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
@@ -536,6 +538,8 @@ export function CombatExperience({
             participants={participants}
             declarations={declarations}
             authorityFresh={authorityFresh}
+            actionPresentation={actionPresentation}
+            onOpenEquipment={onOpenEquipment}
             endTurnBlocked={endTurnBlocked}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined

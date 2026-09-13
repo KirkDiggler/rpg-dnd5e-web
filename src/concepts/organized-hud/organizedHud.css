@@ -1,0 +1,83 @@
+.organizedHudConcept {
+  color: var(--text-primary);
+}
+.organizedHudConcept > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.organizedHudConcept h2 {
+  margin: 2px 0;
+  font:
+    700 25px/1.2 Cinzel,
+    serif;
+}
+.organizedHudConcept header p {
+  max-width: 660px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.organizedHudConcept header span {
+  color: #e8b75f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.organizedHudControls {
+  display: grid;
+  gap: 5px;
+}
+.organizedHudControls div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.organizedHudControls button {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  font-size: 11px;
+}
+.organizedHudControls button[aria-pressed='true'] {
+  border-color: #e8b75f;
+  color: #18120a;
+  background: #e8b75f;
+  font-weight: 800;
+}
+.organizedHudIntent {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.organizedHudFrame {
+  width: 100%;
+  height: min(800px, calc(100vh - 230px));
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid rgba(232, 183, 95, 0.34);
+  border-radius: 12px;
+  background: #0a1114;
+}
+.organizedHudFrame_phone {
+  width: min(844px, 100%);
+  height: 390px;
+  min-height: 0;
+  margin: auto;
+  border-radius: 20px;
+}
+@media (max-height: 600px) {
+  .organizedHudFrame {
+    height: calc(100vh - 160px);
+    min-height: 360px;
+  }
+  .organizedHudFrame_phone {
+    height: min(390px, calc(100vh - 150px));
+  }
+}
