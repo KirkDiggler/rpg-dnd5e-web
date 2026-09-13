@@ -33,5 +33,12 @@
     "lesson": "StoryLog replaces the latest attack's Story entry with ResultEntry. Updating buildCombatStory alone leaves the current attack card unchanged.",
     "fix": "Project the shared provider calculation formatter into the attack outcome and post-roll window, and verify the rendered StoryLog with both story and result supplied, plus the ActionDock window flow.",
     "context": "Bless/Bane breakdown initially appeared only in historical entries. The API already supplied named dice; the latest result card and post-roll prompt were separate display paths."
+  },
+  {
+    "id": "stabilization-refreshes-turn-and-owner",
+    "date": "2026-09-13",
+    "lesson": "Stabilization changes the public participant life state and death-save progress even while the active turn is unchanged. Refreshing only CharacterData and Afford can leave stale initiative pips.",
+    "fix": "Refresh Turn for activation_result.stabilized and render Stable from provider life state in both initiative and owner status. Keep the full progress graph in event identity, including present zero counters and false flags; already-stable results remain valid.",
+    "context": "Two-player Spare the Dying browser acceptance verified zero HP, two casts, reconnect and skipped stable turns with no death saves."
   }
 ]

@@ -9,6 +9,7 @@ import {
 import {
   DeathSaveOutcome,
   DoorState,
+  LifeState,
   type AttackRef,
   type ReactionRef,
   type SpellRef,
@@ -186,6 +187,18 @@ function buildActivationResultStory(
   const actor = memberName(event.body.value.actor, context);
   const base = { id: storyId(event), eyebrow: 'Ability result' };
   switch (event.body.value.result.case) {
+    case 'stabilized': {
+      const result = event.body.value.result.value;
+      const source = result.sourceName || result.sourceRef || 'Stabilization';
+      return Object.freeze({
+        ...base,
+        eyebrow: source,
+        headline: `${memberName(result.target, context)} ${result.before === LifeState.STABILIZED ? 'remains stable' : 'is stabilized'}`,
+        detail: `${source} by ${actor}; ${result.hitPoints} HP (unchanged).`,
+        tone: 'success',
+      });
+    }
+
     case 'healingApplied': {
       const healing = event.body.value.result.value;
       const arithmetic = healing.calculation
