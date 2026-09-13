@@ -21,7 +21,8 @@
  * empty: a direct map click never chooses or dispatches an action. Candidates
  * receive the existing quiet ring and brighter hover ring; unavailable
  * candidates remain visible as entities but receive no ring and cannot route a
- * dispatch. Floor walking and occupied-cell behavior are otherwise unchanged.
+ * dispatch. The caller still owns whether a bare floor click is currently a
+ * movement intent; occupied cells never fall through to that floor callback.
  *
  * BOTH the ground-plane raycast AND each entity's OWN mesh route through
  * the SAME resolution, for click AND hover alike — `HexEntity` has its
@@ -179,6 +180,9 @@ export interface SessionCanvasProps {
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
    * here; this component only owns the raycast. */
   onHexClick?: (coord: CubeCoord) => void;
+  /** Local map-selection cancel invoked only by a quick right click. The
+   * camera owns click-vs-drag classification so right-drag remains pan. */
+  onCancelSelection?: () => void;
   /** Fires when a click lands on an `attackableTargets` entity's cell —
    * see this component's own doc comment. `onHexClick` is NOT also
    * called in that case. */
@@ -245,6 +249,10 @@ export interface SessionCanvasProps {
    * live one straight through, so in practice this is only ever null
    * before the FIRST atlas load. */
   pathIndex?: AtlasPathIndex | null;
+  /** Whether a non-target floor hover may draw a prospective movement path.
+   * Combat passes true only after the player explicitly selects Move; callers
+   * that omit it retain the exploration/default canvas behavior. */
+  movementPreviewEnabled?: boolean;
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -279,6 +287,7 @@ export function SessionScene({
   startFacing,
   movements,
   onHexClick,
+  onCancelSelection,
   onEntityClick,
   onHoverEntity,
   onMovementPainted,
@@ -290,6 +299,7 @@ export function SessionScene({
   attackableTargets,
   reactionMover,
   pathIndex = null,
+  movementPreviewEnabled = true,
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -370,6 +380,7 @@ export function SessionScene({
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
+    onQuickRightClick: onCancelSelection,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a
@@ -527,13 +538,23 @@ export function SessionScene({
     onHoverEntity?.(hoveredEntityId);
   }, [hoveredEntityId, onHoverEntity]);
 
+  const hoveredEntityIsAttackable = hoveredEntityId
+    ? attackableSet.has(hoveredEntityId)
+    : false;
+  // Attack hover remains its own orange target affordance. Every other floor
+  // marker is prospective movement and therefore exists only while Move is
+  // explicitly selected (or an exploration caller keeps the default enabled).
+  const moveIndicatorHovered =
+    movementPreviewEnabled || hoveredEntityIsAttackable
+      ? effectiveHoveredHex
+      : null;
   const moveIndicatorSelection = useMoveIndicator({
-    hovered: effectiveHoveredHex,
+    hovered: moveIndicatorHovered,
     from: myPosition,
     pathIndex,
     locked: turnLocked,
     hoveredEntityId,
-    attackable: hoveredEntityId ? attackableSet.has(hoveredEntityId) : false,
+    attackable: hoveredEntityIsAttackable,
     budgetFeet: movementBudgetFeet,
   });
 
@@ -612,7 +633,7 @@ export function SessionScene({
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}
-        hovered={effectiveHoveredHex}
+        hovered={moveIndicatorHovered}
       />
       <HexEntity
         entityId={characterId}

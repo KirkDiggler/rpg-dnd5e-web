@@ -17,6 +17,12 @@ import type { DebugFeedEntry } from '../debugLogLine';
 export interface CombatExperiencePresentationState {
   armedDeclarationId: string | null;
   selectedCandidateMember: string | null;
+  /**
+   * The player explicitly selected Move. Kept separately from its opaque
+   * declaration id so routine Afford refreshes can mint a replacement selector
+   * without changing the player's chosen interaction mode.
+   */
+  movementSelected?: boolean;
   /** Ordered cast targets; absent on legacy fixtures and unrelated verbs. */
   selectedCandidateMembers?: readonly string[];
   /**
@@ -207,6 +213,8 @@ interface CombatExperienceBaseProps {
   onSelectCastOption?: (optionId: string) => void;
   /** Close the option menu without casting. Nothing has been sent yet. */
   onCancelCastOption?: () => void;
+  /** Clear the currently selected action without sending a command. */
+  onCancelSelection?: () => void;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;

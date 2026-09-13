@@ -2399,6 +2399,25 @@ describe('SessionScene', () => {
       expect(indicatorMeshes(renderer)).toHaveLength(0);
     });
 
+    it('draws no prospective floor marker while movement preview is disabled', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          movementPreviewEnabled={false}
+        />
+      );
+
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      expect(indicatorMeshes(renderer)).toHaveLength(0);
+    });
+
     it('hovering a valid floor cell with no pathIndex at all draws nothing (not a false "invalid" hex) — rpg-dnd5e-web#768 Copilot review', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene

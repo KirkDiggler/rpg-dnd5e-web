@@ -266,6 +266,8 @@ export interface ActionDockProps {
   onSelectCastOption?: (optionId: string) => void;
   /** Close the menu without casting. */
   onCancelCastOption?: () => void;
+  /** Clear the selected declaration locally without spending anything. */
+  onCancelSelection?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
@@ -290,9 +292,11 @@ export interface ActionDockProps {
 function StandingActionGroup({
   actions,
   blocked,
+  onBeforeSelect,
 }: {
   actions: readonly StandingAction[];
   blocked: string | null;
+  onBeforeSelect?: () => void;
 }) {
   return (
     <div className={styles.actionGroup} data-testid="standing-actions">
@@ -305,7 +309,10 @@ function StandingActionGroup({
             data-testid={action.key}
             disabled={blocked !== null || action.pending === true}
             title={blocked ?? action.title}
-            onClick={action.onSelect}
+            onClick={() => {
+              onBeforeSelect?.();
+              action.onSelect();
+            }}
           >
             <span className={styles.actionIcon} aria-hidden="true">
               {action.icon}
@@ -427,6 +434,7 @@ export function ActionDock({
   optionDeclarationId,
   onSelectCastOption,
   onCancelCastOption,
+  onCancelSelection,
   onEndTurn,
   standingActions = [],
 }: ActionDockProps) {
@@ -442,7 +450,11 @@ export function ActionDock({
     authorityFresh
   );
   const standing = standingActions.length > 0 && (
-    <StandingActionGroup actions={standingActions} blocked={blocked} />
+    <StandingActionGroup
+      actions={standingActions}
+      blocked={blocked}
+      onBeforeSelect={onCancelSelection}
+    />
   );
 
   if (clock === ClockKind.WORLD) {
@@ -640,6 +652,15 @@ export function ActionDock({
     : [];
   const optionDeclaration =
     optionMatches.length === 1 ? optionMatches[0] : undefined;
+  const selectedMoveMatches =
+    armedDeclarationId === undefined
+      ? []
+      : executableDeclarations.filter(
+          (declaration) =>
+            declaration.id === armedDeclarationId &&
+            declaration.verb === Verb.MOVE
+        );
+  const moveIsSelected = selectedMoveMatches.length === 1;
 
   return (
     <div className={styles.actionRow}>
@@ -679,6 +700,21 @@ export function ActionDock({
                 onSelect={onSelectDeclaration}
               />
             ))}
+            {moveIsSelected && onCancelSelection && (
+              <span className={styles.actionOfferSlot}>
+                <button
+                  type="button"
+                  className={styles.actionOffer}
+                  aria-label="Cancel selected action"
+                  onClick={onCancelSelection}
+                >
+                  <span className={styles.actionIcon} aria-hidden="true">
+                    ✕
+                  </span>
+                  <span className={styles.actionLabel}>Cancel</span>
+                </button>
+              </span>
+            )}
           </div>
         </div>
       )}
