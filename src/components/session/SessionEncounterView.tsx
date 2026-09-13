@@ -560,9 +560,9 @@ function SessionEncounterScope({
   // This makes a missed Attack/member target a no-op rather than an accidental
   // walk and keeps the canvas ignorant of declaration kinds.
   //
-  // Entity clicks never arrive here: `SessionCanvas` gives a creature's own
-  // cell to `onEntityClick` first, so clicking a skeleton while a cell cast is
-  // armed is refused by the combat hook rather than misread as a cell.
+  // During CELL aiming, `SessionCanvas` also sends a clicked creature's
+  // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
+  // on this one conversion/submission path without selecting a victim.
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -1728,6 +1728,9 @@ function SessionEncounterScope({
                   onHexClick={runEnded === null ? handleGroundClick : undefined}
                   onCancelSelection={combat.onCancelSelection}
                   onEntityClick={runEnded === null ? onTargetClick : undefined}
+                  cellAimEnabled={
+                    runEnded === null ? combat.cellCastArmed : false
+                  }
                   onMovementPainted={
                     runEnded === null ? handleMovementPainted : undefined
                   }
@@ -1741,6 +1744,9 @@ function SessionEncounterScope({
                     experienceClock === ClockKind.WORLD ||
                     (experienceClock === ClockKind.TURN &&
                       combat.movementEnabled)
+                  }
+                  areaFootprint={
+                    runEnded === null ? combat.cellCastFootprint : undefined
                   }
                   turnLocked={turnLocked}
                   movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}

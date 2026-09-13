@@ -30,6 +30,9 @@ import {
   DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
+  FootprintOrigin,
+  FootprintSchema,
+  FootprintShape,
   GridKind,
   HexLayout,
   LifeState,
@@ -293,6 +296,11 @@ function cellCastDeclaration(id = 'v1.cast.thunderwave'): Declaration {
     spell: create(SpellRefSchema, {
       ref: 'dnd5e:spells:thunderwave',
       name: 'Thunderwave',
+    }),
+    footprint: create(FootprintSchema, {
+      shape: FootprintShape.BOX,
+      sizeFeet: 15,
+      origin: FootprintOrigin.CASTER_EDGE,
     }),
   });
 }
@@ -1198,6 +1206,31 @@ describe('SessionEncounterView production combat integration', () => {
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('threads only the armed CELL declaration footprint to the canvas and clears it on cancel or switch', async () => {
+    const cellCast = cellCastDeclaration();
+    readyTurn([cellCast, attackDeclaration(), endTurnDeclaration()]);
+    renderView();
+    const spell = await screen.findByRole('button', { name: /thunderwave/i });
+    const attack = screen.getByRole('button', { name: /longsword/i });
+
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
+    fireEvent.click(spell);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBe(
+      cellCast.footprint
+    );
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(true);
+
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
+
+    fireEvent.click(spell);
+    fireEvent.click(attack);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
   });
 
   it('map cancellation clears Move, Attack, and spell targeting without dispatching', async () => {
@@ -5232,24 +5265,54 @@ describe('the ground click while a cell cast is armed', () => {
     expect(hoisted.castFn).not.toHaveBeenCalled();
   });
 
-  it('sends nothing when a creature is clicked instead of the ground', async () => {
+  it("casts at a clicked creature's observed occupied cell and never falls through to Move or MEMBER targeting", async () => {
     armedTurn();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'skeleton-1',
+          name: 'Skeleton',
+          kind: MemberKind.MONSTER,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
+    hoisted.castFn.mockResolvedValue({ caught: [] });
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (candidate) => candidate.subject === 'skeleton-1'
+        )
+      ).toBe(true)
+    );
     fireEvent.click(
       await screen.findByRole('button', { name: /thunderwave/i })
     );
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(true);
+    const occupied = hoisted.lastCanvasProps.current?.otherMembers?.find(
+      (candidate) => candidate.subject === 'skeleton-1'
+    )?.position;
+    expect(occupied).toEqual({ x: 1, y: -1, z: 0 });
 
     await act(async () => {
-      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      // SessionCanvas routes the entity mesh through this same cell seam;
+      // this integration pins its one cube-to-wire conversion and cast owner.
+      if (occupied) hoisted.lastCanvasProps.current?.onHexClick?.(occupied);
       await Promise.resolve();
     });
 
-    // Entity clicks win over the ground in the canvas, so this one never
-    // reaches the floor handler at all. A skeleton is not a cell, and the
-    // cast stays where it was: armed, waiting for a place.
-    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(hoisted.castFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.cast.thunderwave',
+      target: '',
+      targets: [],
+      cell: { x: 1, y: 0 },
+    });
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
   });
