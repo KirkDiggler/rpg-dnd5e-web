@@ -18,6 +18,7 @@ import {
   TargetKind,
   Verb,
   type Declaration,
+  type Footprint,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,7 +50,10 @@ import { useCombatStoryPacing } from './useCombatStoryPacing';
 const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   armedDeclarationId: null,
   selectedCandidateMember: null,
+  movementSelected: false,
   selectedCandidateMembers: Object.freeze([]),
+  optionDeclarationId: null,
+  selectedOption: null,
   changedOptionNotice: null,
 });
 
@@ -116,6 +120,11 @@ export interface UseSessionCombatExperienceResult {
   /** `choice` is supplied only for a VERB_REACT declaration: the answer to
    * an open reaction window. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /** Answer the open option menu with one of the ids the declaration listed;
+   * the cast then arms or fires exactly as an option-less one would. */
+  onSelectCastOption: (optionId: string) => void;
+  /** Close the option menu without casting. Nothing has been sent yet. */
+  onCancelCastOption: () => void;
   onTargetClick: (target: string) => void;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
@@ -125,6 +134,12 @@ export interface UseSessionCombatExperienceResult {
   /** Whether a floor click belongs to an armed cast rather than to walking.
    * The one fact the map's single ground-click seam routes on. */
   cellCastArmed: boolean;
+  /** Provider-authored presentation data from that exact armed CELL cast. */
+  cellCastFootprint?: Footprint;
+  /** Combat movement preview/intent is available only after explicit Move. */
+  movementEnabled: boolean;
+  /** Clear a selected action locally; also bound to Escape. */
+  onCancelSelection: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
@@ -170,6 +185,31 @@ function uniqueCurrentDeclaration(
     return undefined;
   }
   return current;
+}
+
+/**
+ * Whether the option in hand is still one this declaration asks for.
+ *
+ * BOTH DIRECTIONS REFUSE, because both are INVALID_ARGUMENT on the wire. A
+ * declaration that lists options and carries no answer is a cast missing an
+ * input the player was asked for; one that lists none and carries an answer is
+ * a cast with a spare. Sending either would mean learning by refusal what the
+ * declaration had already said, and the second would do it after the menu had
+ * gone stale under a fresh Afford — the precise moment the word the player
+ * picked stops meaning anything.
+ *
+ * THE IDS ARE COMPARED, NEVER PARSED. Which ids exist is the server's list and
+ * an open one; this asks only whether the one in hand is still on it.
+ */
+function castOptionIsCurrent(
+  declaration: Declaration,
+  option: string | null | undefined
+): boolean {
+  if (declaration.options.length === 0) return !option;
+  if (!option) return false;
+  return (
+    declaration.options.filter((offered) => offered.id === option).length === 1
+  );
 }
 
 function refreshedWhy(
@@ -246,6 +286,12 @@ export function useSessionCombatExperience({
   const declarationsRef = useRef(declarations);
   const staleRecoveryRef = useRef<StaleRecovery | null>(null);
   const authorityRef = useRef({ clock, active, fresh: authorityFresh });
+  // WORLD movement is already the active interaction. Remember that concrete
+  // clock across the transient UNSPECIFIED synchronization bubble so entering
+  // combat can carry the intent exactly once instead of looking like a fresh
+  // turn default.
+  const previousConcreteClockRef = useRef(clock);
+  const carryWorldMovementRef = useRef(clock === ClockKind.WORLD);
   declarationsRef.current = declarations;
   authorityRef.current = { clock, active, fresh: authorityFresh };
 
@@ -256,6 +302,28 @@ export function useSessionCombatExperience({
       mountedRef.current = false;
     };
   }, []);
+
+  const onCancelSelection = useCallback(() => {
+    // A deliberate cancellation also consumes any not-yet-materialized WORLD
+    // carry. A later routine TURN refresh must not silently bring Move back.
+    carryWorldMovementRef.current = false;
+    setInteraction(EMPTY_INTERACTION);
+    setTargeting(false);
+  }, []);
+
+  const selectionIsCancellable =
+    interaction.movementSelected === true ||
+    targeting ||
+    interaction.optionDeclarationId != null;
+  useEffect(() => {
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectionIsCancellable) {
+        onCancelSelection();
+      }
+    };
+    window.addEventListener('keydown', cancelOnEscape);
+    return () => window.removeEventListener('keydown', cancelOnEscape);
+  }, [onCancelSelection, selectionIsCancellable]);
 
   const presentationMemberNames = useMemo(
     () => Object.fromEntries(memberNames ?? []),
@@ -330,7 +398,9 @@ export function useSessionCombatExperience({
             changedOptionNotice:
               current.changedOptionNotice ?? staleDeclarationMessage(),
           }
-        : EMPTY_INTERACTION
+        : current.movementSelected
+          ? current
+          : EMPTY_INTERACTION
     );
     setTargeting(false);
   }, [invalidateAuthoritySnapshots]);
@@ -365,6 +435,44 @@ export function useSessionCombatExperience({
     });
   }, [authorityFresh, declarations]);
 
+  useEffect(() => {
+    if (clock === ClockKind.WORLD) {
+      if (previousConcreteClockRef.current !== ClockKind.WORLD) {
+        carryWorldMovementRef.current = true;
+      }
+      previousConcreteClockRef.current = ClockKind.WORLD;
+      return;
+    }
+    // Keep WORLD as the last concrete state while Turn/Afford disagree during
+    // the fight-start bubble. UNSPECIFIED is synchronization, not a new mode.
+    if (clock !== ClockKind.TURN) return;
+
+    previousConcreteClockRef.current = ClockKind.TURN;
+    if (!authorityFresh || !carryWorldMovementRef.current) return;
+    carryWorldMovementRef.current = false;
+    // Never overwrite an action the player managed to choose while snapshots
+    // settled. That choice supersedes free-roam movement.
+    if (
+      interaction.armedDeclarationId !== null ||
+      interaction.optionDeclarationId != null
+    ) {
+      return;
+    }
+    const moves = declarations.filter(
+      (declaration) =>
+        declaration.verb === Verb.MOVE &&
+        declaration.targetKind === TargetKind.PATH &&
+        declaration.id.length > 0
+    );
+    if (moves.length !== 1) return;
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      armedDeclarationId: moves[0]!.id,
+      movementSelected: true,
+    });
+    setTargeting(false);
+  }, [authorityFresh, clock, declarations, interaction]);
+
   // A selector is only fenced for the authoritative generation in which it
   // was attempted. Stale/loading snapshots retain the fence because their
   // last-good declarations cannot prove that generation advanced. A fresh
@@ -387,6 +495,42 @@ export function useSessionCombatExperience({
   }, [authorityFresh, declarations]);
 
   const { armedIsCurrent, presentationState } = useMemo(() => {
+    if (interaction.movementSelected) {
+      // Movement is a chosen interaction mode, not ownership of one snapshot's
+      // selector. Keep it selected while routine Turn/Afford refreshes are in
+      // flight, then bind it to the refreshed Move declaration. This preserves
+      // the player's choice after a walk without making stale authority
+      // executable or automatically selecting Move on a later turn.
+      if (!authorityFresh) {
+        return { armedIsCurrent: true, presentationState: interaction };
+      }
+      const moveDeclarations = declarations.filter(
+        (declaration) =>
+          declaration.verb === Verb.MOVE &&
+          declaration.targetKind === TargetKind.PATH &&
+          declaration.id.length > 0
+      );
+      const availableMoves = moveDeclarations.filter(
+        (declaration) => declaration.available
+      );
+      const currentMove =
+        availableMoves.length === 1
+          ? availableMoves[0]
+          : availableMoves.length === 0 && moveDeclarations.length === 1
+            ? moveDeclarations[0]
+            : undefined;
+      const current = clock === ClockKind.TURN && currentMove !== undefined;
+      return {
+        armedIsCurrent: current,
+        presentationState: current
+          ? {
+              ...interaction,
+              armedDeclarationId: currentMove.id,
+            }
+          : EMPTY_INTERACTION,
+      };
+    }
+
     const armedMatches =
       interaction.armedDeclarationId === null
         ? []
@@ -438,11 +582,22 @@ export function useSessionCombatExperience({
   }, [active, authorityFresh, clock, declarations, interaction, member]);
 
   useEffect(() => {
-    if (interaction.armedDeclarationId !== null && !armedIsCurrent) {
+    const remappedMovement =
+      interaction.movementSelected &&
+      interaction.armedDeclarationId !== presentationState.armedDeclarationId;
+    if (
+      interaction.armedDeclarationId !== null &&
+      (!armedIsCurrent || remappedMovement)
+    ) {
       setInteraction(presentationState);
       setTargeting(false);
     }
-  }, [armedIsCurrent, interaction.armedDeclarationId, presentationState]);
+  }, [
+    armedIsCurrent,
+    interaction.armedDeclarationId,
+    interaction.movementSelected,
+    presentationState,
+  ]);
 
   const previousActiveRef = useRef<string | null>(null);
   useEffect(() => {
@@ -464,6 +619,78 @@ export function useSessionCombatExperience({
     previousActiveRef.current = current;
   }, [active, clock, member]);
 
+  /**
+   * Arm or fire a cast, once every input the declaration named is in hand.
+   *
+   * ONE BODY FOR BOTH DOORS. A cast reaches this from the row click when it
+   * offers no choice, and from the option menu when it does; what happens next
+   * is identical either way, because the chosen word is an input the cast
+   * carries rather than a different spell. Two copies of the target-kind
+   * branch below would be two places for it to drift, and the CELL/MEMBER/
+   * fire-now split is exactly the part a second copy would get wrong.
+   *
+   * THE WORD RIDES ALONG TO WHEREVER THE CAST IS SENT FROM. A cast that fires
+   * on the click takes it as an argument, because this clears the interaction
+   * before firing; one that arms parks it in the interaction, where the target
+   * click and the ground click read it back.
+   */
+  const beginCast = useCallback(
+    (candidate: Declaration, option: string | null) => {
+      // A CELL CAST ARMS AND WAITS FOR THE GROUND. It carries no candidates,
+      // like an area cast, and that resemblance is the trap: Thunderclap
+      // fires on the row click because nobody and nothing is chosen, while
+      // Thunderwave still needs the direction its cube points. Firing here
+      // would send a cast the server refuses for a missing cell.
+      if (candidate.targetKind === TargetKind.CELL) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.CAST,
+          TargetKind.CELL
+        );
+        if (!current) return;
+        setInteraction({
+          armedDeclarationId: current.id,
+          selectedCandidateMember: null,
+          selectedCandidateMembers: [],
+          optionDeclarationId: null,
+          selectedOption: option,
+          changedOptionNotice: null,
+        });
+        setTargeting(true);
+        return;
+      }
+      if (candidate.targetKind === TargetKind.MEMBER) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.CAST,
+          TargetKind.MEMBER
+        );
+        if (!current) return;
+        setInteraction({
+          armedDeclarationId: current.id,
+          selectedCandidateMember: null,
+          selectedCandidateMembers: [],
+          optionDeclarationId: null,
+          selectedOption: option,
+          changedOptionNotice: null,
+        });
+        setTargeting(true);
+        return;
+      }
+      // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHATEVER WAS ARMED.
+      // Targeted actions replace the interaction with their own arm, while
+      // immediate actions have to empty it before sending. Otherwise a spell
+      // could go out on the wire while the panel still showed the previous
+      // Attack or Move selection.
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      runCastRef.current(candidate, option);
+    },
+    []
+  );
+
   const onSelectDeclaration = useCallback(
     (candidate: Declaration, choice?: ReactChoice) => {
       // THE ONE VERB THAT IS NOT DECLARED ON ITS OWNER'S TURN. Every other
@@ -482,6 +709,9 @@ export function useSessionCombatExperience({
       ) {
         return;
       }
+      // Any explicit declaration supersedes a pending free-roam carry. This
+      // stays false across ordinary refreshed declarations.
+      carryWorldMovementRef.current = false;
 
       if (answeringWindow) {
         // UNSPECIFIED IS NOT A DEFAULT. The dock sends one of the two
@@ -621,7 +851,11 @@ export function useSessionCombatExperience({
           TargetKind.PATH
         );
         if (!current) return;
-        setInteraction(EMPTY_INTERACTION);
+        setInteraction({
+          ...EMPTY_INTERACTION,
+          armedDeclarationId: current.id,
+          movementSelected: true,
+        });
         setTargeting(false);
         return;
       }
@@ -651,13 +885,10 @@ export function useSessionCombatExperience({
           return;
         }
         // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHAT WAS ARMED.
-        // Every branch that arms sets an interaction, and every branch that
-        // resolves immediately has to put it back — MOVE does at the PATH
-        // branch above, DEATH_SAVE and REACT do at theirs. These two did not,
-        // so arming a creature-target row and then clicking one that fires
-        // straight away left the FIRST row armed and `targeting` true: the
-        // spell went out on the wire while the panel still showed the other
-        // one selected, and nothing the player could click looked wrong.
+        // Targeted actions replace the interaction with their own arm, while
+        // immediate actions have to empty it before sending. Otherwise an
+        // ability could resolve while Move or a target-taking action remained
+        // visibly selected.
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
         runActivateRef.current(candidate);
@@ -675,59 +906,46 @@ export function useSessionCombatExperience({
       // spell declares, so the declaration carries no candidates and there is
       // nothing here to prompt for.
       if (candidate.verb === Verb.CAST) {
-        // A CELL CAST ARMS AND WAITS FOR THE GROUND. It carries no candidates,
-        // like an area cast, and that resemblance is the trap: Thunderclap
-        // fires on the row click because nobody and nothing is chosen, while
-        // Thunderwave still needs the direction its cube points. Firing here
-        // would send a cast the server refuses for a missing cell.
-        if (candidate.targetKind === TargetKind.CELL) {
+        // A CAST THAT LISTS WORDS ASKS FOR ONE BEFORE ANYTHING ELSE.
+        //
+        // ONE ROW, NOT ONE PER WORD. Command speaks Approach, Flee or Grovel,
+        // and three rows for it would make the dock's row count a function of
+        // every spell's vocabulary — and a spell with two choices a grid. The
+        // declaration carries the menu and the request carries the answer, the
+        // way the aimed cell already works: the offer says an input is needed
+        // and the send brings one (design ideas/spells/command/design.md §3).
+        //
+        // FIRST, BECAUSE IT IS THE CHEAPEST THING TO CHANGE YOUR MIND ABOUT.
+        // Asked after the target ring, a player who picked the wrong word
+        // would have to re-pick the creature too; asked here, cancelling costs
+        // nothing and nothing has been sent.
+        //
+        // WHAT THE WORDS MEAN IS NOT ASKED HERE. The ids are echoed and the
+        // labels are drawn; a client that branched on either would be
+        // authoring 5e, which is the whole thing declarations prevent.
+        if (candidate.options.length > 0) {
           const current = uniqueCurrentDeclaration(
             declarationsRef.current,
             candidate,
             Verb.CAST,
-            TargetKind.CELL
-          );
-          if (!current) return;
-          setInteraction({
-            armedDeclarationId: current.id,
-            selectedCandidateMember: null,
-            selectedCandidateMembers: [],
-            changedOptionNotice: null,
-          });
-          setTargeting(true);
-          return;
-        }
-        if (candidate.targetKind === TargetKind.MEMBER) {
-          const current = uniqueCurrentDeclaration(
-            declarationsRef.current,
-            candidate,
-            Verb.CAST,
+            TargetKind.NONE,
+            TargetKind.AREA,
+            TargetKind.CELL,
             TargetKind.MEMBER
           );
           if (!current) return;
           setInteraction({
-            armedDeclarationId: current.id,
-            selectedCandidateMember: null,
-            selectedCandidateMembers: [],
-            changedOptionNotice: null,
+            ...EMPTY_INTERACTION,
+            optionDeclarationId: current.id,
           });
-          setTargeting(true);
+          setTargeting(false);
           return;
         }
-        // A DECLARATION THAT FIRES ON THE CLICK STILL CLEARS WHAT WAS ARMED.
-        // Every branch that arms sets an interaction, and every branch that
-        // resolves immediately has to put it back — MOVE does at the PATH
-        // branch above, DEATH_SAVE and REACT do at theirs. These two did not,
-        // so arming a creature-target row and then clicking one that fires
-        // straight away left the FIRST row armed and `targeting` true: the
-        // spell went out on the wire while the panel still showed the other
-        // one selected, and nothing the player could click looked wrong.
-        setInteraction(EMPTY_INTERACTION);
-        setTargeting(false);
-        runCastRef.current(candidate);
+        beginCast(candidate, null);
       }
     },
     [
+      beginCast,
       deathSave,
       invalidateAuthority,
       member,
@@ -738,6 +956,48 @@ export function useSessionCombatExperience({
       session,
     ]
   );
+
+  /**
+   * The player answers the open menu, and the cast goes on from there.
+   *
+   * RE-READ FROM THE CURRENT DECLARATIONS, never taken on trust from the
+   * render that drew the menu. Afford may have re-minted the offer between the
+   * row click and this one; the same availability fact that gates every other
+   * verb gates the word, and an id the refreshed declaration no longer lists
+   * is refused here rather than discovered by the server's INVALID_ARGUMENT.
+   */
+  const onSelectCastOption = useCallback(
+    (optionId: string) => {
+      if (!mountedRef.current || !optionId) return;
+      const pending = presentationState.optionDeclarationId;
+      if (!pending) return;
+      const matches = declarationsRef.current.filter(
+        (declaration) => declaration.id === pending
+      );
+      if (matches.length !== 1) return;
+      const current = matches[0]!;
+      if (
+        current.verb !== Verb.CAST ||
+        !current.available ||
+        !castOptionIsCurrent(current, optionId)
+      ) {
+        return;
+      }
+      beginCast(current, optionId);
+    },
+    [beginCast, presentationState.optionDeclarationId]
+  );
+
+  /**
+   * Close the menu having chosen nothing.
+   *
+   * NOTHING HAS BEEN SENT, which is the point of asking before arming: the
+   * whole cast is still undone, so the way out is the same empty state a fresh
+   * turn starts in rather than an undo of anything.
+   */
+  const onCancelCastOption = useCallback(() => {
+    onCancelSelection();
+  }, [onCancelSelection]);
 
   const onTargetClick = useCallback(
     (target: string) => {
@@ -789,13 +1049,23 @@ export function useSessionCombatExperience({
         }
         const targets = [...currentTargets, target];
         if (castDeclaration.maxTargets === 1) {
-          runCastTargetsRef.current(castDeclaration, targets);
+          runCastTargetsRef.current(
+            castDeclaration,
+            targets,
+            presentationState.selectedOption
+          );
           return;
         }
         setInteraction({
           armedDeclarationId: castDeclaration.id,
           selectedCandidateMember: null,
           selectedCandidateMembers: targets,
+          // THE WORD SURVIVES EVERY TARGET CLICK. Bane collects up to three
+          // members one click at a time, and each one rewrites this state; a
+          // branch that dropped the chosen option here would lose it silently
+          // on the second target and send a cast the server refuses.
+          optionDeclarationId: null,
+          selectedOption: presentationState.selectedOption ?? null,
           changedOptionNotice: null,
         });
         setTargeting(true);
@@ -1014,11 +1284,23 @@ export function useSessionCombatExperience({
   runActivateRef.current = onActivate;
 
   const runCastTargetsRef = useRef<
-    (candidate: Declaration, targets: readonly string[]) => void
+    (
+      candidate: Declaration,
+      targets: readonly string[],
+      option?: string | null
+    ) => void
   >(() => {});
 
   const onCastTargets = useCallback(
-    (candidate: Declaration, targets: readonly string[]) => {
+    (
+      candidate: Declaration,
+      targets: readonly string[],
+      // PASSED IN, NOT READ BACK OUT OF STATE. The word was chosen before the
+      // targets were, and both callers already hold the interaction that
+      // recorded it — re-deriving it here would be a second copy of the same
+      // answer, free to disagree with the one the player saw.
+      option?: string | null
+    ) => {
       if (
         !mountedRef.current ||
         castInFlightRef.current ||
@@ -1036,6 +1318,7 @@ export function useSessionCombatExperience({
       );
       if (
         !current ||
+        !castOptionIsCurrent(current, option) ||
         current.minTargets < 0 ||
         current.maxTargets < current.minTargets ||
         targets.length < current.minTargets ||
@@ -1061,6 +1344,7 @@ export function useSessionCombatExperience({
             member,
             declarationId: current.id,
             targets,
+            option: option ?? undefined,
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
@@ -1102,7 +1386,8 @@ export function useSessionCombatExperience({
     if (matches.length !== 1 || !matches[0]) return;
     runCastTargetsRef.current(
       matches[0],
-      presentationState.selectedCandidateMembers ?? []
+      presentationState.selectedCandidateMembers ?? [],
+      presentationState.selectedOption
     );
   }, [presentationState]);
 
@@ -1138,11 +1423,13 @@ export function useSessionCombatExperience({
         (declaration) => declaration.id === presentationState.armedDeclarationId
       );
       const current = armed.length === 1 ? armed[0] : undefined;
+      const option = presentationState.selectedOption;
       if (
         !current ||
         current.verb !== Verb.CAST ||
         current.targetKind !== TargetKind.CELL ||
-        !current.available
+        !current.available ||
+        !castOptionIsCurrent(current, option)
       ) {
         return;
       }
@@ -1158,6 +1445,7 @@ export function useSessionCombatExperience({
             declarationId: current.id,
             targets: [],
             cell,
+            option: option ?? undefined,
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
@@ -1195,6 +1483,7 @@ export function useSessionCombatExperience({
       invalidateAuthority,
       member,
       presentationState.armedDeclarationId,
+      presentationState.selectedOption,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
@@ -1209,22 +1498,54 @@ export function useSessionCombatExperience({
    * where the armed offer and the declarations already live, rather than
    * reconstructed by a caller that would have to learn what a target kind is.
    */
-  const cellCastArmed = useMemo(() => {
-    if (presentationState.armedDeclarationId === null) return false;
+  const armedCellCast = useMemo(() => {
+    if (presentationState.armedDeclarationId === null) return undefined;
     const armed = declarations.filter(
       (declaration) => declaration.id === presentationState.armedDeclarationId
     );
-    return (
-      armed.length === 1 &&
+    return armed.length === 1 &&
       armed[0]!.verb === Verb.CAST &&
       armed[0]!.targetKind === TargetKind.CELL
-    );
+      ? armed[0]
+      : undefined;
   }, [declarations, presentationState.armedDeclarationId]);
+  const cellCastArmed = armedCellCast !== undefined;
+  const cellCastFootprint = armedCellCast?.footprint;
+
+  const movementEnabled = useMemo(() => {
+    if (
+      !presentationState.movementSelected ||
+      presentationState.armedDeclarationId === null ||
+      !authorityFresh ||
+      clock !== ClockKind.TURN ||
+      active !== member
+    ) {
+      return false;
+    }
+    const armed = declarations.filter(
+      (declaration) =>
+        declaration.id === presentationState.armedDeclarationId &&
+        declaration.verb === Verb.MOVE &&
+        declaration.targetKind === TargetKind.PATH &&
+        declaration.available
+    );
+    return armed.length === 1;
+  }, [
+    active,
+    authorityFresh,
+    clock,
+    declarations,
+    member,
+    presentationState.armedDeclarationId,
+    presentationState.movementSelected,
+  ]);
 
   // runCast is held in a ref for the same reason runActivate is: it and
   // onSelectDeclaration are mutually recursive through the dock's single
   // onSelect handler.
-  const runCastRef = useRef<(candidate: Declaration) => void>(() => {});
+  const runCastRef = useRef<
+    (candidate: Declaration, option?: string | null) => void
+  >(() => {});
 
   /**
    * A cast that names nobody — True Strike on the caster's own next swing.
@@ -1240,7 +1561,10 @@ export function useSessionCombatExperience({
    * must leave it unset.
    */
   const onCast = useCallback(
-    (candidate: Declaration) => {
+    // THE OPTION ARRIVES AS AN ARGUMENT because this path clears the
+    // interaction before it fires — there is nothing to arm and so nothing to
+    // read the word back out of.
+    (candidate: Declaration, option?: string | null) => {
       if (
         !mountedRef.current ||
         castInFlightRef.current ||
@@ -1257,7 +1581,7 @@ export function useSessionCombatExperience({
         TargetKind.NONE,
         TargetKind.AREA
       );
-      if (!current) return;
+      if (!current || !castOptionIsCurrent(current, option)) return;
 
       castInFlightRef.current = true;
       void (async () => {
@@ -1267,6 +1591,7 @@ export function useSessionCombatExperience({
             member,
             declarationId: current.id,
             targets: [],
+            option: option ?? undefined,
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
@@ -1348,6 +1673,10 @@ export function useSessionCombatExperience({
       );
       if (!current || endTurns.length !== 1) return;
 
+      // End Turn is another explicit action choice. Clear Move (or any target
+      // arm) before sending so completion or cancellation cannot reveal an old
+      // movement mode underneath it.
+      onCancelSelection();
       endTurnInFlightRef.current = true;
       void (async () => {
         try {
@@ -1384,6 +1713,7 @@ export function useSessionCombatExperience({
       endTurn,
       invalidateAuthority,
       member,
+      onCancelSelection,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
@@ -1490,10 +1820,15 @@ export function useSessionCombatExperience({
       pacingNotice: pacing.notice,
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
+      onSelectCastOption,
+      onCancelCastOption,
       onTargetClick,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
+      cellCastFootprint,
+      movementEnabled,
+      onCancelSelection,
       onEndTurn,
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
@@ -1506,10 +1841,15 @@ export function useSessionCombatExperience({
     [
       acceptStreamEvent,
       cellCastArmed,
+      cellCastFootprint,
       invalidateAuthority,
+      movementEnabled,
+      onCancelSelection,
       logMode,
+      onCancelCastOption,
       onCellClick,
       onEndTurn,
+      onSelectCastOption,
       onSelectDeclaration,
       onTargetClick,
       onConfirmTargets,

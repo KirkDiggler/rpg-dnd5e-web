@@ -4,9 +4,10 @@
  * - WASD to pan
  * - Q/E to rotate (Y-axis only)
  * - Mouse wheel to zoom
- * - Right-click drag to pan ("grab the board"). This used to rotate; Kirk
- *   moved it to panning so rotation lives on Q/E alone and the mouse does
- *   the thing a mouse on a map is expected to do.
+ * - Right-click drag to pan ("grab the board"). A quick right click may notify
+ *   the caller to cancel its local map selection; peak displacement keeps an
+ *   out-and-back drag from becoming a cancel. This used to rotate; Kirk moved
+ *   it to panning so rotation lives on Q/E alone.
  * - Middle-click drag to rotate azimuth only (speed coupled to `rotateSpeed`
  *   via `DRAG_SECONDS_PER_PIXEL`, cameraDials.ts — #906). Horizontal only,
  *   no tilt — same "no free-look" rule as everything else here.
@@ -47,6 +48,8 @@ const DEFAULT_DRAG_ROTATE_RAD_PER_PX =
   (DEFAULT_DRAG_ROTATE_DEG_PER_PX * Math.PI) / 180;
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
+/** Peak pointer displacement at or below this remains a quick right click. */
+const QUICK_RIGHT_CLICK_THRESHOLD_PX = 5;
 
 /**
  * Cap, in seconds, on the frame delta used for USER-INPUT-DRIVEN motion
@@ -148,6 +151,9 @@ interface CameraControlsOptions {
    * itself — see rpg-dnd5e-web#457, the auto-reframing regression this
    * guards against. */
   revealedBounds?: RevealedBounds | null;
+  /** A right press/release that never exceeds the drag threshold. The caller
+   * decides what local map interaction, if any, that gesture cancels. */
+  onQuickRightClick?: () => void;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -179,6 +185,7 @@ export function useCameraControls({
   minDistance = 5,
   maxDistance = 100,
   revealedBounds,
+  onQuickRightClick,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -218,8 +225,11 @@ export function useCameraControls({
   // board"). Y is tracked too now that the drag moves in both axes.
   const mouse = useRef({
     isRightDown: false,
+    startX: 0,
+    startY: 0,
     lastX: 0,
     lastY: 0,
+    peakDisplacement: 0,
   });
 
   // Middle-button drag: azimuth rotation only, no tilt (speed coupled to
@@ -459,15 +469,13 @@ export function useCameraControls({
     };
   }, []);
 
-  // Handle mouse events for right-click rotation
+  // Handle mouse gestures for right-pan/cancel, middle-rotate, and wheel zoom.
   useEffect(() => {
     const canvas = gl.domElement;
+    const rightDrag = mouse.current;
 
-    // Middle-button rotate. Tracked with WINDOW-level listeners (added only
-    // for the duration of the drag), unlike right-drag pan's canvas-scoped
-    // ones above/below — a fast horizontal swing easily carries the cursor
-    // off the canvas, and losing the drag there would read as broken rather
-    // than as an edge case.
+    // Camera gestures begin on the canvas and track on the window until
+    // release, so crossing the canvas edge cannot lose motion or mouseup.
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!middleDrag.current.active) return;
       const dx = e.clientX - middleDrag.current.lastX;
@@ -484,12 +492,27 @@ export function useCameraControls({
       window.removeEventListener('mouseup', endMiddleDrag);
     };
 
+    const endRightDrag = () => {
+      rightDrag.isRightDown = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', endRightDrag);
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
-        // Right click
-        mouse.current.isRightDown = true;
-        mouse.current.lastX = e.clientX;
-        mouse.current.lastY = e.clientY;
+        // Right press begins either a quick local cancel or the existing pan.
+        // Peak displacement, rather than release displacement, distinguishes
+        // an out-and-back drag from a click.
+        rightDrag.isRightDown = true;
+        rightDrag.startX = e.clientX;
+        rightDrag.startY = e.clientY;
+        rightDrag.lastX = e.clientX;
+        rightDrag.lastY = e.clientY;
+        rightDrag.peakDisplacement = 0;
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('blur', endRightDrag);
       } else if (e.button === 1) {
         // Middle click — prevent the browser's autoscroll affordance, then
         // rotate on drag instead. Right+left chord is NOT a camera gesture
@@ -503,18 +526,32 @@ export function useCameraControls({
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 2) {
-        mouse.current.isRightDown = false;
-      }
+      if (e.button !== 2 || !rightDrag.isRightDown) return;
+      const releaseDisplacement = Math.hypot(
+        e.clientX - rightDrag.startX,
+        e.clientY - rightDrag.startY
+      );
+      rightDrag.peakDisplacement = Math.max(
+        rightDrag.peakDisplacement,
+        releaseDisplacement
+      );
+      const quick =
+        rightDrag.peakDisplacement <= QUICK_RIGHT_CLICK_THRESHOLD_PX;
+      endRightDrag();
+      if (quick) onQuickRightClick?.();
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!mouse.current.isRightDown) return;
+      if (!rightDrag.isRightDown) return;
 
-      const dx = e.clientX - mouse.current.lastX;
-      const dy = e.clientY - mouse.current.lastY;
-      mouse.current.lastX = e.clientX;
-      mouse.current.lastY = e.clientY;
+      rightDrag.peakDisplacement = Math.max(
+        rightDrag.peakDisplacement,
+        Math.hypot(e.clientX - rightDrag.startX, e.clientY - rightDrag.startY)
+      );
+      const dx = e.clientX - rightDrag.lastX;
+      const dy = e.clientY - rightDrag.lastY;
+      rightDrag.lastX = e.clientX;
+      rightDrag.lastY = e.clientY;
 
       // Ground-plane basis for the current heading — same convention as the
       // WASD block in useFrame below, reusing the same scratch vectors.
@@ -601,17 +638,14 @@ export function useCameraControls({
     };
 
     canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     canvas.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('mouseup', handleMouseUp);
-      canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('contextmenu', handleContextMenu);
+      endRightDrag();
       endMiddleDrag();
     };
     // target included so effect re-initializes if target reference changes
@@ -632,6 +666,7 @@ export function useCameraControls({
     currentOrthoBand,
     applyAzimuthDelta,
     dragRotate,
+    onQuickRightClick,
   ]);
 
   // Update each frame based on key state

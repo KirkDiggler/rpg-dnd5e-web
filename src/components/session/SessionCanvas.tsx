@@ -21,7 +21,8 @@
  * empty: a direct map click never chooses or dispatches an action. Candidates
  * receive the existing quiet ring and brighter hover ring; unavailable
  * candidates remain visible as entities but receive no ring and cannot route a
- * dispatch. Floor walking and occupied-cell behavior are otherwise unchanged.
+ * dispatch. The caller still owns whether a bare floor click is currently a
+ * movement intent; occupied cells never fall through to that floor callback.
  *
  * BOTH the ground-plane raycast AND each entity's OWN mesh route through
  * the SAME resolution, for click AND hover alike — `HexEntity` has its
@@ -52,6 +53,7 @@ import { refId } from '@/utils/refs';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
+  Footprint,
   PublicMemberInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -74,6 +76,7 @@ import { resolveOffHandPresentationByRefKey } from '../hex-grid/offHandEquipment
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
+import { AreaFootprintPreview } from './AreaFootprintPreview';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
@@ -179,10 +182,18 @@ export interface SessionCanvasProps {
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
    * here; this component only owns the raycast. */
   onHexClick?: (coord: CubeCoord) => void;
+  /** Local map-selection cancel invoked only by a quick right click. The
+   * camera owns click-vs-drag classification so right-drag remains pan. */
+  onCancelSelection?: () => void;
   /** Fires when a click lands on an `attackableTargets` entity's cell —
    * see this component's own doc comment. `onHexClick` is NOT also
-   * called in that case. */
+   * called in that case unless `cellAimEnabled` gives the occupied cell to
+   * CELL aiming instead. */
   onEntityClick?: (subject: string) => void;
+  /** An armed CELL cast owns creature clicks as cell placement. The creature's
+   * observed `otherMembers` position routes through the same `onHexClick` seam
+   * as exposed floor; MEMBER selection remains unchanged when false. */
+  cellAimEnabled?: boolean;
   /** Fires with the subject under the cursor, or `null` — presentation
    * only (drives the panel's "Attack <name>" hover label); this
    * component makes no affordability judgment of its own. */
@@ -245,6 +256,13 @@ export interface SessionCanvasProps {
    * live one straight through, so in practice this is only ever null
    * before the FIRST atlas load. */
   pathIndex?: AtlasPathIndex | null;
+  /** Whether a non-target floor hover may draw a prospective movement path.
+   * Combat passes true only after the player explicitly selects Move; callers
+   * that omit it retain the exploration/default canvas behavior. */
+  movementPreviewEnabled?: boolean;
+  /** Provider-authored outline for the exact armed CELL cast. Placement uses
+   * the existing effective floor/entity hover and never derives coverage. */
+  areaFootprint?: Footprint;
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -279,7 +297,9 @@ export function SessionScene({
   startFacing,
   movements,
   onHexClick,
+  onCancelSelection,
   onEntityClick,
+  cellAimEnabled = false,
   onHoverEntity,
   onMovementPainted,
   otherMembers,
@@ -290,6 +310,8 @@ export function SessionScene({
   attackableTargets,
   reactionMover,
   pathIndex = null,
+  movementPreviewEnabled = true,
+  areaFootprint,
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -370,6 +392,7 @@ export function SessionScene({
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
+    onQuickRightClick: onCancelSelection,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a
@@ -405,13 +428,27 @@ export function SessionScene({
   // otherwise be silently swallowed by the gate below.
   const handleTargetClick = useCallback(
     (subject: string) => {
-      if (membersBySubject.get(subject)?.kind === MemberKind.WORLD) {
+      const observed = membersBySubject.get(subject);
+      if (cellAimEnabled && observed) {
+        // CELL aiming selects a place, not a victim. Use only the position in
+        // this viewer's sighting and submit it through the exact floor seam.
+        onHexClick?.(observed.position);
+        return;
+      }
+      if (observed?.kind === MemberKind.WORLD) {
         onInteractClick?.(subject);
         return;
       }
       if (attackableSet.has(subject)) onEntityClick?.(subject);
     },
-    [membersBySubject, attackableSet, onEntityClick, onInteractClick]
+    [
+      membersBySubject,
+      cellAimEnabled,
+      onHexClick,
+      attackableSet,
+      onEntityClick,
+      onInteractClick,
+    ]
   );
 
   // Click-to-walk: the raycast/hover/validity machinery is the SAME
@@ -527,13 +564,23 @@ export function SessionScene({
     onHoverEntity?.(hoveredEntityId);
   }, [hoveredEntityId, onHoverEntity]);
 
+  const hoveredEntityIsAttackable = hoveredEntityId
+    ? attackableSet.has(hoveredEntityId)
+    : false;
+  // Attack hover remains its own orange target affordance. Every other floor
+  // marker is prospective movement and therefore exists only while Move is
+  // explicitly selected (or an exploration caller keeps the default enabled).
+  const moveIndicatorHovered =
+    movementPreviewEnabled || hoveredEntityIsAttackable
+      ? effectiveHoveredHex
+      : null;
   const moveIndicatorSelection = useMoveIndicator({
-    hovered: effectiveHoveredHex,
+    hovered: moveIndicatorHovered,
     from: myPosition,
     pathIndex,
     locked: turnLocked,
     hoveredEntityId,
-    attackable: hoveredEntityId ? attackableSet.has(hoveredEntityId) : false,
+    attackable: hoveredEntityIsAttackable,
     budgetFeet: movementBudgetFeet,
   });
 
@@ -591,6 +638,12 @@ export function SessionScene({
       </mesh>
       <LocalWorldDieWarmup />
       {presentationLayer}
+      <AreaFootprintPreview
+        footprint={areaFootprint}
+        caster={myPosition}
+        aimed={effectiveHoveredHex}
+        hexSize={hexSize}
+      />
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}
@@ -612,7 +665,7 @@ export function SessionScene({
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}
-        hovered={effectiveHoveredHex}
+        hovered={moveIndicatorHovered}
       />
       <HexEntity
         entityId={characterId}

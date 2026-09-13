@@ -255,6 +255,19 @@ export interface ActionDockProps {
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /**
+   * The selector of the cast whose option menu is open, or undefined when none
+   * is. Held as an id rather than a declaration for the same reason
+   * `armedDeclarationId` is: the row is looked back up in the CURRENT
+   * declarations, so a menu whose offer has gone stops being drawn.
+   */
+  optionDeclarationId?: string;
+  /** Answer the open menu with one of the ids the declaration listed. */
+  onSelectCastOption?: (optionId: string) => void;
+  /** Close the menu without casting. */
+  onCancelCastOption?: () => void;
+  /** Clear the selected declaration locally without spending anything. */
+  onCancelSelection?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
@@ -279,9 +292,11 @@ export interface ActionDockProps {
 function StandingActionGroup({
   actions,
   blocked,
+  onBeforeSelect,
 }: {
   actions: readonly StandingAction[];
   blocked: string | null;
+  onBeforeSelect?: () => void;
 }) {
   return (
     <div className={styles.actionGroup} data-testid="standing-actions">
@@ -294,7 +309,10 @@ function StandingActionGroup({
             data-testid={action.key}
             disabled={blocked !== null || action.pending === true}
             title={blocked ?? action.title}
-            onClick={action.onSelect}
+            onClick={() => {
+              onBeforeSelect?.();
+              action.onSelect();
+            }}
           >
             <span className={styles.actionIcon} aria-hidden="true">
               {action.icon}
@@ -315,6 +333,74 @@ function StandingActionGroup({
           )}
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The menu a cast declared, drawn exactly as it was sent.
+ *
+ * ONE BUTTON PER OPTION THE SERVER LISTED, labelled with the label it
+ * authored. There is deliberately no id-to-name table and no grouping here:
+ * "Grovel" is no more derivable from `grovel` than "Vicious Mockery" is from
+ * its ref, and a client that assembled Command's vocabulary would be authoring
+ * 5e content — the same reason `castLabel` refuses to prettify a spell ref.
+ *
+ * THE REACTION WINDOW IS THE SHAPE THIS COPIES: a question posed in the dock
+ * with its answers beside it. What differs is where the answers come from —
+ * the window's two are implied by the verb, and these arrive on the wire.
+ *
+ * CANCEL IS AN ANSWER TOO. Nothing has been sent while this is open, so
+ * backing out has to be reachable without casting something the player did not
+ * mean; a menu whose only exit is picking a word is a trap.
+ */
+function CastOptionGroup({
+  declaration,
+  authorityFresh,
+  onSelectOption,
+  onCancel,
+}: {
+  declaration: Declaration;
+  authorityFresh: boolean;
+  onSelectOption: (optionId: string) => void;
+  onCancel?: () => void;
+}) {
+  return (
+    <div className={styles.actionGroup} data-testid="cast-options">
+      <span className={styles.groupLabel}>{castLabel(declaration)}</span>
+      {declaration.options.map((option, index) => (
+        <span className={styles.actionOfferSlot} key={`${option.id}:${index}`}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid={`cast-option-${option.id}`}
+            disabled={!authorityFresh}
+            onClick={() => onSelectOption(option.id)}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              {declarationIcon(declaration)}
+            </span>
+            <span className={styles.actionLabel}>{option.label}</span>
+          </button>
+        </span>
+      ))}
+      {onCancel && (
+        <span className={styles.actionOfferSlot}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid="cast-option-cancel"
+            onClick={onCancel}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              ✕
+            </span>
+            {/* NO COST BADGE. Backing out spends nothing, and a badge here
+                would price a refusal. */}
+            <span className={styles.actionLabel}>Cancel</span>
+          </button>
+        </span>
+      )}
     </div>
   );
 }
@@ -345,6 +431,10 @@ export function ActionDock({
   rollWindow,
   rollWindowReady = true,
   onSelectDeclaration,
+  optionDeclarationId,
+  onSelectCastOption,
+  onCancelCastOption,
+  onCancelSelection,
   onEndTurn,
   standingActions = [],
 }: ActionDockProps) {
@@ -360,7 +450,11 @@ export function ActionDock({
     authorityFresh
   );
   const standing = standingActions.length > 0 && (
-    <StandingActionGroup actions={standingActions} blocked={blocked} />
+    <StandingActionGroup
+      actions={standingActions}
+      blocked={blocked}
+      onBeforeSelect={onCancelSelection}
+    />
   );
 
   if (clock === ClockKind.WORLD) {
@@ -543,24 +637,90 @@ export function ActionDock({
         isDeathSaveExecutableShape(declaration, 'display'))
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
+  // LOOKED BACK UP IN THE CURRENT DECLARATIONS, never held as the row that was
+  // clicked. A menu drawn from a captured declaration would go on offering a
+  // word after Afford withdrew the spell that had it — the same staleness the
+  // armed row is judged for one render later, and the reason this is an id.
+  const optionMatches = optionDeclarationId
+    ? executableDeclarations.filter(
+        (declaration) =>
+          declaration.id === optionDeclarationId &&
+          declaration.verb === Verb.CAST &&
+          declaration.available &&
+          declaration.options.length > 0
+      )
+    : [];
+  const optionDeclaration =
+    optionMatches.length === 1 ? optionMatches[0] : undefined;
+  const selectedMoveMatches =
+    armedDeclarationId === undefined
+      ? []
+      : executableDeclarations.filter(
+          (declaration) =>
+            declaration.id === armedDeclarationId &&
+            declaration.verb === Verb.MOVE
+        );
+  const moveIsSelected = selectedMoveMatches.length === 1;
 
   return (
     <div className={styles.actionRow}>
-      <div className={styles.actionGroupWithDivider}>
-        <div className={styles.actionGroup}>
-          <span className={styles.groupLabel}>Actions</span>
-          {executableDeclarations.map((declaration, index) => (
-            <ActionDeclaration
-              key={`${declaration.id}:${index}`}
-              declaration={declaration}
-              armed={armedDeclarationId === declaration.id}
-              authorityFresh={authorityFresh}
-              index={index}
-              onSelect={onSelectDeclaration}
-            />
-          ))}
+      {/* THE QUESTION TAKES THE PLACE OF THE OFFERS, it does not queue behind
+          them. Drawn as one more group in this row, the menu landed past the
+          right edge: `.actionRow` is a nowrap flex line inside a dock fixed at
+          174px, the Actions group alone measured 1250px wide, and the four
+          option buttons started at x=1272 — clipped at 1600px and entirely
+          offscreen at 1280 and below. Kirk's walk read that as the row
+          deselecting and nothing appearing, which is exactly what it looked
+          like (2026-09-12).
+
+          NOT A CLAIM THAT NOTHING ELSE IS DECLARABLE. The reaction window
+          replaces the dock because every other verb really is refused while it
+          is open; this replaces it only because the question and the offers
+          cannot both fit, and every one of those offers is still perfectly
+          castable — which is why Cancel is part of the menu rather than an
+          afterthought. One click back and the rows return. */}
+      {optionDeclaration && onSelectCastOption ? (
+        <CastOptionGroup
+          declaration={optionDeclaration}
+          authorityFresh={authorityFresh}
+          onSelectOption={onSelectCastOption}
+          onCancel={onCancelCastOption}
+        />
+      ) : (
+        <div className={styles.actionGroupWithDivider}>
+          <div className={styles.actionGroup}>
+            <span className={styles.groupLabel}>Actions</span>
+            {executableDeclarations.map((declaration, index) => (
+              <ActionDeclaration
+                key={`${declaration.id}:${index}`}
+                declaration={declaration}
+                armed={armedDeclarationId === declaration.id}
+                authorityFresh={authorityFresh}
+                index={index}
+                onSelect={onSelectDeclaration}
+              />
+            ))}
+            {moveIsSelected && onCancelSelection && (
+              <span className={styles.actionOfferSlot}>
+                <button
+                  type="button"
+                  className={styles.actionOffer}
+                  aria-label="Cancel selected action"
+                  onClick={onCancelSelection}
+                >
+                  <span className={styles.actionIcon} aria-hidden="true">
+                    ✕
+                  </span>
+                  <span className={styles.actionLabel}>Cancel</span>
+                </button>
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+      {/* The Explore verbs stay. They are drawn in every clock state and are
+          nothing to do with the cast; the menu plus this group measures well
+          under the row even at 1024. */}
       {standing}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">

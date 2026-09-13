@@ -554,15 +554,15 @@ function SessionEncounterScope({
     participants: turnParticipants,
     characterData,
   });
-  // THE FLOOR HAS ONE HANDLER AND TWO MEANINGS. A click on the ground walks,
-  // unless the player is holding a cast that still needs aiming — Thunderwave
-  // arms and then waits for the direction its cube points. Routing here, at
-  // the single seam the canvas already reports a floor click through, is what
-  // keeps the canvas ignorant of spells and the walk hook ignorant of casts.
+  // THE FLOOR HAS ONE HANDLER AND EXPLICIT COMBAT MEANINGS. A cell-targeted
+  // cast owns the next floor click; otherwise a TURN click walks only while
+  // Move is selected. WORLD keeps the established free-roam click behavior.
+  // This makes a missed Attack/member target a no-op rather than an accidental
+  // walk and keeps the canvas ignorant of declaration kinds.
   //
-  // Entity clicks never arrive here: `SessionCanvas` gives a creature's own
-  // cell to `onEntityClick` first, so clicking a skeleton while a cell cast is
-  // armed is refused by the combat hook rather than misread as a cell.
+  // During CELL aiming, `SessionCanvas` also sends a clicked creature's
+  // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
+  // on this one conversion/submission path without selecting a victim.
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -572,9 +572,14 @@ function SessionEncounterScope({
         combat.onCellClick(cubeToPosition(coord));
         return;
       }
-      walkTo(coord);
+      if (
+        experienceClock === ClockKind.WORLD ||
+        (experienceClock === ClockKind.TURN && combat.movementEnabled)
+      ) {
+        walkTo(coord);
+      }
     },
-    [combat, walkTo]
+    [combat, experienceClock, walkTo]
   );
 
   staleMoveRecoveryRef.current = (declarationId) =>
@@ -1721,7 +1726,11 @@ function SessionEncounterScope({
                   myPosition={displayPosition ?? lastGoodPositionRef.current!}
                   movements={moves.movements}
                   onHexClick={runEnded === null ? handleGroundClick : undefined}
+                  onCancelSelection={combat.onCancelSelection}
                   onEntityClick={runEnded === null ? onTargetClick : undefined}
+                  cellAimEnabled={
+                    runEnded === null ? combat.cellCastArmed : false
+                  }
                   onMovementPainted={
                     runEnded === null ? handleMovementPainted : undefined
                   }
@@ -1731,6 +1740,14 @@ function SessionEncounterScope({
                   }
                   reactionMover={runEnded === null ? reactionMover : undefined}
                   pathIndex={lastGoodPathIndexRef.current}
+                  movementPreviewEnabled={
+                    experienceClock === ClockKind.WORLD ||
+                    (experienceClock === ClockKind.TURN &&
+                      combat.movementEnabled)
+                  }
+                  areaFootprint={
+                    runEnded === null ? combat.cellCastFootprint : undefined
+                  }
                   turnLocked={turnLocked}
                   movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
                   presentationLayer={localWorldDieLayer}
@@ -1738,6 +1755,9 @@ function SessionEncounterScope({
               </>
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
+            onSelectCastOption={combat.onSelectCastOption}
+            onCancelCastOption={combat.onCancelCastOption}
+            onCancelSelection={combat.onCancelSelection}
             onTargetClick={combat.onTargetClick}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}

@@ -15,8 +15,13 @@ import {
   StyleSelectionSchema,
   type HairCustomization,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
-import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  Footprint,
+  PublicMemberInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  FootprintOrigin,
+  FootprintShape,
   MemberKind,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -2384,6 +2389,100 @@ describe('SessionScene', () => {
       ) as Array<{ instance: THREE.Mesh }>;
     }
 
+    it('uses the existing effective hover to aim a provider box and clears it for self-cell aim', async () => {
+      const areaFootprint: Footprint = {
+        $typeName: 'dnd5e.api.session.v1alpha1.Footprint',
+        shape: FootprintShape.BOX,
+        sizeFeet: 15,
+        origin: FootprintOrigin.CASTER_EDGE,
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          movementPreviewEnabled={false}
+          areaFootprint={areaFootprint}
+        />
+      );
+
+      expect(
+        renderer.scene.findAllByProps({ name: 'area-footprint-preview' })
+      ).toHaveLength(0);
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const preview = renderer.scene.findByProps({
+        name: 'area-footprint-preview',
+      });
+      expect(preview.instance.position.x).toBeCloseTo(2 * Math.sqrt(3));
+      expect(preview.instance.position.z).toBeCloseTo(0);
+
+      await hoverAt(renderer, { x: 0, y: 0, z: 0 });
+      expect(
+        renderer.scene.findAllByProps({ name: 'area-footprint-preview' })
+      ).toHaveLength(0);
+    });
+
+    it("keeps the area preview aimed at an observed creature's occupied cell when its mesh stops the ground hover", async () => {
+      const areaFootprint: Footprint = {
+        $typeName: 'dnd5e.api.session.v1alpha1.Footprint',
+        shape: FootprintShape.BOX,
+        sizeFeet: 15,
+        origin: FootprintOrigin.CASTER_EDGE,
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          movementPreviewEnabled={false}
+          areaFootprint={areaFootprint}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'Skeleton',
+              monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+              equipment: undefined,
+            },
+          ]}
+        />
+      );
+
+      const overNodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOver === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of overNodes) {
+          (
+            node.props.onPointerOver as (event: {
+              stopPropagation: () => void;
+            }) => void
+          )({ stopPropagation: () => {} });
+        }
+      });
+
+      const preview = renderer.scene.findByProps({
+        name: 'area-footprint-preview',
+      });
+      expect(preview.instance.position.x).toBeCloseTo(2 * Math.sqrt(3));
+      expect(preview.instance.position.z).toBeCloseTo(0);
+      expect(
+        renderer.scene.findByProps({ name: 'area-footprint-preview-grid' })
+      ).toBeDefined();
+    });
+
     it('nothing is drawn before any hover', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
@@ -2396,6 +2495,25 @@ describe('SessionScene', () => {
           pathIndex={fullPathIndex()}
         />
       );
+      expect(indicatorMeshes(renderer)).toHaveLength(0);
+    });
+
+    it('draws no prospective floor marker while movement preview is disabled', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          movementPreviewEnabled={false}
+        />
+      );
+
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
       expect(indicatorMeshes(renderer)).toHaveLength(0);
     });
 
@@ -2843,6 +2961,30 @@ describe('SessionScene', () => {
       expect(onEntityClick).toHaveBeenCalledTimes(1);
       expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
       expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it("clicking an entity's own mesh during CELL aiming submits its observed occupied cell through the shared floor seam", async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember}
+          cellAimEnabled
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      fireEveryEntityClick(renderer);
+
+      expect(onHexClick).toHaveBeenCalledTimes(1);
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: -1, z: 0 });
+      expect(onEntityClick).not.toHaveBeenCalled();
     });
 
     it('clicking an attackable entity fires onEntityClick, not onHexClick', async () => {

@@ -162,6 +162,9 @@ export function CombatExperience({
   pacingNotice,
   renderMap,
   onSelectDeclaration,
+  onSelectCastOption,
+  onCancelCastOption,
+  onCancelSelection,
   onTargetClick,
   onConfirmTargets,
   onEndTurn,
@@ -541,6 +544,12 @@ export function CombatExperience({
             rollWindow={rollWindow}
             rollWindowReady={rollWindowReady}
             onSelectDeclaration={onSelectDeclaration}
+            optionDeclarationId={
+              presentationState.optionDeclarationId ?? undefined
+            }
+            onSelectCastOption={onSelectCastOption}
+            onCancelCastOption={onCancelCastOption}
+            onCancelSelection={onCancelSelection}
             onEndTurn={onEndTurn}
             standingActions={standingActions}
           />

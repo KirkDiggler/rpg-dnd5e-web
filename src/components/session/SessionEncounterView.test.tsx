@@ -30,6 +30,9 @@ import {
   DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
+  FootprintOrigin,
+  FootprintSchema,
+  FootprintShape,
   GridKind,
   HexLayout,
   LifeState,
@@ -293,6 +296,11 @@ function cellCastDeclaration(id = 'v1.cast.thunderwave'): Declaration {
     spell: create(SpellRefSchema, {
       ref: 'dnd5e:spells:thunderwave',
       name: 'Thunderwave',
+    }),
+    footprint: create(FootprintSchema, {
+      shape: FootprintShape.BOX,
+      sizeFeet: 15,
+      origin: FootprintOrigin.CASTER_EDGE,
     }),
   });
 }
@@ -1056,19 +1064,261 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false);
   });
 
-  it('echoes one exact Move declaration on turn clock', async () => {
+  it('requires the combat Move button before previewing or dispatching a walk', async () => {
     readyTurn();
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     renderView();
-    await waitFor(() => screen.getByTestId('session-canvas'));
-    await waitFor(() => screen.getByRole('button', { name: /move/i }));
+    const move = await screen.findByRole('button', { name: /move/i });
 
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+    fireEvent.click(move);
+
+    expect(move.getAttribute('aria-pressed')).toBe('true');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
     expect(hoisted.moveFn).toHaveBeenCalledWith(
       expect.objectContaining({ declarationId: 'v1.move' })
     );
+  });
+
+  it('switches Move off when Attack is selected and an empty floor target misses', async () => {
+    readyTurn();
+    renderView();
+    const move = await screen.findByRole('button', { name: /move/i });
+    const attack = screen.getByRole('button', { name: /longsword/i });
+
+    fireEvent.click(move);
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+
+    fireEvent.click(attack);
+
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(attack.getAttribute('aria-pressed')).toBe('true');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('cancels explicit movement from the dock or Escape without dispatching', async () => {
+    readyTurn();
+    renderView();
+    const move = await screen.findByRole('button', { name: /move/i });
+
+    fireEvent.click(move);
+    fireEvent.click(
+      screen.getByRole('button', { name: /cancel selected action/i })
+    );
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+
+    fireEvent.click(move);
+    expect(move.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('carries free-roam movement into combat once, without re-arming after cancel', async () => {
+    readyScene();
+    const updates = steppedEventStream(2);
+    hoisted.streamEventsFn.mockReturnValue(updates.stream);
+    hoisted.turnFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+        participants: [],
+      })
+      .mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { active: true }),
+          participant('skeleton-1'),
+        ],
+      });
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.WORLD,
+        declarations: [],
+      })
+      .mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          attackDeclaration(),
+          moveDeclaration(),
+          endTurnDeclaration(),
+        ],
+      });
+    renderView();
+    await screen.findByTestId('session-combat-free-roam');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+
+    act(() => {
+      updates.publish(
+        event(EventKind.FIGHT_STARTED, {
+          case: 'fightStarted',
+          value: { members: ['char-1', 'skeleton-1'] },
+        } as SessionEvent['body'])
+      );
+    });
+
+    const move = await screen.findByRole('button', { name: /move/i });
+    await waitFor(() => expect(move.getAttribute('aria-pressed')).toBe('true'));
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /cancel selected action/i })
+    );
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+
+    act(() => {
+      updates.publish(
+        event(EventKind.FIGHT_STARTED, {
+          case: 'fightStarted',
+          value: { members: ['char-1', 'skeleton-1'] },
+        } as SessionEvent['body'])
+      );
+    });
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(3));
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+
+  it('threads only the armed CELL declaration footprint to the canvas and clears it on cancel or switch', async () => {
+    const cellCast = cellCastDeclaration();
+    readyTurn([cellCast, attackDeclaration(), endTurnDeclaration()]);
+    renderView();
+    const spell = await screen.findByRole('button', { name: /thunderwave/i });
+    const attack = screen.getByRole('button', { name: /longsword/i });
+
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
+    fireEvent.click(spell);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBe(
+      cellCast.footprint
+    );
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(true);
+
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
+
+    fireEvent.click(spell);
+    fireEvent.click(attack);
+    expect(hoisted.lastCanvasProps.current?.areaFootprint).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(false);
+  });
+
+  it('map cancellation clears Move, Attack, and spell targeting without dispatching', async () => {
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      cellCastDeclaration(),
+      endTurnDeclaration(),
+    ]);
+    renderView();
+    const move = await screen.findByRole('button', { name: /move/i });
+    const attack = screen.getByRole('button', { name: /longsword/i });
+    const spell = screen.getByRole('button', { name: /thunderwave/i });
+
+    fireEvent.click(move);
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(move.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
+
+    fireEvent.click(attack);
+    expect(attack.getAttribute('aria-pressed')).toBe('true');
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(attack.getAttribute('aria-pressed')).toBe('false');
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+
+    fireEvent.click(spell);
+    expect(spell.getAttribute('aria-pressed')).toBe('true');
+    act(() => hoisted.lastCanvasProps.current?.onCancelSelection?.());
+    expect(spell.getAttribute('aria-pressed')).toBe('false');
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('keeps Move selected after walking and remaps it to refreshed declarations', async () => {
+    readyTurn();
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        declarations: [
+          attackDeclaration(),
+          moveDeclaration('v1.move'),
+          endTurnDeclaration(),
+        ],
+      })
+      .mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          attackDeclaration(),
+          moveDeclaration('v2.move'),
+          endTurnDeclaration(),
+        ],
+      });
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 }, seq: 9n }],
+    });
+    renderView();
+    const move = await screen.findByRole('button', { name: /move/i });
+
+    fireEvent.click(move);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: /move/i })
+          .getAttribute('aria-pressed')
+      ).toBe('true')
+    );
+    const refreshedMove = screen.getByRole('button', { name: /move/i });
+    expect(refreshedMove.getAttribute('aria-describedby')).toContain('v2.move');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route
+    ).toEqual([{ x: 1, y: -1, z: 0 }]);
+
+    act(() => {
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('char-1', 1, 1);
+    });
+    await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
+    expect(refreshedMove.getAttribute('aria-pressed')).toBe('true');
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
   });
 
   it.each([
@@ -1125,7 +1375,7 @@ describe('SessionEncounterView production combat integration', () => {
     ]);
     hoisted.streamEventsFn.mockReturnValue(ended.stream);
     renderView();
-    await waitFor(() => screen.getByRole('button', { name: /move/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /move/i }));
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
@@ -1187,6 +1437,7 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.moveFn.mockReturnValue(moveResponse.promise);
     renderView();
     const attack = await screen.findByRole('button', { name: /longsword/i });
+    const move = screen.getByRole('button', { name: /move/i });
     const endTurn = screen.getByRole('button', { name: /end turn/i });
     fireEvent.click(attack);
     await waitFor(() =>
@@ -1195,6 +1446,7 @@ describe('SessionEncounterView production combat integration', () => {
       ])
     );
     const oldTargetClick = hoisted.lastCanvasProps.current?.onEntityClick;
+    fireEvent.click(move);
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
@@ -4561,7 +4813,7 @@ describe('SessionEncounterView production combat integration', () => {
       new ConnectError('selector no longer current', Code.FailedPrecondition)
     );
     renderView();
-    await screen.findByRole('button', { name: /move/i });
+    fireEvent.click(await screen.findByRole('button', { name: /move/i }));
     const turnRefresh = deferred<unknown>();
     const affordRefresh = deferred<unknown>();
     hoisted.turnFn.mockReturnValue(turnRefresh.promise);
@@ -4972,9 +5224,10 @@ describe('the ground click while a cell cast is armed', () => {
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
-    fireEvent.click(
-      await screen.findByRole('button', { name: /thunderwave/i })
-    );
+    fireEvent.click(await screen.findByRole('button', { name: /move/i }));
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /thunderwave/i }));
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
     await act(async () => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
@@ -4993,44 +5246,73 @@ describe('the ground click while a cell cast is armed', () => {
       cell: { x: 1, y: 0 },
     });
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
   });
 
-  it('still walks when nothing is armed', async () => {
+  it('does nothing when no combat action is selected', async () => {
     armedTurn();
-    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
     await screen.findByRole('button', { name: /thunderwave/i });
+    expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
 
-    expect(hoisted.moveFn).toHaveBeenCalledWith(
-      expect.objectContaining({ declarationId: 'v1.move' })
-    );
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.castFn).not.toHaveBeenCalled();
   });
 
-  it('sends nothing when a creature is clicked instead of the ground', async () => {
+  it("casts at a clicked creature's observed occupied cell and never falls through to Move or MEMBER targeting", async () => {
     armedTurn();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'skeleton-1',
+          name: 'Skeleton',
+          kind: MemberKind.MONSTER,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
+    hoisted.castFn.mockResolvedValue({ caught: [] });
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (candidate) => candidate.subject === 'skeleton-1'
+        )
+      ).toBe(true)
+    );
     fireEvent.click(
       await screen.findByRole('button', { name: /thunderwave/i })
     );
+    expect(hoisted.lastCanvasProps.current?.cellAimEnabled).toBe(true);
+    const occupied = hoisted.lastCanvasProps.current?.otherMembers?.find(
+      (candidate) => candidate.subject === 'skeleton-1'
+    )?.position;
+    expect(occupied).toEqual({ x: 1, y: -1, z: 0 });
 
     await act(async () => {
-      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      // SessionCanvas routes the entity mesh through this same cell seam;
+      // this integration pins its one cube-to-wire conversion and cast owner.
+      if (occupied) hoisted.lastCanvasProps.current?.onHexClick?.(occupied);
       await Promise.resolve();
     });
 
-    // Entity clicks win over the ground in the canvas, so this one never
-    // reaches the floor handler at all. A skeleton is not a cell, and the
-    // cast stays where it was: armed, waiting for a place.
-    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(hoisted.castFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.cast.thunderwave',
+      target: '',
+      targets: [],
+      cell: { x: 1, y: 0 },
+    });
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
   });
