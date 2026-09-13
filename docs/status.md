@@ -20,6 +20,9 @@ let it rot.
   (includes protos #333). Typed `CastMissed` joins ordered live/recovered Story,
   invalidates private/action/view reads, and never invents dice or refunds.
   Cast identity includes ordered targets; condition identity includes source ID.
+  Attack hit/miss Story now prints provider-supplied roll components, including
+  named Bless bonuses and Bane penalties, with legacy combined arithmetic when
+  no usable breakdown is supplied.
   Focused coverage exercises provider-owned Bless targets, Cure Wounds action,
   Healing Word bonus action, authoritative healing, and reconnect deduplication.
   **Provider blockers resolved:** API #979 at `5b44fe69` and toolkit

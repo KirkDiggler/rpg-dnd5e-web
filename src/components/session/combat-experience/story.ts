@@ -413,7 +413,7 @@ function buildAttackStory(
       eyebrow: attackEyebrow(actor, struck.attack, struck.reaction),
       headline: `${actor} strikes ${target}`,
       detail:
-        `${formatAttackRollArithmetic(struck.roll, struck.total)} · ` +
+        `${(struck.calculation && formatRollCalculation(struck.calculation, (sourceId) => memberName(sourceId, context), { showDiceSources: true })) || formatAttackRollArithmetic(struck.roll, struck.total)} · ` +
         `${struck.critical ? 'Critical hit' : 'Hit'} · ${damageDetail}` +
         attackModifierDetail(modifierSources),
       tone: attackTone(struck.attacker, struck.target, true, context),
@@ -428,7 +428,7 @@ function buildAttackStory(
       id: storyId(event),
       eyebrow: attackEyebrow(actor, missed.attack, missed.reaction),
       headline: `${target} evades ${actor}`,
-      detail: `${formatAttackRollArithmetic(missed.roll, missed.total)} · Miss`,
+      detail: `${(missed.calculation && formatRollCalculation(missed.calculation, (sourceId) => memberName(sourceId, context), { showDiceSources: true })) || formatAttackRollArithmetic(missed.roll, missed.total)} · Miss`,
       tone: 'neutral',
       attack: attackSnapshot(missed.attack),
     });

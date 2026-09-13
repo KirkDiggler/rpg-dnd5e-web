@@ -74,7 +74,8 @@ type AdditiveTerm =
 
 function componentTerms(
   component: RollComponent,
-  resolveSourceName?: ResolveSourceName
+  resolveSourceName?: ResolveSourceName,
+  showDiceSources = false
 ): AdditiveTerm[] {
   const terms: AdditiveTerm[] = [];
   const dice = formatDice(component.dice);
@@ -84,7 +85,9 @@ function componentTerms(
       kind: 'dice',
       text: dice,
       source:
-        component.subtractDice || component.source?.sourceId ? source : '',
+        showDiceSources || component.subtractDice || component.source?.sourceId
+          ? source
+          : '',
       subtract: component.subtractDice,
     });
   }
@@ -124,12 +127,13 @@ function formatAdditiveTerms(
  */
 export function formatRollCalculation(
   calculation: RollCalculation,
-  resolveSourceName?: ResolveSourceName
+  resolveSourceName?: ResolveSourceName,
+  options: { showDiceSources?: boolean } = {}
 ): string | undefined {
   if (!calculation) return undefined;
   const expression = formatAdditiveTerms(
     (calculation.components ?? []).flatMap((component) =>
-      componentTerms(component, resolveSourceName)
+      componentTerms(component, resolveSourceName, options.showDiceSources)
     )
   );
   return expression ? `${expression} = ${calculation.total}` : undefined;
