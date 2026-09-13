@@ -101,23 +101,57 @@ describe('resolvePlayerCharacterModel', () => {
   ] as const;
 
   it.each(bardModels)(
-    'resolves the exact standing %s Bard as a non-customizable modular model',
+    'uses the legacy standing %s Bard only when its profile body is absent',
     (raceRefId, url) => {
-      expect(
-        classCharacterModels.resolvePlayerCharacterModel(
-          raceRefId,
-          'bard',
-          false
-        )
-      ).toEqual(
-        asResolution({
-          url,
-          rigFamily: 'modular-fantasy-hero-v1',
-          source: 'race-class',
-        })
-      );
+      const bodies = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRefId]
+        .bodies as unknown as Record<string, CharacterCustomizationBody>;
+      const previous = bodies.bard;
+      delete bodies.bard;
+      try {
+        expect(
+          classCharacterModels.resolvePlayerCharacterModel(
+            raceRefId,
+            'bard',
+            false
+          )
+        ).toEqual(
+          asResolution({
+            url,
+            rigFamily: 'modular-fantasy-hero-v1',
+            source: 'race-class',
+          })
+        );
+      } finally {
+        if (previous !== undefined) bodies.bard = previous;
+        else delete bodies.bard;
+      }
     }
   );
+
+  it('resolves every currently declared race/class profile body', () => {
+    for (const [race, profile] of Object.entries(
+      CHARACTER_CUSTOMIZATION_CATALOG.profiles
+    )) {
+      for (const [classRef, body] of Object.entries(profile.bodies)) {
+        expect(
+          classCharacterModels.resolvePlayerCharacterModel(
+            race,
+            classRef,
+            false
+          )
+        ).toEqual(
+          asResolution({
+            url: body.url,
+            rigFamily: profile.rigFamily,
+            source: 'race-class',
+            customizationProfileRef: profile.profileRef,
+            fallbackUrl: body.fallbackUrl,
+            fallbackSha256: body.fallbackSha256,
+          })
+        );
+      }
+    }
+  });
 
   it('prefers a declared profile body over the legacy standing Bard mapping', () => {
     const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf;
@@ -125,6 +159,7 @@ describe('resolvePlayerCharacterModel', () => {
       string,
       CharacterCustomizationBody
     >;
+    const previous = bodies.bard;
     bodies.bard = {
       ...profile.bodies.barbarian,
       combination: 'elf:bard',
@@ -148,7 +183,8 @@ describe('resolvePlayerCharacterModel', () => {
         })
       );
     } finally {
-      delete bodies.bard;
+      if (previous !== undefined) bodies.bard = previous;
+      else delete bodies.bard;
     }
   });
 
