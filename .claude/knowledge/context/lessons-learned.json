@@ -26,5 +26,12 @@
     "lesson": "git push over SSH fails with 'Connection to github.com closed by remote host' (exit 141/SIGPIPE) when the pre-push hook runs the full ci-check (~2-3 min) \u2014 the SSH connection idles out during the hook and GitHub drops it. Looks like a random/silent push failure, especially in background shells.",
     "fix": "Push with keepalives: GIT_SSH_COMMAND=\"ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=12\" git push ... \u2014 or set those options for github.com in ~/.ssh/config. Also: run final pushes in the foreground so failures are visible.",
     "context": "Hit during #467 status-icons work; the agent's background push 'hung' for ~20 min before diagnosis."
+  },
+  {
+    "id": "combat-latest-result-replaces-story",
+    "date": "2026-09-13",
+    "lesson": "StoryLog replaces the latest attack's Story entry with ResultEntry. Updating buildCombatStory alone leaves the current attack card unchanged.",
+    "fix": "Project the shared provider calculation formatter into the attack outcome and post-roll window, and verify the rendered StoryLog with both story and result supplied, plus the ActionDock window flow.",
+    "context": "Bless/Bane breakdown initially appeared only in historical entries. The API already supplied named dice; the latest result card and post-roll prompt were separate display paths."
   }
 ]

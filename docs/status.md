@@ -21,7 +21,8 @@ let it rot.
   invalidates private/action/view reads, and never invents dice or refunds.
   Cast identity includes ordered targets; condition identity includes source ID.
   Attack hit/miss Story now prints provider-supplied roll components, including
-  named Bless bonuses and Bane penalties, with legacy combined arithmetic when
+  named Bless bonuses and Bane penalties in the latest attack card, historical
+  entries, and post-roll decision prompt and Story entry, with legacy combined arithmetic when
   no usable breakdown is supplied.
   Focused coverage exercises provider-owned Bless targets, Cure Wounds action,
   Healing Word bonus action, authoritative healing, and reconnect deduplication.

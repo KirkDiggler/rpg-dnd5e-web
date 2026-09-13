@@ -31,7 +31,7 @@ import {
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
-import { storyId } from './story';
+import { formatAttackRollArithmetic, storyId } from './story';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -66,6 +66,7 @@ interface StaleRecovery {
 }
 
 interface ReceivedRollWindow {
+  rollArithmetic?: string;
   readonly presentationId?: string;
   readonly storyId: string;
   readonly offerRef: string;
@@ -366,6 +367,7 @@ export function useSessionCombatExperience({
     return {
       storyId: received.storyId,
       offerRef: received.offerRef,
+      rollArithmetic: received.rollArithmetic,
       roll: received.roll,
       total: received.total,
       presentationId:
@@ -1784,6 +1786,12 @@ export function useSessionCombatExperience({
           presentationId: opened.presentationId || undefined,
           storyId: storyId(event),
           offerRef: opened.offer?.ref ?? '',
+          rollArithmetic: formatAttackRollArithmetic(
+            opened.roll,
+            opened.total,
+            opened.calculation,
+            (sourceId) => presentationMemberNames[sourceId] ?? sourceId
+          ),
           roll: opened.roll,
           total: opened.total,
           session: event.session,
@@ -1793,7 +1801,7 @@ export function useSessionCombatExperience({
         });
       }
     },
-    [member, pacing, presentation]
+    [member, pacing, presentation, presentationMemberNames]
   );
 
   const phase = targeting ? 'targeting' : presentation.phase;

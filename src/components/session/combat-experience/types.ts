@@ -108,6 +108,8 @@ export interface CombatExperienceAttackOutcome {
    * wire's `ReactionRef.name`. Absent on an ordinary declared swing.
    */
   reaction?: string;
+  /** Provider calculation formatted with named dice sources. */
+  rollArithmetic?: string;
   d20: number;
   total: number;
   against: number;
@@ -135,6 +137,8 @@ export interface CombatExperienceRollWindow {
   /** `ReactionRef.ref` from the beat — matched against the open declaration's
    * own offer so one window's numbers can never be drawn under another's. */
   offerRef: string;
+  /** Provider calculation formatted with named dice sources. */
+  rollArithmetic?: string;
   /** The face of the d20, which no answer moves. */
   roll: number;
   /** The face plus the attacker's bonuses, and nothing the answer would add. */

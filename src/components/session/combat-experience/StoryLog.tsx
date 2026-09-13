@@ -44,7 +44,7 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
     : result.hit
       ? 'Hit'
       : 'Miss';
-  const rollDetail = `${formatAttackRollArithmetic(result.d20, result.total)} · ${verdict}`;
+  const rollDetail = `${result.rollArithmetic ?? formatAttackRollArithmetic(result.d20, result.total)} · ${verdict}`;
   return (
     <article className={`${styles.storyEntry} ${styles.storyResult}`}>
       <span>

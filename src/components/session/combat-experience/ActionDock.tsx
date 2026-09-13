@@ -94,7 +94,7 @@ function rollWindowHeadline(
   roll: CombatExperienceRollWindow | undefined | null
 ): string {
   if (!roll) return 'Your roll is on the table';
-  return `You rolled ${formatAttackRollArithmetic(roll.roll, roll.total)}`;
+  return `You rolled ${roll.rollArithmetic ?? formatAttackRollArithmetic(roll.roll, roll.total)}`;
 }
 
 function declarationIcon(declaration: Declaration): string {
