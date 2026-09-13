@@ -474,11 +474,8 @@ export function useCameraControls({
     const canvas = gl.domElement;
     const rightDrag = mouse.current;
 
-    // Middle-button rotate. Tracked with WINDOW-level listeners (added only
-    // for the duration of the drag), unlike right-drag pan's canvas-scoped
-    // ones above/below — a fast horizontal swing easily carries the cursor
-    // off the canvas, and losing the drag there would read as broken rather
-    // than as an edge case.
+    // Camera gestures begin on the canvas and track on the window until
+    // release, so crossing the canvas edge cannot lose motion or mouseup.
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!middleDrag.current.active) return;
       const dx = e.clientX - middleDrag.current.lastX;
@@ -495,6 +492,13 @@ export function useCameraControls({
       window.removeEventListener('mouseup', endMiddleDrag);
     };
 
+    const endRightDrag = () => {
+      rightDrag.isRightDown = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', endRightDrag);
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
         // Right press begins either a quick local cancel or the existing pan.
@@ -506,6 +510,9 @@ export function useCameraControls({
         rightDrag.lastX = e.clientX;
         rightDrag.lastY = e.clientY;
         rightDrag.peakDisplacement = 0;
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('blur', endRightDrag);
       } else if (e.button === 1) {
         // Middle click — prevent the browser's autoscroll affordance, then
         // rotate on drag instead. Right+left chord is NOT a camera gesture
@@ -530,7 +537,7 @@ export function useCameraControls({
       );
       const quick =
         rightDrag.peakDisplacement <= QUICK_RIGHT_CLICK_THRESHOLD_PX;
-      rightDrag.isRightDown = false;
+      endRightDrag();
       if (quick) onQuickRightClick?.();
     };
 
@@ -631,18 +638,14 @@ export function useCameraControls({
     };
 
     canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     canvas.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('mouseup', handleMouseUp);
-      canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('contextmenu', handleContextMenu);
-      rightDrag.isRightDown = false;
+      endRightDrag();
       endMiddleDrag();
     };
     // target included so effect re-initializes if target reference changes

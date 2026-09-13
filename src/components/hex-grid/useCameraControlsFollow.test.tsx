@@ -93,7 +93,7 @@ describe('right mouse gesture', () => {
     canvas.dispatchEvent(
       new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
     );
-    canvas.dispatchEvent(
+    window.dispatchEvent(
       new MouseEvent('mouseup', { button: 2, clientX: 43, clientY: 64 })
     );
     const menu = new MouseEvent('contextmenu', {
@@ -122,24 +122,91 @@ describe('right mouse gesture', () => {
     canvas.dispatchEvent(
       new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
     );
-    canvas.dispatchEvent(
+    window.dispatchEvent(
       new MouseEvent('mousemove', { button: 2, clientX: 50, clientY: 60 })
     );
     expect(target.length()).toBeGreaterThan(0);
-    canvas.dispatchEvent(
+    window.dispatchEvent(
       new MouseEvent('mousemove', { button: 2, clientX: 40, clientY: 60 })
     );
-    canvas.dispatchEvent(
+    window.dispatchEvent(
       new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
     );
 
     expect(cancel).not.toHaveBeenCalled();
   });
 
+  it('tracks a right drag outside the canvas and releases it without cancelling', async () => {
+    const cancel = vi.fn();
+    const { canvas, renderer, target } = await mountGesture(cancel);
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 2, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: -40, clientY: 60 })
+    );
+    expect(target.length()).toBeGreaterThan(0);
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 2, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 2, clientY: 60 })
+    );
+    expect(cancel).not.toHaveBeenCalled();
+
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 2, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: -40, clientY: 60 })
+    );
+    const released = target.clone();
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 50, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 50, clientY: 60 })
+    );
+    expect(target.equals(released)).toBe(true);
+    expect(cancel).not.toHaveBeenCalled();
+    await renderer.unmount();
+  });
+
+  it('abandons an active right gesture on focus loss without cancelling', async () => {
+    const cancel = vi.fn();
+    const { canvas, renderer, target } = await mountGesture(cancel);
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
+    window.dispatchEvent(new Event('blur'));
+    canvas.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 80, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 80, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
+    );
+    expect(target.length()).toBe(0);
+    expect(cancel).not.toHaveBeenCalled();
+    await renderer.unmount();
+  });
+
   it('removes quick-right-click listeners on cleanup', async () => {
     const cancel = vi.fn();
-    const { canvas, renderer } = await mountGesture(cancel);
+    const { canvas, renderer, target } = await mountGesture(cancel);
+    canvas.dispatchEvent(
+      new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
+    );
     await renderer.unmount();
+    window.dispatchEvent(
+      new MouseEvent('mousemove', { button: 2, clientX: 80, clientY: 60 })
+    );
+    window.dispatchEvent(
+      new MouseEvent('mouseup', { button: 2, clientX: 40, clientY: 60 })
+    );
+    expect(target.length()).toBe(0);
 
     canvas.dispatchEvent(
       new MouseEvent('mousedown', { button: 2, clientX: 40, clientY: 60 })
