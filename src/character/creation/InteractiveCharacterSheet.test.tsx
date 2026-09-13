@@ -280,6 +280,7 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
 describe('InteractiveCharacterSheet persisted equipment guard', () => {
   it('validates a saved domain-only option against that domain overlay', () => {
     const base = draftState(vi.fn());
+    const baseDraft = create(CharacterDraftSchema, base.draft ?? {});
     const domainChoice = create(ChoiceSchema, {
       ...declaredEquipmentChoice,
       id: 'domain-equipment',
@@ -306,7 +307,7 @@ describe('InteractiveCharacterSheet persisted equipment guard', () => {
     const renderSheet = (subclass: Subclass) => (
       <CharacterDraftContext.Provider
         value={draftState(vi.fn(), {
-          draft: create(CharacterDraftSchema, { ...base.draft, subclass }),
+          draft: create(CharacterDraftSchema, { ...baseDraft, subclass }),
           classInfo,
           classChoices: [persisted],
         })}
