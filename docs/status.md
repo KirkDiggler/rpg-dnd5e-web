@@ -19,6 +19,8 @@ let it rot.
   Browser casts passed for dying and already-stable player recipients: zero HP,
   cleared progress, action-only cost, no spell dice, unchanged slots, reconnect,
   and automatic turn advancement without death saves through two rounds.
+  A same-turn Spare the Dying then Healing Word browser sequence restored the
+  patient to conscious at 10 HP and returned normal actions on their next turn.
   See [verification notes](how-to/spare-the-dying-verification.md) for fixture
   boundaries and the exact API image. Preparation and natural recovery are deferred.
 

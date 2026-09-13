@@ -3266,93 +3266,175 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => screen.getByText('Aldric uses Second Wind'));
   });
 
-  it('refreshes a stabilized owner at zero HP and removes the provider death-save offer', async () => {
-    readyDyingTurn();
-    const result = create(EventSchema, {
-      session: 'enc-1',
-      recipient: 'char-1',
-      seq: 1n,
-      kind: EventKind.ACTIVATION_RESULT,
-      body: {
-        case: 'activationResult',
-        value: {
-          actor: 'cleric',
-          result: {
-            case: 'stabilized',
-            value: {
-              target: 'char-1',
-              sourceName: 'Spare the Dying',
-              sourceRef: 'dnd5e:spells:spare_the_dying',
-              before: LifeState.DYING,
-              after: LifeState.STABILIZED,
-              hitPoints: 0,
-              progress: {
-                successes: 0,
-                failures: 0,
-                successesNeeded: 3,
-                failuresRemaining: 3,
-                stabilized: true,
-                dead: false,
+  it.each([false, true])(
+    'refreshes stabilization and restores normal actions after healing=%s',
+    async (healAfter) => {
+      readyDyingTurn();
+      const result = create(EventSchema, {
+        session: 'enc-1',
+        recipient: 'char-1',
+        seq: 1n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: {
+            actor: 'cleric',
+            result: {
+              case: 'stabilized',
+              value: {
+                target: 'char-1',
+                sourceName: 'Spare the Dying',
+                sourceRef: 'dnd5e:spells:spare_the_dying',
+                before: LifeState.DYING,
+                after: LifeState.STABILIZED,
+                hitPoints: 0,
+                progress: {
+                  successes: 0,
+                  failures: 0,
+                  successesNeeded: 3,
+                  failuresRemaining: 3,
+                  stabilized: true,
+                  dead: false,
+                },
               },
             },
           },
         },
-      },
-    });
-    const live = deferredStream([result]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
-    renderView();
-    await screen.findByRole('button', { name: /^death save/i });
-    expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(2);
-    hoisted.affordFn.mockResolvedValue({
-      clock: ClockKind.TURN,
-      declarations: [],
-    });
-    hoisted.turnFn.mockResolvedValue({
-      clock: ClockKind.TURN,
-      active: 'skeleton-1',
-      round: 2,
-      participants: [
-        participant('char-1', {
-          standing: Standing.DOWNED,
+      });
+      const live = steppedEventStream(healAfter ? 3 : 1);
+      hoisted.streamEventsFn.mockReturnValue(live.stream);
+      renderView();
+      await screen.findByRole('button', { name: /^death save/i });
+      expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(2);
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [],
+      });
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'skeleton-1',
+        round: 2,
+        participants: [
+          participant('char-1', {
+            standing: Standing.DOWNED,
+            lifeState: LifeState.STABILIZED,
+            deathSaves: create(DeathSaveProgressSchema, {
+              successes: 0,
+              failures: 0,
+              successesNeeded: 3,
+              failuresRemaining: 3,
+              stabilized: true,
+              dead: false,
+            }),
+          }),
+          participant('skeleton-1', { active: true }),
+        ],
+      });
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: create(CharacterDataSchema, {
           lifeState: LifeState.STABILIZED,
-          deathSaves: create(DeathSaveProgressSchema, {
+          hitPoints: { current: 0, max: 10 },
+          deathSaves: {
             successes: 0,
             failures: 0,
             successesNeeded: 3,
             failuresRemaining: 3,
             stabilized: true,
             dead: false,
-          }),
+          },
         }),
-        participant('skeleton-1', { active: true }),
-      ],
-    });
-    hoisted.getCharacterDataFn.mockResolvedValue({
-      character: create(CharacterDataSchema, {
-        lifeState: LifeState.STABILIZED,
-        hitPoints: { current: 0, max: 10 },
-        deathSaves: {
-          successes: 0,
-          failures: 0,
-          successesNeeded: 3,
-          failuresRemaining: 3,
-          stabilized: true,
-          dead: false,
-        },
-      }),
-    });
-    live.release();
-    await screen.findByText('Aldric is stabilized');
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull()
-    );
-    await waitFor(() => expect(screen.getAllByText('Stable')).toHaveLength(2));
-    expect(screen.queryByTestId('death-save-failure-pip')).toBeNull();
-    expect(screen.queryByTestId('death-save-success-pip')).toBeNull();
-    expect(screen.getByText('0/10')).toBeTruthy();
-    expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
-  });
+      });
+      live.publish(result);
+      await screen.findByText('Aldric is stabilized');
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /^death save/i })
+        ).toBeNull()
+      );
+      await waitFor(() =>
+        expect(screen.getAllByText('Stable')).toHaveLength(2)
+      );
+      expect(screen.queryByTestId('death-save-failure-pip')).toBeNull();
+      expect(screen.queryByTestId('death-save-success-pip')).toBeNull();
+      expect(screen.getByText('0/10')).toBeTruthy();
+      expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
+
+      if (healAfter) {
+        // Healing changes the provider life state; HP alone must never drive it.
+        hoisted.getCharacterDataFn.mockResolvedValue({
+          character: create(CharacterDataSchema, {
+            lifeState: LifeState.CONSCIOUS,
+            hitPoints: { current: 10, max: 10 },
+          }),
+        });
+        hoisted.turnFn.mockResolvedValue({
+          clock: ClockKind.TURN,
+          active: 'skeleton-1',
+          round: 2,
+          participants: [
+            participant('char-1', {
+              standing: Standing.UP,
+              lifeState: LifeState.CONSCIOUS,
+            }),
+            participant('skeleton-1', { active: true }),
+          ],
+        });
+        const healing = create(EventSchema, {
+          session: 'enc-1',
+          recipient: 'char-1',
+          seq: 2n,
+          kind: EventKind.ACTIVATION_RESULT,
+          body: {
+            case: 'activationResult',
+            value: {
+              actor: 'cleric',
+              result: {
+                case: 'healingApplied',
+                value: {
+                  target: 'char-1',
+                  amount: 10,
+                  requested: 10,
+                  hpBefore: 0,
+                  hpAfter: 10,
+                  sourceRef: 'dnd5e:spells:healing-word',
+                  sourceName: 'Healing Word',
+                },
+              },
+            },
+          },
+        });
+        live.publish(healing);
+        await screen.findByText('Aldric recovers 10 HP');
+        await waitFor(() => expect(screen.queryByText('Stable')).toBeNull());
+        expect(screen.getByText('10/10')).toBeTruthy();
+        expect(
+          screen.queryByText('You are stable. Waiting for recovery.')
+        ).toBeNull();
+        expect(screen.queryByTestId('death-save-progress')).toBeNull();
+        const headlines = screen.getByRole('log').textContent ?? '';
+        expect(headlines.indexOf('Aldric is stabilized')).toBeLessThan(
+          headlines.indexOf('Aldric recovers 10 HP')
+        );
+        readyTurn();
+        const nextTurn = turnEnded('skeleton-1', 'char-1');
+        nextTurn.seq = 3n;
+        live.publish(nextTurn);
+        await waitFor(() =>
+          expect(
+            (
+              screen.getByRole('button', {
+                name: /^Longsword/,
+              }) as HTMLButtonElement
+            ).disabled
+          ).toBe(false)
+        );
+        expect(
+          screen.queryByRole('button', { name: /^death save/i })
+        ).toBeNull();
+        expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
+      }
+    }
+  );
 
   it('refreshes CharacterData, Afford, and View for ActivationResult through the unconditional funnel', async () => {
     readyTurn();

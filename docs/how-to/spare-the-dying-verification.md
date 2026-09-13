@@ -64,13 +64,37 @@ The fixture's out-of-band injury was first reconciled into a public Downed beat
 after the first cast; that beat is preserved in delivered order, not relabeled as
 a new injury or hidden by the client.
 
+## Stabilization followed by Healing Word
+
+The same two-player browser encounter also passed the full recovery sequence.
+Fixture setup returned only Robin to dying at 0 HP with one success and one
+failure, then reopened the API. During Mercy's round-3 turn:
+
+1. Spare the Dying changed Robin from DYING to STABILIZED at 0 HP and spent the
+   action. Healing Word remained available as a bonus action.
+2. Healing Word targeted Robin from the browser. The provider returned
+   `1d4 [4] + 3 Spellcasting modifier + 3 Disciple of Life = 10`, applying 10 HP
+   (0 to 10). Mercy's slots changed from 2/2 to 1/2.
+3. Owner data reported CONSCIOUS with 10/10 HP and no death-save progress;
+   public Turn reported UP/CONSCIOUS. Both Stable labels disappeared and the
+   map stopped showing Robin downed. The healing entry followed stabilization.
+4. After Mercy ended the turn and the monsters acted, Robin's turn became
+   active with normal attack, movement and spell declarations and no death-save
+   declaration. No death-save RPC or event was needed for recovery.
+
+The patient's sequence was cast Spare the Dying (47), stabilized (48), cast
+Healing Word (49), healing applied (50). The 10 HP is this Life Cleric's actual
+roll and bonuses, not a fixed Healing Word amount. The web renders the provider's
+life state rather than inferring consciousness from the healing amount.
+
 ## Automated coverage and limits
 
 Focused tests cover both before states, source/target narration, replay and
 same-sequence deduplication/conflicts for every stabilization/progress field,
 zero/false Debug values, no dice presentation, owner/turn/afford refresh, zero HP,
 cleared pips, the stable waiting message and removal of the provider death-save
-offer. The focused three-file run passed 135 tests.
+offer. The focused three-file run passed 135 tests before the follow-up; the extended
+stabilization/recovery integration test also passes both cases.
 
 Preparation, monster stabilization, timed natural recovery and behavior after
 fresh damage remain outside this acceptance. No production deployment is claimed.
