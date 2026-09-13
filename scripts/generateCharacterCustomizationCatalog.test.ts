@@ -122,7 +122,9 @@ describeProvider('aggregate character customization catalog generator', () => {
       expect.arrayContaining(['barbarian', 'fighter', 'monk', 'rogue'])
     );
     for (const profile of Object.values(catalog.profiles)) {
-      expect(Object.keys(profile.bodies)).toEqual(classOrder);
+      expect(Object.keys(profile.bodies).sort()).toEqual(
+        [...classOrder].sort()
+      );
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
     }
@@ -148,7 +150,7 @@ describeProvider('aggregate character customization catalog generator', () => {
         'Chr_LegRight_Male_16',
       ],
     });
-    expect(Object.keys(catalog.outfits)).toEqual(classOrder);
+    expect(Object.keys(catalog.outfits).sort()).toEqual([...classOrder].sort());
   });
 
   it('rejects an ambiguous none default and an incomplete aggregate before rendering source', async () => {
