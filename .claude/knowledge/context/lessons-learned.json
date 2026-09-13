@@ -4,7 +4,14 @@
     "date": "2026-09-13",
     "lesson": "Cleric catalog data does not prove native creation readiness: the tested API dev image omitted subclass options while finalization required Divine Domain. Saved spell choices also omitted category, and class spellcasting summary metadata was absent.",
     "fix": "Keep server domain/ref state; resolve missing saved-choice category only through its provider choice definition ID. Render known refs without synthesizing spellcasting statistics. Require a native creation and live casting pass before declaring end-to-end readiness.",
-    "context": "See docs/how-to/cleric-spellcasting-verification.md for the image revision, seeded probe boundary and remaining acceptance."
+    "context": "API #979 and toolkit #1721 resolved the provider blockers. Native Life Cleric creation and live casts are recorded in docs/how-to/cleric-spellcasting-verification.md."
+  },
+  {
+    "id": "domain-choice-finalization-overlay",
+    "date": "2026-09-13",
+    "lesson": "A domain-specific equipment bundle can be accepted in the class picker but rejected by finalization when the sheet validates only base class choices.",
+    "fix": "Apply the selected provider subclass additionalChoices as replacements by choice ID for sheet reconstruction, category fallback and finalization, matching the picker. Do not borrow options from other domains.",
+    "context": "Fresh Life Cleric browser creation selected the provider chain-mail bundle and exposed the mismatch. Regression coverage verifies the selected domain succeeds and another domain cannot reuse its option."
   },
   {
     "id": "wsl-vite-stale-watcher",

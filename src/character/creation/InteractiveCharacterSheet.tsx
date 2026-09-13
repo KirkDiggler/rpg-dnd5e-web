@@ -21,6 +21,7 @@ import {
 import {
   FightingStyle,
   Language,
+  type Subclass,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -83,9 +84,21 @@ function isClassInfo(info: ClassInfo | SubclassInfo | null): info is ClassInfo {
   return info != null && info.$typeName === 'dnd5e.api.v1alpha1.ClassInfo';
 }
 
-function classChoiceDefinitions(info: ClassInfo | SubclassInfo | null) {
+function classChoiceDefinitions(
+  info: ClassInfo | SubclassInfo | null,
+  subclass?: Subclass
+) {
   if (!info) return [];
-  return isClassInfo(info) ? info.choices : info.additionalChoices;
+  if (!isClassInfo(info)) return info.additionalChoices;
+  const extras =
+    info.subclasses.find((option) => option.subclassId === subclass)
+      ?.additionalChoices ?? [];
+  return [
+    ...info.choices.filter(
+      (choice) => !extras.some((extra) => extra.id === choice.id)
+    ),
+    ...extras,
+  ];
 }
 
 function getLanguageDisplayName(languageEnum: Language): string {
@@ -244,16 +257,17 @@ export function InteractiveCharacterSheet({
       // the matching provider declaration, never from spell names or levels.
       const spellCategory =
         choice.category ||
-        classChoiceDefinitions(draft.classInfo).find(
+        classChoiceDefinitions(draft.classInfo, draft.draft?.subclass).find(
           (definition) => definition.id === choice.choiceId
         )?.choiceType;
       if (
         choice.category === ChoiceCategory.EQUIPMENT &&
         choice.selection?.case === 'equipment'
       ) {
-        const declaredChoice = classChoiceDefinitions(draft.classInfo).find(
-          (candidate) => candidate.id === choice.choiceId
-        );
+        const declaredChoice = classChoiceDefinitions(
+          draft.classInfo,
+          draft.draft?.subclass
+        ).find((candidate) => candidate.id === choice.choiceId);
         if (declaredChoice) {
           choices.equipment?.push(
             reconstructEquipmentChoice(declaredChoice, choice)
@@ -518,7 +532,7 @@ export function InteractiveCharacterSheet({
       scores.charisma > 0;
 
     const hasNoInvalidEquipment = hasNoInvalidEquipmentChoices(
-      classChoiceDefinitions(draft.classInfo),
+      classChoiceDefinitions(draft.classInfo, draft.draft?.subclass),
       draft.classChoices
     );
 

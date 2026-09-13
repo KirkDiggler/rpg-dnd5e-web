@@ -22,13 +22,15 @@ let it rot.
   Cast identity includes ordered targets; condition identity includes source ID.
   Focused coverage exercises provider-owned Bless targets, Cure Wounds action,
   Healing Word bonus action, authoritative healing, and reconnect deduplication.
-  **Live acceptance is blocked:** the tested API dev image
-  `d1f7b2d7d3017f032fa635b2cf5dcfa30ddb851b` returns no Cleric subclasses while
-  finalization requires Divine Domain. A disposable draft finalized only after
-  API-seeding Life Domain; its Reference Tomb encounter then returned
-  `character data unavailable` and exposed only exploration controls. Successful
-  live casts and both stale-target host policies remain unverified. See
-  [verification notes](how-to/cleric-spellcasting-verification.md).
+  **Provider blockers resolved:** API #979 at `5b44fe69` and toolkit
+  `rulebooks/dnd5e v0.165.1` enable fresh native Life Cleric creation and owner
+  data. Browser Cure Wounds, ordered two-target Bless, resource spending,
+  concentration and reload recovery passed. Healing Word also passed after an
+  explicit disposable slot refill between encounters, including healing, slot
+  spending and provider same-turn restrictions. Selected-domain choice overrides
+  now also drive equipment validation at finalization. API integration covers
+  both stale-target policies; browser stale-target races remain unexercised.
+  See [verification notes](how-to/cleric-spellcasting-verification.md).
 
 - **Guild-bound world composition library / World Builder (#974, project
   #399)** — normal Discord auth requests `guilds.members.read` consent and uses
