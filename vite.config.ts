@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { execSync } from 'child_process';
+import { availableParallelism } from 'node:os';
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
 
@@ -64,6 +65,10 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // Cap normal runs at four workers: a same-HEAD controlled run passed the
+    // full suite under shared-machine contention where default parallelism
+    // timed out. This is a scheduling guard, not a test-specific fix.
+    maxWorkers: Math.min(4, availableParallelism()),
     // Vitest's own default (5000ms) is tight enough that a borderline-slow
     // render/interaction test occasionally times out purely from shared-
     // machine scheduling jitter, not a real hang — observed 2026-08-22
