@@ -2,6 +2,7 @@ import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePr
 import { useDiceDials } from '@/feel/useFeelDials';
 import {
   ClockKind,
+  LifeState,
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -48,6 +49,16 @@ function labelOf(value?: string): string {
 }
 
 function DeathSaveProgress({ participant }: { participant: Participant }) {
+  if (participant.lifeState === LifeState.STABILIZED) {
+    return (
+      <span
+        className={styles.deathSaveProgress}
+        aria-label={`${participant.name} life state`}
+      >
+        Stable
+      </span>
+    );
+  }
   const progress = participant.deathSaves;
   if (!progress) return null;
   return (
@@ -347,6 +358,16 @@ export function CombatExperience({
         })),
       ]
     : [];
+
+  if (characterData?.lifeState === LifeState.STABILIZED) {
+    statuses.push({
+      key: 'life-state',
+      label: 'Stable',
+      detail: 'Stabilized',
+      icon: '✚',
+      tone: 'cool',
+    });
+  }
 
   return (
     <div

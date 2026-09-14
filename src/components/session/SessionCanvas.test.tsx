@@ -6,6 +6,7 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
@@ -639,8 +640,8 @@ describe('SessionScene', () => {
     );
     const renderer = await renderSession(cryptScene);
 
-    expect(lightIntensity(renderer, 'AmbientLight')).toBe(0.2);
-    expect(lightIntensity(renderer, 'DirectionalLight')).toBe(0.1);
+    expect(lightIntensity(renderer, 'AmbientLight')).toBe(0.8);
+    expect(lightIntensity(renderer, 'DirectionalLight')).toBe(0.4);
     expect(
       renderer.scene.findAll(
         (node) =>
@@ -767,7 +768,16 @@ describe('SessionScene', () => {
   );
 
   it('mounts a resolved Bard through the real model and modular-rig path', async () => {
-    const bardUrl = '/models/synty/characters/race-class/human-bard.glb';
+    // Provider-declared Bard bodies supersede the historical complete-model
+    // mapping. Keep the old URL as an explicit fixture fallback so this test
+    // remains valid against the checked-in pre-Bard catalog as well.
+    const declaredHumanBardBody = (
+      CHARACTER_CUSTOMIZATION_CATALOG.profiles.human
+        .bodies as unknown as Record<string, { url: string }>
+    ).bard;
+    const bardUrl =
+      declaredHumanBardBody?.url ??
+      '/models/synty/characters/race-class/human-bard.glb';
     const renderer = await ReactThreeTestRenderer.create(
       <SessionScene
         scene={scene()}

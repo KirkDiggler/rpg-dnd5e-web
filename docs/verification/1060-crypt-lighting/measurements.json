@@ -1,0 +1,339 @@
+{
+  "issue": 1060,
+  "renderer": "headless Chromium / SwiftShader, R3F default ACES tone mapping, DPR 1",
+  "route": "Home -> Dungeon Builder -> Open -> Sewers -> 3D preview (no Save/Play)",
+  "capture": {
+    "details": {
+      "lights": [
+        {
+          "type": "AmbientLight",
+          "intensity": 0.8,
+          "position": [0, 0, 0]
+        },
+        {
+          "type": "DirectionalLight",
+          "intensity": 0.4,
+          "position": [10, 20, 10]
+        },
+        {
+          "type": "PointLight",
+          "intensity": 2.8,
+          "position": [6.928203230275509, 1.1, 6],
+          "distance": 5.5,
+          "decay": 2
+        },
+        {
+          "type": "PointLight",
+          "intensity": 2.8,
+          "position": [6.06217782649107, 1.1, 7.5],
+          "distance": 5.5,
+          "decay": 2
+        },
+        {
+          "type": "PointLight",
+          "intensity": 2.8,
+          "position": [4.330127018922193, 1.1, 7.5],
+          "distance": 5.5,
+          "decay": 2
+        },
+        {
+          "type": "PointLight",
+          "intensity": 1.5,
+          "position": [12.040457878744006, 0.8, -0.06603399186768044],
+          "distance": 2.6,
+          "decay": 2
+        },
+        {
+          "type": "PointLight",
+          "intensity": 2.8,
+          "position": [2.598076211353316, 1.1, 7.5],
+          "distance": 5.5,
+          "decay": 2
+        },
+        {
+          "type": "PointLight",
+          "intensity": 1.5,
+          "position": [1.648153033330742, 0.8, 5.93396600813232],
+          "distance": 2.6,
+          "decay": 2
+        }
+      ],
+      "camera": [15.794228634059948, 10, 15.500000000000002],
+      "focus": [7.794228634059947, 0, 7.5]
+    },
+    "beforeLights": [
+      {
+        "type": "AmbientLight",
+        "intensity": 0.2,
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "DirectionalLight",
+        "intensity": 0.1,
+        "position": [10, 20, 10]
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [6.928203230275509, 1.1, 6],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [6.06217782649107, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [4.330127018922193, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 1.5,
+        "position": [12.040457878744006, 0.8, -0.06603399186768044],
+        "distance": 2.6,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [2.598076211353316, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 1.5,
+        "position": [1.648153033330742, 0.8, 5.93396600813232],
+        "distance": 2.6,
+        "decay": 2
+      }
+    ],
+    "errors": []
+  },
+  "composedEnvironmentMeasurements": {
+    "lights": [
+      {
+        "type": "AmbientLight",
+        "intensity": 0.8,
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "DirectionalLight",
+        "intensity": 0.4,
+        "position": [10, 20, 10]
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [6.06217782649107, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [6.928203230275509, 1.1, 6],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [4.330127018922193, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 2.8,
+        "position": [2.598076211353316, 1.1, 7.5],
+        "distance": 5.5,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 1.5,
+        "position": [1.648153033330742, 0.8, 5.93396600813232],
+        "distance": 2.6,
+        "decay": 2
+      },
+      {
+        "type": "PointLight",
+        "intensity": 1.5,
+        "position": [12.040457878744006, 0.8, -0.06603399186768044],
+        "distance": 2.6,
+        "decay": 2
+      }
+    ],
+    "errors": [],
+    "rows": [
+      {
+        "label": "corrected-sources",
+        "stats": [
+          {
+            "id": "composition_fe162305-75c0-418e-9ddb-e910da5c6989",
+            "count": 13145,
+            "median": 13.702,
+            "p90": 26.698,
+            "blackFraction": 0.07151007987828072
+          },
+          {
+            "id": "composition_8b12a188-379c-49f0-b1d3-6760d3f9a179",
+            "count": 13796,
+            "median": 15.6114,
+            "p90": 26.1638,
+            "blackFraction": 0
+          }
+        ]
+      },
+      {
+        "label": "before-sources",
+        "stats": [
+          {
+            "id": "composition_fe162305-75c0-418e-9ddb-e910da5c6989",
+            "count": 13145,
+            "median": 1.9278,
+            "p90": 4.2808,
+            "blackFraction": 0.9356409281095474
+          },
+          {
+            "id": "composition_8b12a188-379c-49f0-b1d3-6760d3f9a179",
+            "count": 13796,
+            "median": 7.9002,
+            "p90": 15.6114,
+            "blackFraction": 0.2916062626848362
+          }
+        ]
+      }
+    ]
+  },
+  "regressionBefore": {
+    "samples": [
+      {
+        "asset": "torture_device_01",
+        "kind": "dim",
+        "count": 68874,
+        "median": 1.1404,
+        "p90": 4.0682,
+        "blackFraction": 1,
+        "meanRgb": [2.7201120887417605, 1.8428724917966142, 0.8026976798211226]
+      },
+      {
+        "asset": "torture_device_01",
+        "kind": "warm",
+        "count": 68874,
+        "median": 6.4842,
+        "p90": 15.887,
+        "blackFraction": 0.39170078694427507,
+        "meanRgb": [16.91610767488457, 5.81850916165752, 1.800781136568226]
+      },
+      {
+        "asset": "torture_device_01",
+        "kind": "cool",
+        "count": 68874,
+        "median": 2.1444,
+        "p90": 7.144399999999999,
+        "blackFraction": 0.6759589975898017,
+        "meanRgb": [3.3079391352324534, 3.3557220431512618, 4.185832099195633]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "dim",
+        "count": 72604,
+        "median": 0,
+        "p90": 1.1404,
+        "blackFraction": 0.9551677593521019,
+        "meanRgb": [0.9802490220924467, 0.5773235634400309, 0.22754944631149798]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "warm",
+        "count": 72604,
+        "median": 2.5656000000000003,
+        "p90": 6.121999999999999,
+        "blackFraction": 0.8705580959726736,
+        "meanRgb": [7.5282766789708555, 2.2726847005674617, 0.5105090628615503]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "cool",
+        "count": 72604,
+        "median": 1,
+        "p90": 2.0722,
+        "blackFraction": 0.9516555561677043,
+        "meanRgb": [1.321717811690816, 1.2537601234091786, 1.5635226709272216]
+      }
+    ],
+    "errors": []
+  },
+  "regressionAfter": {
+    "samples": [
+      {
+        "asset": "torture_device_01",
+        "kind": "dim",
+        "count": 68874,
+        "median": 13.4894,
+        "p90": 26.698,
+        "blackFraction": 0.07975433400121962,
+        "meanRgb": [20.04721665650318, 15.419098643900456, 10.070795946220635]
+      },
+      {
+        "asset": "torture_device_01",
+        "kind": "warm",
+        "count": 68874,
+        "median": 18.751800000000003,
+        "p90": 36.3134,
+        "blackFraction": 0.019455817870313908,
+        "meanRgb": [32.80727124894735, 19.74623225019601, 11.349580393181752]
+      },
+      {
+        "asset": "torture_device_01",
+        "kind": "cool",
+        "count": 68874,
+        "median": 14.561599999999999,
+        "p90": 29.633799999999997,
+        "blackFraction": 0.03490431803002585,
+        "meanRgb": [20.821442053605136, 17.239408194674333, 14.213113802015274]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "dim",
+        "count": 72604,
+        "median": 6.2086,
+        "p90": 11.4894,
+        "blackFraction": 0.3625282353589334,
+        "meanRgb": [9.915679576882816, 7.315822819679356, 4.494931408737811]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "warm",
+        "count": 72604,
+        "median": 9.412,
+        "p90": 15.973599999999998,
+        "blackFraction": 0.14756762712798194,
+        "meanRgb": [17.33025728609994, 9.757451380089252, 5.179673296237122]
+      },
+      {
+        "asset": "cage_03",
+        "kind": "cool",
+        "count": 72604,
+        "median": 7.1404,
+        "p90": 12.4894,
+        "blackFraction": 0.3152443391548675,
+        "meanRgb": [10.327475070244065, 8.458528455732466, 6.69216572089692]
+      }
+    ],
+    "errors": []
+  },
+  "screenshots": {
+    "before.png": "eb36e696ba997c5f64e360bbd8b1feaa75afc05e9c04609cc5b5a144e1bd1cb9",
+    "after.png": "73334164ed9411113621275d02684ca82f471a20ea0a087ac3b22c8e6f21ecb8"
+  }
+}

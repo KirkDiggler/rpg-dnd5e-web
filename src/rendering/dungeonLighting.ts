@@ -84,8 +84,13 @@ export const DUNGEON_POINT_LIGHT_BUDGET = 12;
 
 const LEGACY_AMBIENT_INTENSITY = 0.6;
 const LEGACY_DIRECTIONAL_INTENSITY = 0.8;
-const DUNGEON_AMBIENT_INTENSITY = 0.2;
-const DUNGEON_DIRECTIONAL_INTENSITY = 0.1;
+// Keep dark textured PBR surfaces legible when their camera-facing side is
+// outside a point light's reach. The former 0.2/0.1 fill crushed Dark Fortress
+// props to black even beside working braziers (#1060). Calibrated together
+// against props, a character, and the crypt shell; regional floor exposure and
+// authored source strengths remain independent. See check-crypt-lighting.mjs.
+const DUNGEON_AMBIENT_INTENSITY = 0.8;
+const DUNGEON_DIRECTIONAL_INTENSITY = 0.4;
 const DIRECTIONAL_POSITION = Object.freeze([10, 20, 10] as const);
 
 function fallbackFacts(

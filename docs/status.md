@@ -12,6 +12,18 @@ let it rot.
 
 ## Active work
 
+- **Spare the Dying** — SDK `v0.1.190` exposes typed stabilization in live and
+  recovered Story and Debug, including full progress identity with zero/false
+  values. Stabilization refreshes owner data, turn, actions and view. Stable
+  players have an explicit HUD/initiative label and recovery waiting message.
+  Browser casts passed for dying and already-stable player recipients: zero HP,
+  cleared progress, action-only cost, no spell dice, unchanged slots, reconnect,
+  and automatic turn advancement without death saves through two rounds.
+  A same-turn Spare the Dying then Healing Word browser sequence restored the
+  patient to conscious at 10 HP and returned normal actions on their next turn.
+  See [verification notes](how-to/spare-the-dying-verification.md) for fixture
+  boundaries and the exact API image. Preparation and natural recovery are deferred.
+
 - **Cleric spellcasting handoff** — Cleric is available in the class picker;
   provider domain choices and base spell choices stay together and saved domains
   survive draft updates/reopening. Spell refs remain visible when the provider

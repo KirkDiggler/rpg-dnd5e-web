@@ -190,7 +190,10 @@ describe('aggregate production character customization publication', () => {
     );
     for (const raceRef of CHARACTER_CUSTOMIZATION_CATALOG.profileOrder) {
       const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
-      expect(Object.keys(profile.bodies)).toEqual(classOrder);
+      // Record key ordering is not the explicit presentation classOrder.
+      expect(Object.keys(profile.bodies).sort()).toEqual(
+        [...classOrder].sort()
+      );
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
       for (const selection of [

@@ -40,7 +40,11 @@ export function refreshKeysFor(
         : ['view'];
     case 'struck':
     case 'missed':
+      return ['characterData', 'afford', 'view'];
     case 'activationResult':
+      return event.body.value.result.case === 'stabilized'
+        ? ['characterData', 'afford', 'turn', 'view']
+        : ['characterData', 'afford', 'view'];
     case 'deathSaveRolled':
       return ['characterData', 'afford', 'view'];
     case 'downed':
