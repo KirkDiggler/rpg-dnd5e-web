@@ -140,8 +140,8 @@ describe('DungeonEnvironment', () => {
         }
       ).userData.compositionSource
     ).toBe(compositionSource);
-    expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.2);
-    expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.1);
+    expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.8);
+    expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.4);
     expect(pointLights(renderer)).toHaveLength(1);
 
     const shell = renderer.scene.find(
