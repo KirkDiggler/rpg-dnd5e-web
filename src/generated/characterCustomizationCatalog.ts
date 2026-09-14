@@ -1,7 +1,7 @@
 /**
  * GENERATED FILE — DO NOT EDIT.
- * Provider commit: 37c13c68b6cfc87ad6684351f934b4ff1fd83515
- * Aggregate manifest SHA-256: 2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac
+ * Provider commit: 85fdf94bf55ac3cd40db0d79fa65dbfac4f98563
+ * Aggregate manifest SHA-256: e23578904527f6b80fc49587d779c79544184ef33c250c4de0d40f0db023f603
  */
 
 export type CustomizationRaceRef =
@@ -13,11 +13,7 @@ export type CustomizationRaceRef =
   | 'halfling'
   | 'gnome'
   | 'half-orc';
-export type CustomizationStarterClass =
-  | 'barbarian'
-  | 'fighter'
-  | 'monk'
-  | 'rogue';
+export type CustomizationStarterClass = string;
 export type CustomizationSlot = 'scalp' | 'facial-hair';
 export type CustomizationDefaultSelection =
   | { readonly kind: 'style'; readonly styleRef: string }
@@ -102,7 +98,7 @@ export interface CharacterCustomizationProfile {
 }
 export interface OutfitTreatment {
   readonly classRef: CustomizationStarterClass;
-  readonly outfit: '01' | '16' | '08' | '10';
+  readonly outfit: string;
   readonly maskUrl: string;
   readonly maskSha256: string;
   readonly defaultPrimaryColorSrgb: number;
@@ -122,11 +118,11 @@ export interface CharacterCustomizationCatalog {
 }
 
 export const CHARACTER_CUSTOMIZATION_PROVIDER = Object.freeze({
-  providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
+  providerCommit: '85fdf94bf55ac3cd40db0d79fa65dbfac4f98563',
   aggregateManifestSha256:
-    '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
+    'e23578904527f6b80fc49587d779c79544184ef33c250c4de0d40f0db023f603',
   outfitManifestSha256:
-    '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
+    'e821772270e44ff14959f8b7dd0963e9581f4d56002dc32eaff0250e3fcfb444',
 } as const);
 
 export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
@@ -185,6 +181,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '/models/synty/characters/customization/human-v1/fallbacks/human-barbarian-complete.glb',
           fallbackSha256:
             'd474878caa8288954b31975ed6776ade7b470e7a6b29de4af295b48891f27b38',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        bard: {
+          combination: 'human:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/human-v1/bodies/human-bard-body.glb',
+          sha256:
+            'c0f7911b7c781676e968d7a683ab0b2e2bfff2264fe46d6c34cb2cc19c913593',
+          fallbackUrl:
+            '/models/synty/characters/customization/human-v1/fallbacks/human-bard-complete.glb',
+          fallbackSha256:
+            'f71e55b368915064739d693b3e2b8da31703906ad22c1298476b20b199013546',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'human:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/human-v1/bodies/human-cleric-body.glb',
+          sha256:
+            'c065c47af77d943928b4c92e1615e1357f98b1308d34933a5e90425d552b6537',
+          fallbackUrl:
+            '/models/synty/characters/customization/human-v1/fallbacks/human-cleric-complete.glb',
+          fallbackSha256:
+            '6d357d468d58db2aa7623dcf968de9aaec4869fcc487e63c33d6badcd36bfdd0',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
         fighter: {
@@ -1370,6 +1392,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             'e436883e6adf7e9912bffafc8734351cd970fb6154263e0fe96e842f490ef80d',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
+        bard: {
+          combination: 'elf:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/elf-v1/bodies/elf-bard-body.glb',
+          sha256:
+            '43d969751f0a3aaa6bab232d49858c5332764c74e53368a1ad51367a9cb23941',
+          fallbackUrl:
+            '/models/synty/characters/customization/elf-v1/fallbacks/elf-bard-complete.glb',
+          fallbackSha256:
+            'bf256ab12b8402b8120d75b6e84e599a9f1ae3ccbde4434077eb9887c4608b5d',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'elf:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/elf-v1/bodies/elf-cleric-body.glb',
+          sha256:
+            '0e0bfb55f9836445e81f512e66f1b23010dd76101cb39b3fb2ce33084790134f',
+          fallbackUrl:
+            '/models/synty/characters/customization/elf-v1/fallbacks/elf-cleric-complete.glb',
+          fallbackSha256:
+            'e4bddac6e7804d419ac202bd89164347239fc9935827ffc66275b5636b47ea87',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
         fighter: {
           combination: 'elf:fighter',
           classRef: 'fighter',
@@ -2549,6 +2597,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '/models/synty/characters/race-class/dwarf-barbarian.glb',
           fallbackSha256:
             'dfd29de0d5a3611f6e92b88e7f706587ef705b332f0a8a949ee23919396a9a7f',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        bard: {
+          combination: 'dwarf:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-bard-body.glb',
+          sha256:
+            '2ad1c61c422ab165a5ecf2b48c31fa21dd5dbd12e5cd5989b3d5d2758c1d3060',
+          fallbackUrl:
+            '/models/synty/characters/customization/dwarf-v1/fallbacks/dwarf-bard-complete.glb',
+          fallbackSha256:
+            'e5f310e599f4a342eed151defa49925cfda9997d72f1a0a81e496f4b65ff3819',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'dwarf:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-cleric-body.glb',
+          sha256:
+            '940502413800927184da80347155eeda6438432c57c67fd4908b2fdba95d5aa9',
+          fallbackUrl:
+            '/models/synty/characters/customization/dwarf-v1/fallbacks/dwarf-cleric-complete.glb',
+          fallbackSha256:
+            'd49778c5e9b90f0b4e1b1cf00f9f747e3b7f70f1e4494a3953cba07a9ab9ad07',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
         fighter: {
@@ -3734,6 +3808,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '9dde33258b69ec66bd694f705fcc035d307a388b1518027571f33ffc75b76ca8',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
+        bard: {
+          combination: 'half-elf:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/half-elf-v1/bodies/half-elf-bard-body.glb',
+          sha256:
+            'd59669871bfde5002371d71f82e6f7c6d9cda25140a475e86612c2fcde3dfb66',
+          fallbackUrl:
+            '/models/synty/characters/customization/half-elf-v1/fallbacks/half-elf-bard-complete.glb',
+          fallbackSha256:
+            '2d7202bb650dfe1b5529365aad74784e281c71721cd479beda73f2a7d7bdea8b',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'half-elf:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/half-elf-v1/bodies/half-elf-cleric-body.glb',
+          sha256:
+            '97677f61198a7244f4f645a510392ec9fc50de302d3dd1847d6ad837dba8fb71',
+          fallbackUrl:
+            '/models/synty/characters/customization/half-elf-v1/fallbacks/half-elf-cleric-complete.glb',
+          fallbackSha256:
+            'a02fca2f540a8818bb16d973330564d4400968ebeb2390fcb16e6937acd4a20f',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
         fighter: {
           combination: 'half-elf:fighter',
           classRef: 'fighter',
@@ -4914,6 +5014,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '/models/synty/characters/race-class/tiefling-barbarian.glb',
           fallbackSha256:
             '06e819db490b185fcfa66f5197bab95f632d70297695d216e237b0aa50f884a1',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        bard: {
+          combination: 'tiefling:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/tiefling-v1/bodies/tiefling-bard-body.glb',
+          sha256:
+            '3723a49d7605e8adb29ac5bfa5590d841846f961a096816b15c40b4899859b65',
+          fallbackUrl:
+            '/models/synty/characters/customization/tiefling-v1/fallbacks/tiefling-bard-complete.glb',
+          fallbackSha256:
+            '7b587384eb726eabec47a424bd4a088d3c668277379044f495931ab382d2b0a2',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'tiefling:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/tiefling-v1/bodies/tiefling-cleric-body.glb',
+          sha256:
+            'd00f95c91e7b221f91c063fef6351fb5dc007ac7513de06ef6857762acd6b5b4',
+          fallbackUrl:
+            '/models/synty/characters/customization/tiefling-v1/fallbacks/tiefling-cleric-complete.glb',
+          fallbackSha256:
+            '56c67bfe32b95024c6167c5cce86f3499f94b2a608770b4255a1bc2655838abc',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
         fighter: {
@@ -6098,6 +6224,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '4bec886592680bffa6534aac726fd1477451b30b8429bffcfa330a27751a3b70',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
+        bard: {
+          combination: 'halfling:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/halfling-v1/bodies/halfling-bard-body.glb',
+          sha256:
+            '48ad2c225c114c07ee405159ca9cb55753c141d0512a2e4069ae294df5288ae1',
+          fallbackUrl:
+            '/models/synty/characters/customization/halfling-v1/fallbacks/halfling-bard-complete.glb',
+          fallbackSha256:
+            '001d5270ad3e113d5f0068b7f29048a4425858a7774512b3efec083bbfdf9ce4',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'halfling:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/halfling-v1/bodies/halfling-cleric-body.glb',
+          sha256:
+            'f791993b2489852525d3e393c13301bde4d1dfe1985731b78537e593bfac4125',
+          fallbackUrl:
+            '/models/synty/characters/customization/halfling-v1/fallbacks/halfling-cleric-complete.glb',
+          fallbackSha256:
+            '0781873caadee8bddac0d6b670c6278cfffcd0cb7b977b7c1c3a71c6d29a4f9e',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
         fighter: {
           combination: 'halfling:fighter',
           classRef: 'fighter',
@@ -7280,6 +7432,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             'b95342c60e335f4138b5de3a18a554c49156ae57fb08654e7d874a432a905d58',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
+        bard: {
+          combination: 'gnome:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/gnome-v1/bodies/gnome-bard-body.glb',
+          sha256:
+            '86dd0cb3fcf547c0053480085b1db359c153ed3086c658fffa4bc9dbe95a573f',
+          fallbackUrl:
+            '/models/synty/characters/customization/gnome-v1/fallbacks/gnome-bard-complete.glb',
+          fallbackSha256:
+            'a601092309dbe2f9c0e256a32a7e8c879cc5a4bfde015276fe029f6ddc6ffba9',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'gnome:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/gnome-v1/bodies/gnome-cleric-body.glb',
+          sha256:
+            '9ad77c66ac3f8c7cf2eb4ef5074e53314ab874d081bae7abb4f7b2670df13e00',
+          fallbackUrl:
+            '/models/synty/characters/customization/gnome-v1/fallbacks/gnome-cleric-complete.glb',
+          fallbackSha256:
+            'a93067d85b8dc8ac226ce6e613429a77cdbda8b9dd7163cf21391b4014effa44',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
         fighter: {
           combination: 'gnome:fighter',
           classRef: 'fighter',
@@ -8459,6 +8637,32 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
             '/models/synty/characters/race-class/half-orc-barbarian.glb',
           fallbackSha256:
             'a59e6cf665da6805968a5112250f49aff16da5f9769de1fb48d16fd889ea09f5',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        bard: {
+          combination: 'half-orc:bard',
+          classRef: 'bard',
+          outfit: 'bard',
+          url: '/models/synty/characters/customization/half-orc-v1/bodies/half-orc-bard-body.glb',
+          sha256:
+            '30c86accdbf7832f62c689305b62b3bd669a47f626229a009e0e3c130e7d7c23',
+          fallbackUrl:
+            '/models/synty/characters/customization/half-orc-v1/fallbacks/half-orc-bard-complete.glb',
+          fallbackSha256:
+            'e20cc41a34a00360f24c6190b177781a68bcde7e06f7bed14fd5945be0fbe1ff',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        },
+        cleric: {
+          combination: 'half-orc:cleric',
+          classRef: 'cleric',
+          outfit: 'cleric',
+          url: '/models/synty/characters/customization/half-orc-v1/bodies/half-orc-cleric-body.glb',
+          sha256:
+            '58f29918f9cc886aa6d8cd22699a6e74590e872c559ff8412b1770108010d197',
+          fallbackUrl:
+            '/models/synty/characters/customization/half-orc-v1/fallbacks/half-orc-cleric-complete.glb',
+          fallbackSha256:
+            'aca8a5baf102cecae3640ecce0760ff9acde6d718d2087373cae85992eb9bca8',
           animations: ['Idle_Relaxed', 'Walk_Forward'],
         },
         fighter: {
@@ -9687,6 +9891,50 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
         'Chr_HandRight_Male_10',
         'Chr_LegLeft_Male_10',
         'Chr_LegRight_Male_10',
+      ],
+    },
+    bard: {
+      classRef: 'bard',
+      outfit: 'bard',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/bard-bard.png',
+      maskSha256:
+        '45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef',
+      defaultPrimaryColorSrgb: 4810366,
+      defaultSecondaryColorSrgb: 13739084,
+      meshNames: [
+        'Chr_Torso_Male_27',
+        'Chr_Hips_Male_27',
+        'Chr_ArmUpperLeft_Male_20',
+        'Chr_ArmUpperRight_Male_20',
+        'Chr_ArmLowerLeft_Male_18',
+        'Chr_ArmLowerRight_Male_18',
+        'Chr_HandLeft_Male_13',
+        'Chr_HandRight_Male_13',
+        'Chr_LegLeft_Male_11',
+        'Chr_LegRight_Male_11',
+      ],
+    },
+    cleric: {
+      classRef: 'cleric',
+      outfit: 'cleric',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/cleric-cleric.png',
+      maskSha256:
+        '45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef',
+      defaultPrimaryColorSrgb: 9981000,
+      defaultSecondaryColorSrgb: 4013374,
+      meshNames: [
+        'Chr_Torso_Male_20',
+        'Chr_Hips_Male_23',
+        'Chr_ArmUpperLeft_Male_15',
+        'Chr_ArmUpperRight_Male_15',
+        'Chr_ArmLowerLeft_Male_07',
+        'Chr_ArmLowerRight_Male_07',
+        'Chr_HandLeft_Male_01',
+        'Chr_HandRight_Male_01',
+        'Chr_LegLeft_Male_16',
+        'Chr_LegRight_Male_16',
       ],
     },
   },
