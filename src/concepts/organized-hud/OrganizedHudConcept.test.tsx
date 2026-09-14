@@ -9,6 +9,39 @@ vi.mock('../session-combat/SessionCombatMap', () => ({
 import { OrganizedHudConcept } from './OrganizedHudConcept';
 
 describe('OrganizedHudConcept', () => {
+  it('requests fullscreen only on tap, reports refusal, and restores the page title', async () => {
+    const previous = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      'requestFullscreen'
+    );
+    const title = document.title;
+    const request = vi.fn().mockRejectedValue(new Error('Denied'));
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: request,
+    });
+    try {
+      const view = render(<OrganizedHudConcept />);
+      expect(document.title).toBe('RPG — HUD Preview');
+      expect(request).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
+      expect(request).toHaveBeenCalledOnce();
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Full screen could not start'
+      );
+      view.unmount();
+      expect(document.title).toBe(title);
+    } finally {
+      if (previous)
+        Object.defineProperty(
+          document.documentElement,
+          'requestFullscreen',
+          previous
+        );
+      else
+        Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    }
+  });
   it('keeps a crowded initiative available through the bounded tracker', () => {
     render(<OrganizedHudConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Crowded initiative' }));

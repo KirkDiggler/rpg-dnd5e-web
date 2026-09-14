@@ -26,6 +26,34 @@ export function OrganizedHudConcept() {
     ORGANIZED_HUD_PROFILES[0];
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
   const [crowdedInitiative, setCrowdedInitiative] = useState(false);
+  const [fullscreen, setFullscreen] = useState(
+    Boolean(document.fullscreenElement)
+  );
+  const [fullscreenError, setFullscreenError] = useState('');
+  const fullscreenSupported =
+    typeof document.documentElement.requestFullscreen === 'function';
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'RPG — HUD Preview';
+    const updateFullscreen = () =>
+      setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => {
+      document.title = previousTitle;
+      document.removeEventListener('fullscreenchange', updateFullscreen);
+    };
+  }, []);
+  const toggleFullscreen = async () => {
+    setFullscreenError('');
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      setFullscreenError(
+        'Full screen could not start or exit. You can keep using the preview in Chrome.'
+      );
+    }
+  };
   const [state, setState] = useState<CombatExperiencePresentationState>(EMPTY);
   const [intent, setIntent] = useState(
     'No intent sent — fixture-only walkthrough.'
@@ -177,7 +205,18 @@ export function OrganizedHudConcept() {
             >
               Crowded initiative
             </button>
+            <button
+              type="button"
+              disabled={!fullscreenSupported}
+              onClick={toggleFullscreen}
+            >
+              {fullscreen ? 'Exit full screen' : 'Full screen'}
+            </button>
           </div>
+          {!fullscreenSupported && (
+            <small>Full screen is not available in this browser.</small>
+          )}
+          {fullscreenError && <p role="alert">{fullscreenError}</p>}
           {!preview && (
             <a
               className="organizedHudPreviewLink"

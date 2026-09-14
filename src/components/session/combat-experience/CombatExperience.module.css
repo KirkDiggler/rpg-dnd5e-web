@@ -1983,6 +1983,7 @@ button.diceDrawerCue:focus-visible {
 @container organized-hud (max-width: 800px) or (max-height: 500px) {
   .combatExperience[data-action-presentation='organized-hud'] {
     --organized-turn-button-top: 52px;
+    --organized-header-height: 52px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
     height: 100dvh;
@@ -2149,22 +2150,18 @@ button.diceDrawerCue:focus-visible {
 
 /* Floating-group experiment: the map owns the frame; only the cards catch
    pointer events. No full-width background or reserved dock height. */
+/* Let the log share layout with the actual action-row height. The map
+   still fills the frame behind both, with no reserved opaque bottom band. */
+.combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+  display: grid;
+  grid-template-rows: var(--organized-header-height, 80px) minmax(0, 1fr) auto;
+  row-gap: 8px;
+}
 .combatExperience[data-action-presentation='organized-hud'] .map {
   bottom: 0;
 }
 .combatExperience[data-action-presentation='organized-hud'] .dock {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: auto;
-  max-width: none;
-  height: auto;
-  min-height: 0;
-  gap: 8px;
-  border: 0;
-  background: none;
-  box-shadow: none;
+  display: contents;
   pointer-events: none;
 }
 /* Anchor to the full-frame HUD, never to the browser around a phone preview. */
@@ -2241,12 +2238,22 @@ button.diceDrawerCue:focus-visible {
 }
 .combatExperience[data-action-presentation='organized-hud']
   .storyLog:not(.storyLogCollapsed) {
-  top: 116px;
-  bottom: 12px;
+  position: relative;
+  grid-row: 2;
+  grid-column: 1;
+  justify-self: end;
+  align-self: stretch;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  min-height: 0;
+  margin-right: 12px;
 }
 .combatExperience[data-action-presentation='organized-hud'] .actionRow {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  z-index: 6;
+  grid-row: 3;
+  grid-column: 1;
   display: grid;
   grid-template-columns: minmax(0, max-content);
   align-content: end;
