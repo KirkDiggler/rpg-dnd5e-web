@@ -2239,7 +2239,8 @@ button.diceDrawerCue:focus-visible {
 .initiativeArrow:focus-visible {
   outline: 2px solid var(--sc-gold);
 }
-.combatExperience[data-action-presentation='organized-hud'] .storyLog:not(.storyLogCollapsed) {
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed) {
   top: 116px;
   bottom: 12px;
 }
@@ -2265,7 +2266,11 @@ button.diceDrawerCue:focus-visible {
   border: 0;
   border-left: 2px solid var(--sc-gold);
   border-radius: 0;
-  background: linear-gradient(90deg, rgba(10, 17, 20, 0.6), rgba(10, 17, 20, 0.08));
+  background: linear-gradient(
+    90deg,
+    rgba(10, 17, 20, 0.6),
+    rgba(10, 17, 20, 0.08)
+  );
   box-shadow: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: auto;
@@ -2287,7 +2292,9 @@ button.diceDrawerCue:focus-visible {
   background: rgba(7, 13, 15, 0.62);
   box-shadow: none;
 }
-.combatExperience[data-action-presentation='organized-hud'] .actionRow > .actionGroup,
+.combatExperience[data-action-presentation='organized-hud']
+  .actionRow
+  > .actionGroup,
 .combatExperience[data-action-presentation='organized-hud'] .passiveActionRow,
 .combatExperience[data-action-presentation='organized-hud'] .authorityStale {
   padding: 8px;
@@ -2313,7 +2320,9 @@ button.diceDrawerCue:focus-visible {
   display: inline-flex;
   align-self: center;
 }
-.combatExperience[data-action-presentation='organized-hud'] .organizedEndTurnSlot .endTurn {
+.combatExperience[data-action-presentation='organized-hud']
+  .organizedEndTurnSlot
+  .endTurn {
   position: static;
   transform: none;
   min-height: 44px;
@@ -2364,7 +2373,8 @@ button.diceDrawerCue:focus-visible {
 }
 
 /* Fill the chosen preview frame, not the browser behind the phone frame. */
-.combatExperienceFillParent[data-action-presentation='organized-hud'] .gameFrame {
+.combatExperienceFillParent[data-action-presentation='organized-hud']
+  .gameFrame {
   height: 100%;
 }
 
