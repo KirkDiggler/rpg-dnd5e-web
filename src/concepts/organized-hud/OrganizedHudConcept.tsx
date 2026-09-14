@@ -1,12 +1,14 @@
 import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import type { CombatExperiencePresentationState } from '@/components/session/combat-experience/types';
+import { create } from '@bufbuild/protobuf';
 import {
+  ParticipantSchema,
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
-import { ORGANIZED_HUD_FIXTURES, ORGANIZED_HUD_PRESENTATION } from './fixtures';
+import { ORGANIZED_HUD_PROFILES } from './fixtures';
 import './organizedHud.css';
 
 const EMPTY: CombatExperiencePresentationState = {
@@ -18,7 +20,12 @@ const EMPTY: CombatExperiencePresentationState = {
 /** Fixture-only composition: real CombatExperience + action organizer, no RPC writes. */
 export function OrganizedHudConcept() {
   const [scenarioId, setScenarioId] = useState('full-slots');
+  const [profileId, setProfileId] = useState('caster');
+  const profile =
+    ORGANIZED_HUD_PROFILES.find((item) => item.id === profileId) ??
+    ORGANIZED_HUD_PROFILES[0];
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
+  const [crowdedInitiative, setCrowdedInitiative] = useState(false);
   const [state, setState] = useState<CombatExperiencePresentationState>(EMPTY);
   const [intent, setIntent] = useState(
     'No intent sent — fixture-only walkthrough.'
@@ -27,8 +34,22 @@ export function OrganizedHudConcept() {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('preview') === '1';
   const fixture =
-    ORGANIZED_HUD_FIXTURES.find((item) => item.id === scenarioId) ??
-    ORGANIZED_HUD_FIXTURES[0]!;
+    profile.fixtures.find((item) => item.id === scenarioId) ??
+    profile.fixtures[0]!;
+  // Tracker-only stress fixture; these extras do not create map actors or actions.
+  const participants = crowdedInitiative
+    ? [
+        ...fixture.participants,
+        ...Array.from({ length: 8 }, (_, index) =>
+          create(ParticipantSchema, {
+            ...fixture.participants[1],
+            member: `initiative-preview-${index}`,
+            name: `Skeleton ${index + 3}`,
+            active: false,
+          })
+        ),
+      ]
+    : fixture.participants;
   const authorityFresh = fixture.authorityFresh ?? true;
   const cancel = useCallback(() => {
     setState(EMPTY);
@@ -102,9 +123,26 @@ export function OrganizedHudConcept() {
           <p>{fixture.description}</p>
         </div>
         <details className="organizedHudControls" open={!preview}>
-          <summary>Controls</summary>
+          <summary>
+            Controls · {profile.label} · {frame === 'pc' ? 'PC' : 'Phone'}
+          </summary>
+          <div role="group" aria-label="Character profile">
+            {ORGANIZED_HUD_PROFILES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={item.id === profileId}
+                onClick={() => {
+                  setProfileId(item.id);
+                  reset('full-slots');
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <div role="group" aria-label="Scenario controls">
-            {ORGANIZED_HUD_FIXTURES.map((item) => (
+            {profile.fixtures.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -131,6 +169,15 @@ export function OrganizedHudConcept() {
               Landscape phone
             </button>
           </div>
+          <div>
+            <button
+              type="button"
+              aria-pressed={crowdedInitiative}
+              onClick={() => setCrowdedInitiative((value) => !value)}
+            >
+              Crowded initiative
+            </button>
+          </div>
           {!preview && (
             <a
               className="organizedHudPreviewLink"
@@ -154,14 +201,18 @@ export function OrganizedHudConcept() {
           layout="fill-parent"
           actionPresentation={{
             mode: 'organized-hud',
-            ...ORGANIZED_HUD_PRESENTATION,
+            ...profile.presentation,
+            quickDeclarationIds:
+              frame === 'phone'
+                ? profile.phoneQuickDeclarationIds
+                : profile.presentation.quickDeclarationIds,
           }}
           viewerMember={fixture.viewerMember}
           viewerName={fixture.viewerName}
           viewerClassRefId={fixture.viewerClassRefId}
           memberNames={
             new Map(
-              fixture.participants.map((participant) => [
+              participants.map((participant) => [
                 participant.member,
                 participant.name,
               ])
@@ -169,7 +220,7 @@ export function OrganizedHudConcept() {
           }
           clock={fixture.clock}
           round={fixture.round}
-          participants={fixture.participants}
+          participants={participants}
           declarations={fixture.declarations}
           characterData={fixture.characterData}
           privateStatus="ready"

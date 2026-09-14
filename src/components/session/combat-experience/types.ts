@@ -63,7 +63,7 @@ export interface CombatExperienceActionPresentation {
   mode: 'organized-hud';
   quickDeclarationIds?: readonly string[];
   sectionByDeclarationId?: Readonly<
-    Record<string, 'spells' | 'abilities' | 'items'>
+    Record<string, 'spells' | 'abilities' | 'items' | 'actions'>
   >;
 }
 

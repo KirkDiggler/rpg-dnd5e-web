@@ -2,7 +2,7 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   actionTooltipText,
   buildActionTooltip,
@@ -77,13 +77,7 @@ function Offer({
   onInspect: (id: string) => void;
 }) {
   const tooltip = buildActionTooltip(declaration);
-  const unavailable = declaration.why?.text || 'Unavailable';
   const disabled = !authorityFresh || !declaration.available;
-  const refusal = disabled
-    ? authorityFresh
-      ? unavailable
-      : 'Actions may be out of date'
-    : null;
   const label = declarationLabel(declaration);
   return (
     <div className={styles.organizedOfferSlot}>
@@ -112,11 +106,6 @@ function Offer({
       >
         Details
       </button>
-      {inspected && (
-        <div id={`organized-inspection-${declaration.id}`}>
-          <Inspection label={label} tooltip={tooltip} unavailable={refusal} />
-        </div>
-      )}
     </div>
   );
 }
@@ -137,6 +126,7 @@ export function OrganizedActionSurface({
   onSelectDeclaration,
   onCancelSelection,
   onOpenEquipment,
+  secondaryControls,
 }: {
   declarations: readonly Declaration[];
   authorityFresh: boolean;
@@ -145,6 +135,7 @@ export function OrganizedActionSurface({
   onSelectDeclaration: (declaration: Declaration) => void;
   onCancelSelection?: () => void;
   onOpenEquipment?: () => void;
+  secondaryControls?: ReactNode;
 }) {
   const [open, setOpen] = useState<OrganizedActionSection | null>(null);
   const [inspectedId, setInspectedId] = useState<string | null>(null);
@@ -152,7 +143,10 @@ export function OrganizedActionSurface({
     () => organizeDeclarations(declarations, presentation),
     [declarations, presentation]
   );
-  const activeOpen = open && organized.sections[open].length > 0 ? open : null;
+  const activeOpen = open && organized.sections[open].length > 1 ? open : null;
+  const inspectedDeclaration = declarations.find(
+    (item) => item.id === inspectedId
+  );
   const choose = (id: string) => {
     const current = authorityFresh
       ? currentExecutableDeclaration(declarations, id)
@@ -198,26 +192,42 @@ export function OrganizedActionSurface({
         {(Object.keys(sectionTitle) as OrganizedActionSection[]).map(
           (section) => {
             const count = organized.sections[section].length;
-            const itemFallback =
-              section === 'items' && count === 0 && onOpenEquipment;
-            if (!count && !itemFallback) return null;
+            if (!count) return null;
+            if (count === 1) {
+              const declaration = organized.sections[section][0]!;
+              return (
+                <Offer
+                  key={section}
+                  declaration={declaration}
+                  authorityFresh={authorityFresh}
+                  inspected={inspectedId === declaration.id}
+                  onChoose={choose}
+                  onInspect={inspect}
+                />
+              );
+            }
             return (
               <button
                 key={section}
                 type="button"
                 className={styles.organizedCollection}
                 aria-expanded={activeOpen === section}
-                onClick={() =>
-                  itemFallback
-                    ? onOpenEquipment?.()
-                    : setOpen(activeOpen === section ? null : section)
-                }
+                onClick={() => setOpen(activeOpen === section ? null : section)}
               >
-                {sectionTitle[section]}{' '}
-                <span>{itemFallback ? 'Equipment' : count}</span>
+                {sectionTitle[section]} <span>{count}</span>
               </button>
             );
           }
+        )}
+        {secondaryControls}
+        {onOpenEquipment && (
+          <button
+            type="button"
+            className={`${styles.organizedCollection} ${styles.organizedEquipmentShortcut}`}
+            onClick={onOpenEquipment}
+          >
+            Equipment
+          </button>
         )}
       </div>
       {armedDeclarationId && onCancelSelection && (
@@ -253,6 +263,22 @@ export function OrganizedActionSurface({
               />
             ))}
           </div>
+        </div>
+      )}
+      {/* Outside the scrolling rows: their overflow otherwise clips the card. */}
+      {inspectedDeclaration && (
+        <div id={`organized-inspection-${inspectedDeclaration.id}`}>
+          <Inspection
+            label={declarationLabel(inspectedDeclaration)}
+            tooltip={buildActionTooltip(inspectedDeclaration)}
+            unavailable={
+              !authorityFresh
+                ? 'Actions may be out of date'
+                : !inspectedDeclaration.available
+                  ? inspectedDeclaration.why?.text || 'Unavailable'
+                  : null
+            }
+          />
         </div>
       )}
     </div>
