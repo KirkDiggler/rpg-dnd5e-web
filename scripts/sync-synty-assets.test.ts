@@ -116,10 +116,32 @@ printf 'generated fixture\\n' > "$OUTPUT"
   };
 }
 
-function syncEnvironment(fixtureValue: Awaited<ReturnType<typeof fixture>>) {
+function syncEnvironment(
+  fixtureValue: Awaited<ReturnType<typeof fixture>>,
+  inheritedEnvironment = gitEnvironment
+) {
+  // The provider-exposure wrapper runs its production sync with destination,
+  // update, and generator overrides in the parent environment. Tests must not
+  // inherit any of those knobs: a fixture owns both its source and destination.
+  const cleanEnvironment = { ...inheritedEnvironment };
+  for (const key of [
+    'RPG_GAME_ASSETS_PATH',
+    'RPG_GAME_ASSETS_DIR',
+    'RPG_WEB_ROOT',
+    'ASSETS_SYNC_SKIP_UPDATE',
+    'RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR',
+    'RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER',
+    'RPG_DWARF_CATALOG_GENERATOR',
+    'RPG_DWARF_CATALOG_RUNNER',
+  ] as const) {
+    delete cleanEnvironment[key];
+  }
   return {
-    ...gitEnvironment,
+    ...cleanEnvironment,
     RPG_GAME_ASSETS_PATH: fixtureValue.assets,
+    RPG_WEB_ROOT: fixtureValue.web,
+    RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
+    RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER: fixtureValue.fakeRunner,
     RPG_DWARF_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
     RPG_DWARF_CATALOG_RUNNER: fixtureValue.fakeRunner,
     PATH: `${fixtureValue.bin}:${process.env.PATH}`,
@@ -129,6 +151,10 @@ function syncEnvironment(fixtureValue: Awaited<ReturnType<typeof fixture>>) {
 describe('sync-synty-assets', () => {
   it('copies exact explicit assets from a clean commit and avoids network commands', async () => {
     const fixtureValue = await fixture();
+    const hostileWebRoot = await mkdtemp(join(tmpdir(), 'asset-sync-hostile-'));
+    roots.push(hostileWebRoot);
+    const ownedSentinel = join(hostileWebRoot, 'owned-sentinel.txt');
+    await writeFile(ownedSentinel, 'must survive');
     await writeFile(
       join(fixtureValue.assets, 'harness/models/synty/keep.glb'),
       'new-bytes'
@@ -143,7 +169,11 @@ describe('sync-synty-assets', () => {
       'sh',
       [join(fixtureValue.web, 'scripts/sync-synty-assets.sh')],
       {
-        env: syncEnvironment(fixtureValue),
+        env: syncEnvironment(fixtureValue, {
+          ...gitEnvironment,
+          RPG_WEB_ROOT: hostileWebRoot,
+          ASSETS_SYNC_SKIP_UPDATE: '1',
+        }),
         encoding: 'utf8',
       }
     );
@@ -159,6 +189,7 @@ describe('sync-synty-assets', () => {
       existsSync(join(fixtureValue.web, 'public/models/synty/stale.glb'))
     ).toBe(false);
     expect(existsSync(fixtureValue.forbiddenLog)).toBe(false);
+    expect(await readFile(ownedSentinel, 'utf8')).toBe('must survive');
   });
 
   it('fails for a missing explicit source before mutating the destination', async () => {
@@ -195,7 +226,11 @@ describe('sync-synty-assets', () => {
     await chmod(join(fixtureValue.bin, 'git'), 0o755);
 
     const legacyEnv = syncEnvironment(fixtureValue);
+    // Exercise the actual legacy sibling resolution path rather than an
+    // inherited explicit provider or skip-update shortcut.
     delete legacyEnv.RPG_GAME_ASSETS_PATH;
+    delete legacyEnv.RPG_GAME_ASSETS_DIR;
+    delete legacyEnv.ASSETS_SYNC_SKIP_UPDATE;
     const run = spawnSync(
       'sh',
       [join(fixtureValue.web, 'scripts/sync-synty-assets.sh')],
