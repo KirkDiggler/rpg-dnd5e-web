@@ -23,11 +23,13 @@ function Probe({
   focusTarget,
   onQuickRightClick,
   onCanvas,
+  touchPanEnabled,
 }: {
   target: THREE.Vector3;
   focusTarget: THREE.Vector3;
   onQuickRightClick?: () => void;
   onCanvas?: (canvas: HTMLCanvasElement) => void;
+  touchPanEnabled?: boolean;
 }) {
   const { gl } = useThree();
   useCameraControls({
@@ -40,6 +42,7 @@ function Probe({
     minDistance: dials.minDistance,
     maxDistance: dials.maxDistance,
     onQuickRightClick,
+    touchPanEnabled,
   });
   useEffect(() => {
     onCanvas?.(gl.domElement);
@@ -217,6 +220,53 @@ describe('right mouse gesture', () => {
 
     expect(cancel).not.toHaveBeenCalled();
   });
+});
+
+describe('opt-in touch camera pan', () => {
+  it.each([false, true])(
+    'uses the existing pan projection only when enabled=%s',
+    async (enabled) => {
+      let canvas: HTMLCanvasElement | undefined;
+      const target = new THREE.Vector3();
+      const renderer = await ReactThreeTestRenderer.create(
+        <Probe
+          target={target}
+          focusTarget={new THREE.Vector3()}
+          touchPanEnabled={enabled}
+          onCanvas={(element) => {
+            canvas = element;
+          }}
+        />,
+        { orthographic: true, camera: { zoom: 80 } }
+      );
+      if (!canvas) throw new Error('missing canvas');
+      const emit = (type: string, x: number) => {
+        const event = new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: 20,
+        });
+        Object.defineProperties(event, {
+          pointerId: { value: 1 },
+          pointerType: { value: 'touch' },
+        });
+        (type === 'pointerdown' ? canvas! : window).dispatchEvent(event);
+      };
+      emit('pointerdown', 20);
+      emit('pointermove', 60);
+      emit('pointerup', 60);
+      if (enabled) {
+        expect(target.length()).toBeCloseTo(40 / 80);
+        const parked = target.clone();
+        await renderer.advanceFrames(10, 0.016);
+        expect(target.distanceTo(parked)).toBeLessThan(0.001);
+      } else {
+        expect(target.length()).toBe(0);
+      }
+      await renderer.unmount();
+    }
+  );
 });
 
 describe('auto-centre respects the camera band', () => {

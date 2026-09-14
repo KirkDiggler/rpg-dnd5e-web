@@ -277,7 +277,7 @@ export function OrganizedHudConcept() {
             <SessionCombatMap
               attackableTargets={attackableTargets}
               onTargetClick={onTargetClick}
-              interactionEnabled={!state.armedDeclarationId}
+              touchPanEnabled
             />
           )}
           onSelectDeclaration={selectDeclaration}

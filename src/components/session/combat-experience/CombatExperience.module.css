@@ -2401,24 +2401,13 @@ button.diceDrawerCue:focus-visible {
   overflow: visible;
 }
 
-/* Targeting owns the compact concept surface until it is cancelled. */
-.combatExperience[data-action-presentation='organized-hud']:has(
-    [data-phase='targeting']
-  )
-  .map {
-  z-index: 7;
-}
+/* Target panels sit above the canvas, not the entire map above every HUD
+   control. Camera gestures and log/menu input remain available while aiming. */
 .combatExperience[data-action-presentation='organized-hud']:has(
     [data-phase='targeting']
   )
   .contextPrompt[data-phase='targeting'] {
   z-index: 8;
-}
-.combatExperience[data-action-presentation='organized-hud']:has(
-    [data-phase='targeting']
-  )
-  .dock {
-  pointer-events: none;
 }
 
 @container organized-hud (max-width: 800px) or (max-height: 500px) {

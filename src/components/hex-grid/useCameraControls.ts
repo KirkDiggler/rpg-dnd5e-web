@@ -36,6 +36,7 @@ import {
   reduceOrbitPivotAutoState,
   resolveOrbitPivot,
 } from './orbitPivotMode';
+import { bindTouchPan, type ScreenPanDelta } from './touchPan';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
  * radian-based azimuth math. */
@@ -154,6 +155,8 @@ interface CameraControlsOptions {
   /** A right press/release that never exceeds the drag threshold. The caller
    * decides what local map interaction, if any, that gesture cancels. */
   onQuickRightClick?: () => void;
+  /** Fixture-first opt-in; omitted preserves existing mouse/keyboard controls. */
+  touchPanEnabled?: boolean;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -186,6 +189,7 @@ export function useCameraControls({
   maxDistance = 100,
   revealedBounds,
   onQuickRightClick,
+  touchPanEnabled = false,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -427,6 +431,35 @@ export function useCameraControls({
     [orbitPivot, focusTarget, target]
   );
 
+  // Both input paths grab the same ground plane and take ownership from follow.
+  const panFromScreen = useCallback(
+    ({ dx, dy }: ScreenPanDelta) => {
+      const az = azimuth.current;
+      forward.current.set(-Math.cos(az), 0, -Math.sin(az));
+      right.current.set(Math.sin(az), 0, -Math.cos(az));
+      const perPx = worldPerPixel();
+      const depthScale = Math.min(
+        4,
+        1 / Math.max(0.25, Math.cos(currentPolar()))
+      );
+      target.addScaledVector(right.current, -dx * perPx);
+      target.addScaledVector(forward.current, dy * perPx * depthScale);
+      lerpTarget.current = null;
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
+      updateCamera();
+      invalidate();
+    },
+    [target, worldPerPixel, currentPolar, updateCamera, invalidate]
+  );
+
+  useEffect(() => {
+    if (!touchPanEnabled) return;
+    return bindTouchPan({ canvas: gl.domElement, onPan: panFromScreen });
+  }, [gl, touchPanEnabled, panFromScreen]);
+
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -553,41 +586,7 @@ export function useCameraControls({
       rightDrag.lastX = e.clientX;
       rightDrag.lastY = e.clientY;
 
-      // Ground-plane basis for the current heading — same convention as the
-      // WASD block in useFrame below, reusing the same scratch vectors.
-      const az = azimuth.current;
-      forward.current.set(-Math.cos(az), 0, -Math.sin(az));
-      right.current.set(Math.sin(az), 0, -Math.cos(az));
-
-      // Screen-vertical covers MORE ground than screen-horizontal once the
-      // camera tilts (a ground plane compresses by cos(polar) on screen), so
-      // undo that to keep the board tracking the cursor in both axes. Clamped
-      // because the correction runs away as the camera nears the horizon —
-      // and with the pitch curve on, the close end really does get flat.
-      const perPx = worldPerPixel();
-      const depthScale = Math.min(
-        4,
-        1 / Math.max(0.25, Math.cos(currentPolar()))
-      );
-
-      // Grab-the-board: content follows the cursor, so the orbit target moves
-      // against the drag horizontally, and with it into depth (pulling down
-      // brings far ground toward you).
-      target.addScaledVector(right.current, -dx * perPx);
-      target.addScaledVector(forward.current, dy * perPx * depthScale);
-
-      // A manual pan owns the framing from here, exactly like WASD — without
-      // this the auto-follow lerp yanks the board straight back to the player.
-      lerpTarget.current = null;
-      // `?orbitPivot=auto`'s own event — a manual pan switches the pivot to
-      // the view center until the mini moves again or F is pressed.
-      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
-        orbitPivotAutoState.current,
-        'pan'
-      );
-
-      updateCamera();
-      invalidate(); // Request re-render for on-demand frameloop
+      panFromScreen({ dx, dy });
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -661,8 +660,7 @@ export function useCameraControls({
     curve,
     minDistance,
     maxDistance,
-    worldPerPixel,
-    currentPolar,
+    panFromScreen,
     currentOrthoBand,
     applyAzimuthDelta,
     dragRotate,

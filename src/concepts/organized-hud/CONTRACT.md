@@ -47,4 +47,13 @@ The initial automated proof checked only document width and failed to select pho
 
 Two local hot-reload incidents served empty transformed CSS/TSX modules despite intact source files. Invalidating the affected file restored the exports/styles. Use atomic replacements for further source edits rather than exposing partially written files to Vite.
 
-This is an accepted concept checkpoint, not promotion to `SessionEncounterView`. New touch gestures, mobile camera behavior, real-device Discord validation, live data wiring, and final PR publication gates remain separate work. Keep the isolated stack available for Kirk; do not automatically merge or deploy.
+This is an accepted concept checkpoint, not promotion to `SessionEncounterView`. Further touch gestures, real-device Discord validation, live data wiring, and final PR publication gates remain separate work. Keep the isolated stack available for Kirk; do not automatically merge or deploy.
+
+## Android pan increment — #1069
+
+- Carries the accepted fullscreen/title and log-height corrections from local checkpoint `44bd2593`. Fullscreen is explicitly requested through Controls; log height follows the actual action row rather than covering it.
+- This concept opts into `SessionCanvas.touchPanEnabled`. The shared camera hook defaults it to false, preserving live/default input behavior. Mouse right-drag and touch use the same screen-to-ground pan projection and manual-follow cancellation.
+- One finger starts panning after 6 CSS pixels. The binding consumes the resulting canvas click, including out-and-back movement, distant release, capture loss, cancellation, blur and multi-touch interruption. A fresh tap is passed to the existing renderer; no synthetic selection is generated.
+- Two fingers cancel this increment; there is no pinch, rotation or inertia yet. Touch policy is scoped to the canvas and restored on disposal. HUD touches retain their own handlers.
+- The canvas is no longer disabled while aiming in this concept. Its own stacking context leaves target panels above it without raising the whole map above the HUD.
+- Scoped gesture/camera/session tests and a native Chromium touch probe cover release-click safety, fresh taps and armed-state HUD cancellation. Kirk owns the actual Android feel walkthrough. No full visual matrix or new review loop is part of this increment.

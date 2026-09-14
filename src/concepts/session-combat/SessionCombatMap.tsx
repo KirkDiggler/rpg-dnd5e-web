@@ -7,6 +7,7 @@ export interface SessionCombatMapProps {
   onTargetClick?: (targetId: string) => void;
   onHoverTarget?: (targetId: string | null) => void;
   interactionEnabled?: boolean;
+  touchPanEnabled?: boolean;
 }
 
 /**
@@ -19,6 +20,7 @@ export function SessionCombatMap({
   onTargetClick,
   onHoverTarget,
   interactionEnabled,
+  touchPanEnabled,
 }: SessionCombatMapProps) {
   return (
     <SessionCanvas
@@ -34,6 +36,7 @@ export function SessionCombatMap({
       onEntityClick={onTargetClick}
       onHoverEntity={onHoverTarget}
       interactionEnabled={interactionEnabled}
+      touchPanEnabled={touchPanEnabled}
     />
   );
 }

@@ -185,6 +185,8 @@ export interface SessionCanvasProps {
   /** Presentation callers may temporarily yield pointer hit-testing to an
    * overlaid target/option surface without changing scene/camera behavior. */
   interactionEnabled?: boolean;
+  /** Opt-in touch gesture preview; default camera input is unchanged. */
+  touchPanEnabled?: boolean;
   /** Local map-selection cancel invoked only by a quick right click. The
    * camera owns click-vs-drag classification so right-drag remains pan. */
   onCancelSelection?: () => void;
@@ -286,6 +288,7 @@ export interface SessionCanvasProps {
  * itself. */
 export function SessionScene({
   hexSize,
+  touchPanEnabled = false,
   scene,
   characterId,
   characterName,
@@ -396,6 +399,7 @@ export function SessionScene({
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
     onQuickRightClick: onCancelSelection,
+    touchPanEnabled,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a
@@ -828,6 +832,9 @@ export function SessionCanvas(props: SessionCanvasProps) {
         width: '100%',
         height: '100%',
         pointerEvents: props.interactionEnabled === false ? 'none' : 'auto',
+        // Keep renderer/Html layers beneath sibling HUD panels without disabling
+        // the canvas: touch camera gestures must still work while aiming.
+        zIndex: props.touchPanEnabled ? 0 : undefined,
       }}
     >
       <SessionScene {...props} />
