@@ -74,6 +74,7 @@
   font-size: 11px;
 }
 .organizedHudFrame {
+  container: organized-hud / size;
   width: 100%;
   height: min(800px, 100dvh);
   min-height: 420px;
@@ -99,8 +100,8 @@
 .organizedHudConcept[data-preview='true'] > header {
   position: absolute;
   z-index: 20;
-  top: 6px;
-  left: 6px;
+  top: 66px;
+  left: 12px;
   margin: 0;
 }
 .organizedHudConcept[data-preview='true'] .organizedHudTitle {
@@ -128,9 +129,13 @@
   border-radius: 0;
 }
 .organizedHudConcept[data-preview='true'] .organizedHudFrame_phone {
-  width: 100dvw;
-  height: 100dvh;
-  margin: 0;
+  position: absolute;
+  inset: 0;
+  width: min(844px, 100dvw);
+  height: min(390px, 100dvh);
+  margin: auto;
+  border: 1px solid rgba(232, 183, 95, 0.34);
+  border-radius: 12px;
 }
 .organizedHudPreviewIntent {
   position: absolute;
