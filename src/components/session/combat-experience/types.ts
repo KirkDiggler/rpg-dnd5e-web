@@ -58,6 +58,15 @@ export type CombatExperienceLogMode = 'story' | 'debug';
 
 export type CombatExperienceLayout = 'review-frame' | 'fill-parent';
 
+/** Explicit opt-in presentation only; production defaults to the existing dock. */
+export interface CombatExperienceActionPresentation {
+  mode: 'organized-hud';
+  quickDeclarationIds?: readonly string[];
+  sectionByDeclarationId?: Readonly<
+    Record<string, 'spells' | 'abilities' | 'items'>
+  >;
+}
+
 export type CombatExperienceStreamState =
   | 'live'
   | 'caught-up'
@@ -177,6 +186,8 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
+  /** Opt-in organizer configuration. Omitted preserves the live dock exactly. */
+  actionPresentation?: CombatExperienceActionPresentation;
   /** Accepted local Death Save is awaiting an in-bounds settlement. */
   endTurnBlocked?: boolean;
   presentationState: CombatExperiencePresentationState;

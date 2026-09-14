@@ -137,6 +137,23 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('uses the organized surface only for its explicit action presentation mode', () => {
+    const standard = render(<CombatExperience {...propsFor()} />);
+    expect(standard.queryByTestId('organized-action-surface')).toBeNull();
+    standard.unmount();
+    render(
+      <CombatExperience
+        {...propsFor(undefined, {
+          actionPresentation: {
+            mode: 'organized-hud',
+            quickDeclarationIds: ['offer:aldric:move'],
+          },
+        })}
+      />
+    );
+    expect(screen.getByTestId('organized-action-surface')).toBeTruthy();
+  });
+
   it('keeps dice UI absent while no local attack roll is armed', () => {
     render(<CombatExperience {...propsFor()} />);
 

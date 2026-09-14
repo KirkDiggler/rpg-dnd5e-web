@@ -1840,3 +1840,331 @@ button.diceDrawerCue:focus-visible {
 .deathSavePips i[data-failure='true'] {
   background: #f87171;
 }
+
+/* Opt-in #1054 organizer. These rules are scoped by the shared shell's
+   explicit presentation prop; the default dock retains its existing layout. */
+.organizedActions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+}
+.organizedQuick,
+.organizedCollections,
+.organizedTray > div:last-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.organizedQuick > span {
+  color: var(--sc-gold);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.organizedQuick > small {
+  color: var(--sc-muted);
+  font-size: 9px;
+}
+.organizedOffer,
+.organizedCollection {
+  display: inline-flex;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid rgba(232, 183, 95, 0.3);
+  border-radius: 7px;
+  color: var(--sc-ink);
+  background: rgba(31, 45, 49, 0.96);
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+.organizedOffer > span {
+  color: var(--sc-gold-bright);
+  font-size: 14px;
+}
+.organizedOffer strong {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organizedOffer small,
+.organizedOffer em {
+  color: var(--sc-muted);
+  font-size: 8px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.organizedOffer:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+.organizedCollection {
+  min-height: 30px;
+  color: var(--sc-muted);
+  background: transparent;
+  font-size: 9px;
+  font-weight: 800;
+}
+.organizedCollection span {
+  color: var(--sc-gold);
+}
+.organizedTray {
+  position: absolute;
+  z-index: 9;
+  right: 0;
+  bottom: calc(100% + 5px);
+  left: 0;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--sc-line);
+  border-radius: 7px;
+  background: rgba(7, 13, 15, 0.94);
+}
+.organizedTray > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  color: var(--sc-gold-bright);
+  font-size: 10px;
+}
+.organizedTray button:not(.organizedOffer) {
+  border: 0;
+  color: var(--sc-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+}
+
+.combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+  height: min(800px, 100dvh);
+}
+.combatExperience[data-action-presentation='organized-hud'] .map {
+  bottom: 148px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .dock {
+  min-height: 148px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .identityRow {
+  padding: 6px 10px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .effects {
+  overflow: hidden;
+}
+.combatExperience[data-action-presentation='organized-hud'] .storyLog {
+  bottom: 160px;
+}
+@media (max-width: 800px), (max-height: 500px) {
+  .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+    height: 100dvh;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .map {
+    bottom: 120px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .dock {
+    min-height: 120px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .viewerPortrait,
+  .combatExperience[data-action-presentation='organized-hud']
+    .viewerIdentity
+    > span,
+  .combatExperience[data-action-presentation='organized-hud'] .statBlock,
+  .combatExperience[data-action-presentation='organized-hud'] .effects {
+    display: none;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .identityRow {
+    min-height: 32px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .hpBlock {
+    min-width: 96px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .storyLog {
+    top: 52px;
+    right: 8px;
+    bottom: 128px;
+    width: min(280px, calc(100% - 16px));
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .initiative {
+    top: 5px;
+    min-width: 0;
+    height: 42px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .initiativeEntry {
+    display: none;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .initiativeEntryActive {
+    display: flex;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .roundMarker {
+    flex-basis: 40px;
+    font-size: 15px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .actionRow {
+    gap: 5px;
+    padding: 4px 7px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .endTurn {
+    height: 42px;
+    padding: 0 9px;
+  }
+  .organizedOffer {
+    min-height: 34px;
+    padding: 5px 7px;
+  }
+  .organizedCollections {
+    overflow-x: auto;
+  }
+}
+
+.organizedOfferSlot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+.organizedInspectButton,
+.organizedCancel {
+  min-height: 30px;
+  padding: 5px 6px;
+  border: 1px solid var(--sc-line);
+  border-radius: 5px;
+  color: var(--sc-muted);
+  background: rgba(0, 0, 0, 0.18);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 800;
+}
+.organizedInspectButton[aria-expanded='true'] {
+  border-color: var(--sc-gold);
+  color: var(--sc-gold-bright);
+}
+.organizedInspection {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: min(300px, calc(100vw - 28px));
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--sc-line);
+  border-radius: 7px;
+  color: var(--sc-ink);
+  background: rgba(7, 13, 15, 0.98);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  font-size: 10px;
+}
+.organizedInspection > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.organizedInspection em {
+  color: var(--sc-muted);
+  font-size: 8px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+.organizedInspection p {
+  margin: 2px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--sc-line);
+  color: #e9a39f;
+}
+.organizedCancel {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  border-color: rgba(232, 183, 95, 0.5);
+  color: var(--sc-gold-bright);
+}
+@media (max-width: 800px), (max-height: 500px) {
+  .organizedQuick,
+  .organizedCollections,
+  .organizedTray > div:last-child {
+    overflow-x: auto;
+  }
+  .organizedOfferSlot {
+    gap: 1px;
+  }
+  .organizedInspectButton {
+    min-height: 28px;
+    padding: 4px;
+  }
+  .organizedTray {
+    position: fixed;
+    z-index: 50;
+    right: 8px;
+    bottom: 120px;
+    left: 8px;
+    max-height: min(220px, calc(100dvh - 136px));
+    overflow: auto;
+  }
+  .organizedInspection {
+    position: fixed;
+    z-index: 60;
+    bottom: 124px;
+    left: 8px;
+    width: min(360px, calc(100vw - 16px));
+  }
+}
+
+/* The opt-in tray is a deliberate overlay; do not let the legacy narrow-row
+   horizontal scroller clip its vertical inspection controls. */
+.combatExperience[data-action-presentation='organized-hud'] .actionRow {
+  overflow: visible;
+}
+
+/* Targeting owns the compact concept surface until it is cancelled. */
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .map {
+  z-index: 7;
+}
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .contextPrompt[data-phase='targeting'] {
+  z-index: 8;
+}
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .dock {
+  pointer-events: none;
+}
+
+@media (max-width: 800px), (max-height: 500px) {
+  .combatExperience[data-action-presentation='organized-hud']
+    .contextPrompt[data-phase='targeting'] {
+    position: fixed;
+    z-index: 100 !important;
+    top: 62px;
+    left: 8px;
+    pointer-events: auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .contextPrompt[data-phase='targeting']
+    * {
+    pointer-events: auto;
+  }
+}

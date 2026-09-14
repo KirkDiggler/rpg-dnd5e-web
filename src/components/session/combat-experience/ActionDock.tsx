@@ -16,6 +16,7 @@ import {
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import { OrganizedActionSurface } from './OrganizedActionSurface';
 import {
   reactionWindowAnswers,
   reactionWindowDeclaration,
@@ -28,7 +29,10 @@ import {
   type StandingAction,
 } from './standingActions';
 import { formatAttackRollArithmetic } from './story';
-import type { CombatExperienceRollWindow } from './types';
+import type {
+  CombatExperienceActionPresentation,
+  CombatExperienceRollWindow,
+} from './types';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -231,6 +235,9 @@ export interface ActionDockProps {
   participants: readonly Participant[];
   declarations: readonly Declaration[];
   authorityFresh: boolean;
+  /** Omitted keeps the existing production dock semantics. */
+  actionPresentation?: CombatExperienceActionPresentation;
+  onOpenEquipment?: () => void;
   endTurnBlocked?: boolean;
   armedDeclarationId?: string;
   /** Roster names, for the one place the dock names somebody who is not the
@@ -426,6 +433,8 @@ export function ActionDock({
   participants,
   declarations,
   authorityFresh,
+  actionPresentation,
+  onOpenEquipment,
   endTurnBlocked = false,
   armedDeclarationId,
   memberNames,
@@ -692,6 +701,16 @@ export function ActionDock({
           authorityFresh={authorityFresh}
           onSelectOption={onSelectCastOption}
           onCancel={onCancelCastOption}
+        />
+      ) : actionPresentation?.mode === 'organized-hud' ? (
+        <OrganizedActionSurface
+          declarations={declarations}
+          authorityFresh={authorityFresh}
+          presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
+          onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
+          onOpenEquipment={onOpenEquipment}
         />
       ) : (
         <div className={styles.actionGroupWithDivider}>
