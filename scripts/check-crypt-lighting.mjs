@@ -169,11 +169,14 @@ try {
     const [dim, warm, cool] = samples.filter(
       (sample) => sample.asset === asset
     );
-    // Broad visual bounds, not exact image hashes: catch a black silhouette,
-    // missing model, or lost point-light response while allowing GPU variation.
+    // Reference SwiftShader frames contain ~69k/73k opaque pixels. Broad bounds
+    // catch major clipping/black crush, not just an absent model. The cage is
+    // close to the dim threshold: investigate marginal cross-device failures
+    // against its saved image; do not silently waive or relax a failing gate.
+    // Warm/cool deltas guard lost response, not final aesthetic fidelity.
     for (const sample of [dim, warm, cool])
       assert.ok(
-        sample.count > 3000,
+        sample.count > 50000,
         `${asset}/${sample.kind}: model is missing or clipped`
       );
     assert.ok(

@@ -31,7 +31,10 @@ Both captures use the same loaded Sewers document, composition records, GLBs,
 point lights, orthographic camera and tone mapping. The camera was positioned
 at the rack for comparison. No save or play action was invoked, and the human's
 running game was not changed. This proves the shared environment through the
-real **builder preview**, not a fresh multiplayer/session walk.
+real **builder preview**, not a fresh multiplayer/session walk. The committed
+[measurements.json](measurements.json) records both captures' actual light
+values, screenshot hashes, composed-scene measurements, and regression samples
+before/after the correction.
 
 A separate composed-environment probe added the existing fighter beside the
 same saved geometry to check character and older-pillar response. Measuring
@@ -54,10 +57,10 @@ only its calibrated global fill, not that approximation.
 After installing dependencies and syncing the private assets:
 
 ```sh
-node scripts/check-crypt-lighting.mjs
+npm run check:crypt-lighting
 # Or use an already-installed Chromium, without installing/changing global tools:
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome \
-  node scripts/check-crypt-lighting.mjs node_modules/.cache/crypt-lighting-check
+  npm run check:crypt-lighting -- node_modules/.cache/crypt-lighting-check
 ```
 
 The check starts and closes its own loopback Vite/Chromium processes. It makes
@@ -72,7 +75,17 @@ it needs private assets and a working Chromium installation.
 
 Red/green was observed: the old pair fails with every sampled rack pixel below
 5/255; the new pair passes the dim-legibility and both source-response checks
-for both assets. Focused lighting/environment tests also pass (33 tests).
+for both assets. The initial 33 focused lighting/environment tests passed; the
+full gate subsequently caught two additional old-value expectations in the
+builder-preview and session integration tests. Those were corrected and both
+integration suites pass (100 tests). No additional runtime change was needed.
+
+The mask requires at least 50,000 opaque model pixels (reference counts are
+roughly 69,000/73,000), so a small surviving fragment cannot satisfy the gate.
+The cage is near the source-free threshold: inspect saved images when a
+cross-device run fails marginally rather than silently relaxing the bounds.
+Warm/cool channel deltas detect a lost response; they do not replace the
+integrated visual judgment.
 
 Asset hashes (unchanged, matching the local runtime copy):
 
