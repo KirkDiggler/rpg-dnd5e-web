@@ -79,6 +79,25 @@ function npm(root, args, env) {
 function npx(root, args, env) {
   return run(process.env.RPG_EXPOSURE_NPX || 'npx', args, { cwd: root, env });
 }
+function testEnvironment(providerRoot) {
+  // Exposure-only destination/update and generator knobs are for the real
+  // publication sync. They must not leak into Vitest or ci-check: fixture
+  // tests own their web roots, providers, and fake generator boundaries.
+  const {
+    RPG_WEB_ROOT: _webRoot,
+    ASSETS_SYNC_SKIP_UPDATE: _skipUpdate,
+    RPG_GAME_ASSETS_DIR: _legacyProviderPath,
+    RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR: _catalogGenerator,
+    RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER: _catalogRunner,
+    RPG_DWARF_CATALOG_GENERATOR: _legacyGenerator,
+    RPG_DWARF_CATALOG_RUNNER: _legacyRunner,
+    ...environment
+  } = process.env;
+  return {
+    ...environment,
+    RPG_GAME_ASSETS_PATH: providerRoot,
+  };
+}
 function parseJson(text, label) {
   try {
     const value = JSON.parse(text);
@@ -1235,6 +1254,7 @@ function apply(validated, providerSource, web, output, resume = false) {
       RPG_WEB_ROOT: web.worktree,
       ASSETS_SYNC_SKIP_UPDATE: '1',
     };
+    const testEnv = testEnvironment(provider.root);
     npm(web.worktree, ['ci', '--ignore-scripts'], syncEnv);
     npm(web.worktree, ['run', 'prepare'], syncEnv);
     const preCommitHook = effectivePreCommit(web.worktree);
@@ -1330,9 +1350,9 @@ function apply(validated, providerSource, web, output, resume = false) {
         'scripts/characterCustomizationPublication.test.ts',
         'src/components/hex-grid/classCharacterModels.test.ts',
       ],
-      syncEnv
+      testEnv
     );
-    npm(web.worktree, ['run', 'ci-check'], syncEnv);
+    npm(web.worktree, ['run', 'ci-check'], testEnv);
     const finalPaths = changedPaths(web.worktree);
     requireCondition(
       finalPaths.length === 1 && finalPaths[0] === GENERATED_CATALOG,
