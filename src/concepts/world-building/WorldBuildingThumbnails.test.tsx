@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KeyValueStorage } from './types';
+import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
 
 interface ThumbnailRequest {
   requestKey: string;
@@ -56,24 +57,31 @@ describe('World Builder generated asset thumbnails', () => {
   it('captures a missing generated thumbnail automatically while leaving the legacy Plushie PNG in place', () => {
     render(<WorldBuildingConcept storage={new MemoryStorage()} />);
 
+    // New assets can change catalog order; complete and inspect the SAME entry.
+    const request = worker.requests[0]!;
+    const asset = Object.values(GENERATED_WORLD_ASSETS).find(
+      (candidate) => worldAssetThumbnailKey(candidate) === request.requestKey
+    );
+    expect(asset).toBeDefined();
     fireEvent.change(screen.getByLabelText('Search assets'), {
-      target: { value: 'Alchemy Tools 01' },
+      target: { value: asset!.ref },
     });
-    const generated = screen.getByLabelText('Drag Alchemy Tools 01 into scene');
+    const generated = screen.getByLabelText(
+      `Drag ${asset!.displayName} into scene`
+    );
     expect(generated.getAttribute('data-thumbnail-state')).toBe('loading');
     expect(screen.getAllByTestId('thumbnail-worker')).toHaveLength(1);
 
-    const request = worker.requests[0]!;
     act(() =>
       request.onComplete(
         request.requestKey,
-        'data:image/png;base64,generated-alchemy'
+        'data:image/png;base64,generated-asset'
       )
     );
 
     expect(generated.getAttribute('data-thumbnail-state')).toBe('ready');
     expect(generated.querySelector('img')?.getAttribute('src')).toBe(
-      'data:image/png;base64,generated-alchemy'
+      'data:image/png;base64,generated-asset'
     );
 
     fireEvent.change(screen.getByLabelText('Search assets'), {
@@ -89,12 +97,14 @@ describe('World Builder generated asset thumbnails', () => {
 
     const requestsBeforeReturning = worker.requests.length;
     fireEvent.change(screen.getByLabelText('Search assets'), {
-      target: { value: 'Alchemy Tools 01' },
+      target: { value: asset!.ref },
     });
-    const restored = screen.getByLabelText('Drag Alchemy Tools 01 into scene');
+    const restored = screen.getByLabelText(
+      `Drag ${asset!.displayName} into scene`
+    );
     expect(restored.getAttribute('data-thumbnail-state')).toBe('ready');
     expect(restored.querySelector('img')?.getAttribute('src')).toBe(
-      'data:image/png;base64,generated-alchemy'
+      'data:image/png;base64,generated-asset'
     );
     expect(worker.requests).toHaveLength(requestsBeforeReturning);
   });
