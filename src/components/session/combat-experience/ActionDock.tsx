@@ -483,11 +483,21 @@ export function ActionDock({
       onBeforeSelect={onCancelSelection}
     />
   );
-  // Camera recovery is not an action-economy decision. Keep it in the shared
-  // secondary slot so it remains available while spectating or answering a prompt.
+  // Camera recovery is not an action-economy decision. This same control can
+  // remain available even when the game-action/roll presentation gate is shut.
+  const centerControl =
+    actionPresentation?.mode === 'organized-hud' && onCenterView ? (
+      <button
+        type="button"
+        className={styles.organizedCollection}
+        onClick={onCenterView}
+      >
+        Center on me
+      </button>
+    ) : null;
   const standing =
     actionPresentation?.mode === 'organized-hud'
-      ? (standingGroup || onCenterView) && (
+      ? (standingGroup || centerControl) && (
           <div
             className={styles.organizedSecondary}
             role="group"
@@ -499,15 +509,7 @@ export function ActionDock({
                 {standingGroup}
               </details>
             )}
-            {onCenterView && (
-              <button
-                type="button"
-                className={styles.organizedCollection}
-                onClick={onCenterView}
-              >
-                Center on me
-              </button>
-            )}
+            {centerControl}
           </div>
         )
       : standingGroup;
@@ -557,6 +559,15 @@ export function ActionDock({
             <strong>Your d20 is settling</strong>
             <small>The choice follows the matching die.</small>
           </div>
+          {centerControl && (
+            <div
+              className={styles.organizedSecondary}
+              role="group"
+              aria-label="Map utilities"
+            >
+              {centerControl}
+            </div>
+          )}
         </div>
       );
     }

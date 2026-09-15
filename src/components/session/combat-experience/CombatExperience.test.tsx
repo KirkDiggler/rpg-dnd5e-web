@@ -185,6 +185,32 @@ describe('CombatExperience shared production shell', () => {
     expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
   });
 
+  it('keeps Center available during roll settling without exposing game actions early', () => {
+    const center = vi.fn(),
+      select = vi.fn(),
+      cancel = vi.fn(),
+      search = vi.fn();
+    render(
+      <CombatExperience
+        {...rollWindowExperienceProps({
+          actionPresentation: { mode: 'organized-hud' },
+          onCenterView: center,
+          onSelectDeclaration: select,
+          onCancelSelection: cancel,
+          onSearch: search,
+        })}
+      />
+    );
+    expect(screen.getByTestId('roll-window-settling')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Center on me' }));
+    expect(center).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('reaction-window')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Search/i })).toBeNull();
+  });
+
   it('holds a post-roll choice until the exact displayed d20 settles', () => {
     const onSelect = vi.fn();
     const { rerender } = render(

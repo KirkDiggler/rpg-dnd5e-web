@@ -441,6 +441,70 @@ describe('opt-in touch camera pan', () => {
 });
 
 describe('auto-centre respects the camera band', () => {
+  it.each([
+    { start: 80, end: 120, follow: true },
+    { start: 140, end: 42, follow: false },
+    { start: 80, end: 94, follow: false },
+    { start: 80, end: 96, follow: true },
+  ])(
+    'uses the nearest CURRENT band after pinch $start -> $end (follow=$follow)',
+    async ({ start, end, follow }) => {
+      const target = new THREE.Vector3();
+      let canvas: HTMLCanvasElement | undefined;
+      const rig = new THREE.OrthographicCamera(-400, 400, 300, -300, 0.1, 1000);
+      rig.zoom = start;
+      rig.updateProjectionMatrix();
+      const probe = (focus: THREE.Vector3) => (
+        <Probe
+          target={target}
+          focusTarget={focus}
+          touchPanEnabled
+          touchPinchEnabled
+          onCanvas={(value) => {
+            canvas = value;
+          }}
+        />
+      );
+      const renderer = await ReactThreeTestRenderer.create(
+        probe(new THREE.Vector3()),
+        { camera: rig }
+      );
+      try {
+        if (!canvas) throw new Error('missing canvas');
+        canvas.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+        await renderer.advanceFrames(10, 1 / 60);
+        const emit = (type: string, id: number, x: number) => {
+          const event = new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: 300,
+          });
+          Object.defineProperties(event, {
+            pointerId: { value: id },
+            pointerType: { value: 'touch' },
+          });
+          (type === 'pointerdown' ? canvas! : window).dispatchEvent(event);
+        };
+        const endX = 200 + (200 * end) / start;
+        emit('pointerdown', 1, 200);
+        emit('pointerdown', 2, 400);
+        emit('pointermove', 2, endX);
+        emit('pointerup', 1, 200);
+        emit('pointerup', 2, endX);
+        expect(rig.zoom).toBeCloseTo(end);
+        // Measure follow separately from the pinch's deliberate anchor translation.
+        const parked = target.clone();
+        const moved = new THREE.Vector3(20, 0, 20);
+        await renderer.update(probe(moved));
+        await renderer.advanceFrames(240, 1 / 60);
+        if (follow) expect(target.distanceTo(moved)).toBeLessThan(0.01);
+        else expect(target.distanceTo(parked)).toBeLessThan(0.001);
+      } finally {
+        await renderer.unmount();
+      }
+    }
+  );
   it('stays put in the tactical band', async () => {
     expect(await targetDriftAfterMove(dials.zoomStart)).toBeLessThan(0.01);
   });

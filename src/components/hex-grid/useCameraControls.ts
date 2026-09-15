@@ -529,6 +529,10 @@ export function useCameraControls({
         at: Number.NEGATIVE_INFINITY,
         direction: 0,
       };
+      // The continuous pose is separate from the discrete follow policy. A
+      // later mini move must resolve the nearest CURRENT zoom band, not the
+      // band cached before this pinch began.
+      orthoBandIndex.current = null;
       lerpTarget.current = null;
       orbitPivotAutoState.current = reduceOrbitPivotAutoState(
         orbitPivotAutoState.current,
