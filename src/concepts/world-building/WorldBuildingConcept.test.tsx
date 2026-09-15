@@ -40,6 +40,12 @@ vi.mock('./WorldBuildingViewport', () => ({
     onTransformPreview: (scene: WorldScene | null) => void;
     onTransformCommit: (scene: WorldScene) => void;
     onTransformReject: (message: string) => void;
+    roomAuthoring?: {
+      onWalkableGesture: (
+        cells: Array<{ q: number; r: number }>,
+        mode: 'paint' | 'erase'
+      ) => void;
+    };
   }) => {
     const readPayload = (event: React.DragEvent) => {
       try {
@@ -120,6 +126,24 @@ vi.mock('./WorldBuildingViewport', () => ({
         <button onClick={() => props.onTransformPreview(null)}>
           Cancel gizmo
         </button>
+        {props.roomAuthoring && (
+          <>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onWalkableGesture(
+                  [
+                    { q: 0, r: 0 },
+                    { q: 1, r: 0 },
+                  ],
+                  'paint'
+                )
+              }
+            >
+              Commit rectangle gesture
+            </button>
+            <button>Cancel rectangle gesture</button>
+          </>
+        )}
         <button
           onClick={() =>
             props.onTransformReject(
@@ -1093,6 +1117,46 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       /save refused/
     );
     expect(scene()).toEqual(original);
+  });
+
+  it('commits one rectangle release as one undoable room-history action and cancel is a no-op', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Rectangle' })).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel rectangle gesture' })
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.room.walkableHexes
+    ).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.room.walkableHexes
+    ).toEqual([]);
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
   });
 
   it('shows non-destructive strict import errors and keeps the valid scene', () => {

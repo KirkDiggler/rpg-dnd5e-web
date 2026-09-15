@@ -2,6 +2,7 @@ import {
   cubeToWorld,
   HEX_SIZE,
   hexCorners,
+  worldToCube,
 } from '@/components/hex-grid/hexMath';
 import type { PropModelBounds } from '@/components/hex-grid/PropModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
@@ -30,6 +31,13 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import {
+  ROOM_AUTHORING_HEX_RADIUS,
+  walkableCellsInWorldRectangle,
+  type RoomHexCell,
+  type RoomPropDeclaration,
+} from './roomDraft';
+import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
 import type { WorldScene } from './types';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
@@ -65,6 +73,15 @@ export interface WorldBuildingViewportProps {
   onTransformCommit: (scene: WorldScene) => void;
   onTransformReject: (message: string) => void;
   onAssetState: (id: string, state: 'loaded' | 'error') => void;
+  roomAuthoring?: {
+    tool: 'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle';
+    walkableHexes: readonly RoomHexCell[];
+    propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
+    onWalkableGesture: (
+      cells: readonly RoomHexCell[],
+      mode: 'paint' | 'erase'
+    ) => void;
+  };
 }
 
 function makeHexLines(radius: number): THREE.BufferGeometry {
@@ -297,15 +314,125 @@ function WorldBuildingCameraControls({ enabled }: { enabled: boolean }) {
   );
 }
 
+function RoomAuthoringDeclarations({
+  scene,
+  authoring,
+  rectanglePreview,
+}: {
+  scene: WorldScene;
+  authoring: NonNullable<WorldBuildingViewportProps['roomAuthoring']>;
+  rectanglePreview: readonly RoomHexCell[];
+}) {
+  const fillGeometry = useMemo(() => createWalkableHexFillGeometry(), []);
+  return (
+    <group name="room-authored-declarations">
+      {authoring.walkableHexes.map((cell) => {
+        const center = cubeToWorld(
+          { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+          HEX_SIZE
+        );
+        return (
+          <mesh
+            key={`${cell.q},${cell.r}`}
+            name={`room-walkable-${cell.q}-${cell.r}`}
+            position={[center.x, DUNGEON_SURFACE_Y + 0.018, center.z]}
+            geometry={fillGeometry}
+            raycast={() => null}
+          >
+            <meshBasicMaterial
+              color="#34d399"
+              transparent
+              opacity={0.34}
+              depthWrite={false}
+            />
+          </mesh>
+        );
+      })}
+      {rectanglePreview.map((cell) => {
+        const center = cubeToWorld(
+          { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+          HEX_SIZE
+        );
+        return (
+          <mesh
+            key={`preview-${cell.q},${cell.r}`}
+            name={`room-rectangle-preview-${cell.q}-${cell.r}`}
+            position={[center.x, DUNGEON_SURFACE_Y + 0.022, center.z]}
+            geometry={fillGeometry}
+            raycast={() => null}
+          >
+            <meshBasicMaterial
+              color="#67e8f9"
+              transparent
+              opacity={0.48}
+              depthWrite={false}
+            />
+          </mesh>
+        );
+      })}
+      {scene.items.flatMap((item) => {
+        const declaration = authoring.propDeclarations[item.id];
+        if (!declaration) return [];
+        const footprint = declaration.footprint;
+        return [
+          <group
+            key={item.id}
+            position={[
+              item.transform.x,
+              DUNGEON_SURFACE_Y + 0.035,
+              item.transform.z,
+            ]}
+            rotation={[0, item.transform.rotationY, 0]}
+          >
+            <mesh
+              name={`room-footprint-${item.id}`}
+              position={[footprint.offsetX, 0, footprint.offsetZ]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              raycast={() => null}
+            >
+              <planeGeometry args={[footprint.width, footprint.depth]} />
+              <meshBasicMaterial
+                color={declaration.blocksMovement ? '#fb7185' : '#fbbf24'}
+                wireframe
+                transparent
+                opacity={0.95}
+                depthTest={false}
+              />
+            </mesh>
+          </group>,
+        ];
+      })}
+    </group>
+  );
+}
+
 function WorldSceneContents(
   props: WorldBuildingViewportProps & { showCompositionBounds: boolean }
 ) {
   const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
     props;
+  const { gl } = useThree();
   const displayScene = previewScene ?? scene;
-  const hexGeometry = useMemo(() => makeHexLines(6), []);
+  const hexGeometry = useMemo(
+    () => makeHexLines(ROOM_AUTHORING_HEX_RADIUS),
+    []
+  );
   const boundaryGeometry = useMemo(() => makeGroundBoundary(11.5), []);
   const controlsRef = useRef<TransformControlsImpl>(null);
+  const floorGesture = useRef<
+    | {
+        kind: 'brush';
+        mode: 'paint' | 'erase';
+        cells: Map<string, RoomHexCell>;
+      }
+    | {
+        kind: 'rectangle';
+        start: { x: number; z: number };
+        cells: RoomHexCell[];
+      }
+    | null
+  >(null);
+  const [rectanglePreview, setRectanglePreview] = useState<RoomHexCell[]>([]);
   const [transforming, setTransforming] = useState(false);
   const [measuredById, setMeasuredById] = useState<
     ReadonlyMap<string, MeasuredWorldPropBounds>
@@ -361,6 +488,31 @@ function WorldSceneContents(
   };
   const resolveSelectionId = (intersections: readonly THREE.Intersection[]) =>
     resolveWorldSelectionId(displayScene, intersections);
+  const cancelFloorGesture = useCallback(() => {
+    floorGesture.current = null;
+    setRectanglePreview([]);
+  }, []);
+  useEffect(() => {
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelFloorGesture();
+    };
+    const cancelOnRightClick = (event: PointerEvent) => {
+      if (event.button === 2) cancelFloorGesture();
+    };
+    const cancelOnContextMenu = () => cancelFloorGesture();
+    window.addEventListener('keydown', cancelOnEscape);
+    gl.domElement.addEventListener('pointerdown', cancelOnRightClick);
+    gl.domElement.addEventListener('contextmenu', cancelOnContextMenu);
+    return () => {
+      window.removeEventListener('keydown', cancelOnEscape);
+      gl.domElement.removeEventListener('pointerdown', cancelOnRightClick);
+      gl.domElement.removeEventListener('contextmenu', cancelOnContextMenu);
+    };
+  }, [cancelFloorGesture, gl.domElement]);
+  useEffect(cancelFloorGesture, [
+    cancelFloorGesture,
+    props.roomAuthoring?.tool,
+  ]);
 
   return (
     <>
@@ -379,8 +531,74 @@ function WorldSceneContents(
         onPointerDown={(event) => {
           if (event.button !== 0 || isGizmoPointer()) return;
           event.stopPropagation();
+          const roomTool = props.roomAuthoring?.tool;
+          if (roomTool === 'rectangle') {
+            const start = { x: event.point.x, z: event.point.z };
+            const cells = walkableCellsInWorldRectangle(start, start);
+            floorGesture.current = { kind: 'rectangle', start, cells };
+            setRectanglePreview(cells);
+            (event.target as Element).setPointerCapture?.(event.pointerId);
+            return;
+          }
+          if (roomTool === 'paint' || roomTool === 'erase') {
+            const cube = worldToCube(
+              { x: event.point.x, z: event.point.z },
+              HEX_SIZE
+            );
+            const cell = { q: cube.x, r: cube.z };
+            floorGesture.current = {
+              kind: 'brush',
+              mode: roomTool,
+              cells: new Map([[`${cell.q},${cell.r}`, cell]]),
+            };
+            return;
+          }
           if (!event.shiftKey) onSelect([]);
         }}
+        onPointerMove={(event) => {
+          if (event.buttons !== 1) return;
+          const roomTool = props.roomAuthoring?.tool;
+          const gesture = floorGesture.current;
+          if (!gesture) return;
+          event.stopPropagation();
+          if (roomTool === 'rectangle' && gesture.kind === 'rectangle') {
+            const cells = walkableCellsInWorldRectangle(gesture.start, {
+              x: event.point.x,
+              z: event.point.z,
+            });
+            gesture.cells = cells;
+            setRectanglePreview(cells);
+            return;
+          }
+          if (
+            (roomTool !== 'paint' && roomTool !== 'erase') ||
+            gesture.kind !== 'brush'
+          )
+            return;
+          const cube = worldToCube(
+            { x: event.point.x, z: event.point.z },
+            HEX_SIZE
+          );
+          const cell = { q: cube.x, r: cube.z };
+          gesture.cells.set(`${cell.q},${cell.r}`, cell);
+        }}
+        onPointerUp={(event) => {
+          if (!floorGesture.current) return;
+          event.stopPropagation();
+          const gesture = floorGesture.current;
+          floorGesture.current = null;
+          setRectanglePreview([]);
+          if (gesture.kind === 'rectangle') {
+            if (gesture.cells.length > 0)
+              props.roomAuthoring?.onWalkableGesture(gesture.cells, 'paint');
+          } else {
+            props.roomAuthoring?.onWalkableGesture(
+              [...gesture.cells.values()],
+              gesture.mode
+            );
+          }
+        }}
+        onPointerCancel={cancelFloorGesture}
       >
         <circleGeometry args={[11.5, 6]} />
         <meshStandardMaterial
@@ -403,6 +621,13 @@ function WorldSceneContents(
         bounds={guideBounds}
         showCompositionBounds={props.showCompositionBounds}
       />
+      {props.roomAuthoring && (
+        <RoomAuthoringDeclarations
+          scene={displayScene}
+          authoring={props.roomAuthoring}
+          rectanglePreview={rectanglePreview}
+        />
+      )}
       {displayScene.items.map((item) => (
         <WorldPropVisual
           key={item.id}

@@ -1,3 +1,4 @@
+import { HEX_SIZE, hexCorners } from '@/components/hex-grid/hexMath';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,7 @@ vi.mock('@react-three/drei', () => ({
   },
 }));
 
+import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
 import { WorldPropVisual } from './WorldBuildingViewport';
 
@@ -74,6 +76,32 @@ beforeAll(() => {
 
 beforeEach(() => {
   modelState.value = 'loaded';
+});
+
+describe('room walkable fill geometry', () => {
+  it('uses inset shared pointy grid corners in the floor X/Z plane', () => {
+    const geometry = createWalkableHexFillGeometry();
+    const positions = geometry.getAttribute('position');
+    const boundary = Array.from({ length: 6 }, (_, index) => ({
+      x: positions.getX(index + 1),
+      z: positions.getZ(index + 1),
+    }));
+    const expected = hexCorners({ x: 0, z: 0 }, HEX_SIZE).map((corner) => ({
+      x: corner.x * 0.86,
+      z: corner.z * 0.86,
+    }));
+
+    boundary.forEach((point, index) => {
+      expect(point.x).toBeCloseTo(expected[index]!.x);
+      expect(point.z).toBeCloseTo(expected[index]!.z);
+    });
+    expect(Math.max(...boundary.map((point) => Math.abs(point.z)))).toBeCloseTo(
+      HEX_SIZE * 0.86
+    );
+    expect(Math.max(...boundary.map((point) => Math.abs(point.x)))).toBeCloseTo(
+      (Math.sqrt(3) / 2) * HEX_SIZE * 0.86
+    );
+  });
 });
 
 describe('WorldPropVisual surface and pointer ownership', () => {

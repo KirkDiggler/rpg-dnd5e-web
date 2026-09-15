@@ -12,6 +12,19 @@ import {
   type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
 import {
+  createRoomDraft,
+  loadRoomDraft,
+  parseRoomDraftJson,
+  reconcileRoomDraft,
+  remapRoomDeclarations,
+  saveRoomDraft,
+  stringifyRoomDraft,
+  updateWalkableHexes,
+  type RoomDraft,
+  type RoomGameplayData,
+  type RoomPropDeclaration,
+} from './roomDraft';
+import {
   addProp,
   createEmptyScene,
   createHistory,
@@ -66,6 +79,8 @@ interface WorldBuildingConceptProps {
   compositionSource?: CompositionSource;
   onCompositionDeleted?: () => void;
   onBack?: () => void;
+  /** Dedicated local authoring-draft mode; never writes world compositions. */
+  roomMode?: boolean;
 }
 
 const DEFAULT_POINT_LIGHT: WorldPointLight = {
@@ -119,13 +134,33 @@ export function WorldBuildingConcept({
   compositionSource,
   onCompositionDeleted,
   onBack,
+  roomMode = false,
 }: WorldBuildingConceptProps) {
   const effectiveStorage = storage ?? browserStorage;
   const [initial] = useState(() => bootstrap(effectiveStorage, idFactory));
   const [history, setHistory] = useState<SceneHistory>(initial.history);
+  const [initialRoom] = useState(() => {
+    if (!roomMode)
+      return {
+        value: createRoomDraft(initial.history.present, 'inactive-room'),
+      };
+    const fallback = createRoomDraft(
+      createEmptyScene(idFactory()),
+      idFactory()
+    );
+    return loadRoomDraft(effectiveStorage, fallback);
+  });
+  const [roomHistory, setRoomHistory] = useState<{
+    past: RoomDraft[];
+    present: RoomDraft;
+    future: RoomDraft[];
+  }>(() => ({ past: [], present: initialRoom.value, future: [] }));
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<WorldBuildingTool>('select');
+  const [roomTool, setRoomTool] = useState<
+    'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle'
+  >('paint');
   const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
     null
   );
@@ -133,6 +168,8 @@ export function WorldBuildingConcept({
   const [search, setSearch] = useState('');
   const [arrangementName, setArrangementName] = useState('New arrangement');
   const [portableJson, setPortableJson] = useState('');
+  const [footprintPreview, setFootprintPreview] =
+    useState<RoomPropDeclaration | null>(null);
   const [notice, setNotice] = useState(initial.error);
   const [saveStatus, setSaveStatus] = useState('Local draft ready');
   const [workspaceOrigin, setWorkspaceOrigin] = useState<'local' | 'world'>(
@@ -152,7 +189,8 @@ export function WorldBuildingConcept({
   const skippedInitialSceneSave = useRef(false);
   const skippedInitialLibrarySave = useRef(false);
   const workspaceOriginRef = useRef<'local' | 'world'>('local');
-  const scene = history.present;
+  const roomDraft = roomHistory.present;
+  const scene = roomMode ? roomDraft.scene : history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
@@ -173,6 +211,7 @@ export function WorldBuildingConcept({
   }, [compositionSource?.writer]);
 
   useEffect(() => {
+    if (roomMode) return;
     if (!skippedInitialSceneSave.current) {
       skippedInitialSceneSave.current = true;
       return;
@@ -185,7 +224,18 @@ export function WorldBuildingConcept({
     } else {
       setSaveStatus('Saved locally');
     }
-  }, [effectiveStorage, scene, workspaceOrigin]);
+  }, [effectiveStorage, roomMode, scene, workspaceOrigin]);
+
+  useEffect(() => {
+    if (!roomMode) return;
+    const error = saveRoomDraft(effectiveStorage, roomDraft);
+    setSaveStatus(
+      error
+        ? 'Room save failed — draft kept in memory'
+        : 'Room authoring draft saved locally'
+    );
+    if (error) setNotice(error);
+  }, [effectiveStorage, roomDraft, roomMode]);
 
   useEffect(() => {
     if (!skippedInitialLibrarySave.current) {
@@ -197,10 +247,29 @@ export function WorldBuildingConcept({
   }, [effectiveStorage, library]);
 
   const commit = useCallback(
-    (next: WorldScene, selection = selectedIds) => {
+    (
+      next: WorldScene,
+      selection = selectedIds,
+      nextRoom: RoomGameplayData = roomDraft.room
+    ) => {
       try {
         const valid = validateScene(next);
-        setHistory((current) => updateHistory(current, valid));
+        if (roomMode) {
+          const nextDraft = reconcileRoomDraft(
+            { ...roomDraft, room: nextRoom },
+            valid
+          );
+          setRoomHistory((current) => ({
+            past: [
+              ...current.past.slice(-79),
+              structuredClone(current.present),
+            ],
+            present: structuredClone(nextDraft),
+            future: [],
+          }));
+        } else {
+          setHistory((current) => updateHistory(current, valid));
+        }
         setPreviewScene(null);
         setSelectedIds(selection);
         setSaveStatus(
@@ -217,7 +286,7 @@ export function WorldBuildingConcept({
         );
       }
     },
-    [selectedIds]
+    [roomDraft, roomMode, selectedIds]
   );
 
   const dropIntoScene = useCallback(
@@ -248,6 +317,7 @@ export function WorldBuildingConcept({
             [id]
           );
           setTool('move');
+          if (roomMode) setRoomTool('move');
         } catch (error) {
           setNotice(error instanceof Error ? error.message : String(error));
         }
@@ -272,13 +342,36 @@ export function WorldBuildingConcept({
           target.point,
           idFactory
         );
-        commit(stamped.scene, stamped.createdIds);
+        const templateDeclarations =
+          roomDraft.room.arrangementDeclarations[arrangement.id] ?? {};
+        const stampedDeclarations = Object.fromEntries(
+          [...stamped.idMap].flatMap(([sourceId, targetId]) => {
+            const declaration = templateDeclarations[sourceId];
+            return declaration
+              ? [[targetId, structuredClone(declaration)] as const]
+              : [];
+          })
+        );
+        commit(
+          stamped.scene,
+          stamped.createdIds,
+          roomMode
+            ? {
+                ...roomDraft.room,
+                propDeclarations: {
+                  ...roomDraft.room.propDeclarations,
+                  ...stampedDeclarations,
+                },
+              }
+            : roomDraft.room
+        );
         setTool('move');
+        if (roomMode) setRoomTool('move');
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [commit, idFactory, library.arrangements, scene]
+    [commit, idFactory, library.arrangements, roomDraft.room, roomMode, scene]
   );
 
   const selectInScene = useCallback((ids: string[]) => {
@@ -308,11 +401,18 @@ export function WorldBuildingConcept({
     }
     try {
       const result = duplicateSelection(scene, selectedIds, idFactory);
-      commit(result.scene, result.createdIds);
+      const copied = remapRoomDeclarations(roomDraft.room, result.idMap);
+      commit(result.scene, result.createdIds, {
+        ...roomDraft.room,
+        propDeclarations: {
+          ...roomDraft.room.propDeclarations,
+          ...copied.propDeclarations,
+        },
+      });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
-  }, [commit, idFactory, scene, selectedIds]);
+  }, [commit, idFactory, roomDraft.room, scene, selectedIds]);
 
   const remove = useCallback(() => {
     if (selectedIds.length === 0) return;
@@ -321,16 +421,36 @@ export function WorldBuildingConcept({
 
   const undo = useCallback(() => {
     setPreviewScene(null);
-    setHistory((current) => undoHistory(current));
+    if (roomMode) {
+      setRoomHistory((current) =>
+        current.past.length === 0
+          ? current
+          : {
+              past: current.past.slice(0, -1),
+              present: structuredClone(current.past[current.past.length - 1]!),
+              future: [structuredClone(current.present), ...current.future],
+            }
+      );
+    } else setHistory((current) => undoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, []);
+  }, [roomMode]);
   const redo = useCallback(() => {
     setPreviewScene(null);
-    setHistory((current) => redoHistory(current));
+    if (roomMode) {
+      setRoomHistory((current) =>
+        current.future.length === 0
+          ? current
+          : {
+              past: [...current.past, structuredClone(current.present)],
+              present: structuredClone(current.future[0]!),
+              future: current.future.slice(1),
+            }
+      );
+    } else setHistory((current) => redoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, []);
+  }, [roomMode]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -391,6 +511,16 @@ export function WorldBuildingConcept({
   }, [search]);
 
   const saveNow = () => {
+    if (roomMode) {
+      const error = saveRoomDraft(effectiveStorage, roomDraft);
+      setNotice(error ?? '');
+      setSaveStatus(
+        error
+          ? 'Room save failed — good in-memory draft kept'
+          : 'Room authoring draft saved locally now'
+      );
+      return;
+    }
     const sceneResult = saveSceneToStorage(effectiveStorage, scene);
     const libraryResult = saveLibraryToStorage(effectiveStorage, library);
     const error = sceneResult.error ?? libraryResult.error;
@@ -423,6 +553,23 @@ export function WorldBuildingConcept({
           arrangements: [...library.arrangements, arrangement],
         })
       );
+      if (roomMode) {
+        const declarations = Object.fromEntries(
+          arrangement.items.flatMap((item) => {
+            const declaration = roomDraft.room.propDeclarations[item.id];
+            return declaration
+              ? [[item.id, structuredClone(declaration)] as const]
+              : [];
+          })
+        );
+        commit(scene, selectedIds, {
+          ...roomDraft.room,
+          arrangementDeclarations: {
+            ...roomDraft.room.arrangementDeclarations,
+            [arrangement.id]: declarations,
+          },
+        });
+      }
       setArrangementName('New arrangement');
       setNotice('');
     } catch (error) {
@@ -432,6 +579,17 @@ export function WorldBuildingConcept({
 
   const importScene = () => {
     try {
+      if (roomMode) {
+        const imported = parseRoomDraftJson(portableJson);
+        setRoomHistory((current) => ({
+          past: [...current.past.slice(-79), structuredClone(current.present)],
+          present: imported,
+          future: [],
+        }));
+        setSelectedIds([]);
+        setNotice('');
+        return;
+      }
       const imported = parseSceneJson(portableJson);
       commit(imported, []);
       setNotice('');
@@ -459,6 +617,22 @@ export function WorldBuildingConcept({
   };
 
   const reopen = () => {
+    if (roomMode) {
+      const result = loadRoomDraft(effectiveStorage, roomDraft);
+      if (result.error) {
+        setNotice(result.error);
+        return;
+      }
+      setRoomHistory({ past: [], present: result.value, future: [] });
+      setPreviewScene(null);
+      setSelectedIds([]);
+      setTool('select');
+      setRoomTool('select');
+      setActiveDrag(null);
+      setNotice('');
+      setSaveStatus('Reopened local room authoring draft');
+      return;
+    }
     const sceneResult = loadScene(effectiveStorage, scene);
     const libraryResult = loadLibrary(effectiveStorage, library);
     const error = sceneResult.error ?? libraryResult.error;
@@ -599,31 +773,66 @@ export function WorldBuildingConcept({
       )
     );
   };
+  const selectedDeclaration = selectedProp
+    ? roomDraft.room.propDeclarations[selectedProp.id]
+    : undefined;
+  const defaultDeclaration: RoomPropDeclaration = {
+    blocksMovement: false,
+    blocksLineOfSight: false,
+    footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 },
+  };
+  const commitSelectedDeclaration = (declaration: RoomPropDeclaration) => {
+    if (!selectedProp) return;
+    commit(scene, selectedIds, {
+      ...roomDraft.room,
+      propDeclarations: {
+        ...roomDraft.room.propDeclarations,
+        [selectedProp.id]: declaration,
+      },
+    });
+    setFootprintPreview(null);
+  };
   const numberFrom = (value: string): number =>
     value.trim() === '' ? Number.NaN : Number(value);
 
   return (
     <section
-      className={`wb-shell ${compositionSource ? 'wb-shell--world' : ''}`}
-      aria-label="World Building Concept"
+      className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
+      aria-label={roomMode ? 'Room Authoring Draft' : 'World Building Concept'}
       data-transform-preview={previewScene ? 'active' : 'idle'}
       data-workspace-origin={workspaceOrigin}
     >
       <header className="wb-header">
         <div>
           <p className="wb-kicker">
-            {compositionSource
-              ? `World library · ${compositionSource.worldId}`
-              : 'Durable Concepts Lab · web#935'}
+            {roomMode
+              ? 'Authoring draft · web#1068 · walkable ground'
+              : compositionSource
+                ? `World library · ${compositionSource.worldId}`
+                : 'Durable Concepts Lab · web#935'}
           </p>
-          <h2>{compositionSource ? 'World Builder' : 'World Building'}</h2>
-          <p>Compose freely in world space. Hexes are scale, not slots.</p>
+          <h2>
+            {roomMode
+              ? 'Room Builder — First Look'
+              : compositionSource
+                ? 'World Builder'
+                : 'World Building'}
+          </h2>
+          <p>
+            {roomMode
+              ? 'Paint declared walkable hexes and configure prop declarations. Not playable or engine-validated.'
+              : 'Compose freely in world space. Hexes are scale, not slots.'}
+          </p>
         </div>
         <div className="wb-save-cluster">
           {onBack && <button onClick={onBack}>Back to main menu</button>}
           <span aria-live="polite">{saveStatus}</span>
-          <button onClick={saveNow}>Save local draft</button>
-          <button onClick={reopen}>Reopen local draft</button>
+          <button onClick={saveNow}>
+            {roomMode ? 'Save room draft' : 'Save local draft'}
+          </button>
+          <button onClick={reopen}>
+            {roomMode ? 'Reload room draft' : 'Reopen local draft'}
+          </button>
           {compositionSource?.writer && (
             <button
               disabled={worldBusy}
@@ -634,7 +843,7 @@ export function WorldBuildingConcept({
           )}
           {!confirmBlank ? (
             <button onClick={() => setConfirmBlank(true)}>
-              New blank scene
+              {roomMode ? 'New room' : 'New blank scene'}
             </button>
           ) : (
             <span className="wb-confirm">
@@ -645,13 +854,14 @@ export function WorldBuildingConcept({
                 className="wb-danger"
                 onClick={() => {
                   const blank = createEmptyScene(idFactory());
-                  commit(blank, []);
+                  const freshRoom = createRoomDraft(blank, idFactory());
+                  commit(blank, [], roomMode ? freshRoom.room : roomDraft.room);
                   setTool('select');
                   setActiveDrag(null);
                   setConfirmBlank(false);
                 }}
               >
-                Confirm blank scene
+                {roomMode ? 'Confirm new room' : 'Confirm blank scene'}
               </button>
             </span>
           )}
@@ -765,14 +975,37 @@ export function WorldBuildingConcept({
               role="toolbar"
               aria-label="Manipulation tools"
             >
-              {(['select', 'move', 'rotate'] as const).map((entry) => (
+              {(roomMode
+                ? ([
+                    'paint',
+                    'erase',
+                    'rectangle',
+                    'select',
+                    'move',
+                    'rotate',
+                  ] as const)
+                : (['select', 'move', 'rotate'] as const)
+              ).map((entry) => (
                 <button
                   key={entry}
-                  className={tool === entry ? 'wb-tool wb-active' : 'wb-tool'}
-                  aria-pressed={tool === entry}
+                  className={
+                    (roomMode ? roomTool : tool) === entry
+                      ? 'wb-tool wb-active'
+                      : 'wb-tool'
+                  }
+                  aria-pressed={(roomMode ? roomTool : tool) === entry}
                   onClick={() => {
                     setPreviewScene(null);
-                    setTool(entry);
+                    if (
+                      entry === 'paint' ||
+                      entry === 'erase' ||
+                      entry === 'rectangle'
+                    )
+                      setRoomTool(entry);
+                    else {
+                      setRoomTool(entry);
+                      setTool(entry);
+                    }
                   }}
                 >
                   {entry[0]!.toUpperCase() + entry.slice(1)}
@@ -780,11 +1013,17 @@ export function WorldBuildingConcept({
               ))}
             </div>
             <span data-testid="interaction-status">
-              {tool === 'select'
-                ? 'Left: select · Shift-left: add selection'
-                : tool === 'move'
-                  ? 'Drag arrows or planes · Esc/right-click: cancel'
-                  : 'Drag the Y ring · Esc/right-click: cancel'}
+              {roomMode && roomTool === 'paint'
+                ? 'Drag on floor: paint walkable ground'
+                : roomMode && roomTool === 'erase'
+                  ? 'Drag on floor: erase walkable ground'
+                  : roomMode && roomTool === 'rectangle'
+                    ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
+                    : tool === 'select'
+                      ? 'Left: select · Shift-left: add selection'
+                      : tool === 'move'
+                        ? 'Drag arrows or planes · Esc/right-click: cancel'
+                        : 'Drag the Y ring · Esc/right-click: cancel'}
             </span>
           </div>
           <div className="wb-stage-bar">
@@ -804,6 +1043,29 @@ export function WorldBuildingConcept({
               selectedIds={selectedIds}
               tool={tool}
               activeDrag={activeDrag}
+              roomAuthoring={
+                roomMode
+                  ? {
+                      tool: roomTool,
+                      walkableHexes: roomDraft.room.walkableHexes,
+                      propDeclarations:
+                        footprintPreview && selectedProp
+                          ? {
+                              ...roomDraft.room.propDeclarations,
+                              [selectedProp.id]: footprintPreview,
+                            }
+                          : roomDraft.room.propDeclarations,
+                      onWalkableGesture: (cells, mode) => {
+                        const next = updateWalkableHexes(
+                          roomDraft,
+                          cells,
+                          mode
+                        );
+                        commit(scene, selectedIds, next.room);
+                      },
+                    }
+                  : undefined
+              }
               onSelect={selectInScene}
               onDrop={dropIntoScene}
               onDragFinished={() => setActiveDrag(null)}
@@ -847,10 +1109,20 @@ export function WorldBuildingConcept({
               />
             </label>
             <div className="wb-actions">
-              <button disabled={history.past.length === 0} onClick={undo}>
+              <button
+                disabled={
+                  (roomMode ? roomHistory.past : history.past).length === 0
+                }
+                onClick={undo}
+              >
                 Undo
               </button>
-              <button disabled={history.future.length === 0} onClick={redo}>
+              <button
+                disabled={
+                  (roomMode ? roomHistory.future : history.future).length === 0
+                }
+                onClick={redo}
+              >
                 Redo
               </button>
               <button onClick={duplicate}>Duplicate</button>
@@ -898,6 +1170,93 @@ export function WorldBuildingConcept({
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
             </p>
+            {roomMode && selectedProp && (
+              <div
+                className="wb-light-editor"
+                aria-label="Authored prop declarations"
+              >
+                <h4>Movement &amp; sight declaration</h4>
+                {!selectedDeclaration ? (
+                  <button
+                    onClick={() =>
+                      commitSelectedDeclaration(defaultDeclaration)
+                    }
+                  >
+                    Add authored footprint
+                  </button>
+                ) : (
+                  <>
+                    <label className="wb-light-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label="Blocks movement"
+                        checked={selectedDeclaration.blocksMovement}
+                        onChange={(event) =>
+                          commitSelectedDeclaration({
+                            ...selectedDeclaration,
+                            blocksMovement: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>Blocks movement</span>
+                    </label>
+                    <label className="wb-light-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label="Blocks line of sight"
+                        checked={selectedDeclaration.blocksLineOfSight}
+                        onChange={(event) =>
+                          commitSelectedDeclaration({
+                            ...selectedDeclaration,
+                            blocksLineOfSight: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>Blocks line of sight</span>
+                    </label>
+                    <p className="wb-help">
+                      Outline is an authored owner-local X/Z rectangle in scene
+                      units. It moves and rotates with the prop; it does not
+                      scale the mesh or calculate blocked cells.
+                    </p>
+                    {(['width', 'depth', 'offsetX', 'offsetZ'] as const).map(
+                      (field) => {
+                        const preview = footprintPreview ?? selectedDeclaration;
+                        const size = field === 'width' || field === 'depth';
+                        return (
+                          <label key={field}>
+                            <span>
+                              {field} · {preview.footprint[field].toFixed(2)}
+                            </span>
+                            <input
+                              type="range"
+                              aria-label={`Footprint ${field}`}
+                              min={size ? 0.25 : -3}
+                              max={size ? 6 : 3}
+                              step={0.05}
+                              value={preview.footprint[field]}
+                              onChange={(event) =>
+                                setFootprintPreview({
+                                  ...preview,
+                                  footprint: {
+                                    ...preview.footprint,
+                                    [field]: Number(event.target.value),
+                                  },
+                                })
+                              }
+                              onPointerUp={() =>
+                                commitSelectedDeclaration(preview)
+                              }
+                              onKeyUp={() => commitSelectedDeclaration(preview)}
+                            />
+                          </label>
+                        );
+                      }
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {selectedProp && (
               <div className="wb-light-editor">
                 <h4>Visual point light</h4>
@@ -1251,14 +1610,23 @@ export function WorldBuildingConcept({
             <div className="wb-actions">
               <button
                 onClick={() => {
-                  const json = stringifyScene(scene);
+                  const json = roomMode
+                    ? stringifyRoomDraft(roomDraft)
+                    : stringifyScene(scene);
                   setPortableJson(json);
-                  downloadJson('world-building-scene.json', json);
+                  downloadJson(
+                    roomMode
+                      ? 'room-authoring-draft.json'
+                      : 'world-building-scene.json',
+                    json
+                  );
                 }}
               >
-                Export scene JSON
+                {roomMode ? 'Export room draft JSON' : 'Export scene JSON'}
               </button>
-              <button onClick={importScene}>Import scene JSON</button>
+              <button onClick={importScene}>
+                {roomMode ? 'Import room draft JSON' : 'Import scene JSON'}
+              </button>
               <button
                 onClick={() => {
                   const json = stringifyLibrary(library);
@@ -1274,6 +1642,11 @@ export function WorldBuildingConcept({
           <output data-testid="library-json" hidden>
             {JSON.stringify(library)}
           </output>
+          {roomMode && (
+            <output data-testid="room-draft-json" hidden>
+              {stringifyRoomDraft(roomDraft)}
+            </output>
+          )}
         </aside>
       </div>
     </section>
