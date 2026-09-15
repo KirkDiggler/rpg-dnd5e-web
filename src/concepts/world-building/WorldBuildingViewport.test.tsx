@@ -25,7 +25,7 @@ vi.mock('@react-three/drei', () => ({
 
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
-import { WorldPropVisual } from './WorldBuildingViewport';
+import { WorldBuildingFog, WorldPropVisual } from './WorldBuildingViewport';
 
 const TABLE: WorldProp = {
   id: 'table',
@@ -76,6 +76,23 @@ beforeAll(() => {
 
 beforeEach(() => {
   modelState.value = 'loaded';
+});
+
+describe('editor atmosphere', () => {
+  it('removes distance fog for room authoring and restores composer fog', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldBuildingFog roomAuthoring={false} />
+    );
+    const scene = renderer.scene.instance as THREE.Scene;
+    expect(scene.fog).toMatchObject({ isFog: true, near: 15, far: 31 });
+
+    await renderer.update(<WorldBuildingFog roomAuthoring />);
+    expect(scene.fog).toBeNull();
+
+    await renderer.update(<WorldBuildingFog roomAuthoring={false} />);
+    expect(scene.fog).toMatchObject({ isFog: true, near: 15, far: 31 });
+    await renderer.unmount();
+  });
 });
 
 describe('room walkable fill geometry', () => {

@@ -532,7 +532,7 @@ function WorldSceneContents(
   return (
     <>
       <color attach="background" args={['#071113']} />
-      <fog attach="fog" args={['#071113', 15, 31]} />
+      <WorldBuildingFog roomAuthoring={Boolean(props.roomAuthoring)} />
       <ambientLight intensity={1.2} />
       <directionalLight position={[7, 12, 6]} intensity={1.35} castShadow />
       <hemisphereLight args={['#a5f3fc', '#172026', 0.55]} />
@@ -684,6 +684,15 @@ function WorldSceneContents(
       />
     </>
   );
+}
+
+/** Expanded room authoring stays legible; the prop composer keeps its atmosphere. */
+export function WorldBuildingFog({
+  roomAuthoring,
+}: {
+  roomAuthoring: boolean;
+}) {
+  return roomAuthoring ? null : <fog attach="fog" args={['#071113', 15, 31]} />;
 }
 
 export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
