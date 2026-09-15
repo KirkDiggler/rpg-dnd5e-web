@@ -167,6 +167,7 @@ interface WorldBuildingTransformGizmoProps {
   onCommit: (scene: WorldScene) => void;
   onReject: (message: string) => void;
   onTransformingChange: (transforming: boolean) => void;
+  sceneHorizontalLimit?: number;
 }
 
 export function WorldBuildingTransformGizmo({
@@ -178,6 +179,7 @@ export function WorldBuildingTransformGizmo({
   onCommit,
   onReject,
   onTransformingChange,
+  sceneHorizontalLimit,
 }: WorldBuildingTransformGizmoProps) {
   const { gl } = useThree();
   const proxyRef = useRef<THREE.Group>(null);
@@ -271,7 +273,7 @@ export function WorldBuildingTransformGizmo({
     syncProxy();
     if (!next || JSON.stringify(next) === JSON.stringify(start.scene)) return;
     try {
-      onCommit(validateScene(next));
+      onCommit(validateScene(next, { horizontalLimit: sceneHorizontalLimit }));
     } catch (error) {
       onReject(
         `Transform rejected; drag-start positions were restored. ${
@@ -285,6 +287,7 @@ export function WorldBuildingTransformGizmo({
     onCommit,
     onPreview,
     onReject,
+    sceneHorizontalLimit,
     syncProxy,
   ]);
 
