@@ -51,6 +51,11 @@ This is an accepted concept checkpoint, not promotion to `SessionEncounterView`.
 
 ## Android touch-camera increments — #1069
 
+Kirk accepted the complete touch-camera iteration after the Android walkthrough:
+pan “feels pretty good,” pinch “very fluid,” shoulder transition “looks great,”
+and twist/Center “no it feels great.” Keep these settings; no further feel tuning
+is part of this slice. This is concept acceptance, not live-game promotion.
+
 - Carries the accepted fullscreen/title and log-height corrections from local checkpoint `44bd2593`. Fullscreen is explicitly requested through Controls; log height follows the actual action row rather than covering it.
 - This concept opts into `SessionCanvas.touchPanEnabled`. The shared camera hook defaults it to false, preserving live/default input behavior. Mouse right-drag and touch use the same screen-to-ground pan projection and manual-follow cancellation.
 - One finger starts panning after 6 CSS pixels. The binding consumes the resulting canvas click, including out-and-back movement, distant release, capture loss, cancellation, blur and multi-touch interruption. A fresh tap is passed to the existing renderer; no synthetic selection is generated.
