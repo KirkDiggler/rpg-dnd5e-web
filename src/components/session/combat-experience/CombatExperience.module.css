@@ -2338,6 +2338,13 @@ button.diceDrawerCue:focus-visible {
 .organizedEquipmentShortcut {
   margin-left: auto;
 }
+.organizedSecondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  pointer-events: auto;
+}
 .organizedExplore {
   position: relative;
   z-index: 12;

@@ -26,6 +26,7 @@ export function OrganizedHudConcept() {
     ORGANIZED_HUD_PROFILES[0];
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
   const [crowdedInitiative, setCrowdedInitiative] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [fullscreen, setFullscreen] = useState(
     Boolean(document.fullscreenElement)
   );
@@ -279,6 +280,8 @@ export function OrganizedHudConcept() {
               onTargetClick={onTargetClick}
               touchPanEnabled
               touchPinchEnabled
+              touchRotateEnabled
+              focusRequest={focusRequest}
             />
           )}
           onSelectDeclaration={selectDeclaration}
@@ -310,6 +313,7 @@ export function OrganizedHudConcept() {
             )
           }
           onLogModeChange={() => {}}
+          onCenterView={() => setFocusRequest((request) => request + 1)}
           onOpenEquipment={() =>
             setIntent(
               'Fixture-only equipment surface requested; no inventory action exists in this fixture.'

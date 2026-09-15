@@ -240,6 +240,7 @@ export interface ActionDockProps {
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
   onOpenEquipment?: () => void;
+  onCenterView?: () => void;
   /** Optional composition slot; the dock still owns the existing End Turn gate. */
   endTurnTarget?: HTMLElement | null;
   endTurnBlocked?: boolean;
@@ -449,6 +450,7 @@ export function ActionDock({
   authorityFresh,
   actionPresentation,
   onOpenEquipment,
+  onCenterView,
   endTurnTarget,
   endTurnBlocked = false,
   armedDeclarationId,
@@ -481,15 +483,34 @@ export function ActionDock({
       onBeforeSelect={onCancelSelection}
     />
   );
+  // Camera recovery is not an action-economy decision. Keep it in the shared
+  // secondary slot so it remains available while spectating or answering a prompt.
   const standing =
-    standingGroup && actionPresentation?.mode === 'organized-hud' ? (
-      <details className={styles.organizedExplore}>
-        <summary>Explore</summary>
-        {standingGroup}
-      </details>
-    ) : (
-      standingGroup
-    );
+    actionPresentation?.mode === 'organized-hud'
+      ? (standingGroup || onCenterView) && (
+          <div
+            className={styles.organizedSecondary}
+            role="group"
+            aria-label="Map utilities"
+          >
+            {standingGroup && (
+              <details className={styles.organizedExplore}>
+                <summary>Explore</summary>
+                {standingGroup}
+              </details>
+            )}
+            {onCenterView && (
+              <button
+                type="button"
+                className={styles.organizedCollection}
+                onClick={onCenterView}
+              >
+                Center on me
+              </button>
+            )}
+          </div>
+        )
+      : standingGroup;
 
   if (clock === ClockKind.WORLD) {
     return (

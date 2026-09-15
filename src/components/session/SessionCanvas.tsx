@@ -189,6 +189,9 @@ export interface SessionCanvasProps {
   touchPanEnabled?: boolean;
   /** Smooth orthographic pinch within the opted-in touch camera. */
   touchPinchEnabled?: boolean;
+  touchRotateEnabled?: boolean;
+  /** Changed request counter invokes camera focus without altering zoom/heading. */
+  focusRequest?: number;
   /** Local map-selection cancel invoked only by a quick right click. The
    * camera owns click-vs-drag classification so right-drag remains pan. */
   onCancelSelection?: () => void;
@@ -292,6 +295,8 @@ export function SessionScene({
   hexSize,
   touchPanEnabled = false,
   touchPinchEnabled = false,
+  touchRotateEnabled = false,
+  focusRequest,
   scene,
   characterId,
   characterName,
@@ -404,6 +409,8 @@ export function SessionScene({
     onQuickRightClick: onCancelSelection,
     touchPanEnabled,
     touchPinchEnabled,
+    touchRotateEnabled,
+    focusRequest,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a

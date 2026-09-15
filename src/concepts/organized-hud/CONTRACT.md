@@ -49,7 +49,7 @@ Two local hot-reload incidents served empty transformed CSS/TSX modules despite 
 
 This is an accepted concept checkpoint, not promotion to `SessionEncounterView`. Further touch gestures, real-device Discord validation, live data wiring, and final PR publication gates remain separate work. Keep the isolated stack available for Kirk; do not automatically merge or deploy.
 
-## Android pan and pinch increments — #1069
+## Android touch-camera increments — #1069
 
 - Carries the accepted fullscreen/title and log-height corrections from local checkpoint `44bd2593`. Fullscreen is explicitly requested through Controls; log height follows the actual action row rather than covering it.
 - This concept opts into `SessionCanvas.touchPanEnabled`. The shared camera hook defaults it to false, preserving live/default input behavior. Mouse right-drag and touch use the same screen-to-ground pan projection and manual-follow cancellation.
@@ -58,6 +58,8 @@ This is an accepted concept checkpoint, not promotion to `SessionEncounterView`.
 - The concept also opts into `SessionCanvas.touchPinchEnabled`. Two canvas-origin fingers zoom continuously within the current camera limits (default 35–140), anchoring the ground from the previous midpoint to the new one. The PC wheel deliberately resumes its band controls from the nearest current zoom.
 - The first pinch checkpoint (`6514161f`) held the angle fixed. Kirk accepted its fluid feel, then requested over-the-shoulder at closer zooms. Touch now holds the authored tactical pose below its threshold, smoothly blends pitch and focus lead between tactical and shoulder (default zoom 80–110), and holds shoulder at closer zooms. `cameraDials` owns this interpretation of its bands; ground anchoring covers the combined zoom and pose change. The fixed-angle `pitchCurve=0` escape remains fixed.
 - Pinch can return to a claimed one-finger pan without a jump. A HUD-origin contact, third finger, cancellation or lost capture blocks the gesture until release. Nearly coincident contacts rebase rather than divide by zero. No release generates a selection; a fresh tap still reaches the renderer.
-- Pinch is orthographic-only in this increment. Perspective mode retains the earlier second-finger cancellation policy. Twist rotation and inertia are not implemented.
+- After accepting the shoulder transition (`c3eb5c01`), Kirk approved deliberate twist and Center on me. `touchRotateEnabled` adds an 8-degree continuous angular dead zone to the two-finger transform: small pinch jitter does not rotate, crossing the threshold does not jump, and returning to the start unwinds the rotation. Heading changes share the pinch midpoint anchor. Third-finger/cancellation rules remain unchanged.
+- Center on me sends a `focusRequest` counter change to the same camera focus path as F; it preserves zoom and heading and does not cancel an armed selection. Its optional `onCenterView` UI callback travels through the secondary-control slot, remaining available outside the viewer's turn and under stale action authority.
+- Pinch/twist are orthographic-only in this increment. Perspective mode retains the earlier second-finger cancellation policy. Inertia is not implemented.
 - The canvas is no longer disabled while aiming in this concept. Its own stacking context leaves target panels above it without raising the whole map above the HUD.
 - Scoped gesture/camera/session tests and a native Chromium touch probe cover release-click safety, fresh taps and armed-state HUD cancellation. Kirk owns the actual Android feel walkthrough. No full visual matrix or new review loop is part of this increment.

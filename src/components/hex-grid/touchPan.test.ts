@@ -29,7 +29,7 @@ afterEach(() => {
     .reverse()
     .forEach((cleanup) => cleanup());
 });
-function setup(withPinch = false) {
+function setup(withPinch = false, rotationEnabled = false) {
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
   canvas.style.touchAction = 'pan-y';
@@ -41,6 +41,7 @@ function setup(withPinch = false) {
     canvas,
     onPan: pan,
     onPinch: withPinch ? pinch : undefined,
+    rotationEnabled,
   });
   cleanups.push(() => {
     dispose();
@@ -53,6 +54,70 @@ function clickCanvas(canvas: HTMLCanvasElement): MouseEvent {
   canvas.dispatchEvent(event);
   return event;
 }
+
+describe('deliberate two-finger twist', () => {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  function contact(
+    canvas: HTMLCanvasElement,
+    type: string,
+    degrees: number,
+    radius = 100,
+    id = 2
+  ) {
+    pointer(
+      canvas,
+      type,
+      200 + radius * Math.cos(radians(degrees)),
+      200 + radius * Math.sin(radians(degrees)),
+      id
+    );
+  }
+  it('ignores angular pinch jitter, then applies only the deliberate excess without a jump', () => {
+    const { canvas, pinch } = setup(true, true);
+    pointer(canvas, 'pointerdown', 200, 200);
+    contact(canvas, 'pointerdown', 0);
+    contact(canvas, 'pointermove', 5, 130);
+    expect(pinch.mock.lastCall![0].rotationRad).toBe(0);
+    expect(pinch.mock.lastCall![0].scale).toBeCloseTo(1.3);
+    contact(canvas, 'pointermove', 8.5, 130);
+    expect(pinch.mock.lastCall![0].rotationRad).toBeCloseTo(radians(0.5));
+    contact(canvas, 'pointermove', 20, 130);
+    expect(
+      pinch.mock.calls.reduce((sum, [change]) => sum + change.rotationRad, 0)
+    ).toBeCloseTo(radians(12));
+  });
+  it('returns an out-and-back twist to its starting heading without a click', () => {
+    const { canvas, pinch, click } = setup(true, true);
+    pointer(canvas, 'pointerdown', 200, 200);
+    contact(canvas, 'pointerdown', 0);
+    contact(canvas, 'pointermove', 30);
+    contact(canvas, 'pointermove', 0);
+    expect(
+      pinch.mock.calls.reduce((sum, [change]) => sum + change.rotationRad, 0)
+    ).toBeCloseTo(0);
+    pointer(canvas, 'pointerup', 200, 200);
+    contact(canvas, 'pointerup', 0);
+    clickCanvas(canvas);
+    expect(click).not.toHaveBeenCalled();
+  });
+  it('crosses the angle wrap without a full-turn jump', () => {
+    const { canvas, pinch } = setup(true, true);
+    pointer(canvas, 'pointerdown', 200, 200);
+    contact(canvas, 'pointerdown', 170);
+    contact(canvas, 'pointermove', -170);
+    expect(pinch.mock.lastCall![0].rotationRad).toBeCloseTo(radians(12));
+  });
+  it('gives a replacement second finger a fresh twist baseline', () => {
+    const { canvas, pinch } = setup(true, true);
+    pointer(canvas, 'pointerdown', 200, 200);
+    contact(canvas, 'pointerdown', 0);
+    contact(canvas, 'pointermove', 20);
+    contact(canvas, 'pointerup', 20);
+    contact(canvas, 'pointerdown', 90, 100, 3);
+    contact(canvas, 'pointermove', 94, 100, 3);
+    expect(pinch.mock.lastCall![0].rotationRad).toBe(0);
+  });
+});
 
 describe('two-finger pinch', () => {
   it('reports relative scale and moving midpoint without panning or clicking', () => {

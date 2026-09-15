@@ -30,6 +30,8 @@ function Probe({
   onCanvas,
   touchPanEnabled,
   touchPinchEnabled,
+  touchRotateEnabled,
+  focusRequest,
   onCamera,
 }: {
   target: THREE.Vector3;
@@ -38,6 +40,8 @@ function Probe({
   onCanvas?: (canvas: HTMLCanvasElement) => void;
   touchPanEnabled?: boolean;
   touchPinchEnabled?: boolean;
+  touchRotateEnabled?: boolean;
+  focusRequest?: number;
   onCamera?: (camera: THREE.Camera) => void;
 }) {
   const { gl, camera } = useThree();
@@ -53,6 +57,8 @@ function Probe({
     onQuickRightClick,
     touchPanEnabled,
     touchPinchEnabled,
+    touchRotateEnabled,
+    focusRequest,
   });
   useEffect(() => {
     onCanvas?.(gl.domElement);
@@ -234,6 +240,82 @@ describe('right mouse gesture', () => {
 });
 
 describe('opt-in touch camera pan', () => {
+  it('anchors clockwise twist and centers on demand without resetting zoom or heading', async () => {
+    const target = new THREE.Vector3();
+    const focus = new THREE.Vector3();
+    let canvas: HTMLCanvasElement | undefined;
+    const rig = new THREE.OrthographicCamera(-400, 400, 300, -300, 0.1, 1000);
+    rig.zoom = 80;
+    rig.updateProjectionMatrix();
+    const probe = (request: number) => (
+      <Probe
+        target={target}
+        focusTarget={focus}
+        touchPanEnabled
+        touchPinchEnabled
+        touchRotateEnabled
+        focusRequest={request}
+        onCanvas={(value) => {
+          canvas = value;
+        }}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(probe(0), {
+      camera: rig,
+    });
+    if (!canvas) throw new Error('missing canvas');
+    canvas.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    rig.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(0, 0), rig);
+    const anchor = ray.ray.intersectPlane(
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+      new THREE.Vector3()
+    )!;
+    const emit = (type: string, id: number, x: number, y: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: id },
+        pointerType: { value: 'touch' },
+      });
+      (type === 'pointerdown' ? canvas! : window).dispatchEvent(event);
+    };
+    const angle = (20 * Math.PI) / 180;
+    const x = 300 + 260 * Math.cos(angle),
+      y = 300 + 260 * Math.sin(angle);
+    emit('pointerdown', 1, 300, 300);
+    emit('pointerdown', 2, 500, 300);
+    emit('pointermove', 2, x, y);
+    expect(rig.zoom).toBeCloseTo(104);
+    const direction = rig.getWorldDirection(new THREE.Vector3());
+    expect(Math.atan2(-direction.z, -direction.x)).toBeCloseTo(
+      Math.PI / 4 - (12 * Math.PI) / 180
+    );
+    rig.updateMatrixWorld();
+    expect(anchor.clone().project(rig).x).toBeCloseTo(
+      ((300 + x) / 2 / 800) * 2 - 1,
+      7
+    );
+    expect(anchor.clone().project(rig).y).toBeCloseTo(
+      1 - ((300 + y) / 2 / 600) * 2,
+      7
+    );
+    emit('pointerup', 1, 300, 300);
+    emit('pointerup', 2, x, y);
+    const rotation = rig.quaternion.clone();
+    expect(target.length()).toBeGreaterThan(0.01);
+    await renderer.update(probe(1));
+    await renderer.advanceFrames(180, 1 / 60);
+    expect(target.distanceTo(focus)).toBeLessThan(0.01);
+    expect(rig.zoom).toBeCloseTo(104);
+    expect(rig.quaternion.angleTo(rotation)).toBeLessThan(1e-7);
+    await renderer.unmount();
+  });
   it('smoothly reaches shoulder while anchoring pinch, then resumes the PC wheel bands', async () => {
     const target = new THREE.Vector3();
     let canvas: HTMLCanvasElement | undefined;

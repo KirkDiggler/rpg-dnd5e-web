@@ -165,6 +165,10 @@ interface CameraControlsOptions {
   touchPanEnabled?: boolean;
   /** Continuous orthographic pinch within touch-pan mode; off by default. */
   touchPinchEnabled?: boolean;
+  /** Deliberate twist within the opted-in two-finger gesture. */
+  touchRotateEnabled?: boolean;
+  /** Increment to request the same camera focus operation as F. */
+  focusRequest?: number;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -199,6 +203,8 @@ export function useCameraControls({
   onQuickRightClick,
   touchPanEnabled = false,
   touchPinchEnabled = false,
+  touchRotateEnabled = false,
+  focusRequest = 0,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -221,6 +227,13 @@ export function useCameraControls({
   // `target`/`updateCamera`/`focusTarget` closures, matching how Q/E rotation
   // and WASD pan already defer their real work to useFrame.
   const oneShotKeys = useRef({ focus: false, fit: false });
+  const lastFocusRequest = useRef(focusRequest);
+  useEffect(() => {
+    if (lastFocusRequest.current === focusRequest) return;
+    lastFocusRequest.current = focusRequest;
+    oneShotKeys.current.focus = true;
+    invalidate();
+  }, [focusRequest, invalidate]);
 
   // Latest `revealedBounds` prop, mirrored into a ref every render so the
   // `Home` handling above (which only runs inside useFrame, not on every
@@ -489,6 +502,7 @@ export function useCameraControls({
       // A later wheel gesture deliberately returns to the PC's band controls.
       currentOrthoBand();
       const wasTouch = lastZoomWasTouch.current;
+      const previousAzimuth = azimuth.current;
       lastZoomWasTouch.current = true;
       if (
         !zoomAboutGroundPoint({
@@ -498,10 +512,17 @@ export function useCameraControls({
           viewport: gl.domElement.getBoundingClientRect(),
           minZoom,
           maxZoom,
-          updateView: updateCamera,
+          updateView: () => {
+            // Camera heading moves opposite screen-clockwise finger rotation so
+            // the board follows the fingers. The helper supplies the midpoint
+            // pivot; desktop Q/E keeps its existing me/view pivot behavior.
+            if (touchRotateEnabled) azimuth.current -= pinch.rotationRad ?? 0;
+            updateCamera();
+          },
         })
       ) {
         lastZoomWasTouch.current = wasTouch;
+        azimuth.current = previousAzimuth;
         return;
       }
       lastOrthoBandStep.current = {
@@ -525,6 +546,7 @@ export function useCameraControls({
       maxZoom,
       updateCamera,
       invalidate,
+      touchRotateEnabled,
     ]
   );
 
@@ -533,6 +555,7 @@ export function useCameraControls({
     return bindTouchPan({
       canvas: gl.domElement,
       onPan: panFromScreen,
+      rotationEnabled: touchRotateEnabled,
       onPinch:
         touchPinchEnabled && camera instanceof THREE.OrthographicCamera
           ? pinchFromScreen
@@ -543,6 +566,7 @@ export function useCameraControls({
     camera,
     touchPanEnabled,
     touchPinchEnabled,
+    touchRotateEnabled,
     panFromScreen,
     pinchFromScreen,
   ]);

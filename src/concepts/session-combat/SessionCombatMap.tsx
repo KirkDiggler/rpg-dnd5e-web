@@ -9,6 +9,8 @@ export interface SessionCombatMapProps {
   interactionEnabled?: boolean;
   touchPanEnabled?: boolean;
   touchPinchEnabled?: boolean;
+  touchRotateEnabled?: boolean;
+  focusRequest?: number;
 }
 
 /**
@@ -23,6 +25,8 @@ export function SessionCombatMap({
   interactionEnabled,
   touchPanEnabled,
   touchPinchEnabled,
+  touchRotateEnabled,
+  focusRequest,
 }: SessionCombatMapProps) {
   return (
     <SessionCanvas
@@ -40,6 +44,8 @@ export function SessionCombatMap({
       interactionEnabled={interactionEnabled}
       touchPanEnabled={touchPanEnabled}
       touchPinchEnabled={touchPinchEnabled}
+      touchRotateEnabled={touchRotateEnabled}
+      focusRequest={focusRequest}
     />
   );
 }

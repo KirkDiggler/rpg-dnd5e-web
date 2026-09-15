@@ -235,6 +235,8 @@ interface CombatExperienceBaseProps {
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onOpenEquipment?: () => void;
+  /** Local camera command; independent of turn and declaration authority. */
+  onCenterView?: () => void;
   equipmentOpen?: boolean;
   /**
    * Search the region the viewer stands in (rpg-project#350/#886).

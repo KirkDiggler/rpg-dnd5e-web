@@ -11,12 +11,15 @@ export interface ScreenPinchDelta {
   scale: number;
   from: ScreenPoint;
   to: ScreenPoint;
+  /** Finger twist in screen radians: positive is clockwise. */
+  rotationRad?: number;
 }
 export interface TouchPanInput {
   canvas: HTMLCanvasElement;
   onPan: (delta: ScreenPanDelta) => void;
   /** Omitted retains the one-finger-only policy: a second finger cancels. */
   onPinch?: (delta: ScreenPinchDelta) => void;
+  rotationEnabled?: boolean;
 }
 interface Gesture {
   id: number;
@@ -29,9 +32,16 @@ interface Gesture {
 interface Pinch {
   midpoint: ScreenPoint;
   span: number;
+  angle: number;
+  twist: number;
 }
 const PAN_THRESHOLD_PX = 6;
 const MIN_PINCH_SPAN_PX = 8;
+const TWIST_THRESHOLD_RAD = (8 * Math.PI) / 180;
+// A continuous dead zone: crossing it never applies an accumulated angle jump,
+// and reversing to the start returns the board to its original heading.
+const deliberateTwist = (angle: number): number =>
+  Math.sign(angle) * Math.max(0, Math.abs(angle) - TWIST_THRESHOLD_RAD);
 
 /**
  * Canvas-only touch gestures, with window tracking for release and interruption.
@@ -43,6 +53,7 @@ export function bindTouchPan({
   canvas,
   onPan,
   onPinch,
+  rotationEnabled = false,
 }: TouchPanInput): () => void {
   const originalTouchAction = canvas.style.touchAction;
   canvas.style.touchAction = 'none';
@@ -71,6 +82,8 @@ export function bindTouchPan({
     return {
       midpoint: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
       span: Math.hypot(first.x - second.x, first.y - second.y),
+      angle: Math.atan2(second.y - first.y, second.x - first.x),
+      twist: 0,
     };
   };
   const releaseCapture = (id: number): void => {
@@ -143,10 +156,21 @@ export function bindTouchPan({
         previous.span >= MIN_PINCH_SPAN_PX &&
         next.span >= MIN_PINCH_SPAN_PX
       ) {
+        const deltaAngle = Math.atan2(
+          Math.sin(next.angle - previous.angle),
+          Math.cos(next.angle - previous.angle)
+        );
+        next.twist = previous.twist + deltaAngle;
         onPinch?.({
           scale: next.span / previous.span,
           from: previous.midpoint,
           to: next.midpoint,
+          ...(rotationEnabled
+            ? {
+                rotationRad:
+                  deliberateTwist(next.twist) - deliberateTwist(previous.twist),
+              }
+            : {}),
         });
       }
       return;

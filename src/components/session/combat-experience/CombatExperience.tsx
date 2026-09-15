@@ -183,6 +183,7 @@ export function CombatExperience({
   onEndTurn,
   onLogModeChange,
   onOpenEquipment,
+  onCenterView,
   equipmentOpen,
   onSearch,
   searchPending = false,
@@ -624,6 +625,7 @@ export function CombatExperience({
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
             onOpenEquipment={onOpenEquipment}
+            onCenterView={onCenterView}
             endTurnTarget={
               actionPresentation?.mode === 'organized-hud'
                 ? endTurnTarget

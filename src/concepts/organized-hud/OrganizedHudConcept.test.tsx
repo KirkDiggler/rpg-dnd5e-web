@@ -3,12 +3,41 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../session-combat/SessionCombatMap', () => ({
-  SessionCombatMap: () => <div data-testid="fixture-map" />,
+  SessionCombatMap: ({ focusRequest }: { focusRequest?: number }) => (
+    <div data-testid="fixture-map" data-focus-request={focusRequest} />
+  ),
 }));
 
 import { OrganizedHudConcept } from './OrganizedHudConcept';
 
 describe('OrganizedHudConcept', () => {
+  it.each(['Full slots', 'Spectator', 'Stale authority'])(
+    'keeps camera centering available in %s',
+    (scenario) => {
+      render(<OrganizedHudConcept />);
+      fireEvent.click(screen.getByRole('button', { name: scenario }));
+      fireEvent.click(screen.getByRole('button', { name: 'Center on me' }));
+      expect(screen.getByTestId('fixture-map')).toHaveAttribute(
+        'data-focus-request',
+        '1'
+      );
+      expect(
+        screen.getByText('No intent sent — fixture-only walkthrough.')
+      ).toBeInTheDocument();
+    }
+  );
+
+  it('centers the camera without cancelling an armed spell', () => {
+    render(<OrganizedHudConcept />);
+    fireEvent.click(screen.getByRole('button', { name: /spells \d/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Bane\./i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Center on me' }));
+    expect(screen.getByText('Choose 1–2 targets')).toBeInTheDocument();
+    expect(screen.getByTestId('fixture-map')).toHaveAttribute(
+      'data-focus-request',
+      '1'
+    );
+  });
   it('requests fullscreen only on tap, reports refusal, and restores the page title', async () => {
     const previous = Object.getOwnPropertyDescriptor(
       document.documentElement,
