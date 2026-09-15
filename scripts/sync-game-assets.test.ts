@@ -198,6 +198,18 @@ afterEach(async () => {
       rm(root, {
         force: true,
         recursive: true,
+        // Every fixture root holds a real `git init` repo, and the script
+        // under test runs `git status` then exits immediately (its "exactly
+        // clean" guard). The rejection settles the instant `sh` exits, so
+        // this delete can begin while git's own writes into .git are still
+        // landing -- surfacing as ENOTEMPTY on a .git subdirectory. `force`
+        // suppresses ENOENT, not that. These are the options node documents
+        // for exactly that transient set (EBUSY/EMFILE/ENFILE/ENOTEMPTY/
+        // EPERM); the tree is throwaway scratch whose only requirement is to
+        // be gone, so retrying its removal is the intended API use rather
+        // than a mask over a product bug.
+        maxRetries: 3,
+        retryDelay: 100,
       })
     )
   );
