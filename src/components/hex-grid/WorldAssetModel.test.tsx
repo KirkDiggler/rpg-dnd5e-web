@@ -14,7 +14,14 @@ vi.mock('@react-three/drei', () => ({
     loadedUrls.push(url);
     const scene = new THREE.Group();
     scene.add(
-      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())
+      new THREE.Mesh(
+        new THREE.BoxGeometry(
+          0.24207866191864014,
+          0.2667747139930725,
+          0.23023077845573425
+        ),
+        new THREE.MeshStandardMaterial()
+      )
     );
     return { scene };
   },
@@ -72,11 +79,42 @@ describe('WorldAssetModel provider-baked placement', () => {
     const [width, height, depth] = GENERATED_WORLD_ASSETS[REF]!.boundsMeters;
     expect(onBoundsMeasured).toHaveBeenCalledWith({
       minY: 0,
-      maxY: height * SYNTY_SCALE,
-      width: width * SYNTY_SCALE,
-      height: height * SYNTY_SCALE,
-      depth: depth * SYNTY_SCALE,
+      maxY: height,
+      width,
+      height,
+      depth,
     });
+    await renderer.unmount();
+  });
+
+  it('reports the actual rendered source geometry size exactly once', async () => {
+    const onBoundsMeasured = vi.fn();
+    const [width, height, depth] = GENERATED_WORLD_ASSETS[REF]!.boundsMeters;
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={REF}
+        position={[0, 0, 0]}
+        rotationY={0}
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    model.instance.updateWorldMatrix(true, true);
+    const actual = new THREE.Box3()
+      .setFromObject(model.instance)
+      .getSize(new THREE.Vector3());
+    expect(actual.x).toBeCloseTo(width);
+    expect(actual.y).toBeCloseTo(height);
+    expect(actual.z).toBeCloseTo(depth);
+    expect(onBoundsMeasured).toHaveBeenCalledTimes(1);
+    expect(onBoundsMeasured).toHaveBeenCalledWith({
+      minY: 0,
+      maxY: height,
+      width,
+      height,
+      depth,
+    });
+    await renderer.unmount();
   });
 
   it('renders empty and reports a diagnostic for an unsupported exact ref', async () => {

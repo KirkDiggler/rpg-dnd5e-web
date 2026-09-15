@@ -11,6 +11,7 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
   type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
+import { addRepeatedProps } from './repeatPlacement';
 import {
   createRoomDraft,
   expandRoomWorkspace,
@@ -47,6 +48,7 @@ import {
 import {
   loadLibrary,
   loadScene,
+  MAX_ITEMS,
   parseLibraryJson,
   parseSceneJson,
   saveLibraryToStorage,
@@ -162,8 +164,9 @@ export function WorldBuildingConcept({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<WorldBuildingTool>('select');
   const [roomTool, setRoomTool] = useState<
-    'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle'
+    'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle' | 'repeat'
   >('paint');
+  const [repeatAssetRef, setRepeatAssetRef] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
     null
   );
@@ -518,6 +521,21 @@ export function WorldBuildingConcept({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [applyToSelection, duplicate, redo, remove, selectedIds, undo]);
+
+  const repeatDescriptor = useMemo(() => {
+    if (!roomMode || !repeatAssetRef) return undefined;
+    const entry = WORLD_BUILDING_CATALOG_BY_REF.get(repeatAssetRef);
+    if (entry?.source !== 'generated') return undefined;
+    const width = entry.asset.boundsMeters[0];
+    const maxCount = MAX_ITEMS - scene.items.length;
+    if (!Number.isFinite(width) || width <= 0 || maxCount < 1) return undefined;
+    return {
+      assetRef: entry.ref,
+      step: width,
+      originOffset: width / 2,
+      maxCount,
+    };
+  }, [repeatAssetRef, roomMode, scene.items.length]);
 
   const filteredCatalog = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -990,6 +1008,12 @@ export function WorldBuildingConcept({
                   onDragStart={(event) => {
                     writeWorldBuildingDragPayload(event.dataTransfer, payload);
                     setActiveDrag(payload);
+                    if (roomMode) {
+                      setRepeatAssetRef(null);
+                      setRoomTool((current) =>
+                        current === 'repeat' ? 'select' : current
+                      );
+                    }
                   }}
                   onDragEnd={() => setActiveDrag(null)}
                 >
@@ -1008,6 +1032,23 @@ export function WorldBuildingConcept({
                       {entry.source === 'legacy' ? entry.role : entry.category}
                       {entry.supportsDecoration ? ' · surface' : ''}
                     </small>
+                    {roomMode && entry.source === 'generated' && (
+                      <button
+                        type="button"
+                        className="wb-repeat-action"
+                        aria-label={`Repeat ${entry.label}`}
+                        disabled={MAX_ITEMS - scene.items.length < 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPreviewScene(null);
+                          setRepeatAssetRef(entry.ref);
+                          setRoomTool('repeat');
+                          setNotice('');
+                        }}
+                      >
+                        Repeat
+                      </button>
+                    )}
                     {entry.source === 'generated' && (
                       <span className="sr-only">
                         {generatedThumbnail?.status === 'error'
@@ -1045,6 +1086,7 @@ export function WorldBuildingConcept({
                     'paint',
                     'erase',
                     'rectangle',
+                    ...(repeatAssetRef ? (['repeat'] as const) : []),
                     'select',
                     'move',
                     'rotate',
@@ -1061,10 +1103,12 @@ export function WorldBuildingConcept({
                   aria-pressed={(roomMode ? roomTool : tool) === entry}
                   onClick={() => {
                     setPreviewScene(null);
+                    if (entry !== 'repeat') setRepeatAssetRef(null);
                     if (
                       entry === 'paint' ||
                       entry === 'erase' ||
-                      entry === 'rectangle'
+                      entry === 'rectangle' ||
+                      entry === 'repeat'
                     )
                       setRoomTool(entry);
                     else {
@@ -1084,11 +1128,15 @@ export function WorldBuildingConcept({
                   ? 'Drag on floor: erase walkable ground'
                   : roomMode && roomTool === 'rectangle'
                     ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
-                    : tool === 'select'
-                      ? 'Left: select · Shift-left: add selection'
-                      : tool === 'move'
-                        ? 'Drag arrows or planes · Esc/right-click: cancel'
-                        : 'Drag the Y ring · Esc/right-click: cancel'}
+                    : roomMode && roomTool === 'repeat'
+                      ? repeatDescriptor
+                        ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
+                        : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
+                      : tool === 'select'
+                        ? 'Left: select · Shift-left: add selection'
+                        : tool === 'move'
+                          ? 'Drag arrows or planes · Esc/right-click: cancel'
+                          : 'Drag the Y ring · Esc/right-click: cancel'}
             </span>
           </div>
           <div className="wb-stage-bar">
@@ -1114,6 +1162,7 @@ export function WorldBuildingConcept({
                       tool: roomTool,
                       workspace: roomDraft.workspace,
                       walkableHexes: roomDraft.room.walkableHexes,
+                      repeat: repeatDescriptor,
                       propDeclarations:
                         footprintPreview && selectedProp
                           ? {
@@ -1128,6 +1177,24 @@ export function WorldBuildingConcept({
                           mode
                         );
                         commit(scene, selectedIds, next.room);
+                      },
+                      onRepeatGesture: (assetRef, transforms) => {
+                        try {
+                          const result = addRepeatedProps({
+                            scene,
+                            assetRef,
+                            transforms,
+                            idFactory,
+                            label: 'Repeated pieces',
+                          });
+                          commit(result.scene, result.selectedIds);
+                        } catch (error) {
+                          setNotice(
+                            error instanceof Error
+                              ? error.message
+                              : String(error)
+                          );
+                        }
                       },
                     }
                   : undefined
