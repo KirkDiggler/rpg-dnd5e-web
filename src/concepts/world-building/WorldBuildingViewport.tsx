@@ -31,6 +31,8 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import { layoutRepeatedProps } from './repeatPlacement';
+import { RepeatPlacementPreview } from './RepeatPlacementPreview';
 import {
   walkableCellsInWorldRectangle,
   type RoomHexCell,
@@ -39,7 +41,7 @@ import {
 } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
-import type { WorldScene } from './types';
+import type { WorldScene, WorldTransform } from './types';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
   WorldBuildingDropInteraction,
@@ -74,13 +76,30 @@ export interface WorldBuildingViewportProps {
   onTransformReject: (message: string) => void;
   onAssetState: (id: string, state: 'loaded' | 'error') => void;
   roomAuthoring?: {
-    tool: 'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle';
+    tool:
+      | 'select'
+      | 'move'
+      | 'rotate'
+      | 'paint'
+      | 'erase'
+      | 'rectangle'
+      | 'repeat';
     walkableHexes: readonly RoomHexCell[];
     workspace: RoomWorkspace;
     propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
     onWalkableGesture: (
       cells: readonly RoomHexCell[],
       mode: 'paint' | 'erase'
+    ) => void;
+    repeat?: {
+      assetRef: string;
+      step: number;
+      originOffset: number;
+      maxCount: number;
+    };
+    onRepeatGesture?: (
+      assetRef: string,
+      transforms: readonly WorldTransform[]
     ) => void;
   };
 }
@@ -449,9 +468,21 @@ export function WorldSceneContents(
         start: { x: number; z: number };
         cells: RoomHexCell[];
       } & CapturedFloorPointer)
+    | ({
+        kind: 'repeat';
+        start: { x: number; z: number };
+        descriptor: NonNullable<
+          NonNullable<WorldBuildingViewportProps['roomAuthoring']>['repeat']
+        >;
+        transforms: WorldTransform[];
+      } & CapturedFloorPointer)
     | null
   >(null);
   const [rectanglePreview, setRectanglePreview] = useState<RoomHexCell[]>([]);
+  const [repeatPreview, setRepeatPreview] = useState<{
+    assetRef: string;
+    transforms: WorldTransform[];
+  } | null>(null);
   const [transforming, setTransforming] = useState(false);
   const [measuredById, setMeasuredById] = useState<
     ReadonlyMap<string, MeasuredWorldPropBounds>
@@ -519,7 +550,14 @@ export function WorldSceneContents(
     floorGesture.current = null;
     if (gesture) releaseFloorPointer(gesture);
     setRectanglePreview([]);
+    setRepeatPreview(null);
   }, [releaseFloorPointer]);
+  const cancelOwnedFloorGesture = useCallback(
+    (pointerId: number) => {
+      if (floorGesture.current?.pointerId === pointerId) cancelFloorGesture();
+    },
+    [cancelFloorGesture]
+  );
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') cancelFloorGesture();
@@ -528,24 +566,27 @@ export function WorldSceneContents(
       if (event.button === 2) cancelFloorGesture();
     };
     const cancelOnContextMenu = () => cancelFloorGesture();
+    const cancelOnLostCapture = (event: PointerEvent) =>
+      cancelOwnedFloorGesture(event.pointerId);
     window.addEventListener('keydown', cancelOnEscape);
     gl.domElement.addEventListener('pointerdown', cancelOnRightClick);
     gl.domElement.addEventListener('contextmenu', cancelOnContextMenu);
-    gl.domElement.addEventListener('lostpointercapture', cancelFloorGesture);
+    gl.domElement.addEventListener('lostpointercapture', cancelOnLostCapture);
     return () => {
       window.removeEventListener('keydown', cancelOnEscape);
       gl.domElement.removeEventListener('pointerdown', cancelOnRightClick);
       gl.domElement.removeEventListener('contextmenu', cancelOnContextMenu);
       gl.domElement.removeEventListener(
         'lostpointercapture',
-        cancelFloorGesture
+        cancelOnLostCapture
       );
     };
-  }, [cancelFloorGesture, gl.domElement]);
+  }, [cancelFloorGesture, cancelOwnedFloorGesture, gl.domElement]);
   useEffect(cancelFloorGesture, [
     cancelFloorGesture,
     props.roomAuthoring?.tool,
   ]);
+  useEffect(() => cancelFloorGesture, [cancelFloorGesture]);
 
   return (
     <>
@@ -555,6 +596,18 @@ export function WorldSceneContents(
       <directionalLight position={[7, 12, 6]} intensity={1.35} castShadow />
       <hemisphereLight args={['#a5f3fc', '#172026', 0.55]} />
       <VisualPointLights lights={pointLights} />
+      {repeatPreview &&
+        (() => {
+          const entry = WORLD_BUILDING_CATALOG_BY_REF.get(
+            repeatPreview.assetRef
+          );
+          return entry?.source === 'generated' ? (
+            <RepeatPlacementPreview
+              entry={entry}
+              transforms={repeatPreview.transforms}
+            />
+          ) : null;
+        })()}
       <mesh
         name="world-building-finite-ground"
         userData={{ worldBuildingGround: true }}
@@ -563,8 +616,43 @@ export function WorldSceneContents(
         receiveShadow
         onPointerDown={(event) => {
           if (event.button !== 0 || isGizmoPointer()) return;
+          if (floorGesture.current) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
+          if (roomTool === 'repeat') {
+            const descriptor = props.roomAuthoring?.repeat;
+            if (!descriptor) return;
+            const start = { x: event.point.x, z: event.point.z };
+            try {
+              const layout = layoutRepeatedProps({
+                start,
+                end: start,
+                step: descriptor.step,
+                originOffset: descriptor.originOffset,
+                maxCount: descriptor.maxCount,
+              });
+              const target = event.target as Element;
+              target.setPointerCapture?.(event.pointerId);
+              floorGesture.current = {
+                kind: 'repeat',
+                start,
+                descriptor: { ...descriptor },
+                transforms: layout.transforms,
+                pointerId: event.pointerId,
+                target,
+              };
+              setRepeatPreview({
+                assetRef: descriptor.assetRef,
+                transforms: layout.transforms,
+              });
+            } catch (error) {
+              cancelFloorGesture();
+              props.onTransformReject(
+                error instanceof Error ? error.message : String(error)
+              );
+            }
+            return;
+          }
           if (roomTool === 'rectangle') {
             const start = { x: event.point.x, z: event.point.z };
             const cells = walkableCellsInWorldRectangle(
@@ -607,8 +695,31 @@ export function WorldSceneContents(
           if (event.buttons !== 1) return;
           const roomTool = props.roomAuthoring?.tool;
           const gesture = floorGesture.current;
-          if (!gesture) return;
+          if (!gesture || event.pointerId !== gesture.pointerId) return;
           event.stopPropagation();
+          if (roomTool === 'repeat' && gesture.kind === 'repeat') {
+            try {
+              const layout = layoutRepeatedProps({
+                start: gesture.start,
+                end: { x: event.point.x, z: event.point.z },
+                step: gesture.descriptor.step,
+                originOffset: gesture.descriptor.originOffset,
+                maxCount: gesture.descriptor.maxCount,
+              });
+              gesture.transforms = layout.transforms;
+              setRepeatPreview({
+                assetRef: gesture.descriptor.assetRef,
+                transforms: layout.transforms,
+              });
+            } catch (error) {
+              gesture.transforms = [];
+              setRepeatPreview(null);
+              props.onTransformReject(
+                error instanceof Error ? error.message : String(error)
+              );
+            }
+            return;
+          }
           if (roomTool === 'rectangle' && gesture.kind === 'rectangle') {
             const cells = walkableCellsInWorldRectangle(
               gesture.start,
@@ -632,13 +743,21 @@ export function WorldSceneContents(
           gesture.cells.set(`${cell.q},${cell.r}`, cell);
         }}
         onPointerUp={(event) => {
-          if (!floorGesture.current) return;
-          event.stopPropagation();
           const gesture = floorGesture.current;
+          if (!gesture || event.pointerId !== gesture.pointerId) return;
+          event.stopPropagation();
           floorGesture.current = null;
           releaseFloorPointer(gesture);
           setRectanglePreview([]);
-          if (gesture.kind === 'rectangle') {
+          setRepeatPreview(null);
+          if (gesture.kind === 'repeat') {
+            if (gesture.transforms.length > 0) {
+              props.roomAuthoring?.onRepeatGesture?.(
+                gesture.descriptor.assetRef,
+                gesture.transforms
+              );
+            }
+          } else if (gesture.kind === 'rectangle') {
             if (gesture.cells.length > 0)
               props.roomAuthoring?.onWalkableGesture(gesture.cells, 'paint');
           } else {
@@ -648,7 +767,7 @@ export function WorldSceneContents(
             );
           }
         }}
-        onPointerCancel={cancelFloorGesture}
+        onPointerCancel={(event) => cancelOwnedFloorGesture(event.pointerId)}
       >
         <circleGeometry args={[workspaceGroundRadius, 6]} />
         <meshStandardMaterial
