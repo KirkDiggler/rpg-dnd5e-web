@@ -1010,7 +1010,9 @@ export function WorldBuildingConcept({
                     setActiveDrag(payload);
                     if (roomMode) {
                       setRepeatAssetRef(null);
-                      setRoomTool('select');
+                      setRoomTool((current) =>
+                        current === 'repeat' ? 'select' : current
+                      );
                     }
                   }}
                   onDragEnd={() => setActiveDrag(null)}
@@ -1034,6 +1036,7 @@ export function WorldBuildingConcept({
                       <button
                         type="button"
                         className="wb-repeat-action"
+                        aria-label={`Repeat ${entry.label}`}
                         disabled={MAX_ITEMS - scene.items.length < 1}
                         onClick={(event) => {
                           event.stopPropagation();

@@ -552,6 +552,12 @@ export function WorldSceneContents(
     setRectanglePreview([]);
     setRepeatPreview(null);
   }, [releaseFloorPointer]);
+  const cancelOwnedFloorGesture = useCallback(
+    (pointerId: number) => {
+      if (floorGesture.current?.pointerId === pointerId) cancelFloorGesture();
+    },
+    [cancelFloorGesture]
+  );
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') cancelFloorGesture();
@@ -560,20 +566,22 @@ export function WorldSceneContents(
       if (event.button === 2) cancelFloorGesture();
     };
     const cancelOnContextMenu = () => cancelFloorGesture();
+    const cancelOnLostCapture = (event: PointerEvent) =>
+      cancelOwnedFloorGesture(event.pointerId);
     window.addEventListener('keydown', cancelOnEscape);
     gl.domElement.addEventListener('pointerdown', cancelOnRightClick);
     gl.domElement.addEventListener('contextmenu', cancelOnContextMenu);
-    gl.domElement.addEventListener('lostpointercapture', cancelFloorGesture);
+    gl.domElement.addEventListener('lostpointercapture', cancelOnLostCapture);
     return () => {
       window.removeEventListener('keydown', cancelOnEscape);
       gl.domElement.removeEventListener('pointerdown', cancelOnRightClick);
       gl.domElement.removeEventListener('contextmenu', cancelOnContextMenu);
       gl.domElement.removeEventListener(
         'lostpointercapture',
-        cancelFloorGesture
+        cancelOnLostCapture
       );
     };
-  }, [cancelFloorGesture, gl.domElement]);
+  }, [cancelFloorGesture, cancelOwnedFloorGesture, gl.domElement]);
   useEffect(cancelFloorGesture, [
     cancelFloorGesture,
     props.roomAuthoring?.tool,
@@ -608,6 +616,7 @@ export function WorldSceneContents(
         receiveShadow
         onPointerDown={(event) => {
           if (event.button !== 0 || isGizmoPointer()) return;
+          if (floorGesture.current) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
           if (roomTool === 'repeat') {
@@ -758,7 +767,7 @@ export function WorldSceneContents(
             );
           }
         }}
-        onPointerCancel={cancelFloorGesture}
+        onPointerCancel={(event) => cancelOwnedFloorGesture(event.pointerId)}
       >
         <circleGeometry args={[workspaceGroundRadius, 6]} />
         <meshStandardMaterial

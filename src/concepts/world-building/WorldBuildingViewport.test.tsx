@@ -207,7 +207,11 @@ describe('room floor pointer ownership', () => {
       'pointerDown',
       event(new THREE.Vector3(0, 0, 0))
     );
-    await renderer.fireEvent(ground, 'pointerCancel', {});
+    await renderer.fireEvent(
+      ground,
+      'pointerCancel',
+      event(new THREE.Vector3(0, 0, 0))
+    );
     await renderer.fireEvent(
       ground,
       'pointerUp',
@@ -257,8 +261,10 @@ describe('room repeat pointer ownership', () => {
       },
       showCompositionBounds: false,
     };
+    let canvas: HTMLCanvasElement | undefined;
     const renderer = await ReactThreeTestRenderer.create(
-      <WorldSceneContents {...baseProps} />
+      <WorldSceneContents {...baseProps} />,
+      { beforeReturn: (value) => (canvas = value) }
     );
     const ground = renderer.scene.findByProps({
       name: 'world-building-finite-ground',
@@ -267,18 +273,38 @@ describe('room repeat pointer ownership', () => {
       setPointerCapture: vi.fn(),
       releasePointerCapture: vi.fn(),
     };
-    const event = (pointerId: number, x: number, z = 0) => ({
+    const event = (
+      pointerId: number,
+      x: number,
+      z = 0,
+      eventTarget = target
+    ) => ({
       button: 0,
       buttons: 1,
       pointerId,
       point: new THREE.Vector3(x, 0, z),
-      target,
+      target: eventTarget,
       shiftKey: false,
       stopPropagation: vi.fn(),
     });
+    const secondTarget = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
 
     await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
     expect(target.setPointerCapture).toHaveBeenCalledWith(7);
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      event(8, 2, 0, secondTarget)
+    );
+    expect(secondTarget.setPointerCapture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerCancel', event(8, 2));
+    const unrelatedLostCapture = new Event('lostpointercapture');
+    Object.defineProperty(unrelatedLostCapture, 'pointerId', { value: 8 });
+    canvas!.dispatchEvent(unrelatedLostCapture);
+    expect(target.releasePointerCapture).not.toHaveBeenCalled();
     expect(
       renderer.scene.findByProps({ name: 'repeat-placement-preview' }).props
         .userData.count
@@ -301,13 +327,27 @@ describe('room repeat pointer ownership', () => {
     expect(target.releasePointerCapture).toHaveBeenCalledWith(7);
 
     await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
-    await renderer.fireEvent(ground, 'pointerCancel', {});
+    await renderer.fireEvent(ground, 'pointerMove', event(7, 100));
+    expect(baseProps.onTransformReject).toHaveBeenCalledWith(
+      expect.stringMatching(/capacity/i)
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'repeat-placement-preview' })
+    ).toHaveLength(0);
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 100));
+    expect(onRepeatGesture).toHaveBeenCalledTimes(1);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    await renderer.fireEvent(ground, 'pointerCancel', event(7, 0));
     await renderer.fireEvent(ground, 'pointerUp', event(7, 4));
     expect(onRepeatGesture).toHaveBeenCalledTimes(1);
     expect(
       renderer.scene.findAllByProps({ name: 'repeat-placement-preview' })
     ).toHaveLength(0);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
     await renderer.unmount();
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(4);
   });
 });
 

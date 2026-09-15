@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addRepeatedProps, layoutRepeatedProps } from './repeatPlacement';
 import { createEmptyScene } from './sceneState';
-import { stringifyScene } from './serialization';
+import { MAX_ITEMS, stringifyScene } from './serialization';
 
 const REF = 'dnd5e:props:dark-fortress:barricade_02';
 
@@ -42,6 +42,9 @@ describe('layoutRepeatedProps', () => {
     });
     expect(diagonal.count).toBe(2);
     expect(diagonal.transforms[0]).toMatchObject({ x: 0.75, y: 0, z: 1 });
+    expect(diagonal.transforms[0]!.rotationY).toBeCloseTo(
+      Math.atan2(-0.8, 0.6)
+    );
     expect(diagonal.snappedEnd).toEqual({ x: 3, z: 4 });
   });
 
@@ -153,6 +156,31 @@ describe('addRepeatedProps', () => {
     ).toThrow(/Identity already exists/);
     expect(scene.items).toEqual([]);
     expect(scene.groups).toEqual([]);
+  });
+
+  it('rejects live scene-capacity overflow without changing the input', () => {
+    const scene = createEmptyScene('scene');
+    scene.items = Array.from({ length: MAX_ITEMS - 1 }, (_, index) => ({
+      id: `existing-${index}`,
+      kind: 'prop' as const,
+      assetRef: REF,
+      label: 'Existing',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    }));
+    const before = structuredClone(scene);
+    expect(() =>
+      addRepeatedProps({
+        scene,
+        assetRef: REF,
+        transforms: [
+          { x: 1, y: 0, z: 0, rotationY: 0 },
+          { x: 3, y: 0, z: 0, rotationY: 0 },
+        ],
+        idFactory: () => 'unused',
+        label: 'Repeated pieces',
+      })
+    ).toThrow(/scene capacity/i);
+    expect(scene).toEqual(before);
   });
 
   it('rejects an empty run', () => {

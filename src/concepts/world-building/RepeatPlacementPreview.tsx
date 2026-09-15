@@ -6,6 +6,14 @@ import type { GeneratedWorldBuildingCatalogEntry } from './catalog';
 import type { WorldTransform } from './types';
 import { WorldPropModel } from './WorldPropModel';
 
+export function RepeatPlacementCount({ count }: { count: number }) {
+  return (
+    <output className="wb-repeat-preview-count" aria-live="polite">
+      {count} {count === 1 ? 'piece' : 'pieces'}
+    </output>
+  );
+}
+
 export function RepeatPlacementPreview({
   entry,
   transforms,
@@ -54,9 +62,7 @@ export function RepeatPlacementPreview({
         ]}
         center
       >
-        <output className="wb-repeat-preview-count" aria-live="polite">
-          {transforms.length} {transforms.length === 1 ? 'piece' : 'pieces'}
-        </output>
+        <RepeatPlacementCount count={transforms.length} />
       </Html>
     </group>
   );

@@ -1181,7 +1181,9 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       target: { value: 'Barricade 02' },
     });
     expect(scene().items).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Repeat' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Repeat Barricade 02' })
+    );
     expect(screen.getByTestId('viewport-room-tool').textContent).toBe('repeat');
     expect(scene().items).toHaveLength(0);
 
@@ -1193,18 +1195,57 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(
       scene().items.every((item) => item.parentId === scene().groups[0]!.id)
     ).toBe(true);
-    const committed = structuredClone(scene());
+    const firstRun = structuredClone(scene());
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('repeat');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit repeat gesture' })
+    );
+    expect(scene().items).toHaveLength(4);
+    expect(scene().groups).toHaveLength(2);
+    const secondRun = structuredClone(scene());
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(scene().items).toHaveLength(0);
+    expect(scene()).toEqual(firstRun);
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('repeat');
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-    expect(scene()).toEqual(committed);
+    expect(scene()).toEqual(secondRun);
 
     await waitFor(() =>
       expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBeTruthy()
     );
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
-    expect(scene()).toEqual(committed);
+    expect(scene()).toEqual(secondRun);
+  });
+
+  it('disarms Repeat on palette drag without changing another room tool on a canceled drag', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Rectangle' }));
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe(
+      'rectangle'
+    );
+
+    const card = screen.getByLabelText('Drag Barricade 02 into scene');
+    const transfer = new TransferStub();
+    fireEvent.dragStart(card, { dataTransfer: transfer });
+    fireEvent.dragEnd(card, { dataTransfer: transfer });
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe(
+      'rectangle'
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Repeat Barricade 02' })
+    );
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('repeat');
+    fireEvent.dragStart(card, { dataTransfer: transfer });
+    fireEvent.dragEnd(card, { dataTransfer: transfer });
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('select');
   });
 
   it('keeps corrupt current room bytes through StrictMode replay and unrelated edits until explicit save', () => {
