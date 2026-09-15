@@ -36,7 +36,12 @@ import {
   reduceOrbitPivotAutoState,
   resolveOrbitPivot,
 } from './orbitPivotMode';
-import { bindTouchPan, type ScreenPanDelta } from './touchPan';
+import { zoomAboutGroundPoint } from './pinchZoom';
+import {
+  bindTouchPan,
+  type ScreenPanDelta,
+  type ScreenPinchDelta,
+} from './touchPan';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
  * radian-based azimuth math. */
@@ -157,6 +162,8 @@ interface CameraControlsOptions {
   onQuickRightClick?: () => void;
   /** Fixture-first opt-in; omitted preserves existing mouse/keyboard controls. */
   touchPanEnabled?: boolean;
+  /** Continuous orthographic pinch within touch-pan mode; off by default. */
+  touchPinchEnabled?: boolean;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -190,6 +197,7 @@ export function useCameraControls({
   revealedBounds,
   onQuickRightClick,
   touchPanEnabled = false,
+  touchPinchEnabled = false,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -263,6 +271,7 @@ export function useCameraControls({
   // The selected orthographic camera band. Null means resolve the nearest
   // authored band from the Canvas's initial zoom on first use.
   const orthoBandIndex = useRef<number | null>(null);
+  const lastZoomWasTouch = useRef(false);
   const lastOrthoBandStep = useRef({
     at: Number.NEGATIVE_INFINITY,
     direction: 0,
@@ -455,10 +464,66 @@ export function useCameraControls({
     [target, worldPerPixel, currentPolar, updateCamera, invalidate]
   );
 
+  const pinchFromScreen = useCallback(
+    (pinch: ScreenPinchDelta) => {
+      if (!(camera instanceof THREE.OrthographicCamera)) return;
+      // Keep the current band's pitch/focus lead while touch zoom is continuous.
+      // A later wheel gesture deliberately returns to the PC's band controls.
+      currentOrthoBand();
+      if (
+        !zoomAboutGroundPoint({
+          ...pinch,
+          camera,
+          target,
+          viewport: gl.domElement.getBoundingClientRect(),
+          minZoom,
+          maxZoom,
+        })
+      )
+        return;
+      lastZoomWasTouch.current = true;
+      lastOrthoBandStep.current = {
+        at: Number.NEGATIVE_INFINITY,
+        direction: 0,
+      };
+      lerpTarget.current = null;
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
+      updateCamera();
+      invalidate();
+    },
+    [
+      camera,
+      currentOrthoBand,
+      target,
+      gl,
+      minZoom,
+      maxZoom,
+      updateCamera,
+      invalidate,
+    ]
+  );
+
   useEffect(() => {
     if (!touchPanEnabled) return;
-    return bindTouchPan({ canvas: gl.domElement, onPan: panFromScreen });
-  }, [gl, touchPanEnabled, panFromScreen]);
+    return bindTouchPan({
+      canvas: gl.domElement,
+      onPan: panFromScreen,
+      onPinch:
+        touchPinchEnabled && camera instanceof THREE.OrthographicCamera
+          ? pinchFromScreen
+          : undefined,
+    });
+  }, [
+    gl,
+    camera,
+    touchPanEnabled,
+    touchPinchEnabled,
+    panFromScreen,
+    pinchFromScreen,
+  ]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -594,6 +659,10 @@ export function useCameraControls({
       // Orthographic cameras with authored bands move one deliberate stop per
       // wheel gesture. The fixed-angle escape hatch keeps continuous zoom.
       if (camera instanceof THREE.OrthographicCamera) {
+        if (lastZoomWasTouch.current && e.deltaY !== 0) {
+          orthoBandIndex.current = null;
+          lastZoomWasTouch.current = false;
+        }
         if (curve && curve.bands.length > 0 && e.deltaY !== 0) {
           const direction = e.deltaY < 0 ? 1 : -1;
           const previousStep = lastOrthoBandStep.current;
@@ -713,6 +782,7 @@ export function useCameraControls({
         );
         if (fitIndex >= 0) {
           orthoBandIndex.current = fitIndex;
+          lastZoomWasTouch.current = false;
           camera.zoom = curve.bands[fitIndex]!.zoom;
           camera.updateProjectionMatrix();
           target.set(bounds.centerX, target.y, bounds.centerZ);

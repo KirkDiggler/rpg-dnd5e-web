@@ -12,11 +12,16 @@ import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { useEffect } from 'react';
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseCameraDials } from './cameraDials';
 import { useCameraControls } from './useCameraControls';
 
 const dials = parseCameraDials('');
+beforeAll(() => {
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+});
 
 function Probe({
   target,
@@ -24,14 +29,18 @@ function Probe({
   onQuickRightClick,
   onCanvas,
   touchPanEnabled,
+  touchPinchEnabled,
+  onCamera,
 }: {
   target: THREE.Vector3;
   focusTarget: THREE.Vector3;
   onQuickRightClick?: () => void;
   onCanvas?: (canvas: HTMLCanvasElement) => void;
   touchPanEnabled?: boolean;
+  touchPinchEnabled?: boolean;
+  onCamera?: (camera: THREE.Camera) => void;
 }) {
-  const { gl } = useThree();
+  const { gl, camera } = useThree();
   useCameraControls({
     target,
     focusTarget,
@@ -43,10 +52,12 @@ function Probe({
     maxDistance: dials.maxDistance,
     onQuickRightClick,
     touchPanEnabled,
+    touchPinchEnabled,
   });
   useEffect(() => {
     onCanvas?.(gl.domElement);
-  }, [gl.domElement, onCanvas]);
+    onCamera?.(camera);
+  }, [gl.domElement, camera, onCanvas, onCamera]);
   return null;
 }
 
@@ -223,6 +234,64 @@ describe('right mouse gesture', () => {
 });
 
 describe('opt-in touch camera pan', () => {
+  it('pinches continuously without tilt changes, then resumes the PC wheel bands from the current zoom', async () => {
+    const target = new THREE.Vector3();
+    let canvas: HTMLCanvasElement | undefined;
+    let camera: THREE.OrthographicCamera | undefined;
+    // The external test renderer imports its own Three instance. Supply the
+    // same concrete camera class as this hook so instanceof branches are tested.
+    const rig = new THREE.OrthographicCamera(-400, 400, 300, -300, 0.1, 1000);
+    rig.zoom = 80;
+    rig.updateProjectionMatrix();
+    const renderer = await ReactThreeTestRenderer.create(
+      <Probe
+        target={target}
+        focusTarget={new THREE.Vector3()}
+        touchPanEnabled
+        touchPinchEnabled
+        onCanvas={(value) => {
+          canvas = value;
+        }}
+        onCamera={(value) => {
+          camera = value as THREE.OrthographicCamera;
+        }}
+      />,
+      { camera: rig }
+    );
+    if (!camera || !canvas) throw new Error('missing camera/canvas');
+    canvas.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    const rotation = camera.quaternion.clone();
+    const emit = (type: string, id: number, x: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: 300,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: id },
+        pointerType: { value: 'touch' },
+      });
+      (type === 'pointerdown' ? canvas! : window).dispatchEvent(event);
+    };
+    emit('pointerdown', 1, 200);
+    emit('pointerdown', 2, 400);
+    emit('pointermove', 2, 460);
+    expect(camera.zoom).toBeCloseTo(104);
+    expect(camera.quaternion.angleTo(rotation)).toBeLessThan(1e-7);
+    emit('pointermove', 2, 1200);
+    expect(camera.zoom).toBe(dials.zoomMax);
+    emit('pointermove', 2, 220);
+    expect(camera.zoom).toBe(dials.zoomMin);
+    expect(camera.quaternion.angleTo(rotation)).toBeLessThan(1e-7);
+    emit('pointerup', 1, 200);
+    emit('pointerup', 2, 220);
+    canvas.dispatchEvent(
+      new WheelEvent('wheel', { deltaY: -100, cancelable: true })
+    );
+    expect(camera.zoom).toBe(dials.curve!.bands[1]!.zoom);
+    await renderer.unmount();
+  });
   it.each([false, true])(
     'uses the existing pan projection only when enabled=%s',
     async (enabled) => {

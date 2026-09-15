@@ -29,25 +29,129 @@ afterEach(() => {
     .reverse()
     .forEach((cleanup) => cleanup());
 });
-function setup() {
+function setup(withPinch = false) {
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
   canvas.style.touchAction = 'pan-y';
   const pan = vi.fn();
+  const pinch = vi.fn();
   const click = vi.fn();
   canvas.addEventListener('click', click);
-  const dispose = bindTouchPan({ canvas, onPan: pan });
+  const dispose = bindTouchPan({
+    canvas,
+    onPan: pan,
+    onPinch: withPinch ? pinch : undefined,
+  });
   cleanups.push(() => {
     dispose();
     canvas.remove();
   });
-  return { canvas, pan, click, dispose };
+  return { canvas, pan, pinch, click, dispose };
 }
 function clickCanvas(canvas: HTMLCanvasElement): MouseEvent {
   const event = new MouseEvent('click', { bubbles: true, cancelable: true });
   canvas.dispatchEvent(event);
   return event;
 }
+
+describe('two-finger pinch', () => {
+  it('reports relative scale and moving midpoint without panning or clicking', () => {
+    const { canvas, pinch, pan, click } = setup(true);
+    pointer(canvas, 'pointerdown', 20, 20);
+    pointer(canvas, 'pointerdown', 80, 20, 2);
+    pointer(canvas, 'pointermove', 10, 20);
+    expect(pinch).toHaveBeenLastCalledWith({
+      scale: 70 / 60,
+      from: { x: 50, y: 20 },
+      to: { x: 45, y: 20 },
+    });
+    pointer(canvas, 'pointermove', 90, 20, 2);
+    expect(pinch).toHaveBeenLastCalledWith({
+      scale: 80 / 70,
+      from: { x: 45, y: 20 },
+      to: { x: 50, y: 20 },
+    });
+    expect(pan).not.toHaveBeenCalled();
+    pointer(canvas, 'pointerup', 10, 20);
+    pointer(canvas, 'pointerup', 90, 20, 2);
+    clickCanvas(canvas);
+    expect(click).not.toHaveBeenCalled();
+    pointer(canvas, 'pointerdown');
+    pointer(canvas, 'pointerup');
+    clickCanvas(canvas);
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it('transitions from pan to pinch and back to the remaining finger without a jump', () => {
+    const { canvas, pinch, pan, click } = setup(true);
+    pointer(canvas, 'pointerdown');
+    pointer(canvas, 'pointermove', 40, 20);
+    pointer(canvas, 'pointerdown', 80, 20, 2);
+    pointer(canvas, 'pointermove', 100, 20, 2);
+    expect(pinch).toHaveBeenLastCalledWith({
+      scale: 1.5,
+      from: { x: 60, y: 20 },
+      to: { x: 70, y: 20 },
+    });
+    pointer(canvas, 'pointerup', 40, 20);
+    pointer(canvas, 'pointermove', 103, 20, 2);
+    expect(pan.mock.calls).toEqual([[{ dx: 20, dy: 0 }], [{ dx: 3, dy: 0 }]]);
+    pointer(canvas, 'pointerup', 103, 20, 2);
+    clickCanvas(canvas);
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('refuses a HUD-origin second finger and never promotes it into pinch', () => {
+    const { canvas, pinch, pan, click } = setup(true);
+    pointer(canvas, 'pointerdown');
+    pointer(document.body, 'pointerdown', 80, 20, 2);
+    pointer(canvas, 'pointermove', 5, 20);
+    pointer(window, 'pointermove', 100, 20, 2);
+    pointer(window, 'pointerup', 100, 20, 2);
+    pointer(canvas, 'pointerup', 5, 20);
+    clickCanvas(canvas);
+    expect(pinch).not.toHaveBeenCalled();
+    expect(pan).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it.each(['third finger', 'lostpointercapture', 'pointercancel', 'blur'])(
+    'cancels pinch on %s until a fresh gesture',
+    (reason) => {
+      const { canvas, pinch, pan, click } = setup(true);
+      pointer(canvas, 'pointerdown');
+      pointer(canvas, 'pointerdown', 80, 20, 2);
+      pointer(canvas, 'pointermove', 90, 20, 2);
+      expect(pinch).toHaveBeenCalledOnce();
+      if (reason === 'third finger') pointer(canvas, 'pointerdown', 100, 50, 3);
+      else if (reason === 'blur') window.dispatchEvent(new Event('blur'));
+      else pointer(canvas, reason, 90, 20, 2);
+      pointer(canvas, 'pointermove', 5, 20);
+      pointer(canvas, 'pointermove', 110, 20, 2);
+      pointer(canvas, 'pointerup', 5, 20);
+      pointer(canvas, 'pointerup', 110, 20, 2);
+      if (reason === 'third finger') pointer(canvas, 'pointerup', 100, 50, 3);
+      clickCanvas(canvas);
+      expect(pinch).toHaveBeenCalledOnce();
+      expect(pan).not.toHaveBeenCalled();
+      expect(click).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rebases nearly coincident fingers instead of dividing by zero', () => {
+    const { canvas, pinch } = setup(true);
+    pointer(canvas, 'pointerdown');
+    pointer(canvas, 'pointerdown', 20, 20, 2);
+    pointer(canvas, 'pointermove', 40, 20, 2);
+    expect(pinch).not.toHaveBeenCalled();
+    pointer(canvas, 'pointermove', 60, 20, 2);
+    expect(pinch).toHaveBeenCalledWith({
+      scale: 2,
+      from: { x: 30, y: 20 },
+      to: { x: 40, y: 20 },
+    });
+  });
+});
 
 describe('one-finger touch pan', () => {
   it('leaves taps and small jitter to the existing map click handler', () => {

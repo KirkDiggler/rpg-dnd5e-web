@@ -278,6 +278,7 @@ export function OrganizedHudConcept() {
               attackableTargets={attackableTargets}
               onTargetClick={onTargetClick}
               touchPanEnabled
+              touchPinchEnabled
             />
           )}
           onSelectDeclaration={selectDeclaration}
