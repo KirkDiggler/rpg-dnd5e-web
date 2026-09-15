@@ -16,6 +16,9 @@
 #   RPG_WEB_ROOT            destination web checkout
 #   RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR test-only generator override
 #   RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER    test-only TypeScript runner override
+#   RPG_NPC_APPEARANCE_CATALOG_GENERATOR          test-only generator override
+#   RPG_NPC_APPEARANCE_CATALOG_RUNNER             test-only generator runner override
+#   RPG_NPC_APPEARANCE_RELEASE_SELECTION          release-selection override
 #   ASSETS_SYNC_SKIP_UPDATE skip clone/pull when set to 1
 
 set -e
@@ -254,19 +257,47 @@ fi
 # Validate and generate against the clean provider before either rsync --delete
 # can mutate a destination. The tracked catalog becomes visible only after both
 # independent runtime mirrors succeed.
+NPC_CATALOG_GENERATOR=${RPG_NPC_APPEARANCE_CATALOG_GENERATOR:-$SCRIPT_DIR/generate-npc-appearance-catalog.mjs}
+NPC_CATALOG_RUNNER=${RPG_NPC_APPEARANCE_CATALOG_RUNNER:-node}
+NPC_SELECTION=${RPG_NPC_APPEARANCE_RELEASE_SELECTION:-$SCRIPT_DIR/configs/npc-appearance-releases.json}
+if [ ! -f "$NPC_CATALOG_GENERATOR" ] || [ -L "$NPC_CATALOG_GENERATOR" ]; then
+  echo "ERROR: NPC appearance catalog generator must be a real file: $NPC_CATALOG_GENERATOR" >&2
+  exit 1
+fi
+if ! command -v "$NPC_CATALOG_RUNNER" >/dev/null 2>&1; then
+  echo "ERROR: NPC appearance catalog runner is unavailable: $NPC_CATALOG_RUNNER" >&2
+  exit 1
+fi
+if [ ! -f "$NPC_SELECTION" ] || [ -L "$NPC_SELECTION" ]; then
+  echo "ERROR: NPC appearance release selection must be a real file: $NPC_SELECTION" >&2
+  exit 1
+fi
+
 CATALOG_OUTPUT="$WEB_ROOT/src/generated/characterCustomizationCatalog.ts"
+NPC_CATALOG_OUTPUT="$WEB_ROOT/src/generated/npcAppearanceCatalog.ts"
 mkdir -p "$(dirname "$CATALOG_OUTPUT")"
 CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.character-customization.XXXXXX")
-trap 'rm -f "$CATALOG_STAGE"' EXIT HUP INT TERM
+NPC_CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.npc-appearances.XXXXXX")
+trap 'rm -f "$CATALOG_STAGE" "$NPC_CATALOG_STAGE"' EXIT HUP INT TERM
 "$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
   --provider-root "$ASSETS_DIR" \
   --output "$CATALOG_STAGE"
+"$NPC_CATALOG_RUNNER" "$NPC_CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --selection "$NPC_SELECTION" \
+  --output "$NPC_CATALOG_STAGE"
 
 # Keep these as independent mirrors: neither runtime root is allowed to supply
 # or delete files in the other.
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
+"$NPC_CATALOG_RUNNER" "$NPC_CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --selection "$NPC_SELECTION" \
+  --runtime-root "$SYNTY_DEST" \
+  --output "$NPC_CATALOG_STAGE"
 mv -f "$CATALOG_STAGE" "$CATALOG_OUTPUT"
+mv -f "$NPC_CATALOG_STAGE" "$NPC_CATALOG_OUTPUT"
 trap - EXIT HUP INT TERM
 
-echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the aggregate customization catalog is current."
+echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the aggregate customization and NPC appearance catalogs are current."

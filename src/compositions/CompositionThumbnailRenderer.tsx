@@ -95,16 +95,20 @@ function CaptureFrame({
   return null;
 }
 
-function ResetCaptureCamera() {
+function ResetCaptureCamera({ fitBounds }: { fitBounds: boolean }) {
   const { camera } = useThree();
 
   useLayoutEffect(() => {
-    camera.position.set(2, 1.6, 2.6);
+    // Bounds replaces this framing for static assets/compositions. Skinned
+    // characters retain the same view vector, shifted to the established
+    // Synty character-height center so their unchanged source transforms fit.
+    const centerY = fitBounds ? 0 : 0.7;
+    camera.position.set(2, 1.6 + centerY, 2.6);
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, 0, 0);
+    camera.lookAt(0, centerY, 0);
     camera.updateMatrixWorld();
     camera.updateProjectionMatrix();
-  }, [camera]);
+  }, [camera, fitBounds]);
 
   return null;
 }
@@ -112,6 +116,7 @@ function ResetCaptureCamera() {
 interface ThumbnailCaptureRequestProps {
   children: ReactNode;
   requestKey: string;
+  fitBounds: boolean;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
 }
@@ -120,6 +125,7 @@ interface ThumbnailCaptureRequestProps {
 function ThumbnailCaptureRequest({
   children,
   requestKey,
+  fitBounds,
   onComplete,
   onError,
 }: ThumbnailCaptureRequestProps) {
@@ -155,12 +161,20 @@ function ThumbnailCaptureRequest({
   return (
     <CaptureBoundary fallback={<group />} onError={fail}>
       <Suspense fallback={null}>
-        <ResetCaptureCamera />
-        <Bounds fit clip margin={1.35} maxDuration={0}>
-          {/* GLTF loader caches are shared with placed models. Prevent this
-              temporary root from disposing their shared resources. */}
+        <ResetCaptureCamera fitBounds={fitBounds} />
+        {fitBounds ? (
+          <Bounds fit clip margin={1.35} maxDuration={0}>
+            {/* GLTF loader caches are shared with placed models. Prevent this
+                temporary root from disposing their shared resources. */}
+            <group dispose={null}>{children}</group>
+          </Bounds>
+        ) : (
+          // Skinned character bounds are evaluated before their mixer has
+          // established a posed skeleton, so fitting to that transient box can
+          // clip the actual mesh. The established character camera/scale needs
+          // no inferred geometry box; it uses the reset capture camera.
           <group dispose={null}>{children}</group>
-        </Bounds>
+        )}
         <CaptureFrame onCapture={complete} onError={fail} />
       </Suspense>
     </CaptureBoundary>
@@ -290,6 +304,9 @@ function ThumbnailRootLifecycle({ children, onError }: ThumbnailRootProps) {
 export interface ThumbnailRendererProps {
   children: ReactNode;
   requestKey: string;
+  /** Defaults to the existing static/composition auto-frame behavior. Skinned
+   * character producers use the stable reset camera instead. */
+  fitBounds?: boolean;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
   onRootError: (message: string) => void;
@@ -304,6 +321,7 @@ export interface ThumbnailRendererProps {
 export function ThumbnailRenderer({
   children,
   requestKey,
+  fitBounds = true,
   onComplete,
   onError,
   onRootError,
@@ -334,6 +352,7 @@ export function ThumbnailRenderer({
         <ThumbnailCaptureRequest
           key={requestKey}
           requestKey={requestKey}
+          fitBounds={fitBounds}
           onComplete={onComplete}
           onError={onError}
         >
