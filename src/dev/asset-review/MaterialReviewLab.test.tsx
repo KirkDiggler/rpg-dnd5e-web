@@ -1,10 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetReviewLab } from './AssetReviewLab';
 import { materialManifestFixture } from './materialProfile.testFixtures';
 import { MaterialReviewLab } from './MaterialReviewLab';
 
+const sceneLifecycle = vi.hoisted(() => ({ starts: 0 }));
 vi.mock('./AssetReviewScene', () => ({
   AssetReviewScene: ({
     url,
@@ -13,21 +15,32 @@ vi.mock('./AssetReviewScene', () => ({
     url?: string;
     onLoadStateChange: (
       url: string,
-      status: 'success' | 'error',
+      status: 'loading' | 'success' | 'error',
       detail?: string
     ) => void;
-  }) => (
-    <div>
-      <button onClick={() => onLoadStateChange(url!, 'success')}>
-        Scene loaded
-      </button>
-      <button
-        onClick={() => onLoadStateChange(url!, 'error', 'Fixture load failed')}
-      >
-        Scene failed
-      </button>
-    </div>
-  ),
+  }) => {
+    // Mirror the real scene's load-effect dependencies. Bound the test so an
+    // unstable callback fails immediately rather than spinning React forever.
+    useEffect(() => {
+      if (++sceneLifecycle.starts > 6)
+        throw new Error('Scene keeps restarting its load effect');
+      if (url) onLoadStateChange(url, 'loading');
+    }, [url, onLoadStateChange]);
+    return (
+      <div>
+        <button onClick={() => onLoadStateChange(url!, 'success')}>
+          Scene loaded
+        </button>
+        <button
+          onClick={() =>
+            onLoadStateChange(url!, 'error', 'Fixture load failed')
+          }
+        >
+          Scene failed
+        </button>
+      </div>
+    );
+  },
 }));
 let blobs: Blob[];
 function readBlob(blob: Blob): Promise<string> {
@@ -40,6 +53,7 @@ function readBlob(blob: Blob): Promise<string> {
 }
 beforeEach(() => {
   blobs = [];
+  sceneLifecycle.starts = 0;
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({

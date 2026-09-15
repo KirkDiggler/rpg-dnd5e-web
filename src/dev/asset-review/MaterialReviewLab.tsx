@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AssetReviewScene } from './AssetReviewScene';
 import {
   parseMaterialProfile,
@@ -44,6 +44,18 @@ export function MaterialReviewLab() {
     status: AssetReviewLoadStatus;
     detail?: string;
   }>();
+  const onLoadStateChange = useCallback(
+    (url: string, status: AssetReviewLoadStatus, detail?: string) => {
+      setLoad((current) =>
+        current?.url === url &&
+        current.status === status &&
+        current.detail === detail
+          ? current
+          : { url, status, detail }
+      );
+    },
+    []
+  );
   useEffect(() => {
     let active = true;
     void fetch(MANIFEST_URL)
@@ -289,9 +301,7 @@ export function MaterialReviewLab() {
                           fineOffsetMeters={[0, 0, 0]}
                           cameraMode="orbit"
                           showRaw={false}
-                          onLoadStateChange={(url, state, detail) =>
-                            setLoad({ url, status: state, detail })
-                          }
+                          onLoadStateChange={onLoadStateChange}
                         />
                       </div>
                       <p role="status">
