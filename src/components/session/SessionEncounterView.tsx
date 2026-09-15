@@ -1206,16 +1206,29 @@ function SessionEncounterScope({
               member,
               door,
             });
-            setDoorNotice(
-              response.beaten
-                ? `Picked the lock — ${response.total} vs DC ${response.dc}. The door swings open.`
-                : `The lock holds — ${response.total} vs DC ${response.dc}.`
-            );
+            if (response.paused) {
+              // The attempt stopped to ask whether to spend a held offer
+              // (Guidance) before the verdict is settled — beaten/dc/door
+              // are all zero right now, not an answer. The eventual verdict
+              // and this notice's clear both arrive via the 'door' stream
+              // event once the reaction window (in the action dock) is
+              // answered, same as any other door-state change.
+              setDoorNotice(
+                `Rolled ${response.roll ?? '?'} — ${response.total} total. Deciding whether to use Guidance…`
+              );
+            } else {
+              setDoorNotice(
+                response.beaten
+                  ? `Picked the lock — ${response.total} vs DC ${response.dc}. The door swings open.`
+                  : `The lock holds — ${response.total} vs DC ${response.dc}.`
+              );
+              scheduleRefresh(['doors']);
+            }
           } else {
             await sessionClient.openDoor({ session: sessionId, member, door });
             setDoorNotice('The door opens.');
+            scheduleRefresh(['doors']);
           }
-          scheduleRefresh(['doors']);
         } catch (error) {
           setDoorNotice(errorMessage(error));
         }
