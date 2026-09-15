@@ -8,6 +8,7 @@ import {
   generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  performanceAdvisories,
   recordPreviewLoad,
   selectPaletteAppearance,
   serializeReadyProviderBatch,
@@ -735,6 +736,16 @@ export function AssetReviewLab() {
                   value={appearanceFacts?.dimensionsMeters.join(' × ') ?? ''}
                 />
               </label>
+              <div className="asset-review-reasons">
+                <strong>Performance observations</strong>
+                <span>
+                  Size, triangle and texture targets are provisional. Release
+                  reports retain measurements for benchmarking.
+                </span>
+                {performanceAdvisories(activeEntry).map((message) => (
+                  <p key={message}>{message}</p>
+                ))}
+              </div>
               <div className="asset-review-reasons">
                 <strong>Blocking reasons</strong>
                 {(appearanceFacts?.reasons.length ?? 0) > 0 ? (

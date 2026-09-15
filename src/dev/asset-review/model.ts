@@ -273,7 +273,7 @@ const PROVIDER_MARKER_CASEFOLD_EXPANSIONS: Readonly<Record<string, string>> =
 const TAG_LIMIT = 20;
 const TAG_MAX_CODE_POINTS = 40;
 const SHARED_SYNTY_SCALE = 0.75;
-const MAX_RUNTIME_AXIS_METERS = 20;
+const PROPOSED_RUNTIME_AXIS_METERS = 20;
 
 function requireValue(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -1279,6 +1279,25 @@ export function visualRef(
   return `dnd5e:${entry.category}:${entry.referencePack}:${entry.refSuffix}`;
 }
 
+export function performanceAdvisories(entry: AssetReviewEntry): string[] {
+  const dimensions = entryAppearanceFacts(entry).dimensionsMeters;
+  const scale = entry.calibration.scale;
+  if (
+    Number.isFinite(scale) &&
+    scale > 0 &&
+    dimensions.some(
+      (axis) =>
+        Number.isFinite(axis) &&
+        axis * scale * SHARED_SYNTY_SCALE > PROPOSED_RUNTIME_AXIS_METERS
+    )
+  ) {
+    return [
+      'Scaled bounds exceed the provisional 20-metre target. This is a benchmarking advisory, not a Ready restriction.',
+    ];
+  }
+  return [];
+}
+
 export function validateReady(entry: AssetReviewEntry): FieldErrors {
   const errors: FieldErrors = {};
   const appearance = entryAppearanceFacts(entry);
@@ -1388,15 +1407,6 @@ export function validateReady(entry: AssetReviewEntry): FieldErrors {
     )
   ) {
     errors.dimensionsMeters = 'Measured bounds must have three positive axes';
-  } else if (typeof scale === 'number' && Number.isFinite(scale) && scale > 0) {
-    if (
-      dimensions.some(
-        (axis) => axis * scale * SHARED_SYNTY_SCALE > MAX_RUNTIME_AXIS_METERS
-      )
-    ) {
-      errors.dimensionsMeters =
-        'Scaled runtime bounds must not exceed 20 metres on any axis';
-    }
   }
 
   if (entry.loadedSuccessfully !== true) {
