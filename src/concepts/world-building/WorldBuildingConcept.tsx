@@ -13,16 +13,19 @@ import {
 } from './catalog';
 import {
   createRoomDraft,
+  expandRoomWorkspace,
   loadRoomDraft,
   parseRoomDraftJson,
   reconcileRoomDraft,
   remapRoomDeclarations,
+  ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
   stringifyRoomDraft,
   updateWalkableHexes,
   type RoomDraft,
   type RoomGameplayData,
   type RoomPropDeclaration,
+  type RoomWorkspace,
 } from './roomDraft';
 import {
   addProp,
@@ -250,13 +253,16 @@ export function WorldBuildingConcept({
     (
       next: WorldScene,
       selection = selectedIds,
-      nextRoom: RoomGameplayData = roomDraft.room
+      nextRoom: RoomGameplayData = roomDraft.room,
+      nextWorkspace: RoomWorkspace = roomDraft.workspace
     ) => {
       try {
-        const valid = validateScene(next);
+        const valid = validateScene(next, {
+          horizontalLimit: roomMode ? nextWorkspace.horizontalLimit : undefined,
+        });
         if (roomMode) {
           const nextDraft = reconcileRoomDraft(
-            { ...roomDraft, room: nextRoom },
+            { ...roomDraft, room: nextRoom, workspace: nextWorkspace },
             valid
           );
           setRoomHistory((current) => ({
@@ -841,6 +847,22 @@ export function WorldBuildingConcept({
               {worldBusy ? 'Saving composition…' : 'Save composition to world'}
             </button>
           )}
+          {roomMode && (
+            <button
+              disabled={
+                roomDraft.workspace.hexRadius ===
+                ROOM_WORKSPACE_STEPS[ROOM_WORKSPACE_STEPS.length - 1].hexRadius
+              }
+              onClick={() => {
+                const expanded = expandRoomWorkspace(roomDraft);
+                if (expanded === roomDraft) return;
+                commit(scene, selectedIds, roomDraft.room, expanded.workspace);
+              }}
+            >
+              Expand workspace · radius {roomDraft.workspace.hexRadius} →{' '}
+              {expandRoomWorkspace(roomDraft).workspace.hexRadius}
+            </button>
+          )}
           {!confirmBlank ? (
             <button onClick={() => setConfirmBlank(true)}>
               {roomMode ? 'New room' : 'New blank scene'}
@@ -855,7 +877,12 @@ export function WorldBuildingConcept({
                 onClick={() => {
                   const blank = createEmptyScene(idFactory());
                   const freshRoom = createRoomDraft(blank, idFactory());
-                  commit(blank, [], roomMode ? freshRoom.room : roomDraft.room);
+                  commit(
+                    blank,
+                    [],
+                    roomMode ? freshRoom.room : roomDraft.room,
+                    roomMode ? freshRoom.workspace : roomDraft.workspace
+                  );
                   setTool('select');
                   setActiveDrag(null);
                   setConfirmBlank(false);
@@ -1047,6 +1074,7 @@ export function WorldBuildingConcept({
                 roomMode
                   ? {
                       tool: roomTool,
+                      workspace: roomDraft.workspace,
                       walkableHexes: roomDraft.room.walkableHexes,
                       propDeclarations:
                         footprintPreview && selectedProp

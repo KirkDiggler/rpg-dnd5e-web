@@ -1119,6 +1119,29 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(scene()).toEqual(original);
   });
 
+  it('expands room workspace metadata without moving content or painting cells', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    const room = () =>
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft;
+    const before = structuredClone(room());
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Expand workspace · radius 6 → 10' })
+    );
+
+    expect(room().workspace).toEqual({ hexRadius: 10, horizontalLimit: 20 });
+    expect({ ...room(), workspace: before.workspace }).toEqual(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(room()).toEqual(before);
+  });
+
   it('commits one rectangle release as one undoable room-history action and cancel is a no-op', () => {
     render(
       <WorldBuildingConcept

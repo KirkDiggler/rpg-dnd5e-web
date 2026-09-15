@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRoomDraft,
+  expandRoomWorkspace,
   parseRoomDraftJson,
   reconcileRoomDraft,
   remapRoomDeclarations,
+  ROOM_WORKSPACE_STEPS,
   stringifyRoomDraft,
   updateWalkableHexes,
   walkableCellsInWorldRectangle,
 } from './roomDraft';
-import { createEmptyScene } from './sceneState';
+import {
+  createEmptyScene,
+  duplicateSelection,
+  stampArrangement,
+} from './sceneState';
+import { validateScene } from './serialization';
 
 describe('room authoring draft', () => {
   it('round trips a versioned room envelope separately from composer data', () => {
@@ -16,6 +23,116 @@ describe('room authoring draft', () => {
     const painted = updateWalkableHexes(draft, [{ q: 1, r: -2 }], 'paint');
     expect(parseRoomDraftJson(stringifyRoomDraft(painted))).toEqual(painted);
     expect(stringifyRoomDraft(painted)).toContain('rpg-room-authoring-draft');
+  });
+
+  it('expands only workspace metadata by a bounded deterministic step', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const before = structuredClone(draft);
+    const expanded = expandRoomWorkspace(draft);
+
+    expect(expanded.workspace).toEqual(ROOM_WORKSPACE_STEPS[1]);
+    expect({ ...expanded, workspace: before.workspace }).toEqual(before);
+    expect(
+      expandRoomWorkspace(expandRoomWorkspace(expanded)).workspace
+    ).toEqual(ROOM_WORKSPACE_STEPS[2]);
+  });
+
+  it('migrates a version 1 small draft without moving or clipping authored data', () => {
+    const current = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const legacyDraft = {
+      ...current,
+      version: 1,
+      workspace: undefined,
+      room: { ...current.room, walkableHexes: [{ q: 6, r: -6 }] },
+    };
+    const migrated = parseRoomDraftJson(
+      JSON.stringify({
+        kind: 'rpg-room-authoring-draft',
+        version: 1,
+        draft: legacyDraft,
+      })
+    );
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.workspace).toEqual(ROOM_WORKSPACE_STEPS[0]);
+    expect(migrated.room.walkableHexes).toEqual([{ q: 6, r: -6 }]);
+    expect(migrated.scene).toEqual(current.scene);
+  });
+
+  it('accepts expanded room coordinates and cells while standalone scenes keep +/-12', () => {
+    const draft = expandRoomWorkspace(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1')
+    );
+    draft.scene.items.push({
+      id: 'table',
+      kind: 'prop',
+      assetRef: 'dnd5e:props:torture-table',
+      label: 'table',
+      transform: { x: 15, y: 0, z: 0, rotationY: 0 },
+    });
+    const painted = updateWalkableHexes(draft, [{ q: 8, r: -8 }], 'paint');
+
+    expect(parseRoomDraftJson(stringifyRoomDraft(painted))).toEqual(painted);
+    expect(painted.room.walkableHexes).toContainEqual({ q: 8, r: -8 });
+    expect(() => validateScene(draft.scene)).toThrow(/between -12 and 12/);
+  });
+
+  it('keeps duplicate and arrangement stamp paths valid in expanded room space', () => {
+    const draft = expandRoomWorkspace(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1')
+    );
+    draft.scene.items.push({
+      id: 'table',
+      kind: 'prop',
+      assetRef: 'dnd5e:props:torture-table',
+      label: 'table',
+      transform: { x: 15, y: 0, z: 0, rotationY: 0 },
+    });
+    const duplicated = duplicateSelection(draft.scene, ['table'], () => 'copy');
+    const stamped = stampArrangement(
+      duplicated.scene,
+      {
+        version: 1,
+        id: 'arrangement',
+        name: 'books',
+        createdAt: '2026-09-14T00:00:00.000Z',
+        groups: [],
+        items: [
+          {
+            id: 'template-book',
+            kind: 'prop',
+            assetRef: 'dnd5e:props:books',
+            label: 'books',
+            transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+          },
+        ],
+      },
+      { x: -15, z: 0 },
+      () => 'stamp'
+    );
+
+    const roundTrip = parseRoomDraftJson(
+      stringifyRoomDraft({ ...draft, scene: stamped.scene })
+    );
+    expect(roundTrip.scene.items.map((item) => item.transform.x)).toEqual([
+      15, 15.45, -15,
+    ]);
+  });
+
+  it('rejects unsupported or excessive workspace input without clipping', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(() =>
+      parseRoomDraftJson(
+        JSON.stringify({
+          kind: 'rpg-room-authoring-draft',
+          version: 2,
+          draft: {
+            ...draft,
+            workspace: { hexRadius: 100, horizontalLimit: 200 },
+          },
+        })
+      )
+    ).toThrow(/Unsupported room workspace extent/);
   });
 
   it('remaps declarations by stable identity and never asset ref', () => {

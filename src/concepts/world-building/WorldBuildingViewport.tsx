@@ -32,10 +32,10 @@ import {
   type MeasuredWorldPropBounds,
 } from './placementGuides';
 import {
-  ROOM_AUTHORING_HEX_RADIUS,
   walkableCellsInWorldRectangle,
   type RoomHexCell,
   type RoomPropDeclaration,
+  type RoomWorkspace,
 } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
@@ -76,6 +76,7 @@ export interface WorldBuildingViewportProps {
   roomAuthoring?: {
     tool: 'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle';
     walkableHexes: readonly RoomHexCell[];
+    workspace: RoomWorkspace;
     propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
     onWalkableGesture: (
       cells: readonly RoomHexCell[],
@@ -279,7 +280,13 @@ export function WorldPropVisual({
   );
 }
 
-function WorldBuildingCameraControls({ enabled }: { enabled: boolean }) {
+function WorldBuildingCameraControls({
+  enabled,
+  maxDistance = 26,
+}: {
+  enabled: boolean;
+  maxDistance?: number;
+}) {
   const { camera, gl } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const recordCamera = useCallback(() => {
@@ -298,7 +305,7 @@ function WorldBuildingCameraControls({ enabled }: { enabled: boolean }) {
       enabled={enabled}
       target={[0, 0.6, 0]}
       minDistance={4}
-      maxDistance={26}
+      maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2.05}
       mouseButtons={{
         LEFT: -1 as THREE.MOUSE,
@@ -413,11 +420,19 @@ function WorldSceneContents(
     props;
   const { gl } = useThree();
   const displayScene = previewScene ?? scene;
+  const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
+  const workspaceGroundRadius =
+    props.roomAuthoring?.workspace.horizontalLimit !== undefined
+      ? props.roomAuthoring.workspace.horizontalLimit + 1
+      : 11.5;
   const hexGeometry = useMemo(
-    () => makeHexLines(ROOM_AUTHORING_HEX_RADIUS),
-    []
+    () => makeHexLines(workspaceHexRadius),
+    [workspaceHexRadius]
   );
-  const boundaryGeometry = useMemo(() => makeGroundBoundary(11.5), []);
+  const boundaryGeometry = useMemo(
+    () => makeGroundBoundary(workspaceGroundRadius),
+    [workspaceGroundRadius]
+  );
   const controlsRef = useRef<TransformControlsImpl>(null);
   const floorGesture = useRef<
     | {
@@ -534,7 +549,11 @@ function WorldSceneContents(
           const roomTool = props.roomAuthoring?.tool;
           if (roomTool === 'rectangle') {
             const start = { x: event.point.x, z: event.point.z };
-            const cells = walkableCellsInWorldRectangle(start, start);
+            const cells = walkableCellsInWorldRectangle(
+              start,
+              start,
+              workspaceHexRadius
+            );
             floorGesture.current = { kind: 'rectangle', start, cells };
             setRectanglePreview(cells);
             (event.target as Element).setPointerCapture?.(event.pointerId);
@@ -562,10 +581,11 @@ function WorldSceneContents(
           if (!gesture) return;
           event.stopPropagation();
           if (roomTool === 'rectangle' && gesture.kind === 'rectangle') {
-            const cells = walkableCellsInWorldRectangle(gesture.start, {
-              x: event.point.x,
-              z: event.point.z,
-            });
+            const cells = walkableCellsInWorldRectangle(
+              gesture.start,
+              { x: event.point.x, z: event.point.z },
+              workspaceHexRadius
+            );
             gesture.cells = cells;
             setRectanglePreview(cells);
             return;
@@ -600,7 +620,7 @@ function WorldSceneContents(
         }}
         onPointerCancel={cancelFloorGesture}
       >
-        <circleGeometry args={[11.5, 6]} />
+        <circleGeometry args={[workspaceGroundRadius, 6]} />
         <meshStandardMaterial
           color="#182a2a"
           roughness={0.96}
@@ -641,7 +661,10 @@ function WorldSceneContents(
           onBoundsMeasured={recordMeasuredBounds}
         />
       ))}
-      <WorldBuildingCameraControls enabled={!transforming} />
+      <WorldBuildingCameraControls
+        enabled={!transforming}
+        maxDistance={Math.max(26, workspaceGroundRadius * 2.2)}
+      />
       <WorldBuildingTransformGizmo
         controlsRef={controlsRef}
         scene={scene}
@@ -651,6 +674,7 @@ function WorldSceneContents(
         onCommit={props.onTransformCommit}
         onReject={props.onTransformReject}
         onTransformingChange={setTransforming}
+        sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
       />
       <WorldBuildingDropInteraction
         activeDrag={activeDrag}
