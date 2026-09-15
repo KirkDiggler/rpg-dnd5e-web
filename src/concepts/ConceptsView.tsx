@@ -35,7 +35,8 @@ type ConceptPage =
   | 'organized-hud'
   | 'dungeon-builder'
   | 'asset-anchor-lab'
-  | 'world-building';
+  | 'world-building'
+  | 'room-authoring';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
@@ -55,6 +56,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
   { id: 'world-building', label: 'World Building' },
+  { id: 'room-authoring', label: 'New room · Authoring draft' },
 ];
 
 interface ConceptsViewProps {
@@ -159,6 +161,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
         {activePage === 'world-building' && <WorldBuildingConcept />}
+        {activePage === 'room-authoring' && <WorldBuildingConcept roomMode />}
       </motion.div>
     </div>
   );

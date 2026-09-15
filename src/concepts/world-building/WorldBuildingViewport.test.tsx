@@ -1,3 +1,4 @@
+import { HEX_SIZE, hexCorners } from '@/components/hex-grid/hexMath';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,8 +23,13 @@ vi.mock('@react-three/drei', () => ({
   },
 }));
 
+import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
-import { WorldPropVisual } from './WorldBuildingViewport';
+import {
+  WorldBuildingFog,
+  WorldPropVisual,
+  WorldSceneContents,
+} from './WorldBuildingViewport';
 
 const TABLE: WorldProp = {
   id: 'table',
@@ -74,6 +80,141 @@ beforeAll(() => {
 
 beforeEach(() => {
   modelState.value = 'loaded';
+});
+
+describe('editor atmosphere', () => {
+  it('removes distance fog for room authoring and restores composer fog', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldBuildingFog roomAuthoring={false} />
+    );
+    const scene = renderer.scene.instance as THREE.Scene;
+    expect(scene.fog).toMatchObject({ isFog: true, near: 15, far: 31 });
+
+    await renderer.update(<WorldBuildingFog roomAuthoring />);
+    expect(scene.fog).toBeNull();
+
+    await renderer.update(<WorldBuildingFog roomAuthoring={false} />);
+    expect(scene.fog).toMatchObject({ isFog: true, near: 15, far: 31 });
+    await renderer.unmount();
+  });
+});
+
+describe('room walkable fill geometry', () => {
+  it('uses inset shared pointy grid corners in the floor X/Z plane', () => {
+    const geometry = createWalkableHexFillGeometry();
+    const positions = geometry.getAttribute('position');
+    const boundary = Array.from({ length: 6 }, (_, index) => ({
+      x: positions.getX(index + 1),
+      z: positions.getZ(index + 1),
+    }));
+    const expected = hexCorners({ x: 0, z: 0 }, HEX_SIZE).map((corner) => ({
+      x: corner.x * 0.86,
+      z: corner.z * 0.86,
+    }));
+
+    boundary.forEach((point, index) => {
+      expect(point.x).toBeCloseTo(expected[index]!.x);
+      expect(point.z).toBeCloseTo(expected[index]!.z);
+    });
+    expect(Math.max(...boundary.map((point) => Math.abs(point.z)))).toBeCloseTo(
+      HEX_SIZE * 0.86
+    );
+    expect(Math.max(...boundary.map((point) => Math.abs(point.x)))).toBeCloseTo(
+      (Math.sqrt(3) / 2) * HEX_SIZE * 0.86
+    );
+  });
+});
+
+describe('room floor pointer ownership', () => {
+  it('captures brush drags so off-ground release commits once and cancel cannot leave stale cells', async () => {
+    const onWalkableGesture = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{
+          version: 1,
+          id: 'scene',
+          name: 'Room',
+          items: [],
+          groups: [],
+        }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'paint',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const event = (point: THREE.Vector3) => ({
+      button: 0,
+      buttons: 1,
+      pointerId: 7,
+      point,
+      target,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      event(new THREE.Vector3(0, 0, 0))
+    );
+    expect(target.setPointerCapture).toHaveBeenCalledWith(7);
+    await renderer.fireEvent(
+      ground,
+      'pointerMove',
+      event(new THREE.Vector3(1.8, 0, 0))
+    );
+    await renderer.fireEvent(
+      ground,
+      'pointerUp',
+      event(new THREE.Vector3(50, 0, 50))
+    );
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(7);
+    expect(onWalkableGesture).toHaveBeenCalledTimes(1);
+    expect(onWalkableGesture).toHaveBeenLastCalledWith(
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+      'paint'
+    );
+
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      event(new THREE.Vector3(0, 0, 0))
+    );
+    await renderer.fireEvent(ground, 'pointerCancel', {});
+    await renderer.fireEvent(
+      ground,
+      'pointerUp',
+      event(new THREE.Vector3(3.5, 0, 0))
+    );
+    expect(onWalkableGesture).toHaveBeenCalledTimes(1);
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('WorldPropVisual surface and pointer ownership', () => {
