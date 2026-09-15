@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   access,
   mkdir,
   mkdtemp,
   readFile,
   rm,
+  stat,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,6 +23,13 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const syncScript = join(repoRoot, 'scripts', 'sync-game-assets.sh');
 const temporaryRoots: string[] = [];
 const gitEnvironment = withoutGitLocalEnvironment(process.env);
+const actualNpcGenerator = join(
+  repoRoot,
+  'scripts',
+  'generate-npc-appearance-catalog.mjs'
+);
+const digest = (bytes: string) =>
+  createHash('sha256').update(bytes).digest('hex');
 
 async function temporaryRoot() {
   const root = await mkdtemp(join(tmpdir(), 'game-assets-sync-'));
@@ -56,6 +66,36 @@ async function makeFixture() {
   );
 
   await put(join(syntySource, 'dice-tray.glb'), 'synty-runtime');
+  const npcStandingBytes = 'fixture-standing-model';
+  const npcDownedBytes = 'fixture-downed-model';
+  const npcStandingRelative = join('npcs', 'fixture-warrior.glb');
+  const npcDownedRelative = join('npcs', 'fixture-warrior-downed.glb');
+  const npcStandingSource = join(syntySource, npcStandingRelative);
+  const npcDownedSource = join(syntySource, npcDownedRelative);
+  await put(npcStandingSource, npcStandingBytes);
+  await put(npcDownedSource, npcDownedBytes);
+  await put(
+    join(syntySource, 'npcs', 'manifest.json'),
+    JSON.stringify({
+      npcs: {
+        fixtureWarrior: {
+          assetRef: 'dnd5e:npcs:fixture:warrior',
+          rulesRef: null,
+          source: 'SM_Chr_Fixture_Warrior',
+          sourcePack: 'fixture-pack',
+          file: npcStandingRelative,
+          downed: npcDownedRelative,
+          sha256: digest(npcStandingBytes),
+          downedSha256: digest(npcDownedBytes),
+          animationClips: ['Idle_Relaxed', 'Walk_Forward'],
+          pose: 'Fixture 50-bone idle and walk.',
+          jointCount: 50,
+          rootWrapper: 'Fixture Armature root.',
+          forwardAxis: '+Z',
+        },
+      },
+    })
+  );
   await put(join(customDiceSource, 'd20.glb'), 'custom-d20-runtime');
   await put(
     join(customDiceSource, 'original-set', 'Original_D20_Source.glb'),
@@ -113,6 +153,29 @@ async function makeFixture() {
     { cwd: assetsRoot, env: gitEnvironment }
   );
 
+  const npcSelection = join(root, 'npc-appearance-releases.json');
+  await put(
+    npcSelection,
+    JSON.stringify({
+      schemaVersion: 1,
+      releases: [
+        {
+          releaseId: 'fixture-release-v1',
+          appearances: [
+            {
+              manifestId: 'fixtureWarrior',
+              assetRef: 'dnd5e:npcs:fixture:warrior',
+              displayName: 'Fixture Warrior',
+              jointCount: 50,
+              standingSha256: digest(npcStandingBytes),
+              downedSha256: digest(npcDownedBytes),
+            },
+          ],
+        },
+      ],
+    })
+  );
+
   const fakeGenerator = join(root, 'fake-catalog-generator.ts');
   await put(
     fakeGenerator,
@@ -136,6 +199,12 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     'generated',
     'characterCustomizationCatalog.ts'
   );
+  const generatedNpcCatalog = join(
+    webRoot,
+    'src',
+    'generated',
+    'npcAppearanceCatalog.ts'
+  );
 
   return {
     assetsRoot,
@@ -146,11 +215,23 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     customDiceDestination,
     fakeGenerator,
     generatedCatalog,
+    generatedNpcCatalog,
+    npcSelection,
+    npcStandingBytes,
+    npcStandingSource,
+    npcStandingDestination: join(syntyDestination, npcStandingRelative),
     providerHead: providerHead.trim(),
   };
 }
 
-async function runSync(assetsRoot: string, webRoot: string, generator: string) {
+async function runSync(
+  assetsRoot: string,
+  webRoot: string,
+  generator: string,
+  npcGenerator = generator,
+  npcSelection = generator,
+  npcRunner = join(repoRoot, 'node_modules', '.bin', 'tsx')
+) {
   return execFileAsync('sh', [syncScript], {
     cwd: repoRoot,
     env: {
@@ -164,6 +245,9 @@ async function runSync(assetsRoot: string, webRoot: string, generator: string) {
         '.bin',
         'tsx'
       ),
+      RPG_NPC_APPEARANCE_CATALOG_GENERATOR: npcGenerator,
+      RPG_NPC_APPEARANCE_CATALOG_RUNNER: npcRunner,
+      RPG_NPC_APPEARANCE_RELEASE_SELECTION: npcSelection,
       ASSETS_SYNC_SKIP_UPDATE: '1',
     },
   });
@@ -209,6 +293,7 @@ describe('private game asset sync boundary', () => {
     await put(join(fixture.syntyDestination, 'stale-synty.glb'), 'stale');
     await put(join(fixture.customDiceDestination, 'stale-custom.glb'), 'stale');
     await put(fixture.generatedCatalog, 'existing-catalog');
+    await put(fixture.generatedNpcCatalog, 'existing-npc-catalog');
 
     await runRuntimeSync(fixture.assetsRoot, fixture.webRoot);
 
@@ -240,6 +325,9 @@ describe('private game asset sync boundary', () => {
     });
     await expect(readFile(fixture.generatedCatalog, 'utf8')).resolves.toBe(
       'existing-catalog'
+    );
+    await expect(readFile(fixture.generatedNpcCatalog, 'utf8')).resolves.toBe(
+      'existing-npc-catalog'
     );
 
     expect(
@@ -424,14 +512,73 @@ describe('private game asset sync boundary', () => {
     expect(await exists(join(fixture.webRoot, 'public', 'evidence'))).toBe(
       false
     );
-    await expect(
-      readFile(fixture.generatedCatalog, 'utf8').then(JSON.parse)
-    ).resolves.toEqual({
+    const expectedCatalog = {
       providerRoot: fixture.assetsRoot,
       copiedFirst: false,
       head: fixture.providerHead,
       phase: 'before-sync',
+    };
+    await expect(
+      readFile(fixture.generatedCatalog, 'utf8').then(JSON.parse)
+    ).resolves.toEqual(expectedCatalog);
+    await expect(
+      readFile(fixture.generatedNpcCatalog, 'utf8').then(JSON.parse)
+    ).resolves.toEqual({ ...expectedCatalog, copiedFirst: true });
+  });
+
+  it('validates synchronized NPC bytes before publishing a staged catalog', async () => {
+    const fixture = await makeFixture();
+    const corruptBytes = 'x'.repeat(fixture.npcStandingBytes.length);
+    await put(fixture.npcStandingDestination, corruptBytes);
+    const sourceTimes = await stat(fixture.npcStandingSource);
+    await utimes(
+      fixture.npcStandingDestination,
+      sourceTimes.atime,
+      sourceTimes.mtime
+    );
+    await put(fixture.generatedNpcCatalog, 'previous NPC catalog\n');
+
+    await expect(
+      runSync(
+        fixture.assetsRoot,
+        fixture.webRoot,
+        fixture.fakeGenerator,
+        actualNpcGenerator,
+        fixture.npcSelection,
+        process.execPath
+      )
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining(
+        'synchronized GLB SHA-256 does not agree with the catalog'
+      ),
     });
+    await expect(
+      readFile(fixture.npcStandingDestination, 'utf8')
+    ).resolves.toBe(corruptBytes);
+    await expect(readFile(fixture.generatedNpcCatalog, 'utf8')).resolves.toBe(
+      'previous NPC catalog\n'
+    );
+  });
+
+  it('publishes the NPC catalog after a normal synchronized-byte validation', async () => {
+    const fixture = await makeFixture();
+
+    await runSync(
+      fixture.assetsRoot,
+      fixture.webRoot,
+      fixture.fakeGenerator,
+      actualNpcGenerator,
+      fixture.npcSelection,
+      process.execPath
+    );
+
+    await expect(
+      readFile(fixture.npcStandingDestination, 'utf8')
+    ).resolves.toBe(fixture.npcStandingBytes);
+    await expect(
+      readFile(fixture.generatedNpcCatalog, 'utf8')
+    ).resolves.toContain("'dnd5e:npcs:fixture:warrior'");
   });
 
   it.each(['synty', 'custom-dice'])(
@@ -478,37 +625,49 @@ describe('private game asset sync boundary', () => {
     }
   );
 
-  it('runs catalog validation before mutating either runtime destination', async () => {
-    const fixture = await makeFixture();
-    const failingGenerator = join(
-      await temporaryRoot(),
-      'failing-catalog-generator.ts'
-    );
-    await put(
-      failingGenerator,
-      `throw new Error('catalog validation failed');\n`
-    );
-    const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
-    const customSentinel = join(
-      fixture.customDiceDestination,
-      'keep-custom.txt'
-    );
-    await put(syntySentinel, 'do-not-mutate');
-    await put(customSentinel, 'do-not-mutate');
+  it.each(['customization', 'NPC appearance'])(
+    'runs %s catalog validation before mutating either runtime destination',
+    async (catalogKind) => {
+      const fixture = await makeFixture();
+      const failingGenerator = join(
+        await temporaryRoot(),
+        'failing-catalog-generator.ts'
+      );
+      await put(
+        failingGenerator,
+        `throw new Error('catalog validation failed');\n`
+      );
+      const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
+      const customSentinel = join(
+        fixture.customDiceDestination,
+        'keep-custom.txt'
+      );
+      await put(syntySentinel, 'do-not-mutate');
+      await put(customSentinel, 'do-not-mutate');
 
-    await expect(
-      runSync(fixture.assetsRoot, fixture.webRoot, failingGenerator)
-    ).rejects.toMatchObject({
-      code: expect.any(Number),
-      stderr: expect.stringContaining('catalog validation failed'),
-    });
-    await expect(readFile(syntySentinel, 'utf8')).resolves.toBe(
-      'do-not-mutate'
-    );
-    await expect(readFile(customSentinel, 'utf8')).resolves.toBe(
-      'do-not-mutate'
-    );
-  });
+      await expect(
+        runSync(
+          fixture.assetsRoot,
+          fixture.webRoot,
+          catalogKind === 'customization'
+            ? failingGenerator
+            : fixture.fakeGenerator,
+          catalogKind === 'NPC appearance'
+            ? failingGenerator
+            : fixture.fakeGenerator
+        )
+      ).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining('catalog validation failed'),
+      });
+      await expect(readFile(syntySentinel, 'utf8')).resolves.toBe(
+        'do-not-mutate'
+      );
+      await expect(readFile(customSentinel, 'utf8')).resolves.toBe(
+        'do-not-mutate'
+      );
+    }
+  );
 
   it('rejects a dirty provider before mutating either runtime destination', async () => {
     const fixture = await makeFixture();
@@ -534,6 +693,7 @@ describe('private game asset sync boundary', () => {
       'do-not-mutate'
     );
     expect(await exists(fixture.generatedCatalog)).toBe(false);
+    expect(await exists(fixture.generatedNpcCatalog)).toBe(false);
   });
 
   it('gitignores both private public runtime roots', async () => {

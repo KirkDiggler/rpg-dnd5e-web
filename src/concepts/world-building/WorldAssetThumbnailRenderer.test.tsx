@@ -62,6 +62,7 @@ describe('WorldAssetThumbnailRenderer', () => {
       onError,
       onRootError,
     });
+    expect(captured.rendererProps.at(-1)).not.toHaveProperty('fitBounds');
     expect(captured.modelProps.at(-1)).toEqual({
       entry,
       position: [0, 0, 0],
