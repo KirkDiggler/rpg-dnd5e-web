@@ -158,9 +158,17 @@ export function AssetReviewLab() {
           }
         }
         const merged = mergeCatalogWithReview(loadedCatalog, review);
+        const initialBatch = review
+          ? merged.batch
+          : setBatchId(
+              merged.batch,
+              generateBatchId(
+                merged.batch.entries[0]?.referencePack ?? 'world-assets'
+              )
+            );
         setCatalog(loadedCatalog);
-        setBatch(merged.batch);
-        setBatchIdValue(merged.batch.batchId);
+        setBatch(initialBatch);
+        setBatchIdValue(initialBatch.batchId);
         setStaleSources(merged.staleSourceKeys);
         setStaleAppearances(merged.staleAppearanceKeys);
         setSelectedKey(
