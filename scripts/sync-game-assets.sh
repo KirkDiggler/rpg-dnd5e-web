@@ -291,6 +291,11 @@ trap 'rm -f "$CATALOG_STAGE" "$NPC_CATALOG_STAGE"' EXIT HUP INT TERM
 # or delete files in the other.
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
+"$NPC_CATALOG_RUNNER" "$NPC_CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --selection "$NPC_SELECTION" \
+  --runtime-root "$SYNTY_DEST" \
+  --output "$NPC_CATALOG_STAGE"
 mv -f "$CATALOG_STAGE" "$CATALOG_OUTPUT"
 mv -f "$NPC_CATALOG_STAGE" "$NPC_CATALOG_OUTPUT"
 trap - EXIT HUP INT TERM

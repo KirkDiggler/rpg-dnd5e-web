@@ -1,6 +1,6 @@
 import type { GeneratedNpcAppearance } from '@/generated/npcAppearanceCatalog';
 import { render } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +37,12 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
 import { NpcAppearanceThumbnailProducer } from './NpcAppearanceThumbnailProducer';
 import { npcAppearanceThumbnailKey } from './npcAppearanceThumbnailKey';
 
+type ProducerProps = ComponentProps<typeof NpcAppearanceThumbnailProducer>;
+type FitBoundsIsNotPublic = 'fitBounds' extends keyof ProducerProps
+  ? never
+  : true;
+const FIT_BOUNDS_IS_NOT_PUBLIC: FitBoundsIsNotPublic = true;
+
 const appearance: GeneratedNpcAppearance = {
   releaseId: 'goblin-war-camp-v1',
   manifestId: 'goblinWarriorMale01',
@@ -65,6 +71,10 @@ beforeEach(() => {
 });
 
 describe('NPC appearance thumbnail handoff', () => {
+  it('does not expose the internally fixed framing choice as a caller prop', () => {
+    expect(FIT_BOUNDS_IS_NOT_PUBLIC).toBe(true);
+  });
+
   it('keys the standing content and dispatches the skeleton-safe character renderer through the shared capture surface', () => {
     const onComplete = vi.fn();
     const onError = vi.fn();

@@ -320,7 +320,9 @@ export function resolveNpcAppearance(
   assetRef: string,
   onDiagnostic?: (diagnostic: NpcAppearanceResolutionDiagnostic) => void
 ): GeneratedNpcAppearance | undefined {
-  const appearance = GENERATED_NPC_APPEARANCES[assetRef];
+  const appearance = Object.hasOwn(GENERATED_NPC_APPEARANCES, assetRef)
+    ? GENERATED_NPC_APPEARANCES[assetRef]
+    : undefined;
   if (!appearance) {
     onDiagnostic?.({ assetRef, reason: 'unsupported-exact-asset-ref' });
   }

@@ -144,15 +144,22 @@ describe('approved NPC appearance publication', () => {
     expect(modelUrls.size).toBe(26);
   });
 
-  it('fails exact lookup closed without inferring an NPC or rules default', () => {
+  it('fails exact lookup closed without inferring an NPC, rules default, or inherited object member', () => {
     const diagnostic = vi.fn();
     expect(resolveNpcAppearance('dnd5e:npcs:goblin')).toBeUndefined();
-    expect(
-      resolveNpcAppearance('dnd5e:npcs:not-selected:01', diagnostic)
-    ).toBeUndefined();
-    expect(diagnostic).toHaveBeenCalledWith({
-      assetRef: 'dnd5e:npcs:not-selected:01',
-      reason: 'unsupported-exact-asset-ref',
-    });
+
+    for (const assetRef of [
+      'dnd5e:npcs:not-selected:01',
+      'constructor',
+      'toString',
+      '__proto__',
+    ]) {
+      expect(resolveNpcAppearance(assetRef, diagnostic)).toBeUndefined();
+      expect(diagnostic).toHaveBeenCalledWith({
+        assetRef,
+        reason: 'unsupported-exact-asset-ref',
+      });
+    }
+    expect(diagnostic).toHaveBeenCalledTimes(4);
   });
 });

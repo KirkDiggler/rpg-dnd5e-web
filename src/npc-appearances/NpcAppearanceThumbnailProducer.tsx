@@ -8,7 +8,7 @@ import { npcAppearanceThumbnailKey } from './npcAppearanceThumbnailKey';
 
 export interface NpcAppearanceThumbnailProducerProps extends Omit<
   ThumbnailRendererProps,
-  'children' | 'requestKey'
+  'children' | 'fitBounds' | 'requestKey'
 > {
   appearance: GeneratedNpcAppearance;
 }

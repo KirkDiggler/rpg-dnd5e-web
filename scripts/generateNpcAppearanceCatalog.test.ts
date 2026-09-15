@@ -201,6 +201,9 @@ describe('NPC appearance catalog generator', () => {
     expect(first).not.toContain('unrequestedNpc');
     expect(first).not.toContain('dnd5e:npcs:unrequested:01');
     expect(first).not.toContain(fixture.provider);
+    expect(first).toContain(
+      'Object.hasOwn(GENERATED_NPC_APPEARANCES, assetRef)'
+    );
   });
 
   it.each([

@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   access,
   mkdir,
   mkdtemp,
   readFile,
   rm,
+  stat,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,6 +23,13 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const syncScript = join(repoRoot, 'scripts', 'sync-game-assets.sh');
 const temporaryRoots: string[] = [];
 const gitEnvironment = withoutGitLocalEnvironment(process.env);
+const actualNpcGenerator = join(
+  repoRoot,
+  'scripts',
+  'generate-npc-appearance-catalog.mjs'
+);
+const digest = (bytes: string) =>
+  createHash('sha256').update(bytes).digest('hex');
 
 async function temporaryRoot() {
   const root = await mkdtemp(join(tmpdir(), 'game-assets-sync-'));
@@ -56,6 +66,36 @@ async function makeFixture() {
   );
 
   await put(join(syntySource, 'dice-tray.glb'), 'synty-runtime');
+  const npcStandingBytes = 'fixture-standing-model';
+  const npcDownedBytes = 'fixture-downed-model';
+  const npcStandingRelative = join('npcs', 'fixture-warrior.glb');
+  const npcDownedRelative = join('npcs', 'fixture-warrior-downed.glb');
+  const npcStandingSource = join(syntySource, npcStandingRelative);
+  const npcDownedSource = join(syntySource, npcDownedRelative);
+  await put(npcStandingSource, npcStandingBytes);
+  await put(npcDownedSource, npcDownedBytes);
+  await put(
+    join(syntySource, 'npcs', 'manifest.json'),
+    JSON.stringify({
+      npcs: {
+        fixtureWarrior: {
+          assetRef: 'dnd5e:npcs:fixture:warrior',
+          rulesRef: null,
+          source: 'SM_Chr_Fixture_Warrior',
+          sourcePack: 'fixture-pack',
+          file: npcStandingRelative,
+          downed: npcDownedRelative,
+          sha256: digest(npcStandingBytes),
+          downedSha256: digest(npcDownedBytes),
+          animationClips: ['Idle_Relaxed', 'Walk_Forward'],
+          pose: 'Fixture 50-bone idle and walk.',
+          jointCount: 50,
+          rootWrapper: 'Fixture Armature root.',
+          forwardAxis: '+Z',
+        },
+      },
+    })
+  );
   await put(join(customDiceSource, 'd20.glb'), 'custom-d20-runtime');
   await put(
     join(customDiceSource, 'original-set', 'Original_D20_Source.glb'),
@@ -113,6 +153,29 @@ async function makeFixture() {
     { cwd: assetsRoot, env: gitEnvironment }
   );
 
+  const npcSelection = join(root, 'npc-appearance-releases.json');
+  await put(
+    npcSelection,
+    JSON.stringify({
+      schemaVersion: 1,
+      releases: [
+        {
+          releaseId: 'fixture-release-v1',
+          appearances: [
+            {
+              manifestId: 'fixtureWarrior',
+              assetRef: 'dnd5e:npcs:fixture:warrior',
+              displayName: 'Fixture Warrior',
+              jointCount: 50,
+              standingSha256: digest(npcStandingBytes),
+              downedSha256: digest(npcDownedBytes),
+            },
+          ],
+        },
+      ],
+    })
+  );
+
   const fakeGenerator = join(root, 'fake-catalog-generator.ts');
   await put(
     fakeGenerator,
@@ -153,6 +216,10 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     fakeGenerator,
     generatedCatalog,
     generatedNpcCatalog,
+    npcSelection,
+    npcStandingBytes,
+    npcStandingSource,
+    npcStandingDestination: join(syntyDestination, npcStandingRelative),
     providerHead: providerHead.trim(),
   };
 }
@@ -161,7 +228,9 @@ async function runSync(
   assetsRoot: string,
   webRoot: string,
   generator: string,
-  npcGenerator = generator
+  npcGenerator = generator,
+  npcSelection = generator,
+  npcRunner = join(repoRoot, 'node_modules', '.bin', 'tsx')
 ) {
   return execFileAsync('sh', [syncScript], {
     cwd: repoRoot,
@@ -177,13 +246,8 @@ async function runSync(
         'tsx'
       ),
       RPG_NPC_APPEARANCE_CATALOG_GENERATOR: npcGenerator,
-      RPG_NPC_APPEARANCE_CATALOG_RUNNER: join(
-        repoRoot,
-        'node_modules',
-        '.bin',
-        'tsx'
-      ),
-      RPG_NPC_APPEARANCE_RELEASE_SELECTION: generator,
+      RPG_NPC_APPEARANCE_CATALOG_RUNNER: npcRunner,
+      RPG_NPC_APPEARANCE_RELEASE_SELECTION: npcSelection,
       ASSETS_SYNC_SKIP_UPDATE: '1',
     },
   });
@@ -459,7 +523,62 @@ describe('private game asset sync boundary', () => {
     ).resolves.toEqual(expectedCatalog);
     await expect(
       readFile(fixture.generatedNpcCatalog, 'utf8').then(JSON.parse)
-    ).resolves.toEqual(expectedCatalog);
+    ).resolves.toEqual({ ...expectedCatalog, copiedFirst: true });
+  });
+
+  it('validates synchronized NPC bytes before publishing a staged catalog', async () => {
+    const fixture = await makeFixture();
+    const corruptBytes = 'x'.repeat(fixture.npcStandingBytes.length);
+    await put(fixture.npcStandingDestination, corruptBytes);
+    const sourceTimes = await stat(fixture.npcStandingSource);
+    await utimes(
+      fixture.npcStandingDestination,
+      sourceTimes.atime,
+      sourceTimes.mtime
+    );
+    await put(fixture.generatedNpcCatalog, 'previous NPC catalog\n');
+
+    await expect(
+      runSync(
+        fixture.assetsRoot,
+        fixture.webRoot,
+        fixture.fakeGenerator,
+        actualNpcGenerator,
+        fixture.npcSelection,
+        process.execPath
+      )
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining(
+        'synchronized GLB SHA-256 does not agree with the catalog'
+      ),
+    });
+    await expect(
+      readFile(fixture.npcStandingDestination, 'utf8')
+    ).resolves.toBe(corruptBytes);
+    await expect(readFile(fixture.generatedNpcCatalog, 'utf8')).resolves.toBe(
+      'previous NPC catalog\n'
+    );
+  });
+
+  it('publishes the NPC catalog after a normal synchronized-byte validation', async () => {
+    const fixture = await makeFixture();
+
+    await runSync(
+      fixture.assetsRoot,
+      fixture.webRoot,
+      fixture.fakeGenerator,
+      actualNpcGenerator,
+      fixture.npcSelection,
+      process.execPath
+    );
+
+    await expect(
+      readFile(fixture.npcStandingDestination, 'utf8')
+    ).resolves.toBe(fixture.npcStandingBytes);
+    await expect(
+      readFile(fixture.generatedNpcCatalog, 'utf8')
+    ).resolves.toContain("'dnd5e:npcs:fixture:warrior'");
   });
 
   it.each(['synty', 'custom-dice'])(
