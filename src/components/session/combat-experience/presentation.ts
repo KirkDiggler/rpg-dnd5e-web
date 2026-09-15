@@ -1236,6 +1236,7 @@ const EXPECTED_OTHER_KIND = {
   // A CAST IS TYPED STORY, NOT A ROLL. It carries no die of its own — the
   // save that may follow it is the roll, and that has its own authority.
   cast: EventKind.CAST,
+  castMissed: EventKind.CAST_MISSED,
   // THE HELD SPELL LET GO (design rpg-project#407, R10). It has to be here or
   // the beat never reaches the log at all: a body with no row is discarded by
   // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
@@ -1269,6 +1270,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.WINDOW_OPENED,
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
+  EventKind.CAST_MISSED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
   // Typed, so a SIGHTED arriving with no body is dropped rather than
@@ -1519,10 +1521,33 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             })
           : null,
         target: event.body.value.target,
+        targets: Object.freeze([...event.body.value.targets]),
+      });
+    case 'castMissed':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        actor: event.body.value.actor,
+        target: event.body.value.target,
+        spell: event.body.value.spell
+          ? Object.freeze({
+              ref: event.body.value.spell.ref,
+              name: event.body.value.spell.name,
+            })
+          : null,
       });
     case 'activationResult': {
       const activation = event.body.value;
       switch (activation.result.case) {
+        case 'stabilized':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            // Keep every provider field, including progress presence, zeros and false.
+            stabilized: activation.result.value,
+          });
         case 'healingApplied':
           return Object.freeze({
             kind: event.kind,
@@ -1550,6 +1575,7 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             resultCase: activation.result.case,
             target: activation.result.value.target,
             ref: activation.result.value.ref,
+            sourceId: activation.result.value.sourceId,
             name: activation.result.value.name,
           });
         case 'conditionRemoved':
@@ -1560,6 +1586,7 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             resultCase: activation.result.case,
             target: activation.result.value.target,
             ref: activation.result.value.ref,
+            sourceId: activation.result.value.sourceId,
             name: activation.result.value.name,
             reason: activation.result.value.reason,
           });

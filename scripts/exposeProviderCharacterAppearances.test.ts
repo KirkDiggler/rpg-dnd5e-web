@@ -463,6 +463,10 @@ async function makeFixture(
     '// classOrder must declare at least one class\n'
   );
   await put(join(web, 'package.json'), '{"name":"fixture"}\n');
+  await put(
+    join(web, 'src/generated/characterCustomizationCatalog.ts'),
+    "export const providerCommit = 'baseline';\n"
+  );
   await put(join(web, '.gitignore'), 'public/models/\n.husky/_/\n');
   await git(web, 'add', '.');
   await git(web, 'commit', '--quiet', '-m', 'web base');
@@ -523,11 +527,17 @@ if (args.join(' ') === 'run prepare') {
   fs.writeFileSync(hook, '#!/bin/sh\\nexit 0\\n', {mode:0o755});
   cp.execFileSync('git', ['-C', process.cwd(), 'config', 'core.hooksPath', '.husky/_']);
 }
+if (args.join(' ') === 'run ci-check' && process.env.FAIL_CI === '1') process.exit(7);
 if (args.join(' ') === 'run assets:sync') {
   const output = path.join(process.cwd(),'src/generated/characterCustomizationCatalog.ts');
   fs.mkdirSync(path.dirname(output),{recursive:true});
   fs.writeFileSync(output, "export const providerCommit = '" + process.env.MERGE_SHA + "';\\ncombination: 'human:bard'\\ncombination: 'elf:bard'\\n");
   console.log('Generated aggregate customization catalog from ' + process.env.MERGE_SHA + ' (2 profiles, 15 source files).');
+  if (process.env.STAGE_CATALOG === '1') cp.execFileSync('git',['-C',process.cwd(),'add',output]);
+  if (process.env.WRITE_EXTRA === '1') fs.writeFileSync(path.join(process.cwd(),'unexpected.txt'),'unexpected');
+  if (process.env.WRITE_MULTIPLE === '1') { fs.appendFileSync(path.join(process.cwd(),'package.json'),' '); fs.writeFileSync(path.join(process.cwd(),'unexpected.txt'),'unexpected'); }
+  if (process.env.RENAME_TRACKED === '1') cp.execFileSync('git',['-C',process.cwd(),'mv','package.json','renamed-package.json']);
+  if (process.env.RENAME_TO_CATALOG === '1') { fs.rmSync(output); cp.execFileSync('git',['-C',process.cwd(),'mv','package.json','src/generated/characterCustomizationCatalog.ts']); }
   if (process.env.WRITE_LICENSED === '1') { const p=path.join(process.cwd(),'public/models/synty/bard.glb'); fs.mkdirSync(path.dirname(p),{recursive:true}); fs.writeFileSync(p,'licensed'); cp.execFileSync('git',['-C',process.cwd(),'add','-f',p]); }
 }
 `
@@ -538,9 +548,17 @@ if (args.join(' ') === 'run assets:sync') {
     fakeNpx,
     `#!/usr/bin/env node
 const fs = require('node:fs'); const path = require('node:path');
-fs.appendFileSync(process.env.CALLS, 'npx ' + process.argv.slice(2).join(' ') + '\\n');
-const catalog = fs.readFileSync(path.join(process.cwd(), 'src/generated/characterCustomizationCatalog.ts'), 'utf8');
-if (!catalog.includes(process.env.MERGE_SHA) || (catalog.match(/combination:/g) || []).length !== 2) process.exit(8);
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.CALLS, 'npx ' + args.join(' ') + '\\n');
+const outputIndex = args.indexOf('--output');
+if (outputIndex !== -1) {
+  if (process.env.COLLIDING_BYTES === '1') fs.writeFileSync(args[outputIndex + 1], Buffer.from([0x81]));
+  else fs.writeFileSync(args[outputIndex + 1], "export const providerCommit = '" + process.env.MERGE_SHA + "';\\ncombination: 'human:bard'\\ncombination: 'elf:bard'\\n");
+} else {
+  if (process.env.FAIL_FOCUSED === '1') process.exit(8);
+  const catalog = fs.readFileSync(path.join(process.cwd(), 'src/generated/characterCustomizationCatalog.ts'), 'utf8');
+  if (!catalog.includes(process.env.MERGE_SHA) || (catalog.match(/combination:/g) || []).length !== 2) process.exit(8);
+}
 `
   );
   await chmod(fakeNpx, 0o755);
@@ -595,6 +613,52 @@ async function runCli(fixture: Fixture, extra: string[] = []) {
 
 async function rewriteReceipt(fixture: Fixture) {
   await writeFile(fixture.receiptPath, JSON.stringify(fixture.receipt));
+}
+
+function generatedCatalog(fixture: Fixture) {
+  return `export const providerCommit = '${fixture.mergeSha}';\ncombination: 'human:bard'\ncombination: 'elf:bard'\n`;
+}
+
+async function prepareResumeFixture(fixture: Fixture) {
+  const providerWorktree = join(
+    fixture.provider,
+    '.worktrees',
+    `.provider-bard-${fixture.mergeSha.slice(0, 12)}`
+  );
+  await mkdir(dirname(providerWorktree), { recursive: true });
+  await git(
+    fixture.provider,
+    'worktree',
+    'add',
+    '--detach',
+    providerWorktree,
+    fixture.mergeSha
+  );
+  const webWorktree = join(fixture.root, 'web-worktree');
+  await git(
+    fixture.web,
+    'worktree',
+    'add',
+    '-b',
+    'feat/1012-bard-provider-exposure',
+    webWorktree,
+    'origin/dev'
+  );
+  await writeFile(
+    join(webWorktree, 'src/generated/characterCustomizationCatalog.ts'),
+    generatedCatalog(fixture)
+  );
+  fixture.env.WEB_WORKTREE = webWorktree;
+  return { providerWorktree, webWorktree };
+}
+
+async function advanceWebDev(fixture: Fixture) {
+  await put(join(fixture.web, 'scripts', 'resume-fix.mjs'), '// landed fix\n');
+  await git(fixture.web, 'add', 'scripts/resume-fix.mjs');
+  await git(fixture.web, 'commit', '--quiet', '-m', 'land exposure resume fix');
+  await git(fixture.web, 'push', '--quiet', 'origin', 'dev');
+  await git(fixture.web, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+  return (await git(fixture.web, 'rev-parse', 'HEAD')).stdout.trim();
 }
 
 afterEach(async () => {
@@ -823,6 +887,306 @@ describe('receipt-driven provider exposure wrapper', () => {
       ).stdout.trim()
     ).toBe('src/generated/characterCustomizationCatalog.ts');
   });
+
+  it('accepts the real tracked unstaged generated-catalog status', async () => {
+    const fixture = await makeFixture();
+    await expect(runCli(fixture, ['--apply'])).resolves.toBeDefined();
+  });
+
+  it('accepts a staged generated catalog without weakening exact staging', async () => {
+    const fixture = await makeFixture();
+    fixture.env.STAGE_CATALOG = '1';
+    await expect(runCli(fixture, ['--apply'])).resolves.toBeDefined();
+    const receipt = JSON.parse(await readFile(fixture.output, 'utf8'));
+    expect(receipt.generation.stagedPaths).toEqual([
+      'src/generated/characterCustomizationCatalog.ts',
+    ]);
+  });
+
+  it.each([
+    ['untracked', 'WRITE_EXTRA', ['unexpected.txt']],
+    ['multiple', 'WRITE_MULTIPLE', ['package.json', 'unexpected.txt']],
+    ['renamed', 'RENAME_TRACKED', ['renamed-package.json']],
+  ])(
+    'rejects %s unexpected status paths with their exact names',
+    async (_name, environment, expectedPaths) => {
+      const fixture = await makeFixture();
+      fixture.env[environment] = '1';
+      await expect(runCli(fixture, ['--apply'])).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining(expectedPaths[0]),
+      });
+      if (expectedPaths.length > 1)
+        await expect(
+          readFile(join(fixture.root, 'web-worktree', 'unexpected.txt'), 'utf8')
+        ).resolves.toBe('unexpected');
+      const calls = await readFile(fixture.calls, 'utf8');
+      expect(calls).not.toContain('npx ');
+      expect(calls).not.toContain('pr create');
+    }
+  );
+
+  it('rejects a rename into the allowlisted destination and reports its source path', async () => {
+    const fixture = await makeFixture();
+    await git(
+      fixture.web,
+      'rm',
+      '--quiet',
+      'src/generated/characterCustomizationCatalog.ts'
+    );
+    await git(
+      fixture.web,
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture without catalog'
+    );
+    await git(fixture.web, 'push', '--quiet', 'origin', 'dev');
+    await git(fixture.web, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+    fixture.env.RENAME_TO_CATALOG = '1';
+
+    await expect(runCli(fixture, ['--apply'])).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining('package.json'),
+    });
+  });
+
+  it('plans a read-only pre-commit resume from the exact owned state', async () => {
+    const fixture = await makeFixture();
+    const { providerWorktree, webWorktree } =
+      await prepareResumeFixture(fixture);
+    const providerBefore = (await git(providerWorktree, 'rev-parse', 'HEAD'))
+      .stdout;
+    const webBefore = (await git(webWorktree, 'rev-parse', 'HEAD')).stdout;
+
+    const result = await runCli(fixture, ['--resume']);
+
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      mode: 'resume-dry-run',
+      mutationsPerformed: false,
+      ready: true,
+      web: { worktree: webWorktree },
+    });
+    expect((await git(providerWorktree, 'rev-parse', 'HEAD')).stdout).toBe(
+      providerBefore
+    );
+    expect((await git(webWorktree, 'rev-parse', 'HEAD')).stdout).toBe(
+      webBefore
+    );
+    expect(await readFile(fixture.calls, 'utf8')).not.toContain('npm ');
+  });
+
+  it.each([
+    ['focused tests', 'FAIL_FOCUSED'],
+    ['CI', 'FAIL_CI'],
+  ])(
+    'stops a still-failing %s before staging and allows recovered retry',
+    async (_phase, environment) => {
+      const fixture = await makeFixture();
+      await prepareResumeFixture(fixture);
+      fixture.env[environment] = '1';
+
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).rejects.toBeDefined();
+      const firstCalls = await readFile(fixture.calls, 'utf8');
+      expect(firstCalls).not.toContain('pr create');
+      expect(
+        (
+          await git(
+            join(fixture.root, 'web-worktree'),
+            'diff',
+            '--cached',
+            '--name-only'
+          )
+        ).stdout
+      ).toBe('');
+      if (environment === 'FAIL_FOCUSED')
+        expect(firstCalls).not.toContain('npm run ci-check');
+      else expect(firstCalls).toContain('npm run ci-check');
+
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).rejects.toBeDefined();
+      const stillFailedCalls = await readFile(fixture.calls, 'utf8');
+      expect(stillFailedCalls).not.toContain('pr create');
+      expect(
+        (
+          await git(
+            join(fixture.root, 'web-worktree'),
+            'diff',
+            '--cached',
+            '--name-only'
+          )
+        ).stdout
+      ).toBe('');
+
+      delete fixture.env[environment];
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).resolves.toBeDefined();
+      expect(await readFile(fixture.calls, 'utf8')).toContain('pr create');
+    }
+  );
+
+  it('compares preserved and generated catalogs as raw bytes', async () => {
+    const fixture = await makeFixture();
+    const { webWorktree } = await prepareResumeFixture(fixture);
+    await writeFile(
+      join(webWorktree, 'src/generated/characterCustomizationCatalog.ts'),
+      Buffer.from([0x80])
+    );
+    fixture.env.COLLIDING_BYTES = '1';
+
+    await expect(
+      runCli(fixture, ['--apply', '--resume'])
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining(
+        'does not match fresh generator output from the verified provider'
+      ),
+    });
+  });
+
+  it('resumes the existing owned worktrees without duplicate creation', async () => {
+    const fixture = await makeFixture();
+    const { providerWorktree, webWorktree } =
+      await prepareResumeFixture(fixture);
+    const freshBase = await advanceWebDev(fixture);
+    const providerBefore = (await git(providerWorktree, 'rev-parse', 'HEAD'))
+      .stdout;
+
+    const result = await runCli(fixture, ['--apply', '--resume']);
+
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      mode: 'resume-apply',
+      mutationsPerformed: true,
+      web: { status: 'OPEN' },
+    });
+    expect((await git(providerWorktree, 'rev-parse', 'HEAD')).stdout).toBe(
+      providerBefore
+    );
+    expect((await git(webWorktree, 'rev-parse', 'HEAD^')).stdout.trim()).toBe(
+      freshBase
+    );
+    const providerWorktrees = (
+      await git(fixture.provider, 'worktree', 'list', '--porcelain')
+    ).stdout;
+    expect(providerWorktrees.match(/worktree /g)).toHaveLength(2);
+    const calls = await readFile(fixture.calls, 'utf8');
+    expect(calls.match(/npm run assets:sync/g)).toHaveLength(1);
+    expect(calls).toContain('npm run ci-check');
+    expect(calls).toContain(
+      'npx --no-install tsx scripts/generateCharacterCustomizationCatalog.ts'
+    );
+  });
+
+  it.each([
+    [
+      'unexpected Web edit',
+      async (fixture: Fixture) => {
+        const { webWorktree } = await prepareResumeFixture(fixture);
+        await writeFile(join(webWorktree, 'unexpected.txt'), 'do not touch');
+      },
+      'only the generated catalog',
+    ],
+    [
+      'provider dirt',
+      async (fixture: Fixture) => {
+        const { providerWorktree } = await prepareResumeFixture(fixture);
+        await writeFile(
+          join(providerWorktree, 'unexpected.txt'),
+          'do not touch'
+        );
+      },
+      'provider worktree must be exactly clean',
+    ],
+    [
+      'branch mismatch',
+      async (fixture: Fixture) => {
+        const { webWorktree } = await prepareResumeFixture(fixture);
+        await git(webWorktree, 'switch', '--detach');
+      },
+      'expected issue-derived branch',
+    ],
+    [
+      'generated mismatch',
+      async (fixture: Fixture) => {
+        const { webWorktree } = await prepareResumeFixture(fixture);
+        await writeFile(
+          join(webWorktree, 'src/generated/characterCustomizationCatalog.ts'),
+          'not provider output\n'
+        );
+      },
+      'does not match fresh generator output from the verified provider',
+    ],
+    [
+      'a staged later phase',
+      async (fixture: Fixture) => {
+        const { webWorktree } = await prepareResumeFixture(fixture);
+        await git(
+          webWorktree,
+          'add',
+          'src/generated/characterCustomizationCatalog.ts'
+        );
+      },
+      'pre-commit resume requires an unstaged dirty set',
+    ],
+    [
+      'a Web commit ahead of dev',
+      async (fixture: Fixture) => {
+        const { webWorktree } = await prepareResumeFixture(fixture);
+        await put(join(webWorktree, 'owned-commit.txt'), 'unsupported\n');
+        await git(webWorktree, 'add', 'owned-commit.txt');
+        await git(
+          webWorktree,
+          'commit',
+          '--quiet',
+          '-m',
+          'unsupported own commit'
+        );
+      },
+      'requires no Web commits ahead',
+    ],
+    [
+      'an upstream catalog change',
+      async (fixture: Fixture) => {
+        await prepareResumeFixture(fixture);
+        await writeFile(
+          join(fixture.web, 'src/generated/characterCustomizationCatalog.ts'),
+          'upstream data\n'
+        );
+        await git(
+          fixture.web,
+          'add',
+          'src/generated/characterCustomizationCatalog.ts'
+        );
+        await git(fixture.web, 'commit', '--quiet', '-m', 'upstream catalog');
+        await git(fixture.web, 'push', '--quiet', 'origin', 'dev');
+        await git(fixture.web, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+      },
+      'current dev changed the generated catalog',
+    ],
+  ])(
+    'resume rejects %s without publishing',
+    async (_name, prepare, message) => {
+      const fixture = await makeFixture();
+      await prepare(fixture);
+      await expect(
+        runCli(fixture, ['--apply', '--resume'])
+      ).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining(message),
+      });
+      let calls = '';
+      try {
+        calls = await readFile(fixture.calls, 'utf8');
+      } catch {
+        // Structural validation can reject before adapter calls.
+      }
+      expect(calls).not.toContain('pr create');
+    }
+  );
 
   it.each([
     [

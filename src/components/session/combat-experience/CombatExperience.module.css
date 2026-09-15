@@ -1840,3 +1840,592 @@ button.diceDrawerCue:focus-visible {
 .deathSavePips i[data-failure='true'] {
   background: #f87171;
 }
+
+/* Opt-in #1054 organizer. These rules are scoped by the shared shell's
+   explicit presentation prop; the default dock retains its existing layout. */
+.organizedActions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+}
+.organizedQuick,
+.organizedCollections {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.organizedQuick > span {
+  color: var(--sc-gold);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.organizedQuick > small {
+  color: var(--sc-muted);
+  font-size: 9px;
+}
+.organizedOffer,
+.organizedCollection {
+  display: inline-flex;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid rgba(232, 183, 95, 0.3);
+  border-radius: 7px;
+  color: var(--sc-ink);
+  background: rgba(31, 45, 49, 0.96);
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+.organizedOffer > span {
+  color: var(--sc-gold-bright);
+  font-size: 14px;
+}
+.organizedOffer strong {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organizedOffer small,
+.organizedOffer em {
+  color: var(--sc-muted);
+  font-size: 8px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.organizedOffer:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+.organizedCollection {
+  min-height: 30px;
+  color: var(--sc-muted);
+  background: transparent;
+  font-size: 9px;
+  font-weight: 800;
+}
+.organizedCollection span {
+  color: var(--sc-gold);
+}
+.organizedTray {
+  position: absolute;
+  z-index: 9;
+  right: 0;
+  bottom: calc(100% + 5px);
+  left: 0;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--sc-line);
+  border-radius: 7px;
+  background: rgba(7, 13, 15, 0.94);
+}
+.organizedTray > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.organizedTray .organizedOfferSlot {
+  min-width: 0;
+}
+.organizedTray .organizedOffer {
+  flex: 1;
+  min-width: 0;
+}
+.organizedTray .organizedOffer strong {
+  max-width: none;
+  white-space: normal;
+}
+.organizedTray > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  color: var(--sc-gold-bright);
+  font-size: 10px;
+}
+.organizedTray button:not(.organizedOffer) {
+  border: 0;
+  color: var(--sc-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+}
+
+.combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+  height: min(800px, 100dvh);
+}
+.combatExperience[data-action-presentation='organized-hud'] .map {
+  bottom: 148px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .dock {
+  min-height: 148px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .identityRow {
+  padding: 6px 10px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .effects {
+  overflow: hidden;
+}
+.combatExperience[data-action-presentation='organized-hud'] .storyLog {
+  bottom: 160px;
+}
+@container organized-hud (max-width: 800px) or (max-height: 500px) {
+  .combatExperience[data-action-presentation='organized-hud'] {
+    --organized-turn-button-top: 52px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+    height: 100dvh;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .map {
+    bottom: 120px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .dock {
+    min-height: 120px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .viewerPortrait,
+  .combatExperience[data-action-presentation='organized-hud']
+    .viewerIdentity
+    > span,
+  .combatExperience[data-action-presentation='organized-hud'] .statBlock,
+  .combatExperience[data-action-presentation='organized-hud'] .effects {
+    display: none;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .identityRow {
+    min-height: 32px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .hpBlock {
+    width: 96px;
+    min-width: 96px;
+    flex-basis: 96px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .storyLog {
+    top: 52px;
+    right: 8px;
+    bottom: 128px;
+    width: min(280px, calc(100% - 16px));
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .initiative {
+    top: 5px;
+    min-width: 0;
+    height: 42px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .initiativeEntry {
+    display: none;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .initiativeEntryActive {
+    display: flex;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .roundMarker {
+    flex-basis: 40px;
+    font-size: 15px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .actionRow {
+    gap: 5px;
+    padding: 4px 7px;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .endTurn {
+    height: 42px;
+    padding: 0 9px;
+  }
+  .organizedOffer {
+    min-height: 34px;
+    padding: 5px 7px;
+  }
+  .organizedCollections {
+    overflow-x: auto;
+  }
+}
+
+.organizedOfferSlot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+.organizedInspectButton,
+.organizedCancel {
+  min-height: 30px;
+  padding: 5px 6px;
+  border: 1px solid var(--sc-line);
+  border-radius: 5px;
+  color: var(--sc-muted);
+  background: rgba(0, 0, 0, 0.18);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 800;
+}
+.organizedInspectButton[aria-expanded='true'] {
+  border-color: var(--sc-gold);
+  color: var(--sc-gold-bright);
+}
+.organizedInspection {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: min(300px, calc(100vw - 28px));
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--sc-line);
+  border-radius: 7px;
+  color: var(--sc-ink);
+  background: rgba(7, 13, 15, 0.98);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  font-size: 10px;
+}
+.organizedInspection > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.organizedInspection em {
+  color: var(--sc-muted);
+  font-size: 8px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+.organizedInspection p {
+  margin: 2px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--sc-line);
+  color: #e9a39f;
+}
+.organizedCancel {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  border-color: rgba(232, 183, 95, 0.5);
+  color: var(--sc-gold-bright);
+}
+@container organized-hud (max-width: 800px) or (max-height: 500px) {
+  .organizedQuick,
+  .organizedCollections {
+    overflow-x: auto;
+  }
+  .organizedOfferSlot {
+    gap: 1px;
+  }
+  .organizedInspectButton {
+    min-height: 28px;
+    padding: 4px;
+  }
+  .organizedTray {
+    position: fixed;
+    z-index: 50;
+    right: 8px;
+    bottom: 120px;
+    left: 8px;
+    max-height: min(220px, calc(100dvh - 136px));
+    overflow: auto;
+  }
+  .organizedInspection {
+    position: fixed;
+    z-index: 60;
+    bottom: 124px;
+    left: 8px;
+    width: min(360px, calc(100vw - 16px));
+  }
+}
+
+/* Floating-group experiment: the map owns the frame; only the cards catch
+   pointer events. No full-width background or reserved dock height. */
+.combatExperience[data-action-presentation='organized-hud'] .map {
+  bottom: 0;
+}
+.combatExperience[data-action-presentation='organized-hud'] .dock {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  gap: 8px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+/* Anchor to the full-frame HUD, never to the browser around a phone preview. */
+.combatExperience[data-action-presentation='organized-hud'] .identityRow {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: auto;
+  left: calc(24px + min(180px, 20%));
+  width: max-content;
+  max-width: min(430px, calc(56% - min(180px, 20%) - 36px));
+  min-height: 44px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 9px;
+  border: 0;
+  border-left: 2px solid var(--sc-gold);
+  border-radius: 0;
+  background: linear-gradient(90deg, rgba(10, 17, 20, 0.65), transparent);
+  box-shadow: none;
+  pointer-events: auto;
+}
+.combatExperience[data-action-presentation='organized-hud'] .viewerPortrait,
+.combatExperience[data-action-presentation='organized-hud'] .viewerIdentity {
+  display: none;
+}
+.combatExperience[data-action-presentation='organized-hud'] .hpLabel > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.combatExperience[data-action-presentation='organized-hud'] .roomLabel {
+  top: 12px;
+  left: 12px;
+  max-width: min(180px, 20%);
+}
+/* Bound the roster, not its population: every participant stays reachable. */
+.combatExperience[data-action-presentation='organized-hud'] .initiative {
+  right: 12px;
+  left: auto;
+  width: min(480px, 42cqw);
+  min-width: 0;
+  transform: none;
+  background: rgba(9, 16, 19, 0.55);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.combatExperience[data-action-presentation='organized-hud'] .initiativeOrder {
+  min-width: 0;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.combatExperience[data-action-presentation='organized-hud'] .initiativeEntry {
+  display: flex;
+  flex: 0 0 72px;
+  scroll-snap-align: start;
+}
+.initiativeArrow {
+  flex: 0 0 28px;
+  align-self: stretch;
+  border: 0;
+  color: var(--sc-gold-bright);
+  background: transparent;
+  cursor: pointer;
+  font-size: 24px;
+}
+.initiativeArrow:focus-visible {
+  outline: 2px solid var(--sc-gold);
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed) {
+  top: 116px;
+  bottom: 12px;
+}
+.combatExperience[data-action-presentation='organized-hud'] .actionRow {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  align-content: end;
+  justify-content: start;
+  width: auto;
+  min-width: 0;
+  flex: none;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  pointer-events: none;
+}
+.combatExperience[data-action-presentation='organized-hud'] .organizedActions {
+  width: auto;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  border-left: 2px solid var(--sc-gold);
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(10, 17, 20, 0.6),
+    rgba(10, 17, 20, 0.08)
+  );
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: auto;
+}
+.organizedActions .organizedQuick,
+.organizedActions .organizedCollections {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.organizedActions .organizedOffer {
+  background: rgba(31, 45, 49, 0.28);
+  border-color: rgba(232, 183, 95, 0.2);
+}
+.organizedActions .organizedTray,
+.organizedActions .organizedInspection {
+  border: 0;
+  border-left: 2px solid var(--sc-gold);
+  border-radius: 0;
+  background: rgba(7, 13, 15, 0.62);
+  box-shadow: none;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .actionRow
+  > .actionGroup,
+.combatExperience[data-action-presentation='organized-hud'] .passiveActionRow,
+.combatExperience[data-action-presentation='organized-hud'] .authorityStale {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(10, 17, 20, 0.94);
+  pointer-events: auto;
+}
+.combatExperience[data-action-presentation='organized-hud'] .endTurn {
+  position: absolute;
+  z-index: 2;
+  top: var(--organized-turn-button-top, 80px);
+  right: calc(12px + min(240px, 21cqw));
+  bottom: auto;
+  left: auto;
+  width: max-content;
+  transform: translateX(50%);
+  min-height: 44px;
+  height: auto;
+  margin: 0;
+  pointer-events: auto;
+}
+.organizedEndTurnSlot {
+  display: inline-flex;
+  align-self: center;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .organizedEndTurnSlot
+  .endTurn {
+  position: static;
+  transform: none;
+  min-height: 44px;
+  margin: 0;
+}
+.organizedEquipmentShortcut {
+  margin-left: auto;
+}
+.organizedExplore {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+.organizedExplore > summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 6px 9px;
+  border: 1px solid var(--sc-line);
+  border-radius: 6px;
+  color: var(--sc-gold-bright);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+}
+.organizedExplore > .actionGroup {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: calc(100cqw - 36px);
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 0;
+  border-left: 2px solid var(--sc-gold);
+  border-radius: 0;
+  background: rgba(10, 17, 20, 0.62);
+}
+.organizedExplore .actionOffer {
+  background: rgba(31, 45, 49, 0.28);
+}
+.organizedExplore:not([open]) > .actionGroup {
+  display: none;
+}
+.organizedExplore .groupLabel {
+  display: none;
+}
+
+/* Fill the chosen preview frame, not the browser behind the phone frame. */
+.combatExperienceFillParent[data-action-presentation='organized-hud']
+  .gameFrame {
+  height: 100%;
+}
+
+/* Collapsing must also override the organized layout's more-specific
+   desktop/phone bottom and width rules, not leave an empty full-height panel. */
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog.storyLogCollapsed {
+  top: auto;
+  right: 12px;
+  bottom: 12px;
+  width: auto;
+}
+
+/* The opt-in tray is a deliberate overlay; do not let the legacy narrow-row
+   horizontal scroller clip its vertical inspection controls. */
+.combatExperience[data-action-presentation='organized-hud'] .actionRow {
+  overflow: visible;
+}
+
+/* Targeting owns the compact concept surface until it is cancelled. */
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .map {
+  z-index: 7;
+}
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .contextPrompt[data-phase='targeting'] {
+  z-index: 8;
+}
+.combatExperience[data-action-presentation='organized-hud']:has(
+    [data-phase='targeting']
+  )
+  .dock {
+  pointer-events: none;
+}
+
+@container organized-hud (max-width: 800px) or (max-height: 500px) {
+  .combatExperience[data-action-presentation='organized-hud']
+    .contextPrompt[data-phase='targeting'] {
+    position: fixed;
+    z-index: 100 !important;
+    top: 62px;
+    left: 8px;
+    pointer-events: auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .contextPrompt[data-phase='targeting']
+    * {
+    pointer-events: auto;
+  }
+}

@@ -17,8 +17,33 @@ import type { DebugFeedEntry } from '../debugLogLine';
 export interface CombatExperiencePresentationState {
   armedDeclarationId: string | null;
   selectedCandidateMember: string | null;
+  /**
+   * The player explicitly selected Move. Kept separately from its opaque
+   * declaration id so routine Afford refreshes can mint a replacement selector
+   * without changing the player's chosen interaction mode.
+   */
+  movementSelected?: boolean;
   /** Ordered cast targets; absent on legacy fixtures and unrelated verbs. */
   selectedCandidateMembers?: readonly string[];
+  /**
+   * The cast whose option menu is open — the selector of a declaration that
+   * listed `options`, held while the player answers which of them they mean.
+   *
+   * A THIRD WAITING STATE, BESIDE ARMING AND TARGETING. Arming holds an offer
+   * waiting for a creature or a cell; this holds one waiting for a word, and
+   * the two are separate because a Command that names a creature needs both,
+   * in that order. Null whenever no menu is open, which is every cast that
+   * offers no choice.
+   */
+  optionDeclarationId?: string | null;
+  /**
+   * The option id the player picked, echoed verbatim on the cast request.
+   *
+   * OPAQUE, AND NEVER READ FOR A RULE. It is one of the ids the declaration
+   * listed; what the word does is the engine's answer, and a client that
+   * branched on it would be authoring 5e.
+   */
+  selectedOption?: string | null;
   changedOptionNotice: string | null;
 }
 
@@ -32,6 +57,15 @@ export type CombatExperiencePhase =
 export type CombatExperienceLogMode = 'story' | 'debug';
 
 export type CombatExperienceLayout = 'review-frame' | 'fill-parent';
+
+/** Explicit opt-in presentation only; production defaults to the existing dock. */
+export interface CombatExperienceActionPresentation {
+  mode: 'organized-hud';
+  quickDeclarationIds?: readonly string[];
+  sectionByDeclarationId?: Readonly<
+    Record<string, 'spells' | 'abilities' | 'items' | 'actions'>
+  >;
+}
 
 export type CombatExperienceStreamState =
   | 'live'
@@ -83,6 +117,8 @@ export interface CombatExperienceAttackOutcome {
    * wire's `ReactionRef.name`. Absent on an ordinary declared swing.
    */
   reaction?: string;
+  /** Provider calculation formatted with named dice sources. */
+  rollArithmetic?: string;
   d20: number;
   total: number;
   against: number;
@@ -110,6 +146,8 @@ export interface CombatExperienceRollWindow {
   /** `ReactionRef.ref` from the beat — matched against the open declaration's
    * own offer so one window's numbers can never be drawn under another's. */
   offerRef: string;
+  /** Provider calculation formatted with named dice sources. */
+  rollArithmetic?: string;
   /** The face of the d20, which no answer moves. */
   roll: number;
   /** The face plus the attacker's bonuses, and nothing the answer would add. */
@@ -148,6 +186,8 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
+  /** Opt-in organizer configuration. Omitted preserves the live dock exactly. */
+  actionPresentation?: CombatExperienceActionPresentation;
   /** Accepted local Death Save is awaiting an in-bounds settlement. */
   endTurnBlocked?: boolean;
   presentationState: CombatExperiencePresentationState;
@@ -178,6 +218,18 @@ interface CombatExperienceBaseProps {
    * reaction window, which the verb implies rather than the server offering
    * it as a candidate. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /**
+   * Answer the open option menu with one of the ids the declaration listed.
+   *
+   * THE MENU IS DRAWN, NEVER ASSEMBLED. `Declaration.options` carries both the
+   * ids and the labels; this hands one id back and the cast goes on from
+   * wherever it would have gone had there been no menu at all.
+   */
+  onSelectCastOption?: (optionId: string) => void;
+  /** Close the option menu without casting. Nothing has been sent yet. */
+  onCancelCastOption?: () => void;
+  /** Clear the currently selected action without sending a command. */
+  onCancelSelection?: () => void;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;

@@ -4,7 +4,7 @@ import { BookOpen, Focus, Sparkles, Zap } from 'lucide-react';
 import { spellRefLabel } from '../../../utils/spellRefs';
 
 interface SpellInfoDisplayProps {
-  spellcastingInfo: SpellcastingInfo;
+  spellcastingInfo?: SpellcastingInfo;
   className?: string;
   /**
    * The cantrips this build has chosen, as `dnd5e:spells:<id>` refs.
@@ -66,34 +66,9 @@ export function SpellInfoDisplay({
       </div>
 
       {/* Spell Information Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Spellcasting Ability */}
-        <div
-          className="p-3 rounded-lg border"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-primary)',
-          }}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <Zap
-              className="w-4 h-4"
-              style={{ color: 'var(--accent-primary)' }}
-            />
-            <span
-              className="text-sm font-medium"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              Spellcasting Ability
-            </span>
-          </div>
-          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {getAbilityDisplayName(spellcastingInfo.spellcastingAbility)}
-          </div>
-        </div>
-
-        {/* Spellcasting Focus */}
-        {spellcastingInfo.spellcastingFocus && (
+      {spellcastingInfo && (
+        <div className="grid grid-cols-2 gap-3">
+          {/* Spellcasting Ability */}
           <div
             className="p-3 rounded-lg border"
             style={{
@@ -102,81 +77,110 @@ export function SpellInfoDisplay({
             }}
           >
             <div className="flex items-center gap-2 mb-1">
-              {getSpellcastingFocusIcon(spellcastingInfo.spellcastingFocus)}
+              <Zap
+                className="w-4 h-4"
+                style={{ color: 'var(--accent-primary)' }}
+              />
               <span
                 className="text-sm font-medium"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Focus
+                Spellcasting Ability
               </span>
             </div>
             <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {spellcastingInfo.spellcastingFocus}
+              {getAbilityDisplayName(spellcastingInfo.spellcastingAbility)}
             </div>
           </div>
-        )}
 
-        {/* Cantrips Known */}
-        {spellcastingInfo.cantripsKnown > 0 && (
-          <div
-            className="p-3 rounded-lg border"
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              borderColor: 'var(--border-primary)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles
-                className="w-4 h-4"
-                style={{ color: 'var(--accent-primary)' }}
-              />
-              <span
-                className="text-sm font-medium"
+          {/* Spellcasting Focus */}
+          {spellcastingInfo.spellcastingFocus && (
+            <div
+              className="p-3 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {getSpellcastingFocusIcon(spellcastingInfo.spellcastingFocus)}
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Focus
+                </span>
+              </div>
+              <div
+                className="text-sm"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {spellcastingInfo.spellcastingFocus}
+              </div>
+            </div>
+          )}
+
+          {/* Cantrips Known */}
+          {spellcastingInfo.cantripsKnown > 0 && (
+            <div
+              className="p-3 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles
+                  className="w-4 h-4"
+                  style={{ color: 'var(--accent-primary)' }}
+                />
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Cantrips Known
+                </span>
+              </div>
+              <div
+                className="text-lg font-bold"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Cantrips Known
-              </span>
+                {spellcastingInfo.cantripsKnown}
+              </div>
             </div>
-            <div
-              className="text-lg font-bold"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {spellcastingInfo.cantripsKnown}
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Spells Known */}
-        {spellcastingInfo.spellsKnown > 0 && (
-          <div
-            className="p-3 rounded-lg border"
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              borderColor: 'var(--border-primary)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <BookOpen
-                className="w-4 h-4"
-                style={{ color: 'var(--accent-primary)' }}
-              />
-              <span
-                className="text-sm font-medium"
+          {/* Spells Known */}
+          {spellcastingInfo.spellsKnown > 0 && (
+            <div
+              className="p-3 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <BookOpen
+                  className="w-4 h-4"
+                  style={{ color: 'var(--accent-primary)' }}
+                />
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Spells Known
+                </span>
+              </div>
+              <div
+                className="text-lg font-bold"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Spells Known
-              </span>
+                {spellcastingInfo.spellsKnown}
+              </div>
             </div>
-            <div
-              className="text-lg font-bold"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {spellcastingInfo.spellsKnown}
-            </div>
-          </div>
-        )}
-      </div>
-
+          )}
+        </div>
+      )}
       {/* Cantrips this build knows, by name */}
       {knownCantripRefs && knownCantripRefs.length > 0 && (
         <div
@@ -235,7 +239,7 @@ export function SpellInfoDisplay({
       )}
 
       {/* Spell Slots */}
-      {spellcastingInfo.spellSlotsLevel1 > 0 && (
+      {spellcastingInfo && spellcastingInfo.spellSlotsLevel1 > 0 && (
         <div
           className="p-3 rounded-lg border"
           style={{
@@ -274,7 +278,7 @@ export function SpellInfoDisplay({
       )}
 
       {/* Ritual Casting */}
-      {spellcastingInfo.ritualCasting && (
+      {spellcastingInfo?.ritualCasting && (
         <div
           className="p-3 rounded-lg border"
           style={{

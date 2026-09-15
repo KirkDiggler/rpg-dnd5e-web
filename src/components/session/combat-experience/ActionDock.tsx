@@ -1,11 +1,14 @@
 import {
   ClockKind,
+  LifeState,
   ReactChoice,
   Slot,
   Verb,
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   actionTooltipText,
   buildActionTooltip,
@@ -15,6 +18,7 @@ import {
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import { OrganizedActionSurface } from './OrganizedActionSurface';
 import {
   reactionWindowAnswers,
   reactionWindowDeclaration,
@@ -27,7 +31,10 @@ import {
   type StandingAction,
 } from './standingActions';
 import { formatAttackRollArithmetic } from './story';
-import type { CombatExperienceRollWindow } from './types';
+import type {
+  CombatExperienceActionPresentation,
+  CombatExperienceRollWindow,
+} from './types';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -94,7 +101,7 @@ function rollWindowHeadline(
   roll: CombatExperienceRollWindow | undefined | null
 ): string {
   if (!roll) return 'Your roll is on the table';
-  return `You rolled ${formatAttackRollArithmetic(roll.roll, roll.total)}`;
+  return `You rolled ${roll.rollArithmetic ?? formatAttackRollArithmetic(roll.roll, roll.total)}`;
 }
 
 function declarationIcon(declaration: Declaration): string {
@@ -230,6 +237,11 @@ export interface ActionDockProps {
   participants: readonly Participant[];
   declarations: readonly Declaration[];
   authorityFresh: boolean;
+  /** Omitted keeps the existing production dock semantics. */
+  actionPresentation?: CombatExperienceActionPresentation;
+  onOpenEquipment?: () => void;
+  /** Optional composition slot; the dock still owns the existing End Turn gate. */
+  endTurnTarget?: HTMLElement | null;
   endTurnBlocked?: boolean;
   armedDeclarationId?: string;
   /** Roster names, for the one place the dock names somebody who is not the
@@ -255,6 +267,19 @@ export interface ActionDockProps {
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  /**
+   * The selector of the cast whose option menu is open, or undefined when none
+   * is. Held as an id rather than a declaration for the same reason
+   * `armedDeclarationId` is: the row is looked back up in the CURRENT
+   * declarations, so a menu whose offer has gone stops being drawn.
+   */
+  optionDeclarationId?: string;
+  /** Answer the open menu with one of the ids the declaration listed. */
+  onSelectCastOption?: (optionId: string) => void;
+  /** Close the menu without casting. */
+  onCancelCastOption?: () => void;
+  /** Clear the selected declaration locally without spending anything. */
+  onCancelSelection?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
@@ -279,9 +304,11 @@ export interface ActionDockProps {
 function StandingActionGroup({
   actions,
   blocked,
+  onBeforeSelect,
 }: {
   actions: readonly StandingAction[];
   blocked: string | null;
+  onBeforeSelect?: () => void;
 }) {
   return (
     <div className={styles.actionGroup} data-testid="standing-actions">
@@ -294,7 +321,10 @@ function StandingActionGroup({
             data-testid={action.key}
             disabled={blocked !== null || action.pending === true}
             title={blocked ?? action.title}
-            onClick={action.onSelect}
+            onClick={() => {
+              onBeforeSelect?.();
+              action.onSelect();
+            }}
           >
             <span className={styles.actionIcon} aria-hidden="true">
               {action.icon}
@@ -319,6 +349,74 @@ function StandingActionGroup({
   );
 }
 
+/**
+ * The menu a cast declared, drawn exactly as it was sent.
+ *
+ * ONE BUTTON PER OPTION THE SERVER LISTED, labelled with the label it
+ * authored. There is deliberately no id-to-name table and no grouping here:
+ * "Grovel" is no more derivable from `grovel` than "Vicious Mockery" is from
+ * its ref, and a client that assembled Command's vocabulary would be authoring
+ * 5e content — the same reason `castLabel` refuses to prettify a spell ref.
+ *
+ * THE REACTION WINDOW IS THE SHAPE THIS COPIES: a question posed in the dock
+ * with its answers beside it. What differs is where the answers come from —
+ * the window's two are implied by the verb, and these arrive on the wire.
+ *
+ * CANCEL IS AN ANSWER TOO. Nothing has been sent while this is open, so
+ * backing out has to be reachable without casting something the player did not
+ * mean; a menu whose only exit is picking a word is a trap.
+ */
+function CastOptionGroup({
+  declaration,
+  authorityFresh,
+  onSelectOption,
+  onCancel,
+}: {
+  declaration: Declaration;
+  authorityFresh: boolean;
+  onSelectOption: (optionId: string) => void;
+  onCancel?: () => void;
+}) {
+  return (
+    <div className={styles.actionGroup} data-testid="cast-options">
+      <span className={styles.groupLabel}>{castLabel(declaration)}</span>
+      {declaration.options.map((option, index) => (
+        <span className={styles.actionOfferSlot} key={`${option.id}:${index}`}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid={`cast-option-${option.id}`}
+            disabled={!authorityFresh}
+            onClick={() => onSelectOption(option.id)}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              {declarationIcon(declaration)}
+            </span>
+            <span className={styles.actionLabel}>{option.label}</span>
+          </button>
+        </span>
+      ))}
+      {onCancel && (
+        <span className={styles.actionOfferSlot}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid="cast-option-cancel"
+            onClick={onCancel}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              ✕
+            </span>
+            {/* NO COST BADGE. Backing out spends nothing, and a badge here
+                would price a refusal. */}
+            <span className={styles.actionLabel}>Cancel</span>
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
 // now that a verb can compile many offers. End Turn compiles exactly one, so
 // "more than one" there really is a producer defect. VERB_ACTIVATE routinely
@@ -333,18 +431,35 @@ function exactlyOne(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+function EndTurnPlacement({
+  target,
+  children,
+}: {
+  target?: HTMLElement | null;
+  children: ReactNode;
+}) {
+  return target ? createPortal(children, target) : children;
+}
+
 export function ActionDock({
   clock,
   viewerMember,
   participants,
   declarations,
   authorityFresh,
+  actionPresentation,
+  onOpenEquipment,
+  endTurnTarget,
   endTurnBlocked = false,
   armedDeclarationId,
   memberNames,
   rollWindow,
   rollWindowReady = true,
   onSelectDeclaration,
+  optionDeclarationId,
+  onSelectCastOption,
+  onCancelCastOption,
+  onCancelSelection,
   onEndTurn,
   standingActions = [],
 }: ActionDockProps) {
@@ -359,9 +474,22 @@ export function ActionDock({
     participants,
     authorityFresh
   );
-  const standing = standingActions.length > 0 && (
-    <StandingActionGroup actions={standingActions} blocked={blocked} />
+  const standingGroup = standingActions.length > 0 && (
+    <StandingActionGroup
+      actions={standingActions}
+      blocked={blocked}
+      onBeforeSelect={onCancelSelection}
+    />
   );
+  const standing =
+    standingGroup && actionPresentation?.mode === 'organized-hud' ? (
+      <details className={styles.organizedExplore}>
+        <summary>Explore</summary>
+        {standingGroup}
+      </details>
+    ) : (
+      standingGroup
+    );
 
   if (clock === ClockKind.WORLD) {
     return (
@@ -516,7 +644,13 @@ export function ActionDock({
           <strong>
             {activeParticipant?.name ?? 'Another participant'}’s turn
           </strong>
-          <small>Your commands return when the initiative reaches you.</small>
+          <small>
+            {participants.find(
+              (participant) => participant.member === viewerMember
+            )?.lifeState === LifeState.STABILIZED
+              ? 'You are stable. Waiting for recovery.'
+              : 'Your commands return when the initiative reaches you.'}
+          </small>
         </div>
         {standing}
       </div>
@@ -543,60 +677,141 @@ export function ActionDock({
         isDeathSaveExecutableShape(declaration, 'display'))
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
+  // LOOKED BACK UP IN THE CURRENT DECLARATIONS, never held as the row that was
+  // clicked. A menu drawn from a captured declaration would go on offering a
+  // word after Afford withdrew the spell that had it — the same staleness the
+  // armed row is judged for one render later, and the reason this is an id.
+  const optionMatches = optionDeclarationId
+    ? executableDeclarations.filter(
+        (declaration) =>
+          declaration.id === optionDeclarationId &&
+          declaration.verb === Verb.CAST &&
+          declaration.available &&
+          declaration.options.length > 0
+      )
+    : [];
+  const optionDeclaration =
+    optionMatches.length === 1 ? optionMatches[0] : undefined;
+  const selectedMoveMatches =
+    armedDeclarationId === undefined
+      ? []
+      : executableDeclarations.filter(
+          (declaration) =>
+            declaration.id === armedDeclarationId &&
+            declaration.verb === Verb.MOVE
+        );
+  const moveIsSelected = selectedMoveMatches.length === 1;
 
   return (
     <div className={styles.actionRow}>
-      <div className={styles.actionGroupWithDivider}>
-        <div className={styles.actionGroup}>
-          <span className={styles.groupLabel}>Actions</span>
-          {executableDeclarations.map((declaration, index) => (
-            <ActionDeclaration
-              key={`${declaration.id}:${index}`}
-              declaration={declaration}
-              armed={armedDeclarationId === declaration.id}
-              authorityFresh={authorityFresh}
-              index={index}
-              onSelect={onSelectDeclaration}
-            />
-          ))}
+      {/* THE QUESTION TAKES THE PLACE OF THE OFFERS, it does not queue behind
+          them. Drawn as one more group in this row, the menu landed past the
+          right edge: `.actionRow` is a nowrap flex line inside a dock fixed at
+          174px, the Actions group alone measured 1250px wide, and the four
+          option buttons started at x=1272 — clipped at 1600px and entirely
+          offscreen at 1280 and below. Kirk's walk read that as the row
+          deselecting and nothing appearing, which is exactly what it looked
+          like (2026-09-12).
+
+          NOT A CLAIM THAT NOTHING ELSE IS DECLARABLE. The reaction window
+          replaces the dock because every other verb really is refused while it
+          is open; this replaces it only because the question and the offers
+          cannot both fit, and every one of those offers is still perfectly
+          castable — which is why Cancel is part of the menu rather than an
+          afterthought. One click back and the rows return. */}
+      {optionDeclaration && onSelectCastOption ? (
+        <CastOptionGroup
+          declaration={optionDeclaration}
+          authorityFresh={authorityFresh}
+          onSelectOption={onSelectCastOption}
+          onCancel={onCancelCastOption}
+        />
+      ) : actionPresentation?.mode === 'organized-hud' ? (
+        <OrganizedActionSurface
+          declarations={declarations}
+          authorityFresh={authorityFresh}
+          presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
+          onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
+          onOpenEquipment={onOpenEquipment}
+          secondaryControls={standing}
+        />
+      ) : (
+        <div className={styles.actionGroupWithDivider}>
+          <div className={styles.actionGroup}>
+            <span className={styles.groupLabel}>Actions</span>
+            {executableDeclarations.map((declaration, index) => (
+              <ActionDeclaration
+                key={`${declaration.id}:${index}`}
+                declaration={declaration}
+                armed={armedDeclarationId === declaration.id}
+                authorityFresh={authorityFresh}
+                index={index}
+                onSelect={onSelectDeclaration}
+              />
+            ))}
+            {moveIsSelected && onCancelSelection && (
+              <span className={styles.actionOfferSlot}>
+                <button
+                  type="button"
+                  className={styles.actionOffer}
+                  aria-label="Cancel selected action"
+                  onClick={onCancelSelection}
+                >
+                  <span className={styles.actionIcon} aria-hidden="true">
+                    ✕
+                  </span>
+                  <span className={styles.actionLabel}>Cancel</span>
+                </button>
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      {standing}
+      )}
+      {/* Ordinary organized mode hosts Explore in its collection row;
+          option selection and the default dock keep their own standing group. */}
+      {actionPresentation?.mode !== 'organized-hud' ||
+      (optionDeclaration && onSelectCastOption)
+        ? standing
+        : null}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">
           Actions may be out of date
         </div>
       )}
       {endTurn && (
-        <button
-          type="button"
-          className={styles.endTurn}
-          disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
-          title={
-            !authorityFresh
-              ? 'Actions may be out of date'
-              : endTurnBlocked
-                ? 'Finish the Death Save roll before ending turn'
-                : endTurn.available
-                  ? 'End turn'
-                  : endTurn.why?.text || 'Unavailable'
-          }
-          onClick={() => onEndTurn(endTurn)}
-        >
-          End turn
-          <span aria-hidden="true">→</span>
-          {endTurnBlocked ? (
-            <span className={styles.semanticOnly}>
-              Unavailable: finish the Death Save roll first
-            </span>
-          ) : (
-            !endTurn.available && (
+        <EndTurnPlacement target={endTurnTarget}>
+          <button
+            type="button"
+            className={styles.endTurn}
+            disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
+            title={
+              !authorityFresh
+                ? 'Actions may be out of date'
+                : endTurnBlocked
+                  ? 'Finish the Death Save roll before ending turn'
+                  : endTurn.available
+                    ? 'End turn'
+                    : endTurn.why?.text || 'Unavailable'
+            }
+            onClick={() => onEndTurn(endTurn)}
+          >
+            End turn
+            <span aria-hidden="true">→</span>
+            {endTurnBlocked ? (
               <span className={styles.semanticOnly}>
-                Unavailable: {endTurn.why?.text || 'Unavailable'}
+                Unavailable: finish the Death Save roll first
               </span>
-            )
-          )}
-        </button>
+            ) : (
+              !endTurn.available && (
+                <span className={styles.semanticOnly}>
+                  Unavailable: {endTurn.why?.text || 'Unavailable'}
+                </span>
+              )
+            )}
+          </button>
+        </EndTurnPlacement>
       )}
     </div>
   );

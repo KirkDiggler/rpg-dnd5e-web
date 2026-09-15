@@ -15,6 +15,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   EventKind,
   EventSchema,
+  RollCalculationSchema,
   RollWindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { AttackResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -38,6 +39,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionDock } from './ActionDock';
+import { buildCombatStory } from './story';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
 
 const hoisted = vi.hoisted(() => ({
@@ -366,6 +368,42 @@ describe('answering a post-roll window on your own d20', () => {
         'no'
       )
     );
+  });
+
+  it('shows named dice in the decision prompt and its Story entry', async () => {
+    const beat = rollWindowBeat('fighter-1', 9, 13);
+    if (beat.body.case !== 'rollWindowOpened') throw Error('expected window');
+    beat.body.value.calculation = create(RollCalculationSchema, {
+      // Preserve the provider total even if its components look inconsistent.
+      total: 99,
+      components: [
+        { dice: { notation: '1d20', finalRolls: [9] } },
+        {
+          source: { name: 'Bless' },
+          dice: { notation: '1d4', finalRolls: [3] },
+        },
+        {
+          source: { name: 'Bane' },
+          subtractDice: true,
+          dice: { notation: '1d4', finalRolls: [2] },
+        },
+      ],
+    });
+    render(<Harness declarations={[rollWindowDeclaration()]} beat={beat} />);
+    const arithmetic = '1d20 [9] + 1d4 [3] Bless - 1d4 [2] Bane = 99';
+    await waitFor(() =>
+      expect(screen.getByTestId('reaction-window').textContent).toContain(
+        `You rolled ${arithmetic}`
+      )
+    );
+    for (const source of ['live', 'catchup'] as const) {
+      const [entry] = buildCombatStory(
+        [{ event: beat, source, visible: true }],
+        { viewerMember: 'fighter-1' }
+      );
+      expect(entry.headline).toContain(`rolled ${arithmetic}`);
+      expect(entry.headline).not.toMatch(/hit|miss|AC/);
+    }
   });
 
   it('draws the roll, the total and the die on offer, with Spend and Keep', async () => {

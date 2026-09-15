@@ -73,8 +73,8 @@ describe('buildDungeonLightingFacts', () => {
     ).toHaveLength(1);
     expect(resolveDungeonLighting(facts, { x: 0, z: 0 })).toMatchObject({
       mode: 'crypt',
-      ambientIntensity: 0.2,
-      directionalIntensity: 0.1,
+      ambientIntensity: 0.8,
+      directionalIntensity: 0.4,
       directionalPosition: [10, 20, 10],
       floorExposureByCell: expect.objectContaining({ size: 1 }),
     });

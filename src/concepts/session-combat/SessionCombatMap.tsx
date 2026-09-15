@@ -6,6 +6,7 @@ export interface SessionCombatMapProps {
   attackableTargets?: readonly string[];
   onTargetClick?: (targetId: string) => void;
   onHoverTarget?: (targetId: string | null) => void;
+  interactionEnabled?: boolean;
 }
 
 /**
@@ -17,6 +18,7 @@ export function SessionCombatMap({
   attackableTargets,
   onTargetClick,
   onHoverTarget,
+  interactionEnabled,
 }: SessionCombatMapProps) {
   return (
     <SessionCanvas
@@ -31,6 +33,7 @@ export function SessionCombatMap({
       pathIndex={SESSION_COMBAT_MAP_FIXTURE.pathIndex}
       onEntityClick={onTargetClick}
       onHoverEntity={onHoverTarget}
+      interactionEnabled={interactionEnabled}
     />
   );
 }

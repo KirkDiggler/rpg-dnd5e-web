@@ -76,11 +76,11 @@ describe('DungeonPreview3D rendered shell parity', () => {
     expect(container.querySelectorAll('ambientLight')).toHaveLength(1);
     expect(
       container.querySelector('ambientLight')?.getAttribute('intensity')
-    ).toBe('0.2');
+    ).toBe('0.8');
     expect(container.querySelectorAll('directionalLight')).toHaveLength(1);
     expect(
       container.querySelector('directionalLight')?.getAttribute('intensity')
-    ).toBe('0.1');
+    ).toBe('0.4');
     // One point light per lit prop in range. The tomb is the toolkit's
     // own file, so the count is whatever that file places rather than a
     // number this test chose — what is pinned is that each one carries

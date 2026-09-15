@@ -21,6 +21,7 @@ import {
 import {
   FightingStyle,
   Language,
+  type Subclass,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -83,9 +84,21 @@ function isClassInfo(info: ClassInfo | SubclassInfo | null): info is ClassInfo {
   return info != null && info.$typeName === 'dnd5e.api.v1alpha1.ClassInfo';
 }
 
-function classChoiceDefinitions(info: ClassInfo | SubclassInfo | null) {
+function classChoiceDefinitions(
+  info: ClassInfo | SubclassInfo | null,
+  subclass?: Subclass
+) {
   if (!info) return [];
-  return isClassInfo(info) ? info.choices : info.additionalChoices;
+  if (!isClassInfo(info)) return info.additionalChoices;
+  const extras =
+    info.subclasses.find((option) => option.subclassId === subclass)
+      ?.additionalChoices ?? [];
+  return [
+    ...info.choices.filter(
+      (choice) => !extras.some((extra) => extra.id === choice.id)
+    ),
+    ...extras,
+  ];
 }
 
 function getLanguageDisplayName(languageEnum: Language): string {
@@ -240,13 +253,21 @@ export function InteractiveCharacterSheet({
 
     // Parse draft.classChoices which is now ChoiceSubmission[]
     (draft.classChoices || []).forEach((choice) => {
+      // Older API draft projections omit spell categories. Recover only from
+      // the matching provider declaration, never from spell names or levels.
+      const spellCategory =
+        choice.category ||
+        classChoiceDefinitions(draft.classInfo, draft.draft?.subclass).find(
+          (definition) => definition.id === choice.choiceId
+        )?.choiceType;
       if (
         choice.category === ChoiceCategory.EQUIPMENT &&
         choice.selection?.case === 'equipment'
       ) {
-        const declaredChoice = classChoiceDefinitions(draft.classInfo).find(
-          (candidate) => candidate.id === choice.choiceId
-        );
+        const declaredChoice = classChoiceDefinitions(
+          draft.classInfo,
+          draft.draft?.subclass
+        ).find((candidate) => candidate.id === choice.choiceId);
         if (declaredChoice) {
           choices.equipment?.push(
             reconstructEquipmentChoice(declaredChoice, choice)
@@ -280,7 +301,7 @@ export function InteractiveCharacterSheet({
           });
         }
       } else if (
-        choice.category === ChoiceCategory.CANTRIPS &&
+        spellCategory === ChoiceCategory.CANTRIPS &&
         choice.selection?.case === 'spells'
       ) {
         // REFS ONLY. The deprecated `spells` enum field is never read back,
@@ -291,7 +312,7 @@ export function InteractiveCharacterSheet({
           spellRefs: choice.selection.value.spellRefs || [],
         });
       } else if (
-        choice.category === ChoiceCategory.SPELLS &&
+        spellCategory === ChoiceCategory.SPELLS &&
         choice.selection?.case === 'spells'
       ) {
         choices.spells?.push({
@@ -511,7 +532,7 @@ export function InteractiveCharacterSheet({
       scores.charisma > 0;
 
     const hasNoInvalidEquipment = hasNoInvalidEquipmentChoices(
-      classChoiceDefinitions(draft.classInfo),
+      classChoiceDefinitions(draft.classInfo, draft.draft?.subclass),
       draft.classChoices
     );
 
@@ -1433,7 +1454,9 @@ export function InteractiveCharacterSheet({
 
                     {/* Spell Information - display if class has spellcasting */}
                     {isClassInfo(character.selectedClass) &&
-                      character.selectedClass.spellcasting && (
+                      (character.selectedClass.spellcasting ||
+                        knownCantripRefs.length > 0 ||
+                        knownSpellRefs.length > 0) && (
                         <motion.div
                           style={{
                             padding: '12px',
@@ -1847,6 +1870,7 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name || draft.classInfo?.name}
+        currentSubclass={draft.draft?.subclass}
         existingChoices={structuredClassChoices}
         onSelect={async (classData, choices) => {
           setCharacter((prev) => ({

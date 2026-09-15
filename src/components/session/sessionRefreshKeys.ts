@@ -40,7 +40,11 @@ export function refreshKeysFor(
         : ['view'];
     case 'struck':
     case 'missed':
+      return ['characterData', 'afford', 'view'];
     case 'activationResult':
+      return event.body.value.result.case === 'stabilized'
+        ? ['characterData', 'afford', 'turn', 'view']
+        : ['characterData', 'afford', 'view'];
     case 'deathSaveRolled':
       return ['characterData', 'afford', 'view'];
     case 'downed':
@@ -112,6 +116,7 @@ export function refreshKeysFor(
     // beats that carry them are separate; refetching on the save keeps the
     // card and the log from disagreeing for the width of that gap.
     case 'cast':
+    case 'castMissed':
     case 'saved':
       return ['characterData', 'afford', 'view'];
     // A REACTION WINDOW OPENED AND THE SEAM IS FROZEN ON ITS ANSWER

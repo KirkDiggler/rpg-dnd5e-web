@@ -1,7 +1,6 @@
 import {
   CHARACTER_CUSTOMIZATION_CATALOG,
   type CustomizationRaceRef,
-  type CustomizationStarterClass,
 } from '@/generated/characterCustomizationCatalog';
 
 /**
@@ -86,7 +85,7 @@ function resolveRaceClassCharacterModelResolution(
       ];
     if (!Object.hasOwn(profile.bodies, normalizedClassRefId)) return undefined;
     const body =
-      profile.bodies[normalizedClassRefId as CustomizationStarterClass];
+      profile.bodies[normalizedClassRefId as keyof typeof profile.bodies];
     return {
       url: body.url,
       rigFamily: profile.rigFamily,

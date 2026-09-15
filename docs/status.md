@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-08
+updated: 2026-09-13
 confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -11,6 +11,42 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Spare the Dying** — SDK `v0.1.190` exposes typed stabilization in live and
+  recovered Story and Debug, including full progress identity with zero/false
+  values. Stabilization refreshes owner data, turn, actions and view. Stable
+  players have an explicit HUD/initiative label and recovery waiting message.
+  Browser casts passed for dying and already-stable player recipients: zero HP,
+  cleared progress, action-only cost, no spell dice, unchanged slots, reconnect,
+  and automatic turn advancement without death saves through two rounds.
+  A same-turn Spare the Dying then Healing Word browser sequence restored the
+  patient to conscious at 10 HP and returned normal actions on their next turn.
+  See [verification notes](how-to/spare-the-dying-verification.md) for fixture
+  boundaries and the exact API image. Preparation and natural recovery are deferred.
+
+- **Cleric spellcasting handoff** — Cleric is available in the class picker;
+  provider domain choices and base spell choices stay together and saved domains
+  survive draft updates/reopening. Spell refs remain visible when the provider
+  omits spellcasting summary metadata; uncategorized saved spell selections use
+  the matching provider choice definition. Protos are pinned to `v0.1.189`
+  (includes protos #333). Typed `CastMissed` joins ordered live/recovered Story,
+  invalidates private/action/view reads, and never invents dice or refunds.
+  Cast identity includes ordered targets; condition identity includes source ID.
+  Attack hit/miss Story now prints provider-supplied roll components, including
+  named Bless bonuses and Bane penalties in the latest attack card, historical
+  entries, and post-roll decision prompt and Story entry, with legacy combined arithmetic when
+  no usable breakdown is supplied.
+  Focused coverage exercises provider-owned Bless targets, Cure Wounds action,
+  Healing Word bonus action, authoritative healing, and reconnect deduplication.
+  **Provider blockers resolved:** API #979 at `5b44fe69` and toolkit
+  `rulebooks/dnd5e v0.165.1` enable fresh native Life Cleric creation and owner
+  data. Browser Cure Wounds, ordered two-target Bless, resource spending,
+  concentration and reload recovery passed. Healing Word also passed after an
+  explicit disposable slot refill between encounters, including healing, slot
+  spending and provider same-turn restrictions. Selected-domain choice overrides
+  now also drive equipment validation at finalization. API integration covers
+  both stale-target policies; browser stale-target races remain unexercised.
+  See [verification notes](how-to/cleric-spellcasting-verification.md).
 
 - **Guild-bound world composition library / World Builder (#974, project
   #399)** — normal Discord auth requests `guilds.members.read` consent and uses

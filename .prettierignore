@@ -1,3 +1,7 @@
+# CLAUDE.md is a tracked symlink to AGENTS.md. Windows may check it out as
+# a text stub; format the canonical AGENTS.md instead of the link target text.
+CLAUDE.md
+
 # Dungeon Builder specimen pack (rpg-project#175) — real output from
 # dungeonYaml.ts's own serializeDungeon/stripToV1Subset, committed
 # byte-accurate on purpose. Prettier's YAML formatter reformats flow-style

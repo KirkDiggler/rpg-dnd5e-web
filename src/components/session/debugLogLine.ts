@@ -221,6 +221,18 @@ export function formatDebugLine(
       const b = event.body.value;
       const actor = `${prefix} activation_result actor=${name(b.actor)}`;
       switch (b.result.case) {
+        case 'stabilized': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=stabilized target=${name(result.target)} ` +
+              `source.ref=${result.sourceRef} source.name=${quoteDebugString(result.sourceName)} ` +
+              `life.before=${result.before} life.after=${result.after} hp=${result.hitPoints} ` +
+              `progress=${result.progress ? safeJson(result.progress) : 'unset'}`,
+          };
+        }
         case 'healingApplied': {
           const result = b.result.value;
           return {

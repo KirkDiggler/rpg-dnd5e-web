@@ -11,6 +11,7 @@ import {
   ClassInfoSchema,
   RaceInfoSchema,
   SpellcastingInfoSchema,
+  SubclassInfoSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
@@ -28,6 +29,7 @@ import {
   Armor,
   Class,
   Race,
+  Subclass,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -276,6 +278,56 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
 });
 
 describe('InteractiveCharacterSheet persisted equipment guard', () => {
+  it('validates a saved domain-only option against that domain overlay', () => {
+    const base = draftState(vi.fn());
+    const baseDraft = create(CharacterDraftSchema, base.draft ?? {});
+    const domainChoice = create(ChoiceSchema, {
+      ...declaredEquipmentChoice,
+      id: 'domain-equipment',
+    });
+    const persisted = create(ChoiceDataSchema, {
+      ...persistedDuplicateEquipmentChoice(),
+      choiceId: 'domain-equipment',
+    });
+    const classInfo = create(ClassInfoSchema, {
+      name: 'Cleric',
+      choices: [
+        create(ChoiceSchema, {
+          id: 'domain-equipment',
+          choiceType: ChoiceCategory.EQUIPMENT,
+        }),
+      ],
+      subclasses: [
+        create(SubclassInfoSchema, {
+          subclassId: Subclass.LIFE_DOMAIN,
+          additionalChoices: [domainChoice],
+        }),
+      ],
+    });
+    const renderSheet = (subclass: Subclass) => (
+      <CharacterDraftContext.Provider
+        value={draftState(vi.fn(), {
+          draft: create(CharacterDraftSchema, { ...baseDraft, subclass }),
+          classInfo,
+          classChoices: [persisted],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+    const { rerender } = render(renderSheet(Subclass.LIFE_DOMAIN));
+    expect(
+      screen
+        .getByRole('button', { name: /begin adventure/i })
+        .getAttribute('disabled')
+    ).toBeNull();
+    rerender(renderSheet(Subclass.LIGHT_DOMAIN));
+    expect(
+      screen
+        .getByRole('button', { name: /begin adventure/i })
+        .getAttribute('disabled')
+    ).not.toBeNull();
+  });
   it('allows finalization for a same-category repeated equipment selection', () => {
     const finalizeDraft = vi
       .fn<() => Promise<string>>()
@@ -422,6 +474,51 @@ describe('InteractiveCharacterSheet persisted mixed-bundle round trip (rpg-toolk
 });
 
 describe('InteractiveCharacterSheet spell choice rehydration', () => {
+  it('recovers omitted spell categories from matching provider choices even without spellcasting metadata', () => {
+    const classInfo = create(ClassInfoSchema, {
+      name: 'Cleric',
+      choices: [
+        create(ChoiceSchema, {
+          id: 'cleric-cantrips-1',
+          choiceType: ChoiceCategory.CANTRIPS,
+        }),
+        create(ChoiceSchema, {
+          id: 'cleric-spells-1',
+          choiceType: ChoiceCategory.SPELLS,
+        }),
+      ],
+    });
+    const classChoices = [
+      create(ChoiceDataSchema, {
+        choiceId: 'cleric-cantrips-1',
+        selection: {
+          case: 'spells',
+          value: { spellRefs: ['dnd5e:spells:light'] },
+        },
+      }),
+      create(ChoiceDataSchema, {
+        choiceId: 'cleric-spells-1',
+        selection: {
+          case: 'spells',
+          value: { spellRefs: ['dnd5e:spells:bless'] },
+        },
+      }),
+      create(ChoiceDataSchema, {
+        choiceId: 'unknown-choice',
+        selection: { case: 'spells', value: { spellRefs: ['unknown:spell'] } },
+      }),
+    ];
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(vi.fn(), { classInfo, classChoices })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+    expect(screen.getByTestId('spell-info').textContent).toBe(
+      'cantrips:dnd5e:spells:light|spells:dnd5e:spells:bless'
+    );
+  });
   it('passes persisted cantrips and levelled spells through the existing spell summary', () => {
     const choices = [
       create(ChoiceDataSchema, {

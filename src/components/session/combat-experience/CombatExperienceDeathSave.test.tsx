@@ -87,6 +87,34 @@ describe('CombatExperience public Death Save progress', () => {
     expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(1);
   });
 
+  it('labels a stabilized participant without asking for more successes', () => {
+    renderExperience([
+      create(ParticipantSchema, {
+        member: 'fighter-1',
+        name: 'Aldric',
+        kind: MemberKind.PLAYER,
+        standing: Standing.DOWNED,
+        lifeState: LifeState.STABILIZED,
+        deathSaves: {
+          successes: 0,
+          failures: 0,
+          successesNeeded: 3,
+          failuresRemaining: 3,
+          stabilized: true,
+          dead: false,
+        },
+      }),
+    ]);
+    expect(screen.getByLabelText('Aldric life state').textContent).toBe(
+      'Stable'
+    );
+    expect(screen.queryByText(/to stabilize/)).toBeNull();
+    expect(
+      screen.getByText('You are stable. Waiting for recovery.')
+    ).toBeTruthy();
+    expect(screen.queryByTestId('death-save-success-pip')).toBeNull();
+  });
+
   it('does not synthesize progress from Downed or Dying when progress is absent', () => {
     renderExperience([
       create(ParticipantSchema, {
