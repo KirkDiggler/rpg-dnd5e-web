@@ -18,7 +18,7 @@ import {
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
-import type { KeyValueStorage, WorldScene } from './types';
+import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
@@ -49,6 +49,17 @@ vi.mock('./WorldBuildingViewport', () => ({
     onTransformCommit: (scene: WorldScene) => void;
     onTransformReject: (message: string) => void;
     roomAuthoring?: {
+      tool: string;
+      repeat?: {
+        assetRef: string;
+        step: number;
+        originOffset: number;
+        maxCount: number;
+      };
+      onRepeatGesture?: (
+        assetRef: string,
+        transforms: readonly WorldTransform[]
+      ) => void;
       onWalkableGesture: (
         cells: Array<{ q: number; r: number }>,
         mode: 'paint' | 'erase'
@@ -86,6 +97,9 @@ vi.mock('./WorldBuildingViewport', () => ({
           {props.selectedIds.join(',')}
         </output>
         <output data-testid="viewport-tool">{props.tool}</output>
+        <output data-testid="viewport-room-tool">
+          {props.roomAuthoring?.tool ?? ''}
+        </output>
         <div
           data-testid="canvas-ground"
           onDragOver={(event) => event.preventDefault()}
@@ -136,6 +150,23 @@ vi.mock('./WorldBuildingViewport', () => ({
         </button>
         {props.roomAuthoring && (
           <>
+            <button
+              onClick={() => {
+                const repeat = props.roomAuthoring?.repeat;
+                if (!repeat) return;
+                props.roomAuthoring?.onRepeatGesture?.(repeat.assetRef, [
+                  { x: repeat.originOffset, y: 0, z: 0, rotationY: 0 },
+                  {
+                    x: repeat.originOffset + repeat.step,
+                    y: 0,
+                    z: 0,
+                    rotationY: 0,
+                  },
+                ]);
+              }}
+            >
+              Commit repeat gesture
+            </button>
             <button
               onClick={() =>
                 props.roomAuthoring?.onWalkableGesture(
@@ -1134,6 +1165,46 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       /save refused/
     );
     expect(scene()).toEqual(original);
+  });
+
+  it('arms a generated catalog Repeat action without placing, then commits one undoable ordinary group', async () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search assets' }), {
+      target: { value: 'Barricade 02' },
+    });
+    expect(scene().items).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat' }));
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('repeat');
+    expect(scene().items).toHaveLength(0);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit repeat gesture' })
+    );
+    expect(scene().items).toHaveLength(2);
+    expect(scene().groups).toHaveLength(1);
+    expect(
+      scene().items.every((item) => item.parentId === scene().groups[0]!.id)
+    ).toBe(true);
+    const committed = structuredClone(scene());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(scene().items).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(scene()).toEqual(committed);
+
+    await waitFor(() =>
+      expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBeTruthy()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    expect(scene()).toEqual(committed);
   });
 
   it('keeps corrupt current room bytes through StrictMode replay and unrelated edits until explicit save', () => {

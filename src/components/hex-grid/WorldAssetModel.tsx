@@ -36,10 +36,10 @@ function LoadedWorldAssetModel({
   const measuredBounds = useMemo<PropModelBounds>(
     () => ({
       minY: 0,
-      maxY: boundsMeters[1] * SYNTY_SCALE,
-      width: boundsMeters[0] * SYNTY_SCALE,
-      height: boundsMeters[1] * SYNTY_SCALE,
-      depth: boundsMeters[2] * SYNTY_SCALE,
+      maxY: boundsMeters[1],
+      width: boundsMeters[0],
+      height: boundsMeters[1],
+      depth: boundsMeters[2],
     }),
     [boundsMeters]
   );
