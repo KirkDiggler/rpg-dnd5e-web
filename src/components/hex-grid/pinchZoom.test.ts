@@ -27,6 +27,45 @@ function pixel(camera: THREE.Camera, point: THREE.Vector3) {
 }
 
 describe('pinch zoom ground anchoring', () => {
+  it('keeps the midpoint anchored when the caller changes the camera angle during zoom', () => {
+    const input = setup();
+    const anchor = new THREE.Vector3(3, 0, -1);
+    const from = pixel(input.camera, anchor);
+    const to = { x: from.x + 20, y: from.y - 10 };
+    const updateView = () => {
+      input.camera.position.set(16, 8, 24);
+      input.camera.lookAt(input.target);
+    };
+    expect(
+      zoomAboutGroundPoint({ ...input, scale: 1.3, from, to, updateView })
+    ).toBe(true);
+    expect(input.camera.position.y).toBe(8);
+    expect(pixel(input.camera, anchor).x).toBeCloseTo(to.x, 8);
+    expect(pixel(input.camera, anchor).y).toBeCloseTo(to.y, 8);
+  });
+
+  it('restores the original pose if the requested angle has no ground intersection', () => {
+    const input = setup();
+    const before = input.camera.position.clone();
+    const rotation = input.camera.quaternion.clone();
+    const at = pixel(input.camera, new THREE.Vector3());
+    expect(
+      zoomAboutGroundPoint({
+        ...input,
+        scale: 1.3,
+        from: at,
+        to: at,
+        updateView: () => {
+          input.camera.position.set(0, 2, 10);
+          input.camera.lookAt(0, 2, 0);
+        },
+      })
+    ).toBe(false);
+    expect(input.camera.zoom).toBe(80);
+    expect(input.camera.position.equals(before)).toBe(true);
+    expect(input.camera.quaternion.equals(rotation)).toBe(true);
+    expect(input.target.length()).toBe(0);
+  });
   it('zooms continuously with unchanged tilt and follows a moving midpoint', () => {
     const input = setup();
     const anchor = new THREE.Vector3(3, 0, -1);

@@ -263,6 +263,42 @@ export const CAMERA_BAND_FOLLOWS_FOCUS: readonly boolean[] = [
   true, // detail
 ];
 
+export interface TouchViewInput {
+  zoom: number;
+  bands: NonNullable<CameraDials['curve']>['bands'] | undefined;
+}
+export interface TouchView {
+  polar: number;
+  focusLead: number;
+}
+
+/**
+ * This module owns the authored band order. Phone zoom holds tactical when
+ * pulled back, then eases to shoulder between those stops; closer zoom retains
+ * shoulder. Smoothstep avoids an angular jerk at either end of the transition.
+ */
+export function touchViewAtZoom({
+  zoom,
+  bands,
+}: TouchViewInput): TouchView | null {
+  const tactical = bands?.[2];
+  const shoulder = bands?.[3];
+  if (!tactical || !shoulder || !Number.isFinite(zoom)) return null;
+  const span = shoulder.zoom - tactical.zoom;
+  const t =
+    span > 0
+      ? Math.max(0, Math.min(1, (zoom - tactical.zoom) / span))
+      : zoom >= shoulder.zoom
+        ? 1
+        : 0;
+  const eased = t * t * (3 - 2 * t);
+  return {
+    polar: tactical.polar + (shoulder.polar - tactical.polar) * eased,
+    focusLead:
+      tactical.focusLead + (shoulder.focusLead - tactical.focusLead) * eased,
+  };
+}
+
 /**
  * Whether the camera should chase a new focus target right now.
  *

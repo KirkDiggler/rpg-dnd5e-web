@@ -13,7 +13,7 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { useEffect } from 'react';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { parseCameraDials } from './cameraDials';
+import { parseCameraDials, touchViewAtZoom } from './cameraDials';
 import { useCameraControls } from './useCameraControls';
 
 const dials = parseCameraDials('');
@@ -234,7 +234,7 @@ describe('right mouse gesture', () => {
 });
 
 describe('opt-in touch camera pan', () => {
-  it('pinches continuously without tilt changes, then resumes the PC wheel bands from the current zoom', async () => {
+  it('smoothly reaches shoulder while anchoring pinch, then resumes the PC wheel bands', async () => {
     const target = new THREE.Vector3();
     let canvas: HTMLCanvasElement | undefined;
     let camera: THREE.OrthographicCamera | undefined;
@@ -261,6 +261,15 @@ describe('opt-in touch camera pan', () => {
     if (!camera || !canvas) throw new Error('missing camera/canvas');
     canvas.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
     const rotation = camera.quaternion.clone();
+    const polar = () =>
+      Math.acos(-camera!.getWorldDirection(new THREE.Vector3()).y);
+    camera.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(-0.25, 0), camera);
+    const anchor = ray.ray.intersectPlane(
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+      new THREE.Vector3()
+    )!;
     const emit = (type: string, id: number, x: number) => {
       const event = new MouseEvent(type, {
         bubbles: true,
@@ -278,9 +287,19 @@ describe('opt-in touch camera pan', () => {
     emit('pointerdown', 2, 400);
     emit('pointermove', 2, 460);
     expect(camera.zoom).toBeCloseTo(104);
-    expect(camera.quaternion.angleTo(rotation)).toBeLessThan(1e-7);
+    expect(polar()).toBeCloseTo(
+      touchViewAtZoom({ zoom: 104, bands: dials.curve!.bands })!.polar
+    );
+    expect(camera.quaternion.angleTo(rotation)).toBeGreaterThan(0.01);
+    camera.updateMatrixWorld();
+    expect(anchor.clone().project(camera).x).toBeCloseTo(
+      (330 / 800) * 2 - 1,
+      7
+    );
+    expect(anchor.clone().project(camera).y).toBeCloseTo(0, 7);
     emit('pointermove', 2, 1200);
     expect(camera.zoom).toBe(dials.zoomMax);
+    expect(polar()).toBeCloseTo(dials.curve!.bands[3]!.polar);
     emit('pointermove', 2, 220);
     expect(camera.zoom).toBe(dials.zoomMin);
     expect(camera.quaternion.angleTo(rotation)).toBeLessThan(1e-7);
@@ -290,6 +309,7 @@ describe('opt-in touch camera pan', () => {
       new WheelEvent('wheel', { deltaY: -100, cancelable: true })
     );
     expect(camera.zoom).toBe(dials.curve!.bands[1]!.zoom);
+    expect(polar()).toBeCloseTo(dials.curve!.bands[1]!.polar);
     await renderer.unmount();
   });
   it.each([false, true])(

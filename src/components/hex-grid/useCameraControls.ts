@@ -28,6 +28,7 @@ import {
   DEFAULT_DRAG_ROTATE_DEG_PER_PX,
   DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+  touchViewAtZoom,
 } from './cameraDials';
 import { fitBandIndexForBbox } from './cameraFit';
 import { rotateAboutPivot } from './orbitPivot';
@@ -353,8 +354,16 @@ export function useCameraControls({
     return closeT * closeT * (3 - 2 * closeT);
   }, [curve, perspective, zoomT]);
 
-  /** Polar angle for the current zoom — constant unless a curve is supplied. */
+  const currentTouchView = useCallback(() => {
+    if (!touchPinchEnabled || !lastZoomWasTouch.current || perspective)
+      return null;
+    return touchViewAtZoom({ zoom: camera.zoom, bands: curve?.bands });
+  }, [touchPinchEnabled, perspective, camera, curve]);
+
+  /** Touch blends the authored close views; PC keeps its discrete bands. */
   const currentPolar = useCallback((): number => {
+    const touchView = currentTouchView();
+    if (touchView) return touchView.polar;
     if (!curve) return polarAngle;
     if (!perspective) return currentOrthoBand()?.polar ?? curve.polarFar;
     return THREE.MathUtils.lerp(
@@ -368,13 +377,22 @@ export function useCameraControls({
     polarAngle,
     currentOrthoBand,
     easedPerspectiveCloseT,
+    currentTouchView,
   ]);
 
   const currentFocusLead = useCallback((): number => {
+    const touchView = currentTouchView();
+    if (touchView) return touchView.focusLead;
     if (!curve) return 0;
     if (!perspective) return currentOrthoBand()?.focusLead ?? 0;
     return curve.focusLead * easedPerspectiveCloseT();
-  }, [curve, perspective, currentOrthoBand, easedPerspectiveCloseT]);
+  }, [
+    curve,
+    perspective,
+    currentOrthoBand,
+    easedPerspectiveCloseT,
+    currentTouchView,
+  ]);
 
   /**
    * World units spanned by one screen pixel at the current zoom. Right-drag
@@ -467,9 +485,11 @@ export function useCameraControls({
   const pinchFromScreen = useCallback(
     (pinch: ScreenPinchDelta) => {
       if (!(camera instanceof THREE.OrthographicCamera)) return;
-      // Keep the current band's pitch/focus lead while touch zoom is continuous.
+      // The helper snapshots the old ground point before this pose update.
       // A later wheel gesture deliberately returns to the PC's band controls.
       currentOrthoBand();
+      const wasTouch = lastZoomWasTouch.current;
+      lastZoomWasTouch.current = true;
       if (
         !zoomAboutGroundPoint({
           ...pinch,
@@ -478,10 +498,12 @@ export function useCameraControls({
           viewport: gl.domElement.getBoundingClientRect(),
           minZoom,
           maxZoom,
+          updateView: updateCamera,
         })
-      )
+      ) {
+        lastZoomWasTouch.current = wasTouch;
         return;
-      lastZoomWasTouch.current = true;
+      }
       lastOrthoBandStep.current = {
         at: Number.NEGATIVE_INFINITY,
         direction: 0,

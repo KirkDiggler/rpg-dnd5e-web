@@ -13,6 +13,8 @@ export interface GroundPinchInput extends ScreenPinchDelta {
   viewport: Viewport;
   minZoom: number;
   maxZoom: number;
+  /** Recompute camera pose (not target) for the new zoom, before anchoring it. */
+  updateView?: () => void;
 }
 
 function groundPoint(
@@ -38,9 +40,9 @@ function groundPoint(
 }
 
 /**
- * Continuous orthographic zoom, with no pitch/heading changes. Translate camera
- * and orbit target together so the ground under the previous midpoint remains
- * under the new midpoint, including when zoom hits a limit. No board/rules data.
+ * Continuous orthographic zoom. An optional caller-owned pose update can blend
+ * pitch/focus lead; anchoring spans both zoom AND that pose change. Translate
+ * camera and target together so the ground remains beneath the fingers.
  */
 export function zoomAboutGroundPoint({
   camera,
@@ -51,6 +53,7 @@ export function zoomAboutGroundPoint({
   to,
   minZoom,
   maxZoom,
+  updateView,
 }: GroundPinchInput): boolean {
   if (
     !Number.isFinite(scale) ||
@@ -67,12 +70,18 @@ export function zoomAboutGroundPoint({
   const before = groundPoint(camera, viewport, from, target.y);
   if (!before) return false;
   const oldZoom = camera.zoom;
+  const oldPosition = camera.position.clone();
+  const oldRotation = camera.quaternion.clone();
   camera.zoom = THREE.MathUtils.clamp(oldZoom * scale, minZoom, maxZoom);
   camera.updateProjectionMatrix();
+  updateView?.();
   const after = groundPoint(camera, viewport, to, target.y);
   if (!after) {
     camera.zoom = oldZoom;
+    camera.position.copy(oldPosition);
+    camera.quaternion.copy(oldRotation);
     camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
     return false;
   }
   const offset = before.sub(after);
