@@ -132,6 +132,7 @@ export function updateWalkableHexes(
   const byKey = new Map(
     draft.room.walkableHexes.map((cell) => [cellKey(cell), cell])
   );
+  let changed = false;
   cells.forEach((cell) => {
     if (
       !Number.isInteger(cell.q) ||
@@ -140,9 +141,17 @@ export function updateWalkableHexes(
         draft.workspace.hexRadius
     )
       return;
-    if (mode === 'paint') byKey.set(cellKey(cell), { ...cell });
-    else byKey.delete(cellKey(cell));
+    const key = cellKey(cell);
+    if (mode === 'paint') {
+      if (!byKey.has(key)) {
+        byKey.set(key, { ...cell });
+        changed = true;
+      }
+    } else if (byKey.delete(key)) {
+      changed = true;
+    }
   });
+  if (!changed) return draft;
   return {
     ...draft,
     room: {

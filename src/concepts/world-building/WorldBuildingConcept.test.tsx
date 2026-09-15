@@ -8,7 +8,15 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createRoomDraft,
+  LEGACY_ROOM_DRAFT_STORAGE_KEY,
+  ROOM_DRAFT_STORAGE_KEY,
+  stringifyRoomDraft,
+} from './roomDraft';
+import { createEmptyScene } from './sceneState';
 import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
@@ -141,7 +149,16 @@ vi.mock('./WorldBuildingViewport', () => ({
             >
               Commit rectangle gesture
             </button>
-            <button>Cancel rectangle gesture</button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onWalkableGesture(
+                  [{ q: 5, r: -5 }],
+                  'erase'
+                )
+              }
+            >
+              Erase empty cell
+            </button>
           </>
         )}
         <button
@@ -1119,6 +1136,149 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(scene()).toEqual(original);
   });
 
+  it('keeps corrupt current room bytes through StrictMode replay and unrelated edits until explicit save', () => {
+    const storage = new MemoryStorage();
+    const corrupt = '{"kind":"rpg-room-authoring-draft","version":2,"draft":';
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
+
+    render(
+      <StrictMode>
+        <WorldBuildingConcept
+          roomMode
+          storage={storage}
+          idFactory={deterministicIds()}
+        />
+      </StrictMode>
+    );
+
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Room draft load failed/
+    );
+    expect(screen.getByText(/Autosave paused/)).toBeTruthy();
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    expect(
+      JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
+    ).toBe(2);
+  });
+
+  it('recovers valid legacy data visibly without replacing corrupt current bytes before explicit save', () => {
+    const storage = new MemoryStorage();
+    const corrupt = '{bad-v2';
+    const legacyDraft = createRoomDraft(
+      createEmptyScene('legacy-scene'),
+      'legacy-room'
+    );
+    legacyDraft.room.walkableHexes = [{ q: 2, r: -1 }];
+    const legacyEnvelope = JSON.parse(stringifyRoomDraft(legacyDraft));
+    legacyEnvelope.version = 1;
+    legacyEnvelope.draft.version = 1;
+    delete legacyEnvelope.draft.workspace;
+    const legacyRaw = JSON.stringify(legacyEnvelope);
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
+    storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
+
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /recovered the prior version 1 draft/
+    );
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.id
+    ).toBe('legacy-room');
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+  });
+
+  it('loads valid v2 and migrates valid v1 while leaving the legacy recovery copy intact', () => {
+    const valid = createRoomDraft(createEmptyScene('scene-v2'), 'room-v2');
+    const v2Storage = new MemoryStorage();
+    v2Storage.values.set(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(valid));
+    const first = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={v2Storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.id
+    ).toBe('room-v2');
+    first.unmount();
+
+    const legacyEnvelope = JSON.parse(stringifyRoomDraft(valid));
+    legacyEnvelope.version = 1;
+    legacyEnvelope.draft.version = 1;
+    delete legacyEnvelope.draft.workspace;
+    const legacyRaw = JSON.stringify(legacyEnvelope);
+    const v1Storage = new MemoryStorage();
+    v1Storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={v1Storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(
+      JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
+    ).toBe(2);
+    expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+  });
+
+  it('preserves corrupt storage when explicit save or reset encounters a storage failure', () => {
+    const storage = new MemoryStorage();
+    const corrupt = '{bad-current';
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
+    storage.failSet = true;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
+    expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/);
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/);
+  });
+
+  it('does not inspect or overwrite room storage from the standalone composer mount', () => {
+    const storage = new MemoryStorage();
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, '{inactive-room-bytes');
+    render(
+      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+    );
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(
+      '{inactive-room-bytes'
+    );
+  });
+
   it('expands room workspace metadata without moving content or painting cells', () => {
     render(
       <WorldBuildingConcept
@@ -1142,7 +1302,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(room()).toEqual(before);
   });
 
-  it('commits one rectangle release as one undoable room-history action and cancel is a no-op', () => {
+  it('commits one rectangle release as one undoable room-history action', () => {
     render(
       <WorldBuildingConcept
         roomMode
@@ -1153,14 +1313,6 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     expect(screen.getByRole('button', { name: 'Rectangle' })).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Cancel rectangle gesture' })
-    );
-    expect(
-      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
-
-    fireEvent.click(
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(
@@ -1170,6 +1322,9 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       { q: 0, r: 0 },
       { q: 1, r: 0 },
     ]);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(
@@ -1180,6 +1335,21 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Erase empty cell' }));
+    expect(
+      (screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.room.walkableHexes
+    ).toHaveLength(2);
   });
 
   it('shows non-destructive strict import errors and keeps the valid scene', () => {

@@ -135,6 +135,18 @@ describe('room authoring draft', () => {
     ).toThrow(/Unsupported room workspace extent/);
   });
 
+  it('returns the same draft for logical no-op paint and erase', () => {
+    const draft = updateWalkableHexes(
+      createRoomDraft(createEmptyScene('scene-1'), 'room-1'),
+      [{ q: 0, r: 0 }],
+      'paint'
+    );
+
+    expect(updateWalkableHexes(draft, [{ q: 0, r: 0 }], 'paint')).toBe(draft);
+    expect(updateWalkableHexes(draft, [{ q: 1, r: 0 }], 'erase')).toBe(draft);
+    expect(updateWalkableHexes(draft, [{ q: 99, r: 0 }], 'paint')).toBe(draft);
+  });
+
   it('remaps declarations by stable identity and never asset ref', () => {
     const draft = createRoomDraft(
       {

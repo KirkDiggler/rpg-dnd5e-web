@@ -173,8 +173,15 @@ export function WorldBuildingConcept({
   const [portableJson, setPortableJson] = useState('');
   const [footprintPreview, setFootprintPreview] =
     useState<RoomPropDeclaration | null>(null);
-  const [notice, setNotice] = useState(initial.error);
-  const [saveStatus, setSaveStatus] = useState('Local draft ready');
+  const [notice, setNotice] = useState(
+    [initial.error, initialRoom.error].filter(Boolean).join(' ')
+  );
+  const roomAutosaveBlockedRef = useRef(Boolean(initialRoom.error));
+  const [saveStatus, setSaveStatus] = useState(
+    roomMode && initialRoom.error
+      ? 'Autosave paused — Save room draft or New room to replace unreadable data'
+      : 'Local draft ready'
+  );
   const [workspaceOrigin, setWorkspaceOrigin] = useState<'local' | 'world'>(
     'local'
   );
@@ -231,6 +238,12 @@ export function WorldBuildingConcept({
 
   useEffect(() => {
     if (!roomMode) return;
+    if (roomAutosaveBlockedRef.current) {
+      setSaveStatus(
+        'Autosave paused — Save room draft or New room to replace unreadable data'
+      );
+      return;
+    }
     const error = saveRoomDraft(effectiveStorage, roomDraft);
     setSaveStatus(
       error
@@ -265,14 +278,19 @@ export function WorldBuildingConcept({
             { ...roomDraft, room: nextRoom, workspace: nextWorkspace },
             valid
           );
-          setRoomHistory((current) => ({
-            past: [
-              ...current.past.slice(-79),
-              structuredClone(current.present),
-            ],
-            present: structuredClone(nextDraft),
-            future: [],
-          }));
+          if (JSON.stringify(nextDraft) === JSON.stringify(roomDraft)) return;
+          setRoomHistory((current) => {
+            if (JSON.stringify(nextDraft) === JSON.stringify(current.present))
+              return current;
+            return {
+              past: [
+                ...current.past.slice(-79),
+                structuredClone(current.present),
+              ],
+              present: structuredClone(nextDraft),
+              future: [],
+            };
+          });
         } else {
           setHistory((current) => updateHistory(current, valid));
         }
@@ -519,6 +537,7 @@ export function WorldBuildingConcept({
   const saveNow = () => {
     if (roomMode) {
       const error = saveRoomDraft(effectiveStorage, roomDraft);
+      if (!error) roomAutosaveBlockedRef.current = false;
       setNotice(error ?? '');
       setSaveStatus(
         error
@@ -587,13 +606,20 @@ export function WorldBuildingConcept({
     try {
       if (roomMode) {
         const imported = parseRoomDraftJson(portableJson);
+        const saveError = saveRoomDraft(effectiveStorage, imported);
+        if (!saveError) roomAutosaveBlockedRef.current = false;
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
           present: imported,
           future: [],
         }));
         setSelectedIds([]);
-        setNotice('');
+        setNotice(saveError ?? '');
+        setSaveStatus(
+          saveError
+            ? 'Room import kept in memory — local save failed'
+            : 'Imported room draft saved locally'
+        );
         return;
       }
       const imported = parseSceneJson(portableJson);
@@ -629,6 +655,7 @@ export function WorldBuildingConcept({
         setNotice(result.error);
         return;
       }
+      roomAutosaveBlockedRef.current = false;
       setRoomHistory({ past: [], present: result.value, future: [] });
       setPreviewScene(null);
       setSelectedIds([]);
@@ -877,6 +904,11 @@ export function WorldBuildingConcept({
                 onClick={() => {
                   const blank = createEmptyScene(idFactory());
                   const freshRoom = createRoomDraft(blank, idFactory());
+                  const resetError = roomMode
+                    ? saveRoomDraft(effectiveStorage, freshRoom)
+                    : null;
+                  if (roomMode && !resetError)
+                    roomAutosaveBlockedRef.current = false;
                   commit(
                     blank,
                     [],
@@ -886,6 +918,12 @@ export function WorldBuildingConcept({
                   setTool('select');
                   setActiveDrag(null);
                   setConfirmBlank(false);
+                  if (resetError) {
+                    setNotice(resetError);
+                    setSaveStatus(
+                      'New room kept in memory — prior stored bytes preserved'
+                    );
+                  }
                 }}
               >
                 {roomMode ? 'Confirm new room' : 'Confirm blank scene'}

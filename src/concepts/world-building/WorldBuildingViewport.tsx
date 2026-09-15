@@ -413,7 +413,7 @@ function RoomAuthoringDeclarations({
   );
 }
 
-function WorldSceneContents(
+export function WorldSceneContents(
   props: WorldBuildingViewportProps & { showCompositionBounds: boolean }
 ) {
   const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
@@ -434,17 +434,21 @@ function WorldSceneContents(
     [workspaceGroundRadius]
   );
   const controlsRef = useRef<TransformControlsImpl>(null);
+  type CapturedFloorPointer = {
+    pointerId: number;
+    target: Element;
+  };
   const floorGesture = useRef<
-    | {
+    | ({
         kind: 'brush';
         mode: 'paint' | 'erase';
         cells: Map<string, RoomHexCell>;
-      }
-    | {
+      } & CapturedFloorPointer)
+    | ({
         kind: 'rectangle';
         start: { x: number; z: number };
         cells: RoomHexCell[];
-      }
+      } & CapturedFloorPointer)
     | null
   >(null);
   const [rectanglePreview, setRectanglePreview] = useState<RoomHexCell[]>([]);
@@ -503,10 +507,19 @@ function WorldSceneContents(
   };
   const resolveSelectionId = (intersections: readonly THREE.Intersection[]) =>
     resolveWorldSelectionId(displayScene, intersections);
-  const cancelFloorGesture = useCallback(() => {
-    floorGesture.current = null;
-    setRectanglePreview([]);
+  const releaseFloorPointer = useCallback((gesture: CapturedFloorPointer) => {
+    try {
+      gesture.target.releasePointerCapture?.(gesture.pointerId);
+    } catch {
+      // Capture may already be released by pointercancel/lostpointercapture.
+    }
   }, []);
+  const cancelFloorGesture = useCallback(() => {
+    const gesture = floorGesture.current;
+    floorGesture.current = null;
+    if (gesture) releaseFloorPointer(gesture);
+    setRectanglePreview([]);
+  }, [releaseFloorPointer]);
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') cancelFloorGesture();
@@ -518,10 +531,15 @@ function WorldSceneContents(
     window.addEventListener('keydown', cancelOnEscape);
     gl.domElement.addEventListener('pointerdown', cancelOnRightClick);
     gl.domElement.addEventListener('contextmenu', cancelOnContextMenu);
+    gl.domElement.addEventListener('lostpointercapture', cancelFloorGesture);
     return () => {
       window.removeEventListener('keydown', cancelOnEscape);
       gl.domElement.removeEventListener('pointerdown', cancelOnRightClick);
       gl.domElement.removeEventListener('contextmenu', cancelOnContextMenu);
+      gl.domElement.removeEventListener(
+        'lostpointercapture',
+        cancelFloorGesture
+      );
     };
   }, [cancelFloorGesture, gl.domElement]);
   useEffect(cancelFloorGesture, [
@@ -554,9 +572,16 @@ function WorldSceneContents(
               start,
               workspaceHexRadius
             );
-            floorGesture.current = { kind: 'rectangle', start, cells };
+            const target = event.target as Element;
+            target.setPointerCapture?.(event.pointerId);
+            floorGesture.current = {
+              kind: 'rectangle',
+              start,
+              cells,
+              pointerId: event.pointerId,
+              target,
+            };
             setRectanglePreview(cells);
-            (event.target as Element).setPointerCapture?.(event.pointerId);
             return;
           }
           if (roomTool === 'paint' || roomTool === 'erase') {
@@ -565,10 +590,14 @@ function WorldSceneContents(
               HEX_SIZE
             );
             const cell = { q: cube.x, r: cube.z };
+            const target = event.target as Element;
+            target.setPointerCapture?.(event.pointerId);
             floorGesture.current = {
               kind: 'brush',
               mode: roomTool,
               cells: new Map([[`${cell.q},${cell.r}`, cell]]),
+              pointerId: event.pointerId,
+              target,
             };
             return;
           }
@@ -607,6 +636,7 @@ function WorldSceneContents(
           event.stopPropagation();
           const gesture = floorGesture.current;
           floorGesture.current = null;
+          releaseFloorPointer(gesture);
           setRectanglePreview([]);
           if (gesture.kind === 'rectangle') {
             if (gesture.cells.length > 0)
