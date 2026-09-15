@@ -238,6 +238,7 @@ function SessionEncounterScope({
   const { trade, loading: tradeLoading } = useSessionTrade();
   const { unpack, loading: unpacking } = useSessionUnpack();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -1646,10 +1647,48 @@ function SessionEncounterScope({
         <div
           ref={encounterContentRef}
           data-testid="session-encounter-content"
-          style={{ position: 'absolute', inset: 0 }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            container: 'organized-hud / size',
+          }}
         >
           <CombatExperience
             layout="fill-parent"
+            actionPresentation={{
+              mode: 'organized-hud',
+              // Pin the basic verbs, not fixture class/spell profiles. All
+              // casts stay in Spells until canonical shortcut facts exist.
+              quickDeclarationIds: coherentDeclarations
+                .filter(
+                  ({ verb }) =>
+                    verb === Verb.ATTACK ||
+                    verb === Verb.MOVE ||
+                    verb === Verb.DEATH_SAVE
+                )
+                .map(({ id }) => id),
+            }}
+            navigationControls={
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                Back
+              </Button>
+            }
+            sceneNotice={
+              <>
+                {walking && <span>Walking…</span>}
+                {moveError && !walking && (
+                  <span style={{ color: 'var(--color-error, #f87171)' }}>
+                    {moveError}
+                  </span>
+                )}
+                {doorNotice && <span>{doorNotice}</span>}
+                {searchNotice && <span>{searchNotice}</span>}
+                {holdingNotice && <span>{holdingNotice}</span>}
+                {vendorNotice && <span>{vendorNotice}</span>}
+                {unpackNotice && <span>{unpackNotice}</span>}
+              </>
+            }
+            onCenterView={() => setFocusRequest((value) => value + 1)}
             viewerMember={member}
             viewerName={characterName}
             viewerClassRefId={classRefId}
@@ -1697,6 +1736,10 @@ function SessionEncounterScope({
                     nothing until a declared faction is on the roster. */}
                 <FactionLegend roster={roster} />
                 <SessionCanvas
+                  touchPanEnabled
+                  touchPinchEnabled
+                  touchRotateEnabled
+                  focusRequest={focusRequest}
                   // The dungeon's own starting facing, read from the ATLAS
                   // and nowhere else (rpg-project#374: rpg-api reads it from
                   // the atlas mirror only, and there is no second source
@@ -1797,33 +1840,6 @@ function SessionEncounterScope({
                 }
               : { diceWitnessRole: 'spectator' as const })}
           />
-
-          <div
-            style={{
-              position: 'absolute',
-              zIndex: 20,
-              top: 12,
-              left: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              Back
-            </Button>
-            {walking && <span>Walking…</span>}
-            {moveError && !walking && (
-              <span style={{ color: 'var(--color-error, #f87171)' }}>
-                {moveError}
-              </span>
-            )}
-            {doorNotice && <span>{doorNotice}</span>}
-            {searchNotice && <span>{searchNotice}</span>}
-            {holdingNotice && <span>{holdingNotice}</span>}
-            {vendorNotice && <span>{vendorNotice}</span>}
-            {unpackNotice && <span>{unpackNotice}</span>}
-          </div>
 
           <div
             style={{

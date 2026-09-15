@@ -67,12 +67,14 @@ function Offer({
   declaration,
   authorityFresh,
   inspected,
+  selected,
   onChoose,
   onInspect,
 }: {
   declaration: Declaration;
   authorityFresh: boolean;
   inspected: boolean;
+  selected: boolean;
   onChoose: (id: string) => void;
   onInspect: (id: string) => void;
 }) {
@@ -85,6 +87,7 @@ function Offer({
         type="button"
         className={styles.organizedOffer}
         disabled={disabled}
+        aria-pressed={selected}
         title={actionTooltipText(tooltip)}
         aria-label={`${label}. ${actionTooltipText(tooltip)}`}
         onClick={() => onChoose(declaration.id)}
@@ -176,6 +179,7 @@ export function OrganizedActionSurface({
             declaration={declaration}
             authorityFresh={authorityFresh}
             inspected={inspectedId === declaration.id}
+            selected={armedDeclarationId === declaration.id}
             onChoose={choose}
             onInspect={inspect}
           />
@@ -201,6 +205,7 @@ export function OrganizedActionSurface({
                   declaration={declaration}
                   authorityFresh={authorityFresh}
                   inspected={inspectedId === declaration.id}
+                  selected={armedDeclarationId === declaration.id}
                   onChoose={choose}
                   onInspect={inspect}
                 />
@@ -258,6 +263,7 @@ export function OrganizedActionSurface({
                 declaration={declaration}
                 authorityFresh={authorityFresh}
                 inspected={inspectedId === declaration.id}
+                selected={armedDeclarationId === declaration.id}
                 onChoose={choose}
                 onInspect={inspect}
               />

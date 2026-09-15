@@ -186,7 +186,7 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
-  /** Opt-in organizer configuration. Omitted preserves the live dock exactly. */
+  /** Opt-in organizer configuration. Omitted preserves the legacy dock. */
   actionPresentation?: CombatExperienceActionPresentation;
   /** Accepted local Death Save is awaiting an in-bounds settlement. */
   endTurnBlocked?: boolean;
@@ -211,6 +211,10 @@ interface CombatExperienceBaseProps {
   /** Provider token for that terminal; prevents stale release of a new window. */
   localWorldDieSettledPresentationId?: string;
   location: { name: string; area: string };
+  /** Caller-owned navigation, laid out beside the location rather than over it. */
+  navigationControls?: ReactNode;
+  /** Readable operation feedback; distinct from action/roll pacing authority. */
+  sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;

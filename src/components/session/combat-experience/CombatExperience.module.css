@@ -320,6 +320,41 @@
   color: var(--sc-ink);
 }
 
+.roomLabelWithNavigation {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.locationText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.roomLabelWithNavigation .locationText > span,
+.roomLabelWithNavigation .locationText > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneNotice {
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--organized-header-height, 80px) + 8px);
+  left: 12px;
+  display: flex;
+  max-width: 45%;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--sc-ink);
+  font-size: 12px;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+
 .roomLabel span {
   font:
     700 13px Cinzel,
@@ -2273,6 +2308,10 @@ button.diceDrawerCue:focus-visible {
   background: rgba(31, 45, 49, 0.28);
   border-color: rgba(232, 183, 95, 0.2);
 }
+.organizedActions .organizedOffer[aria-pressed='true'] {
+  border-color: var(--sc-gold-bright);
+  background: rgba(232, 183, 95, 0.18);
+}
 .organizedActions .organizedTray,
 .organizedActions .organizedInspection {
   border: 0;
@@ -2322,6 +2361,7 @@ button.diceDrawerCue:focus-visible {
 }
 .organizedSecondary {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;

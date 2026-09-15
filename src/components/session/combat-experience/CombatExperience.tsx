@@ -172,6 +172,8 @@ export function CombatExperience({
   localWorldDieSettled = false,
   localWorldDieSettledPresentationId,
   location,
+  navigationControls,
+  sceneNotice,
   pacingNotice,
   renderMap,
   onSelectDeclaration,
@@ -402,6 +404,7 @@ export function CombatExperience({
             changedOptionNotice={presentationState.changedOptionNotice}
             memberNames={memberNames}
             location={location}
+            navigationControls={navigationControls}
             renderMap={renderMap}
             onTargetClick={onTargetClick}
             onConfirmTargets={onConfirmTargets}
@@ -411,6 +414,15 @@ export function CombatExperience({
                 : undefined
             }
           />
+          {sceneNotice && (
+            <div
+              className={styles.sceneNotice}
+              role="status"
+              aria-label="Scene updates"
+            >
+              {sceneNotice}
+            </div>
+          )}
         </div>
 
         {clock === ClockKind.TURN ? (
@@ -625,6 +637,7 @@ export function CombatExperience({
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
             onOpenEquipment={onOpenEquipment}
+            equipmentOpen={equipmentOpen}
             onCenterView={onCenterView}
             endTurnTarget={
               actionPresentation?.mode === 'organized-hud'
