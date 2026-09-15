@@ -361,7 +361,7 @@ export function duplicateSelection(
   scene: WorldScene,
   selectedIds: readonly string[],
   idFactory: IdFactory = defaultId
-): { scene: WorldScene; createdIds: string[] } {
+): { scene: WorldScene; createdIds: string[]; idMap: Map<string, string> } {
   const included = selectionClosure(scene, selectedIds);
   const copied = copyEntities(scene, included, idFactory, false);
   const shiftedItems = copied.items.map((item) => ({
@@ -387,6 +387,7 @@ export function duplicateSelection(
       groups: [...scene.groups, ...shiftedGroups],
     },
     createdIds: copied.createdIds,
+    idMap: copied.idMap,
   };
 }
 
@@ -455,7 +456,7 @@ export function stampArrangement(
   arrangement: Arrangement,
   point: WorldPoint,
   idFactory: IdFactory = defaultId
-): { scene: WorldScene; createdIds: string[] } {
+): { scene: WorldScene; createdIds: string[]; idMap: Map<string, string> } {
   const templateScene: WorldScene = {
     version: 1,
     id: arrangement.id,
@@ -486,6 +487,7 @@ export function stampArrangement(
       groups: [...scene.groups, ...copied.groups.map(atPoint)],
     },
     createdIds: copied.createdIds,
+    idMap: copied.idMap,
   };
 }
 
