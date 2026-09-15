@@ -8,6 +8,7 @@ import {
   generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  performanceAdvisories,
   recordPreviewLoad,
   selectPaletteAppearance,
   serializeReadyProviderBatch,
@@ -571,7 +572,6 @@ describe('validateReady', () => {
       { calibration: { fineOffsetMeters: [0, 0.11, 0] } },
     ],
     ['dimensionsMeters', { dimensionsMeters: [0, 2, 1] }],
-    ['dimensionsMeters', { dimensionsMeters: [1, 27, 1] }],
     ['loadedSuccessfully', { loadedSuccessfully: false }],
     [
       'supportsDecoration',
@@ -584,7 +584,7 @@ describe('validateReady', () => {
     }
   );
 
-  it('applies the shared 0.75 scale at the 20-metre bounds limit', () => {
+  it('reports the provisional 20-metre target without blocking Ready', () => {
     expect(
       validateReady(
         entry({
@@ -600,7 +600,17 @@ describe('validateReady', () => {
           dimensionsMeters: [20 / 0.75 + 0.01, 1, 1],
         })
       )
-    ).toHaveProperty('dimensionsMeters');
+    ).toEqual({});
+    expect(
+      performanceAdvisories(
+        entry({ loadedSuccessfully: true, dimensionsMeters: [40, 3, 2] })
+      )
+    ).toHaveLength(1);
+    expect(
+      performanceAdvisories(
+        entry({ loadedSuccessfully: true, dimensionsMeters: [20 / 0.75, 1, 1] })
+      )
+    ).toEqual([]);
   });
 });
 

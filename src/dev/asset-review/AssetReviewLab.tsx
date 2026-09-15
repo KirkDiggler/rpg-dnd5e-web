@@ -8,6 +8,7 @@ import {
   generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  performanceAdvisories,
   recordPreviewLoad,
   selectPaletteAppearance,
   serializeReadyProviderBatch,
@@ -157,9 +158,17 @@ export function AssetReviewLab() {
           }
         }
         const merged = mergeCatalogWithReview(loadedCatalog, review);
+        const initialBatch = review
+          ? merged.batch
+          : setBatchId(
+              merged.batch,
+              generateBatchId(
+                merged.batch.entries[0]?.referencePack ?? 'world-assets'
+              )
+            );
         setCatalog(loadedCatalog);
-        setBatch(merged.batch);
-        setBatchIdValue(merged.batch.batchId);
+        setBatch(initialBatch);
+        setBatchIdValue(initialBatch.batchId);
         setStaleSources(merged.staleSourceKeys);
         setStaleAppearances(merged.staleAppearanceKeys);
         setSelectedKey(
@@ -735,6 +744,16 @@ export function AssetReviewLab() {
                   value={appearanceFacts?.dimensionsMeters.join(' × ') ?? ''}
                 />
               </label>
+              <div className="asset-review-reasons">
+                <strong>Performance observations</strong>
+                <span>
+                  Size, triangle and texture targets are provisional. Release
+                  reports retain measurements for benchmarking.
+                </span>
+                {performanceAdvisories(activeEntry).map((message) => (
+                  <p key={message}>{message}</p>
+                ))}
+              </div>
               <div className="asset-review-reasons">
                 <strong>Blocking reasons</strong>
                 {(appearanceFacts?.reasons.length ?? 0) > 0 ? (
