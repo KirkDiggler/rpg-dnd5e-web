@@ -2080,14 +2080,29 @@ button.diceDrawerCue:focus-visible {
   }
 }
 
+.organizedMeasure {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.organizedInspectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .organizedOfferSlot {
+  user-select: none;
+  -webkit-touch-callout: none;
   position: relative;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 2px;
 }
-.organizedInspectButton,
 .organizedCancel {
   min-height: 30px;
   padding: 5px 6px;
@@ -2099,10 +2114,12 @@ button.diceDrawerCue:focus-visible {
   font-size: 10px;
   font-weight: 800;
 }
-.organizedInspectButton[aria-expanded='true'] {
-  border-color: var(--sc-gold);
-  color: var(--sc-gold-bright);
+/* A temporary card can cover the open menu without taking its pointer and
+   triggering a leave/re-enter loop on the underlying offer. */
+.organizedHoverInspection {
+  pointer-events: none;
 }
+
 .organizedInspection {
   position: absolute;
   z-index: 10;
@@ -2152,11 +2169,6 @@ button.diceDrawerCue:focus-visible {
   }
   .organizedOfferSlot {
     gap: 1px;
-  }
-  .organizedInspectButton {
-    min-height: 28px;
-    padding: 4px;
-    font-size: 8px;
   }
   .organizedCancel {
     min-height: 34px;
@@ -2314,10 +2326,13 @@ button.diceDrawerCue:focus-visible {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: auto;
 }
-.organizedActions .organizedQuick,
 .organizedActions .organizedCollections {
   flex-wrap: wrap;
   overflow: visible;
+}
+.organizedActions .organizedQuick {
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 .organizedActions .organizedOffer {
   background: rgba(31, 45, 49, 0.28);

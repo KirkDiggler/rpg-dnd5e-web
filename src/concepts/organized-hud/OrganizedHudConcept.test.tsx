@@ -121,7 +121,7 @@ describe('OrganizedHudConcept', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps a cantrip directly accessible in the smaller phone shortcut set', () => {
+  it('keeps the same common offers when selecting phone mode; measured space owns overflow', () => {
     render(<OrganizedHudConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Landscape phone' }));
     const quick = within(screen.getByRole('group', { name: 'Quick actions' }));
@@ -129,8 +129,8 @@ describe('OrganizedHudConcept', () => {
       quick.getByRole('button', { name: /vicious mockery/i })
     ).toBeInTheDocument();
     expect(
-      quick.queryByRole('button', { name: /longsword/i })
-    ).not.toBeInTheDocument();
+      quick.getByRole('button', { name: /longsword/i })
+    ).toBeInTheDocument();
   });
   it('exercises target selection and visible cancellation without an RPC', () => {
     render(<OrganizedHudConcept />);

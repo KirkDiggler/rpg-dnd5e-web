@@ -62,6 +62,10 @@ describe('live action presentation', () => {
       'feature',
       'unknown-spell',
     ]);
+    expect(presentation.quickGroupByDeclarationId).toEqual({
+      cantrip: 'cantrips',
+      feature: 'features',
+    });
     const organized = organizeDeclarations(offers, presentation);
     expect(organized.sections.spells.map((d) => d.id)).toEqual(['leveled']);
     expect(organized.sections.abilities.map((d) => d.id)).toEqual(['generic']);

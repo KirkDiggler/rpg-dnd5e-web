@@ -83,6 +83,16 @@ The observed Staniel response carried Vicious Mockery and Thunderclap in `knownC
 
 Cancel also overlapped the last quick action's Details control: it had been absolutely positioned over the row. It now participates in the quick row's normal wrapping layout. A targeted browser overlap probe failed before the change and passed afterward at 1440×900 and 844×390.
 
+The inspection walk exposed a mistaken assumption and then a misread request: capability-gated hover did not work for Kirk's PC, and restoring desktop Details buttons was not what he wanted. His approved replacement removes per-offer Details buttons entirely:
+
+- Actual mouse/pen pointer events (not a hover media-query gate) and keyboard focus show temporary details. Disabled offers have a keyboard-focusable inspection wrapper.
+- A touch tap selects; a 450 ms hold pins details without selecting. Movement beyond 8 CSS pixels, a second finger, capture loss, cancellation, blur, withdrawal and disposal abandon the pending hold. Release clicks after a hold/drag are consumed even if inspecting closes the originating menu. The next fresh gesture remains usable.
+- A pinned detail card and an action collection are mutually exclusive. The card has a Close control. Hover previews may temporarily cover an open menu without closing it or stealing its pointer. No duplicate native title tooltip is used; the full description remains in the action's accessible name.
+
+Kirk also qualified “always visible”: common actions should stay direct **while they fit**, not force tiny text or stacked phone rows. The bar measures uncollapsed control widths against the available row. It collapses the Cantrips group first, then Features, only when that saves space; resizing wider restores them. Move/weapon/Cancel controls are retained. If even the fixed controls cannot fit, the single quick row scrolls rather than dropping offers. Overflow groups use explicit canonical group hints—unknown spells are not labelled cantrips. Concepts now use the same candidates in PC and phone frames instead of hard-coded phone subsets.
+
+Focused tests cover the input lifecycle, exact-fit boundaries, overflow order and identity-preserving group facts. A real-browser probe using a frozen read-only Staniel payload confirmed mouse hover with a forced negative capability report, collapse/expand with no lost offers, and native touch hold/release on both an available cantrip and disabled Inspiration; neither hold dispatched, and the next tap did. This is not yet confirmation from Kirk's actual devices.
+
 Two integration findings are corrected rather than hidden by the fixture: organized offers now expose their selected state, and Equipment remains accessible in every clock/roll state as it was in the legacy shell (including settling, without exposing withheld game actions). Live adapter tests exercise current declaration IDs through actual controller dispatch, center while armed, and the real equipment surface.
 
 This is a working integration checkpoint, not completed live validation. Kirk's real encounter walkthrough, Discord embedded touch/fullscreen checks, and independent review are pending. The fullscreen toggle still lives in the concept controls; promoting that utility is not claimed by this first wiring increment.

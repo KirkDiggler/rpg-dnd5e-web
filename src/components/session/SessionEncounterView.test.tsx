@@ -756,7 +756,9 @@ describe('SessionEncounterView production combat integration', () => {
       name: /Bardic Inspiration/,
     });
     expect(inspiration.hasAttribute('disabled')).toBe(true);
-    expect(inspiration.getAttribute('title')).toContain('no ally within reach');
+    expect(inspiration.getAttribute('aria-label')).toContain(
+      'no ally within reach'
+    );
     expect(hoisted.castFn).not.toHaveBeenCalled();
   });
 

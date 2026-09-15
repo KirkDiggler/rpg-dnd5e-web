@@ -3,6 +3,7 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import type { QuickOverflowGroup } from './quickOverflow';
 
 /**
  * Presentation-only ordering hints. They are supplied by the concept (or a
@@ -12,6 +13,8 @@ import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 export interface OrganizedActionPresentation {
   /** Declaration ids to place in the compact quick row, in this exact order. */
   quickDeclarationIds?: readonly string[];
+  /** Explicit group facts for width-driven overflow; unknown offers are not guessed. */
+  quickGroupByDeclarationId?: Readonly<Record<string, QuickOverflowGroup>>;
   /** Explicit concept-only section labels keyed by current declaration id. */
   sectionByDeclarationId?: Readonly<
     Record<string, 'spells' | 'abilities' | 'items' | 'actions'>

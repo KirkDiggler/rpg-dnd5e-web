@@ -12,6 +12,7 @@ import type {
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
+import type { OrganizedActionPresentation } from './organizedActionPresentation';
 
 /** Local interaction state. Provider facts remain in generated messages. */
 export interface CombatExperiencePresentationState {
@@ -59,12 +60,8 @@ export type CombatExperienceLogMode = 'story' | 'debug';
 export type CombatExperienceLayout = 'review-frame' | 'fill-parent';
 
 /** Explicit opt-in presentation only; production defaults to the existing dock. */
-export interface CombatExperienceActionPresentation {
+export interface CombatExperienceActionPresentation extends OrganizedActionPresentation {
   mode: 'organized-hud';
-  quickDeclarationIds?: readonly string[];
-  sectionByDeclarationId?: Readonly<
-    Record<string, 'spells' | 'abilities' | 'items' | 'actions'>
-  >;
 }
 
 export type CombatExperienceStreamState =

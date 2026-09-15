@@ -32,6 +32,21 @@ export function liveActionPresentation({
   );
   return {
     mode: 'organized-hud',
+    quickGroupByDeclarationId: Object.fromEntries(
+      declarations.flatMap<[string, 'cantrips' | 'features']>((declaration) => {
+        if (
+          declaration.verb === Verb.CAST &&
+          cantrips.has(declaration.spell?.ref ?? '')
+        )
+          return [[declaration.id, 'cantrips' as const]];
+        if (
+          declaration.verb === Verb.ACTIVATE &&
+          featureRefs.has(declaration.ability?.ref ?? '')
+        )
+          return [[declaration.id, 'features' as const]];
+        return [];
+      })
+    ),
     quickDeclarationIds: declarations
       .filter((declaration) => {
         if (
