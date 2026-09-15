@@ -240,6 +240,7 @@ export interface ActionDockProps {
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
   onOpenEquipment?: () => void;
+  onCenterView?: () => void;
   /** Optional composition slot; the dock still owns the existing End Turn gate. */
   endTurnTarget?: HTMLElement | null;
   endTurnBlocked?: boolean;
@@ -449,6 +450,7 @@ export function ActionDock({
   authorityFresh,
   actionPresentation,
   onOpenEquipment,
+  onCenterView,
   endTurnTarget,
   endTurnBlocked = false,
   armedDeclarationId,
@@ -481,15 +483,36 @@ export function ActionDock({
       onBeforeSelect={onCancelSelection}
     />
   );
+  // Camera recovery is not an action-economy decision. This same control can
+  // remain available even when the game-action/roll presentation gate is shut.
+  const centerControl =
+    actionPresentation?.mode === 'organized-hud' && onCenterView ? (
+      <button
+        type="button"
+        className={styles.organizedCollection}
+        onClick={onCenterView}
+      >
+        Center on me
+      </button>
+    ) : null;
   const standing =
-    standingGroup && actionPresentation?.mode === 'organized-hud' ? (
-      <details className={styles.organizedExplore}>
-        <summary>Explore</summary>
-        {standingGroup}
-      </details>
-    ) : (
-      standingGroup
-    );
+    actionPresentation?.mode === 'organized-hud'
+      ? (standingGroup || centerControl) && (
+          <div
+            className={styles.organizedSecondary}
+            role="group"
+            aria-label="Map utilities"
+          >
+            {standingGroup && (
+              <details className={styles.organizedExplore}>
+                <summary>Explore</summary>
+                {standingGroup}
+              </details>
+            )}
+            {centerControl}
+          </div>
+        )
+      : standingGroup;
 
   if (clock === ClockKind.WORLD) {
     return (
@@ -536,6 +559,15 @@ export function ActionDock({
             <strong>Your d20 is settling</strong>
             <small>The choice follows the matching die.</small>
           </div>
+          {centerControl && (
+            <div
+              className={styles.organizedSecondary}
+              role="group"
+              aria-label="Map utilities"
+            >
+              {centerControl}
+            </div>
+          )}
         </div>
       );
     }

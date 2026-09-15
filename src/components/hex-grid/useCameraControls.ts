@@ -28,6 +28,7 @@ import {
   DEFAULT_DRAG_ROTATE_DEG_PER_PX,
   DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+  touchViewAtZoom,
 } from './cameraDials';
 import { fitBandIndexForBbox } from './cameraFit';
 import { rotateAboutPivot } from './orbitPivot';
@@ -36,6 +37,12 @@ import {
   reduceOrbitPivotAutoState,
   resolveOrbitPivot,
 } from './orbitPivotMode';
+import { zoomAboutGroundPoint } from './pinchZoom';
+import {
+  bindTouchPan,
+  type ScreenPanDelta,
+  type ScreenPinchDelta,
+} from './touchPan';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
  * radian-based azimuth math. */
@@ -154,6 +161,14 @@ interface CameraControlsOptions {
   /** A right press/release that never exceeds the drag threshold. The caller
    * decides what local map interaction, if any, that gesture cancels. */
   onQuickRightClick?: () => void;
+  /** Fixture-first opt-in; omitted preserves existing mouse/keyboard controls. */
+  touchPanEnabled?: boolean;
+  /** Continuous orthographic pinch within touch-pan mode; off by default. */
+  touchPinchEnabled?: boolean;
+  /** Deliberate twist within the opted-in two-finger gesture. */
+  touchRotateEnabled?: boolean;
+  /** Increment to request the same camera focus operation as F. */
+  focusRequest?: number;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -186,6 +201,10 @@ export function useCameraControls({
   maxDistance = 100,
   revealedBounds,
   onQuickRightClick,
+  touchPanEnabled = false,
+  touchPinchEnabled = false,
+  touchRotateEnabled = false,
+  focusRequest = 0,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -208,6 +227,13 @@ export function useCameraControls({
   // `target`/`updateCamera`/`focusTarget` closures, matching how Q/E rotation
   // and WASD pan already defer their real work to useFrame.
   const oneShotKeys = useRef({ focus: false, fit: false });
+  const lastFocusRequest = useRef(focusRequest);
+  useEffect(() => {
+    if (lastFocusRequest.current === focusRequest) return;
+    lastFocusRequest.current = focusRequest;
+    oneShotKeys.current.focus = true;
+    invalidate();
+  }, [focusRequest, invalidate]);
 
   // Latest `revealedBounds` prop, mirrored into a ref every render so the
   // `Home` handling above (which only runs inside useFrame, not on every
@@ -259,6 +285,7 @@ export function useCameraControls({
   // The selected orthographic camera band. Null means resolve the nearest
   // authored band from the Canvas's initial zoom on first use.
   const orthoBandIndex = useRef<number | null>(null);
+  const lastZoomWasTouch = useRef(false);
   const lastOrthoBandStep = useRef({
     at: Number.NEGATIVE_INFINITY,
     direction: 0,
@@ -340,8 +367,16 @@ export function useCameraControls({
     return closeT * closeT * (3 - 2 * closeT);
   }, [curve, perspective, zoomT]);
 
-  /** Polar angle for the current zoom — constant unless a curve is supplied. */
+  const currentTouchView = useCallback(() => {
+    if (!touchPinchEnabled || !lastZoomWasTouch.current || perspective)
+      return null;
+    return touchViewAtZoom({ zoom: camera.zoom, bands: curve?.bands });
+  }, [touchPinchEnabled, perspective, camera, curve]);
+
+  /** Touch blends the authored close views; PC keeps its discrete bands. */
   const currentPolar = useCallback((): number => {
+    const touchView = currentTouchView();
+    if (touchView) return touchView.polar;
     if (!curve) return polarAngle;
     if (!perspective) return currentOrthoBand()?.polar ?? curve.polarFar;
     return THREE.MathUtils.lerp(
@@ -355,13 +390,22 @@ export function useCameraControls({
     polarAngle,
     currentOrthoBand,
     easedPerspectiveCloseT,
+    currentTouchView,
   ]);
 
   const currentFocusLead = useCallback((): number => {
+    const touchView = currentTouchView();
+    if (touchView) return touchView.focusLead;
     if (!curve) return 0;
     if (!perspective) return currentOrthoBand()?.focusLead ?? 0;
     return curve.focusLead * easedPerspectiveCloseT();
-  }, [curve, perspective, currentOrthoBand, easedPerspectiveCloseT]);
+  }, [
+    curve,
+    perspective,
+    currentOrthoBand,
+    easedPerspectiveCloseT,
+    currentTouchView,
+  ]);
 
   /**
    * World units spanned by one screen pixel at the current zoom. Right-drag
@@ -426,6 +470,110 @@ export function useCameraControls({
     },
     [orbitPivot, focusTarget, target]
   );
+
+  // Both input paths grab the same ground plane and take ownership from follow.
+  const panFromScreen = useCallback(
+    ({ dx, dy }: ScreenPanDelta) => {
+      const az = azimuth.current;
+      forward.current.set(-Math.cos(az), 0, -Math.sin(az));
+      right.current.set(Math.sin(az), 0, -Math.cos(az));
+      const perPx = worldPerPixel();
+      const depthScale = Math.min(
+        4,
+        1 / Math.max(0.25, Math.cos(currentPolar()))
+      );
+      target.addScaledVector(right.current, -dx * perPx);
+      target.addScaledVector(forward.current, dy * perPx * depthScale);
+      lerpTarget.current = null;
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
+      updateCamera();
+      invalidate();
+    },
+    [target, worldPerPixel, currentPolar, updateCamera, invalidate]
+  );
+
+  const pinchFromScreen = useCallback(
+    (pinch: ScreenPinchDelta) => {
+      if (!(camera instanceof THREE.OrthographicCamera)) return;
+      // The helper snapshots the old ground point before this pose update.
+      // A later wheel gesture deliberately returns to the PC's band controls.
+      currentOrthoBand();
+      const wasTouch = lastZoomWasTouch.current;
+      const previousAzimuth = azimuth.current;
+      lastZoomWasTouch.current = true;
+      if (
+        !zoomAboutGroundPoint({
+          ...pinch,
+          camera,
+          target,
+          viewport: gl.domElement.getBoundingClientRect(),
+          minZoom,
+          maxZoom,
+          updateView: () => {
+            // Camera heading moves opposite screen-clockwise finger rotation so
+            // the board follows the fingers. The helper supplies the midpoint
+            // pivot; desktop Q/E keeps its existing me/view pivot behavior.
+            if (touchRotateEnabled) azimuth.current -= pinch.rotationRad ?? 0;
+            updateCamera();
+          },
+        })
+      ) {
+        lastZoomWasTouch.current = wasTouch;
+        azimuth.current = previousAzimuth;
+        return;
+      }
+      lastOrthoBandStep.current = {
+        at: Number.NEGATIVE_INFINITY,
+        direction: 0,
+      };
+      // The continuous pose is separate from the discrete follow policy. A
+      // later mini move must resolve the nearest CURRENT zoom band, not the
+      // band cached before this pinch began.
+      orthoBandIndex.current = null;
+      lerpTarget.current = null;
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
+      updateCamera();
+      invalidate();
+    },
+    [
+      camera,
+      currentOrthoBand,
+      target,
+      gl,
+      minZoom,
+      maxZoom,
+      updateCamera,
+      invalidate,
+      touchRotateEnabled,
+    ]
+  );
+
+  useEffect(() => {
+    if (!touchPanEnabled) return;
+    return bindTouchPan({
+      canvas: gl.domElement,
+      onPan: panFromScreen,
+      rotationEnabled: touchRotateEnabled,
+      onPinch:
+        touchPinchEnabled && camera instanceof THREE.OrthographicCamera
+          ? pinchFromScreen
+          : undefined,
+    });
+  }, [
+    gl,
+    camera,
+    touchPanEnabled,
+    touchPinchEnabled,
+    touchRotateEnabled,
+    panFromScreen,
+    pinchFromScreen,
+  ]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -553,41 +701,7 @@ export function useCameraControls({
       rightDrag.lastX = e.clientX;
       rightDrag.lastY = e.clientY;
 
-      // Ground-plane basis for the current heading — same convention as the
-      // WASD block in useFrame below, reusing the same scratch vectors.
-      const az = azimuth.current;
-      forward.current.set(-Math.cos(az), 0, -Math.sin(az));
-      right.current.set(Math.sin(az), 0, -Math.cos(az));
-
-      // Screen-vertical covers MORE ground than screen-horizontal once the
-      // camera tilts (a ground plane compresses by cos(polar) on screen), so
-      // undo that to keep the board tracking the cursor in both axes. Clamped
-      // because the correction runs away as the camera nears the horizon —
-      // and with the pitch curve on, the close end really does get flat.
-      const perPx = worldPerPixel();
-      const depthScale = Math.min(
-        4,
-        1 / Math.max(0.25, Math.cos(currentPolar()))
-      );
-
-      // Grab-the-board: content follows the cursor, so the orbit target moves
-      // against the drag horizontally, and with it into depth (pulling down
-      // brings far ground toward you).
-      target.addScaledVector(right.current, -dx * perPx);
-      target.addScaledVector(forward.current, dy * perPx * depthScale);
-
-      // A manual pan owns the framing from here, exactly like WASD — without
-      // this the auto-follow lerp yanks the board straight back to the player.
-      lerpTarget.current = null;
-      // `?orbitPivot=auto`'s own event — a manual pan switches the pivot to
-      // the view center until the mini moves again or F is pressed.
-      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
-        orbitPivotAutoState.current,
-        'pan'
-      );
-
-      updateCamera();
-      invalidate(); // Request re-render for on-demand frameloop
+      panFromScreen({ dx, dy });
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -595,6 +709,10 @@ export function useCameraControls({
       // Orthographic cameras with authored bands move one deliberate stop per
       // wheel gesture. The fixed-angle escape hatch keeps continuous zoom.
       if (camera instanceof THREE.OrthographicCamera) {
+        if (lastZoomWasTouch.current && e.deltaY !== 0) {
+          orthoBandIndex.current = null;
+          lastZoomWasTouch.current = false;
+        }
         if (curve && curve.bands.length > 0 && e.deltaY !== 0) {
           const direction = e.deltaY < 0 ? 1 : -1;
           const previousStep = lastOrthoBandStep.current;
@@ -661,8 +779,7 @@ export function useCameraControls({
     curve,
     minDistance,
     maxDistance,
-    worldPerPixel,
-    currentPolar,
+    panFromScreen,
     currentOrthoBand,
     applyAzimuthDelta,
     dragRotate,
@@ -715,6 +832,7 @@ export function useCameraControls({
         );
         if (fitIndex >= 0) {
           orthoBandIndex.current = fitIndex;
+          lastZoomWasTouch.current = false;
           camera.zoom = curve.bands[fitIndex]!.zoom;
           camera.updateProjectionMatrix();
           target.set(bounds.centerX, target.y, bounds.centerZ);
