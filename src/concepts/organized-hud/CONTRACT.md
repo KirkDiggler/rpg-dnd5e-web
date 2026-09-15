@@ -1,31 +1,50 @@
 # #1054 organized HUD concept contract
 
-Normal Lab link: `?concept=organized-hud`. Viewport walkthrough link: `?concept=organized-hud&preview=1` (also exposed as **Open viewport preview** in the concept). Both are development Concepts Lab surfaces only.
+Lab: `?concept=organized-hud`. Walkthrough: `?concept=organized-hud&preview=1`.
+Both are development-only Concepts Lab surfaces using real shared components.
 
-## Boundaries
+## Accepted iteration — 2026-09-14
 
-- `CombatExperience` remains the real production-owned scene shell, target surface, map composition, initiative, story log, resource/status projection, and action lifecycle gate.
-- `ActionDock` receives an explicit `actionPresentation.mode: 'organized-hud'`; omitting it keeps the normal live dock. Existing reaction, death-save, and `CastOptionGroup` gates remain ahead of the organizer.
-- `OrganizedActionSurface` only orders, inspects, and opens current `Declaration` offers. It resolves an id against current props immediately before calling the existing selection callback. It does not calculate availability, costs, spell level, cantrip status, targets, or execution. Its visible Details control does not select/arm an offer.
-- The concept owns fixture selection, PC/landscape-phone frame controls, Escape/cancel reset, and the fixture-only intent receipt. No concept callback writes to the network or claims a successful rules execution.
+Kirk walked the concept and accepted this iteration for mobile and PC:
 
-## Provisional display metadata
+> we have a keeper for the mobile. i like this a lot better for pc than what we had as well. still room for improvement but I am ok with this iteration
 
-`fixtures.ts` passes `quickDeclarationIds` and `sectionByDeclarationId` separately from generated `Declaration` facts. Quick uses `offer:aldric:move` and `offer:aldric:longsword:action`; spell sections use `mockery`, `bane`, `fire-bolt`, `command`, and `guidance`. The unhinted `shortbow` is deliberately retained in **All actions**, so every shortcut omitted for bounded phone capacity remains discoverable.
+Keep this arrangement rather than starting another polish pass:
 
-The installed `SpellRef` has only `ref` and `name`. This concept does **not** infer cantrips, spell levels, slot costs, or repeatability from names, refs, classes, missing costs, or resources. Promotion needs an authoritative display-hints/provider contract (or author-provided declaration section/shortcut metadata) that carries those semantics explicitly.
+- Translucent, gold-line overlays let the map remain visible behind controls.
+- Location and the local player's unlabelled HP bar/numbers share the top-left area. No redundant player name beside HP.
+- End Turn sits beside HP, in the spot previously occupied by Equipment.
+- Initiative is width-bounded on the right, with arrows and horizontal scrolling rather than an ever-growing header.
+- Actions and collections float at the bottom-left. Equipment sits on that menu row after Explore, right-aligned. A single-entry collection shows its action directly.
+- Collapsed Log sits at the bottom-right; its old panel background does not remain expanded.
+- PC uses the available frame; Landscape phone uses a bounded phone-sized frame with a smaller explicit shortcut set.
 
-## Walkthrough
+Visual acceptance belongs to Kirk's walkthrough. It is not a claim of live-game integration, touch-camera support, or merge readiness. Further visual-verification/polish loops were explicitly stopped in favor of collaborative iteration.
 
-1. Open the normal Lab route and use **Open viewport preview** for a full-viewport PC or landscape-phone walkthrough. Preview collapses the Lab chrome into a reachable Controls drawer; Landscape phone is an actual active frame mode, not merely a smaller browser viewport.
-2. Select Full slots or Spent slots. Open Spells / Abilities / All actions. Tap **Details** for available or denied offers to read current tooltip facts and provider refusal copy without arming an action.
-3. Select Bane: its generated fixture has MEMBER candidates, 1–2 cardinality, a provider cost, target selection, explicit confirmation, and Cancel/Escape reset. Select Command to demonstrate the existing shared options group and its Cancel.
-4. Choose Stale authority and confirm selection cannot dispatch. Choose Spectator to exercise the real shell's existing watching gate. Items honestly routes to existing equipment only when no item-use declaration exists.
+## Component boundaries
 
-## Evidence correction (first proof failure)
+- `CombatExperience` remains the real production-owned scene shell, target surface, initiative, log, character projection, and action lifecycle gate.
+- `actionPresentation.mode: 'organized-hud'` opts into this presentation. Omitting it retains the existing live dock.
+- `ActionDock` retains reaction, death-save, cast-option and End Turn gates. Its optional End Turn DOM target changes placement through a portal, not authority or execution.
+- `OrganizedActionSurface` orders, inspects, and opens current declarations. IDs are resolved against current props before selection. Details are outside clipped scrolling rows and do not arm an action. Secondary controls are composed into the collection row.
+- The concept owns profile/scenario/frame selection, cancellation, and fixture-only intent receipts. No concept callback sends an RPC or claims successful rules execution. Equipment currently records a fixture intent; it is not a working inventory modal in this harness.
 
-The first pass checked only document horizontal width and changed browser dimensions without selecting Landscape phone. It also allowed the fixed-height child shell to exceed its clipped frame, leaving the desktop dock below the viewport. This was corrected with a viewport preview whose frame and shared shell use the same viewport height bound. Fix-pass browser evidence must click and assert the phone control, measure both axes for frame/dock/End Turn/quick/tray, and `elementFromPoint` each intended click center before clicking. It must not use auto-scroll as proof of reachability.
+## Fixtures and provisional metadata
 
-## Known promotion gaps
+`fixtures.ts` supplies Caster and Martial layout profiles, not runtime class detection or legal character-build recommendations. The caster deliberately uses a mixed repertoire. Generated declaration facts stay separate from provisional `quickDeclarationIds` and `sectionByDeclarationId` display hints.
 
-This is concept-only and not promoted to live session routes. It does not add touch gestures/camera controls, nor does it decide item use. The fixture map is the established `SessionCombatMap` harness renderer, so it does not independently prove an asset-loaded live 3D session canvas.
+- Caster PC shortcuts: Move, Longsword, Vicious Mockery, Fire Bolt, Guidance. Phone shortcuts: Move and Vicious Mockery. Other actions remain discoverable in collections.
+- Martial shortcuts: Move and Longsword. Second Wind is the single direct feature; general actions are in All actions.
+- Full/spent scenarios explicitly author availability: spent spell slots disable Bane and Command, not the cantrip fixtures; the martial spent scenario disables Second Wind.
+- Bane exercises generated candidates/cardinality and multi-target confirmation. Command exercises the existing options group. Spectator and stale-authority scenarios preserve the shared gates.
+- Crowded initiative adds eight tracker-only participants to demonstrate scrolling. It does not create map actors or actions.
+
+The installed `SpellRef` has only `ref` and `name`. The shared UI does not infer cantrip status, level, legality, or repeatability from names, refs, classes or costs. Live promotion still needs a deliberate source for shortcut/display hints; these fixture choices are not an automatically approved provider contract.
+
+## Evidence and remaining work
+
+The initial automated proof checked only document width and failed to select phone mode, missing a clipped dock and unusable targeting fixtures. Those findings and the correction remain recorded on PR #1057. Subsequent layout decisions came from Kirk's screenshots and direct walkthrough, with focused component/type checks during edits. Earlier full CI/review evidence must not be presented as covering later commits.
+
+Two local hot-reload incidents served empty transformed CSS/TSX modules despite intact source files. Invalidating the affected file restored the exports/styles. Use atomic replacements for further source edits rather than exposing partially written files to Vite.
+
+This is an accepted concept checkpoint, not promotion to `SessionEncounterView`. New touch gestures, mobile camera behavior, real-device Discord validation, live data wiring, and final PR publication gates remain separate work. Keep the isolated stack available for Kirk; do not automatically merge or deploy.

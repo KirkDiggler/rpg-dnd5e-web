@@ -7,6 +7,8 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   actionTooltipText,
   buildActionTooltip,
@@ -238,6 +240,8 @@ export interface ActionDockProps {
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
   onOpenEquipment?: () => void;
+  /** Optional composition slot; the dock still owns the existing End Turn gate. */
+  endTurnTarget?: HTMLElement | null;
   endTurnBlocked?: boolean;
   armedDeclarationId?: string;
   /** Roster names, for the one place the dock names somebody who is not the
@@ -427,6 +431,16 @@ function exactlyOne(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+function EndTurnPlacement({
+  target,
+  children,
+}: {
+  target?: HTMLElement | null;
+  children: ReactNode;
+}) {
+  return target ? createPortal(children, target) : children;
+}
+
 export function ActionDock({
   clock,
   viewerMember,
@@ -435,6 +449,7 @@ export function ActionDock({
   authorityFresh,
   actionPresentation,
   onOpenEquipment,
+  endTurnTarget,
   endTurnBlocked = false,
   armedDeclarationId,
   memberNames,
@@ -459,13 +474,22 @@ export function ActionDock({
     participants,
     authorityFresh
   );
-  const standing = standingActions.length > 0 && (
+  const standingGroup = standingActions.length > 0 && (
     <StandingActionGroup
       actions={standingActions}
       blocked={blocked}
       onBeforeSelect={onCancelSelection}
     />
   );
+  const standing =
+    standingGroup && actionPresentation?.mode === 'organized-hud' ? (
+      <details className={styles.organizedExplore}>
+        <summary>Explore</summary>
+        {standingGroup}
+      </details>
+    ) : (
+      standingGroup
+    );
 
   if (clock === ClockKind.WORLD) {
     return (
@@ -711,6 +735,7 @@ export function ActionDock({
           onSelectDeclaration={onSelectDeclaration}
           onCancelSelection={onCancelSelection}
           onOpenEquipment={onOpenEquipment}
+          secondaryControls={standing}
         />
       ) : (
         <div className={styles.actionGroupWithDivider}>
@@ -744,45 +769,49 @@ export function ActionDock({
           </div>
         </div>
       )}
-      {/* The Explore verbs stay. They are drawn in every clock state and are
-          nothing to do with the cast; the menu plus this group measures well
-          under the row even at 1024. */}
-      {standing}
+      {/* Ordinary organized mode hosts Explore in its collection row;
+          option selection and the default dock keep their own standing group. */}
+      {actionPresentation?.mode !== 'organized-hud' ||
+      (optionDeclaration && onSelectCastOption)
+        ? standing
+        : null}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">
           Actions may be out of date
         </div>
       )}
       {endTurn && (
-        <button
-          type="button"
-          className={styles.endTurn}
-          disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
-          title={
-            !authorityFresh
-              ? 'Actions may be out of date'
-              : endTurnBlocked
-                ? 'Finish the Death Save roll before ending turn'
-                : endTurn.available
-                  ? 'End turn'
-                  : endTurn.why?.text || 'Unavailable'
-          }
-          onClick={() => onEndTurn(endTurn)}
-        >
-          End turn
-          <span aria-hidden="true">→</span>
-          {endTurnBlocked ? (
-            <span className={styles.semanticOnly}>
-              Unavailable: finish the Death Save roll first
-            </span>
-          ) : (
-            !endTurn.available && (
+        <EndTurnPlacement target={endTurnTarget}>
+          <button
+            type="button"
+            className={styles.endTurn}
+            disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
+            title={
+              !authorityFresh
+                ? 'Actions may be out of date'
+                : endTurnBlocked
+                  ? 'Finish the Death Save roll before ending turn'
+                  : endTurn.available
+                    ? 'End turn'
+                    : endTurn.why?.text || 'Unavailable'
+            }
+            onClick={() => onEndTurn(endTurn)}
+          >
+            End turn
+            <span aria-hidden="true">→</span>
+            {endTurnBlocked ? (
               <span className={styles.semanticOnly}>
-                Unavailable: {endTurn.why?.text || 'Unavailable'}
+                Unavailable: finish the Death Save roll first
               </span>
-            )
-          )}
-        </button>
+            ) : (
+              !endTurn.available && (
+                <span className={styles.semanticOnly}>
+                  Unavailable: {endTurn.why?.text || 'Unavailable'}
+                </span>
+              )
+            )}
+          </button>
+        </EndTurnPlacement>
       )}
     </div>
   );

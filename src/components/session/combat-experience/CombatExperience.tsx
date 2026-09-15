@@ -6,6 +6,7 @@ import {
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { useRef, useState } from 'react';
 import { propLabel } from '../holdingAffordances';
 import {
   authoredWords as exitWords,
@@ -198,6 +199,15 @@ export function CombatExperience({
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
+  const initiativeScroll = useRef<HTMLDivElement>(null);
+  const [endTurnTarget, setEndTurnTarget] = useState<HTMLSpanElement | null>(
+    null
+  );
+  const scrollInitiative = (direction: -1 | 1) => {
+    const order = initiativeScroll.current;
+    if (order)
+      order.scrollLeft += direction * Math.max(96, order.clientWidth * 0.75);
+  };
   // A die is only worth waiting for when THIS viewer is the one rolling it.
   //
   // Spectating is the case that made the first version of this wrong: an
@@ -412,7 +422,33 @@ export function CombatExperience({
               <small>Round</small>
               {round}
             </span>
-            <div className={styles.initiativeOrder}>
+            {actionPresentation?.mode === 'organized-hud' && (
+              <button
+                type="button"
+                className={styles.initiativeArrow}
+                aria-label="Previous in initiative"
+                onClick={() => scrollInitiative(-1)}
+              >
+                ‹
+              </button>
+            )}
+            <div
+              className={styles.initiativeOrder}
+              ref={initiativeScroll}
+              role={
+                actionPresentation?.mode === 'organized-hud'
+                  ? 'group'
+                  : undefined
+              }
+              aria-label={
+                actionPresentation?.mode === 'organized-hud'
+                  ? 'Initiative order'
+                  : undefined
+              }
+              tabIndex={
+                actionPresentation?.mode === 'organized-hud' ? 0 : undefined
+              }
+            >
               {participants.map((participant) => (
                 <InitiativeEntry
                   key={participant.member}
@@ -421,6 +457,16 @@ export function CombatExperience({
                 />
               ))}
             </div>
+            {actionPresentation?.mode === 'organized-hud' && (
+              <button
+                type="button"
+                className={styles.initiativeArrow}
+                aria-label="Next in initiative"
+                onClick={() => scrollInitiative(1)}
+              >
+                ›
+              </button>
+            )}
           </div>
         ) : clock === ClockKind.WORLD ? (
           <div
@@ -474,7 +520,11 @@ export function CombatExperience({
           )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
-          <div className={styles.identityRow}>
+          <div
+            className={styles.identityRow}
+            role="group"
+            aria-label="Your status"
+          >
             <div className={styles.viewerPortrait}>
               {portraitOf(viewerName)}
             </div>
@@ -498,6 +548,12 @@ export function CombatExperience({
                   <span style={{ width: `${hpPercent}%` }} />
                 </div>
               </div>
+            )}
+            {actionPresentation?.mode === 'organized-hud' && (
+              <span
+                ref={setEndTurnTarget}
+                className={styles.organizedEndTurnSlot}
+              />
             )}
             {characterData?.armorClassDetail && (
               <div
@@ -543,19 +599,21 @@ export function CombatExperience({
                 )}
               </div>
             )}
-            {characterData && onOpenEquipment && (
-              <button
-                type="button"
-                className={styles.equipmentButton}
-                data-testid="session-combat-equipment-button"
-                aria-pressed={equipmentOpen}
-                title="Equipment"
-                onClick={onOpenEquipment}
-              >
-                <span aria-hidden="true">♜</span>
-                Equipment
-              </button>
-            )}
+            {characterData &&
+              onOpenEquipment &&
+              actionPresentation?.mode !== 'organized-hud' && (
+                <button
+                  type="button"
+                  className={styles.equipmentButton}
+                  data-testid="session-combat-equipment-button"
+                  aria-pressed={equipmentOpen}
+                  title="Equipment"
+                  onClick={onOpenEquipment}
+                >
+                  <span aria-hidden="true">♜</span>
+                  Equipment
+                </button>
+              )}
           </div>
 
           <ActionDock
@@ -566,6 +624,11 @@ export function CombatExperience({
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
             onOpenEquipment={onOpenEquipment}
+            endTurnTarget={
+              actionPresentation?.mode === 'organized-hud'
+                ? endTurnTarget
+                : undefined
+            }
             endTurnBlocked={endTurnBlocked}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined

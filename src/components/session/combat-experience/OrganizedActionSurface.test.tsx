@@ -32,18 +32,22 @@ describe('OrganizedActionSurface', () => {
     const onSelect = vi.fn();
     render(
       <OrganizedActionSurface
-        declarations={[offer('move', Verb.MOVE), offer('dash', Verb.ACTIVATE)]}
+        declarations={[
+          offer('move', Verb.MOVE),
+          offer('dash', Verb.ACTIVATE),
+          offer('dodge', Verb.ACTIVATE),
+        ]}
         authorityFresh
         presentation={{ quickDeclarationIds: ['move'] }}
         onSelectDeclaration={onSelect}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /abilities 1/i }));
+    fireEvent.click(screen.getByRole('button', { name: /abilities 2/i }));
     expect(onSelect).not.toHaveBeenCalled();
     expect(
       screen.getByRole('region', { name: 'Abilities collection' })
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /ability/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /ability/i })[0]!);
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'dash' })
     );
@@ -68,6 +72,11 @@ describe('OrganizedActionSurface', () => {
     expect(
       screen.getByRole('region', { name: 'Attack details' })
     ).toHaveTextContent('Unavailable: Action spent.');
+    expect(
+      screen
+        .getByRole('region', { name: 'Attack details' })
+        .closest('[role="group"]')
+    ).toBeNull();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -90,12 +99,15 @@ describe('OrganizedActionSurface', () => {
   it('does not leave an empty tray when the open section is withdrawn', () => {
     const view = render(
       <OrganizedActionSurface
-        declarations={[offer('dash', Verb.ACTIVATE)]}
+        declarations={[
+          offer('dash', Verb.ACTIVATE),
+          offer('dodge', Verb.ACTIVATE),
+        ]}
         authorityFresh
         onSelectDeclaration={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /abilities 1/i }));
+    fireEvent.click(screen.getByRole('button', { name: /abilities 2/i }));
     expect(
       screen.getByRole('region', { name: 'Abilities collection' })
     ).toBeTruthy();

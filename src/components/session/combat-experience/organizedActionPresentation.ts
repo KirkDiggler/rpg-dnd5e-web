@@ -14,7 +14,7 @@ export interface OrganizedActionPresentation {
   quickDeclarationIds?: readonly string[];
   /** Explicit concept-only section labels keyed by current declaration id. */
   sectionByDeclarationId?: Readonly<
-    Record<string, 'spells' | 'abilities' | 'items'>
+    Record<string, 'spells' | 'abilities' | 'items' | 'actions'>
   >;
 }
 
