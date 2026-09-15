@@ -75,7 +75,13 @@ is part of this slice. This is concept acceptance, not live-game promotion.
 
 `SessionEncounterView` now opts into the shared organizer and all three touch controls. Its existing real action/target/equipment callbacks remain the execution paths. Center increments the camera focus request without cancelling selection. The live frame supplies the named size container used by the phone layout; navigation and operation feedback have shell-owned slots so the former Back overlay does not cover the location/HP header.
 
-Initial live shortcuts are provider-declared Attack, Move, and Death Save verbs, in Afford order. Casts remain in Spells, activations in Abilities, with singleton groups rendered directly. No Caster/Martial fixture profile or cantrip inference was promoted. More specific shortcut/display hints still need trustworthy live facts.
+The first live draft pinned only provider-declared Attack, Move, and Death Save verbs. That was too conservative: it hid common bard actions behind menus despite already-fetched owner facts being available. Kirk's first live walk corrected the policy: **cantrips and owned feature offers stay directly visible on both PC and mobile; only known leveled spells and non-feature abilities belong in collections.**
+
+`liveActionPresentation` now joins current declarations to the existing owner's `knownCantrips` / `knownSpells` and `CharacterData.features[].ref`. This is exact reference identity, not inference from a name, class, ref spelling or cost. Unknown spells remain visible rather than being assumed leveled; missing private feature metadata keeps activations visible until classified. The projection never invents an offer, changes availability, or retains an old signed declaration ID. No new API calls or provider changes were needed.
+
+The observed Staniel response carried Vicious Mockery and Thunderclap in `knownCantrips`, Bane in `knownSpells`, and an unavailable Bardic Inspiration offer with the reason “no ally within reach.” The UI must show that disabled common action and its reason, not make it disappear. The desktop row now uses larger controls/text; phone spacing remains compact without removing those common actions.
+
+Cancel also overlapped the last quick action's Details control: it had been absolutely positioned over the row. It now participates in the quick row's normal wrapping layout. A targeted browser overlap probe failed before the change and passed afterward at 1440×900 and 844×390.
 
 Two integration findings are corrected rather than hidden by the fixture: organized offers now expose their selected state, and Equipment remains accessible in every clock/roll state as it was in the legacy shell (including settling, without exposing withheld game actions). Live adapter tests exercise current declaration IDs through actual controller dispatch, center while armed, and the real equipment surface.
 

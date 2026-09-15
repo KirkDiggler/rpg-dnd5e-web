@@ -187,6 +187,15 @@ export function OrganizedActionSurface({
         {organized.quick.length === 0 && (
           <small>No shortcut hints supplied.</small>
         )}
+        {armedDeclarationId && onCancelSelection && (
+          <button
+            type="button"
+            className={styles.organizedCancel}
+            onClick={onCancelSelection}
+          >
+            Cancel action
+          </button>
+        )}
       </div>
       <div
         className={styles.organizedCollections}
@@ -235,15 +244,6 @@ export function OrganizedActionSurface({
           </button>
         )}
       </div>
-      {armedDeclarationId && onCancelSelection && (
-        <button
-          type="button"
-          className={styles.organizedCancel}
-          onClick={onCancelSelection}
-        >
-          Cancel action
-        </button>
-      )}
       {activeOpen && (
         <div
           className={styles.organizedTray}

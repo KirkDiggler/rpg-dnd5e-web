@@ -1909,7 +1909,7 @@ button.diceDrawerCue:focus-visible {
 .organizedOffer,
 .organizedCollection {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
@@ -1919,7 +1919,7 @@ button.diceDrawerCue:focus-visible {
   color: var(--sc-ink);
   background: rgba(31, 45, 49, 0.96);
   font: inherit;
-  font-size: 10px;
+  font-size: 12px;
   text-align: left;
 }
 .organizedOffer > span {
@@ -1927,7 +1927,7 @@ button.diceDrawerCue:focus-visible {
   font-size: 14px;
 }
 .organizedOffer strong {
-  max-width: 96px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1935,7 +1935,7 @@ button.diceDrawerCue:focus-visible {
 .organizedOffer small,
 .organizedOffer em {
   color: var(--sc-muted);
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -1944,10 +1944,10 @@ button.diceDrawerCue:focus-visible {
   cursor: not-allowed;
 }
 .organizedCollection {
-  min-height: 30px;
+  min-height: 34px;
   color: var(--sc-muted);
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 .organizedCollection span {
@@ -2063,6 +2063,17 @@ button.diceDrawerCue:focus-visible {
   .organizedOffer {
     min-height: 34px;
     padding: 5px 7px;
+    font-size: 10px;
+  }
+  .organizedOffer strong {
+    max-width: 96px;
+  }
+  .organizedOffer small,
+  .organizedOffer em {
+    font-size: 8px;
+  }
+  .organizedCollection {
+    font-size: 9px;
   }
   .organizedCollections {
     overflow-x: auto;
@@ -2085,7 +2096,7 @@ button.diceDrawerCue:focus-visible {
   color: var(--sc-muted);
   background: rgba(0, 0, 0, 0.18);
   font: inherit;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
 }
 .organizedInspectButton[aria-expanded='true'] {
@@ -2128,10 +2139,9 @@ button.diceDrawerCue:focus-visible {
   color: #e9a39f;
 }
 .organizedCancel {
-  position: absolute;
-  z-index: 2;
-  top: 5px;
-  right: 5px;
+  position: static;
+  flex: 0 0 auto;
+  min-height: 40px;
   border-color: rgba(232, 183, 95, 0.5);
   color: var(--sc-gold-bright);
 }
@@ -2146,6 +2156,11 @@ button.diceDrawerCue:focus-visible {
   .organizedInspectButton {
     min-height: 28px;
     padding: 4px;
+    font-size: 8px;
+  }
+  .organizedCancel {
+    min-height: 34px;
+    font-size: 9px;
   }
   .organizedTray {
     position: fixed;

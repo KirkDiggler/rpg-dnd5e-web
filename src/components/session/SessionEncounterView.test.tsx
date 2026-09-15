@@ -49,7 +49,10 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { CharacterDataSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  CharacterDataSchema,
+  FeatureViewSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -90,7 +93,11 @@ const hoisted = vi.hoisted(() => ({
   getCharacterFn: vi.fn(),
   getCharacterHookFn: vi.fn(),
   characterResult: {
-    data: null as { appearance?: { hair?: HairCustomization } } | null,
+    data: null as {
+      appearance?: { hair?: HairCustomization };
+      knownCantrips?: string[];
+      knownSpells?: string[];
+    } | null,
     loading: false,
     error: null as Error | null,
     refetch: vi.fn(),
@@ -651,6 +658,10 @@ describe('SessionEncounterView production combat integration', () => {
   });
 
   it('organizes live declarations without turning fixture spell hints into rules', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: [],
+      knownSpells: ['dnd5e:spells:thunderwave', 'cantrip-looking-ref'],
+    };
     const spell = cellCastDeclaration('opaque.cast.1');
     const otherSpell = create(DeclarationSchema, {
       ...cellCastDeclaration('opaque.cast.2'),
@@ -691,6 +702,62 @@ describe('SessionEncounterView production combat integration', () => {
         cell: { x: 1, y: 0 },
       })
     );
+  });
+
+  it('keeps owned cantrips and features visible when their current offers are unavailable', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: ['dnd5e:spells:vicious-mockery'],
+      knownSpells: [],
+    };
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        features: [
+          create(FeatureViewSchema, {
+            name: 'Bardic Inspiration',
+            ref: {
+              module: 'dnd5e',
+              type: 'features',
+              id: 'bardic_inspiration',
+            },
+          }),
+        ],
+      }),
+    });
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      endTurnDeclaration(),
+      create(DeclarationSchema, {
+        id: 'cantrip',
+        verb: Verb.CAST,
+        spell: { ref: 'dnd5e:spells:vicious-mockery', name: 'Vicious Mockery' },
+        available: false,
+        why: { text: 'no target in reach' },
+      }),
+      create(DeclarationSchema, {
+        id: 'inspiration',
+        verb: Verb.ACTIVATE,
+        ability: {
+          ref: 'dnd5e:features:bardic_inspiration',
+          name: 'Bardic Inspiration',
+        },
+        available: false,
+        why: { text: 'no ally within reach' },
+      }),
+    ]);
+    renderView();
+    const quick = await screen.findByRole('group', { name: 'Quick actions' });
+    expect(
+      within(quick)
+        .getByRole('button', { name: /Vicious Mockery/ })
+        .hasAttribute('disabled')
+    ).toBe(true);
+    const inspiration = within(quick).getByRole('button', {
+      name: /Bardic Inspiration/,
+    });
+    expect(inspiration.hasAttribute('disabled')).toBe(true);
+    expect(inspiration.getAttribute('title')).toContain('no ally within reach');
+    expect(hoisted.castFn).not.toHaveBeenCalled();
   });
 
   it('enables the accepted touch camera and centers without losing a live armed attack', async () => {

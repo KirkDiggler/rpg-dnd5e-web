@@ -82,6 +82,7 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { liveActionPresentation } from './combat-experience/liveActionPresentation';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import {
   reactionWindowDeclaration,
@@ -1655,19 +1656,12 @@ function SessionEncounterScope({
         >
           <CombatExperience
             layout="fill-parent"
-            actionPresentation={{
-              mode: 'organized-hud',
-              // Pin the basic verbs, not fixture class/spell profiles. All
-              // casts stay in Spells until canonical shortcut facts exist.
-              quickDeclarationIds: coherentDeclarations
-                .filter(
-                  ({ verb }) =>
-                    verb === Verb.ATTACK ||
-                    verb === Verb.MOVE ||
-                    verb === Verb.DEATH_SAVE
-                )
-                .map(({ id }) => id),
-            }}
+            actionPresentation={liveActionPresentation({
+              declarations: coherentDeclarations,
+              knownCantrips: ownerCharacter?.knownCantrips,
+              knownSpells: ownerCharacter?.knownSpells,
+              features: visibleCharacterData?.features,
+            })}
             navigationControls={
               <Button variant="ghost" size="sm" onClick={onBack}>
                 Back
