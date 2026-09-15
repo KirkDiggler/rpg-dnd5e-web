@@ -2008,7 +2008,6 @@ button.diceDrawerCue:focus-visible {
 }
 @container organized-hud (max-width: 800px) or (max-height: 500px) {
   .combatExperience[data-action-presentation='organized-hud'] {
-    --organized-turn-button-top: 52px;
     --organized-header-height: 52px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
@@ -2199,7 +2198,8 @@ button.diceDrawerCue:focus-visible {
 .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
   display: grid;
   grid-template-rows: var(--organized-header-height, 80px) minmax(0, 1fr) auto;
-  row-gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 64px auto;
+  gap: 8px;
 }
 .combatExperience[data-action-presentation='organized-hud'] .map {
   bottom: 0;
@@ -2284,7 +2284,7 @@ button.diceDrawerCue:focus-visible {
   .storyLog:not(.storyLogCollapsed) {
   position: relative;
   grid-row: 2;
-  grid-column: 1;
+  grid-column: 1 / -1;
   justify-self: end;
   align-self: stretch;
   top: auto;
@@ -2361,14 +2361,7 @@ button.diceDrawerCue:focus-visible {
   pointer-events: auto;
 }
 .combatExperience[data-action-presentation='organized-hud'] .endTurn {
-  position: absolute;
-  z-index: 2;
-  top: var(--organized-turn-button-top, 80px);
-  right: calc(12px + min(240px, 21cqw));
-  bottom: auto;
-  left: auto;
   width: max-content;
-  transform: translateX(50%);
   min-height: 44px;
   height: auto;
   margin: 0;
@@ -2376,7 +2369,13 @@ button.diceDrawerCue:focus-visible {
 }
 .organizedEndTurnSlot {
   display: inline-flex;
-  align-self: center;
+  min-height: 56px;
+  grid-row: 3;
+  grid-column: 3;
+  align-self: end;
+  padding: 0 12px 12px 0;
+  z-index: 6;
+  pointer-events: auto;
 }
 .combatExperience[data-action-presentation='organized-hud']
   .organizedEndTurnSlot
@@ -2444,14 +2443,48 @@ button.diceDrawerCue:focus-visible {
   height: 100%;
 }
 
-/* Collapsing must also override the organized layout's more-specific
-   desktop/phone bottom and width rules, not leave an empty full-height panel. */
+/* Reading the log gets a reserved control cell beside End Turn, never over
+   Equipment. Keep the open panel translucent without dimming the text. */
+.combatExperience[data-action-presentation='organized-hud'] .storyLog {
+  background: rgba(10, 17, 20, 0.55);
+  backdrop-filter: none;
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
 .combatExperience[data-action-presentation='organized-hud']
   .storyLog.storyLogCollapsed {
+  position: relative;
+  grid-row: 3;
+  grid-column: 2;
+  justify-self: end;
+  align-self: end;
   top: auto;
-  right: 12px;
-  bottom: 12px;
+  right: auto;
+  bottom: auto;
+  margin-bottom: 12px;
   width: auto;
+}
+.combatExperience[data-action-presentation='organized-hud'] .logTab {
+  min-height: 44px;
+}
+
+/* Portrait keeps the full action width. Its reserved Log/End Turn cells
+   move below the actions instead of squeezing them or covering Equipment. */
+@container organized-hud (max-width: 600px) {
+  .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+    grid-template-rows:
+      var(--organized-header-height, 80px) minmax(0, 1fr)
+      auto auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .actionRow {
+    grid-column: 1 / -1;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .organizedEndTurnSlot,
+  .combatExperience[data-action-presentation='organized-hud']
+    .storyLog.storyLogCollapsed {
+    grid-row: 4;
+  }
 }
 
 /* The opt-in tray is a deliberate overlay; do not let the legacy narrow-row

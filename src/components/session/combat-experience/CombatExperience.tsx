@@ -562,12 +562,6 @@ export function CombatExperience({
                 </div>
               </div>
             )}
-            {actionPresentation?.mode === 'organized-hud' && (
-              <span
-                ref={setEndTurnTarget}
-                className={styles.organizedEndTurnSlot}
-              />
-            )}
             {characterData?.armorClassDetail && (
               <div
                 className={styles.statBlock}
@@ -662,6 +656,14 @@ export function CombatExperience({
             standingActions={standingActions}
           />
         </div>
+        {actionPresentation?.mode === 'organized-hud' && (
+          <span
+            ref={setEndTurnTarget}
+            className={styles.organizedEndTurnSlot}
+            role="group"
+            aria-label="Turn controls"
+          />
+        )}
       </div>
     </div>
   );

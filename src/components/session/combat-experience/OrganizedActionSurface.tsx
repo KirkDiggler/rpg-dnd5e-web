@@ -72,7 +72,7 @@ function Inspection({
 }) {
   return (
     <div
-      className={styles.organizedInspection}
+      className={`${styles.organizedInspection} ${temporary ? styles.organizedHoverInspection : ''}`}
       role={temporary ? 'tooltip' : 'region'}
       aria-label={`${label} details`}
     >
@@ -417,24 +417,22 @@ export function OrganizedActionSurface({
           </div>
         </div>
       )}
+      {/* Keep the positioned card a direct child. A normal-flow wrapper adds
+          a grid gap and moves the menu on hover (#1076: measured 6 px). */}
       {inspectedDeclaration && (
-        <div
-          className={previewId ? styles.organizedHoverInspection : undefined}
-        >
-          <Inspection
-            label={declarationLabel(inspectedDeclaration)}
-            tooltip={buildActionTooltip(inspectedDeclaration)}
-            temporary={previewId !== null}
-            onClose={closeInspection}
-            unavailable={
-              !authorityFresh
-                ? 'Actions may be out of date'
-                : !inspectedDeclaration.available
-                  ? inspectedDeclaration.why?.text || 'Unavailable'
-                  : null
-            }
-          />
-        </div>
+        <Inspection
+          label={declarationLabel(inspectedDeclaration)}
+          tooltip={buildActionTooltip(inspectedDeclaration)}
+          temporary={previewId !== null}
+          onClose={closeInspection}
+          unavailable={
+            !authorityFresh
+              ? 'Actions may be out of date'
+              : !inspectedDeclaration.available
+                ? inspectedDeclaration.why?.text || 'Unavailable'
+                : null
+          }
+        />
       )}
     </div>
   );

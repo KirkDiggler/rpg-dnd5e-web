@@ -97,9 +97,13 @@ describe('OrganizedHudConcept', () => {
     expect(collections).toContainElement(
       screen.getByRole('button', { name: /Equipment/i })
     );
-    expect(screen.getByRole('group', { name: 'Your status' })).toContainElement(
-      screen.getByRole('button', { name: /End turn/i })
-    );
+    const endTurn = screen.getByRole('button', { name: /End turn/i });
+    expect(
+      screen.getByRole('group', { name: 'Turn controls' })
+    ).toContainElement(endTurn);
+    expect(
+      screen.getByRole('group', { name: 'Your status' })
+    ).not.toContainElement(endTurn);
   });
   it('offers caster shortcuts and a martial profile with one direct feature', () => {
     render(<OrganizedHudConcept />);
