@@ -101,6 +101,8 @@ export interface PropModelProps {
    * ClassCharacterModel.tsx applies to player/monster models. Defaults
    * false, matching every caller before this prop existed. */
   remembered?: boolean;
+  /** Visual Y scale, grounded at the authored mesh base. */
+  heightScale?: number;
 }
 
 /** Snapshot each mesh's original (untinted) material once per `object`
@@ -162,7 +164,11 @@ export function PropModel({
   anchor = 'source-origin',
   onBoundsMeasured,
   remembered = false,
+  heightScale = 1,
 }: PropModelProps) {
+  const safeHeightScale = Number.isFinite(heightScale)
+    ? Math.min(4, Math.max(0.25, heightScale))
+    : 1;
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const localBounds = useMemo(() => {
@@ -182,12 +188,13 @@ export function PropModel({
     const anchoredMinY = localBounds.min.y + anchorOffset[1];
     return {
       minY: anchoredMinY * SYNTY_SCALE,
-      maxY: (localBounds.max.y + anchorOffset[1]) * SYNTY_SCALE,
+      maxY:
+        (localBounds.max.y + anchorOffset[1]) * SYNTY_SCALE * safeHeightScale,
       width: size.x * SYNTY_SCALE,
-      height: size.y * SYNTY_SCALE,
+      height: size.y * SYNTY_SCALE * safeHeightScale,
       depth: size.z * SYNTY_SCALE,
     };
-  }, [anchorOffset, localBounds]);
+  }, [anchorOffset, localBounds, safeHeightScale]);
   useEffect(
     () => onBoundsMeasured?.(measuredBounds),
     [measuredBounds, onBoundsMeasured]
@@ -211,7 +218,7 @@ export function PropModel({
     <group
       position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
       rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE}
+      scale={[SYNTY_SCALE, SYNTY_SCALE * safeHeightScale, SYNTY_SCALE]}
     >
       {anchor === 'source-origin' ? (
         modelContents

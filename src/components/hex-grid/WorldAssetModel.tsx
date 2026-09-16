@@ -16,6 +16,7 @@ export interface WorldAssetModelProps {
   rotationY?: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onDiagnostic?: (diagnostic: WorldAssetResolutionDiagnostic) => void;
+  heightScale?: number;
 }
 
 function LoadedWorldAssetModel({
@@ -24,24 +25,26 @@ function LoadedWorldAssetModel({
   position,
   rotationY,
   onBoundsMeasured,
+  heightScale,
 }: {
   url: string;
   boundsMeters: [number, number, number];
   position: [number, number, number];
   rotationY: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
+  heightScale: number;
 }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const measuredBounds = useMemo<PropModelBounds>(
     () => ({
       minY: 0,
-      maxY: boundsMeters[1],
+      maxY: boundsMeters[1] * heightScale,
       width: boundsMeters[0],
-      height: boundsMeters[1],
+      height: boundsMeters[1] * heightScale,
       depth: boundsMeters[2],
     }),
-    [boundsMeters]
+    [boundsMeters, heightScale]
   );
   useEffect(
     () => onBoundsMeasured?.(measuredBounds),
@@ -53,7 +56,7 @@ function LoadedWorldAssetModel({
       name="world-asset-model"
       position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
       rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE}
+      scale={[SYNTY_SCALE, SYNTY_SCALE * heightScale, SYNTY_SCALE]}
     >
       <primitive object={cloned as THREE.Object3D} />
     </group>
@@ -71,7 +74,11 @@ export function WorldAssetModel({
   rotationY = 0,
   onBoundsMeasured,
   onDiagnostic,
+  heightScale = 1,
 }: WorldAssetModelProps) {
+  const safeHeightScale = Number.isFinite(heightScale)
+    ? Math.min(4, Math.max(0.25, heightScale))
+    : 1;
   const asset = resolveWorldAsset(assetRef, onDiagnostic);
   if (!asset) return null;
   return (
@@ -81,6 +88,7 @@ export function WorldAssetModel({
       position={position}
       rotationY={rotationY}
       onBoundsMeasured={onBoundsMeasured}
+      heightScale={safeHeightScale}
     />
   );
 }

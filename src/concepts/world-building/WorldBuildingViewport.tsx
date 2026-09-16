@@ -225,6 +225,7 @@ export function WorldPropVisual({
               entry={entry}
               position={position}
               rotationY={item.transform.rotationY}
+              heightScale={item.heightScale}
               onGeneratedDiagnostic={() => onAssetState(item.id, 'error')}
               onBoundsMeasured={recordBounds}
             />

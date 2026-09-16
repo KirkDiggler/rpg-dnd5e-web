@@ -44,6 +44,7 @@ import {
   rotateSelection,
   saveArrangement,
   setPropPointLight,
+  setSelectionHeight,
   stampArrangement,
   undoHistory,
   ungroup,
@@ -912,6 +913,14 @@ export function WorldBuildingConcept({
   const selectedDeclaration = selectedProp
     ? roomDraft.room.propDeclarations[selectedProp.id]
     : undefined;
+  const selectedHeightValues = scene.items
+    .filter((item) => selectedIds.includes(item.id))
+    .map((item) => item.heightScale ?? 1);
+  const selectedHeightMixed =
+    selectedHeightValues.length > 1 && new Set(selectedHeightValues).size > 1;
+  const selectedHeight = selectedHeightMixed
+    ? 1
+    : (selectedHeightValues[0] ?? 1);
   const defaultDeclaration: RoomPropDeclaration = {
     blocksMovement: false,
     blocksLineOfSight: false,
@@ -1397,6 +1406,40 @@ export function WorldBuildingConcept({
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
             </p>
+            {selectedIds.length > 0 && (
+              <div className="wb-light-editor" aria-label="Visual height">
+                <h4>Visual height</h4>
+                <label>
+                  <span>
+                    Height scale ·{' '}
+                    {selectedHeightMixed
+                      ? 'Mixed'
+                      : `${Math.round(selectedHeight * 100)}%`}
+                  </span>
+                  <input
+                    type="range"
+                    aria-label="Height scale"
+                    min={25}
+                    max={400}
+                    step={5}
+                    value={Math.round(selectedHeight * 100)}
+                    onChange={(event) =>
+                      commit(
+                        setSelectionHeight(
+                          scene,
+                          selectedIds,
+                          Number(event.target.value) / 100
+                        )
+                      )
+                    }
+                  />
+                </label>
+                <p className="wb-help">
+                  Grounded at each piece base; width, spacing, and authored
+                  position stay unchanged.
+                </p>
+              </div>
+            )}
             {roomMode && selectedProp && (
               <div
                 className="wb-light-editor"

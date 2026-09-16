@@ -83,6 +83,7 @@ export function CompositionModel({
             entry={entry}
             position={[item.transform.x, item.transform.y, item.transform.z]}
             rotationY={item.transform.rotationY}
+            heightScale={item.heightScale}
           />
         </group>
       ))}
