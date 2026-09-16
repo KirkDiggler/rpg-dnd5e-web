@@ -88,7 +88,7 @@ function ImageSelect({
       {[...folders.entries()].map(([folder, folderImages]) => (
         <optgroup key={folder} label={folder}>
           {folderImages.map((image) => (
-            <option key={image.sha256} value={image.path}>
+            <option key={image.path} value={image.path}>
               {image.path.split('/').at(-1)} ({image.format})
             </option>
           ))}
