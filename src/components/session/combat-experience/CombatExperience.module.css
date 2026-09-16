@@ -2009,6 +2009,7 @@ button.diceDrawerCue:focus-visible {
 @container organized-hud (max-width: 800px) or (max-height: 500px) {
   .combatExperience[data-action-presentation='organized-hud'] {
     --organized-header-height: 52px;
+    --organized-log-width: 280px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
     height: 100dvh;
@@ -2369,6 +2370,7 @@ button.diceDrawerCue:focus-visible {
 }
 .organizedEndTurnSlot {
   display: inline-flex;
+  justify-content: flex-end;
   min-height: 56px;
   grid-row: 3;
   grid-column: 3;
@@ -2451,6 +2453,41 @@ button.diceDrawerCue:focus-visible {
   box-shadow: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
+/* On a split-width frame, the OPEN log owns its right-hand column down to
+   the turn controls. Reserve that width so actions cannot cover its footer. */
+.combatExperience[data-action-presentation='organized-hud']
+  .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
+  grid-template-columns: minmax(0, 1fr) calc(
+      var(--organized-log-width, 318px) - 148px
+    ) 140px;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .gameFrame:has(.storyLogWide:not(.storyLogCollapsed)) {
+  --organized-log-width: min(640px, calc(100cqw - 24px));
+}
+/* The frame clips the backdrop; only the final button-height band is kept
+   clear inside the reading area, rather than reserving the whole action bar. */
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed) {
+  grid-row: 2 / 4;
+  width: min(var(--organized-log-width, 318px), calc(100cqw - 24px));
+  padding-bottom: 64px;
+  overflow: visible;
+  background: transparent;
+  border-color: transparent;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed)::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -1px -1px auto;
+  height: 100dvh;
+  border: 1px solid var(--sc-line);
+  border-radius: 10px 10px 0 0;
+  background: rgba(10, 17, 20, 0.55);
+  pointer-events: none;
+}
 .combatExperience[data-action-presentation='organized-hud']
   .storyLog.storyLogCollapsed {
   position: relative;
@@ -2478,6 +2515,15 @@ button.diceDrawerCue:focus-visible {
   }
   .combatExperience[data-action-presentation='organized-hud'] .actionRow {
     grid-column: 1 / -1;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
+    grid-template-columns: minmax(0, 1fr) 64px auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .storyLog:not(.storyLogCollapsed) {
+    grid-row: 2;
+    padding-bottom: 0;
   }
   .combatExperience[data-action-presentation='organized-hud']
     .organizedEndTurnSlot,
