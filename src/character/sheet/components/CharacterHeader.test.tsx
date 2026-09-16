@@ -80,6 +80,24 @@ describe('CharacterHeader experience and the level-up prompt', () => {
     expect(onLevelUp).toHaveBeenCalledTimes(1);
   });
 
+  it('names the level the screen offers, not the one entitlement reaches', () => {
+    render(
+      <CharacterHeader
+        character={character({
+          level: 2,
+          entitledLevel: 4,
+          experiencePoints: 3000,
+          nextLevelThreshold: 6500,
+        })}
+        onLevelUp={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('level-up-prompt')).toHaveTextContent(
+      'Level Up to 3'
+    );
+  });
+
   it('offers nothing to a freshly created character, which is the true state of a game that awards no experience', () => {
     render(
       <CharacterHeader

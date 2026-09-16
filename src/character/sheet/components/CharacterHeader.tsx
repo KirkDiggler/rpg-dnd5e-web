@@ -1,10 +1,8 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  Class,
-  Race,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { getClassDisplayName } from '../../../utils/displayNames';
 
 interface CharacterHeaderProps {
   character: Character;
@@ -58,26 +56,6 @@ function getRaceDisplayName(raceEnum: Race): string {
   return raceNames[raceEnum] || 'Unknown Race';
 }
 
-// Helper to convert Class enum to display name
-function getClassDisplayName(classEnum: Class): string {
-  const classNames: Record<Class, string> = {
-    [Class.UNSPECIFIED]: 'Unknown',
-    [Class.BARBARIAN]: 'Barbarian',
-    [Class.BARD]: 'Bard',
-    [Class.CLERIC]: 'Cleric',
-    [Class.DRUID]: 'Druid',
-    [Class.FIGHTER]: 'Fighter',
-    [Class.MONK]: 'Monk',
-    [Class.PALADIN]: 'Paladin',
-    [Class.RANGER]: 'Ranger',
-    [Class.ROGUE]: 'Rogue',
-    [Class.SORCERER]: 'Sorcerer',
-    [Class.WARLOCK]: 'Warlock',
-    [Class.WIZARD]: 'Wizard',
-  };
-  return classNames[classEnum] || 'Unknown Class';
-}
-
 export function CharacterHeader({
   character,
   onLevelUp,
@@ -88,6 +66,13 @@ export function CharacterHeader({
   // stored field, nothing to keep in sync — so a character that is entitled
   // and keeps playing without levelling is simply one whose gap is still open.
   const levelUpAvailable = character.entitledLevel > character.level;
+  // NAME THE LEVEL THE SCREEN OFFERS, NOT THE ONE ENTITLEMENT REACHES. The
+  // screen takes one level at a time — GetNextLevel returns "the class level
+  // the character would take, one above its current level" — while
+  // entitlement can run several ahead, because R4.10 makes the gap the signal
+  // and an eligible character may keep playing without levelling. The two
+  // agree only while the gap is exactly one.
+  const nextLevel = character.level + 1;
 
   return (
     <Card
@@ -176,7 +161,7 @@ export function CharacterHeader({
             variant="commit"
             onClick={onLevelUp}
           >
-            Level Up to {character.entitledLevel}
+            Level Up to {nextLevel}
           </Button>
         </div>
       )}

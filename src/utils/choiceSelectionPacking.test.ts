@@ -93,10 +93,17 @@ describe('packChoiceSelection', () => {
     ).toEqual([Skill.STEALTH, Skill.PERCEPTION]);
   });
 
-  it('keeps equipment items in the category they were picked under', () => {
+  // `convertEquipmentChoiceToProto` flattens every category into one `items`
+  // list, so the category index itself never reaches the wire and cannot be
+  // asserted on the packed message. What IS observable is the ORDER it
+  // imposes: entries are bucketed by index and the buckets are emitted in
+  // index order, so a selection picked out of order comes back in category
+  // order. The index's other job — refusing a half-filled bundle — is
+  // `isChoiceSatisfied`'s, and is asserted in its own block below.
+  it('emits equipment items in category order, whatever order they were picked in', () => {
     const packed = packChoiceSelection(
       equipmentChoice,
-      ['pack-a', 'cat0:longsword:Longsword', 'cat1:shield:Shield'],
+      ['pack-a', 'cat1:shield:Shield', 'cat0:longsword:Longsword'],
       ChoiceSource.CLASS
     );
 
