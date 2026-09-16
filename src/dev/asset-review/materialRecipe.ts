@@ -14,9 +14,7 @@
  */
 import {
   parseMaterialCatalog,
-  parseSourceAudit,
   type MaterialReviewManifest,
-  type MaterialSourceAudit,
 } from './materialProfile';
 
 export interface EditingProfileDefinition {
@@ -114,7 +112,16 @@ export interface MaterialEditorManifest {
   profileSha256: string;
   catalogSha256: string;
   catalog: MaterialReviewManifest['catalog'];
-  sourceAudit?: MaterialSourceAudit;
+  sourceAudit?: {
+    sourceCount: number;
+    verifiedCount: number;
+    exceptions: {
+      sourcePath: string;
+      sourceSha256: string;
+      reason: string;
+      inspectionBlendPath: string;
+    }[];
+  };
   auditedSlots: Record<
     string,
     {
@@ -681,6 +688,51 @@ function parseAuditedSlots(
   return result;
 }
 
+/**
+ * v3 source-audit shape: editor exceptions carry only the pointer facts
+ * (path/hash/reason/inspection blend), not the v2 declared-slot rows.
+ */
+function parseEditorSourceAudit(value: unknown): {
+  sourceCount: number;
+  verifiedCount: number;
+  exceptions: {
+    sourcePath: string;
+    sourceSha256: string;
+    reason: string;
+    inspectionBlendPath: string;
+  }[];
+} {
+  const row = object(
+    value,
+    ['sourceCount', 'verifiedCount', 'exceptions'],
+    'source audit'
+  );
+  if (!Array.isArray(row.exceptions))
+    throw new Error('Source audit exceptions must be an array');
+  const exceptions = row.exceptions.map((item) => {
+    const issue = object(
+      item,
+      ['sourcePath', 'sourceSha256', 'reason', 'inspectionBlendPath'],
+      'source audit exception'
+    );
+    return {
+      sourcePath: relative(issue.sourcePath, 'exception sourcePath'),
+      sourceSha256: hash(issue.sourceSha256, 'exception sourceSha256'),
+      reason: text(issue.reason, 'exception reason'),
+      inspectionBlendPath: text(
+        issue.inspectionBlendPath,
+        'exception inspectionBlendPath'
+      ),
+    };
+  });
+  uniqueBy(exceptions, (issue) => issue.sourcePath, 'source exception');
+  const sourceCount = slot(row.sourceCount, 'sourceCount');
+  const verifiedCount = slot(row.verifiedCount, 'verifiedCount');
+  if (verifiedCount + exceptions.length !== sourceCount)
+    throw new Error('Source audit count mismatch');
+  return { sourceCount, verifiedCount, exceptions };
+}
+
 /** Strict parse of a prepared material-editor manifest (schemaVersion 3). */
 export function parseMaterialEditorManifest(
   value: unknown
@@ -708,7 +760,7 @@ export function parseMaterialEditorManifest(
     throw new Error('Not a material-editor manifest');
   const profile = parseEditingProfile(top.profile);
   const catalog = parseMaterialCatalog(top.catalog);
-  const sourceAudit = parseSourceAudit(top.sourceAudit);
+  const sourceAudit = parseEditorSourceAudit(top.sourceAudit);
   const auditedSlots = parseAuditedSlots(top.auditedSlots);
   const inventoryRow = object(
     top.inventory,
@@ -794,6 +846,50 @@ export function parseMaterialEditorManifest(
     },
     editor: { schemaVersion: 1, sources },
   };
+  // Cross-checks against the audited inventory: exceptions and editor sources
+  // must reference real audited sources with matching fingerprints.
+  for (const exception of sourceAudit.exceptions) {
+    const audited = auditedSlots[exception.sourcePath];
+    if (!audited)
+      throw new Error(`Unknown source exception: ${exception.sourcePath}`);
+    if (audited.sourceSha256 !== exception.sourceSha256)
+      throw new Error(
+        `Source exception fingerprint mismatch: ${exception.sourcePath}`
+      );
+  }
+  for (const source of sources) {
+    const audited = auditedSlots[source.sourcePath];
+    if (!audited)
+      throw new Error(
+        `Editor source has no audited inventory: ${source.sourcePath}`
+      );
+    if (audited.sourceSha256 !== source.sourceSha256)
+      throw new Error(
+        `Editor source fingerprint differs from the audit: ${source.sourcePath}`
+      );
+    for (const target of source.targets) {
+      const objectRow = audited.objects[target.objectName];
+      if (!objectRow || target.slot >= objectRow.materialNames.length)
+        throw new Error(
+          `Editor target is not an audited slot: ${target.objectName}:${target.slot}`
+        );
+    }
+  }
+  for (const binding of recipeBindings) {
+    const audited = auditedSlots[binding.sourcePath];
+    const objectRow = audited?.objects[binding.objectName];
+    if (!objectRow || binding.slot >= objectRow.materialNames.length)
+      throw new Error(
+        `Recipe binding is not an audited slot: ${binding.sourcePath}:${binding.objectName}:${binding.slot}`
+      );
+    if (
+      binding.materialName !== null &&
+      binding.materialName !== objectRow.materialNames[binding.slot]
+    )
+      throw new Error(
+        `Recipe binding material differs from the audited slot: ${binding.sourcePath}:${binding.objectName}:${binding.slot}`
+      );
+  }
   validateEditingProfile(manifest.profile, manifest);
   return manifest;
 }
