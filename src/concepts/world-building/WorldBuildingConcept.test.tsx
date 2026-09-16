@@ -311,6 +311,56 @@ function worldSource(initial: WorldScene[] = []): {
 }
 
 describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
+  it('applies normal height to a mixed group and restores both heights with one Undo', () => {
+    const storage = new MemoryStorage();
+    const draft = createRoomDraft(
+      createEmptyScene('height-scene'),
+      'height-room'
+    );
+    draft.scene.groups = [
+      {
+        id: 'wall-run',
+        kind: 'group',
+        label: 'Wall run',
+        transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      },
+    ];
+    draft.scene.items = [1, 1.5].map((heightScale, index) => ({
+      id: `wall-${index}`,
+      kind: 'prop',
+      label: `Wall ${index}`,
+      assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+      parentId: 'wall-run',
+      transform: { x: index * 2, y: 0, z: 0, rotationY: 0 },
+      heightScale,
+    }));
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    render(<WorldBuildingConcept roomMode storage={storage} />);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select Wall run wall-run' })
+    );
+    expect(screen.getByText('Height scale · Mixed')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Height scale percent'), {
+      target: { value: '100' },
+    });
+    const apply = screen.getByRole('button', {
+      name: 'Apply height',
+    }) as HTMLButtonElement;
+    expect(apply.disabled).toBe(false);
+    fireEvent.click(apply);
+    expect(scene().items.map((item) => item.heightScale)).toEqual([1, 1]);
+    expect(scene().items.map((item) => item.transform)).toEqual(
+      draft.scene.items.map((item) => item.transform)
+    );
+    expect(apply.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(scene().items.map((item) => item.heightScale)).toEqual([1, 1.5]);
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+  });
+
   it('searches, places, groups, exports, and reopens a generated exact ref with legacy assets', () => {
     const storage = new MemoryStorage();
     const ids = deterministicIds();

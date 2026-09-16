@@ -1437,12 +1437,13 @@ export function WorldBuildingConcept({
                     type="button"
                     disabled={
                       !Number.isFinite(heightDraftPercent) ||
-                      heightDraftPercent === Math.round(selectedHeight * 100)
+                      (!selectedHeightMixed &&
+                        heightDraftPercent === Math.round(selectedHeight * 100))
                     }
                     onClick={() => {
                       const next =
                         Math.min(400, Math.max(25, heightDraftPercent)) / 100;
-                      if (next !== selectedHeight)
+                      if (selectedHeightMixed || next !== selectedHeight)
                         commit(setSelectionHeight(scene, selectedIds, next));
                     }}
                   >
