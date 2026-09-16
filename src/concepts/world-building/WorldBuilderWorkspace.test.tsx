@@ -28,6 +28,39 @@ const storage = {
 };
 
 describe('WorldBuilderWorkspace', () => {
+  it('requires explicit confirmation before Back and preserves live editor state', () => {
+    const onBack = vi.fn();
+    render(
+      <WorldBuilderWorkspace
+        compositionSource={source}
+        storage={storage}
+        onBack={onBack}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Scene name' }), {
+      target: { value: 'Unexported room work' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        /Save or export your unsaved work before discarding it\./i
+      )
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      (screen.getByRole('textbox', { name: 'Scene name' }) as HTMLInputElement)
+        .value
+    ).toBe('Unexported room work');
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps one active keyed editor and requires explicit switching', () => {
     render(
       <WorldBuilderWorkspace compositionSource={source} storage={storage} />

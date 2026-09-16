@@ -28,12 +28,18 @@ export function WorldBuilderWorkspace({
   const [pendingMode, setPendingMode] = useState<'rooms' | 'props' | null>(
     null
   );
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const requestMode = (next: 'rooms' | 'props') => {
     if (next !== mode) setPendingMode(next);
   };
   const confirmMode = () => {
     if (pendingMode) setMode(pendingMode);
     setPendingMode(null);
+  };
+  const requestLeave = () => setConfirmLeave(true);
+  const leaveWorkspace = () => {
+    setConfirmLeave(false);
+    onBack?.();
   };
 
   return (
@@ -73,6 +79,24 @@ export function WorldBuilderWorkspace({
             </button>
           </span>
         )}
+        {confirmLeave && (
+          <span
+            className="wb-mode-confirm"
+            role="alertdialog"
+            aria-label="Confirm leaving World Builder"
+          >
+            <span>
+              Save or export your unsaved work before discarding it. Leave the
+              World Builder?
+            </span>
+            <button type="button" onClick={leaveWorkspace}>
+              Discard and leave
+            </button>
+            <button type="button" onClick={() => setConfirmLeave(false)}>
+              Cancel
+            </button>
+          </span>
+        )}
       </nav>
       <div className="wb-mode-pane">
         <WorldBuildingConcept
@@ -81,7 +105,7 @@ export function WorldBuilderWorkspace({
           storage={storage}
           idFactory={idFactory}
           compositionSource={compositionSource}
-          onBack={onBack}
+          onBack={onBack ? requestLeave : undefined}
           onCompositionDeleted={onCompositionDeleted}
         />
       </div>
