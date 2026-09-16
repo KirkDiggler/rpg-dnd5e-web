@@ -1,6 +1,9 @@
 import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
 import { compositionRef } from '@/compositions/compositionRef';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import { encodeRoomDocument } from '@/compositions/roomDocument';
+import { createRoomDraft } from '@/concepts/world-building/roomDraft';
+import { createEmptyScene } from '@/concepts/world-building/sceneState';
 import { create } from '@bufbuild/protobuf';
 import {
   CompositionSchema,
@@ -124,6 +127,64 @@ beforeEach(() => {
 });
 
 describe('DungeonBuilder composition placement metadata', () => {
+  it('reports a room-document placement as not placeable while scene placements stay ready', async () => {
+    const roomDraft = createRoomDraft(
+      createEmptyScene('cellar-scene'),
+      'cellar-room'
+    );
+    roomDraft.scene.name = 'Cellar Snapshot';
+    const getComposition = vi.fn(async (worldId: string, id: string) =>
+      create(CompositionSchema, {
+        id,
+        worldId,
+        json:
+          id === 'room-snapshot-9'
+            ? encodeRoomDocument(roomDraft)
+            : sceneJson('The Lantern Table'),
+      })
+    );
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0));
+    doc = paintCell(doc, 'region-1', p(1));
+    doc = placeAt(doc, {
+      id: 'room-placement',
+      ref: compositionRef('room-snapshot-9'),
+      at: p(0),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    doc = placeAt(doc, {
+      id: 'scene-placement',
+      ref: compositionRef('scene-snapshot-3'),
+      at: p(1),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    mount(doc, sourceWith(getComposition));
+
+    await waitFor(() =>
+      expect(placement(0).getAttribute('data-composition-status')).toBe(
+        'not-placeable'
+      )
+    );
+    await waitFor(() =>
+      expect(placement(1).getAttribute('data-composition-status')).toBe('ready')
+    );
+    expect(occupiedCell(0).querySelector(':scope > title')?.textContent).toBe(
+      'Room snapshot · Cellar Snapshot · not placeable as a prop'
+    );
+    selectPlacement(0);
+    const status = screen.getByTestId('composition-placement-status');
+    expect(status.getAttribute('data-status')).toBe('not-placeable');
+    expect(status.textContent).toContain('not placeable as a prop');
+
+    // Legacy scene placements keep the exact ready behavior.
+    selectPlacement(1);
+    expect(screen.getByTestId('composition-placement-status').textContent).toBe(
+      'Composition · The Lantern Table'
+    );
+  });
+
   it('names available placements from authored JSON and resolves a repeated snapshot only once', async () => {
     const getComposition = vi.fn(async (worldId: string, id: string) =>
       composition(id, worldId, 'The Lantern Table')

@@ -42,6 +42,13 @@ export function CompositionThumbnailTiles({
           };
         }
         const metadata = compositionMetadata(composition);
+        if (metadata.status === 'room') {
+          return {
+            composition,
+            status: 'error' as const,
+            message: `Room snapshot ${composition.id} is authoring data and cannot be placed as a prop.`,
+          };
+        }
         if (metadata.status === 'error') {
           return {
             composition,
