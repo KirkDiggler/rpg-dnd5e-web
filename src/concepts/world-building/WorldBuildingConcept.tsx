@@ -5,6 +5,10 @@ import {
   useCompositionList,
   type CompositionSource,
 } from '@/compositions/compositionSource';
+import {
+  encodeRoomDocument,
+  isRoomDocument,
+} from '@/compositions/roomDocument';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   WORLD_BUILDING_CATALOG,
@@ -211,6 +215,13 @@ export function WorldBuildingConcept({
     compositionSource,
     compositionRefresh
   );
+  const visibleCompositions = useMemo(
+    () =>
+      compositionList.compositions.filter((composition) =>
+        roomMode ? isRoomDocument(composition) : !isRoomDocument(composition)
+      ),
+    [compositionList.compositions, roomMode]
+  );
   const generatedThumbnails = useSerialThumbnailQueue(
     GENERATED_THUMBNAIL_QUEUE
   );
@@ -241,6 +252,12 @@ export function WorldBuildingConcept({
 
   useEffect(() => {
     if (!roomMode) return;
+    if (workspaceOrigin === 'world') {
+      setSaveStatus(
+        'World snapshot open — not saved locally; local draft preserved'
+      );
+      return;
+    }
     if (roomAutosaveBlockedRef.current) {
       setSaveStatus(
         'Autosave paused — Save room draft or New room to replace unreadable data'
@@ -254,7 +271,7 @@ export function WorldBuildingConcept({
         : 'Room authoring draft saved locally'
     );
     if (error) setNotice(error);
-  }, [effectiveStorage, roomDraft, roomMode]);
+  }, [effectiveStorage, roomDraft, roomMode, workspaceOrigin]);
 
   useEffect(() => {
     if (!skippedInitialLibrarySave.current) {
@@ -710,7 +727,7 @@ export function WorldBuildingConcept({
     try {
       const saved = await compositionSource.writer.createComposition(
         compositionSource.worldId,
-        stringifyScene(scene)
+        roomMode ? encodeRoomDocument(roomDraft) : stringifyScene(scene)
       );
       setLastWorldSave(saved.id);
       setCompositionRefresh((current) => current + 1);
@@ -771,21 +788,32 @@ export function WorldBuildingConcept({
         return;
       }
       if (workspaceOriginRef.current === 'local') {
-        const localSave = saveSceneToStorage(
-          effectiveStorage,
-          sceneRef.current
-        );
-        if (localSave.error) {
-          setSaveStatus('Save failed — scene kept in memory');
+        const localError = roomMode
+          ? saveRoomDraft(effectiveStorage, roomDraft)
+          : saveSceneToStorage(effectiveStorage, sceneRef.current).error;
+        if (localError) {
+          setSaveStatus('Save failed — current data kept in memory');
           setNotice(
-            `Composition ${id} was not opened because the latest local draft could not be preserved. ${localSave.error}`
+            `Composition ${id} was not opened because the latest local draft could not be preserved. ${localError}`
           );
           return;
         }
       }
       workspaceOriginRef.current = 'world';
       setWorkspaceOrigin('world');
-      commit(metadata.scene, []);
+      if (roomMode) {
+        if (metadata.status !== 'room')
+          throw new Error('This snapshot is not a room authoring document.');
+        setRoomHistory({
+          past: [],
+          present: structuredClone(metadata.draft),
+          future: [],
+        });
+      } else {
+        if (metadata.status !== 'ready')
+          throw new Error('This snapshot is not a world scene.');
+        commit(metadata.scene, []);
+      }
       setTool('select');
       setActiveDrag(null);
       setLastWorldSave(composition.id);
@@ -889,7 +917,13 @@ export function WorldBuildingConcept({
               disabled={worldBusy}
               onClick={() => void saveCompositionToWorld()}
             >
-              {worldBusy ? 'Saving composition…' : 'Save composition to world'}
+              {worldBusy
+                ? roomMode
+                  ? 'Saving room snapshot…'
+                  : 'Saving composition…'
+                : roomMode
+                  ? 'Save room snapshot to world'
+                  : 'Save composition to world'}
             </button>
           )}
           {roomMode && (
@@ -925,8 +959,11 @@ export function WorldBuildingConcept({
                   const resetError = roomMode
                     ? saveRoomDraft(effectiveStorage, freshRoom)
                     : null;
-                  if (roomMode && !resetError)
+                  if (roomMode && !resetError) {
                     roomAutosaveBlockedRef.current = false;
+                    workspaceOriginRef.current = 'local';
+                    setWorkspaceOrigin('local');
+                  }
                   commit(
                     blank,
                     [],
@@ -1570,7 +1607,7 @@ export function WorldBuildingConcept({
           {compositionSource && (
             <section aria-label="World composition library">
               <div className="wb-library-heading">
-                <h3>World compositions</h3>
+                <h3>{roomMode ? 'Saved rooms' : 'World compositions'}</h3>
                 <button
                   disabled={compositionList.status === 'loading' || worldBusy}
                   onClick={() =>
@@ -1590,7 +1627,11 @@ export function WorldBuildingConcept({
                 <p className="wb-help">Latest snapshot ID: {lastWorldSave}</p>
               )}
               {compositionList.status === 'loading' && (
-                <p>Loading world compositions…</p>
+                <p>
+                  {roomMode
+                    ? 'Loading saved rooms…'
+                    : 'Loading world compositions…'}
+                </p>
               )}
               {compositionList.status === 'error' && (
                 <p className="wb-library-error">
@@ -1598,14 +1639,18 @@ export function WorldBuildingConcept({
                 </p>
               )}
               {compositionList.status === 'ready' &&
-                compositionList.compositions.length === 0 && (
-                  <p>No saved compositions in this world.</p>
+                visibleCompositions.length === 0 && (
+                  <p>
+                    {roomMode
+                      ? 'No saved rooms in this world.'
+                      : 'No saved compositions in this world.'}
+                  </p>
                 )}
               <div className="wb-library">
-                {compositionList.compositions.map((composition) => {
+                {visibleCompositions.map((composition) => {
                   const metadata = compositionMetadata(composition);
                   const label =
-                    metadata.status === 'ready'
+                    metadata.status === 'ready' || metadata.status === 'room'
                       ? metadata.name
                       : composition.id;
                   const confirming = deleteCandidate?.id === composition.id;
@@ -1620,11 +1665,13 @@ export function WorldBuildingConcept({
                     >
                       <strong>{label}</strong>
                       <small>
-                        {metadata.status === 'ready'
+                        {metadata.status === 'ready' ||
+                        metadata.status === 'room'
                           ? 'Immutable world snapshot'
                           : `Could not open this saved composition. ${metadata.message}`}
                       </small>
-                      {metadata.status === 'ready' && (
+                      {(metadata.status === 'ready' ||
+                        metadata.status === 'room') && (
                         <button
                           disabled={worldBusy}
                           onClick={() => void openComposition(composition.id)}

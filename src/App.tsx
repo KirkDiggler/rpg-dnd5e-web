@@ -489,7 +489,10 @@ function AppContent() {
             compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
-          <ConceptsView onBack={handleBackToHome} />
+          <ConceptsView
+            onBack={handleBackToHome}
+            compositionSource={compositionSource}
+          />
         ) : currentView === 'world-builder' && compositionSource ? (
           <WorldBuildingConcept
             key={compositionIdentity}

@@ -1,3 +1,4 @@
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
@@ -61,9 +62,10 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
 
 interface ConceptsViewProps {
   onBack: () => void;
+  compositionSource?: CompositionSource;
 }
 
-export function ConceptsView({ onBack }: ConceptsViewProps) {
+export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
   // Dev-only deep link: ?concept=<id> opens straight to a concept so visual
   // evidence is reproducible from a URL. Unknown values fall back silently.
   const requested =
@@ -161,7 +163,12 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
         {activePage === 'world-building' && <WorldBuildingConcept />}
-        {activePage === 'room-authoring' && <WorldBuildingConcept roomMode />}
+        {activePage === 'room-authoring' && (
+          <WorldBuildingConcept
+            roomMode
+            compositionSource={compositionSource}
+          />
+        )}
       </motion.div>
     </div>
   );

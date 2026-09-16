@@ -4,9 +4,15 @@ import type { CompositionResolution } from './CompositionPlacementModel';
 import { compositionIdFromRef } from './compositionRef';
 import { decodeCompositionScene } from './compositionScene';
 import type { CompositionSource } from './compositionSource';
+import { decodeRoomDocumentJson, isRoomDocument } from './roomDocument';
 
 export type CompositionMetadata =
   | { status: 'ready'; name: string; scene: WorldScene }
+  | {
+      status: 'room';
+      name: string;
+      draft: import('@/concepts/world-building/roomDraft').RoomDraft;
+    }
   | { status: 'error'; message: string };
 
 /** Safely exposes the authored scene name without treating an opaque ID as UI copy. */
@@ -14,6 +20,10 @@ export function compositionMetadata(
   composition: Composition
 ): CompositionMetadata {
   try {
+    if (isRoomDocument(composition)) {
+      const draft = decodeRoomDocumentJson(composition.json);
+      return { status: 'room', name: draft.name, draft };
+    }
     const scene = decodeCompositionScene(composition);
     return { status: 'ready', name: scene.name, scene };
   } catch (error) {
