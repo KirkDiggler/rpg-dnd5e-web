@@ -1,4 +1,5 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
+import { encodeRoomDocument } from '@/compositions/roomDocument';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
@@ -15,6 +16,7 @@ import {
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
+  type RoomDraft,
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
@@ -1061,6 +1063,210 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     const stored = storage.values.get(SCENE_STORAGE_KEY);
     expect(stored).toContain('Latest Local Draft A');
     expect(stored).not.toContain('Remote Snapshot B');
+  });
+
+  function roomNamed(name: string): RoomDraft {
+    const draft = createRoomDraft(
+      createEmptyScene(`scene-${name}`),
+      `room-${name}`
+    );
+    draft.scene.name = name;
+    return draft;
+  }
+
+  function roomRecord(id: string, draft: RoomDraft) {
+    return create(CompositionSchema, {
+      id,
+      worldId: 'test-world',
+      json: encodeRoomDocument(draft),
+    });
+  }
+
+  function currentRoom(): RoomDraft {
+    const envelope = JSON.parse(
+      screen.getByTestId('room-draft-json').textContent ?? '{}'
+    ) as { draft: RoomDraft };
+    return envelope.draft;
+  }
+
+  it('opens a saved room snapshot under its authored scene name while the local draft stays intact', async () => {
+    const local = roomNamed('Local Cellar');
+    const remote = roomNamed('Remote Tavern Cellar');
+    remote.scene.items = [
+      {
+        id: 'remote-prop-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:books',
+        label: 'Remote books',
+        transform: { x: 0.5, y: 0.25, z: -0.5, rotationY: 0.3 },
+      },
+    ];
+    remote.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ];
+    remote.room.propDeclarations = {
+      'remote-prop-1': {
+        blocksMovement: true,
+        blocksLineOfSight: false,
+        footprint: { width: 0.8, depth: 0.6, offsetX: 0, offsetZ: 0 },
+      },
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(local));
+    const record = roomRecord('room-snapshot-1', remote);
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [record]),
+        getComposition: vi.fn(async () => record),
+      },
+    };
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={source}
+      />
+    );
+
+    // The saved-room list and open action are labeled by the authored visible
+    // scene name, not the stored room metadata name.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Tavern Cellar' })
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Opened “Remote Tavern Cellar”/)).toBeTruthy()
+    );
+    expect(currentRoom()).toEqual(remote);
+    expect(
+      document
+        .querySelector('[data-workspace-origin]')
+        ?.getAttribute('data-workspace-origin')
+    ).toBe('world');
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(
+      stringifyRoomDraft(local)
+    );
+  });
+
+  it('keeps current local bytes intact when a deferred room Get resolves after unmount', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(roomNamed('Local Cellar'))
+    );
+    const remote = roomNamed('Remote Cellar');
+    const record = roomRecord('room-snapshot-1', remote);
+    let resolveGet!: (value: typeof record) => void;
+    const pendingGet = new Promise<typeof record>((resolve) => {
+      resolveGet = resolve;
+    });
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [record]),
+        getComposition: vi.fn(() => pendingGet),
+      },
+    };
+    const mounted = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={source}
+      />
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Cellar' })
+    );
+
+    // A replacement editor saves newer local bytes while the old Get is still
+    // pending; the stale continuation must never overwrite them.
+    const replacement = roomNamed('Replacement Cellar');
+    const replacementBytes = stringifyRoomDraft(replacement);
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, replacementBytes);
+    const writesAfterReplacement = storage.writes;
+
+    mounted.unmount();
+    resolveGet(record);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(storage.writes).toBe(writesAfterReplacement);
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(replacementBytes);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(currentRoom().scene.name).toBe('Replacement Cellar');
+  });
+
+  it('drops a deferred room Get after the source is replaced and still opens normally from the new source', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(roomNamed('Local Cellar'))
+    );
+    const oldRecord = roomRecord('room-old', roomNamed('Old Cellar'));
+    let resolveOld!: (value: typeof oldRecord) => void;
+    const pendingOld = new Promise<typeof oldRecord>((resolve) => {
+      resolveOld = resolve;
+    });
+    const oldSource: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [oldRecord]),
+        getComposition: vi.fn(() => pendingOld),
+      },
+    };
+    const newRecord = roomRecord('room-new', roomNamed('New Cellar'));
+    const newSource: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [newRecord]),
+        getComposition: vi.fn(async () => newRecord),
+      },
+    };
+    const ids = deterministicIds();
+    const view = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={ids}
+        compositionSource={oldSource}
+      />
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Old Cellar' })
+    );
+
+    view.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={ids}
+        compositionSource={newSource}
+      />
+    );
+    const bytesBefore = storage.values.get(ROOM_DRAFT_STORAGE_KEY);
+    resolveOld(oldRecord);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The fenced continuation left both the editor and the stored bytes alone.
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytesBefore);
+    expect(currentRoom().scene.name).toBe('Local Cellar');
+    expect(screen.queryByText(/Opened “Old Cellar”/)).toBeNull();
+
+    // A normal open against the replacement source still works.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open New Cellar' })
+    );
+    await waitFor(() => expect(currentRoom().scene.name).toBe('New Cellar'));
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytesBefore);
   });
 
   it('keeps remote workspace edits out of the local draft until explicit Save local draft', async () => {

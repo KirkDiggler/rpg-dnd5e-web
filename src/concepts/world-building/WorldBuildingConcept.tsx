@@ -212,6 +212,22 @@ export function WorldBuildingConcept({
   sceneRef.current = scene;
   const roomDraftRef = useRef(roomDraft);
   roomDraftRef.current = roomDraft;
+  const sourceRef = useRef(compositionSource);
+  sourceRef.current = compositionSource;
+  const openGenerationRef = useRef(0);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    // A replaced composition source retires any busy latch this instance still
+    // holds for the previous source. Any pending Get started against the old
+    // source is fenced off below and can no longer touch storage or state.
+    setWorldBusy(false);
+  }, [compositionSource]);
   const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
   const compositionList = useCompositionList(
     compositionSource,
@@ -771,13 +787,25 @@ export function WorldBuildingConcept({
 
   const openComposition = async (id: string) => {
     if (!compositionSource || worldBusy) return;
+    const source = compositionSource;
+    const generation = ++openGenerationRef.current;
+    /** A deferred Get can resolve after this instance unmounts or after its
+     * composition source was replaced. Fence every post-await storage write
+     * and state effect with mounted lifetime, the captured source, and the
+     * latest open request BEFORE touching anything — the protected local-byte
+     * save below runs outside React, so React cannot ignore it. */
+    const isCurrentOpen = () =>
+      mountedRef.current &&
+      sourceRef.current === source &&
+      openGenerationRef.current === generation;
     setWorldBusy(true);
     setNotice('');
     try {
-      const composition = await compositionSource.reader.getComposition(
-        compositionSource.worldId,
+      const composition = await source.reader.getComposition(
+        source.worldId,
         id
       );
+      if (!isCurrentOpen()) return;
       if (!composition) {
         setNotice(`Composition ${id} is no longer available in this world.`);
         return;
@@ -837,11 +865,15 @@ export function WorldBuildingConcept({
       );
       setNotice(`Opened “${metadata.name}” from the world library.`);
     } catch (error) {
+      if (!isCurrentOpen()) return;
       setNotice(
         `Composition ${id} could not be opened; the current scene was kept. ${compositionErrorMessage(error)}`
       );
     } finally {
-      setWorldBusy(false);
+      // Retire the latch only while this exact request is still the current
+      // one of a live, same-source instance; a superseded or unmounted
+      // continuation leaves the replacement request's latch alone.
+      if (isCurrentOpen()) setWorldBusy(false);
     }
   };
 

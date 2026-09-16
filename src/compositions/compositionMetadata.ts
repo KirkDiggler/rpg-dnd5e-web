@@ -22,7 +22,11 @@ export function compositionMetadata(
   try {
     if (isRoomDocument(composition)) {
       const draft = decodeRoomDocumentJson(composition.json);
-      return { status: 'room', name: draft.name, draft };
+      // Room documents carry two stored names. The authored, editable scene
+      // name is what the author sees in the editor and the save notice, so it
+      // labels the room library and open actions. The stored metadata name
+      // field (`draft.name`) is returned inside `draft` untouched.
+      return { status: 'room', name: draft.scene.name, draft };
     }
     const scene = decodeCompositionScene(composition);
     return { status: 'ready', name: scene.name, scene };
@@ -37,6 +41,12 @@ export function compositionMetadata(
 export type CompositionPlacementMetadata =
   | { status: 'loading'; id: string }
   | { status: 'ready'; id: string; name: string }
+  | {
+      status: 'not-placeable';
+      id: string;
+      name: string;
+      message: string;
+    }
   | { status: 'missing'; id: string; message: string }
   | { status: 'error'; id: string; message: string }
   | { status: 'missing-source'; id: string };
@@ -60,6 +70,17 @@ export function compositionPlacementMetadata(
     const metadata = compositionMetadata(resolution.composition);
     if (metadata.status === 'error') {
       return { status: 'error', id, message: metadata.message };
+    }
+    // A room document placed directly as a prop loads fine but can never be
+    // placed; keep it distinct from ready scenes, missing records, and
+    // transport/malformed errors. Legacy scene behavior is unchanged.
+    if (metadata.status === 'room') {
+      return {
+        status: 'not-placeable',
+        id,
+        name: metadata.name,
+        message: 'Room snapshots are authoring documents, not placeable props.',
+      };
     }
     return { status: 'ready', id, name: metadata.name };
   }
