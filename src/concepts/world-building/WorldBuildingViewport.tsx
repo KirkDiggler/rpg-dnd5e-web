@@ -27,6 +27,7 @@ import type {
   TransformControls as TransformControlsImpl,
 } from 'three-stdlib';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { createGroundBoundaryGeometry } from './groundBoundaryGeometry';
 import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
@@ -123,19 +124,6 @@ function makeHexLines(radius: number): THREE.BufferGeometry {
     }
   }
   return new THREE.BufferGeometry().setFromPoints(points);
-}
-
-function makeGroundBoundary(radius: number): THREE.BufferGeometry {
-  return new THREE.BufferGeometry().setFromPoints(
-    Array.from({ length: 6 }, (_, index) => {
-      const angle = Math.PI / 6 + (index * Math.PI) / 3;
-      return new THREE.Vector3(
-        Math.cos(angle) * radius,
-        DUNGEON_SURFACE_Y + 0.015,
-        Math.sin(angle) * radius
-      );
-    })
-  );
 }
 
 function ModelFallback({ tone }: { tone: 'loading' | 'error' }) {
@@ -450,8 +438,12 @@ export function WorldSceneContents(
     [workspaceHexRadius]
   );
   const boundaryGeometry = useMemo(
-    () => makeGroundBoundary(workspaceGroundRadius),
-    [workspaceGroundRadius]
+    () =>
+      createGroundBoundaryGeometry(
+        workspaceGroundRadius,
+        Boolean(props.roomAuthoring)
+      ),
+    [props.roomAuthoring, workspaceGroundRadius]
   );
   const controlsRef = useRef<TransformControlsImpl>(null);
   type CapturedFloorPointer = {
