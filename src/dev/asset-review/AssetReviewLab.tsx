@@ -28,6 +28,8 @@ import {
   type WorldAssetCategory,
 } from './model';
 
+import { MaterialReviewLab } from './MaterialReviewLab';
+
 const CATALOG_URL = '/models/synty/asset-review/catalog.json';
 export const ASSET_REVIEW_STORAGE_KEY = 'rpg.asset-review.batch.v1';
 
@@ -109,6 +111,15 @@ function StatusPill({ status }: { status: ReviewStatus }) {
 }
 
 export function AssetReviewLab() {
+  return new URLSearchParams(window.location.search).get('materialReview') ===
+    '1' ? (
+    <MaterialReviewLab />
+  ) : (
+    <AssetBatchReviewLab />
+  );
+}
+
+function AssetBatchReviewLab() {
   const [catalog, setCatalog] = useState<AssetReviewCatalog>();
   const [batch, setBatch] = useState<AssetReviewBatch>();
   const [selectedKey, setSelectedKey] = useState('');
