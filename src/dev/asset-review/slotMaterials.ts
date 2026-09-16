@@ -8,7 +8,12 @@
  * normal-map data stays linear (NoColorSpace).
  */
 import * as THREE from 'three';
-import { NEUTRAL_BASE_SRGB, type RecipeChannels } from './materialRecipe';
+import {
+  NEUTRAL_BASE_SRGB,
+  slotKey,
+  type EditorSource,
+  type RecipeChannels,
+} from './materialRecipe';
 
 /** Textures for one slot; every instance must be owned by exactly this slot. */
 export interface ChannelTextures {
@@ -123,4 +128,102 @@ export class ImageTextureFactory {
     texture.needsUpdate = true;
     return { texture, release: () => texture.dispose() };
   }
+}
+
+export interface GltfLike {
+  scene: THREE.Object3D;
+  parser: {
+    json: {
+      meshes?: { primitives?: { material?: number }[] }[];
+      materials?: { name?: string }[];
+    };
+  };
+}
+
+export interface SlotBinding {
+  mesh: THREE.Mesh;
+  material: THREE.MeshStandardMaterial;
+}
+
+export interface SlotBindings {
+  bindings: Map<string, SlotBinding>;
+  problems: string[];
+}
+
+export function isMesh(value: THREE.Object3D): value is THREE.Mesh {
+  return (value as THREE.Mesh).isMesh === true;
+}
+
+export function materialsOf(mesh: THREE.Mesh): THREE.Material[] {
+  return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
+/**
+ * Resolve the prepared target mapping against the loaded GLB: join by the
+ * producer-generated slot material name, verify the explicit mesh/primitive/
+ * material indices from the manifest, and give every slot its own cloned
+ * material so edits never leak into other slots or cached scenes. Runs on the
+ * rendered clone (Mesh.clone copies material arrays before we assign), so the
+ * cloned slot materials are the ones actually rendered.
+ */
+export function applySlotBindings(
+  root: THREE.Object3D,
+  gltf: GltfLike,
+  source: EditorSource
+): SlotBindings {
+  const problems: string[] = [];
+  const byName = new Map<string, { mesh: THREE.Mesh; index: number }>();
+  root.traverse((child) => {
+    if (!isMesh(child)) return;
+    materialsOf(child).forEach((material, index) => {
+      if (material && material.name && !byName.has(material.name))
+        byName.set(material.name, { mesh: child, index });
+    });
+  });
+  const bindings = new Map<string, SlotBinding>();
+  const copiedArrays = new Set<THREE.Mesh>();
+  for (const target of source.targets) {
+    if (!target.rendered || !target.target) continue;
+    const key = slotKey(source.sourcePath, target.objectName, target.slot);
+    const gltfMaterialIndex =
+      gltf.parser.json.meshes?.[target.target.mesh]?.primitives?.[
+        target.target.primitive
+      ]?.material;
+    const gltfMaterialName =
+      gltfMaterialIndex === undefined
+        ? undefined
+        : gltf.parser.json.materials?.[gltfMaterialIndex]?.name;
+    if (
+      gltfMaterialIndex !== target.target.material ||
+      gltfMaterialName !== target.target.materialName
+    )
+      problems.push(
+        `Prepared target for ${target.objectName}:${target.slot} does not match the loaded GLB (mesh ${target.target.mesh}, primitive ${target.target.primitive}, material ${target.target.material})`
+      );
+    const found = byName.get(target.target.materialName);
+    if (!found) {
+      problems.push(`Loaded GLB has no material ${target.target.materialName}`);
+      continue;
+    }
+    const base = materialsOf(found.mesh)[found.index];
+    if (!(base instanceof THREE.MeshStandardMaterial)) {
+      problems.push(
+        `Slot material ${target.target.materialName} is not a standard material`
+      );
+      continue;
+    }
+    const clone = base.clone();
+    clone.name = target.target.materialName;
+    if (Array.isArray(found.mesh.material)) {
+      if (!copiedArrays.has(found.mesh)) {
+        found.mesh.material = [...found.mesh.material];
+        copiedArrays.add(found.mesh);
+      }
+      found.mesh.material[found.index] = clone;
+    } else {
+      found.mesh.material = clone;
+    }
+    bindings.set(key, { mesh: found.mesh, material: clone });
+  }
+  return { bindings, problems };
 }

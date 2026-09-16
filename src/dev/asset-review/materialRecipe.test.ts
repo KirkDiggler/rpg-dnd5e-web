@@ -24,6 +24,7 @@ import {
 } from './materialRecipe.testFixtures';
 import {
   applyChannels,
+  applySlotBindings,
   applyTextureError,
   ImageTextureFactory,
 } from './slotMaterials';
@@ -462,6 +463,76 @@ describe('real three.js channel application', () => {
     first.release();
     second.release();
     await expect(factory.image('bad://url')).rejects.toThrow();
+  });
+});
+
+describe('slot target mapping against the rendered clone', () => {
+  function glbFixture() {
+    const names = [
+      `MaterialReviewSlot_${FIXTURE_OBJECT_NAME}_0`,
+      `MaterialReviewSlot_${FIXTURE_OBJECT_NAME}_1`,
+    ];
+    const geometry = new THREE.BoxGeometry();
+    const mesh = new THREE.Mesh(
+      geometry,
+      names.map((name) => new THREE.MeshStandardMaterial({ name }))
+    );
+    const scene = new THREE.Scene();
+    scene.add(mesh);
+    const gltf = {
+      scene,
+      parser: {
+        json: {
+          meshes: [{ primitives: [{ material: 0 }, { material: 1 }] }],
+          materials: [{ name: names[0] }, { name: names[1] }],
+        },
+      },
+    };
+    const source = materialEditorManifestFixture().editor.sources[0]!;
+    return { gltf, source };
+  }
+
+  it('assigns cloned slot materials into the rendered clone, not the loaded scene', () => {
+    const { gltf, source } = glbFixture();
+    const clone = gltf.scene.clone(true);
+    const { bindings, problems } = applySlotBindings(clone, gltf, source);
+    expect(problems).toEqual([]);
+    expect(bindings.size).toBe(2);
+    for (const slot of [0, 1]) {
+      const binding = bindings.get(
+        slotKey(FIXTURE_SOURCE_PATH, FIXTURE_OBJECT_NAME, slot)
+      )!;
+      const rendered = (clone.children[0] as THREE.Mesh)
+        .material as THREE.Material[];
+      // The rendered clone carries the assigned clone at the slot's index...
+      expect(rendered[slot]).toBe(binding.material);
+      // ...while the loaded GLB scene keeps its original materials untouched.
+      const loaded = (gltf.scene.children[0] as THREE.Mesh)
+        .material as THREE.Material[];
+      expect(loaded[slot]).not.toBe(binding.material);
+      expect(loaded[slot]!.name).toBe(
+        `MaterialReviewSlot_${FIXTURE_OBJECT_NAME}_${slot}`
+      );
+      // And the binding material is a distinct clone per slot.
+      expect(binding.material.name).toBe(
+        `MaterialReviewSlot_${FIXTURE_OBJECT_NAME}_${slot}`
+      );
+    }
+  });
+
+  it('reports problems when the manifest mapping disagrees with the GLB', () => {
+    const { gltf } = glbFixture();
+    const wrong = structuredClone(materialEditorManifestFixture());
+    wrong.editor.sources[0]!.targets[0]!.target!.primitive = 7;
+    const clone = gltf.scene.clone(true);
+    const { problems } = applySlotBindings(
+      clone,
+      gltf,
+      wrong.editor.sources[0]!
+    );
+    expect(
+      problems.some((p: string) => p.includes('does not match the loaded GLB'))
+    ).toBe(true);
   });
 });
 
