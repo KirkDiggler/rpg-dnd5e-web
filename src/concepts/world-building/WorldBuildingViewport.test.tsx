@@ -24,6 +24,12 @@ vi.mock('@react-three/drei', () => ({
   },
 }));
 
+vi.mock('./WorkspaceFloorUnderlay', () => ({
+  WorkspaceFloorUnderlay: ({ radius }: { radius: number }) => (
+    <group name="workspace-floor-underlay-test" userData={{ radius }} />
+  ),
+}));
+
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
 import {
@@ -123,6 +129,60 @@ describe('room walkable fill geometry', () => {
     expect(Math.max(...boundary.map((point) => Math.abs(point.x)))).toBeCloseTo(
       (Math.sqrt(3) / 2) * HEX_SIZE * 0.86
     );
+  });
+});
+
+describe('room-only workspace floor', () => {
+  it('mounts only for room authoring and tracks the existing ground radius without mutations', async () => {
+    const onWalkableGesture = vi.fn();
+    const onTransformCommit = vi.fn();
+    const baseProps = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit,
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+      showCompositionBounds: false,
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...baseProps} />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'workspace-floor-underlay-test' })
+    ).toHaveLength(0);
+
+    await renderer.update(
+      <WorldSceneContents
+        {...baseProps}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 9, horizontalLimit: 20 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture,
+        }}
+      />
+    );
+    expect(
+      renderer.scene.findByProps({ name: 'workspace-floor-underlay-test' })
+        .props.userData.radius
+    ).toBe(21);
+    expect(onWalkableGesture).not.toHaveBeenCalled();
+    expect(onTransformCommit).not.toHaveBeenCalled();
+    await renderer.unmount();
   });
 });
 

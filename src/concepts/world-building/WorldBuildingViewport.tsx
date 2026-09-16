@@ -42,6 +42,7 @@ import {
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
 import type { WorldScene, WorldTransform } from './types';
+import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
   WorldBuildingDropInteraction,
@@ -776,6 +777,9 @@ export function WorldSceneContents(
           metalness={0.02}
         />
       </mesh>
+      {props.roomAuthoring && (
+        <WorkspaceFloorUnderlay radius={workspaceGroundRadius} />
+      )}
       <lineSegments
         name="world-building-real-hex-basis"
         geometry={hexGeometry}
