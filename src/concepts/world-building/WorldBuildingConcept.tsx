@@ -210,6 +210,8 @@ export function WorldBuildingConcept({
   const scene = roomMode ? roomDraft.scene : history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  const roomDraftRef = useRef(roomDraft);
+  roomDraftRef.current = roomDraft;
   const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
   const compositionList = useCompositionList(
     compositionSource,
@@ -781,15 +783,28 @@ export function WorldBuildingConcept({
         return;
       }
       const metadata = compositionMetadata(composition);
-      if (metadata.status === 'error') {
+      const expectedKind = roomMode
+        ? metadata.status === 'room'
+        : metadata.status === 'ready';
+      if (!expectedKind || metadata.status === 'error') {
+        const message =
+          metadata.status === 'error'
+            ? metadata.message
+            : 'document kind does not match this editor';
         setNotice(
-          `Composition ${id} could not be opened; the current scene was kept. ${metadata.message}`
+          `Composition ${id} could not be opened; the current data was kept. ${message}`
+        );
+        return;
+      }
+      if (roomMode && roomAutosaveBlockedRef.current) {
+        setNotice(
+          'Room snapshot was not opened; resolve or export the protected local draft before opening a world snapshot.'
         );
         return;
       }
       if (workspaceOriginRef.current === 'local') {
         const localError = roomMode
-          ? saveRoomDraft(effectiveStorage, roomDraft)
+          ? saveRoomDraft(effectiveStorage, roomDraftRef.current)
           : saveSceneToStorage(effectiveStorage, sceneRef.current).error;
         if (localError) {
           setSaveStatus('Save failed — current data kept in memory');
@@ -1679,7 +1694,8 @@ export function WorldBuildingConcept({
                           Open {metadata.name}
                         </button>
                       )}
-                      {!compositionSource.writer ? null : !confirming ? (
+                      {roomMode ||
+                      !compositionSource.writer ? null : !confirming ? (
                         <button
                           className="wb-danger"
                           disabled={worldBusy}

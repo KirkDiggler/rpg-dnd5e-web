@@ -490,6 +490,7 @@ function AppContent() {
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView
+            key={compositionIdentity}
             onBack={handleBackToHome}
             compositionSource={compositionSource}
           />
