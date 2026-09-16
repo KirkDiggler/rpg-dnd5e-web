@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetReviewLab } from './AssetReviewLab';
-import { materialManifestFixture } from './materialProfile.testFixtures';
+import {
+  auditedMaterialManifestFixture,
+  materialManifestFixture,
+} from './materialProfile.testFixtures';
 import { MaterialReviewLab } from './MaterialReviewLab';
 
 const sceneLifecycle = vi.hoisted(() => ({ starts: 0 }));
@@ -80,6 +83,44 @@ afterEach(() => {
 });
 
 describe('material family review', () => {
+  it('shows source exceptions and Blender paths without blocking valid examples', async () => {
+    const response = {
+      ok: true,
+      json: async () => auditedMaterialManifestFixture(),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    render(<MaterialReviewLab />);
+    expect(await screen.findByText(/1 unresolved source/)).toBeVisible();
+    fireEvent.click(screen.getByText('Source exceptions (1)'));
+    expect(
+      screen.getByText('/private/source-audits/case/inspect.blend')
+    ).toBeVisible();
+    expect(screen.getByText(/Expected 1 slot, found 2/)).toBeVisible();
+    expect(screen.getByLabelText('Representative piece')).toBeVisible();
+    expect(
+      screen.getByLabelText('Material option for Stone')
+    ).not.toBeDisabled();
+  });
+  it('keeps saved choices exportable when all sources need inspection', async () => {
+    const data = auditedMaterialManifestFixture(true);
+    const profile = { ...data.profile, selections: { Stone: 'stone-dark' } };
+    const response = { ok: true, json: async () => ({ ...data, profile }) };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    render(<MaterialReviewLab />);
+    const select = await screen.findByLabelText('Material option for Stone');
+    expect(select).toHaveValue('stone-dark');
+    expect(select).toBeDisabled();
+    expect(screen.getByText(/No verified representative/)).toBeVisible();
+    expect(
+      screen.queryByLabelText('Representative piece')
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export pack profile' })
+    );
+    expect(JSON.parse(await readBlob(blobs[0]!)).selections).toEqual({
+      Stone: 'stone-dark',
+    });
+  });
   it('opens material mode through the existing Lab route without loading a Ready catalogue', async () => {
     const previous = window.location.href;
     try {

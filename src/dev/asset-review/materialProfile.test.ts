@@ -5,10 +5,44 @@ import {
   selectFamilyOption,
   serializeMaterialProfile,
 } from './materialProfile';
+import capabilities from './materialReviewCapabilities.json';
 
-import { materialManifestFixture } from './materialProfile.testFixtures';
+import {
+  auditedMaterialManifestFixture,
+  materialManifestFixture,
+} from './materialProfile.testFixtures';
 
 describe('material profile contract', () => {
+  it.each(capabilities.manifestVersions)(
+    'parses the advertised manifest version %s',
+    (version) => {
+      const fixtures: Record<number, unknown> = {
+        1: materialManifestFixture(),
+        2: auditedMaterialManifestFixture(),
+      };
+      expect(parseMaterialReviewManifest(fixtures[version]).schemaVersion).toBe(
+        version
+      );
+    }
+  );
+  it('accepts explicit blocked coverage but rejects previews from unresolved sources', () => {
+    const manifest = parseMaterialReviewManifest(
+      auditedMaterialManifestFixture(true)
+    );
+    expect(manifest.previews).toEqual([]);
+    const broken = auditedMaterialManifestFixture(true);
+    broken.previews = materialManifestFixture().previews;
+    expect(() => parseMaterialReviewManifest(broken)).toThrow(/unresolved/);
+    const incomplete = auditedMaterialManifestFixture();
+    incomplete.previews = [];
+    expect(() => parseMaterialReviewManifest(incomplete)).toThrow(/no preview/);
+    const wrongHash = auditedMaterialManifestFixture();
+    wrongHash.sourceAudit.exceptions[0]!.sourceSha256 = 'b'.repeat(64);
+    expect(() => parseMaterialReviewManifest(wrongHash)).toThrow(/fingerprint/);
+    const wrongCount = auditedMaterialManifestFixture();
+    wrongCount.sourceAudit.verifiedCount = 2;
+    expect(() => parseMaterialReviewManifest(wrongCount)).toThrow(/count/);
+  });
   it('keeps recommendations separate from choices and round-trips the exact editable schema', () => {
     const manifest = parseMaterialReviewManifest(materialManifestFixture());
     expect(manifest.profile.selections.Stone).toBeNull();
