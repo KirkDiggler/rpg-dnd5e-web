@@ -733,6 +733,12 @@ export function ActionDock({
       // cantrips — and every fighter — gets no Cast rows without the client
       // deciding anything.
       declaration.verb === Verb.CAST ||
+      // A THREAT IS DRAWN LIKE EVERY OTHER OFFER (rpg-project#454). Afford
+      // mints exactly one row for it on the turn clock, priced at the
+      // standard action, and an unlisted verb is dropped HERE — before the
+      // arm, before the click, before anything downstream can be wrong
+      // about it. Not a dead button: no button.
+      declaration.verb === Verb.INTIMIDATE ||
       (declaration.verb === Verb.DEATH_SAVE &&
         isDeathSaveExecutableShape(declaration, 'display'))
   );
