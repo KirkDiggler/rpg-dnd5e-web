@@ -1,43 +1,66 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { WorldBuilderWorkspace } from './WorldBuilderWorkspace';
 
-vi.mock('./WorldBuildingConcept', () => ({
-  WorldBuildingConcept: ({ roomMode }: { roomMode?: boolean }) => (
-    <div data-testid={roomMode ? 'rooms-editor' : 'props-editor'}>
-      {roomMode ? 'Rooms editor' : 'Props editor'}
-    </div>
-  ),
+// Keep the real editor, replacing only the WebGL boundary unavailable in jsdom.
+vi.mock('./WorldBuildingViewport', () => ({
+  WorldBuildingViewport: () => <div data-testid="viewport" />,
 }));
 
-const source = { worldId: 'world-1' } as CompositionSource;
+import { WorldBuilderWorkspace } from './WorldBuilderWorkspace';
+
+const source = {
+  worldId: 'world-1',
+  reader: {
+    listCompositions: async () => [],
+    getComposition: async () => null,
+  },
+} as CompositionSource;
+
+const storage = {
+  values: new Map<string, string>(),
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  },
+  setItem(key: string, value: string) {
+    this.values.set(key, value);
+  },
+};
 
 describe('WorldBuilderWorkspace', () => {
-  it('opens Rooms by default and safely round-trips to prop compositions', () => {
-    render(<WorldBuilderWorkspace compositionSource={source} />);
+  it('keeps one active keyed editor and requires explicit switching', () => {
+    render(
+      <WorldBuilderWorkspace compositionSource={source} storage={storage} />
+    );
 
     expect(
       screen.getByRole('button', { name: 'Rooms' }).getAttribute('aria-pressed')
     ).toBe('true');
-    expect(screen.getByTestId('rooms-editor').parentElement?.className).toBe(
-      'wb-mode-pane'
-    );
+    expect(screen.getByRole('heading', { name: 'World Builder' })).toBeTruthy();
     expect(
-      screen.getByTestId('props-editor').parentElement?.className
-    ).toContain('wb-mode-pane-hidden');
+      screen.getByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Prop compositions' }));
-    expect(screen.getByTestId('props-editor').parentElement?.className).toBe(
-      'wb-mode-pane'
-    );
+    expect(screen.getByRole('button', { name: 'Switch editor' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel switch' })).toBeTruthy();
     expect(
-      screen.getByTestId('rooms-editor').parentElement?.className
-    ).toContain('wb-mode-pane-hidden');
+      screen.getByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rooms' }));
-    expect(screen.getByTestId('rooms-editor').parentElement?.className).toBe(
-      'wb-mode-pane'
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel switch' }));
+    expect(
+      screen.getByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prop compositions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch editor' }));
+    expect(screen.getByRole('heading', { name: 'World Builder' })).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'World Building Concept' })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeNull();
   });
 });

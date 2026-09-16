@@ -949,7 +949,7 @@ export function WorldBuildingConcept({
           </p>
           <h2>
             {roomMode
-              ? 'Room Builder — First Look'
+              ? 'World Builder'
               : compositionSource
                 ? 'World Builder'
                 : 'World Building'}

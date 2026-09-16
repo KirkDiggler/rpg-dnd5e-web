@@ -1,9 +1,13 @@
 .wb-workspace-route {
+  position: fixed;
+  inset: 0;
   display: flex;
+  box-sizing: border-box;
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   background: #081112;
 }
 
@@ -38,9 +42,19 @@
   color: #ccfbf1;
 }
 
+.wb-mode-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  color: #f9d989;
+  font-size: 0.68rem;
+}
+
 .wb-mode-pane {
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .wb-mode-pane-hidden {
