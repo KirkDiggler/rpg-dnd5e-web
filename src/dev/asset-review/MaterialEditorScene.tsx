@@ -410,7 +410,14 @@ export function MaterialEditorScene({
   return (
     <div className="material-editor-canvas">
       <SceneErrorBoundary>
-        <Canvas frameloop="demand" dpr={[1, 1.5]}>
+        {/* Live-editing preview: continuous frames keep the canvas in sync with
+            channel edits (and screenshots honest); cost is irrelevant for one
+            wall piece. preserveDrawingBuffer keeps capture tools honest too. */}
+        <Canvas
+          frameloop="always"
+          dpr={[1, 1.5]}
+          gl={{ preserveDrawingBuffer: true }}
+        >
           <EditorWorld
             source={source}
             slots={slots}
