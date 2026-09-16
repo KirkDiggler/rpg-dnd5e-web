@@ -2,6 +2,7 @@ export const APP_VIEWS = [
   'home',
   'character-creation',
   'character-sheet',
+  'level-up',
   'lobby',
   'concepts',
   'author',

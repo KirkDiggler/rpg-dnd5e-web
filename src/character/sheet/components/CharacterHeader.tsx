@@ -3,10 +3,13 @@ import {
   Class,
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 
 interface CharacterHeaderProps {
   character: Character;
+  /** Enter the level-up screen. Absent where levelling is not offered. */
+  onLevelUp?: () => void;
 }
 
 // Simple read-only HP display component
@@ -75,7 +78,17 @@ function getClassDisplayName(classEnum: Class): string {
   return classNames[classEnum] || 'Unknown Class';
 }
 
-export function CharacterHeader({ character }: CharacterHeaderProps) {
+export function CharacterHeader({
+  character,
+  onLevelUp,
+}: CharacterHeaderProps) {
+  // THE GAP IS THE SIGNAL. Entitlement is what the character MAY take, derived
+  // by the API from its experience total; the record says what it HAS taken.
+  // The difference is the whole "level up available" state — no flag, no
+  // stored field, nothing to keep in sync — so a character that is entitled
+  // and keeps playing without levelling is simply one whose gap is still open.
+  const levelUpAvailable = character.entitledLevel > character.level;
+
   return (
     <Card
       rarity={
@@ -133,8 +146,21 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
             <div
               className="text-2xl font-bold"
               style={{ color: 'var(--text-primary)' }}
+              data-testid="experience-readout"
             >
               {character.experiencePoints || 0}
+              {/* A next threshold of 0 means there is no next level, because
+                  the character is at the top of the table — not that the next
+                  level is free — so there is nothing to show it against. */}
+              {character.nextLevelThreshold > 0 && (
+                <span
+                  className="text-lg"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {' / '}
+                  {character.nextLevelThreshold}
+                </span>
+              )}
             </div>
             <div className="text-sm" style={{ color: 'var(--text-subtle)' }}>
               Experience
@@ -142,6 +168,18 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
           </div>
         </div>
       </div>
+
+      {levelUpAvailable && onLevelUp && (
+        <div className="mt-4 flex justify-end">
+          <Button
+            data-testid="level-up-prompt"
+            variant="commit"
+            onClick={onLevelUp}
+          >
+            Level Up to {character.entitledLevel}
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
