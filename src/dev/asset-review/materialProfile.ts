@@ -46,8 +46,27 @@ export interface MaterialPreview {
     state: 'selected' | 'recommended' | 'neutral';
   }[];
 }
+export interface MaterialSourceException {
+  sourcePath: string;
+  sourceSha256: string;
+  reason: string;
+  inspectionBlendPath: string;
+  declaredSlots: { objectName: string; slot: number; materialName: string }[];
+  objects: {
+    objectName: string;
+    meshDataName: string;
+    materialNames: (string | null)[];
+    usedSlots: number[];
+  }[];
+}
+export interface MaterialSourceAudit {
+  sourceCount: number;
+  verifiedCount: number;
+  exceptions: MaterialSourceException[];
+}
 export interface MaterialReviewManifest {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
+  sourceAudit?: MaterialSourceAudit;
   mode: 'material-preview';
   profile: PackMaterialProfile;
   profileSha256: string;
@@ -75,12 +94,12 @@ function object(value: unknown, keys?: string[]): Row {
     throw new Error('Unexpected or missing fields');
   return row;
 }
-function text(value: unknown, id = false): string {
+function text(value: unknown, id = false, maxLength = 256): string {
   if (
     typeof value !== 'string' ||
     !value ||
     value.trim() !== value ||
-    value.length > 256 ||
+    value.length > maxLength ||
     [...value].some(
       (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127
     )
@@ -300,9 +319,78 @@ export function validateProfileChoices(
       throw new Error(`Unknown/incompatible option for ${id}`);
   }
 }
+function nonnegative(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+    throw new Error('Invalid count/slot');
+  return value;
+}
+function parseSourceAudit(value: unknown): MaterialSourceAudit {
+  const row = object(value, ['sourceCount', 'verifiedCount', 'exceptions']);
+  const exceptions = list(row.exceptions, (value): MaterialSourceException => {
+    const item = object(value, [
+      'sourcePath',
+      'sourceSha256',
+      'reason',
+      'inspectionBlendPath',
+      'declaredSlots',
+      'objects',
+    ]);
+    const sourcePath = relative(item.sourcePath);
+    if (!sourcePath.toLowerCase().endsWith('.fbx'))
+      throw new Error('Source must be FBX');
+    const objects = list(item.objects, (value) => {
+      const obj = object(value, [
+        'objectName',
+        'meshDataName',
+        'materialNames',
+        'usedSlots',
+      ]);
+      const materialNames = list(obj.materialNames, (value) =>
+        value === null ? null : text(value)
+      );
+      const usedSlots = list(obj.usedSlots, nonnegative);
+      if (
+        new Set(usedSlots).size !== usedSlots.length ||
+        usedSlots.some((i) => i >= Math.max(1, materialNames.length))
+      )
+        throw new Error('Invalid used slots');
+      return {
+        objectName: text(obj.objectName),
+        meshDataName: text(obj.meshDataName),
+        materialNames,
+        usedSlots,
+      };
+    });
+    unique(objects.map((obj) => obj.objectName));
+    return {
+      sourcePath,
+      sourceSha256: hash(item.sourceSha256),
+      reason: text(item.reason, false, 8192),
+      inspectionBlendPath: text(item.inspectionBlendPath, false, 4096),
+      objects,
+      declaredSlots: list(item.declaredSlots, (value) => {
+        const slot = object(value, ['objectName', 'slot', 'materialName']);
+        return {
+          objectName: text(slot.objectName),
+          slot: nonnegative(slot.slot),
+          materialName: text(slot.materialName),
+        };
+      }),
+    };
+  });
+  unique(exceptions.map((item) => item.sourcePath));
+  const sourceCount = nonnegative(row.sourceCount),
+    verifiedCount = nonnegative(row.verifiedCount);
+  if (verifiedCount + exceptions.length !== sourceCount)
+    throw new Error('Source audit count mismatch');
+  return { sourceCount, verifiedCount, exceptions };
+}
 export function parseMaterialReviewManifest(
   value: unknown
 ): MaterialReviewManifest {
+  const schemaVersion = object(value).schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2)
+    throw new Error('Unsupported schemaVersion');
   const row = object(value, [
     'schemaVersion',
     'mode',
@@ -311,8 +399,8 @@ export function parseMaterialReviewManifest(
     'catalogSha256',
     'catalog',
     'previews',
+    ...(schemaVersion === 2 ? ['sourceAudit'] : []),
   ]);
-  version(row);
   if (row.mode !== 'material-preview')
     throw new Error('Not a material-preview manifest');
   const catalog = object(row.catalog, [
@@ -332,8 +420,56 @@ export function parseMaterialReviewManifest(
       )
     )
   );
+  const sourceAudit =
+    schemaVersion === 2 ? parseSourceAudit(row.sourceAudit) : undefined;
+  const blocked = new Set(
+    sourceAudit?.exceptions.map((item) => item.sourcePath)
+  );
+  if (sourceAudit) {
+    const uses = families.flatMap((family) => family.uses);
+    const known = new Set(uses.map((use) => use.sourcePath));
+    for (const family of families)
+      if (
+        !family.uses.length &&
+        family.kind === 'unsupported' &&
+        family.label.toLowerCase().endsWith('.fbx')
+      )
+        known.add(family.label);
+    if (known.size !== sourceAudit.sourceCount)
+      throw new Error('Source audit count differs from catalogue');
+    for (const issue of sourceAudit.exceptions) {
+      if (!known.has(issue.sourcePath))
+        throw new Error('Unknown source exception');
+      const declared = uses.filter(
+        (use) => use.sourcePath === issue.sourcePath
+      );
+      if (declared.some((use) => use.sourceSha256 !== issue.sourceSha256))
+        throw new Error('Source exception fingerprint mismatch');
+      const key = (obj: string, slot: number, mat: string) =>
+        JSON.stringify([obj, slot, mat]);
+      const expected = new Set(
+        declared.map((use) =>
+          key(use.objectName, use.slot, use.declaredMaterial)
+        )
+      );
+      if (
+        expected.size !== issue.declaredSlots.length ||
+        issue.declaredSlots.some(
+          (slot) =>
+            !expected.has(key(slot.objectName, slot.slot, slot.materialName))
+        )
+      )
+        throw new Error('Source exception declaration mismatch');
+      unique(
+        issue.declaredSlots.map((slot) =>
+          key(slot.objectName, slot.slot, slot.materialName)
+        )
+      );
+    }
+  }
   const result: MaterialReviewManifest = {
-    schemaVersion: 1,
+    schemaVersion,
+    ...(sourceAudit ? { sourceAudit } : {}),
     mode: 'material-preview',
     profile: parseMaterialProfile(row.profile),
     profileSha256: hash(row.profileSha256),
@@ -354,6 +490,8 @@ export function parseMaterialReviewManifest(
     )
   );
   for (const preview of result.previews) {
+    if (blocked.has(preview.sourcePath))
+      throw new Error('Preview uses an unresolved source');
     const family = families.find((family) => family.id === preview.familyId);
     if (
       !family ||
@@ -400,6 +538,10 @@ export function parseMaterialReviewManifest(
         !result.previews.some(
           (preview) =>
             preview.familyId === family.id && preview.optionId === option.id
+        ) &&
+        !(
+          family.uses.length > 0 &&
+          family.uses.every((use) => blocked.has(use.sourcePath))
         )
       )
         throw new Error('Prepared option has no preview');
