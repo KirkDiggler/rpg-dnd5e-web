@@ -286,3 +286,63 @@ describe('the hold-out beats on the beat line (rpg-project#375 §5)', () => {
     );
   });
 });
+
+// The first shenanigan (rpg-project#454). The `intimidated` beat is the ONLY
+// account of this roll — `IntimidateResponse` carries no beaten, total or dc
+// — so the person who threw the die reads it off this line like everyone
+// else, and both outcomes get one.
+describe('formatBeat — intimidated', () => {
+  function threat(
+    actor: string,
+    target: string,
+    total: number,
+    dc: number,
+    beaten: boolean
+  ): SessionEvent {
+    return event({
+      case: 'intimidated',
+      value: { actor, target, dc, total, beaten } as never,
+    });
+  }
+
+  it("the local player's own beaten threat reads in second person", () => {
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 14, 9, true), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 14 vs DC 9. Cowed.');
+  });
+
+  it('a missed threat is narrated too — the miss is as much fiction as the hit', () => {
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 4, 9, false), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 4 vs DC 9. Unmoved.');
+  });
+
+  it("someone else's threat uses third person and lowercase for the target", () => {
+    expect(
+      formatBeat(threat('skeleton-1', 'char-1', 16, 12, true), 'char-1', names)
+    ).toBe('skeleton-1 intimidates you — 16 vs DC 12. Cowed.');
+  });
+
+  it('the reading is COPIED, never derived from total against dc', () => {
+    // A server that says a 20 did not beat a DC 9 is telling this client
+    // something it must not argue with: the day a rule changes what beating
+    // a DC means, a line that compared the two would be wrong at once. This
+    // is the same law `Saved.succeeded` keeps.
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 20, 9, false), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 20 vs DC 9. Unmoved.');
+  });
+
+  it('says nothing about what the creature does next', () => {
+    // A cowed monster may run, may charge, or may hold the deed and ignore
+    // it — its mind decides, and that reaches the log as its next turn. A
+    // clause here promising flight would make the outcome the verb's instead
+    // of the mind's, which is the first cut the design broke.
+    const line = formatBeat(
+      threat('char-1', 'skeleton-1', 14, 9, true),
+      'char-1',
+      names
+    );
+    expect(line).not.toMatch(/flee|flees|runs|charge|charges|frightened/i);
+  });
+});

@@ -3,6 +3,7 @@ import { useSessionAttack } from '@/api/useSessionAttack';
 import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
+import { useSessionIntimidate } from '@/api/useSessionIntimidate';
 import { useSessionReact } from '@/api/useSessionReact';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
@@ -282,6 +283,7 @@ export function useSessionCombatExperience({
   const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
   const castInFlightRef = useRef(false);
+  const intimidateInFlightRef = useRef(false);
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -387,6 +389,7 @@ export function useSessionCombatExperience({
   const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
   const { cast } = useSessionCast();
+  const { intimidate } = useSessionIntimidate();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -551,7 +554,13 @@ export function useSessionCombatExperience({
     const promptsForMember =
       (armedVerb === Verb.ATTACK ||
         armedVerb === Verb.ACTIVATE ||
-        armedVerb === Verb.CAST) &&
+        armedVerb === Verb.CAST ||
+        // The first shenanigan (rpg-project#454). It arms exactly like a
+        // swing — hold the offer, wait for a candidate the server ruled —
+        // and left out of this check it would be judged incoherent one
+        // render later and torn down as "that option changed", which is the
+        // failure the comment above records twice already.
+        armedVerb === Verb.INTIMIDATE) &&
       armedKind === TargetKind.MEMBER;
     // A CELL CAST ARMS FOR THE SAME REASON AND IS JUDGED THE SAME WAY. What
     // it waits for is a place rather than a creature, which changes what the
@@ -791,6 +800,33 @@ export function useSessionCombatExperience({
         return;
       }
 
+      // A THREAT ARMS EXACTLY LIKE A SWING (rpg-project#454): same candidate
+      // rows, same server-ruled availability, same two-step interaction. The
+      // only thing that differs downstream is which RPC runs — and that the
+      // threat sends no selector back, because its request has no field for
+      // one.
+      //
+      // ITS CANDIDATES POINT THE OTHER WAY, which nothing here needs to know.
+      // Afford lists the members who can see the ACTOR rather than the ones
+      // the actor can see, because that is the direction a threat travels.
+      // This client reads the list and never the direction.
+      if (candidate.verb === Verb.INTIMIDATE) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.INTIMIDATE,
+          TargetKind.MEMBER
+        );
+        if (!current) return;
+        setInteraction({
+          armedDeclarationId: current.id,
+          selectedCandidateMember: null,
+          changedOptionNotice: null,
+        });
+        setTargeting(true);
+        return;
+      }
+
       if (candidate.verb === Verb.DEATH_SAVE) {
         if (!isDeathSaveExecutableShape(candidate, 'execute')) return;
         const current = uniqueCurrentDeclaration(
@@ -1009,6 +1045,7 @@ export function useSessionCombatExperience({
         attackInFlightRef.current ||
         activateInFlightRef.current ||
         castInFlightRef.current ||
+        intimidateInFlightRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -1088,7 +1125,8 @@ export function useSessionCombatExperience({
       // ruled, echo the selector back. Only the RPC differs.
       const targetTakingVerb =
         selected?.declaration?.verb === Verb.ATTACK ||
-        selected?.declaration?.verb === Verb.ACTIVATE;
+        selected?.declaration?.verb === Verb.ACTIVATE ||
+        selected?.declaration?.verb === Verb.INTIMIDATE;
       if (
         !selected?.declaration ||
         !targetTakingVerb ||
@@ -1141,6 +1179,50 @@ export function useSessionCombatExperience({
             }
           } finally {
             activateInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
+
+      if (declaration.verb === Verb.INTIMIDATE) {
+        intimidateInFlightRef.current = true;
+        void (async () => {
+          try {
+            // NO SELECTOR GOES BACK. `IntimidateRequest` names the session,
+            // the member and the target and nothing else, so unlike Attack
+            // and Activate above there is no opaque declaration id for the
+            // door to reject as stale, and no recovery path to take when it
+            // does. The offer's id is what the dock armed; the verb never
+            // asks for it.
+            await intimidate({ session, member, target: exactTarget });
+            if (!mountedRef.current) return;
+            // NOTHING IS READ OFF THE RESPONSE, and that is the ruling
+            // rather than an omission here. It carries no beaten, total or
+            // dc: the roll reaches this player on the `intimidated` beat,
+            // the same one every other witness reads, so the story log
+            // narrates it once for the whole table and the actor is not a
+            // special case (rpg-api-protos#339). Presenting it from here
+            // would be a second account of one die.
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            // A threat the target could never have heard is refused at the
+            // door, and the offer that named them was not wrong to exist:
+            // the panel asks who the ACTOR can see, and the verb asks the
+            // other direction. So this is an ordinary refusal to show, not
+            // a stale offer to recover — there is no id to recover with.
+            const notice = `Intimidate failed: ${
+              error instanceof Error ? error.message : 'unknown error'
+            }`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } finally {
+            intimidateInFlightRef.current = false;
           }
         })();
         return;
@@ -1201,6 +1283,7 @@ export function useSessionCombatExperience({
     [
       activate,
       attack,
+      intimidate,
       invalidateAuthority,
       member,
       presentation,

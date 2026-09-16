@@ -82,6 +82,14 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.CAST) {
     return castLabel(declaration);
   }
+  // The threat names itself, like the two reaction answers above and unlike
+  // the weapon, the ability and the spell: the server compiles no action
+  // definition for it (`buildIntimidateOffer` sends a sealed selector and no
+  // AttackRef), so there is no authored label to prefer and nothing here is
+  // going stale against content.
+  if (declaration.verb === Verb.INTIMIDATE) {
+    return 'Intimidate';
+  }
   return 'Move';
 }
 
@@ -110,6 +118,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   if (declaration.verb === Verb.REACT) return '⚡';
   if (declaration.verb === Verb.CAST) return '✧';
+  if (declaration.verb === Verb.INTIMIDATE) return '☠';
   return '➜';
 }
 
