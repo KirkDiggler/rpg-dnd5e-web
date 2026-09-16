@@ -635,33 +635,35 @@ export function MaterialEditorLab() {
     : false;
   const counts = batch ? batchCounts(batch) : undefined;
 
-  const selectSource = (index: number) => {
+  const selectSource = (index: number, currentBatch = batch) => {
     setSourceIndex(index);
     setSelected(undefined);
-    // Returning to a saved piece restores its saved configuration.
-    if (batch && manifest.editor.sources[index]) {
+    // Restore against the latest save/defer state, not the previous render.
+    if (currentBatch && manifest.editor.sources[index]) {
       const path = manifest.editor.sources[index]!.sourcePath;
-      const entry = findQueueEntry(batch, path);
+      const entry = findQueueEntry(currentBatch, path);
       if (entry?.status === 'configured')
-        setBatch(restoreSavedPiece(batch, manifest, path));
+        setBatch(restoreSavedPiece(currentBatch, manifest, path));
     }
   };
 
-  const advanceQueue = (fromPath: string): void => {
-    const index = batch!.queue.findIndex(
+  const advanceQueue = (fromPath: string, currentBatch = batch): void => {
+    if (!currentBatch) return;
+    const index = currentBatch.queue.findIndex(
       (entry) => entry.sourcePath === fromPath
     );
-    const next = batch!.queue[index + 1];
+    const next = currentBatch.queue[index + 1];
     if (!next) {
+      const latestCounts = batchCounts(currentBatch);
       setBatchNote(
-        `End of queue — ${counts!.configured} configured, ${counts!.deferred} deferred, ${counts!.draft} draft.`
+        `End of queue — ${latestCounts.configured} configured, ${latestCounts.deferred} deferred, ${latestCounts.draft} draft.`
       );
       return;
     }
     const nextIndex = manifest.editor.sources.findIndex(
       (item) => item.sourcePath === next.sourcePath
     );
-    if (nextIndex >= 0) selectSource(nextIndex);
+    if (nextIndex >= 0) selectSource(nextIndex, currentBatch);
   };
 
   const saveAndNext = (): void => {
@@ -670,7 +672,7 @@ export function MaterialEditorLab() {
       const next = savePiece(batch, manifest, source.sourcePath);
       setBatch(next);
       setBatchError('');
-      advanceQueue(source.sourcePath);
+      advanceQueue(source.sourcePath, next);
     } catch (cause) {
       setBatchError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -682,7 +684,7 @@ export function MaterialEditorLab() {
       const next = deferPiece(batch, source.sourcePath);
       setBatch(next);
       setBatchError('');
-      advanceQueue(source.sourcePath);
+      advanceQueue(source.sourcePath, next);
     } catch (cause) {
       setBatchError(cause instanceof Error ? cause.message : String(cause));
     }

@@ -380,6 +380,52 @@ describe('material editor lab', () => {
     expect(screen.getByText(/1 configured/)).toBeVisible();
   });
 
+  it('retains a revised save when advancing to an already configured piece', async () => {
+    const response = {
+      ok: true,
+      json: async () => multiSourceMaterialEditorManifestFixture(),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    await renderReadyLab();
+    fireEvent.change(screen.getByLabelText('New batch name'), {
+      target: { value: 'stone walls' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create batch' }));
+    fireEvent.click(screen.getByLabelText(`Queue ${FIXTURE_SOURCE_PATH}`));
+    fireEvent.click(
+      screen.getByLabelText('Queue FBX/SM_Bld_Wall_L_Curve_02.fbx')
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }));
+    expect(screen.getByText(/Queue: 2 piece.*2 configured/)).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: `Batch piece ${FIXTURE_SOURCE_PATH}` })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`${FIXTURE_OBJECT_NAME} · slot 0`),
+      })
+    );
+    fireEvent.change(screen.getByLabelText('Base color image'), {
+      target: { value: 'Texture/Clay_Texture_01.tga' },
+    });
+    expect(screen.getByText(/Queue: 2 piece.*1 configured/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }));
+    expect(screen.getByLabelText('Editor source')).toHaveValue('1');
+    expect(screen.getByText(/Queue: 2 piece.*2 configured/)).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: `Batch piece ${FIXTURE_SOURCE_PATH}` })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`${FIXTURE_OBJECT_NAME} · slot 0`),
+      })
+    );
+    expect(screen.getByLabelText('Base color image')).toHaveValue(
+      'Texture/Clay_Texture_01.tga'
+    );
+  });
+
   it('defers a piece, exports the batch, restores it via import and extracts configured-only rows', async () => {
     vi.stubGlobal(
       'fetch',
