@@ -317,6 +317,7 @@ describe('App main-menu World Builder', () => {
       screen.getByRole('heading', { name: 'World Builder View' })
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
     expect(screen.getByText('Home View')).toBeTruthy();
   });
 
