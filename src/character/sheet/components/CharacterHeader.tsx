@@ -1,12 +1,13 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  Class,
-  Race,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { getClassDisplayName } from '../../../utils/displayNames';
 
 interface CharacterHeaderProps {
   character: Character;
+  /** Enter the level-up screen. Absent where levelling is not offered. */
+  onLevelUp?: () => void;
 }
 
 // Simple read-only HP display component
@@ -55,27 +56,24 @@ function getRaceDisplayName(raceEnum: Race): string {
   return raceNames[raceEnum] || 'Unknown Race';
 }
 
-// Helper to convert Class enum to display name
-function getClassDisplayName(classEnum: Class): string {
-  const classNames: Record<Class, string> = {
-    [Class.UNSPECIFIED]: 'Unknown',
-    [Class.BARBARIAN]: 'Barbarian',
-    [Class.BARD]: 'Bard',
-    [Class.CLERIC]: 'Cleric',
-    [Class.DRUID]: 'Druid',
-    [Class.FIGHTER]: 'Fighter',
-    [Class.MONK]: 'Monk',
-    [Class.PALADIN]: 'Paladin',
-    [Class.RANGER]: 'Ranger',
-    [Class.ROGUE]: 'Rogue',
-    [Class.SORCERER]: 'Sorcerer',
-    [Class.WARLOCK]: 'Warlock',
-    [Class.WIZARD]: 'Wizard',
-  };
-  return classNames[classEnum] || 'Unknown Class';
-}
+export function CharacterHeader({
+  character,
+  onLevelUp,
+}: CharacterHeaderProps) {
+  // THE GAP IS THE SIGNAL. Entitlement is what the character MAY take, derived
+  // by the API from its experience total; the record says what it HAS taken.
+  // The difference is the whole "level up available" state — no flag, no
+  // stored field, nothing to keep in sync — so a character that is entitled
+  // and keeps playing without levelling is simply one whose gap is still open.
+  const levelUpAvailable = character.entitledLevel > character.level;
+  // NAME THE LEVEL THE SCREEN OFFERS, NOT THE ONE ENTITLEMENT REACHES. The
+  // screen takes one level at a time — GetNextLevel returns "the class level
+  // the character would take, one above its current level" — while
+  // entitlement can run several ahead, because R4.10 makes the gap the signal
+  // and an eligible character may keep playing without levelling. The two
+  // agree only while the gap is exactly one.
+  const nextLevel = character.level + 1;
 
-export function CharacterHeader({ character }: CharacterHeaderProps) {
   return (
     <Card
       rarity={
@@ -133,8 +131,21 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
             <div
               className="text-2xl font-bold"
               style={{ color: 'var(--text-primary)' }}
+              data-testid="experience-readout"
             >
               {character.experiencePoints || 0}
+              {/* A next threshold of 0 means there is no next level, because
+                  the character is at the top of the table — not that the next
+                  level is free — so there is nothing to show it against. */}
+              {character.nextLevelThreshold > 0 && (
+                <span
+                  className="text-lg"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {' / '}
+                  {character.nextLevelThreshold}
+                </span>
+              )}
             </div>
             <div className="text-sm" style={{ color: 'var(--text-subtle)' }}>
               Experience
@@ -142,6 +153,18 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
           </div>
         </div>
       </div>
+
+      {levelUpAvailable && onLevelUp && (
+        <div className="mt-4 flex justify-end">
+          <Button
+            data-testid="level-up-prompt"
+            variant="commit"
+            onClick={onLevelUp}
+          >
+            Level Up to {nextLevel}
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

@@ -7,6 +7,8 @@ import type {
   CreateDraftRequest,
   DeleteDraftRequest,
   FinalizeDraftRequest,
+  GetNextLevelResponse,
+  LevelUpRequest,
   RaceInfo,
   RollAbilityScoresRequest,
   RollAbilityScoresResponse,
@@ -23,6 +25,7 @@ import {
   DeleteCharacterRequestSchema,
   GetCharacterRequestSchema,
   GetDraftRequestSchema,
+  GetNextLevelRequestSchema,
   ListBackgroundsRequestSchema,
   ListCharactersRequestSchema,
   ListClassesRequestSchema,
@@ -766,4 +769,83 @@ export function useUpdateDraftAppearance() {
   );
 
   return { updateAppearance, loading, error };
+}
+
+/**
+ * The level this character would take next.
+ *
+ * READ-ONLY, AND THE SCREEN'S ONLY SOURCE. The response carries the level, the
+ * class, the choices that level requires, the features it grants and the hit
+ * die — everything a level-up screen needs to be either a form or a
+ * confirmation. Nothing here writes experience: the design's R4.12 puts
+ * experience read-only on the wire and no RPC grants it.
+ */
+export function useGetNextLevel(characterId: string) {
+  const [state, setState] = useState<AsyncState<GetNextLevelResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const fetchNextLevel = useCallback(async () => {
+    if (!characterId) {
+      setState({
+        data: null,
+        loading: false,
+        error: new Error('Character ID is required'),
+      });
+      return;
+    }
+
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const request = create(GetNextLevelRequestSchema, { characterId });
+      const response = await characterClient.getNextLevel(request);
+      setState({ data: response, loading: false, error: null });
+    } catch (err) {
+      setState({
+        data: null,
+        loading: false,
+        error:
+          err instanceof Error ? err : new Error('Failed to load next level'),
+      });
+    }
+  }, [characterId]);
+
+  useEffect(() => {
+    void fetchNextLevel();
+  }, [fetchNextLevel]);
+
+  return { ...state, refetch: fetchNextLevel };
+}
+
+/**
+ * Take the character's next level.
+ *
+ * ONE ATOMIC CALL AND NO DRAFT. The screen holds its own state until it sends
+ * this; the engine validates the selections and refuses a level the
+ * character's experience does not entitle it to, so the client pre-validates
+ * nothing.
+ */
+export function useLevelUp() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const levelUp = useCallback(async (request: LevelUpRequest) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await characterClient.levelUp(request);
+      return response;
+    } catch (err) {
+      const error =
+        err instanceof Error ? err : new Error('Failed to take the level');
+      setError(error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { levelUp, loading, error };
 }

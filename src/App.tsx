@@ -12,6 +12,7 @@ import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
+import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
@@ -327,6 +328,20 @@ function AppContent() {
     setCurrentView('character-sheet');
   };
 
+  // The level-up screen is its own view rather than a modal on the sheet: it
+  // holds its own state for one atomic call and depends on no draft, so it has
+  // nothing to share with the sheet but the character id.
+  const handleLevelUp = () => {
+    setCurrentView('level-up');
+  };
+
+  // Returning from a taken level remounts the sheet, so GetCharacter runs
+  // again and the sheet shows the levelled character rather than the cached
+  // one it was entered from.
+  const handleLeaveLevelUp = () => {
+    setCurrentView('character-sheet');
+  };
+
   const handleBackToHome = () => {
     setCurrentCharacterId(null);
     setLobbyCharacterId(null);
@@ -554,6 +569,13 @@ function AppContent() {
           <CharacterSheet
             characterId={currentCharacterId}
             onBack={handleBackToHome}
+            onLevelUp={handleLevelUp}
+          />
+        ) : currentView === 'level-up' && currentCharacterId ? (
+          <LevelUpView
+            characterId={currentCharacterId}
+            onCancel={handleLeaveLevelUp}
+            onComplete={handleLeaveLevelUp}
           />
         ) : draft.loading ? (
           <div className="flex items-center justify-center h-screen">
