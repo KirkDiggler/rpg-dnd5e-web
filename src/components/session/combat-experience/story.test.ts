@@ -15,6 +15,7 @@ import {
   EventSchema,
   FightEndedSchema,
   HealingAppliedSchema,
+  IntimidatedSchema,
   MoveImposedSchema,
   RollCalculationSchema,
   RollComponentSchema,
@@ -31,6 +32,11 @@ import {
   ReactionRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
+import {
+  emptyPresentation,
+  reduceCombatPresentation,
+  selectVisibleStory,
+} from './presentation';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 import {
   buildCombatAttackOutcome,
@@ -988,4 +994,144 @@ describe('attack roll source breakdown', () => {
       );
     }
   );
+});
+
+// The first shenanigan (rpg-project#454). The `intimidated` beat is the ONLY
+// account of the roll — IntimidateResponse carries no beaten, total or dc —
+// so this entry is where the actor reads their own die, like every other
+// witness, and both outcomes get one.
+describe('the Story log on a threat (rpg-project#454)', () => {
+  function threatBeat(
+    seq: bigint,
+    total: number,
+    dc: number,
+    beaten: boolean
+  ): CombatStoryFact {
+    return visible(
+      create(EventSchema, {
+        session: 'three-minds',
+        seq,
+        kind: EventKind.INTIMIDATED,
+        body: {
+          case: 'intimidated',
+          value: create(IntimidatedSchema, {
+            actor: 'aldric',
+            target: 'skeleton-guard',
+            dc,
+            total,
+            beaten,
+          }),
+        },
+      })
+    );
+  }
+
+  it('a beaten threat is one entry carrying both numbers', () => {
+    const [entry] = buildCombatStory([threatBeat(11n, 14, 9, true)], context);
+    expect(entry.eyebrow).toBe('Threat');
+    expect(entry.headline).toBe('Aldric leans on Skeleton Guard');
+    expect(entry.detail).toContain('14 against DC 9');
+    expect(entry.detail).toContain('Cowed');
+    expect(entry.tone).toBe('success');
+  });
+
+  it('a missed threat gets an entry too — the miss is as much fiction as the hit', () => {
+    const [entry] = buildCombatStory([threatBeat(12n, 4, 9, false)], context);
+    expect(entry.eyebrow).toBe('Threat');
+    expect(entry.detail).toContain('4 against DC 9');
+    expect(entry.detail).toContain('Unmoved');
+    expect(entry.tone).toBe('neutral');
+  });
+
+  it('the reading is COPIED, never derived from total against dc', () => {
+    // A 20 the server says did not land reads as Unmoved. Deriving it here
+    // would make every client wrong at once the day a rule changes what
+    // beating a DC means — the law Saved.succeeded already keeps.
+    const [entry] = buildCombatStory([threatBeat(13n, 20, 9, false)], context);
+    expect(entry.detail).toContain('Unmoved');
+    expect(entry.tone).toBe('neutral');
+  });
+
+  it('says nothing about what the creature does next', () => {
+    // The consequence is the threatened creature's mind's to decide and
+    // arrives as its next turn. A clause here promising flight would make
+    // the outcome the verb's instead of the mind's.
+    const [entry] = buildCombatStory([threatBeat(14n, 14, 9, true)], context);
+    const line = `${entry.eyebrow} ${entry.headline} ${entry.detail}`;
+    expect(line).not.toMatch(/flee|flees|runs|charge|charges|frightened/i);
+  });
+});
+
+/**
+ * THE GAP THE BUILDER TESTS ABOVE CANNOT SEE, closed ahead of the walk.
+ *
+ * `buildCombatStory` is called directly by every test in this file, which
+ * skips the reducer entirely. In the live stream an event first has to be
+ * ACCEPTED: a body with no row in `EXPECTED_OTHER_KIND` is discarded by
+ * `relevantOtherEvent` as a "typed event kind/body mismatch" and is gone
+ * before any story arm runs. The tests above pass in that world; only this
+ * one does not. It is the same gap slice two fell into with `saved`, and the
+ * one `concentrationEnded` keeps its own copy of.
+ */
+describe('a threat surviving the reducer (rpg-project#454)', () => {
+  function configured() {
+    return reduceCombatPresentation(emptyPresentation(), {
+      type: 'configure',
+      session: 'three-minds',
+      viewerMember: 'aldric',
+      memberNames: { aldric: 'Aldric', 'skeleton-guard': 'Skeleton Guard' },
+      rollerRoles: { aldric: 'player', 'skeleton-guard': 'monster' },
+    });
+  }
+
+  function threatEvent(beaten: boolean) {
+    return create(EventSchema, {
+      session: 'three-minds',
+      seq: 11n,
+      at: 20n,
+      recipient: 'aldric',
+      kind: EventKind.INTIMIDATED,
+      body: {
+        case: 'intimidated',
+        value: create(IntimidatedSchema, {
+          actor: 'aldric',
+          target: 'skeleton-guard',
+          dc: 9,
+          total: beaten ? 14 : 4,
+          beaten,
+        }),
+      },
+    });
+  }
+
+  it('reaches the log through the real stream path, not just the builder', () => {
+    const state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: threatEvent(true),
+      metadata: { source: 'live' },
+    });
+
+    const story = selectVisibleStory(state);
+
+    expect(story).toHaveLength(1);
+    expect(story[0]?.headline).toBe('Aldric leans on Skeleton Guard');
+    expect(story[0]?.detail).toContain('14 against DC 9');
+    expect(story[0]?.detail).toContain('Cowed');
+  });
+
+  it('a missed threat survives it too — the actor has no other account', () => {
+    // The one that would hurt most to lose. IntimidateResponse carries no
+    // verdict, so a threat discarded here leaves the person who threw the
+    // die with nothing at all to read.
+    const state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: threatEvent(false),
+      metadata: { source: 'live' },
+    });
+
+    const story = selectVisibleStory(state);
+
+    expect(story).toHaveLength(1);
+    expect(story[0]?.detail).toContain('Unmoved');
+  });
 });

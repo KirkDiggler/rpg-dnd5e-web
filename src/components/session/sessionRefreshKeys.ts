@@ -160,6 +160,25 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
+    // A THREAT LANDED, OR MISSED (rpg-project#454). SCOPED TO THE ACTOR, the
+    // way `moved` is and unlike every flat row here, because the only thing
+    // this beat changes is the threatener's own turn: it costs them the
+    // standard action, so their card and what they may still declare both
+    // moved, and nobody else at the table spent anything.
+    //
+    // `view` IS NOT HERE FOR ANYBODY. Nobody stepped and nobody's sight
+    // changed — a threat reaches exactly the people who could already see
+    // the actor, which is what made them the audience.
+    //
+    // NOR IS THERE A ROW FOR THE CONSEQUENCE, and that is the design rather
+    // than an omission. A beaten threat lands a deed on the witnesses, and
+    // what it is worth is the threatened creature's mind's to decide; that
+    // arrives as its next turn, on that turn's own beats. There is nothing
+    // to re-read here because nothing has been decided yet.
+    case 'intimidated':
+      return event.body.value.actor === member
+        ? ['characterData', 'afford']
+        : [];
     case 'looted':
     case 'activated':
     case 'exited':

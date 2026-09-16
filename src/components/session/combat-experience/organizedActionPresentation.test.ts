@@ -61,3 +61,44 @@ describe('organizeDeclarations', () => {
     ).toBe(Verb.MOVE);
   });
 });
+
+// The first shenanigan (rpg-project#454). This filter decides what the dock
+// DRAWS, so an unlisted verb is not a dead button — it is no button at all,
+// dropped before anything downstream ever sees it. The flow test one file
+// over drives the hook directly and cannot catch that.
+describe('organizeDeclarations — a threat is an ordinary priced row', () => {
+  it('draws Intimidate in the actions section, beside Attack', () => {
+    const organized = organizeDeclarations(
+      [offer('attack', Verb.ATTACK), offer('intimidate', Verb.INTIMIDATE)],
+      undefined
+    );
+    expect(organized.sections.actions.map((item) => item.id)).toEqual([
+      'attack',
+      'intimidate',
+    ]);
+  });
+
+  it('is NOT filed under spells or abilities — it is neither', () => {
+    const organized = organizeDeclarations(
+      [offer('intimidate', Verb.INTIMIDATE)],
+      undefined
+    );
+    expect(organized.sections.spells).toEqual([]);
+    expect(organized.sections.abilities).toEqual([]);
+  });
+
+  it('is resolvable at dispatch time, and a spent one is refused like any other', () => {
+    expect(
+      currentExecutableDeclaration(
+        [offer('intimidate', Verb.INTIMIDATE)],
+        'intimidate'
+      )?.id
+    ).toBe('intimidate');
+    expect(
+      currentExecutableDeclaration(
+        [offer('intimidate', Verb.INTIMIDATE, false)],
+        'intimidate'
+      )
+    ).toBeUndefined();
+  });
+});
