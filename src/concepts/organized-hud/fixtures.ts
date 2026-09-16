@@ -157,8 +157,8 @@ export const ORGANIZED_HUD_FIXTURES = Object.freeze([
  * not infer cantrips, level, or legality from generated facts.
  */
 export const ORGANIZED_HUD_PRESENTATION = {
-  // Stable two-offer capacity at phone widths. The omitted spell shortcuts
-  // remain in Spells, and the extra weapon remains in All actions.
+  // Basic fixture shortcuts. Each profile adds its common actions; all frames
+  // use the same candidates and measured width determines group overflow.
   quickDeclarationIds: ['offer:aldric:move', 'offer:aldric:longsword:action'],
   sectionByDeclarationId: {
     mockery: 'spells',
@@ -194,12 +194,16 @@ export const ORGANIZED_HUD_PROFILES = [
         'fire-bolt',
         'guidance',
       ],
+      quickGroupByDeclarationId: {
+        mockery: 'cantrips',
+        'fire-bolt': 'cantrips',
+        guidance: 'cantrips',
+      },
       sectionByDeclarationId: {
         ...ORGANIZED_HUD_PRESENTATION.sectionByDeclarationId,
         ...generalSections,
       },
     },
-    phoneQuickDeclarationIds: ['offer:aldric:move', 'mockery'],
     fixtures: ORGANIZED_HUD_FIXTURES.map((fixture) => ({
       ...fixture,
       viewerName: 'Caster fixture',
@@ -226,10 +230,13 @@ export const ORGANIZED_HUD_PROFILES = [
     id: 'martial',
     label: 'Martial',
     presentation: {
-      quickDeclarationIds: ORGANIZED_HUD_PRESENTATION.quickDeclarationIds,
+      quickDeclarationIds: [
+        ...ORGANIZED_HUD_PRESENTATION.quickDeclarationIds,
+        'second-wind',
+      ],
+      quickGroupByDeclarationId: { 'second-wind': 'features' },
       sectionByDeclarationId: generalSections,
     },
-    phoneQuickDeclarationIds: ORGANIZED_HUD_PRESENTATION.quickDeclarationIds,
     fixtures: ORGANIZED_HUD_FIXTURES.map((fixture) => ({
       ...fixture,
       label:

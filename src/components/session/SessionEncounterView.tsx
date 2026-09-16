@@ -82,6 +82,7 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { liveActionPresentation } from './combat-experience/liveActionPresentation';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import {
   reactionWindowDeclaration,
@@ -238,6 +239,7 @@ function SessionEncounterScope({
   const { trade, loading: tradeLoading } = useSessionTrade();
   const { unpack, loading: unpacking } = useSessionUnpack();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -475,8 +477,10 @@ function SessionEncounterScope({
   }, [roster]);
   const experienceClock =
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
-  const coherentDeclarations =
-    experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
+  const coherentDeclarations = useMemo(
+    () => (experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations),
+    [experienceClock, affordDeclarations]
+  );
   // WHO THE CANVAS RINGS WHILE THE FIGHT IS FROZEN. Read from the viewer's
   // OWN declarations and nowhere else: a member who was not offered the
   // window has nothing to answer and sees no ring, which is the same rule
@@ -1627,6 +1631,22 @@ function SessionEncounterScope({
       />
     ) : null;
 
+  const actionPresentation = useMemo(
+    () =>
+      liveActionPresentation({
+        declarations: coherentDeclarations,
+        knownCantrips: ownerCharacter?.knownCantrips,
+        knownSpells: ownerCharacter?.knownSpells,
+        features: visibleCharacterData?.features,
+      }),
+    [
+      coherentDeclarations,
+      ownerCharacter?.knownCantrips,
+      ownerCharacter?.knownSpells,
+      visibleCharacterData?.features,
+    ]
+  );
+
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -1646,10 +1666,36 @@ function SessionEncounterScope({
         <div
           ref={encounterContentRef}
           data-testid="session-encounter-content"
-          style={{ position: 'absolute', inset: 0 }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            container: 'organized-hud / size',
+          }}
         >
           <CombatExperience
             layout="fill-parent"
+            actionPresentation={actionPresentation}
+            navigationControls={
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                Back
+              </Button>
+            }
+            sceneNotice={
+              <>
+                {walking && <span>Walking…</span>}
+                {moveError && !walking && (
+                  <span style={{ color: 'var(--color-error, #f87171)' }}>
+                    {moveError}
+                  </span>
+                )}
+                {doorNotice && <span>{doorNotice}</span>}
+                {searchNotice && <span>{searchNotice}</span>}
+                {holdingNotice && <span>{holdingNotice}</span>}
+                {vendorNotice && <span>{vendorNotice}</span>}
+                {unpackNotice && <span>{unpackNotice}</span>}
+              </>
+            }
+            onCenterView={() => setFocusRequest((value) => value + 1)}
             viewerMember={member}
             viewerName={characterName}
             viewerClassRefId={classRefId}
@@ -1697,6 +1743,10 @@ function SessionEncounterScope({
                     nothing until a declared faction is on the roster. */}
                 <FactionLegend roster={roster} />
                 <SessionCanvas
+                  touchPanEnabled
+                  touchPinchEnabled
+                  touchRotateEnabled
+                  focusRequest={focusRequest}
                   // The dungeon's own starting facing, read from the ATLAS
                   // and nowhere else (rpg-project#374: rpg-api reads it from
                   // the atlas mirror only, and there is no second source
@@ -1797,33 +1847,6 @@ function SessionEncounterScope({
                 }
               : { diceWitnessRole: 'spectator' as const })}
           />
-
-          <div
-            style={{
-              position: 'absolute',
-              zIndex: 20,
-              top: 12,
-              left: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              Back
-            </Button>
-            {walking && <span>Walking…</span>}
-            {moveError && !walking && (
-              <span style={{ color: 'var(--color-error, #f87171)' }}>
-                {moveError}
-              </span>
-            )}
-            {doorNotice && <span>{doorNotice}</span>}
-            {searchNotice && <span>{searchNotice}</span>}
-            {holdingNotice && <span>{holdingNotice}</span>}
-            {vendorNotice && <span>{vendorNotice}</span>}
-            {unpackNotice && <span>{unpackNotice}</span>}
-          </div>
 
           <div
             style={{
