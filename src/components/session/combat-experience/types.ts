@@ -12,6 +12,7 @@ import type {
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
+import type { OrganizedActionPresentation } from './organizedActionPresentation';
 
 /** Local interaction state. Provider facts remain in generated messages. */
 export interface CombatExperiencePresentationState {
@@ -59,12 +60,8 @@ export type CombatExperienceLogMode = 'story' | 'debug';
 export type CombatExperienceLayout = 'review-frame' | 'fill-parent';
 
 /** Explicit opt-in presentation only; production defaults to the existing dock. */
-export interface CombatExperienceActionPresentation {
+export interface CombatExperienceActionPresentation extends OrganizedActionPresentation {
   mode: 'organized-hud';
-  quickDeclarationIds?: readonly string[];
-  sectionByDeclarationId?: Readonly<
-    Record<string, 'spells' | 'abilities' | 'items' | 'actions'>
-  >;
 }
 
 export type CombatExperienceStreamState =
@@ -186,7 +183,7 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
-  /** Opt-in organizer configuration. Omitted preserves the live dock exactly. */
+  /** Opt-in organizer configuration. Omitted preserves the legacy dock. */
   actionPresentation?: CombatExperienceActionPresentation;
   /** Accepted local Death Save is awaiting an in-bounds settlement. */
   endTurnBlocked?: boolean;
@@ -211,6 +208,10 @@ interface CombatExperienceBaseProps {
   /** Provider token for that terminal; prevents stale release of a new window. */
   localWorldDieSettledPresentationId?: string;
   location: { name: string; area: string };
+  /** Caller-owned navigation, laid out beside the location rather than over it. */
+  navigationControls?: ReactNode;
+  /** Readable operation feedback; distinct from action/roll pacing authority. */
+  sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;

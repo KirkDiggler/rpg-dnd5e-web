@@ -49,7 +49,10 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { CharacterDataSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  CharacterDataSchema,
+  FeatureViewSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -90,7 +93,11 @@ const hoisted = vi.hoisted(() => ({
   getCharacterFn: vi.fn(),
   getCharacterHookFn: vi.fn(),
   characterResult: {
-    data: null as { appearance?: { hair?: HairCustomization } } | null,
+    data: null as {
+      appearance?: { hair?: HairCustomization };
+      knownCantrips?: string[];
+      knownSpells?: string[];
+    } | null,
     loading: false,
     error: null as Error | null,
     refetch: vi.fn(),
@@ -650,6 +657,179 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText(/loading the tomb/i);
   });
 
+  it('keeps overflow measurement attached across unrelated parent renders', async () => {
+    readyTurn();
+    const view = renderView();
+    await screen.findByRole('group', { name: 'Quick actions' });
+    await screen.findByRole('button', { name: 'Equipment' });
+    const listen = vi.spyOn(window, 'addEventListener');
+    try {
+      for (let i = 0; i < 2; i++) {
+        view.rerender(
+          <SessionEncounterView
+            sessionId="enc-1"
+            characterId="char-1"
+            playerId="player-1"
+            onBack={() => {}}
+          />
+        );
+      }
+      expect(
+        listen.mock.calls.filter(([event]) => event === 'resize')
+      ).toHaveLength(0);
+    } finally {
+      listen.mockRestore();
+    }
+  });
+
+  it('organizes live declarations without turning fixture spell hints into rules', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: [],
+      knownSpells: ['dnd5e:spells:thunderwave', 'cantrip-looking-ref'],
+    };
+    const spell = cellCastDeclaration('opaque.cast.1');
+    const otherSpell = create(DeclarationSchema, {
+      ...cellCastDeclaration('opaque.cast.2'),
+      spell: create(SpellRefSchema, {
+        ref: 'cantrip-looking-ref',
+        name: 'Free-looking spell',
+      }),
+    });
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      spell,
+      otherSpell,
+      endTurnDeclaration(),
+    ]);
+    renderView();
+    const quick = await screen.findByRole('group', { name: 'Quick actions' });
+    expect(
+      within(quick).getByRole('button', { name: /longsword/i })
+    ).toBeTruthy();
+    expect(within(quick).getByRole('button', { name: /move/i })).toBeTruthy();
+    expect(
+      within(quick).queryByRole('button', { name: /thunderwave|free-looking/i })
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Spells 2/ }));
+    const spells = screen.getByRole('group', { name: 'Spells offers' });
+    fireEvent.click(
+      within(spells).getByRole('button', { name: /thunderwave/i })
+    );
+    expect(screen.getByText('Pick a cell to aim toward')).toBeTruthy();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    await act(async () =>
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 })
+    );
+    expect(hoisted.castFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        declarationId: 'opaque.cast.1',
+        cell: { x: 1, y: 0 },
+      })
+    );
+  });
+
+  it('keeps owned cantrips and features visible when their current offers are unavailable', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: ['dnd5e:spells:vicious-mockery'],
+      knownSpells: [],
+    };
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        features: [
+          create(FeatureViewSchema, {
+            name: 'Bardic Inspiration',
+            ref: {
+              module: 'dnd5e',
+              type: 'features',
+              id: 'bardic_inspiration',
+            },
+          }),
+        ],
+      }),
+    });
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      endTurnDeclaration(),
+      create(DeclarationSchema, {
+        id: 'cantrip',
+        verb: Verb.CAST,
+        spell: { ref: 'dnd5e:spells:vicious-mockery', name: 'Vicious Mockery' },
+        available: false,
+        why: { text: 'no target in reach' },
+      }),
+      create(DeclarationSchema, {
+        id: 'inspiration',
+        verb: Verb.ACTIVATE,
+        ability: {
+          ref: 'dnd5e:features:bardic_inspiration',
+          name: 'Bardic Inspiration',
+        },
+        available: false,
+        why: { text: 'no ally within reach' },
+      }),
+    ]);
+    renderView();
+    const quick = await screen.findByRole('group', { name: 'Quick actions' });
+    expect(
+      within(quick)
+        .getByRole('button', { name: /Vicious Mockery/ })
+        .hasAttribute('disabled')
+    ).toBe(true);
+    const inspiration = within(quick).getByRole('button', {
+      name: /Bardic Inspiration/,
+    });
+    expect(inspiration.hasAttribute('disabled')).toBe(true);
+    expect(inspiration.getAttribute('aria-label')).toContain(
+      'no ally within reach'
+    );
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('enables the accepted touch camera and centers without losing a live armed attack', async () => {
+    readyTurn();
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    const before = hoisted.lastCanvasProps.current?.focusRequest ?? 0;
+    fireEvent.click(screen.getByRole('button', { name: 'Center on me' }));
+    expect(hoisted.lastCanvasProps.current).toMatchObject({
+      touchPanEnabled: true,
+      touchPinchEnabled: true,
+      touchRotateEnabled: true,
+      focusRequest: before + 1,
+      attackableTargets: ['skeleton-1'],
+    });
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    await act(async () =>
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1')
+    );
+    expect(hoisted.attackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        declarationId: 'v1.attack.longsword',
+        target: 'skeleton-1',
+      })
+    );
+  });
+
+  it('keeps navigation in the HUD and opens the real equipment surface', async () => {
+    readyTurn();
+    const onBack = vi.fn();
+    renderView({ onBack });
+    const navigation = await screen.findByRole('navigation', {
+      name: 'Session navigation',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Equipment$/ }));
+    const equipment = await screen.findByRole('region', {
+      name: /^Equipment —/,
+    });
+    expect(within(equipment).getByText(/1d8 slashing/)).toBeTruthy();
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Back' }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(hoisted.equipItemFn).not.toHaveBeenCalled();
+  });
+
   it('explicitly opts the production portal into the fill-parent combat layout', async () => {
     readyScene();
     renderView();
@@ -1117,9 +1297,7 @@ describe('SessionEncounterView production combat integration', () => {
     const move = await screen.findByRole('button', { name: /move/i });
 
     fireEvent.click(move);
-    fireEvent.click(
-      screen.getByRole('button', { name: /cancel selected action/i })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^cancel action$/i }));
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
@@ -1188,9 +1366,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
     expect(hoisted.moveFn).not.toHaveBeenCalled();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /cancel selected action/i })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^cancel action$/i }));
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
@@ -1284,7 +1460,10 @@ describe('SessionEncounterView production combat integration', () => {
         clock: ClockKind.TURN,
         declarations: [
           attackDeclaration(),
-          moveDeclaration('v2.move'),
+          create(DeclarationSchema, {
+            ...moveDeclaration('v2.move'),
+            remaining: 25,
+          }),
           endTurnDeclaration(),
         ],
       });
@@ -1308,7 +1487,9 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBe('true')
     );
     const refreshedMove = screen.getByRole('button', { name: /move/i });
-    expect(refreshedMove.getAttribute('aria-describedby')).toContain('v2.move');
+    // The organizer exposes the refreshed budget directly, not a legacy
+    // tooltip DOM id. The still-pressed state above also pins selection remapping.
+    expect(refreshedMove.textContent).toContain('25 ft');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
     expect(
       hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route

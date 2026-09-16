@@ -242,10 +242,8 @@ export function OrganizedHudConcept() {
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,
-            quickDeclarationIds:
-              frame === 'phone'
-                ? profile.phoneQuickDeclarationIds
-                : profile.presentation.quickDeclarationIds,
+            // The same offers feed every frame; measured space owns overflow.
+            quickDeclarationIds: profile.presentation.quickDeclarationIds,
           }}
           viewerMember={fixture.viewerMember}
           viewerName={fixture.viewerName}

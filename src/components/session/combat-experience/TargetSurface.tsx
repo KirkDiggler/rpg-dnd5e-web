@@ -20,6 +20,7 @@ export interface TargetSurfaceProps {
   changedOptionNotice?: string | null;
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
+  navigationControls?: React.ReactNode;
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
@@ -37,6 +38,7 @@ export function TargetSurface({
   changedOptionNotice,
   memberNames,
   location,
+  navigationControls,
   renderMap,
   onTargetClick,
   onConfirmTargets,
@@ -94,9 +96,16 @@ export function TargetSurface({
     <>
       {renderMap({ attackableTargets: availableTargets, onTargetClick })}
       <div className={styles.mapVignette} aria-hidden="true" />
-      <div className={styles.roomLabel}>
-        <span>{location.name}</span>
-        <small>{location.area}</small>
+      <div
+        className={`${styles.roomLabel} ${navigationControls ? styles.roomLabelWithNavigation : ''}`}
+      >
+        {navigationControls && (
+          <nav aria-label="Session navigation">{navigationControls}</nav>
+        )}
+        <div className={styles.locationText}>
+          <span title={location.name}>{location.name}</span>
+          <small>{location.area}</small>
+        </div>
       </div>
       {pacingNotice && (
         <div className={styles.contextPrompt} data-phase="pacing">
