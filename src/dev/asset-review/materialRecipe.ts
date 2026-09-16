@@ -212,6 +212,60 @@ function slot(value: unknown, label: string): number {
   return value;
 }
 
+/** Strict parse of one editable material definition (v2 shape). */
+export function parseEditingProfileDefinition(
+  value: unknown
+): EditingProfileDefinition {
+  const def = object(
+    value,
+    ['label', 'baseColor', 'normal', 'emissive', 'wrap'],
+    'definition'
+  );
+  const baseColor = object(def.baseColor, ['image'], 'definition baseColor');
+  let normal: EditingProfileDefinition['normal'] = null;
+  if (def.normal !== null) {
+    const row2 = object(
+      def.normal,
+      ['image', 'strength'],
+      'definition normal channel'
+    );
+    if (row2.image === null)
+      throw new Error('A present normal channel must name an image');
+    normal = {
+      image: relative(row2.image, 'definition normal image'),
+      strength: strength(row2.strength, 'definition normal strength'),
+    };
+  }
+  let emissive: EditingProfileDefinition['emissive'] = null;
+  if (def.emissive !== null) {
+    const row3 = object(
+      def.emissive,
+      ['image', 'color', 'strength'],
+      'definition emissive channel'
+    );
+    emissive = {
+      image:
+        row3.image === null
+          ? null
+          : relative(row3.image, 'definition emissive image'),
+      color: emissiveColor(row3.color, 'definition emissive color'),
+      strength: strength(row3.strength, 'definition emissive strength'),
+    };
+  }
+  if (def.wrap !== 'repeat' && def.wrap !== 'clamp')
+    throw new Error('definition wrap must be repeat or clamp');
+  return {
+    label: text(def.label, 'definition label'),
+    baseColor:
+      baseColor.image === null
+        ? null
+        : relative(baseColor.image, 'definition baseColor image'),
+    normal,
+    emissive,
+    wrap: def.wrap,
+  };
+}
+
 export function parseEditingProfile(value: unknown): EditingProfile {
   if (!isRecord(value)) throw new Error('Invalid editing profile fields');
   const row = object(
@@ -234,54 +288,7 @@ export function parseEditingProfile(value: unknown): EditingProfile {
   const definitions: Record<string, EditingProfileDefinition> = {};
   for (const [id, raw] of Object.entries(row.definitions)) {
     text(id, 'definition ID', true);
-    const def = object(
-      raw,
-      ['label', 'baseColor', 'normal', 'emissive', 'wrap'],
-      'definition'
-    );
-    const baseColor = object(def.baseColor, ['image'], 'definition baseColor');
-    let normal: EditingProfileDefinition['normal'] = null;
-    if (def.normal !== null) {
-      const row2 = object(
-        def.normal,
-        ['image', 'strength'],
-        'definition normal channel'
-      );
-      if (row2.image === null)
-        throw new Error('A present normal channel must name an image');
-      normal = {
-        image: relative(row2.image, 'definition normal image'),
-        strength: strength(row2.strength, 'definition normal strength'),
-      };
-    }
-    let emissive: EditingProfileDefinition['emissive'] = null;
-    if (def.emissive !== null) {
-      const row3 = object(
-        def.emissive,
-        ['image', 'color', 'strength'],
-        'definition emissive channel'
-      );
-      emissive = {
-        image:
-          row3.image === null
-            ? null
-            : relative(row3.image, 'definition emissive image'),
-        color: emissiveColor(row3.color, 'definition emissive color'),
-        strength: strength(row3.strength, 'definition emissive strength'),
-      };
-    }
-    if (def.wrap !== 'repeat' && def.wrap !== 'clamp')
-      throw new Error('definition wrap must be repeat or clamp');
-    definitions[id] = {
-      label: text(def.label, 'definition label'),
-      baseColor:
-        baseColor.image === null
-          ? null
-          : relative(baseColor.image, 'definition baseColor image'),
-      normal,
-      emissive,
-      wrap: def.wrap,
-    };
+    definitions[id] = parseEditingProfileDefinition(raw);
   }
   const assignments = object(
     row.assignments,
@@ -371,37 +378,46 @@ export function serializeEditingProfile(profile: EditingProfile): string {
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 
+/** The wire (producer-identical, sorted-key) document for one profile. */
+export function editingProfileWireDocument(profile: EditingProfile): object {
+  return editingWireDocument(profile);
+}
+
+/** The wire (producer-identical, sorted-key) object for one definition. */
+export function editingDefinitionWireDocument(
+  definition: EditingProfileDefinition
+): object {
+  // Wire format (keys alphabetical, matching the producer's sort_keys):
+  // baseColor is an object owning its image, normal/emissive keep their
+  // channel objects with explicit nulls.
+  return {
+    baseColor: { image: definition.baseColor },
+    emissive:
+      definition.emissive === null
+        ? null
+        : {
+            image: definition.emissive.image,
+            color: definition.emissive.color,
+            strength: definition.emissive.strength,
+          },
+    label: definition.label,
+    normal:
+      definition.normal === null
+        ? null
+        : {
+            image: definition.normal.image,
+            strength: definition.normal.strength,
+          },
+    wrap: definition.wrap,
+  };
+}
+
 function editingWireDocument(profile: EditingProfile): object {
   const sortedDefinitions = Object.keys(profile.definitions)
     .sort((a, b) => a.localeCompare(b))
     .map((id) => {
       const definition = profile.definitions[id]!;
-      // Wire format (keys alphabetical, matching the producer's sort_keys):
-      // baseColor is an object owning its image, normal/emissive keep their
-      // channel objects with explicit nulls.
-      return [
-        id,
-        {
-          baseColor: { image: definition.baseColor },
-          emissive:
-            definition.emissive === null
-              ? null
-              : {
-                  image: definition.emissive.image,
-                  color: definition.emissive.color,
-                  strength: definition.emissive.strength,
-                },
-          label: definition.label,
-          normal:
-            definition.normal === null
-              ? null
-              : {
-                  image: definition.normal.image,
-                  strength: definition.normal.strength,
-                },
-          wrap: definition.wrap,
-        },
-      ] as const;
+      return [id, editingDefinitionWireDocument(definition)] as const;
     });
   const document = {
     assignments: {
@@ -1067,7 +1083,7 @@ export function resolvedSlotChannels(
   };
 }
 
-function channelsOfDefinition(
+export function channelsOfDefinition(
   definition: EditingProfileDefinition
 ): RecipeChannels {
   return {

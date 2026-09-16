@@ -226,3 +226,80 @@ export function materialEditorManifestFixture(): RawMaterialEditorManifest {
 
 export const FIXTURE_SOURCE_PATH = SOURCE_PATH;
 export const FIXTURE_OBJECT_NAME = OBJECT_NAME;
+
+/**
+ * Three real related sources (the batch demo's curved walls) sharing the pack
+ * catalog: source one keeps the prepared recipe above, sources two and three
+ * are unassigned editor sources with two rendered slots each.
+ */
+export function multiSourceMaterialEditorManifestFixture(): RawMaterialEditorManifest {
+  const raw = materialEditorManifestFixture();
+  const sourcePaths = [
+    SOURCE_PATH,
+    'FBX/SM_Bld_Wall_L_Curve_02.fbx',
+    'FBX/SM_Bld_Wall_L_Curve_03.fbx',
+  ];
+  const sha = (n: number) => ((n + 20) % 16).toString(16).repeat(64);
+  sourcePaths.slice(1).forEach((sourcePath, index) => {
+    const objectName = `SM_Bld_Wall_L_Curve_0${index + 2}`;
+    const sourceSha = sha(index + 1);
+    raw.auditedSlots[sourcePath] = {
+      sourceSha256: sourceSha,
+      objects: {
+        [objectName]: {
+          materialIndices: [0, 1],
+          materialNames: ['Stone_01', 'Brick_Medium_01'],
+          meshDataName: 'Mesh',
+          slotCount: 2,
+          topologySha256: sha(index + 3),
+          uvSha256: sha(index + 4),
+          usedSlots: [0, 1],
+        },
+      },
+    };
+    raw.editor.sources.push({
+      sourcePath,
+      sourceSha256: sha(index + 1),
+      glb: {
+        url: `/models/synty/asset-review-editor/models/${sha(index + 1)}.glb`,
+        sha256: sha(index + 1),
+      },
+      layoutReportSha256: sha(index + 5),
+      editorReportSha256: sha(index + 6),
+      targets: [
+        {
+          objectName,
+          slot: 0,
+          materialName: `MaterialReviewSlot_${objectName}_0`,
+          faceCount: 12,
+          rendered: true,
+          target: {
+            mesh: index + 1,
+            primitive: 0,
+            material: 0,
+            materialName: `MaterialReviewSlot_${objectName}_0`,
+          },
+        },
+        {
+          objectName,
+          slot: 1,
+          materialName: `MaterialReviewSlot_${objectName}_1`,
+          faceCount: 6,
+          rendered: true,
+          target: {
+            mesh: index + 1,
+            primitive: 1,
+            material: 1,
+            materialName: `MaterialReviewSlot_${objectName}_1`,
+          },
+        },
+      ],
+    });
+    raw.sourceAudit = {
+      ...raw.sourceAudit!,
+      sourceCount: raw.sourceAudit!.sourceCount + 1,
+      verifiedCount: raw.sourceAudit!.verifiedCount + 1,
+    };
+  });
+  return raw;
+}

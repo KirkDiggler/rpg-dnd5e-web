@@ -9,6 +9,7 @@ import {
   FIXTURE_OBJECT_NAME,
   FIXTURE_SOURCE_PATH,
   materialEditorManifestFixture,
+  multiSourceMaterialEditorManifestFixture,
 } from './materialRecipe.testFixtures';
 
 const sceneLifecycle = vi.hoisted(() => ({ starts: 0 }));
@@ -94,6 +95,7 @@ function importFile(content: unknown): File {
 beforeEach(() => {
   blobs = [];
   sceneLifecycle.starts = 0;
+  localStorage.clear();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fixtureResponse()));
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
@@ -304,5 +306,194 @@ describe('material editor lab', () => {
     expect(
       screen.queryByRole('button', { name: 'Export editing profile' })
     ).not.toBeInTheDocument();
+  });
+
+  it('carries the working style forward to the next queued piece and keeps saved pieces unchanged', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => multiSourceMaterialEditorManifestFixture(),
+      })
+    );
+    await renderReadyLab();
+    // Create the batch and queue the other two curved walls.
+    fireEvent.change(screen.getByLabelText('New batch name'), {
+      target: { value: 'stone walls' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create batch' }));
+    expect(await screen.findByText(/Queue: 0 piece/)).toBeVisible();
+    fireEvent.click(screen.getByLabelText(`Queue ${FIXTURE_SOURCE_PATH}`));
+    fireEvent.click(
+      screen.getByLabelText('Queue FBX/SM_Bld_Wall_L_Curve_02.fbx')
+    );
+    fireEvent.click(
+      screen.getByLabelText('Queue FBX/SM_Bld_Wall_L_Curve_03.fbx')
+    );
+    expect(screen.getByText(/Queue: 3 piece/)).toBeVisible();
+    // Set the explicit working style (sticky defaults for unconfigured pieces).
+    fireEvent.change(screen.getByLabelText('Working style base color image'), {
+      target: { value: 'Texture/Stone_Texture_01.png' },
+    });
+    // Piece A: an explicit per-slot choice distinct from the style.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`${FIXTURE_OBJECT_NAME} · slot 0`),
+      })
+    );
+    fireEvent.change(screen.getByLabelText('Base color image'), {
+      target: { value: 'Texture/Clay_Texture_01.tga' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }));
+    // Save & Next advanced to queued piece B.
+    const sourceSelect = screen.getByLabelText('Editor source');
+    await waitFor(() => expect(sourceSelect).toHaveValue('1'));
+    // B's un-edited slot starts from the working style, not from A's choice.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /SM_Bld_Wall_L_Curve_02 · slot 0/,
+      })
+    );
+    expect(await screen.findByLabelText('Base color image')).toHaveValue(
+      'Texture/Stone_Texture_01.png'
+    );
+    // Change B: A must remain unchanged (independent saved snapshot).
+    fireEvent.change(screen.getByLabelText('Base color image'), {
+      target: { value: 'Texture/Clay_Texture_01.tga' },
+    });
+    fireEvent.change(screen.getByLabelText('Emissive mode'), {
+      target: { value: 'solid' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Batch piece ${FIXTURE_SOURCE_PATH}`,
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`${FIXTURE_OBJECT_NAME} · slot 0`),
+      })
+    );
+    expect(await screen.findByLabelText('Base color image')).toHaveValue(
+      'Texture/Clay_Texture_01.tga'
+    );
+    expect(screen.getByText(/1 configured/)).toBeVisible();
+  });
+
+  it('defers a piece, exports the batch, restores it via import and extracts configured-only rows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => multiSourceMaterialEditorManifestFixture(),
+      })
+    );
+    await renderReadyLab();
+    fireEvent.change(screen.getByLabelText('New batch name'), {
+      target: { value: 'stone walls' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create batch' }));
+    fireEvent.click(screen.getByLabelText(`Queue ${FIXTURE_SOURCE_PATH}`));
+    fireEvent.click(
+      screen.getByLabelText('Queue FBX/SM_Bld_Wall_L_Curve_02.fbx')
+    );
+    fireEvent.click(
+      screen.getByLabelText('Queue FBX/SM_Bld_Wall_L_Curve_03.fbx')
+    );
+    fireEvent.change(screen.getByLabelText('Working style base color image'), {
+      target: { value: 'Texture/Stone_Texture_01.png' },
+    });
+    // Save piece A with a solid emissive choice.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`${FIXTURE_OBJECT_NAME} · slot 0`),
+      })
+    );
+    fireEvent.change(screen.getByLabelText('Emissive mode'), {
+      target: { value: 'solid' },
+    });
+    fireEvent.change(screen.getByLabelText('Emissive color hex'), {
+      target: { value: 'FF8800' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Editor source')).toHaveValue('1')
+    );
+    // Defer piece B; piece C is never saved (stays draft).
+    fireEvent.click(screen.getByRole('button', { name: 'Defer & Next' }));
+    expect(
+      await screen.findByText(/1 configured, 1 deferred, 1 draft/)
+    ).toBeVisible();
+    // Export the batch document and the configured-only extraction.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export batch configuration' })
+    );
+    const batchWire = JSON.parse(await readBlob(blobs[0]!)) as {
+      schemaVersion: number;
+      kind: string;
+      queue: {
+        sourcePath: string;
+        status: string;
+        saved?: { overrides: unknown[] } | undefined;
+      }[];
+      workingStyle: { baseColor: { image: string } };
+    };
+    expect(batchWire.schemaVersion).toBe(1);
+    expect(batchWire.kind).toBe('material-editor-batch');
+    expect(
+      batchWire.queue.map((entry) => [entry.sourcePath, entry.status])
+    ).toEqual([
+      [FIXTURE_SOURCE_PATH, 'configured'],
+      ['FBX/SM_Bld_Wall_L_Curve_02.fbx', 'deferred'],
+      ['FBX/SM_Bld_Wall_L_Curve_03.fbx', 'draft'],
+    ]);
+    expect(batchWire.workingStyle.baseColor.image).toBe(
+      'Texture/Stone_Texture_01.png'
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Export configured-only extraction',
+      })
+    );
+    const extraction = JSON.parse(await readBlob(blobs[1]!)) as {
+      kind: string;
+      pieces: {
+        sourcePath: string;
+        slots: {
+          slot: number;
+          channels: {
+            emissive: { image: string | null; color: string } | null;
+          };
+        }[];
+      }[];
+    };
+    expect(extraction.kind).toBe('material-editor-batch-extraction');
+    // Only the configured piece; deferred/draft rows excluded.
+    expect(extraction.pieces).toHaveLength(1);
+    expect(extraction.pieces[0]!.sourcePath).toBe(FIXTURE_SOURCE_PATH);
+    const slot0 = extraction.pieces[0]!.slots.find((s) => s.slot === 0)!;
+    expect(slot0.channels.emissive).toEqual({
+      image: null,
+      color: 'FF8800',
+      strength: 1,
+    });
+    // Import restores queue order, statuses and snapshots.
+    fireEvent.change(screen.getByLabelText('Import batch configuration'), {
+      target: { files: [importFile(batchWire)] },
+    });
+    expect(
+      await screen.findByText(/Imported batch "stone walls"/)
+    ).toBeVisible();
+    expect(screen.getByText(/Queue: 3 piece/)).toBeVisible();
+    // A stale import (source identity no longer matching) is refused loudly.
+    const stale = structuredClone(batchWire);
+    stale.queue[1]!.sourcePath = 'FBX/SM_Bld_Wall_L_Curve_02.fbx';
+    (stale.queue[1] as { sourceSha256?: string }).sourceSha256 = 'a'.repeat(64);
+    fireEvent.change(screen.getByLabelText('Import batch configuration'), {
+      target: { files: [importFile(stale)] },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Stale queue entry/
+    );
   });
 });

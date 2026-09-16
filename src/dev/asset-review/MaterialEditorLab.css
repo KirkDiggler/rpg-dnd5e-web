@@ -127,6 +127,10 @@
   border-color: #9ca3af;
   color: #d1d5db;
 }
+.material-editor-scope--working-style {
+  border-color: #fbbf24;
+  color: #fde68a;
+}
 .material-editor-texture-status--error {
   color: #fca5a5;
 }
@@ -147,6 +151,69 @@
   border: 1px solid #374151;
   border-radius: 0.4rem;
   margin: 0.8rem 0;
+}
+.material-editor-batch nav {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  max-height: 30vh;
+  overflow: auto;
+}
+.material-editor-batch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.3rem;
+  align-items: stretch;
+}
+.material-editor-batch-row > button:first-child {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.material-editor-batch-row > button[aria-pressed='true'] {
+  border-color: #38bdf8;
+  background: #16435b;
+}
+.material-editor-batch-remove {
+  padding: 0.45rem 0.6rem;
+}
+.material-editor-batch-status {
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid #4b5563;
+}
+.material-editor-batch-status--configured {
+  border-color: #4ade80;
+  color: #86efac;
+}
+.material-editor-batch-status--deferred {
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+.material-editor-batch-status--draft {
+  border-color: #9ca3af;
+  color: #d1d5db;
+}
+.material-editor-batch-stale {
+  color: #fca5a5;
+  margin-left: 0.4rem;
+}
+.material-editor-batch-picks {
+  display: grid;
+  gap: 0.2rem;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0.4rem 0;
+}
+.material-editor-batch-picks label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.material-editor-batch-note {
+  color: #86efac;
 }
 .material-editor-footer-row {
   display: flex;
