@@ -590,7 +590,11 @@ export function WorldBuildingConcept({
   const saveNow = () => {
     if (roomMode) {
       const error = saveRoomDraft(effectiveStorage, roomDraft);
-      if (!error) roomAutosaveBlockedRef.current = false;
+      if (!error) {
+        roomAutosaveBlockedRef.current = false;
+        workspaceOriginRef.current = 'local';
+        setWorkspaceOrigin('local');
+      }
       setNotice(error ?? '');
       setSaveStatus(
         error
@@ -660,7 +664,11 @@ export function WorldBuildingConcept({
       if (roomMode) {
         const imported = parseRoomDraftJson(portableJson);
         const saveError = saveRoomDraft(effectiveStorage, imported);
-        if (!saveError) roomAutosaveBlockedRef.current = false;
+        if (!saveError) {
+          roomAutosaveBlockedRef.current = false;
+          workspaceOriginRef.current = 'local';
+          setWorkspaceOrigin('local');
+        }
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
           present: imported,
@@ -709,6 +717,8 @@ export function WorldBuildingConcept({
         return;
       }
       roomAutosaveBlockedRef.current = false;
+      workspaceOriginRef.current = 'local';
+      setWorkspaceOrigin('local');
       setRoomHistory({ past: [], present: result.value, future: [] });
       setPreviewScene(null);
       setSelectedIds([]);

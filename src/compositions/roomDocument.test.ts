@@ -122,6 +122,14 @@ describe('room snapshot document', () => {
     expect(metadata.draft).toEqual(draft);
   });
 
+  it('refuses an oversized encoded envelope before it can be sent', () => {
+    const draft = richRoomDraft();
+    draft.name = 'x'.repeat(500_000);
+    expect(() => encodeRoomDocument(draft)).toThrow(
+      'Room draft is too large (maximum 500000 characters).'
+    );
+  });
+
   it('recognizes unsupported room versions without classifying them as scenes', () => {
     expect(
       isRoomDocumentJson(

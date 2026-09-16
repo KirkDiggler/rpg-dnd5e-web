@@ -1150,6 +1150,82 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
   });
 
+  it('returns room workspace to local autosave after save, reload, and import', async () => {
+    const storage = new MemoryStorage();
+    const local = roomNamed('Local Cellar');
+    const remote = roomNamed('Remote Cellar');
+    const record = roomRecord('room-snapshot-1', remote);
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [record]),
+        getComposition: vi.fn(async () => record),
+      },
+    };
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={source}
+      />
+    );
+    const openRemote = async () => {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Open Remote Cellar' })
+      );
+      await waitFor(() =>
+        expect(
+          document
+            .querySelector('[data-workspace-origin]')
+            ?.getAttribute('data-workspace-origin')
+        ).toBe('world')
+      );
+    };
+    const expectLocalAutosave = async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Commit rectangle gesture' })
+      );
+      await waitFor(() =>
+        expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(
+          stringifyRoomDraft(currentRoom())
+        )
+      );
+    };
+
+    await openRemote();
+    fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
+    expect(
+      document
+        .querySelector('[data-workspace-origin]')
+        ?.getAttribute('data-workspace-origin')
+    ).toBe('local');
+    await expectLocalAutosave();
+
+    await openRemote();
+    fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    expect(
+      document
+        .querySelector('[data-workspace-origin]')
+        ?.getAttribute('data-workspace-origin')
+    ).toBe('local');
+    await expectLocalAutosave();
+
+    await openRemote();
+    fireEvent.change(screen.getByLabelText('Portable JSON'), {
+      target: { value: stringifyRoomDraft(local) },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import room draft JSON' })
+    );
+    expect(
+      document
+        .querySelector('[data-workspace-origin]')
+        ?.getAttribute('data-workspace-origin')
+    ).toBe('local');
+    await expectLocalAutosave();
+  });
+
   it('keeps current local bytes intact when a deferred room Get resolves after unmount', async () => {
     const storage = new MemoryStorage();
     storage.setItem(

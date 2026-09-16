@@ -3,6 +3,7 @@ import {
   stringifyRoomDraft,
   type RoomDraft,
 } from '@/concepts/world-building/roomDraft';
+import { MAX_JSON_LENGTH } from '@/concepts/world-building/serialization';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 
 export const ROOM_DOCUMENT_KIND = 'room-authoring-draft' as const;
@@ -21,7 +22,7 @@ export function encodeRoomDocument(draft: RoomDraft): string {
   const validated = JSON.parse(stringifyRoomDraft(draft)) as {
     draft: RoomDraft;
   };
-  return JSON.stringify(
+  const encoded = JSON.stringify(
     {
       kind: ROOM_DOCUMENT_KIND,
       version: ROOM_DOCUMENT_VERSION,
@@ -30,10 +31,19 @@ export function encodeRoomDocument(draft: RoomDraft): string {
     null,
     2
   );
+  if (encoded.length > MAX_JSON_LENGTH) {
+    throw new Error(
+      `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
+    );
+  }
+  return encoded;
 }
 
 export function decodeRoomDocumentJson(json: string): RoomDraft {
-  if (json.length > 500_000) throw new Error('Room draft is too large.');
+  if (json.length > MAX_JSON_LENGTH)
+    throw new Error(
+      `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
+    );
   const envelope = JSON.parse(json) as {
     kind?: unknown;
     version?: unknown;
