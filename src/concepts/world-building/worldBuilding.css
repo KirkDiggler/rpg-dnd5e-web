@@ -1,3 +1,57 @@
+.wb-workspace-route {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #081112;
+}
+
+.wb-mode-nav {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid #33504d;
+  background: #0c1718;
+}
+
+.wb-mode-nav button {
+  border: 1px solid #33504d;
+  border-radius: 5px;
+  padding: 0.4rem 0.7rem;
+  background: #172526;
+  color: #d8ebe7;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wb-mode-nav button:hover,
+.wb-mode-nav button:focus-visible,
+.wb-mode-nav .wb-mode-active {
+  border-color: #55e4d1;
+  outline: none;
+}
+
+.wb-mode-nav .wb-mode-active {
+  background: #17413d;
+  color: #ccfbf1;
+}
+
+.wb-mode-pane {
+  min-height: 0;
+  flex: 1;
+}
+
+.wb-mode-pane-hidden {
+  display: none;
+}
+
+.wb-workspace-route .wb-shell--world {
+  height: 100%;
+  min-height: 0;
+}
+
 .wb-shell {
   --wb-bg: #081112;
   --wb-panel: #101b1c;
@@ -542,6 +596,17 @@
     grid-column: 1 / -1;
     border-top: 1px solid var(--wb-border);
     border-left: 0;
+  }
+
+  /* The real app route owns a bounded viewport; do not inherit the concept
+     lab's tall demo-card minimums at short heights. */
+  .wb-workspace-route .wb-shell--world {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .wb-workspace-route .wb-shell--world .wb-workspace {
+    grid-template-rows: minmax(260px, 1fr) minmax(0, 40%);
   }
 }
 

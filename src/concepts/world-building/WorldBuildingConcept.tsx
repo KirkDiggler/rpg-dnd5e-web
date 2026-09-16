@@ -942,7 +942,7 @@ export function WorldBuildingConcept({
         <div>
           <p className="wb-kicker">
             {roomMode
-              ? 'Authoring draft · web#1068 · walkable ground'
+              ? 'Room authoring draft · walkable ground'
               : compositionSource
                 ? `World library · ${compositionSource.worldId}`
                 : 'Durable Concepts Lab · web#935'}
