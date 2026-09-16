@@ -1,4 +1,5 @@
 import { HEX_SIZE, hexCorners } from '@/components/hex-grid/hexMath';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +8,9 @@ import type { WorldProp } from './types';
 const modelState = vi.hoisted(() => ({
   value: 'loaded' as 'loaded' | 'pending' | 'error',
   pending: new Promise<never>(() => {}),
+}));
+const floorTextureState = vi.hoisted(() => ({
+  base: undefined as THREE.Texture | undefined,
 }));
 const loadedScene = new THREE.Group();
 loadedScene.add(
@@ -22,12 +26,25 @@ vi.mock('@react-three/drei', () => ({
     if (modelState.value === 'error') throw new Error('model failed');
     return { scene: loadedScene };
   },
+  useTexture: () => floorTextureState.base,
 }));
 
-vi.mock('./WorkspaceFloorUnderlay', () => ({
-  WorkspaceFloorUnderlay: ({ radius }: { radius: number }) => (
-    <group name="workspace-floor-underlay-test" userData={{ radius }} />
-  ),
+vi.mock('@/components/session/useDungeonShellCatalog', () => ({
+  useDungeonShellCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      profiles: {
+        crypt: {
+          floor: {
+            diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
+            sha256:
+              'ec84f155a32297c64e86b8c678955e25d8f8180023327e42c840dd086916b841',
+            worldUnitsPerRepeat: 6,
+          },
+        },
+      },
+    },
+  }),
 }));
 
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
@@ -87,6 +104,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   modelState.value = 'loaded';
+  floorTextureState.base = new THREE.Texture();
 });
 
 describe('editor atmosphere', () => {
@@ -161,7 +179,7 @@ describe('room-only workspace floor', () => {
       <WorldSceneContents {...baseProps} />
     );
     expect(
-      renderer.scene.findAllByProps({ name: 'workspace-floor-underlay-test' })
+      renderer.scene.findAllByProps({ name: 'workspace-floor-underlay' })
     ).toHaveLength(0);
 
     await renderer.update(
@@ -176,12 +194,142 @@ describe('room-only workspace floor', () => {
         }}
       />
     );
-    expect(
-      renderer.scene.findByProps({ name: 'workspace-floor-underlay-test' })
-        .props.userData.radius
-    ).toBe(21);
+    const underlay = renderer.scene.findByProps({
+      name: 'workspace-floor-underlay',
+    }).instance as THREE.Mesh<THREE.CircleGeometry>;
+    expect(underlay.geometry.parameters.radius).toBe(21);
     expect(onWalkableGesture).not.toHaveBeenCalled();
     expect(onTransformCommit).not.toHaveBeenCalled();
+    await renderer.unmount();
+  });
+});
+
+describe('room boundary lifetime and floor layering', () => {
+  const baseProps = {
+    scene: {
+      version: 1 as const,
+      id: 'scene',
+      name: 'Room',
+      items: [],
+      groups: [],
+    },
+    previewScene: null,
+    selectedIds: [],
+    tool: 'select' as const,
+    activeDrag: null,
+    onSelect: vi.fn(),
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+  };
+  const authoring = (
+    horizontalLimit: number,
+    walkableHexes: readonly { q: number; r: number }[] = []
+  ) => ({
+    tool: 'select' as const,
+    workspace: { hexRadius: 6, horizontalLimit },
+    walkableHexes,
+    propDeclarations: {},
+    onWalkableGesture: vi.fn(),
+  });
+
+  it('retains, replaces, and releases the owned boundary only when primitive inputs change', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...baseProps} roomAuthoring={authoring(12)} />
+    );
+    const first = renderer.scene.findByProps({
+      name: 'world-building-ground-boundary',
+    }).instance as THREE.LineLoop<THREE.BufferGeometry>;
+    const firstGeometry = first.geometry;
+    const firstDispose = vi.spyOn(firstGeometry, 'dispose');
+
+    await renderer.update(
+      <WorldSceneContents {...baseProps} roomAuthoring={authoring(12)} />
+    );
+    expect(
+      (
+        renderer.scene.findByProps({
+          name: 'world-building-ground-boundary',
+        }).instance as THREE.LineLoop<THREE.BufferGeometry>
+      ).geometry
+    ).toBe(firstGeometry);
+    expect(firstDispose).not.toHaveBeenCalled();
+
+    await renderer.update(
+      <WorldSceneContents {...baseProps} roomAuthoring={authoring(20)} />
+    );
+    const expandedGeometry = (
+      renderer.scene.findByProps({
+        name: 'world-building-ground-boundary',
+      }).instance as THREE.LineLoop<THREE.BufferGeometry>
+    ).geometry;
+    const expandedDispose = vi.spyOn(expandedGeometry, 'dispose');
+    expect(expandedGeometry).not.toBe(firstGeometry);
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+
+    await renderer.update(
+      <WorldSceneContents {...baseProps} roomAuthoring={authoring(10.5)} />
+    );
+    const roomGeometry = (
+      renderer.scene.findByProps({
+        name: 'world-building-ground-boundary',
+      }).instance as THREE.LineLoop<THREE.BufferGeometry>
+    ).geometry;
+    const roomDispose = vi.spyOn(roomGeometry, 'dispose');
+    expect(expandedDispose).toHaveBeenCalledTimes(1);
+
+    await renderer.update(<WorldSceneContents {...baseProps} />);
+    const composerGeometry = (
+      renderer.scene.findByProps({
+        name: 'world-building-ground-boundary',
+      }).instance as THREE.LineLoop<THREE.BufferGeometry>
+    ).geometry;
+    const composerDispose = vi.spyOn(composerGeometry, 'dispose');
+    expect(composerGeometry).not.toBe(roomGeometry);
+    expect(roomDispose).toHaveBeenCalledTimes(1);
+
+    await renderer.unmount();
+    expect(composerDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('mounts the real underlay above the pointer ground and below every floor overlay and walking surface', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...baseProps}
+        roomAuthoring={authoring(12, [{ q: 0, r: 0 }])}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    }).instance as THREE.Mesh;
+    const underlay = renderer.scene.findByProps({
+      name: 'workspace-floor-underlay',
+    }).instance as THREE.Mesh;
+    const grid = renderer.scene.findByProps({
+      name: 'world-building-real-hex-basis',
+    }).instance as THREE.LineSegments<THREE.BufferGeometry>;
+    const boundary = renderer.scene.findByProps({
+      name: 'world-building-ground-boundary',
+    }).instance as THREE.LineLoop<THREE.BufferGeometry>;
+    const walkable = renderer.scene.findByProps({
+      name: 'room-walkable-0-0',
+    }).instance as THREE.Mesh;
+
+    const groundY = ground.getWorldPosition(new THREE.Vector3()).y;
+    const underlayY = underlay.getWorldPosition(new THREE.Vector3()).y;
+    const gridY = grid.geometry.getAttribute('position').getY(0);
+    const boundaryY = boundary.geometry.getAttribute('position').getY(0);
+    const walkableY = walkable.getWorldPosition(new THREE.Vector3()).y;
+
+    expect(underlayY).toBeGreaterThan(groundY);
+    expect(underlayY).toBeLessThan(DUNGEON_SURFACE_Y);
+    expect(underlayY).toBeLessThan(gridY);
+    expect(underlayY).toBeLessThan(boundaryY);
+    expect(underlayY).toBeLessThan(walkableY);
     await renderer.unmount();
   });
 });

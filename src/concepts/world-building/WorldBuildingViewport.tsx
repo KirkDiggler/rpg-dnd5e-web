@@ -428,6 +428,7 @@ export function WorldSceneContents(
     props;
   const { gl } = useThree();
   const displayScene = previewScene ?? scene;
+  const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
   const workspaceGroundRadius =
     props.roomAuthoring?.workspace.horizontalLimit !== undefined
@@ -438,13 +439,10 @@ export function WorldSceneContents(
     [workspaceHexRadius]
   );
   const boundaryGeometry = useMemo(
-    () =>
-      createGroundBoundaryGeometry(
-        workspaceGroundRadius,
-        Boolean(props.roomAuthoring)
-      ),
-    [props.roomAuthoring, workspaceGroundRadius]
+    () => createGroundBoundaryGeometry(workspaceGroundRadius, isRoomAuthoring),
+    [isRoomAuthoring, workspaceGroundRadius]
   );
+  useEffect(() => () => boundaryGeometry.dispose(), [boundaryGeometry]);
   const controlsRef = useRef<TransformControlsImpl>(null);
   type CapturedFloorPointer = {
     pointerId: number;
@@ -779,7 +777,11 @@ export function WorldSceneContents(
       >
         <lineBasicMaterial color="#47726e" transparent opacity={0.72} />
       </lineSegments>
-      <lineLoop geometry={boundaryGeometry} raycast={() => null}>
+      <lineLoop
+        name="world-building-ground-boundary"
+        geometry={boundaryGeometry}
+        raycast={() => null}
+      >
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
       <WorldPlacementGuides

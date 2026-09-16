@@ -132,6 +132,22 @@ describe('workspace floor underlay', () => {
     expect(owned.wrapT).toBe(THREE.RepeatWrapping);
     expect(dispose).not.toHaveBeenCalled();
 
+    const surface = floor.instance as THREE.Mesh<
+      THREE.CircleGeometry,
+      THREE.Material
+    >;
+    surface.updateMatrixWorld(true);
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0, 10, 0),
+      new THREE.Vector3(0, -1, 0)
+    );
+    const control = new THREE.Mesh(surface.geometry, surface.material);
+    control.position.copy(surface.position);
+    control.rotation.copy(surface.rotation);
+    control.updateMatrixWorld(true);
+    expect(raycaster.intersectObject(control).length).toBeGreaterThan(0);
+    expect(raycaster.intersectObject(surface)).toHaveLength(0);
+
     await renderer.unmount();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
