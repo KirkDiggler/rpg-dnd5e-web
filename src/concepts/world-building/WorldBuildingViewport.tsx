@@ -27,6 +27,7 @@ import type {
   TransformControls as TransformControlsImpl,
 } from 'three-stdlib';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { createGroundBoundaryGeometry } from './groundBoundaryGeometry';
 import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
@@ -42,6 +43,7 @@ import {
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
 import type { WorldScene, WorldTransform } from './types';
+import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
   WorldBuildingDropInteraction,
@@ -122,19 +124,6 @@ function makeHexLines(radius: number): THREE.BufferGeometry {
     }
   }
   return new THREE.BufferGeometry().setFromPoints(points);
-}
-
-function makeGroundBoundary(radius: number): THREE.BufferGeometry {
-  return new THREE.BufferGeometry().setFromPoints(
-    Array.from({ length: 6 }, (_, index) => {
-      const angle = Math.PI / 6 + (index * Math.PI) / 3;
-      return new THREE.Vector3(
-        Math.cos(angle) * radius,
-        DUNGEON_SURFACE_Y + 0.015,
-        Math.sin(angle) * radius
-      );
-    })
-  );
 }
 
 function ModelFallback({ tone }: { tone: 'loading' | 'error' }) {
@@ -439,6 +428,7 @@ export function WorldSceneContents(
     props;
   const { gl } = useThree();
   const displayScene = previewScene ?? scene;
+  const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
   const workspaceGroundRadius =
     props.roomAuthoring?.workspace.horizontalLimit !== undefined
@@ -449,9 +439,10 @@ export function WorldSceneContents(
     [workspaceHexRadius]
   );
   const boundaryGeometry = useMemo(
-    () => makeGroundBoundary(workspaceGroundRadius),
-    [workspaceGroundRadius]
+    () => createGroundBoundaryGeometry(workspaceGroundRadius, isRoomAuthoring),
+    [isRoomAuthoring, workspaceGroundRadius]
   );
+  useEffect(() => () => boundaryGeometry.dispose(), [boundaryGeometry]);
   const controlsRef = useRef<TransformControlsImpl>(null);
   type CapturedFloorPointer = {
     pointerId: number;
@@ -776,6 +767,9 @@ export function WorldSceneContents(
           metalness={0.02}
         />
       </mesh>
+      {props.roomAuthoring && (
+        <WorkspaceFloorUnderlay radius={workspaceGroundRadius} />
+      )}
       <lineSegments
         name="world-building-real-hex-basis"
         geometry={hexGeometry}
@@ -783,7 +777,11 @@ export function WorldSceneContents(
       >
         <lineBasicMaterial color="#47726e" transparent opacity={0.72} />
       </lineSegments>
-      <lineLoop geometry={boundaryGeometry} raycast={() => null}>
+      <lineLoop
+        name="world-building-ground-boundary"
+        geometry={boundaryGeometry}
+        raycast={() => null}
+      >
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
       <WorldPlacementGuides
