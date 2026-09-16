@@ -10,6 +10,7 @@ import {
   type PackMaterialProfile,
 } from './materialProfile';
 import './MaterialReviewLab.css';
+import { MaterialSourceExceptions } from './MaterialSourceExceptions';
 import type { AssetReviewLoadStatus } from './model';
 
 const MANIFEST_URL = '/models/synty/asset-review-materials/manifest.json';
@@ -133,6 +134,14 @@ export function MaterialReviewLab() {
   const count = family
     ? new Set(family.uses.map((use) => use.sourcePath)).size
     : 0;
+  const blockedPaths = new Set(
+    manifest.sourceAudit?.exceptions.map((issue) => issue.sourcePath)
+  );
+  const blockedCount = new Set(
+    family?.uses
+      .filter((use) => blockedPaths.has(use.sourcePath))
+      .map((use) => use.sourcePath)
+  ).size;
   const changed =
     serializeMaterialProfile(profile) !==
     serializeMaterialProfile(manifest.profile);
@@ -157,6 +166,9 @@ export function MaterialReviewLab() {
         </p>
         {error && <p role="alert">{error}</p>}
       </header>
+      {manifest.sourceAudit && (
+        <MaterialSourceExceptions audit={manifest.sourceAudit} />
+      )}
       <div className="material-review-layout">
         <aside>
           <label>
@@ -203,8 +215,14 @@ export function MaterialReviewLab() {
               <h2>{family.label}</h2>
               <p>
                 {count} affected {count === 1 ? 'piece' : 'pieces'} ·{' '}
-                {family.uses.length} material slots
+                {family.uses.length} declared material slots
               </p>
+              {blockedCount > 0 && (
+                <p>
+                  {blockedCount} affected sources require inspection and are
+                  excluded from previews.
+                </p>
+              )}
               <ul>
                 {family.reasons.map((reason, index) => (
                   <li key={index}>{reason}</li>
@@ -217,6 +235,7 @@ export function MaterialReviewLab() {
                     <select
                       aria-label={`Material option for ${family.label}`}
                       value={selected ?? ''}
+                      disabled={!samples.length}
                       onChange={(event) => {
                         setProfile(
                           selectFamilyOption(
@@ -240,7 +259,14 @@ export function MaterialReviewLab() {
                       ))}
                     </select>
                   </label>
-                  {!selected && (
+                  {!samples.length && (
+                    <p>
+                      No verified representative is available. Inspect the
+                      source exceptions; existing profile choices are preserved,
+                      not approved.
+                    </p>
+                  )}
+                  {!selected && samples.length > 0 && (
                     <p>
                       Showing a proposed option for comparison; it has not been
                       selected.
