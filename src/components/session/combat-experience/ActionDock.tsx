@@ -240,6 +240,7 @@ export interface ActionDockProps {
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
   onOpenEquipment?: () => void;
+  equipmentOpen?: boolean;
   onCenterView?: () => void;
   /** Optional composition slot; the dock still owns the existing End Turn gate. */
   endTurnTarget?: HTMLElement | null;
@@ -450,6 +451,7 @@ export function ActionDock({
   authorityFresh,
   actionPresentation,
   onOpenEquipment,
+  equipmentOpen,
   onCenterView,
   endTurnTarget,
   endTurnBlocked = false,
@@ -495,9 +497,24 @@ export function ActionDock({
         Center on me
       </button>
     ) : null;
+  // Equipment used to live outside the action dock's early returns. Keep
+  // that access in every clock/roll state; opening a sheet is not spending
+  // an action, and any equipment intent still goes to the existing API.
+  const equipmentControl =
+    actionPresentation?.mode === 'organized-hud' && onOpenEquipment ? (
+      <button
+        type="button"
+        className={`${styles.organizedCollection} ${styles.organizedEquipmentShortcut}`}
+        data-testid="session-combat-equipment-button"
+        aria-pressed={equipmentOpen}
+        onClick={onOpenEquipment}
+      >
+        Equipment
+      </button>
+    ) : null;
   const standing =
     actionPresentation?.mode === 'organized-hud'
-      ? (standingGroup || centerControl) && (
+      ? (standingGroup || centerControl || equipmentControl) && (
           <div
             className={styles.organizedSecondary}
             role="group"
@@ -510,6 +527,7 @@ export function ActionDock({
               </details>
             )}
             {centerControl}
+            {equipmentControl}
           </div>
         )
       : standingGroup;
@@ -559,13 +577,14 @@ export function ActionDock({
             <strong>Your d20 is settling</strong>
             <small>The choice follows the matching die.</small>
           </div>
-          {centerControl && (
+          {(centerControl || equipmentControl) && (
             <div
               className={styles.organizedSecondary}
               role="group"
               aria-label="Map utilities"
             >
               {centerControl}
+              {equipmentControl}
             </div>
           )}
         </div>
@@ -766,7 +785,6 @@ export function ActionDock({
           armedDeclarationId={armedDeclarationId}
           onSelectDeclaration={onSelectDeclaration}
           onCancelSelection={onCancelSelection}
-          onOpenEquipment={onOpenEquipment}
           secondaryControls={standing}
         />
       ) : (
