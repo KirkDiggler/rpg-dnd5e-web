@@ -657,6 +657,31 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText(/loading the tomb/i);
   });
 
+  it('keeps overflow measurement attached across unrelated parent renders', async () => {
+    readyTurn();
+    const view = renderView();
+    await screen.findByRole('group', { name: 'Quick actions' });
+    await screen.findByRole('button', { name: 'Equipment' });
+    const listen = vi.spyOn(window, 'addEventListener');
+    try {
+      for (let i = 0; i < 2; i++) {
+        view.rerender(
+          <SessionEncounterView
+            sessionId="enc-1"
+            characterId="char-1"
+            playerId="player-1"
+            onBack={() => {}}
+          />
+        );
+      }
+      expect(
+        listen.mock.calls.filter(([event]) => event === 'resize')
+      ).toHaveLength(0);
+    } finally {
+      listen.mockRestore();
+    }
+  });
+
   it('organizes live declarations without turning fixture spell hints into rules', async () => {
     hoisted.characterResult.data = {
       knownCantrips: [],

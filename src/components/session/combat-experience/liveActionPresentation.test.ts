@@ -48,6 +48,12 @@ const offers: Declaration[] = [
 ];
 
 describe('live action presentation', () => {
+  it('treats an explicitly empty feature list as known, not missing metadata', () => {
+    expect(
+      liveActionPresentation({ declarations: offers, features: [] })
+        .quickDeclarationIds
+    ).toEqual(['attack', 'move', 'leveled', 'cantrip', 'unknown-spell']);
+  });
   it('keeps cantrips and owned features direct by exact provider facts, even when unavailable', () => {
     const presentation = liveActionPresentation({
       declarations: offers,

@@ -477,8 +477,10 @@ function SessionEncounterScope({
   }, [roster]);
   const experienceClock =
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
-  const coherentDeclarations =
-    experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
+  const coherentDeclarations = useMemo(
+    () => (experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations),
+    [experienceClock, affordDeclarations]
+  );
   // WHO THE CANVAS RINGS WHILE THE FIGHT IS FROZEN. Read from the viewer's
   // OWN declarations and nowhere else: a member who was not offered the
   // window has nothing to answer and sees no ring, which is the same rule
@@ -1629,6 +1631,22 @@ function SessionEncounterScope({
       />
     ) : null;
 
+  const actionPresentation = useMemo(
+    () =>
+      liveActionPresentation({
+        declarations: coherentDeclarations,
+        knownCantrips: ownerCharacter?.knownCantrips,
+        knownSpells: ownerCharacter?.knownSpells,
+        features: visibleCharacterData?.features,
+      }),
+    [
+      coherentDeclarations,
+      ownerCharacter?.knownCantrips,
+      ownerCharacter?.knownSpells,
+      visibleCharacterData?.features,
+    ]
+  );
+
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -1656,12 +1674,7 @@ function SessionEncounterScope({
         >
           <CombatExperience
             layout="fill-parent"
-            actionPresentation={liveActionPresentation({
-              declarations: coherentDeclarations,
-              knownCantrips: ownerCharacter?.knownCantrips,
-              knownSpells: ownerCharacter?.knownSpells,
-              features: visibleCharacterData?.features,
-            })}
+            actionPresentation={actionPresentation}
             navigationControls={
               <Button variant="ghost" size="sm" onClick={onBack}>
                 Back

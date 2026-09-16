@@ -122,8 +122,11 @@ function Offer({
       data-offer-id={declaration.id}
       // The input event is the evidence. A PC can report a coarse primary pointer.
       onPointerEnter={(event) => {
-        if (event.pointerType === 'mouse' || event.pointerType === 'pen')
-          onHover(declaration.id);
+        onHover(
+          event.pointerType === 'mouse' || event.pointerType === 'pen'
+            ? declaration.id
+            : null
+        );
       }}
       onPointerLeave={() => onHover(null)}
       onFocus={() => onKeyboardFocus(declaration.id)}
@@ -167,7 +170,6 @@ export function OrganizedActionSurface({
   armedDeclarationId,
   onSelectDeclaration,
   onCancelSelection,
-  onOpenEquipment,
   secondaryControls,
 }: {
   declarations: readonly Declaration[];
@@ -176,7 +178,6 @@ export function OrganizedActionSurface({
   armedDeclarationId?: string;
   onSelectDeclaration: (declaration: Declaration) => void;
   onCancelSelection?: () => void;
-  onOpenEquipment?: () => void;
   secondaryControls?: ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -384,15 +385,6 @@ export function OrganizedActionSurface({
           }
         )}
         {secondaryControls}
-        {onOpenEquipment && (
-          <button
-            type="button"
-            className={`${styles.organizedCollection} ${styles.organizedEquipmentShortcut}`}
-            onClick={onOpenEquipment}
-          >
-            Equipment
-          </button>
-        )}
       </div>
       {activeOpen && (
         <div
