@@ -2457,9 +2457,9 @@ button.diceDrawerCue:focus-visible {
    the turn controls. Reserve that width so actions cannot cover its footer. */
 .combatExperience[data-action-presentation='organized-hud']
   .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
-  grid-template-columns: minmax(0, 1fr) calc(
-      var(--organized-log-width, 318px) - 148px
-    ) 140px;
+  grid-template-columns:
+    minmax(0, 1fr) calc(var(--organized-log-width, 318px) - 148px)
+    140px;
 }
 .combatExperience[data-action-presentation='organized-hud']
   .gameFrame:has(.storyLogWide:not(.storyLogCollapsed)) {

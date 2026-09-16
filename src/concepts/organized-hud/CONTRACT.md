@@ -99,7 +99,7 @@ Focused tests cover the input lifecycle, exact-fit boundaries, overflow order an
 
 Two integration findings are corrected rather than hidden by the fixture: organized offers now expose their selected state, and Equipment remains accessible in every clock/roll state as it was in the legacy shell (including settling, without exposing withheld game actions). Live adapter tests exercise current declaration IDs through actual controller dispatch, center while armed, and the real equipment surface.
 
-## Live walkthrough acceptance — 2026-09-15
+## Live walkthrough acceptance recorded — 2026-09-16
 
 Kirk approved the final PC/mobile iteration:
 
