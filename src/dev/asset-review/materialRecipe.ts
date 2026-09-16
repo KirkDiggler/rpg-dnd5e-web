@@ -773,7 +773,8 @@ export function parseMaterialEditorManifest(
     throw new Error('inventory images must be an array');
   const images = inventoryRow.images.map(parseInventoryImage);
   uniqueBy(images, (image) => image.path, 'inventory image');
-  uniqueBy(images, (image) => image.sha256, 'inventory image hash');
+  // Note: the same image content may legitimately appear under several pack
+  // paths; it shares one content-addressed URL, so hashes are not unique.
 
   const recipesRow = object(
     top.recipes,
