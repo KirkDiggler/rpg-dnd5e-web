@@ -55,10 +55,17 @@ export function TargetSurface({
   // A CAST JOINS ON THE SAME LINE. Afford rules who a cantrip may be pointed
   // at — in range, in sight, on the right side — and a cast that names a
   // creature is a MEMBER-targeted declaration like any other.
+  //
+  // AND SO DOES A THREAT (rpg-project#454). Afford rules who may be
+  // threatened too — everyone who can see the actor, with no reach gate —
+  // and left out of this line the one goblin the server named would be the
+  // one goblin nobody could click, which is the failure this comment already
+  // records once for the armed activation.
   const isMemberTargeted =
     (declaration?.verb === Verb.ATTACK ||
       declaration?.verb === Verb.ACTIVATE ||
-      declaration?.verb === Verb.CAST) &&
+      declaration?.verb === Verb.CAST ||
+      declaration?.verb === Verb.INTIMIDATE) &&
     declaration.targetKind === TargetKind.MEMBER;
   // A CAST THE CASTER AIMS PROMPTS TOO, and prompts for a place. It names no
   // candidates, so none of the member machinery below applies to it — no
@@ -75,12 +82,18 @@ export function TargetSurface({
       : [];
   // The server authors the label for both verbs; there is no ref-to-name
   // table here, and "Attack" is only the last resort for an attack.
+  // A THREAT NAMES ITSELF, and is the one armed row with no server-authored
+  // label to prefer: it compiles no action definition, so there is no
+  // AttackRef and no AbilityRef to read and nothing here to go stale against
+  // content.
   const armedName =
     declaration?.verb === Verb.ACTIVATE
       ? declaration.ability?.name || 'Ability'
       : declaration?.verb === Verb.CAST
         ? castLabel(declaration)
-        : declaration?.attack?.name || 'Attack';
+        : declaration?.verb === Verb.INTIMIDATE
+          ? 'Intimidate'
+          : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;

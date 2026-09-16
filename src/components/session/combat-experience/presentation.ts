@@ -1242,6 +1242,12 @@ const EXPECTED_OTHER_KIND = {
   // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
   // exact gap `saved` fell into in slice two.
   concentrationEnded: EventKind.CONCENTRATION_ENDED,
+  // THE FIRST SHENANIGAN (rpg-project#454), and it has to be here for
+  // `concentrationEnded`'s reason directly above: a body with no row is
+  // discarded as a typed kind/body mismatch, and this beat is the ONLY
+  // account of the roll — the response carries no beaten, total or dc — so
+  // dropping it would lose the die for the whole table, actor included.
+  intimidated: EventKind.INTIMIDATED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1273,6 +1279,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.CAST_MISSED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
+  EventKind.INTIMIDATED,
   // Typed, so a SIGHTED arriving with no body is dropped rather than
   // falling through as a bodyless 'none' row. The server only publishes one
   // when it names somebody, so a bodyless one is a beat that should not
@@ -1473,6 +1480,21 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
               name: event.body.value.offer.name,
             })
           : null,
+      });
+    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#454). Actor and target
+    // alone would hash two threats in one fight the same, and the second
+    // would be recorded as a conflicting duplicate of the first — a fighter
+    // may lean on the same goblin twice across two turns, and the numbers
+    // are what differ.
+    case 'intimidated':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        actor: event.body.value.actor,
+        target: event.body.value.target,
+        dc: event.body.value.dc,
+        total: event.body.value.total,
+        beaten: event.body.value.beaten,
       });
     case 'door':
       return Object.freeze({

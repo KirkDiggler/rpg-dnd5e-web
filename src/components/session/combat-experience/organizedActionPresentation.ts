@@ -56,6 +56,11 @@ export function organizeDeclarations(
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
       declaration.verb === Verb.CAST ||
+      // A THREAT IS AN ORDINARY PRICED ROW (rpg-project#454). Left out of
+      // this filter the offer is not a dead button — it is no button at
+      // all: this list decides what the dock DRAWS, so an unlisted verb is
+      // dropped before anything downstream ever sees it.
+      declaration.verb === Verb.INTIMIDATE ||
       (declaration.verb === Verb.DEATH_SAVE &&
         isDeathSaveExecutableShape(declaration, 'display'))
   );
@@ -104,6 +109,7 @@ export function currentExecutableDeclaration(
         declaration.verb === Verb.MOVE ||
         declaration.verb === Verb.ACTIVATE ||
         declaration.verb === Verb.CAST ||
+        declaration.verb === Verb.INTIMIDATE ||
         (declaration.verb === Verb.DEATH_SAVE &&
           isDeathSaveExecutableShape(declaration, 'display')))
   );

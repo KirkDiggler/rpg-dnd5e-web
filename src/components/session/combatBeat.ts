@@ -139,6 +139,32 @@ export function formatBeat(
       }
       return d.actor ? `${who} shuts the door.` : 'The door shuts.';
     }
+    case 'intimidated': {
+      // The first shenanigan (rpg-project#454). THE ONLY ACCOUNT OF THIS
+      // ROLL, and the actor reads it here too: `IntimidateResponse` carries
+      // no beaten, total or dc precisely so this line is the one place the
+      // number lives, and the person who threw the die is not a special
+      // case. Delivered on a missed threat as well as a beaten one — the
+      // miss is as much fiction as the hit, the same reason the door beat
+      // narrates a failed pick.
+      //
+      // THE READING IS THE SERVER'S. `beaten` is copied, never derived here
+      // from total against dc: the day a rule changes what beating a DC
+      // means, a client that compared them would be wrong at once — the law
+      // `Saved.succeeded` already keeps.
+      //
+      // NOTHING ABOUT WHAT HAPPENS NEXT. A cowed goblin's flight is its
+      // MIND's decision and it reaches the log as that creature's next turn,
+      // not as a clause on this line. "Cowed" says the check landed; it does
+      // not promise the monster runs.
+      const i = event.body.value;
+      const verb = i.actor === member ? 'intimidate' : 'intimidates';
+      return (
+        `${resolveName(names, i.actor, member)} ${verb} ` +
+        `${resolveNameLower(names, i.target, member)} — ${i.total} vs DC ` +
+        `${i.dc}. ${i.beaten ? 'Cowed.' : 'Unmoved.'}`
+      );
+    }
     case 'ended': {
       // The run's own last word — the key is content vocabulary and the
       // sentence is the client's (rpg-project#269 §6.3); the overlay owns

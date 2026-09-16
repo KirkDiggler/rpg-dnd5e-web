@@ -592,6 +592,31 @@ function buildOtherStory(
         detail: event.body.value.ending,
         tone: 'turn',
       });
+    case 'intimidated': {
+      // The first shenanigan (rpg-project#454), narrated like the door's own
+      // check one case down: the numbers, and the SERVER'S reading of them.
+      // `beaten` is copied rather than derived from total against dc.
+      //
+      // ONE ENTRY WHETHER IT LANDED OR NOT. Every witness sees the die,
+      // including the actor, because `IntimidateResponse` carries no verdict
+      // for them to read anywhere else.
+      //
+      // The tone is the CHECK's, not the consequence's: a cowed goblin may
+      // or may not run, because that is its mind's decision and it shows up
+      // as its next turn, never as a clause here.
+      const threat = event.body.value;
+      const actor = memberName(threat.actor, context);
+      const target = memberName(threat.target, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Threat',
+        headline: `${actor} leans on ${target}`,
+        detail: `${threat.total} against DC ${threat.dc} · ${
+          threat.beaten ? 'Cowed' : 'Unmoved'
+        }`,
+        tone: threat.beaten ? 'success' : 'neutral',
+      });
+    }
     case 'door': {
       const door = event.body.value;
       const actor = door.actor ? memberName(door.actor, context) : 'The door';
