@@ -130,12 +130,12 @@ function mapTransforms(
   };
 }
 
-export function setSelectionHeight(
+/** Props affected by visual height: selected props and group members only.
+ * Support-linked decorations are deliberately not traversed. */
+export function heightSelectionPropIds(
   scene: WorldScene,
-  selectedIds: readonly string[],
-  heightScale: number
-): WorldScene {
-  const bounded = Math.min(4, Math.max(0.25, heightScale));
+  selectedIds: readonly string[]
+): Set<string> {
   const included = new Set<string>();
   const visitGroup = (id: string) => {
     scene.items.forEach((item) => {
@@ -143,10 +143,7 @@ export function setSelectionHeight(
     });
     scene.groups
       .filter((group) => group.parentId === id)
-      .forEach((group) => {
-        included.add(group.id);
-        visitGroup(group.id);
-      });
+      .forEach((group) => visitGroup(group.id));
   };
   selectedIds.forEach((id) => {
     const entity = entityById(scene, id);
@@ -154,6 +151,17 @@ export function setSelectionHeight(
     if (entity.kind === 'prop') included.add(id);
     else visitGroup(id);
   });
+  return included;
+}
+
+export function setSelectionHeight(
+  scene: WorldScene,
+  selectedIds: readonly string[],
+  heightScale: number
+): WorldScene {
+  if (!Number.isFinite(heightScale)) return scene;
+  const bounded = Math.min(4, Math.max(0.25, heightScale));
+  const included = heightSelectionPropIds(scene, selectedIds);
   return {
     ...scene,
     items: scene.items.map((item) =>

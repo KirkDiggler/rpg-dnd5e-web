@@ -8,6 +8,7 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
+  heightSelectionPropIds,
   moveSelection,
   previewSelectionTransform,
   redoHistory,
@@ -48,6 +49,29 @@ describe('world-building continuous scene math', () => {
     });
     expect(next.items[1]).not.toHaveProperty('heightScale');
   });
+  it('reports concrete group members for height and rejects invalid edits', () => {
+    let scene = createEmptyScene('group-height');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'wall'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candle',
+      { x: 1, y: 0, z: 0, rotationY: 0 },
+      'banner'
+    );
+    scene = groupSelection(scene, ['wall', 'banner'], 'run', 'Run');
+    scene.items[0]!.heightScale = 1.5;
+    scene.items[1]!.heightScale = 2;
+    expect(heightSelectionPropIds(scene, ['run'])).toEqual(
+      new Set(['wall', 'banner'])
+    );
+    expect(setSelectionHeight(scene, ['run'], Number.NaN)).toEqual(scene);
+  });
+
   it('keeps free sub-hex X/Z placement and intentional overlap', () => {
     let scene = createEmptyScene('scene-1');
     scene = addProp(

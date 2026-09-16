@@ -51,6 +51,7 @@ function richRoomDraft(): RoomDraft {
       assetRef: 'dnd5e:props:torture-table',
       label: 'Long table',
       transform: { x: 1.5, y: 0.35, z: -2.5, rotationY: 0.4 },
+      heightScale: 1.8,
       parentId: 'group-cluster',
       pointLight: {
         enabled: true,

@@ -40,6 +40,7 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
+  heightSelectionPropIds,
   redoHistory,
   rotateSelection,
   saveArrangement,
@@ -913,14 +914,19 @@ export function WorldBuildingConcept({
   const selectedDeclaration = selectedProp
     ? roomDraft.room.propDeclarations[selectedProp.id]
     : undefined;
-  const selectedHeightValues = scene.items
-    .filter((item) => selectedIds.includes(item.id))
-    .map((item) => item.heightScale ?? 1);
+  const selectedHeightValues = [...heightSelectionPropIds(scene, selectedIds)]
+    .map((id) => scene.items.find((item) => item.id === id)?.heightScale ?? 1)
+    .filter((value): value is number => Number.isFinite(value));
   const selectedHeightMixed =
     selectedHeightValues.length > 1 && new Set(selectedHeightValues).size > 1;
   const selectedHeight = selectedHeightMixed
     ? 1
     : (selectedHeightValues[0] ?? 1);
+  const [heightDraftPercent, setHeightDraftPercent] = useState(100);
+  useEffect(() => {
+    if (!selectedHeightMixed)
+      setHeightDraftPercent(Math.round(selectedHeight * 100));
+  }, [selectedHeight, selectedHeightMixed]);
   const defaultDeclaration: RoomPropDeclaration = {
     blocksMovement: false,
     blocksLineOfSight: false,
@@ -1417,22 +1423,31 @@ export function WorldBuildingConcept({
                       : `${Math.round(selectedHeight * 100)}%`}
                   </span>
                   <input
-                    type="range"
-                    aria-label="Height scale"
+                    type="number"
+                    aria-label="Height scale percent"
                     min={25}
                     max={400}
                     step={5}
-                    value={Math.round(selectedHeight * 100)}
+                    value={heightDraftPercent}
                     onChange={(event) =>
-                      commit(
-                        setSelectionHeight(
-                          scene,
-                          selectedIds,
-                          Number(event.target.value) / 100
-                        )
-                      )
+                      setHeightDraftPercent(Number(event.target.value))
                     }
                   />
+                  <button
+                    type="button"
+                    disabled={
+                      !Number.isFinite(heightDraftPercent) ||
+                      heightDraftPercent === Math.round(selectedHeight * 100)
+                    }
+                    onClick={() => {
+                      const next =
+                        Math.min(400, Math.max(25, heightDraftPercent)) / 100;
+                      if (next !== selectedHeight)
+                        commit(setSelectionHeight(scene, selectedIds, next));
+                    }}
+                  >
+                    Apply height
+                  </button>
                 </label>
                 <p className="wb-help">
                   Grounded at each piece base; width, spacing, and authored
