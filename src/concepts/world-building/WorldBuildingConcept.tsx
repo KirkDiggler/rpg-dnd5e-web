@@ -40,10 +40,12 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
+  heightSelectionPropIds,
   redoHistory,
   rotateSelection,
   saveArrangement,
   setPropPointLight,
+  setSelectionHeight,
   stampArrangement,
   undoHistory,
   ungroup,
@@ -912,6 +914,19 @@ export function WorldBuildingConcept({
   const selectedDeclaration = selectedProp
     ? roomDraft.room.propDeclarations[selectedProp.id]
     : undefined;
+  const selectedHeightValues = [...heightSelectionPropIds(scene, selectedIds)]
+    .map((id) => scene.items.find((item) => item.id === id)?.heightScale ?? 1)
+    .filter((value): value is number => Number.isFinite(value));
+  const selectedHeightMixed =
+    selectedHeightValues.length > 1 && new Set(selectedHeightValues).size > 1;
+  const selectedHeight = selectedHeightMixed
+    ? 1
+    : (selectedHeightValues[0] ?? 1);
+  const [heightDraftPercent, setHeightDraftPercent] = useState(100);
+  useEffect(() => {
+    if (!selectedHeightMixed)
+      setHeightDraftPercent(Math.round(selectedHeight * 100));
+  }, [selectedHeight, selectedHeightMixed]);
   const defaultDeclaration: RoomPropDeclaration = {
     blocksMovement: false,
     blocksLineOfSight: false,
@@ -1397,6 +1412,50 @@ export function WorldBuildingConcept({
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
             </p>
+            {selectedIds.length > 0 && (
+              <div className="wb-light-editor" aria-label="Visual height">
+                <h4>Visual height</h4>
+                <label>
+                  <span>
+                    Height scale ·{' '}
+                    {selectedHeightMixed
+                      ? 'Mixed'
+                      : `${Math.round(selectedHeight * 100)}%`}
+                  </span>
+                  <input
+                    type="number"
+                    aria-label="Height scale percent"
+                    min={25}
+                    max={400}
+                    step={5}
+                    value={heightDraftPercent}
+                    onChange={(event) =>
+                      setHeightDraftPercent(Number(event.target.value))
+                    }
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      !Number.isFinite(heightDraftPercent) ||
+                      (!selectedHeightMixed &&
+                        heightDraftPercent === Math.round(selectedHeight * 100))
+                    }
+                    onClick={() => {
+                      const next =
+                        Math.min(400, Math.max(25, heightDraftPercent)) / 100;
+                      if (selectedHeightMixed || next !== selectedHeight)
+                        commit(setSelectionHeight(scene, selectedIds, next));
+                    }}
+                  >
+                    Apply height
+                  </button>
+                </label>
+                <p className="wb-help">
+                  Grounded at each piece base; width, spacing, and authored
+                  position stay unchanged.
+                </p>
+              </div>
+            )}
             {roomMode && selectedProp && (
               <div
                 className="wb-light-editor"

@@ -32,6 +32,8 @@ export interface WorldProp {
   assetRef: string;
   label: string;
   transform: WorldTransform;
+  /** Visual-only Y scale, grounded at the prop's authored base. */
+  heightScale?: number;
   /** Optional author grouping; it never replaces or flattens this prop. */
   parentId?: string;
   /** Optional surface attachment. Moving/rotating the support carries this prop. */

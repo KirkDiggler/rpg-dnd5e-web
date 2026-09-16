@@ -138,6 +138,16 @@ function prop(
       `${field}.transform`,
       horizontalLimit
     ),
+    ...(input.heightScale === undefined
+      ? {}
+      : {
+          heightScale: finiteNumber(
+            input.heightScale,
+            `${field}.heightScale`,
+            0.25,
+            4
+          ),
+        }),
     parentId: optionalId(input.parentId, `${field}.parentId`),
     supportId: optionalId(input.supportId, `${field}.supportId`),
     pointLight:

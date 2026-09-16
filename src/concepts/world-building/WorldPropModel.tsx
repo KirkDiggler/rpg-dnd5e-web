@@ -10,6 +10,7 @@ export interface WorldPropModelProps {
   entry: WorldBuildingCatalogEntry;
   position: [number, number, number];
   rotationY: number;
+  heightScale?: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onGeneratedDiagnostic?: (diagnostic: WorldAssetResolutionDiagnostic) => void;
 }
@@ -22,6 +23,7 @@ export function WorldPropModel({
   entry,
   position,
   rotationY,
+  heightScale = 1,
   onBoundsMeasured,
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
@@ -30,6 +32,7 @@ export function WorldPropModel({
       assetRef={entry.ref}
       position={position}
       rotationY={rotationY}
+      heightScale={heightScale}
       onDiagnostic={onGeneratedDiagnostic}
       onBoundsMeasured={onBoundsMeasured}
     />
@@ -39,6 +42,7 @@ export function WorldPropModel({
       position={position}
       rotationY={rotationY}
       anchor="bounds-floor-center"
+      heightScale={heightScale}
       onBoundsMeasured={onBoundsMeasured}
     />
   );

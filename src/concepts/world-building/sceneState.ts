@@ -130,6 +130,46 @@ function mapTransforms(
   };
 }
 
+/** Props affected by visual height: selected props and group members only.
+ * Support-linked decorations are deliberately not traversed. */
+export function heightSelectionPropIds(
+  scene: WorldScene,
+  selectedIds: readonly string[]
+): Set<string> {
+  const included = new Set<string>();
+  const visitGroup = (id: string) => {
+    scene.items.forEach((item) => {
+      if (item.parentId === id) included.add(item.id);
+    });
+    scene.groups
+      .filter((group) => group.parentId === id)
+      .forEach((group) => visitGroup(group.id));
+  };
+  selectedIds.forEach((id) => {
+    const entity = entityById(scene, id);
+    if (!entity) return;
+    if (entity.kind === 'prop') included.add(id);
+    else visitGroup(id);
+  });
+  return included;
+}
+
+export function setSelectionHeight(
+  scene: WorldScene,
+  selectedIds: readonly string[],
+  heightScale: number
+): WorldScene {
+  if (!Number.isFinite(heightScale)) return scene;
+  const bounded = Math.min(4, Math.max(0.25, heightScale));
+  const included = heightSelectionPropIds(scene, selectedIds);
+  return {
+    ...scene,
+    items: scene.items.map((item) =>
+      included.has(item.id) ? { ...item, heightScale: bounded } : item
+    ),
+  };
+}
+
 export function moveSelection(
   scene: WorldScene,
   selectedIds: readonly string[],
