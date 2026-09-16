@@ -84,15 +84,11 @@ afterEach(() => {
 
 describe('material family review', () => {
   it('shows source exceptions and Blender paths without blocking valid examples', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => auditedMaterialManifestFixture(),
-        })
-    );
+    const response = {
+      ok: true,
+      json: async () => auditedMaterialManifestFixture(),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
     render(<MaterialReviewLab />);
     expect(await screen.findByText(/1 unresolved source/)).toBeVisible();
     fireEvent.click(screen.getByText('Source exceptions (1)'));
@@ -108,15 +104,8 @@ describe('material family review', () => {
   it('keeps saved choices exportable when all sources need inspection', async () => {
     const data = auditedMaterialManifestFixture(true);
     const profile = { ...data.profile, selections: { Stone: 'stone-dark' } };
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ ...data, profile }),
-        })
-    );
+    const response = { ok: true, json: async () => ({ ...data, profile }) };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
     render(<MaterialReviewLab />);
     const select = await screen.findByLabelText('Material option for Stone');
     expect(select).toHaveValue('stone-dark');
