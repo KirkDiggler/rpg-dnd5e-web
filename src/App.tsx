@@ -20,7 +20,7 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
-import { WorldBuildingConcept } from './concepts/world-building/WorldBuildingConcept';
+import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -504,9 +504,13 @@ function AppContent() {
             compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
-          <ConceptsView onBack={handleBackToHome} />
+          <ConceptsView
+            key={compositionIdentity}
+            onBack={handleBackToHome}
+            compositionSource={compositionSource}
+          />
         ) : currentView === 'world-builder' && compositionSource ? (
-          <WorldBuildingConcept
+          <WorldBuilderWorkspace
             key={compositionIdentity}
             onBack={handleBackToHome}
             compositionSource={compositionSource}
