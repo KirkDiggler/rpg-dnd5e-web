@@ -8,6 +8,7 @@ import {
   generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  performanceAdvisories,
   recordPreviewLoad,
   selectPaletteAppearance,
   serializeReadyProviderBatch,
@@ -26,6 +27,8 @@ import {
   type ReviewStatus,
   type WorldAssetCategory,
 } from './model';
+
+import { MaterialReviewLab } from './MaterialReviewLab';
 
 const CATALOG_URL = '/models/synty/asset-review/catalog.json';
 export const ASSET_REVIEW_STORAGE_KEY = 'rpg.asset-review.batch.v1';
@@ -108,6 +111,15 @@ function StatusPill({ status }: { status: ReviewStatus }) {
 }
 
 export function AssetReviewLab() {
+  return new URLSearchParams(window.location.search).get('materialReview') ===
+    '1' ? (
+    <MaterialReviewLab />
+  ) : (
+    <AssetBatchReviewLab />
+  );
+}
+
+function AssetBatchReviewLab() {
   const [catalog, setCatalog] = useState<AssetReviewCatalog>();
   const [batch, setBatch] = useState<AssetReviewBatch>();
   const [selectedKey, setSelectedKey] = useState('');
@@ -157,9 +169,17 @@ export function AssetReviewLab() {
           }
         }
         const merged = mergeCatalogWithReview(loadedCatalog, review);
+        const initialBatch = review
+          ? merged.batch
+          : setBatchId(
+              merged.batch,
+              generateBatchId(
+                merged.batch.entries[0]?.referencePack ?? 'world-assets'
+              )
+            );
         setCatalog(loadedCatalog);
-        setBatch(merged.batch);
-        setBatchIdValue(merged.batch.batchId);
+        setBatch(initialBatch);
+        setBatchIdValue(initialBatch.batchId);
         setStaleSources(merged.staleSourceKeys);
         setStaleAppearances(merged.staleAppearanceKeys);
         setSelectedKey(
@@ -735,6 +755,16 @@ export function AssetReviewLab() {
                   value={appearanceFacts?.dimensionsMeters.join(' × ') ?? ''}
                 />
               </label>
+              <div className="asset-review-reasons">
+                <strong>Performance observations</strong>
+                <span>
+                  Size, triangle and texture targets are provisional. Release
+                  reports retain measurements for benchmarking.
+                </span>
+                {performanceAdvisories(activeEntry).map((message) => (
+                  <p key={message}>{message}</p>
+                ))}
+              </div>
               <div className="asset-review-reasons">
                 <strong>Blocking reasons</strong>
                 {(appearanceFacts?.reasons.length ?? 0) > 0 ? (

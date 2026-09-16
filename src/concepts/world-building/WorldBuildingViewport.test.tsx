@@ -14,6 +14,7 @@ loadedScene.add(
 );
 
 vi.mock('@react-three/drei', () => ({
+  Html: () => null,
   OrbitControls: () => null,
   TransformControls: ({ children }: { children?: React.ReactNode }) => children,
   useGLTF: () => {
@@ -206,7 +207,11 @@ describe('room floor pointer ownership', () => {
       'pointerDown',
       event(new THREE.Vector3(0, 0, 0))
     );
-    await renderer.fireEvent(ground, 'pointerCancel', {});
+    await renderer.fireEvent(
+      ground,
+      'pointerCancel',
+      event(new THREE.Vector3(0, 0, 0))
+    );
     await renderer.fireEvent(
       ground,
       'pointerUp',
@@ -214,6 +219,135 @@ describe('room floor pointer ownership', () => {
     );
     expect(onWalkableGesture).toHaveBeenCalledTimes(1);
     expect(target.releasePointerCapture).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('room repeat pointer ownership', () => {
+  it('previews captured primary-pointer movement, ignores another pointer, commits once, and cancels cleanly while models load', async () => {
+    modelState.value = 'pending';
+    const onRepeatGesture = vi.fn();
+    const baseProps = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+      roomAuthoring: {
+        tool: 'repeat' as const,
+        workspace: { hexRadius: 6, horizontalLimit: 12 },
+        walkableHexes: [],
+        propDeclarations: {},
+        repeat: {
+          assetRef: 'dnd5e:props:dark-fortress:barricade_02',
+          step: 2,
+          originOffset: 1,
+          maxCount: 10,
+        },
+        onWalkableGesture: vi.fn(),
+        onRepeatGesture,
+      },
+      showCompositionBounds: false,
+    };
+    let canvas: HTMLCanvasElement | undefined;
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...baseProps} />,
+      { beforeReturn: (value) => (canvas = value) }
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const event = (
+      pointerId: number,
+      x: number,
+      z = 0,
+      eventTarget = target
+    ) => ({
+      button: 0,
+      buttons: 1,
+      pointerId,
+      point: new THREE.Vector3(x, 0, z),
+      target: eventTarget,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+    const secondTarget = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    expect(target.setPointerCapture).toHaveBeenCalledWith(7);
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      event(8, 2, 0, secondTarget)
+    );
+    expect(secondTarget.setPointerCapture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerCancel', event(8, 2));
+    const unrelatedLostCapture = new Event('lostpointercapture');
+    Object.defineProperty(unrelatedLostCapture, 'pointerId', { value: 8 });
+    canvas!.dispatchEvent(unrelatedLostCapture);
+    expect(target.releasePointerCapture).not.toHaveBeenCalled();
+    expect(
+      renderer.scene.findByProps({ name: 'repeat-placement-preview' }).props
+        .userData.count
+    ).toBe(1);
+    await renderer.fireEvent(ground, 'pointerMove', event(8, 10));
+    expect(
+      renderer.scene.findByProps({ name: 'repeat-placement-preview' }).props
+        .userData.count
+    ).toBe(1);
+    await renderer.fireEvent(ground, 'pointerMove', event(7, 6.2));
+    expect(
+      renderer.scene.findByProps({ name: 'repeat-placement-preview' }).props
+        .userData.count
+    ).toBe(3);
+    await renderer.fireEvent(ground, 'pointerUp', event(8, 6.2));
+    expect(onRepeatGesture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 50));
+    expect(onRepeatGesture).toHaveBeenCalledTimes(1);
+    expect(onRepeatGesture.mock.calls[0]![1]).toHaveLength(3);
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(7);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    await renderer.fireEvent(ground, 'pointerMove', event(7, 100));
+    expect(baseProps.onTransformReject).toHaveBeenCalledWith(
+      expect.stringMatching(/capacity/i)
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'repeat-placement-preview' })
+    ).toHaveLength(0);
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 100));
+    expect(onRepeatGesture).toHaveBeenCalledTimes(1);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    await renderer.fireEvent(ground, 'pointerCancel', event(7, 0));
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 4));
+    expect(onRepeatGesture).toHaveBeenCalledTimes(1);
+    expect(
+      renderer.scene.findAllByProps({ name: 'repeat-placement-preview' })
+    ).toHaveLength(0);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    await renderer.unmount();
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(4);
   });
 });
 

@@ -175,6 +175,31 @@ function selectedSource(): HTMLInputElement {
 }
 
 describe('AssetReviewLab drawer and navigation', () => {
+  it('generates a fresh ID for a new review instead of reusing the first published batch', async () => {
+    await renderLab();
+    const id = (screen.getByLabelText('Batch ID') as HTMLInputElement).value;
+    expect(id).toMatch(/^dark-fortress-world-assets-\d{8}-[0-9a-f-]+$/);
+    expect(id).not.toBe('dark-fortress-world-assets-v1');
+  });
+
+  it('preserves a saved batch ID and its reviewed orientation', async () => {
+    const saved = mergeCatalogWithReview(catalog).batch;
+    saved.batchId = 'existing-reviewed-batch';
+    saved.entries[0]!.calibration.yawDegrees = -136;
+    window.localStorage.setItem(
+      ASSET_REVIEW_STORAGE_KEY,
+      JSON.stringify(saved)
+    );
+    await renderLab();
+    expect((screen.getByLabelText('Batch ID') as HTMLInputElement).value).toBe(
+      'existing-reviewed-batch'
+    );
+    expect(
+      JSON.parse(window.localStorage.getItem(ASSET_REVIEW_STORAGE_KEY)!)
+        .entries[0].calibration.yawDegrees
+    ).toBe(-136);
+  });
+
   it('starts deterministically, shows every status count, and navigates only inside search results', async () => {
     await renderLab();
 

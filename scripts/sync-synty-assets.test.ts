@@ -133,6 +133,9 @@ function syncEnvironment(
     'RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER',
     'RPG_DWARF_CATALOG_GENERATOR',
     'RPG_DWARF_CATALOG_RUNNER',
+    'RPG_NPC_APPEARANCE_CATALOG_GENERATOR',
+    'RPG_NPC_APPEARANCE_CATALOG_RUNNER',
+    'RPG_NPC_APPEARANCE_RELEASE_SELECTION',
   ] as const) {
     delete cleanEnvironment[key];
   }
@@ -144,6 +147,9 @@ function syncEnvironment(
     RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER: fixtureValue.fakeRunner,
     RPG_DWARF_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
     RPG_DWARF_CATALOG_RUNNER: fixtureValue.fakeRunner,
+    RPG_NPC_APPEARANCE_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
+    RPG_NPC_APPEARANCE_CATALOG_RUNNER: fixtureValue.fakeRunner,
+    RPG_NPC_APPEARANCE_RELEASE_SELECTION: fixtureValue.fakeGenerator,
     PATH: `${fixtureValue.bin}:${process.env.PATH}`,
   };
 }
