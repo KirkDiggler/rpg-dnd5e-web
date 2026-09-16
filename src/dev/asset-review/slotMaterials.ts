@@ -63,7 +63,9 @@ export function applyChannels(
     material.emissive.set('#000000');
     material.emissiveIntensity = 1;
   } else {
-    material.emissive.set(channels.emissive.color);
+    // Profile colors are stored as bare six-hex; three.js setStyle needs the
+    // '#' prefix (a bare string is silently ignored).
+    material.emissive.set(`#${channels.emissive.color}`);
     material.emissiveIntensity = channels.emissive.strength;
     if (channels.emissive.image && textures.emissive) {
       textures.emissive.colorSpace = THREE.SRGBColorSpace;

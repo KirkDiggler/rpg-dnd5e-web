@@ -409,7 +409,8 @@ describe('real three.js channel application', () => {
       {
         baseColor: null,
         normal: null,
-        emissive: { image: null, color: '#00FF00', strength: 2.5 },
+        // Bare six-hex exactly as the editing profile stores colors.
+        emissive: { image: null, color: '00FF00', strength: 2.5 },
         wrap: 'repeat',
       },
       { baseColor: null, normal: null, emissive: null }
@@ -426,7 +427,7 @@ describe('real three.js channel application', () => {
         normal: null,
         emissive: {
           image: { path: 'Texture/Glow_01.png', sha256: 'x' },
-          color: '#FFFFFF',
+          color: 'FFFFFF',
           strength: 1.5,
         },
         wrap: 'repeat',
