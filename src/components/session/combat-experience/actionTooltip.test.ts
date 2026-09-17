@@ -150,3 +150,59 @@ describe('actionTooltipText', () => {
     expect(actionTooltipText(tooltip)).toContain('Unavailable — not your turn');
   });
 });
+
+// The tooltip is the SEVENTH hand-written verb site (rpg-project#458).
+// rpg-dnd5e-web#1104 enumerated six; this one was found on the walk, drawing a
+// row labelled "Persuade" whose own tooltip was titled "Move".
+describe('the social verbs in the tooltip', () => {
+  it('titles each social row with its own name, not the Move default', () => {
+    expect(
+      buildActionTooltip(
+        declaration({ verb: Verb.INTIMIDATE, slot: Slot.NONE })
+      ).title
+    ).toBe('Intimidate');
+    expect(
+      buildActionTooltip(declaration({ verb: Verb.PERSUADE, slot: Slot.NONE }))
+        .title
+    ).toBe('Persuade');
+  });
+
+  it('shows NO cost line for a row the server sent free', () => {
+    // "Costs: No turn slot" is a sentence about a turn economy, and on the
+    // world clock there is none. The badge is already suppressed; a tooltip
+    // that still said it would move the wrong claim one hover away.
+    const tooltip = buildActionTooltip(
+      declaration({ verb: Verb.PERSUADE, slot: Slot.NONE, cost: [] })
+    );
+    expect(
+      tooltip.lines.find((line) => line.label === 'Costs')
+    ).toBeUndefined();
+    expect(actionTooltipText(tooltip)).not.toContain('No turn slot');
+  });
+
+  it('keeps the cost line when the same verb arrives priced', () => {
+    // The SLOT is the test and not the clock, so a social verb on the turn
+    // clock still tells the player what it spends.
+    const tooltip = buildActionTooltip(
+      declaration({ verb: Verb.PERSUADE, slot: Slot.ACTION })
+    );
+    expect(tooltip.lines.find((line) => line.label === 'Costs')?.value).toBe(
+      'Action'
+    );
+  });
+
+  it('keeps a provider cost even on a slotless row', () => {
+    // Free of a TURN SLOT is not free of everything: a row that spends a
+    // charge still says so, and dropping the whole line would hide it.
+    const tooltip = buildActionTooltip(
+      declaration({
+        verb: Verb.PERSUADE,
+        slot: Slot.NONE,
+        cost: [{ needed: 1, label: 'Bardic Inspiration' } as never],
+      })
+    );
+    expect(tooltip.lines.find((line) => line.label === 'Costs')?.value).toBe(
+      '1 Bardic Inspiration'
+    );
+  });
+});
