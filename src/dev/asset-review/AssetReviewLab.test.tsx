@@ -10,9 +10,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSET_REVIEW_STORAGE_KEY, AssetReviewLab } from './AssetReviewLab';
 import {
   mergeCatalogWithReview,
+  serializeReviewProgress,
   type AssetReviewCandidate,
   type AssetReviewCatalog,
 } from './model';
+
+const sceneHarness = vi.hoisted(() => ({
+  callbacks: [] as Array<
+    (
+      url: string,
+      status: 'loading' | 'success' | 'error',
+      detail?: string
+    ) => void
+  >,
+}));
 
 vi.mock('./AssetReviewScene', () => ({
   AssetReviewScene: ({
@@ -31,43 +42,46 @@ vi.mock('./AssetReviewScene', () => ({
       status: 'loading' | 'success' | 'error',
       detail?: string
     ) => void;
-  }) => (
-    <div
-      data-testid="asset-review-scene"
-      data-url={url}
-      data-scale={scale}
-      data-yaw={yawDegrees}
-      data-offset={fineOffsetMeters.join(',')}
-    >
-      {url && (
-        <>
-          <button
-            type="button"
-            onClick={() => onLoadStateChange(url, 'success')}
-          >
-            Report scene success
-          </button>
-          <button
-            type="button"
-            onClick={() => onLoadStateChange(url, 'error', 'fixture error')}
-          >
-            Report scene error
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              onLoadStateChange(
-                '/models/synty/asset-review/111111111111-A_Brazier_01.glb',
-                'success'
-              )
-            }
-          >
-            Report stale palette A success
-          </button>
-        </>
-      )}
-    </div>
-  ),
+  }) => {
+    sceneHarness.callbacks.push(onLoadStateChange);
+    return (
+      <div
+        data-testid="asset-review-scene"
+        data-url={url}
+        data-scale={scale}
+        data-yaw={yawDegrees}
+        data-offset={fineOffsetMeters.join(',')}
+      >
+        {url && (
+          <>
+            <button
+              type="button"
+              onClick={() => onLoadStateChange(url, 'success')}
+            >
+              Report scene success
+            </button>
+            <button
+              type="button"
+              onClick={() => onLoadStateChange(url, 'error', 'fixture error')}
+            >
+              Report scene error
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onLoadStateChange(
+                  '/models/synty/asset-review/111111111111-A_Brazier_01.glb',
+                  'success'
+                )
+              }
+            >
+              Report stale palette A success
+            </button>
+          </>
+        )}
+      </div>
+    );
+  },
 }));
 
 const hashes = ['a', 'b', 'c', 'd'].map((letter) => letter.repeat(64));
@@ -128,6 +142,58 @@ const catalog: AssetReviewCatalog = {
 
 const downloadedBlobs: Blob[] = [];
 
+const SOURCES_URL = '/models/synty/asset-review/sources.json';
+const LEGACY_CATALOG_URL = '/models/synty/asset-review/catalog.json';
+const AUTHORED_CATALOG_URL = '/models/synty/asset-review/authored/catalog.json';
+
+/** Legacy no-index mode: sources.json 404s and the legacy catalogue serves. */
+function stubCatalogFetch(payload: unknown): void {
+  vi.mocked(fetch).mockImplementation(((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === SOURCES_URL) {
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => payload,
+    } as Response);
+  }) as typeof fetch);
+}
+
+/** Indexed mode: respond per prepared URL; unknown URLs 404. */
+function stubUrlFetch(
+  responses: Record<
+    string,
+    {
+      ok?: boolean;
+      status?: number;
+      body?: unknown;
+      json?: () => Promise<unknown>;
+    }
+  >
+): void {
+  vi.mocked(fetch).mockImplementation(((input: RequestInfo | URL) => {
+    const url = String(input);
+    const match = responses[url];
+    if (!match) {
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as Response);
+    }
+    return Promise.resolve({
+      ok: match.ok ?? true,
+      status: match.status ?? 200,
+      json: match.json ?? (async () => match.body),
+    } as Response);
+  }) as typeof fetch);
+}
+
 async function blobText(blob: Blob): Promise<string> {
   if ('text' in blob && typeof blob.text === 'function') {
     return blob.text();
@@ -143,10 +209,9 @@ async function blobText(blob: Blob): Promise<string> {
 beforeEach(() => {
   window.localStorage.clear();
   downloadedBlobs.length = 0;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({ ok: true, json: async () => catalog })
-  );
+  sceneHarness.callbacks.length = 0;
+  vi.stubGlobal('fetch', vi.fn());
+  stubCatalogFetch(catalog);
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
     value: vi.fn((blob: Blob) => {
@@ -490,10 +555,7 @@ describe('AssetReviewLab decisions and property sheet', () => {
       schemaVersion: 1,
       candidates: [candidate(0), flat, tinyFx],
     };
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => flatCatalog,
-    } as Response);
+    stubCatalogFetch(flatCatalog);
 
     render(<AssetReviewLab />);
     await screen.findByDisplayValue(
@@ -670,10 +732,7 @@ async function renderPaletteLab() {
       },
     ],
   } as unknown as AssetReviewCatalog;
-  vi.mocked(fetch).mockResolvedValue({
-    ok: true,
-    json: async () => v2Catalog,
-  } as Response);
+  stubCatalogFetch(v2Catalog);
   await act(async () => {
     render(<AssetReviewLab />);
   });
@@ -779,5 +838,479 @@ describe('AssetReviewLab palette appearances and batch controls', () => {
       '1'.repeat(64)
     );
     expect(text).not.toMatch(/"url"|localhost|blob:/i);
+  });
+});
+
+const AUTHORED_FLOOR_HASH = 'f'.repeat(64);
+const AUTHORED_DOOR_HASH = 'e'.repeat(64);
+const SHARED_URL = '/models/synty/asset-review/999999999999-Shared.glb';
+const LEGACY_SCOPED_KEY = 'rpg.asset-review.batch.v2:dark-fortress-legacy';
+const AUTHORED_SCOPED_KEY = 'rpg.asset-review.batch.v2:authored-trial';
+
+function authoredSourceFixture(sourcePath: string, glbSha256: string) {
+  const name = sourcePath.split('/').at(-1)!.slice(0, -4);
+  return {
+    kind: 'authored-glb' as const,
+    packSlug: 'authored-trial',
+    packVersion: 'v1',
+    sourcePath,
+    glbSha256,
+    capture: { path: `captures/${name}.json`, sha256: 'c'.repeat(64) },
+  };
+}
+
+function authoredFloorCandidate(
+  overrides: Partial<AssetReviewCandidate> = {}
+): AssetReviewCandidate {
+  return {
+    source: authoredSourceFixture('floor-tile.glb', AUTHORED_FLOOR_HASH),
+    url: `/models/synty/asset-review/${AUTHORED_FLOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+    sourceFamily: 'floor',
+    suggestedCategory: 'env',
+    suggestedDisplayName: 'Floor Tile',
+    browsingFamily: 'floor',
+    referencePack: 'authored-trial',
+    refSuffix: 'floor_tile',
+    dimensionsMeters: [2, 0.25, 2],
+    readyEligible: true,
+    reviewStatus: 'authored',
+    reasons: [],
+    ...overrides,
+  };
+}
+
+function authoredDoorCandidate(): AssetReviewCandidate {
+  return authoredFloorCandidate({
+    source: authoredSourceFixture('doors/double-door.glb', AUTHORED_DOOR_HASH),
+    url: `/models/synty/asset-review/${AUTHORED_DOOR_HASH.slice(0, 12)}-double-door.glb`,
+    sourceFamily: 'door',
+    suggestedDisplayName: 'Double Door',
+    browsingFamily: 'door',
+    refSuffix: 'double_door',
+  });
+}
+
+function sourcesIndex(defaultSourceId = 'dark-fortress-legacy') {
+  return {
+    schemaVersion: 1,
+    defaultSourceId,
+    sources: [
+      {
+        id: 'dark-fortress-legacy',
+        label: 'Dark Fortress library',
+        kind: 'converted-fbx' as const,
+        catalogUrl: LEGACY_CATALOG_URL,
+      },
+      {
+        id: 'authored-trial',
+        label: 'Authored GLB trial',
+        kind: 'authored-glb' as const,
+        catalogUrl: AUTHORED_CATALOG_URL,
+      },
+    ],
+  };
+}
+
+function stubIndexedFetch(
+  options: {
+    defaultSourceId?: string;
+    legacyCatalog?: unknown;
+    authoredCatalog?: unknown;
+    index?: unknown;
+  } = {}
+): void {
+  stubUrlFetch({
+    [SOURCES_URL]: {
+      json: async () => options.index ?? sourcesIndex(options.defaultSourceId),
+    },
+    [LEGACY_CATALOG_URL]: {
+      json: async () => options.legacyCatalog ?? catalog,
+    },
+    [AUTHORED_CATALOG_URL]: {
+      json: async () =>
+        options.authoredCatalog ?? {
+          schemaVersion: 3,
+          candidates: [
+            authoredFloorCandidate(),
+            authoredDoorCandidate(),
+            authoredFloorCandidate({
+              source: authoredSourceFixture('z-broken.glb', 'b'.repeat(64)),
+              url: `/models/synty/asset-review/bbbbbbbbbbbb-z-broken.glb`,
+              suggestedDisplayName: 'Broken Preview',
+              browsingFamily: 'broken',
+              refSuffix: 'z_broken',
+              sourceFamily: 'broken',
+              readyEligible: false,
+              reasons: ['Authored preview failed to load'],
+            }),
+          ],
+        },
+    },
+  });
+}
+
+async function switchToSource(value: string): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Review source'), {
+    target: { value },
+  });
+}
+
+describe('AssetReviewLab indexed sources', () => {
+  it('switches sources, isolates drafts and filters per source, and remembers the selection', async () => {
+    stubIndexedFetch();
+    const view = render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+
+    const picker = screen.getByLabelText('Review source') as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.value)).toEqual([
+      'dark-fortress-legacy',
+      'authored-trial',
+    ]);
+    expect(screen.getByTestId('active-source').textContent).toContain(
+      'Dark Fortress library'
+    );
+
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Legacy note' },
+    });
+    fireEvent.change(screen.getByLabelText('Search candidates'), {
+      target: { value: 'brazier' },
+    });
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+    expect(screen.getByTestId('active-source').textContent).toContain(
+      'authored-glb'
+    );
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe(
+      ''
+    );
+    expect(
+      (screen.getByLabelText('Search candidates') as HTMLInputElement).value
+    ).toBe('');
+    expect(window.localStorage.getItem('rpg.asset-review.source.v1')).toBe(
+      'authored-trial'
+    );
+
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Authored note' },
+    });
+    await waitFor(() => {
+      expect(window.localStorage.getItem(AUTHORED_SCOPED_KEY)).toContain(
+        'Authored note'
+      );
+    });
+
+    view.unmount();
+    stubIndexedFetch();
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue('doors/double-door.glb');
+
+    await act(async () => {
+      switchToSource('dark-fortress-legacy');
+    });
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+    expect(
+      (screen.getByLabelText('Search candidates') as HTMLInputElement).value
+    ).toBe('brazier');
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe(
+      'Legacy note'
+    );
+  });
+
+  it('migrates the legacy draft to the unique legacy source and retains the original JSON', async () => {
+    const legacyBatch = mergeCatalogWithReview(catalog).batch;
+    legacyBatch.batchId = 'legacy-reviewed-batch';
+    const legacySaved = serializeReviewProgress(legacyBatch);
+    window.localStorage.setItem(ASSET_REVIEW_STORAGE_KEY, legacySaved);
+
+    stubIndexedFetch({ defaultSourceId: 'authored-trial' });
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue('doors/double-door.glb');
+
+    expect(window.localStorage.getItem(LEGACY_SCOPED_KEY)).toBeTruthy();
+    expect(window.localStorage.getItem(LEGACY_SCOPED_KEY)).toContain(
+      'legacy-reviewed-batch'
+    );
+    expect(window.localStorage.getItem(ASSET_REVIEW_STORAGE_KEY)).toBe(
+      legacySaved
+    );
+    // The pristine authored batch must not occupy the scoped key before the
+    // user edits anything (pristine drafts never block migration).
+    expect(window.localStorage.getItem(AUTHORED_SCOPED_KEY)).toBeNull();
+    expect(screen.getByText(/Migrated the legacy review draft/i)).toBeTruthy();
+    expect(
+      screen.getByText(/retained under rpg\.asset-review\.batch\.v1/i)
+    ).toBeTruthy();
+
+    await act(async () => {
+      switchToSource('dark-fortress-legacy');
+    });
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+    expect((screen.getByLabelText('Batch ID') as HTMLInputElement).value).toBe(
+      'legacy-reviewed-batch'
+    );
+  });
+
+  it('keeps the legacy draft as a recoverable backup when the legacy source is ambiguous', async () => {
+    const legacyBatch = mergeCatalogWithReview(catalog).batch;
+    const legacySaved = serializeReviewProgress(legacyBatch);
+    window.localStorage.setItem(ASSET_REVIEW_STORAGE_KEY, legacySaved);
+
+    stubUrlFetch({
+      [SOURCES_URL]: {
+        json: async () => ({
+          schemaVersion: 1,
+          defaultSourceId: 'legacy-a',
+          sources: [
+            {
+              id: 'legacy-a',
+              label: 'Legacy A',
+              kind: 'converted-fbx',
+              catalogUrl: LEGACY_CATALOG_URL,
+            },
+            {
+              id: 'legacy-b',
+              label: 'Legacy B',
+              kind: 'converted-fbx',
+              catalogUrl: LEGACY_CATALOG_URL,
+            },
+          ],
+        }),
+      },
+      [LEGACY_CATALOG_URL]: { json: async () => catalog },
+    });
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+
+    expect(window.localStorage.getItem(ASSET_REVIEW_STORAGE_KEY)).toBe(
+      legacySaved
+    );
+    expect(
+      window.localStorage.getItem('rpg.asset-review.batch.v2:legacy-a')
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem('rpg.asset-review.batch.v2:legacy-b')
+    ).toBeNull();
+    expect(screen.getByText(/kept without migration.*found 2\./i)).toBeTruthy();
+  });
+
+  it('ignores a late catalogue response from a previous source', async () => {
+    let resolveLegacy!: (response: Response) => void;
+    const legacyGate = new Promise<Response>((resolve) => {
+      resolveLegacy = resolve;
+    });
+    vi.mocked(fetch).mockImplementation(((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === SOURCES_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => sourcesIndex(),
+        } as Response);
+      }
+      if (url === AUTHORED_CATALOG_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            schemaVersion: 3,
+            candidates: [authoredFloorCandidate(), authoredDoorCandidate()],
+          }),
+        } as Response);
+      }
+      if (url === LEGACY_CATALOG_URL) return legacyGate;
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as Response);
+    }) as typeof fetch);
+
+    render(<AssetReviewLab />);
+    await screen.findByText(/Loading asset-review catalog…/);
+    expect(
+      screen.getByLabelText('Review source') as HTMLSelectElement
+    ).toBeTruthy();
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+
+    await act(async () => {
+      resolveLegacy({
+        ok: true,
+        json: async () => catalog,
+      } as Response);
+    });
+    expect(screen.getByDisplayValue('doors/double-door.glb')).toBeTruthy();
+    expect(
+      screen.queryByDisplayValue(catalog.candidates[3]!.source.sourcePath)
+    ).toBeNull();
+  });
+
+  it('ignores same-URL success callbacks from a previous source', async () => {
+    const sharedLegacy = candidate(0, {
+      source: {
+        ...candidate(0).source,
+        sourcePath: 'SourceFiles/DarkFortress/FBX/A0_Shared.fbx',
+        glbSha256: '9'.repeat(64),
+      },
+      url: SHARED_URL,
+      suggestedDisplayName: 'Shared',
+      browsingFamily: 'shared',
+      refSuffix: 'shared',
+    });
+    const sharedAuthored = authoredFloorCandidate({
+      source: authoredSourceFixture('a-shared.glb', '9'.repeat(64)),
+      url: SHARED_URL,
+      suggestedDisplayName: 'Shared Authored',
+      browsingFamily: 'shared',
+      refSuffix: 'shared',
+      sourceFamily: 'shared',
+    });
+    stubIndexedFetch({
+      legacyCatalog: {
+        schemaVersion: 1,
+        candidates: [sharedLegacy, ...catalog.candidates],
+      },
+      authoredCatalog: {
+        schemaVersion: 3,
+        candidates: [sharedAuthored, authoredDoorCandidate()],
+      },
+    });
+
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(
+      'SourceFiles/DarkFortress/FBX/A0_Shared.fbx'
+    );
+    const staleCallback = sceneHarness.callbacks.at(-1)!;
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('a-shared.glb');
+    const activeCallback = sceneHarness.callbacks.at(-1)!;
+    expect(activeCallback).not.toBe(staleCallback);
+
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    act(() => staleCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(screen.getByText(/Model:/).textContent).toContain('not loaded');
+
+    act(() => activeCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+});
+
+describe('AssetReviewLab authored v3 flow', () => {
+  it('reviews authored candidates and exports schema-v3 Ready JSON', async () => {
+    stubIndexedFetch({ defaultSourceId: 'authored-trial' });
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue('doors/double-door.glb');
+
+    const drawer = screen.getByTestId('candidate-drawer');
+    expect(
+      within(screen.getByTestId('property-sheet')).getAllByText('authored')
+        .length
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(
+      within(drawer).getByRole('button', { name: /Broken Preview/ })
+    );
+    expect(screen.getByText('Authored preview failed to load')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+
+    fireEvent.click(within(drawer).getByRole('button', { name: /Floor Tile/ }));
+    const ready = screen.getByRole('button', {
+      name: 'Mark Ready',
+    }) as HTMLButtonElement;
+    expect(ready.disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    expect(ready.disabled).toBe(false);
+    fireEvent.click(ready);
+    expect(screen.getByTestId('current-decision').textContent).toBe('Ready');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export Ready provider JSON' })
+    );
+    const providerText = await blobText(downloadedBlobs.at(-1)!);
+    const provider = JSON.parse(providerText);
+    expect(provider.schemaVersion).toBe(3);
+    expect(provider.entries).toHaveLength(1);
+    expect(provider.entries[0].source).toMatchObject({
+      kind: 'authored-glb',
+      packSlug: 'authored-trial',
+      packVersion: 'v1',
+      sourcePath: 'floor-tile.glb',
+      glbSha256: AUTHORED_FLOOR_HASH,
+      capture: { path: 'captures/floor-tile.json' },
+    });
+    expect(provider.entries[0]).not.toHaveProperty('decision');
+    expect(providerText).not.toMatch(/"url"|paletteSelection|localhost|blob:/i);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export review JSON' }));
+    const review = JSON.parse(await blobText(downloadedBlobs.at(-1)!));
+    expect(review.schemaVersion).toBe(3);
+    expect(review.entries).toHaveLength(3);
+    expect(JSON.stringify(review)).not.toMatch(/"url"/);
+    expect(
+      review.entries.find(
+        (entry: { source: { sourcePath: string } }) =>
+          entry.source.sourcePath === 'floor-tile.glb'
+      ).source.capture
+    ).toEqual({ path: 'captures/floor-tile.json', sha256: 'c'.repeat(64) });
+  });
+
+  it('imports foreign-source batches as stale without touching other sources storage', async () => {
+    stubIndexedFetch();
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Keep legacy' },
+    });
+    await waitFor(() => {
+      expect(window.localStorage.getItem(LEGACY_SCOPED_KEY)).toContain(
+        'Keep legacy'
+      );
+    });
+    const legacyScoped = window.localStorage.getItem(LEGACY_SCOPED_KEY);
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+
+    const file = new File(
+      [JSON.stringify(mergeCatalogWithReview(catalog).batch)],
+      'legacy.json',
+      { type: 'application/json' }
+    );
+    fireEvent.change(screen.getByLabelText('Import review JSON'), {
+      target: { files: [file] },
+    });
+    await screen.findByText(/stale imported source/);
+    expect(screen.getByText(/stale imported source/).textContent).toContain(
+      '4'
+    );
+    expect(screen.getByTestId('current-decision').textContent).toBe(
+      'Undecided'
+    );
+    expect(window.localStorage.getItem(LEGACY_SCOPED_KEY)).toBe(legacyScoped);
   });
 });
