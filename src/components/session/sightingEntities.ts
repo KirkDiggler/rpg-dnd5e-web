@@ -115,11 +115,11 @@ export interface SightedMember {
    * fact. Today, with no deception in play, every viewer's word equals the
    * derived stance and the ring looks exactly as it did.
    *
-   * EMPTY MEANS THIS OBSERVER HAS NO WORD, which is the wire's own reading
-   * and not a gap to fill: the caller falls back to the roster's faction
-   * colour, which is what the ring has always been. It is empty for every
-   * sighting today, because the session seam does not yet carry a believed
-   * stance — see `stanceRingColor`'s doc comment.
+   * EMPTY MEANS THIS OBSERVER HAS NO WORD, which is the wire's own reading and
+   * not a gap to fill: the seam leaves it empty when the run cannot answer — a
+   * subject who is not a member, or one in NO FACTION at all, which a world NPC
+   * is — and the caller falls back to the roster's faction colour, which is
+   * what the ring has always been. See `stanceRingColor`.
    *
    * The vocabulary is the dungeon file's own closed set — `hostile`,
    * `neutral`, `allied` — carried as the author's word rather than an enum,

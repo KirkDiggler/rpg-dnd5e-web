@@ -1232,7 +1232,7 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
     // trimmed, re-cased or re-punctuated what the author typed.
     const line = 'Bandits took the cellar. Go left at the rope.';
     const [entry] = buildCombatStory(
-      [answerBeat(14n, { word: AnswerWord.FACT, say: line, fact: 'x' })],
+      [answerBeat(14n, { word: AnswerWord.FACT, say: line })],
       context
     );
     expect(entry.eyebrow).toBe('Answer');
@@ -1241,7 +1241,7 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
 
   it('adds one outcome sentence for FACT, and one for FLEE', () => {
     const learned = buildCombatStory(
-      [answerBeat(15n, { word: AnswerWord.FACT, say: 'Fine!', fact: 'cowed' })],
+      [answerBeat(15n, { word: AnswerWord.FACT, say: 'Fine!' })],
       context
     )[0];
     expect(learned.detail).toContain('the party learned something');
@@ -1267,6 +1267,30 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
     );
     expect(entry.headline).toContain('Big talk');
     expect(entry.detail).toBe('');
+  });
+
+  it('never shows a fact id, even if one somehow arrived', () => {
+    // `Answered.fact` is left unset by the server by ruling
+    // (rpg-project#458): a fact is per-observer knowledge and this beat is
+    // broadcast. The body here carries one anyway, because the reason is about
+    // WHO may know a fact rather than about whether the field exists — a
+    // future server that filled it must still not have it read out to the
+    // whole table from here.
+    const [entry] = buildCombatStory(
+      [
+        answerBeat(19n, {
+          word: AnswerWord.FACT,
+          say: 'Fine! FINE.',
+          fact: 'goblin-cowed',
+        }),
+      ],
+      context
+    );
+    const line = `${entry.eyebrow} ${entry.headline} ${entry.detail}`;
+    expect(line).not.toContain('goblin-cowed');
+    // The player still learns the outcome — in words, which is the whole
+    // substitution the ruling makes.
+    expect(entry.detail).toContain('the party learned something');
   });
 
   it('keeps the die out of the story (R1)', () => {

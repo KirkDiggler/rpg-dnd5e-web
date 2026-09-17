@@ -774,11 +774,17 @@ export function SessionScene({
           // from "neutral" and resolves to the faction colour the ring has
           // always been.
           //
-          // IT LOOKS IDENTICAL TODAY and will until `pretend` lands: with no
-          // deception in play every viewer's believed stance equals the
-          // derived one. The seam does not carry a stance yet either, so every
-          // sighting takes the fallback — which is exactly why the fallback,
-          // and not the belief, is the branch that has to be right.
+          // BOTH BRANCHES RUN. A creature in a faction answers hostile,
+          // neutral or allied and gets a stance colour; one the run cannot
+          // place — in NO FACTION at all, which a world NPC is — answers empty
+          // and takes the roster fallback. Empty is the wire's own "no word for
+          // it" and is NOT a synonym for neutral: resolving it into one would
+          // draw a confident ring around a creature whose side is unknown.
+          //
+          // EVERY VIEWER STILL SEES THE SAME COLOURS, and will until `pretend`
+          // lands: with no deception in play a believed stance equals the
+          // derived one. It is read per viewer anyway, because a stance taken
+          // live off the graph could only ever be true.
           factionColor={
             stanceRingColor(member.stance) ??
             factionPalette.get(roster?.get(member.subject)?.faction ?? '')

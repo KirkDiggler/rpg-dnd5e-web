@@ -821,11 +821,16 @@ describe('formatDebugLine', () => {
     expect(line.text).toContain('verb=PERSUADE');
     expect(line.text).toContain('roll=83 of=100 entry=1');
     expect(line.text).toContain('word=FLEE');
-    // The fact is absent when there is none, rather than printed empty.
+    // The fact never rides this beat at all — see the scene below.
     expect(line.text).not.toContain('fact=');
   });
 
-  it('an answered beat naming a fact prints it', () => {
+  it('never prints a fact — the server leaves it unset by ruling', () => {
+    // A fact is per-observer knowledge and this beat is broadcast, so
+    // `Answered.fact` is deliberately empty on the wire (rpg-project#458). The
+    // body here carries one anyway, which is the point: if a future server
+    // started filling it, this log must still not print it, because the reason
+    // is about WHO may know a fact and not about whether the field exists.
     const event = baseEvent({
       kind: EventKind.ANSWERED,
       body: {
@@ -846,7 +851,8 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
     expect(line.text).toContain('verb=INTIMIDATE');
     expect(line.text).toContain('word=FACT');
-    expect(line.text).toContain('fact=goblin-cowed');
+    expect(line.text).not.toContain('fact=');
+    expect(line.text).not.toContain('goblin-cowed');
   });
 
   it("keeps the creature's LINE out of the debug log — it is prose, and it is in the story", () => {

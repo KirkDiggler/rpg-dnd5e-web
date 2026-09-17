@@ -367,23 +367,27 @@ export function formatDebugLine(
       };
     }
     // R1 IN FULL: the world's die, the summed weights it was thrown against,
-    // the entry that fired, the word and the fact. `of` is the die SIZE and
-    // not the entry count — 70 and 30 is a d100 — and `entry` indexes the
-    // AUTHOR's own list, so a builder can find the line in the file they are
-    // looking at. `say` is deliberately absent: it is prose, it is in the
-    // story log verbatim, and it would bury this line's numbers.
+    // the entry that fired, and the word. `of` is the die SIZE and not the
+    // entry count — 70 and 30 is a d100 — and `entry` indexes the AUTHOR's own
+    // list, so a builder can find the line in the file they are looking at.
+    //
+    // TWO FIELDS ARE DELIBERATELY ABSENT. `say` is prose, it is in the story
+    // log verbatim, and it would bury this line's numbers. `fact` never
+    // arrives at all: it is per-observer knowledge and this beat is broadcast,
+    // so the server leaves it unset by ruling (rpg-project#458) — printing a
+    // field that is always empty would be this log implying the server
+    // sometimes fills it.
     case 'answered': {
       const b = event.body.value;
       const word = AnswerWord[b.word] ?? String(b.word);
       const verbName = Verb[b.verb] ?? String(b.verb);
-      const fact = b.fact ? ` fact=${b.fact}` : '';
       return {
         seq,
         ids: [b.creature],
         text:
           `${prefix} answered creature=${name(b.creature)} verb=${verbName} ` +
           `beaten=${b.beaten} roll=${b.roll} of=${b.of} entry=${b.entry} ` +
-          `word=${word}${fact}`,
+          `word=${word}`,
       };
     }
     case 'ended': {
