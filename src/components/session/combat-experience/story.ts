@@ -605,14 +605,27 @@ function buildOtherStory(
       // The tone is the CHECK's, not the consequence's: a cowed goblin may
       // or may not run, because that is its mind's decision and it shows up
       // as its next turn, never as a clause here.
+      //
+      // THE WHOLE ROLL WHEN THERE IS ONE (rpg-project#462). The beat used to
+      // publish one settled number, which is how the untrained rule shipped
+      // applied and INVISIBLE: a character who threw two dice and kept the
+      // lower read a plain total and never learned why. When the calculation
+      // is present the line shows both faces, the kept one and the rule's own
+      // name; when it is absent — an older beat — it falls back to the total
+      // it always printed, rather than going blank.
       const threat = event.body.value;
       const actor = memberName(threat.actor, context);
       const target = memberName(threat.target, context);
+      const arithmetic = threat.calculation
+        ? formatRollCalculation(threat.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
       return Object.freeze({
         ...base,
         eyebrow: 'Threat',
         headline: `${actor} leans on ${target}`,
-        detail: `${threat.total} against DC ${threat.dc} · ${
+        detail: `${arithmetic ?? threat.total} against DC ${threat.dc} · ${
           threat.beaten ? 'Cowed' : 'Unmoved'
         }`,
         tone: threat.beaten ? 'success' : 'neutral',
@@ -632,14 +645,21 @@ function buildOtherStory(
       // NOTHING ABOUT WHAT THE CREATURE DOES. That is the `answered` beat
       // below — the world's roll on the author's table — and putting a word
       // of it here would make this one beat claim two things.
+      //
+      // AND THE WHOLE ROLL, the threat's twin here too (rpg-project#462).
       const appeal = event.body.value;
       const actor = memberName(appeal.actor, context);
       const target = memberName(appeal.target, context);
+      const arithmetic = appeal.calculation
+        ? formatRollCalculation(appeal.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
       return Object.freeze({
         ...base,
         eyebrow: 'Appeal',
         headline: `${actor} talks to ${target}`,
-        detail: `${appeal.total} against DC ${appeal.dc} · ${
+        detail: `${arithmetic ?? appeal.total} against DC ${appeal.dc} · ${
           appeal.beaten ? 'Won round' : 'Unconvinced'
         }`,
         tone: appeal.beaten ? 'success' : 'neutral',
@@ -686,15 +706,28 @@ function buildOtherStory(
       });
     }
     case 'door': {
+      // UNLOCK IS A CHECK BEAT AND CARRIES THE ROLL (rpg-project#462, R4).
+      // "Any future check beat" includes the one that already existed, so a
+      // forced lock shows both faces and the rule the same way a threat does.
+      //
+      // ONLY ON AN ATTEMPT. A door that merely reports a state change — opened
+      // by hand, revealed, shut behind somebody — rolled nothing, and its
+      // calculation is absent rather than empty. The `dc` test that already
+      // chose between the two readings still chooses.
       const door = event.body.value;
       const actor = door.actor ? memberName(door.actor, context) : 'The door';
       const state = DoorState[door.state] ?? String(door.state);
+      const arithmetic = door.calculation
+        ? formatRollCalculation(door.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
       return Object.freeze({
         ...base,
         eyebrow: 'Door',
         headline: `${actor} changes ${door.door}`,
         detail: door.dc
-          ? `${door.total} against DC ${door.dc} · ${door.beaten ? 'Succeeded' : 'Failed'}`
+          ? `${arithmetic ?? door.total} against DC ${door.dc} · ${door.beaten ? 'Succeeded' : 'Failed'}`
           : state.toLowerCase(),
         tone: door.beaten ? 'success' : 'neutral',
       });
