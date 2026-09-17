@@ -1248,6 +1248,15 @@ const EXPECTED_OTHER_KIND = {
   // account of the roll — the response carries no beaten, total or dc — so
   // dropping it would lose the die for the whole table, actor included.
   intimidated: EventKind.INTIMIDATED,
+  // THE FRONT ROOM GOBLIN (rpg-project#458), and both arms are here for
+  // `intimidated`'s reason one line up. `persuaded` is the only account of its
+  // own roll, exactly as the threat's is. `answered` is the only account of
+  // ANYTHING the creature did: the line it spoke, the fact it taught and
+  // whether it bolted all ride that one body, so dropping it as a typed
+  // kind/body mismatch would leave a goblin running out of the room with
+  // nothing anywhere saying why.
+  persuaded: EventKind.PERSUADED,
+  answered: EventKind.ANSWERED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1280,6 +1289,8 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
   EventKind.INTIMIDATED,
+  EventKind.PERSUADED,
+  EventKind.ANSWERED,
   // Typed, so a SIGHTED arriving with no body is dropped rather than
   // falling through as a bodyless 'none' row. The server only publishes one
   // when it names somebody, so a bodyless one is a beat that should not
@@ -1487,6 +1498,12 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // may lean on the same goblin twice across two turns, and the numbers
     // are what differ.
     case 'intimidated':
+    // The appeal takes the threat's identity whole, for the threat's reason:
+    // actor and target alone would hash two attempts on one creature the
+    // same, and the second would be recorded as a conflicting duplicate of
+    // the first. A party face may work on the same goblin twice.
+    // eslint-disable-next-line no-fallthrough
+    case 'persuaded':
       return Object.freeze({
         kind: event.kind,
         bodyCase,
@@ -1495,6 +1512,25 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         dc: event.body.value.dc,
         total: event.body.value.total,
         beaten: event.body.value.beaten,
+      });
+    // THE WORLD'S ROLL IS THE IDENTITY (rpg-project#458). The creature and the
+    // verb alone would hash two answers to two attempts on one goblin the
+    // same, and the author's whole point is that the SECOND attempt can roll
+    // a different entry off the same table — so the die, the entry and the
+    // line are what tell them apart.
+    case 'answered':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        creature: event.body.value.creature,
+        verb: event.body.value.verb,
+        beaten: event.body.value.beaten,
+        roll: event.body.value.roll,
+        of: event.body.value.of,
+        entry: event.body.value.entry,
+        word: event.body.value.word,
+        say: event.body.value.say,
+        fact: event.body.value.fact,
       });
     case 'door':
       return Object.freeze({

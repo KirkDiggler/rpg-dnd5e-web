@@ -769,4 +769,112 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
     expect(line.text).toBe('seq=7 clock=42 downed member=unrostered-42');
   });
+
+  // R1 (Kirk, rpg-project#457): "everything visible in the log now, probably
+  // not story but the debug log for sure." The story log shows the outcome and
+  // the creature's line; THIS is where the die lives, and a typed line rather
+  // than the default branch's raw JSON is what makes it readable.
+  it('a persuaded beat renders the whole check', () => {
+    const event = baseEvent({
+      kind: EventKind.PERSUADED,
+      body: {
+        case: 'persuaded',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 10,
+          total: 13,
+          beaten: true,
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1', 'skeleton-1']);
+    expect(line.text).toContain('persuaded');
+    expect(line.text).toContain('dc=10 total=13 beaten=true');
+  });
+
+  it('an answered beat renders the die, the weights, the entry, the word and the fact', () => {
+    // EVERY FIELD R1 NAMES. `of` is the die SIZE and not the entry count — 70
+    // and 30 is a d100 — and `entry` indexes the AUTHOR's own list, so a
+    // builder can find the line in the file they are looking at.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          verb: 9,
+          beaten: true,
+          roll: 83,
+          of: 100,
+          entry: 1,
+          word: 2,
+          say: 'Boss! BOSS!',
+          fact: '',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('answered');
+    expect(line.text).toContain('verb=PERSUADE');
+    expect(line.text).toContain('roll=83 of=100 entry=1');
+    expect(line.text).toContain('word=FLEE');
+    // The fact never rides this beat at all — see the scene below.
+    expect(line.text).not.toContain('fact=');
+  });
+
+  it('never prints a fact — the server leaves it unset by ruling', () => {
+    // A fact is per-observer knowledge and this beat is broadcast, so
+    // `Answered.fact` is deliberately empty on the wire (rpg-project#458). The
+    // body here carries one anyway, which is the point: if a future server
+    // started filling it, this log must still not print it, because the reason
+    // is about WHO may know a fact and not about whether the field exists.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          verb: 8,
+          beaten: true,
+          roll: 42,
+          of: 100,
+          entry: 0,
+          word: 1,
+          say: 'Fine! FINE.',
+          fact: 'goblin-cowed',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('verb=INTIMIDATE');
+    expect(line.text).toContain('word=FACT');
+    expect(line.text).not.toContain('fact=');
+    expect(line.text).not.toContain('goblin-cowed');
+  });
+
+  it("keeps the creature's LINE out of the debug log — it is prose, and it is in the story", () => {
+    // The debug log is numbers a builder scans. A sentence in the middle of
+    // it buries the fields this line exists to show.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          verb: 9,
+          beaten: false,
+          roll: 1,
+          of: 1,
+          entry: 0,
+          word: 0,
+          say: 'Big talk, for someone standing in my doorway.',
+          fact: '',
+        },
+      },
+    });
+    expect(formatDebugLine(event, names).text).not.toContain('Big talk');
+  });
 });

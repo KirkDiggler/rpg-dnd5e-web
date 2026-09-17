@@ -4,6 +4,7 @@ import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
 import { useSessionIntimidate } from '@/api/useSessionIntimidate';
+import { useSessionPersuade } from '@/api/useSessionPersuade';
 import { useSessionReact } from '@/api/useSessionReact';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
@@ -47,6 +48,7 @@ import {
   useCombatPresentation,
 } from './useCombatPresentation';
 import { useCombatStoryPacing } from './useCombatStoryPacing';
+import { isFreeOnWorldClock, promptsForMember } from './verbRegistry';
 
 const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   armedDeclarationId: null,
@@ -284,6 +286,7 @@ export function useSessionCombatExperience({
   const activateInFlightRef = useRef(false);
   const castInFlightRef = useRef(false);
   const intimidateInFlightRef = useRef(false);
+  const persuadeInFlightRef = useRef(false);
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -390,6 +393,7 @@ export function useSessionCombatExperience({
   const { activate } = useSessionActivate();
   const { cast } = useSessionCast();
   const { intimidate } = useSessionIntimidate();
+  const { persuade } = useSessionPersuade();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -551,17 +555,15 @@ export function useSessionCombatExperience({
     // unchanged, and two reads of Afford return it byte for byte.
     const armedVerb = armedMatches[0]?.verb;
     const armedKind = armedMatches[0]?.targetKind;
-    const promptsForMember =
-      (armedVerb === Verb.ATTACK ||
-        armedVerb === Verb.ACTIVATE ||
-        armedVerb === Verb.CAST ||
-        // The first shenanigan (rpg-project#454). It arms exactly like a
-        // swing — hold the offer, wait for a candidate the server ruled —
-        // and left out of this check it would be judged incoherent one
-        // render later and torn down as "that option changed", which is the
-        // failure the comment above records twice already.
-        armedVerb === Verb.INTIMIDATE) &&
-      armedKind === TargetKind.MEMBER;
+    // ASKED OF THE ONE REGISTRY (rpg-dnd5e-web#1104). This was the fourth of
+    // six hand-written verb lists, and it is the one whose omission produced
+    // the ugliest symptom: a verb that arms and is not listed here is judged
+    // incoherent ONE RENDER LATER and torn down as "that option changed",
+    // with no RPC sent and nothing for the player to review — the offer was
+    // never withdrawn, and two reads of Afford return it byte for byte.
+    // Bardic Inspiration shipped that bug; so did Thunderwave.
+    const promptsForMemberNow =
+      promptsForMember(armedVerb) && armedKind === TargetKind.MEMBER;
     // A CELL CAST ARMS FOR THE SAME REASON AND IS JUDGED THE SAME WAY. What
     // it waits for is a place rather than a creature, which changes what the
     // next click means and nothing about whether holding the offer is
@@ -570,12 +572,21 @@ export function useSessionCombatExperience({
     // comment above records for Bardic Inspiration.
     const promptsForCell =
       armedVerb === Verb.CAST && armedKind === TargetKind.CELL;
+    // THE CLOCK AND THE TURN ARE PER-VERB (R3, rpg-project#457). An armed
+    // social verb on the world clock is COHERENT: there is no turn to be out
+    // of and no economy to have spent, and the server sent the row. Judged by
+    // the old blanket rule, it armed and was torn down one render later as
+    // "that option changed" — the exact symptom rpg-dnd5e-web#1104 catalogues,
+    // arriving this time from the clock rather than from a missing verb.
+    const armedIsFreeHere =
+      clock === ClockKind.WORLD &&
+      armedVerb !== undefined &&
+      isFreeOnWorldClock(armedVerb);
     const current =
       authorityFresh &&
-      clock === ClockKind.TURN &&
-      active === member &&
+      (armedIsFreeHere || (clock === ClockKind.TURN && active === member)) &&
       armedMatches.length === 1 &&
-      (promptsForMember || promptsForCell) &&
+      (promptsForMemberNow || promptsForCell) &&
       armedMatches[0]?.available;
     return {
       armedIsCurrent: current,
@@ -712,11 +723,26 @@ export function useSessionCombatExperience({
       // a stale selector, and the server refuses it — and so does the TURN
       // clock, because no window is posed on the world clock.
       const answeringWindow = candidate.verb === Verb.REACT;
+      // A SOCIAL VERB IS OFFERED ON THE WORLD CLOCK TOO (rpg-project#457 R3),
+      // which is the first time any verb has been. The front room has no
+      // fight, so it has no turn to be out of and no economy to spend: the
+      // server prices these at nothing there and refuses nobody for whose
+      // turn it is. Gated on the turn clock here, the row Afford sent would
+      // arm and be refused by this client before the request was ever made —
+      // the panel would offer the goblin and the dock would do nothing.
+      //
+      // WHETHER A VERB IS ONE IS THE REGISTRY'S ANSWER, not a list here
+      // (rpg-dnd5e-web#1104), so a third social verb needs no edit.
+      const freeOnThisClock =
+        authorityRef.current.clock === ClockKind.WORLD &&
+        isFreeOnWorldClock(candidate.verb);
       if (
         !mountedRef.current ||
         !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        (!answeringWindow && authorityRef.current.active !== member)
+        (!freeOnThisClock && authorityRef.current.clock !== ClockKind.TURN) ||
+        (!answeringWindow &&
+          !freeOnThisClock &&
+          authorityRef.current.active !== member)
       ) {
         return;
       }
@@ -810,11 +836,17 @@ export function useSessionCombatExperience({
       // Afford lists the members who can see the ACTOR rather than the ones
       // the actor can see, because that is the direction a threat travels.
       // This client reads the list and never the direction.
-      if (candidate.verb === Verb.INTIMIDATE) {
+      // AND SO DOES THE APPEAL (rpg-project#458), on the same branch rather
+      // than a copied one: the two social verbs differ in which RPC runs and
+      // in nothing else up to the click.
+      if (
+        candidate.verb === Verb.INTIMIDATE ||
+        candidate.verb === Verb.PERSUADE
+      ) {
         const current = uniqueCurrentDeclaration(
           declarationsRef.current,
           candidate,
-          Verb.INTIMIDATE,
+          candidate.verb,
           TargetKind.MEMBER
         );
         if (!current) return;
@@ -1046,9 +1078,28 @@ export function useSessionCombatExperience({
         activateInFlightRef.current ||
         castInFlightRef.current ||
         intimidateInFlightRef.current ||
-        !authorityRef.current.fresh ||
-        authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        persuadeInFlightRef.current ||
+        !authorityRef.current.fresh
+      ) {
+        return;
+      }
+      // THE CLOCK GATE IS PER-VERB NOW (R3). Everything that spends a turn's
+      // economy still needs the turn clock and the actor's own turn; the two
+      // social verbs need neither, because the world clock has no turns and
+      // no economy. Read off the ARMED declaration rather than off the clock
+      // alone, so a turn-economy verb is never let through by standing in a
+      // room with no fight in it.
+      const armedVerb = declarationsRef.current.find(
+        (declaration) => declaration.id === presentationState.armedDeclarationId
+      )?.verb;
+      const freeOnThisClock =
+        authorityRef.current.clock === ClockKind.WORLD &&
+        armedVerb !== undefined &&
+        isFreeOnWorldClock(armedVerb);
+      if (
+        !freeOnThisClock &&
+        (authorityRef.current.clock !== ClockKind.TURN ||
+          authorityRef.current.active !== member)
       ) {
         return;
       }
@@ -1123,10 +1174,17 @@ export function useSessionCombatExperience({
       // Two verbs prompt for a member now — Attack, and Help. Everything up
       // to the click is identical: arm an offer, pick a candidate the SERVER
       // ruled, echo the selector back. Only the RPC differs.
+      // ASKED OF THE ONE REGISTRY (rpg-dnd5e-web#1104). This was the third of
+      // six hand-written verb lists, and a verb left out of it was a button
+      // that clicked and sent no RPC at all.
+      //
+      // CAST IS DELIBERATELY NOT HERE AND NEVER WAS: it is dispatched further
+      // down with its chosen option, which is a different call shape rather
+      // than a different RPC on the same one.
       const targetTakingVerb =
-        selected?.declaration?.verb === Verb.ATTACK ||
-        selected?.declaration?.verb === Verb.ACTIVATE ||
-        selected?.declaration?.verb === Verb.INTIMIDATE;
+        selected?.declaration?.verb !== undefined &&
+        selected.declaration.verb !== Verb.CAST &&
+        promptsForMember(selected.declaration.verb);
       if (
         !selected?.declaration ||
         !targetTakingVerb ||
@@ -1184,35 +1242,53 @@ export function useSessionCombatExperience({
         return;
       }
 
-      if (declaration.verb === Verb.INTIMIDATE) {
-        intimidateInFlightRef.current = true;
+      // THE TWO SOCIAL VERBS SHARE ONE DISPATCH (rpg-project#458), because
+      // they differ in exactly one thing — which RPC runs — and two copies
+      // would be two answers to every question below, free to drift the first
+      // time one of them learned something.
+      if (
+        declaration.verb === Verb.INTIMIDATE ||
+        declaration.verb === Verb.PERSUADE
+      ) {
+        const threatening = declaration.verb === Verb.INTIMIDATE;
+        const inFlight = threatening
+          ? intimidateInFlightRef
+          : persuadeInFlightRef;
+        const send = threatening ? intimidate : persuade;
+        const name = threatening ? 'Intimidate' : 'Persuade';
+
+        inFlight.current = true;
         void (async () => {
           try {
-            // NO SELECTOR GOES BACK. `IntimidateRequest` names the session,
-            // the member and the target and nothing else, so unlike Attack
-            // and Activate above there is no opaque declaration id for the
-            // door to reject as stale, and no recovery path to take when it
-            // does. The offer's id is what the dock armed; the verb never
-            // asks for it.
-            await intimidate({ session, member, target: exactTarget });
+            // NO SELECTOR GOES BACK. Neither request names a declaration —
+            // both carry the session, the member and the target and nothing
+            // else — so unlike Attack and Activate above there is no opaque
+            // id for the door to reject as stale, and no recovery path to
+            // take when it does. The offer's id is what the dock armed; the
+            // verb never asks for it.
+            await send({ session, member, target: exactTarget });
             if (!mountedRef.current) return;
             // NOTHING IS READ OFF THE RESPONSE, and that is the ruling
             // rather than an omission here. It carries no beaten, total or
-            // dc: the roll reaches this player on the `intimidated` beat,
-            // the same one every other witness reads, so the story log
-            // narrates it once for the whole table and the actor is not a
-            // special case (rpg-api-protos#339). Presenting it from here
-            // would be a second account of one die.
+            // dc: the roll reaches this player on the check beat, the same
+            // one every other witness reads, so the story log narrates it
+            // once for the whole table and the actor is not a special case
+            // (rpg-api-protos#339, #340).
+            //
+            // NOR THE CREATURE'S ANSWER. What the goblin said, what it
+            // taught and whether it bolted arrive on their own `answered`
+            // beat, which is the world's account and not this caller's
+            // receipt.
             invalidateAuthority();
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } catch (error) {
             if (!mountedRef.current) return;
-            // A threat the target could never have heard is refused at the
+            // A verb the target could never have heard is refused at the
             // door, and the offer that named them was not wrong to exist:
             // the panel asks who the ACTOR can see, and the verb asks the
             // other direction. So this is an ordinary refusal to show, not
             // a stale offer to recover — there is no id to recover with.
-            const notice = `Intimidate failed: ${
+            const notice = `${name} failed: ${
               error instanceof Error ? error.message : 'unknown error'
             }`;
             invalidateAuthority();
@@ -1222,7 +1298,7 @@ export function useSessionCombatExperience({
             });
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } finally {
-            intimidateInFlightRef.current = false;
+            inFlight.current = false;
           }
         })();
         return;
@@ -1284,6 +1360,7 @@ export function useSessionCombatExperience({
       activate,
       attack,
       intimidate,
+      persuade,
       invalidateAuthority,
       member,
       presentation,
