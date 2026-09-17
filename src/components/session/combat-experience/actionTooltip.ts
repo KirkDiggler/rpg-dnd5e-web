@@ -67,6 +67,14 @@ function damageLine(declaration: Declaration): ActionTooltipLine | null {
 }
 
 export function buildActionTooltip(declaration: Declaration): ActionTooltip {
+  // THE SEVENTH HAND-WRITTEN VERB SITE, which rpg-dnd5e-web#1104 did not
+  // enumerate and the walk found: a social verb fell through to the 'Move'
+  // default here exactly as it did in the two label functions, so the dock
+  // drew a row called "Persuade" whose own tooltip was titled "Move".
+  //
+  // Both social verbs name themselves, for the label functions' reason: the
+  // server compiles no action definition for either, so there is no authored
+  // title to prefer.
   const title =
     declaration.verb === Verb.ATTACK
       ? declaration.attack?.name || 'Attack'
@@ -76,7 +84,11 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
           ? declaration.deathSave?.name || 'Death Save'
           : declaration.verb === Verb.CAST
             ? castLabel(declaration)
-            : 'Move';
+            : declaration.verb === Verb.INTIMIDATE
+              ? 'Intimidate'
+              : declaration.verb === Verb.PERSUADE
+                ? 'Persuade'
+                : 'Move';
 
   const lines: ActionTooltipLine[] = [];
 
@@ -86,10 +98,27 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
   const providerCosts = (declaration.cost ?? [])
     .filter((component) => component.needed > 0 && component.label)
     .map((component) => `${component.needed} ${component.label}`);
-  lines.push({
-    label: 'Costs',
-    value: [slotLabel(declaration.slot), ...providerCosts].join(', '),
-  });
+  // A COST LINE ONLY WHEN THERE IS A COST (rpg-project#457 R3). A row the
+  // server sent at `Slot.NONE` with nothing else to spend costs nothing, and
+  // "Costs: No turn slot" is a sentence about a turn economy — which on the
+  // world clock does not exist. The badge is already suppressed for the same
+  // reason; a tooltip that still said it would just move the wrong claim one
+  // hover away, which is what the walk found.
+  //
+  // THE SLOT IS THE TEST, NOT THE CLOCK, so a death save keeps its "No turn
+  // slot" line on the turn clock where that IS a statement, as long as
+  // anything else is priced — and a row that arrives priced anywhere keeps
+  // its line whole.
+  const free =
+    declaration.slot === Slot.NONE || declaration.slot === Slot.UNSPECIFIED;
+  if (!free || providerCosts.length > 0) {
+    lines.push({
+      label: 'Costs',
+      value: free
+        ? providerCosts.join(', ')
+        : [slotLabel(declaration.slot), ...providerCosts].join(', '),
+    });
+  }
 
   if (declaration.verb === Verb.MOVE && declaration.remaining !== undefined) {
     // Verbatim, per the field's own contract: display this number, do not

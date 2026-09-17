@@ -9,6 +9,7 @@ import type {
   CombatExperienceMapRenderProps,
   CombatExperiencePhase,
 } from './types';
+import { promptsForMember } from './verbRegistry';
 
 export interface TargetSurfaceProps {
   phase: CombatExperiencePhase;
@@ -61,12 +62,13 @@ export function TargetSurface({
   // and left out of this line the one goblin the server named would be the
   // one goblin nobody could click, which is the failure this comment already
   // records once for the armed activation.
+  //
+  // ASKED OF THE ONE REGISTRY (rpg-dnd5e-web#1104). This used to be the fifth
+  // of six hand-written verb lists, and a verb left out of it meant the one
+  // creature the server named was the one creature nobody could click.
   const isMemberTargeted =
-    (declaration?.verb === Verb.ATTACK ||
-      declaration?.verb === Verb.ACTIVATE ||
-      declaration?.verb === Verb.CAST ||
-      declaration?.verb === Verb.INTIMIDATE) &&
-    declaration.targetKind === TargetKind.MEMBER;
+    promptsForMember(declaration?.verb) &&
+    declaration?.targetKind === TargetKind.MEMBER;
   // A CAST THE CASTER AIMS PROMPTS TOO, and prompts for a place. It names no
   // candidates, so none of the member machinery below applies to it — no
   // highlighted ring, no list, no cardinality. What it needs is the one
@@ -93,7 +95,9 @@ export function TargetSurface({
         ? castLabel(declaration)
         : declaration?.verb === Verb.INTIMIDATE
           ? 'Intimidate'
-          : declaration?.attack?.name || 'Attack';
+          : declaration?.verb === Verb.PERSUADE
+            ? 'Persuade'
+            : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;

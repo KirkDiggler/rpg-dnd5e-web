@@ -86,6 +86,7 @@ import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -766,9 +767,28 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
-          factionColor={factionPalette.get(
-            roster?.get(member.subject)?.faction ?? ''
-          )}
+          // THE RING IS WHAT THIS PLAYER BELIEVES, falling back to what the
+          // roster knows (rpg-project#458). The sighting's own stance is
+          // per-observer testimony and wins when it has a word; an empty one
+          // means this observer holds no belief, which is a different claim
+          // from "neutral" and resolves to the faction colour the ring has
+          // always been.
+          //
+          // BOTH BRANCHES RUN. A creature in a faction answers hostile,
+          // neutral or allied and gets a stance colour; one the run cannot
+          // place — in NO FACTION at all, which a world NPC is — answers empty
+          // and takes the roster fallback. Empty is the wire's own "no word for
+          // it" and is NOT a synonym for neutral: resolving it into one would
+          // draw a confident ring around a creature whose side is unknown.
+          //
+          // EVERY VIEWER STILL SEES THE SAME COLOURS, and will until `pretend`
+          // lands: with no deception in play a believed stance equals the
+          // derived one. It is read per viewer anyway, because a stance taken
+          // live off the graph could only ever be true.
+          factionColor={
+            stanceRingColor(member.stance) ??
+            factionPalette.get(roster?.get(member.subject)?.faction ?? '')
+          }
           knowledgeState={member.remembered ? 'remembered' : undefined}
           // Observed hands, not the peer's sheet — this component never
           // fetches another player's sheet, and could not honestly draw from
