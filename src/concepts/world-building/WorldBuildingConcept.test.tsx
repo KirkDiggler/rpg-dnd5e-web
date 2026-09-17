@@ -66,6 +66,17 @@ vi.mock('./WorldBuildingViewport', () => ({
         cells: Array<{ q: number; r: number }>,
         mode: 'paint' | 'erase'
       ) => void;
+      monsters?: Array<{
+        id: string;
+        ref: string;
+        cell: { q: number; r: number };
+      }>;
+      partyStart?: { q: number; r: number } | null;
+      selectedActorId?: string | null;
+      onPlaceMonster?: (cell: { q: number; r: number }) => void;
+      onMoveMonster?: (id: string, cell: { q: number; r: number }) => void;
+      onStartGesture?: (cell: { q: number; r: number }) => void;
+      onSelectActor?: (actor: string | null) => void;
     };
   }) => {
     const readPayload = (event: React.DragEvent) => {
@@ -192,6 +203,39 @@ vi.mock('./WorldBuildingViewport', () => ({
             >
               Erase empty cell
             </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onPlaceMonster?.({ q: 1, r: 0 })
+              }
+            >
+              Commit monster gesture
+            </button>
+            <button
+              onClick={() => {
+                const actor = props.roomAuthoring?.selectedActorId;
+                if (actor && actor !== 'start')
+                  props.roomAuthoring?.onMoveMonster?.(actor, {
+                    q: 2,
+                    r: -2,
+                  });
+              }}
+            >
+              Commit monster move gesture
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onStartGesture?.({ q: 0, r: 0 })
+              }
+            >
+              Commit start gesture
+            </button>
+            <output data-testid="viewport-actors">
+              {JSON.stringify({
+                monsters: props.roomAuthoring?.monsters ?? [],
+                partyStart: props.roomAuthoring?.partyStart ?? null,
+                selectedActorId: props.roomAuthoring?.selectedActorId ?? null,
+              })}
+            </output>
           </>
         )}
         <button
@@ -1609,21 +1653,20 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(2);
+    ).toBe(3);
   });
 
-  it('recovers valid legacy data visibly without replacing corrupt current bytes before explicit save', () => {
+  it('keeps corrupt current bytes and untouched legacy bytes until an explicit save', () => {
     const storage = new MemoryStorage();
-    const corrupt = '{bad-v2';
-    const legacyDraft = createRoomDraft(
-      createEmptyScene('legacy-scene'),
-      'legacy-room'
-    );
-    legacyDraft.room.walkableHexes = [{ q: 2, r: -1 }];
-    const legacyEnvelope = JSON.parse(stringifyRoomDraft(legacyDraft));
-    legacyEnvelope.version = 1;
-    legacyEnvelope.draft.version = 1;
-    delete legacyEnvelope.draft.workspace;
+    const corrupt = '{bad-v3';
+    const legacyEnvelope = JSON.parse(
+      stringifyRoomDraft(roomNamed('Legacy Cellar'))
+    ) as { version: number; draft: Record<string, unknown> };
+    // A fixed legacy local envelope: version 2 carrying draft version 2,
+    // which never had actor fields.
+    legacyEnvelope.version = 2;
+    legacyEnvelope.draft.version = 2;
+    delete legacyEnvelope.draft.monsters;
     const legacyRaw = JSON.stringify(legacyEnvelope);
     storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
     storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
@@ -1636,20 +1679,34 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
 
+    // The present-but-invalid current draft is never reinterpreted as
+    // absent: older bytes are not recovered, and autosave stays paused.
     expect(screen.getByRole('alert').textContent).toMatch(
-      /recovered the prior version 1 draft/
+      /Room draft load failed/
     );
-    expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.id
-    ).toBe('legacy-room');
+    expect(screen.getByText(/Autosave paused/)).toBeTruthy();
+    const shown = JSON.parse(
+      screen.getByTestId('room-draft-json').textContent ?? '{}'
+    ) as { draft: RoomDraft };
+    expect(shown.draft.version).toBe(3);
+    expect(shown.draft.name).toBe('Untitled room');
+    expect(shown.draft.id).not.toBe('legacy-room');
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+
+    // Unrelated committed edits do not replace unreadable bytes either.
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+
+    // Only an explicit valid save replaces them, and it writes v3 to the
+    // current key alone; legacy bytes are never removed or rewritten.
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    expect(
+      JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
+    ).toBe(3);
     expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1686,7 +1743,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
     expect(
       JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(2);
+    ).toBe(3);
     expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1828,5 +1885,247 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       /not in the local prop catalog/i
     );
     expect(scene()).toEqual(before);
+  });
+});
+
+describe('room actor authoring', () => {
+  function actors(): {
+    monsters: Array<{
+      id: string;
+      ref: string;
+      cell: { q: number; r: number };
+    }>;
+    partyStart: { q: number; r: number } | null;
+    selectedActorId: string | null;
+  } {
+    return JSON.parse(
+      screen.getByTestId('viewport-actors').textContent ?? '{}'
+    );
+  }
+
+  it('places, moves and removes a monster as one-Undo whole-room transactions with stable ids', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The monster palette reuses the four existing promoted choices.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'Place skeleton' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    const placed = actors().monsters[0];
+    expect(placed.ref).toBe('dnd5e:monsters:skeleton');
+    expect(placed.cell).toEqual({ q: 1, r: 0 });
+    // A structurally valid placement on unpainted ground is retained: the
+    // encounter decides legality at Play, not this editor.
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.room.walkableHexes
+    ).toEqual([]);
+    expect(actors().selectedActorId).toBe(placed.id);
+
+    // A move keeps the minted id and changes only the cell.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Move monster Skeleton ${placed.id}$`),
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(actors().monsters[0]).toEqual({
+      id: placed.id,
+      ref: 'dnd5e:monsters:skeleton',
+      cell: { q: 2, r: -2 },
+    });
+
+    // One whole-room Undo, one Redo.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(actors().monsters[0].cell).toEqual({ q: 1, r: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(actors().monsters[0].cell).toEqual({ q: 2, r: -2 });
+
+    // Repeat placement keeps arming until the tool changes.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Remove monster Skeleton ${placed.id}$`),
+      })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    expect(actors().monsters[0].id).not.toBe(placed.id);
+  });
+
+  it('places, moves and clears the party start without ever inventing an origin', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Clear party start',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Place party start' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit start gesture' })
+    );
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+    expect(actors().selectedActorId).toBe('start');
+
+    // The start can sit off painted ground: structural validity only.
+    fireEvent.click(screen.getByRole('button', { name: 'Erase empty cell' }));
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(actors().partyStart).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear party start' }));
+    expect(actors().partyStart).toBeNull();
+    // Absence is the authored state: no key, never a null or origin stub.
+    expect(screen.getByTestId('room-draft-json').textContent).not.toContain(
+      'partyStart'
+    );
+  });
+
+  it('keeps actors through scenery edits and keeps every scenery pose through actor edits', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // A selected prop keeps its selection and its pose through actor edits.
+    dragLabelTo('Drag Books into scene');
+    const booksId = scene().items[0]?.id as string;
+    expect(actors().selectedActorId).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    const placed = actors().monsters[0];
+    // Placing an actor never deleted the selected scenery or remapped it.
+    expect(scene().items).toHaveLength(1);
+    expect(scene().items[0]?.id).toBe(booksId);
+    expect(scene().items[0]?.transform).toEqual({
+      x: 0.13,
+      y: 0,
+      z: -0.27,
+      rotationY: 0,
+    });
+
+    // A scenery edit retains the actors and the start.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(actors().monsters).toEqual([placed]);
+
+    // Selecting the actor keeps the prop's own selection untouched, and
+    // removing the actor leaves the prop exactly where it was.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(actors().monsters[0].id).toBe(placed.id);
+    expect(scene().items[0]?.id).toBe(booksId);
+    expect(actors().selectedActorId).toBe(placed.id);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Remove monster Skeleton ${placed.id}$`),
+      })
+    );
+    expect(actors().monsters).toEqual([]);
+    expect(scene().items).toHaveLength(1);
+    expect(scene().items[0]?.id).toBe(booksId);
+  });
+
+  it('retains stable ids and the start through export, import and reopen', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    const placed = actors().monsters[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Place party start' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit start gesture' })
+    );
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    // Export → import is a lossless whole-draft transfer: actor identities
+    // are the stable join, never reminted.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export room draft JSON' })
+    );
+    const exported = (
+      screen.getByLabelText('Portable JSON') as HTMLInputElement
+    ).value;
+    expect(exported).toContain(placed.id);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import room draft JSON' })
+    );
+    expect(actors().monsters).toEqual([placed]);
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    // Reload restores the autosaved bytes with the same actor identities.
+    fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    expect(actors().monsters).toEqual([placed]);
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+  });
+
+  it('never routes actor placement through prop drops, arrangements or a second editor', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    // A palette drag stays the prop contract: a real prop drop creates a
+    // freely-posed prop, and the armed monster tool does not intercept it.
+    dragLabelTo('Drag Books into scene');
+    expect(scene().items).toHaveLength(1);
+    expect(actors().monsters).toEqual([]);
+    expect(actors().partyStart).toBeNull();
+    // The placed actor count changes only through its own gesture.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    expect(scene().items).toHaveLength(1);
   });
 });

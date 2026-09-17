@@ -1,3 +1,4 @@
+import { paletteNameForRef } from '@/author/paletteData';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -35,8 +36,15 @@ import {
 import { layoutRepeatedProps } from './repeatPlacement';
 import { RepeatPlacementPreview } from './RepeatPlacementPreview';
 import {
+  ROOM_MONSTER_COLOR,
+  ROOM_START_COLOR,
+  RoomActorMarkers,
+  RoomActorPreview,
+} from './RoomActorMarkers';
+import {
   walkableCellsInWorldRectangle,
   type RoomHexCell,
+  type RoomMonsterPlacement,
   type RoomPropDeclaration,
   type RoomWorkspace,
 } from './roomDraft';
@@ -85,7 +93,9 @@ export interface WorldBuildingViewportProps {
       | 'paint'
       | 'erase'
       | 'rectangle'
-      | 'repeat';
+      | 'repeat'
+      | 'monster'
+      | 'start';
     walkableHexes: readonly RoomHexCell[];
     workspace: RoomWorkspace;
     propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
@@ -103,6 +113,17 @@ export interface WorldBuildingViewportProps {
       assetRef: string,
       transforms: readonly WorldTransform[]
     ) => void;
+    /** Room-only actor authoring: the placed monsters, the optional party
+     * start, and their controls. These are authoring metadata only — never
+     * scene props, and never a game-legality gate. */
+    monsters?: readonly RoomMonsterPlacement[];
+    partyStart?: RoomHexCell | null;
+    armedMonsterRef?: string | null;
+    selectedActorId?: string | null;
+    onSelectActor?: (actorId: string | null) => void;
+    onPlaceMonster?: (cell: RoomHexCell) => void;
+    onMoveMonster?: (id: string, cell: RoomHexCell) => void;
+    onStartGesture?: (cell: RoomHexCell) => void;
   };
 }
 
@@ -471,6 +492,11 @@ export function WorldSceneContents(
     | null
   >(null);
   const [rectanglePreview, setRectanglePreview] = useState<RoomHexCell[]>([]);
+  /** Hover/placement preview cell for the armed monster and party-start
+   * tools. Purely authoring: never authored, never a legality gate. */
+  const [actorHoverCell, setActorHoverCell] = useState<RoomHexCell | null>(
+    null
+  );
   const [repeatPreview, setRepeatPreview] = useState<{
     assetRef: string;
     transforms: WorldTransform[];
@@ -578,6 +604,14 @@ export function WorldSceneContents(
     cancelFloorGesture,
     props.roomAuthoring?.tool,
   ]);
+  useEffect(() => {
+    // The hover preview belongs to the armed actor tools alone.
+    if (
+      props.roomAuthoring?.tool !== 'monster' &&
+      props.roomAuthoring?.tool !== 'start'
+    )
+      setActorHoverCell(null);
+  }, [props.roomAuthoring?.tool]);
   useEffect(() => cancelFloorGesture, [cancelFloorGesture]);
 
   return (
@@ -611,6 +645,33 @@ export function WorldSceneContents(
           if (floorGesture.current) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
+          const actor = props.roomAuthoring?.selectedActorId;
+          // Room actor authoring: one click is one whole-room history
+          // transaction committed by the editor, on the snapped cell. This
+          // is placement selection, not game legality.
+          if (
+            roomTool === 'monster' ||
+            roomTool === 'start' ||
+            (roomTool === 'select' && actor)
+          ) {
+            const cube = worldToCube(
+              { x: event.point.x, z: event.point.z },
+              HEX_SIZE
+            );
+            const cell = { q: cube.x, r: cube.z };
+            if (roomTool === 'monster') {
+              props.roomAuthoring?.onPlaceMonster?.(cell);
+              return;
+            }
+            if (roomTool === 'start' || actor === 'start') {
+              props.roomAuthoring?.onStartGesture?.(cell);
+              return;
+            }
+            if (actor) {
+              props.roomAuthoring?.onMoveMonster?.(actor, cell);
+              return;
+            }
+          }
           if (roomTool === 'repeat') {
             const descriptor = props.roomAuthoring?.repeat;
             if (!descriptor) return;
@@ -684,8 +745,21 @@ export function WorldSceneContents(
           if (!event.shiftKey) onSelect([]);
         }}
         onPointerMove={(event) => {
-          if (event.buttons !== 1) return;
           const roomTool = props.roomAuthoring?.tool;
+          // Snapped hover/placement preview for the armed actor tools. The
+          // shared worldToCube already rounds to the nearest hex.
+          if (roomTool === 'monster' || roomTool === 'start') {
+            const cube = worldToCube(
+              { x: event.point.x, z: event.point.z },
+              HEX_SIZE
+            );
+            setActorHoverCell((current) =>
+              current && current.q === cube.x && current.r === cube.z
+                ? current
+                : { q: cube.x, r: cube.z }
+            );
+          } else if (actorHoverCell) setActorHoverCell(null);
+          if (event.buttons !== 1) return;
           const gesture = floorGesture.current;
           if (!gesture || event.pointerId !== gesture.pointerId) return;
           event.stopPropagation();
@@ -796,6 +870,32 @@ export function WorldSceneContents(
           rectanglePreview={rectanglePreview}
         />
       )}
+      {props.roomAuthoring && (
+        <RoomActorMarkers
+          monsters={props.roomAuthoring.monsters ?? []}
+          partyStart={props.roomAuthoring.partyStart ?? null}
+          selectedActorId={props.roomAuthoring.selectedActorId ?? null}
+          onSelectActor={(actor) => props.roomAuthoring?.onSelectActor?.(actor)}
+        />
+      )}
+      {props.roomAuthoring &&
+        actorHoverCell &&
+        (props.roomAuthoring.tool === 'monster' ||
+          props.roomAuthoring.tool === 'start') && (
+          <RoomActorPreview
+            hoverCell={actorHoverCell}
+            label={
+              props.roomAuthoring.tool === 'start'
+                ? 'Party start'
+                : paletteNameForRef(props.roomAuthoring.armedMonsterRef ?? '')
+            }
+            color={
+              props.roomAuthoring.tool === 'start'
+                ? ROOM_START_COLOR
+                : ROOM_MONSTER_COLOR
+            }
+          />
+        )}
       {displayScene.items.map((item) => (
         <WorldPropVisual
           key={item.id}
