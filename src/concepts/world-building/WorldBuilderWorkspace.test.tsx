@@ -1,5 +1,6 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -31,12 +32,16 @@ const rpc = vi.hoisted(() => {
   };
   return {
     makeDeferred,
-    puts: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
+    puts: [] as Array<{
+      validateOnly: boolean;
+      deferred: ReturnType<typeof makeDeferred<never>>;
+    }>,
     gets: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
     lobby: {
       created: 0,
       ready: 0,
       started: 0,
+      startDeferred: null as ReturnType<typeof makeDeferred<never>> | null,
     },
     reset: () => {
       rpc.puts.length = 0;
@@ -44,6 +49,7 @@ const rpc = vi.hoisted(() => {
       rpc.lobby.created = 0;
       rpc.lobby.ready = 0;
       rpc.lobby.started = 0;
+      rpc.lobby.startDeferred = null;
     },
   };
 });
@@ -53,9 +59,10 @@ vi.mock('@/author/authoringRpc', async (importOriginal) => {
   return {
     ...actual,
     defaultAuthoringClient: {
-      putDungeon: vi.fn(async () => {
+      putDungeon: vi.fn(async (request: { validateOnly: boolean }) => {
         const deferred = rpc.makeDeferred<never>();
-        rpc.puts.push({ deferred });
+        rpc.puts.push({ validateOnly: request.validateOnly, deferred });
+        if (request.validateOnly) return { errors: [] } as never;
         return deferred.promise as never;
       }),
       getDungeon: vi.fn(async () => {
@@ -93,6 +100,7 @@ vi.mock('@/api/useStartLobbyEncounter', () => ({
   useStartLobbyEncounter: () => ({
     startEncounter: vi.fn(async () => {
       rpc.lobby.started += 1;
+      if (rpc.lobby.startDeferred) return rpc.lobby.startDeferred.promise;
       return { encounterId: 'enc-1' } as never;
     }),
     loading: false,
@@ -121,7 +129,12 @@ const storage = {
   },
 };
 
-beforeEach(() => rpc.reset());
+const savePuts = () => rpc.puts.filter((put) => !put.validateOnly);
+
+beforeEach(() => {
+  rpc.reset();
+  storage.values.clear();
+});
 
 describe('WorldBuilderWorkspace', () => {
   it('requires explicit confirmation before Back and preserves live editor state', () => {
@@ -231,6 +244,10 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
+    // A debounced preview may finish before the user's save on a busy CI
+    // runner. Exercise that ordering rather than relying on fast execution.
+    await waitFor(() => expect(rpc.puts).toHaveLength(1));
+
     // Drive a real publishing transaction into its save: existence read
     // answers NotFound, then the save itself is held in flight.
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
@@ -238,7 +255,7 @@ describe('WorldBuilderWorkspace', () => {
     rpc.gets[0]!.deferred.reject(
       new ConnectError('no such key', Code.NotFound)
     );
-    await waitFor(() => expect(rpc.puts).toHaveLength(1));
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
 
     // While the transaction mutates server state, navigation is locked.
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
@@ -259,7 +276,9 @@ describe('WorldBuilderWorkspace', () => {
 
     // The transaction completes: launch runs, the latch releases, and the
     // idle leave confirmation is intact.
-    rpc.puts[0]!.deferred.resolve({ errors: [] } as never);
+    await act(async () =>
+      savePuts()[0]!.deferred.resolve({ errors: [] } as never)
+    );
     await waitFor(() => expect(onPlay).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(
@@ -278,6 +297,7 @@ describe('WorldBuilderWorkspace', () => {
   });
 
   it('blocks Back even against a held deferred launch seam, and never routes mid-transaction', async () => {
+    rpc.lobby.startDeferred = rpc.makeDeferred<never>();
     const onBack = vi.fn();
     const onPlay = vi.fn();
     render(
@@ -295,15 +315,20 @@ describe('WorldBuilderWorkspace', () => {
     rpc.gets[0]!.deferred.reject(
       new ConnectError('no such key', Code.NotFound)
     );
-    await waitFor(() => expect(rpc.puts).toHaveLength(1));
-    rpc.puts[0]!.deferred.resolve({ errors: [] } as never);
-    // createLobby has run; the launch is still mid-flight (its ready step
-    // resolves immediately, the encounter start too — onPlay happens after
-    // the last await, so hold nothing further: Back must be blocked until
-    // the whole transaction returned).
-    await waitFor(() => expect(rpc.lobby.created).toBe(1));
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    await act(async () =>
+      savePuts()[0]!.deferred.resolve({ errors: [] } as never)
+    );
+    // StartEncounter remains pending: navigation must stay locked until its
+    // actual response, not merely until a fast chain happens to settle.
+    await waitFor(() => expect(rpc.lobby.started).toBe(1));
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
     expect(onBack).not.toHaveBeenCalled();
+    expect(onPlay).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Save or export your unsaved work/i)).toBeNull();
+    await act(async () =>
+      rpc.lobby.startDeferred!.resolve({ encounterId: 'enc-1' } as never)
+    );
 
     await waitFor(() => expect(onPlay).toHaveBeenCalledTimes(1));
     expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1');
