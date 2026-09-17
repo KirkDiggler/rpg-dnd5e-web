@@ -1,15 +1,47 @@
 export type ReviewDecision = 'undecided' | 'keep' | 'ready' | 'skip' | 'defer';
 
 export type WorldAssetCategory = 'props' | 'items' | 'weapons' | 'env';
-export type ReviewStatus = 'trusted' | 'material-review' | 'fx-review';
+export type ReviewStatus =
+  | 'trusted'
+  | 'material-review'
+  | 'fx-review'
+  | 'authored';
 export type FieldErrors = Record<string, string>;
 
-export interface AssetReviewSource {
+/**
+ * Schema-v1/v2 sources describe converter-derived GLBs and keep exactly these
+ * four keys; their sourcePath points at the reviewed .fbx.
+ */
+export interface AssetReviewConvertedSource {
   packSlug: string;
   packVersion: string;
   sourcePath: string;
   glbSha256: string;
 }
+
+/** Normalized receipt digest carried by schema-v3 authored sources. */
+export interface AssetReviewCaptureDigest {
+  path: string;
+  sha256: string;
+}
+
+/**
+ * Schema-v3 authored sources keep exactly these keys; sourcePath is a
+ * normalized relative .glb path inside the registered export folder and the
+ * capture names the immutable receipt that authorized the review.
+ */
+export interface AssetReviewAuthoredSource {
+  kind: 'authored-glb';
+  packSlug: string;
+  packVersion: string;
+  sourcePath: string;
+  glbSha256: string;
+  capture: AssetReviewCaptureDigest;
+}
+
+export type AssetReviewSource =
+  | AssetReviewConvertedSource
+  | AssetReviewAuthoredSource;
 
 export interface AssetReviewPortableDigest {
   path: string;
@@ -62,7 +94,7 @@ export interface AssetReviewCandidate {
 }
 
 export interface AssetReviewCatalog {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   candidates: AssetReviewCandidate[];
 }
 
@@ -96,7 +128,7 @@ export interface AssetReviewEntry {
 }
 
 export interface AssetReviewBatch {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   batchId: string;
   entries: AssetReviewEntry[];
 }
@@ -177,6 +209,14 @@ const SOURCE_KEYS = [
   'sourcePath',
   'glbSha256',
 ] as const;
+const AUTHORED_SOURCE_KEYS = [
+  'capture',
+  'glbSha256',
+  'kind',
+  'packSlug',
+  'packVersion',
+  'sourcePath',
+] as const;
 const BATCH_KEYS = ['schemaVersion', 'batchId', 'entries'] as const;
 const ENTRY_KEYS = [
   'source',
@@ -227,11 +267,13 @@ const CATEGORIES = new Set<WorldAssetCategory>([
   'weapons',
   'env',
 ]);
-const REVIEW_STATUSES = new Set<ReviewStatus>([
+const LEGACY_REVIEW_STATUSES = new Set<ReviewStatus>([
   'trusted',
   'material-review',
   'fx-review',
 ]);
+const V3_REVIEW_STATUSES = new Set<ReviewStatus>(['authored']);
+const READY_REVIEW_STATUSES = new Set<ReviewStatus>(['trusted', 'authored']);
 const DECISIONS = new Set<ReviewDecision>([
   'undecided',
   'keep',
@@ -246,6 +288,10 @@ const FAMILY_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const REF_SUFFIX_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const REVIEW_URL_PATTERN =
   /^\/models\/synty\/asset-review\/([0-9a-f]{12})-([A-Za-z0-9][A-Za-z0-9_-]*)\.glb$/;
+// Authored preparation isolates models by source. Retain early local v3 root
+// URLs, but never relax the legacy converter URL contract or allow traversal.
+const AUTHORED_REVIEW_URL_PATTERN =
+  /^\/models\/synty\/asset-review\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*([0-9a-f]{12})-([A-Za-z0-9][A-Za-z0-9_-]*)\.glb$/;
 const BATCH_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const DISPLAY_NAME_MAX_CODE_POINTS = 80;
 const DISPLAY_NAME_FORBIDDEN_MARKERS = [
@@ -414,8 +460,16 @@ function requireReviewDimensions(
   return dimensions;
 }
 
-function parseSource(value: unknown, label: string): AssetReviewSource {
+function parseSource(
+  value: unknown,
+  label: string,
+  schemaVersion: 1 | 2 | 3
+): AssetReviewSource {
   assertRecord(value, label);
+  if (schemaVersion === 3) {
+    return parseAuthoredSource(value, label);
+  }
+
   assertExactKeys(value, SOURCE_KEYS, label);
 
   const sourcePath = requireString(value.sourcePath, `${label}.sourcePath`, {
@@ -449,6 +503,60 @@ function parseSource(value: unknown, label: string): AssetReviewSource {
   };
 }
 
+function parseAuthoredSource(
+  value: Record<string, unknown>,
+  label: string
+): AssetReviewAuthoredSource {
+  assertExactKeys(value, AUTHORED_SOURCE_KEYS, label);
+  requireValue(
+    value.kind === 'authored-glb',
+    `${label}.kind must be "authored-glb"`
+  );
+
+  const sourcePath = requireString(value.sourcePath, `${label}.sourcePath`, {
+    nonEmpty: true,
+  });
+  requireValue(
+    !sourcePath.startsWith('/') &&
+      !sourcePath.includes('\\') &&
+      sourcePath.endsWith('.glb') &&
+      sourcePath
+        .split('/')
+        .every((part) => part !== '' && part !== '.' && part !== '..'),
+    `${label}.sourcePath must be a normalized relative POSIX .glb path`
+  );
+
+  const glbSha256 = requireString(value.glbSha256, `${label}.glbSha256`);
+  requireValue(
+    SHA256_PATTERN.test(glbSha256),
+    `${label}.glbSha256 must be a lowercase SHA-256`
+  );
+
+  return {
+    kind: 'authored-glb',
+    packSlug: requireString(value.packSlug, `${label}.packSlug`, {
+      pattern: PACK_SLUG_PATTERN,
+    }),
+    packVersion: requireString(value.packVersion, `${label}.packVersion`, {
+      pattern: PACK_VERSION_PATTERN,
+    }),
+    sourcePath,
+    glbSha256,
+    capture: parseCapture(value.capture, `${label}.capture`),
+  };
+}
+
+function parseCapture(value: unknown, label: string): AssetReviewCaptureDigest {
+  assertRecord(value, label);
+  assertExactKeys(value, DIGEST_KEYS, label);
+  return {
+    path: requirePortablePath(value.path, `${label}.path`),
+    sha256: requireString(value.sha256, `${label}.sha256`, {
+      pattern: SHA256_PATTERN,
+    }),
+  };
+}
+
 function parseCategory(value: unknown, label: string): WorldAssetCategory {
   requireValue(
     typeof value === 'string' && CATEGORIES.has(value as WorldAssetCategory),
@@ -457,9 +565,16 @@ function parseCategory(value: unknown, label: string): WorldAssetCategory {
   return value as WorldAssetCategory;
 }
 
-function parseReviewStatus(value: unknown, label: string): ReviewStatus {
+function parseReviewStatus(
+  value: unknown,
+  label: string,
+  schemaVersion: 1 | 2 | 3
+): ReviewStatus {
+  requireValue(typeof value === 'string', `${label} must be a string`);
+  const allowed: ReadonlySet<string> =
+    schemaVersion === 3 ? V3_REVIEW_STATUSES : LEGACY_REVIEW_STATUSES;
   requireValue(
-    typeof value === 'string' && REVIEW_STATUSES.has(value as ReviewStatus),
+    allowed.has(value),
     `${label} must be a supported review status`
   );
   return value as ReviewStatus;
@@ -651,19 +766,21 @@ function parsePaletteAlternative(
 function parseCandidate(
   value: unknown,
   index: number,
-  schemaVersion: 1 | 2
+  schemaVersion: 1 | 2 | 3
 ): AssetReviewCandidate {
   const label = `candidate[${index}]`;
   assertRecord(value, label);
   assertExactKeys(
     value,
-    schemaVersion === 1 ? CANDIDATE_KEYS : V2_CANDIDATE_KEYS,
+    schemaVersion === 2 ? V2_CANDIDATE_KEYS : CANDIDATE_KEYS,
     label
   );
 
-  const source = parseSource(value.source, `${label}.source`);
+  const source = parseSource(value.source, `${label}.source`, schemaVersion);
   const url = requireString(value.url, `${label}.url`);
-  const urlMatch = REVIEW_URL_PATTERN.exec(url);
+  const urlMatch = (
+    schemaVersion === 3 ? AUTHORED_REVIEW_URL_PATTERN : REVIEW_URL_PATTERN
+  ).exec(url);
   requireValue(
     urlMatch !== null && urlMatch[1] === source.glbSha256.slice(0, 12),
     `${label}.url must be a safe content-addressed asset-review GLB URL matching its source hash`
@@ -676,10 +793,27 @@ function parseCandidate(
   const readyEligible = value.readyEligible;
   const reviewStatus = parseReviewStatus(
     value.reviewStatus,
-    `${label}.reviewStatus`
+    `${label}.reviewStatus`,
+    schemaVersion
   );
   const reasons = requireStringArray(value.reasons, `${label}.reasons`);
-  if (reviewStatus === 'trusted') {
+  if (schemaVersion === 3) {
+    requireValue(
+      reviewStatus === 'authored',
+      `${label}: schema-v3 candidates must use reviewStatus "authored"`
+    );
+    if (readyEligible) {
+      requireValue(
+        reasons.length === 0,
+        `${label}: eligible candidates must not include blocking reasons`
+      );
+    } else {
+      requireValue(
+        reasons.length > 0,
+        `${label}: ineligible candidates must include a blocking reason`
+      );
+    }
+  } else if (reviewStatus === 'trusted') {
     if (readyEligible) {
       requireValue(
         reasons.length === 0,
@@ -770,8 +904,22 @@ function parseCandidate(
   };
 }
 
-function stableSourceKey(source: AssetReviewSource): string {
-  return `${source.packSlug}@${source.packVersion}:${source.sourcePath}#${source.glbSha256}`;
+/**
+ * Source kind is part of candidate identity: an authored GLB never shares an
+ * identity with a converted catalogue row even if the other fields coincide.
+ */
+export function sourceKind(
+  source: AssetReviewSource
+): 'converted-fbx' | 'authored-glb' {
+  return 'kind' in source ? source.kind : 'converted-fbx';
+}
+
+export function stableSourceKey(source: AssetReviewSource): string {
+  return `${sourceKind(source)}:${source.packSlug}@${source.packVersion}:${source.sourcePath}#${source.glbSha256}`;
+}
+
+function appearanceCarryKey(source: AssetReviewSource): string {
+  return `${sourceKind(source)}:${source.packSlug}@${source.packVersion}:${source.sourcePath}`;
 }
 
 function compareText(left: string, right: string): number {
@@ -875,24 +1023,25 @@ function parseCalibration(
 function parseReviewEntry(
   value: unknown,
   index: number,
-  schemaVersion: 1 | 2
+  schemaVersion: 1 | 2 | 3
 ): AssetReviewEntry {
   const label = `review entry[${index}]`;
   assertRecord(value, label);
   const hasUrl = Object.hasOwn(value, 'url');
+  const v2 = schemaVersion === 2;
   assertExactKeys(
     value,
-    schemaVersion === 1
-      ? hasUrl
-        ? ENTRY_KEYS
-        : PORTABLE_ENTRY_KEYS
-      : hasUrl
+    hasUrl
+      ? v2
         ? V2_RUNTIME_ENTRY_KEYS
-        : V2_PORTABLE_ENTRY_KEYS,
+        : ENTRY_KEYS
+      : v2
+        ? V2_PORTABLE_ENTRY_KEYS
+        : PORTABLE_ENTRY_KEYS,
     label
   );
 
-  const source = parseSource(value.source, `${label}.source`);
+  const source = parseSource(value.source, `${label}.source`, schemaVersion);
   const readyEligible = value.readyEligible;
   requireValue(
     typeof readyEligible === 'boolean',
@@ -907,9 +1056,21 @@ function parseReviewEntry(
     `${label}.supportsDecoration must be boolean`
   );
 
+  const reviewStatus = parseReviewStatus(
+    value.reviewStatus,
+    `${label}.reviewStatus`,
+    schemaVersion
+  );
+  if (schemaVersion === 3) {
+    requireValue(
+      reviewStatus === 'authored',
+      `${label}: schema-v3 review entries must use reviewStatus "authored"`
+    );
+  }
+
   let paletteSelection: AssetReviewPaletteSelection | null | undefined;
   let paletteAlternatives: AssetReviewPaletteAlternative[] | undefined;
-  if (schemaVersion === 2) {
+  if (v2) {
     paletteSelection = parsePaletteSelection(
       value.paletteSelection,
       `${label}.paletteSelection`
@@ -965,10 +1126,7 @@ function parseReviewEntry(
       readyEligible
     ),
     readyEligible,
-    reviewStatus: parseReviewStatus(
-      value.reviewStatus,
-      `${label}.reviewStatus`
-    ),
+    reviewStatus,
     reasons: requireStringArray(value.reasons, `${label}.reasons`),
     decision: parseDecision(value.decision, `${label}.decision`),
     loadedSuccessfully: value.loadedSuccessfully,
@@ -980,7 +1138,7 @@ function parseReviewEntry(
     supportsDecoration: value.supportsDecoration,
     notes: requireString(value.notes, `${label}.notes`),
     deferReason: requireString(value.deferReason, `${label}.deferReason`),
-    ...(schemaVersion === 2
+    ...(v2
       ? {
           paletteSelection: paletteSelection ?? null,
           ...(paletteAlternatives === undefined ? {} : { paletteAlternatives }),
@@ -989,12 +1147,14 @@ function parseReviewEntry(
   };
 }
 
-function parseReviewBatch(value: unknown): AssetReviewBatch {
+export function parseReviewBatch(value: unknown): AssetReviewBatch {
   assertRecord(value, 'review batch');
   assertExactKeys(value, BATCH_KEYS, 'review batch');
   requireValue(
-    value.schemaVersion === 1 || value.schemaVersion === 2,
-    'review batch schemaVersion must be 1 or 2'
+    value.schemaVersion === 1 ||
+      value.schemaVersion === 2 ||
+      value.schemaVersion === 3,
+    'review batch schemaVersion must be 1, 2, or 3'
   );
   const schemaVersion = value.schemaVersion;
   const batchId = requireString(value.batchId, 'review batch.batchId', {
@@ -1062,8 +1222,10 @@ export function parseAssetReviewCatalog(value: unknown): AssetReviewCatalog {
   assertRecord(value, 'asset review catalog');
   assertExactKeys(value, CATALOG_KEYS, 'asset review catalog');
   requireValue(
-    value.schemaVersion === 1 || value.schemaVersion === 2,
-    'asset review catalog schemaVersion must be 1 or 2'
+    value.schemaVersion === 1 ||
+      value.schemaVersion === 2 ||
+      value.schemaVersion === 3,
+    'asset review catalog schemaVersion must be 1, 2, or 3'
   );
   const schemaVersion = value.schemaVersion;
   requireValue(
@@ -1195,11 +1357,23 @@ export function mergeCatalogWithReview(
   const importedBySource = new Map(
     parsedReview?.entries.map((entry) => [stableSourceKey(entry.source), entry])
   );
+  const importedByAppearance = new Map<string, AssetReviewEntry[]>();
+  for (const entry of parsedReview?.entries ?? []) {
+    const key = appearanceCarryKey(entry.source);
+    const prior = importedByAppearance.get(key) ?? [];
+    prior.push(entry);
+    importedByAppearance.set(key, prior);
+  }
   const currentSourceKeys = new Set(
     parsedCatalog.candidates.map((candidate) =>
       stableSourceKey(candidate.source)
     )
   );
+  const candidatesByAppearance = new Map<string, number>();
+  for (const candidate of parsedCatalog.candidates) {
+    const key = appearanceCarryKey(candidate.source);
+    candidatesByAppearance.set(key, (candidatesByAppearance.get(key) ?? 0) + 1);
+  }
 
   const staleAppearanceKeys: string[] = [];
   const entries = parsedCatalog.candidates
@@ -1207,7 +1381,37 @@ export function mergeCatalogWithReview(
       let fresh = entryFromCandidate(candidate);
       const imported = importedBySource.get(stableSourceKey(candidate.source));
       if (!imported) {
-        return fresh;
+        // Changed bytes: same pack/version/path but a new GLB hash keeps the
+        // human metadata while dropping every load/Ready authority signal.
+        const carryKey = appearanceCarryKey(candidate.source);
+        const carried =
+          importedByAppearance.get(carryKey)?.length === 1 &&
+          candidatesByAppearance.get(carryKey) === 1
+            ? importedByAppearance.get(carryKey)![0]
+            : undefined;
+        if (!carried) {
+          return fresh;
+        }
+        return {
+          ...fresh,
+          decision: 'keep' as const,
+          loadedSuccessfully: false,
+          displayName: carried.displayName,
+          category: carried.category,
+          ref: visualRef({ ...fresh, category: carried.category }),
+          calibration: {
+            ...carried.calibration,
+            fineOffsetMeters: [...carried.calibration.fineOffsetMeters] as [
+              number,
+              number,
+              number,
+            ],
+          },
+          tags: [...carried.tags],
+          supportsDecoration: carried.supportsDecoration,
+          notes: carried.notes,
+          deferReason: carried.deferReason,
+        };
       }
 
       if (imported.paletteSelection) {
@@ -1301,7 +1505,10 @@ export function performanceAdvisories(entry: AssetReviewEntry): string[] {
 export function validateReady(entry: AssetReviewEntry): FieldErrors {
   const errors: FieldErrors = {};
   const appearance = entryAppearanceFacts(entry);
-  if (!appearance.readyEligible || appearance.reviewStatus !== 'trusted') {
+  if (
+    !appearance.readyEligible ||
+    !READY_REVIEW_STATUSES.has(appearance.reviewStatus)
+  ) {
     errors.readyEligible = 'Source is not eligible for Ready';
   }
   if (

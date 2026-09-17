@@ -114,6 +114,19 @@
   font-size: 11px;
 }
 
+.asset-review-source-picker {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  color: #bdd1cd;
+  font-size: 11px;
+}
+
+.asset-review-source-picker label {
+  display: grid;
+  gap: 3px;
+}
+
 .asset-review-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -323,6 +336,11 @@
 .asset-review-status--fx-review {
   background: #4a3c20;
   color: #f1d28b;
+}
+
+.asset-review-status--authored {
+  background: #243c68;
+  color: #a9c7ff;
 }
 
 .asset-review-actions,

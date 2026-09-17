@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './AssetReviewLab.css';
 import { AssetReviewScene } from './AssetReviewScene';
 import {
@@ -14,6 +14,7 @@ import {
   serializeReadyProviderBatch,
   serializeReviewProgress,
   setBatchId,
+  stableSourceKey,
   transitionDecision,
   updateProviderFields,
   validateReady,
@@ -27,17 +28,36 @@ import {
   type ReviewStatus,
   type WorldAssetCategory,
 } from './model';
+import {
+  batchStorageKey,
+  catalogMatchesSourceKind,
+  contextStorageKey,
+  LEGACY_BATCH_STORAGE_KEY,
+  LEGACY_CATALOG_URL,
+  LEGACY_SOURCE_ID,
+  parseSourceIndex,
+  planLegacyMigration,
+  readStoredBatch,
+  readStoredContext,
+  SELECTED_SOURCE_STORAGE_KEY,
+  SOURCES_INDEX_URL,
+  writeStoredBatch,
+  writeStoredContext,
+  type AssetReviewSourceContext,
+  type AssetReviewSourceDescriptor,
+  type AssetReviewSourceIndex,
+} from './sourceRegistry';
 
 import { MaterialReviewLab } from './MaterialReviewLab';
 
-const CATALOG_URL = '/models/synty/asset-review/catalog.json';
-export const ASSET_REVIEW_STORAGE_KEY = 'rpg.asset-review.batch.v1';
+export const ASSET_REVIEW_STORAGE_KEY = LEGACY_BATCH_STORAGE_KEY;
 
 const CATEGORIES: WorldAssetCategory[] = ['props', 'items', 'weapons', 'env'];
 const REVIEW_STATUSES: ReviewStatus[] = [
   'trusted',
   'material-review',
   'fx-review',
+  'authored',
 ];
 const STATUS_TABS = [
   ['all', 'All'],
@@ -50,8 +70,55 @@ const STATUS_TABS = [
 ] as const;
 type StatusTab = (typeof STATUS_TABS)[number][0];
 
+let nextAssetReviewGeneration = 0;
+
 function sourceKey(entry: AssetReviewEntry): string {
-  return `${entry.source.packSlug}@${entry.source.packVersion}:${entry.source.sourcePath}#${entry.source.glbSha256}`;
+  return stableSourceKey(entry.source);
+}
+
+/** The implicit single source used when no generated sources index exists. */
+const LEGACY_SOURCE_DESCRIPTOR: AssetReviewSourceDescriptor = {
+  id: LEGACY_SOURCE_ID,
+  label: 'Prepared catalogue',
+  kind: 'converted-fbx',
+  catalogUrl: LEGACY_CATALOG_URL,
+};
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function SourcePicker({
+  sources,
+  activeSourceId,
+  onSwitch,
+}: {
+  sources: AssetReviewSourceDescriptor[];
+  activeSourceId: string;
+  onSwitch: (sourceId: string) => void;
+}) {
+  const active = sources.find((source) => source.id === activeSourceId);
+  return (
+    <div className="asset-review-source-picker">
+      <label>
+        Source
+        <select
+          aria-label="Review source"
+          value={activeSourceId}
+          onChange={(event) => onSwitch(event.target.value)}
+        >
+          {sources.map((source) => (
+            <option key={source.id} value={source.id}>
+              {source.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span data-testid="active-source">
+        {active ? `${active.label} · ${active.kind}` : 'Prepared catalogue'}
+      </span>
+    </div>
+  );
 }
 
 function decisionLabel(decision: ReviewDecision): string {
@@ -120,6 +187,16 @@ export function AssetReviewLab() {
 }
 
 function AssetBatchReviewLab() {
+  const [sources, setSources] = useState<AssetReviewSourceDescriptor[]>();
+  const [activeSourceId, setActiveSourceId] = useState(LEGACY_SOURCE_ID);
+  const activeSourceIdRef = useRef(LEGACY_SOURCE_ID);
+  const activeSourceGenerationRef = useRef<number | undefined>(undefined);
+  if (activeSourceGenerationRef.current === undefined) {
+    activeSourceGenerationRef.current = ++nextAssetReviewGeneration;
+  }
+  const requestRef = useRef(0);
+  /** True once the loaded batch carries user work worth persisting. */
+  const batchDirtyRef = useRef(false);
   const [catalog, setCatalog] = useState<AssetReviewCatalog>();
   const [batch, setBatch] = useState<AssetReviewBatch>();
   const [selectedKey, setSelectedKey] = useState('');
@@ -143,29 +220,37 @@ function AssetBatchReviewLab() {
     Record<string, { status: AssetReviewLoadStatus; detail?: string }>
   >({});
 
-  useEffect(() => {
-    let current = true;
-    void fetch(CATALOG_URL)
-      .then(async (response) => {
+  const loadSourceCatalogue = useCallback(
+    async (
+      descriptor: AssetReviewSourceDescriptor,
+      requestId: number
+    ): Promise<void> => {
+      try {
+        const response = await fetch(descriptor.catalogUrl);
         if (!response.ok) {
           throw new Error(`catalog request returned ${response.status}`);
         }
-        return parseAssetReviewCatalog(await response.json());
-      })
-      .then((loadedCatalog) => {
-        if (!current) return;
+        const loadedCatalog = parseAssetReviewCatalog(await response.json());
+        if (!catalogMatchesSourceKind(descriptor.kind, loadedCatalog)) {
+          throw new Error(
+            `catalog schema v${loadedCatalog.schemaVersion} does not match source kind ${descriptor.kind}`
+          );
+        }
+        if (
+          requestRef.current !== requestId ||
+          activeSourceIdRef.current !== descriptor.id
+        ) {
+          return;
+        }
         let review: AssetReviewBatch | undefined;
-        const saved = window.localStorage.getItem(ASSET_REVIEW_STORAGE_KEY);
-        if (saved) {
+        if (window.localStorage.getItem(batchStorageKey(descriptor.id))) {
           try {
-            review = JSON.parse(saved) as AssetReviewBatch;
-            // Validate the complete saved value before it can influence state.
-            mergeCatalogWithReview(loadedCatalog, review);
+            review = readStoredBatch(window.localStorage, descriptor.id);
           } catch (error) {
             review = undefined;
-            const detail =
-              error instanceof Error ? error.message : String(error);
-            setNotice(`Saved review was ignored: ${detail}`);
+            setNotice(
+              `Saved review for this source was ignored: ${errorDetail(error)}`
+            );
           }
         }
         const merged = mergeCatalogWithReview(loadedCatalog, review);
@@ -177,34 +262,184 @@ function AssetBatchReviewLab() {
                 merged.batch.entries[0]?.referencePack ?? 'world-assets'
               )
             );
+        let context: AssetReviewSourceContext | undefined;
+        if (descriptor.id !== LEGACY_SOURCE_ID) {
+          if (window.localStorage.getItem(contextStorageKey(descriptor.id))) {
+            try {
+              context = readStoredContext(window.localStorage, descriptor.id);
+            } catch {
+              context = undefined;
+            }
+          }
+        }
         setCatalog(loadedCatalog);
+        batchDirtyRef.current = review !== undefined;
         setBatch(initialBatch);
         setBatchIdValue(initialBatch.batchId);
         setStaleSources(merged.staleSourceKeys);
         setStaleAppearances(merged.staleAppearanceKeys);
         setSelectedKey(
-          merged.batch.entries[0] ? sourceKey(merged.batch.entries[0]) : ''
+          context &&
+            merged.batch.entries.some(
+              (entry) => stableSourceKey(entry.source) === context.selectedKey
+            )
+            ? context.selectedKey
+            : merged.batch.entries[0]
+              ? stableSourceKey(merged.batch.entries[0].source)
+              : ''
         );
-      })
-      .catch((error: unknown) => {
-        if (!current) return;
-        const detail = error instanceof Error ? error.message : String(error);
+        if (context) {
+          setSearch(context.search);
+          setCategoryFilter(context.category);
+          setSourceFamilyFilter(context.sourceFamily);
+          setBrowsingFamilyFilter(context.browsingFamily);
+          setReviewStatusFilter(context.reviewStatus);
+          setStatusTab(
+            (STATUS_TABS.some(([value]) => value === context.statusTab)
+              ? context.statusTab
+              : 'all') as StatusTab
+          );
+        }
+      } catch (error) {
+        if (
+          requestRef.current !== requestId ||
+          activeSourceIdRef.current !== descriptor.id
+        ) {
+          return;
+        }
+        const prefix =
+          descriptor.id === LEGACY_SOURCE_ID
+            ? 'No prepared asset-review catalog is available'
+            : `No prepared asset-review catalog is available for source "${descriptor.label}"`;
         setLoadError(
-          `No prepared asset-review catalog is available (${detail}). Run the asset ingestion command, then reload this page.`
+          `${prefix} (${errorDetail(error)}). Run the asset ingestion command, then reload this page.`
         );
-      });
-    return () => {
-      current = false;
-    };
-  }, []);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    if (!batch) return;
-    window.localStorage.setItem(
-      ASSET_REVIEW_STORAGE_KEY,
-      serializeReviewProgress(batch)
-    );
-  }, [batch]);
+    const requestId = ++requestRef.current;
+    void (async () => {
+      let index: AssetReviewSourceIndex | null = null;
+      try {
+        const response = await fetch(SOURCES_INDEX_URL);
+        if (response.status !== 404) {
+          if (!response.ok) {
+            throw new Error(`sources request returned ${response.status}`);
+          }
+          index = parseSourceIndex(await response.json());
+        }
+      } catch (error) {
+        if (requestRef.current !== requestId) return;
+        setLoadError(
+          `No prepared asset-review source index is available (${errorDetail(error)}). Run the asset ingestion command, then reload this page.`
+        );
+        return;
+      }
+      if (requestRef.current !== requestId) return;
+      if (!index) {
+        // No-index legacy fallback: exactly the original single-source lab.
+        await loadSourceCatalogue(LEGACY_SOURCE_DESCRIPTOR, requestId);
+        return;
+      }
+      const legacyRaw = window.localStorage.getItem(LEGACY_BATCH_STORAGE_KEY);
+      const plan = planLegacyMigration({
+        index,
+        legacyCatalogUrl: LEGACY_CATALOG_URL,
+        legacyRawJson: legacyRaw,
+        hasScopedDraft: (sourceId) =>
+          window.localStorage.getItem(batchStorageKey(sourceId)) !== null,
+      });
+      if (plan.status === 'migrated' && plan.targetSourceId) {
+        window.localStorage.setItem(
+          batchStorageKey(plan.targetSourceId),
+          plan.serializedBatch!
+        );
+      }
+      const storedSourceId = window.localStorage.getItem(
+        SELECTED_SOURCE_STORAGE_KEY
+      );
+      const selectedDescriptor =
+        index.sources.find((source) => source.id === storedSourceId) ??
+        index.sources.find((source) => source.id === index.defaultSourceId) ??
+        index.sources[0]!;
+      setSources(index.sources);
+      activeSourceIdRef.current = selectedDescriptor.id;
+      setActiveSourceId(selectedDescriptor.id);
+      if (plan.message) setNotice(plan.message);
+      await loadSourceCatalogue(selectedDescriptor, requestId);
+    })();
+  }, [loadSourceCatalogue]);
+
+  useEffect(() => {
+    // Persist only batches that carry user work: a freshly generated batch is
+    // pristine and must not occupy the scoped key (it would block legacy
+    // migration and count as an existing draft on the next launch).
+    if (!batch || !batchDirtyRef.current) return;
+    // This effect owns the source of its render. The mutable ref may already
+    // point at the next source before this render's passive effects flush.
+    writeStoredBatch(window.localStorage, activeSourceId, batch);
+  }, [batch, activeSourceId]);
+
+  const context = useMemo<AssetReviewSourceContext>(
+    () => ({
+      selectedKey,
+      search,
+      category: categoryFilter,
+      sourceFamily: sourceFamilyFilter,
+      browsingFamily: browsingFamilyFilter,
+      reviewStatus: reviewStatusFilter,
+      statusTab,
+    }),
+    [
+      browsingFamilyFilter,
+      categoryFilter,
+      reviewStatusFilter,
+      search,
+      selectedKey,
+      sourceFamilyFilter,
+      statusTab,
+    ]
+  );
+
+  useEffect(() => {
+    // Skip while a source switch is in flight: writing the cleared context
+    // would clobber the target source's saved selection/filter context.
+    if (!sources || !batch) return;
+    writeStoredContext(window.localStorage, activeSourceId, context);
+  }, [context, activeSourceId, sources, batch]);
+
+  const switchSource = useCallback(
+    (nextId: string) => {
+      if (!sources) return;
+      const descriptor = sources.find((source) => source.id === nextId);
+      if (!descriptor || nextId === activeSourceId) return;
+      const requestId = ++requestRef.current;
+      activeSourceIdRef.current = nextId;
+      activeSourceGenerationRef.current = ++nextAssetReviewGeneration;
+      setActiveSourceId(nextId);
+      setCatalog(undefined);
+      setBatch(undefined);
+      setSceneStates({});
+      setLoadError('');
+      setImportError('');
+      setNotice('');
+      setStaleSources([]);
+      setStaleAppearances([]);
+      setSelectedKey('');
+      setSearch('');
+      setCategoryFilter('');
+      setSourceFamilyFilter('');
+      setBrowsingFamilyFilter('');
+      setReviewStatusFilter('');
+      setStatusTab('all');
+      window.localStorage.setItem(SELECTED_SOURCE_STORAGE_KEY, nextId);
+      void loadSourceCatalogue(descriptor, requestId);
+    },
+    [activeSourceId, loadSourceCatalogue, sources]
+  );
 
   const sourceFamilies = useMemo(
     () =>
@@ -270,9 +505,21 @@ function AssetBatchReviewLab() {
     ) as Record<StatusTab, number>;
   }, [batch]);
 
+  const mutateBatch = useCallback(
+    (
+      updater: (
+        current: AssetReviewBatch | undefined
+      ) => AssetReviewBatch | undefined
+    ) => {
+      batchDirtyRef.current = true;
+      setBatch(updater);
+    },
+    []
+  );
+
   const replaceEntry = useCallback(
     (key: string, transform: (entry: AssetReviewEntry) => AssetReviewEntry) => {
-      setBatch((current) => {
+      mutateBatch((current) => {
         if (!current) return current;
         const entries = current.entries.map((entry) =>
           sourceKey(entry) === key ? transform(entry) : entry
@@ -280,7 +527,7 @@ function AssetBatchReviewLab() {
         return { ...current, entries };
       });
     },
-    []
+    [mutateBatch]
   );
 
   const patchProviderFields = (patch: ProviderFieldPatch) => {
@@ -349,13 +596,22 @@ function AssetBatchReviewLab() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [markDecision, navigate]);
 
-  const handleSceneLoadState = useCallback(
-    (url: string, status: AssetReviewLoadStatus, detail?: string) => {
+  const handleSceneLoadState = useMemo(() => {
+    // Captured per active source: late callbacks from a scene that belonged to
+    // a previous source are ignored entirely, including same-URL successes.
+    const sourceId = activeSourceId;
+    const sourceGeneration = activeSourceGenerationRef.current;
+    return (url: string, status: AssetReviewLoadStatus, detail?: string) => {
+      if (
+        activeSourceIdRef.current !== sourceId ||
+        activeSourceGenerationRef.current !== sourceGeneration
+      )
+        return;
       setSceneStates((current) => ({
         ...current,
         [url]: { status, detail },
       }));
-      setBatch((current) => {
+      mutateBatch((current) => {
         if (!current) return current;
         return {
           ...current,
@@ -364,16 +620,24 @@ function AssetBatchReviewLab() {
           ),
         };
       });
-    },
-    []
-  );
+    };
+  }, [activeSourceId, mutateBatch]);
 
   const importReview = async (file: File | undefined) => {
     if (!file || !catalog) return;
+    const sourceId = activeSourceIdRef.current;
+    const sourceGeneration = activeSourceGenerationRef.current;
+    const requestId = requestRef.current;
+    const isCurrentImport = () =>
+      activeSourceIdRef.current === sourceId &&
+      activeSourceGenerationRef.current === sourceGeneration &&
+      requestRef.current === requestId;
     try {
-      const imported = JSON.parse(await readFileText(file)) as AssetReviewBatch;
+      const raw = await readFileText(file);
+      if (!isCurrentImport()) return;
+      const imported = JSON.parse(raw) as AssetReviewBatch;
       const merged = mergeCatalogWithReview(catalog, imported);
-      setBatch(merged.batch);
+      mutateBatch(() => merged.batch);
       setBatchIdValue(merged.batch.batchId);
       setBatchIdError('');
       setStaleSources(merged.staleSourceKeys);
@@ -384,6 +648,7 @@ function AssetBatchReviewLab() {
       setImportError('');
       setNotice('Review imported successfully.');
     } catch (error) {
+      if (!isCurrentImport()) return;
       setImportError(error instanceof Error ? error.message : String(error));
     }
   };
@@ -393,6 +658,13 @@ function AssetBatchReviewLab() {
       <main className="asset-review-message" aria-label="Asset Review Lab">
         <h1>Asset Review Lab</h1>
         <p role="alert">{loadError}</p>
+        {sources && (
+          <SourcePicker
+            sources={sources}
+            activeSourceId={activeSourceId}
+            onSwitch={switchSource}
+          />
+        )}
       </main>
     );
   }
@@ -400,6 +672,13 @@ function AssetBatchReviewLab() {
     return (
       <main className="asset-review-message" aria-label="Asset Review Lab">
         Loading asset-review catalog…
+        {sources && (
+          <SourcePicker
+            sources={sources}
+            activeSourceId={activeSourceId}
+            onSwitch={switchSource}
+          />
+        )}
       </main>
     );
   }
@@ -428,7 +707,8 @@ function AssetBatchReviewLab() {
   const updateBatchId = (value: string) => {
     setBatchIdValue(value);
     try {
-      setBatch(setBatchId(batch, value));
+      const next = setBatchId(batch!, value);
+      mutateBatch(() => next);
       setBatchIdError('');
     } catch (error) {
       setBatchIdError(error instanceof Error ? error.message : String(error));
@@ -446,6 +726,13 @@ function AssetBatchReviewLab() {
         <header>
           <strong>Asset Review Lab</strong>
           <span>loopback only · one candidate loaded</span>
+          {sources && (
+            <SourcePicker
+              sources={sources}
+              activeSourceId={activeSourceId}
+              onSwitch={switchSource}
+            />
+          )}
         </header>
 
         <nav className="asset-review-tabs" aria-label="Decision status">
@@ -596,6 +883,7 @@ function AssetBatchReviewLab() {
         <div className="asset-review-canvas">
           {activeEntry ? (
             <AssetReviewScene
+              key={activeSourceId}
               url={previewUrl}
               scale={activeEntry.calibration.scale}
               yawDegrees={activeEntry.calibration.yawDegrees + facingDegrees}
