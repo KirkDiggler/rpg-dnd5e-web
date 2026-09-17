@@ -329,7 +329,14 @@ function AssetBatchReviewLab() {
           if (!response.ok) {
             throw new Error(`sources request returned ${response.status}`);
           }
-          index = parseSourceIndex(await response.json());
+          try {
+            index = parseSourceIndex(await response.json());
+          } catch (error) {
+            // Vite serves its HTML shell with a 200 for a missing public file,
+            // so a JSON parse failure means "no prepared index" and the legacy
+            // single-source fallback below. Schema errors still surface.
+            if (!(error instanceof SyntaxError)) throw error;
+          }
         }
       } catch (error) {
         if (requestRef.current !== requestId) return;
