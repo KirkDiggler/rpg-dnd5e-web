@@ -2,8 +2,10 @@
 import { create } from '@bufbuild/protobuf';
 import {
   DamageComponentSchema,
+  DiceKeepSchema,
   DiceRerollSchema,
   DiceTraceSchema,
+  KeepRule,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
@@ -16,6 +18,12 @@ import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 
 function source(ref: string, name: string, label = '') {
   return create(RollSourceSchema, { ref, name, label });
+}
+
+/** A source that names the ENTITY behind it (R7), which is what the keep line
+ * reads to decide whether to say "from <somebody>". */
+function sourced(ref: string, name: string, sourceId: string) {
+  return create(RollSourceSchema, { ref, name, sourceId });
 }
 
 function greatswordComponents(): DamageComponent[] {
@@ -121,6 +129,14 @@ describe('roll trace presentation', () => {
             finalRolls: [7, 2],
             keptIndices: [0],
             subtotal: 7,
+            // A REROLL AND A KEEP RECORD ON ONE POOL (rpg-project#462). The
+            // two are siblings and answer different questions: `rerolls`
+            // explains why the FACES changed, `keep` explains why one of them
+            // counted. A renderer that handled only one would drop the other.
+            keep: create(DiceKeepSchema, {
+              rule: KeepRule.ADVANTAGE,
+              granted: [source('anything:lucky', 'Lucky')],
+            }),
           }),
         }),
         create(RollComponentSchema, {
@@ -139,11 +155,20 @@ describe('roll trace presentation', () => {
     });
 
     expect(formatRollCalculation(calculation)).toBe(
-      '2d8 [1 → 3 → 7, 2] (kept indices [0]) + 1d4 [4] = 91'
+      '2d8 [1 → 3 → 7, 2] kept 7 · advantage: Lucky + 1d4 [4] = 91'
     );
   });
 
-  it('retains kept die identity when final faces are duplicates', () => {
+  it('prints both faces and the kept one when the two faces are equal', () => {
+    // THE FORMAT CHANGED HERE AND THE TEST'S POINT CHANGED WITH IT
+    // (rpg-project#462). It used to assert `(kept indices [0])`, which named a
+    // POSITION IN AN ARRAY and said nothing about why that die counted. The
+    // spec replaces that text with the face and the rule.
+    //
+    // WHICH of two identical faces was kept is no longer printed, and that is
+    // the right trade: a reader cannot act on "it was the left 5", and the
+    // fact they need — a 5 counted, because advantage — is now said out loud
+    // where the index never said it.
     const calculation = create(RollCalculationSchema, {
       components: [
         create(RollComponentSchema, {
@@ -155,6 +180,10 @@ describe('roll trace presentation', () => {
             finalRolls: [5, 5],
             keptIndices: [0],
             subtotal: 5,
+            keep: create(DiceKeepSchema, {
+              rule: KeepRule.ADVANTAGE,
+              granted: [source('dnd5e:actions:help', 'Help')],
+            }),
           }),
         }),
       ],
@@ -162,7 +191,7 @@ describe('roll trace presentation', () => {
     });
 
     expect(formatRollCalculation(calculation)).toBe(
-      '2d20 [5, 5] (kept indices [0]) = 5'
+      '2d20 [5, 5] kept 5 · advantage: Help = 5'
     );
   });
 
@@ -282,5 +311,176 @@ describe('roll trace presentation', () => {
     expect(formatDamageRolls([...greatswordComponents(), multiplier])).toBe(
       '2d6 [1 → 4, 5] + 3 Strength × 0 Provider Immunity'
     );
+  });
+});
+
+// The four lines the design writes out, and the two that must NOT appear
+// (rpg-project#462, design rpg-project#463 "Web").
+//
+// THE RULE IS READ, NEVER INFERRED. Two faces do not mean advantage and one
+// face does not mean a straight roll — a CANCELLED pool has one face and a
+// record saying two rules met, which is the whole case the log has never been
+// able to show.
+describe('the keep record in the log line', () => {
+  // ON THE TRAILING `Intimidation (char-bob)` IN THESE EXPECTATIONS: that is
+  // the d20 pool's own provider. R7 puts the roller's id on every pool now, and
+  // this renderer attributes any pool that names an entity, so a check d20 that
+  // used to be anonymous carries one. The design's example lines show the
+  // dice-and-keep portion only and do not have it.
+  //
+  // Whether a check d20 should name its own roller is reported to the lead
+  // rather than decided here: saves and concentration checks have SHIPPED
+  // printing theirs ("Concentration check (staniel)") and three tests encode
+  // that as correct, so silently suppressing it would move output Kirk has
+  // already accepted, on a slice whose brief never mentions attribution. These
+  // assertions pin what the log ACTUALLY prints today.
+  function d20(
+    faces: number[],
+    keptIndices: number[],
+    keep?: ReturnType<typeof create<typeof DiceKeepSchema>>
+  ): RollCalculation {
+    return create(RollCalculationSchema, {
+      components: [
+        create(RollComponentSchema, {
+          // The roller's own id on the pool: R7, every pool names the entity
+          // whose rule threw it. It is what lets "from <me>" be omitted below.
+          source: sourced(
+            'dnd5e:skills:intimidation',
+            'Intimidation',
+            'char-bob'
+          ),
+          dice: create(DiceTraceSchema, {
+            notation: `${faces.length}d20`,
+            dieSize: 20,
+            originalRolls: faces,
+            finalRolls: faces,
+            keptIndices,
+            subtotal: faces[keptIndices[0] ?? 0],
+            keep,
+          }),
+        }),
+      ],
+      total: faces[keptIndices[0] ?? 0],
+    });
+  }
+
+  it('a straight roll says nothing about a rule', () => {
+    // The case that runs on almost every roll in the game. Nobody touched the
+    // pool, and the absent record says exactly that.
+    expect(formatRollCalculation(d20([11], []))).toBe(
+      '1d20 [11] Intimidation (char-bob) = 11'
+    );
+  });
+
+  it('advantage names the rule that granted it', () => {
+    const calculation = d20(
+      [7, 18],
+      [1],
+      create(DiceKeepSchema, {
+        rule: KeepRule.ADVANTAGE,
+        granted: [
+          sourced('dnd5e:features:reckless', 'Reckless Attack', 'char-bob'),
+        ],
+      })
+    );
+    expect(formatRollCalculation(calculation)).toBe(
+      '2d20 [7, 18] kept 18 · advantage: Reckless Attack Intimidation (char-bob) = 18'
+    );
+  });
+
+  it('disadvantage names the rule that imposed it', () => {
+    // The sentence the front room goblin shipped without: a character who threw
+    // two dice and kept the lower now learns WHY.
+    const calculation = d20(
+      [7, 18],
+      [0],
+      create(DiceKeepSchema, {
+        rule: KeepRule.DISADVANTAGE,
+        imposed: [sourced('dnd5e:rules:untrained', 'Untrained', 'char-bob')],
+      })
+    );
+    expect(formatRollCalculation(calculation)).toBe(
+      '2d20 [7, 18] kept 7 · disadvantage: Untrained Intimidation (char-bob) = 7'
+    );
+  });
+
+  it('a cancellation says both rules met, on a pool of one die', () => {
+    // R2: RAW rolls one die; we roll one die and SAY WHY. Without this line a
+    // player who was Helped and rolled untrained sees a plain d20 and never
+    // learns the two rules ate each other.
+    const calculation = d20(
+      [11],
+      [],
+      create(DiceKeepSchema, {
+        rule: KeepRule.CANCELLED,
+        granted: [sourced('dnd5e:actions:help', 'Help', 'char-alice')],
+        imposed: [sourced('dnd5e:rules:untrained', 'Untrained', 'char-bob')],
+      })
+    );
+    expect(
+      formatRollCalculation(calculation, (sourceId) =>
+        sourceId === 'char-alice' ? 'Alice' : 'Bob'
+      )
+    ).toBe(
+      '1d20 [11] · advantage (Help, from Alice) cancelled by ' +
+        'disadvantage (Untrained) Intimidation (Bob) = 11'
+    );
+  });
+
+  it('omits "from" for the roller themself, and without a resolver', () => {
+    // "advantage: Reckless Attack, from Bob" told to Bob about Bob's own feat
+    // is noise. The fact worth printing is somebody ELSE spending something,
+    // which is why Help keeps its "from Alice" in the case above.
+    const ownFeat = d20(
+      [7, 18],
+      [1],
+      create(DiceKeepSchema, {
+        rule: KeepRule.ADVANTAGE,
+        granted: [
+          sourced('dnd5e:features:reckless', 'Reckless Attack', 'char-bob'),
+        ],
+      })
+    );
+    expect(formatRollCalculation(ownFeat, () => 'Bob')).toBe(
+      '2d20 [7, 18] kept 18 · advantage: Reckless Attack Intimidation (Bob) = 18'
+    );
+
+    const helped = d20(
+      [7, 18],
+      [1],
+      create(DiceKeepSchema, {
+        rule: KeepRule.ADVANTAGE,
+        granted: [sourced('dnd5e:actions:help', 'Help', 'char-alice')],
+      })
+    );
+    // No resolver: there is nobody to name, so the clause is left off rather
+    // than printing a raw id at a player.
+    expect(formatRollCalculation(helped)).toBe(
+      '2d20 [7, 18] kept 18 · advantage: Help Intimidation (char-bob) = 18'
+    );
+  });
+
+  it('invents no rule when the record is absent from a two-face pool', () => {
+    // Server-side validation refuses this combination, so it is a producer
+    // defect. The web renders the faces and claims nothing — deriving
+    // "advantage" from two faces is exactly the client calculating that this
+    // slice exists to stop.
+    expect(formatRollCalculation(d20([7, 18], []))).toBe(
+      '2d20 [7, 18] Intimidation (char-bob) = 7'
+    );
+  });
+
+  it('keeps the old text out of the line entirely', () => {
+    // The `(kept indices [N])` text is REPLACED, not kept beside the new words:
+    // it named a position in an array and said nothing about why.
+    const calculation = d20(
+      [7, 18],
+      [0],
+      create(DiceKeepSchema, {
+        rule: KeepRule.DISADVANTAGE,
+        imposed: [sourced('dnd5e:rules:untrained', 'Untrained', 'char-bob')],
+      })
+    );
+    expect(formatRollCalculation(calculation)).not.toContain('kept indices');
   });
 });

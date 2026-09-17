@@ -53,9 +53,9 @@
  * one from crashing the whole log instead of one line.
  */
 import type {
-  AttackModifierSource,
   DamageComponent,
   Event,
+  RollCalculation,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AnswerWord,
@@ -117,42 +117,55 @@ function attackText(
   return `attack.ref=${attack.ref} attack.name="${attack.name}" type=${typeName}`;
 }
 
-function attackModifierSourceText(
-  source: AttackModifierSource,
-  names: Map<string, string>
+/**
+ * The whole roll behind a check beat, and the entities that decided it.
+ *
+ * THE DEBUG LOG IS WHERE THE DIE LIVES (R1). The story shows the outcome and
+ * the creature's line; this is where a builder reads what was actually thrown
+ * against what. A check beat that printed only `dc total beaten` would be the
+ * single settled number this slice exists to remove — and it would look
+ * finished, because the story half already shows the faces.
+ *
+ * ABSENT MEANS ABSENT, the same presence law the api keeps: a beat written
+ * before the field existed has no calculation, and a door nobody rolled for
+ * never had one. Neither gets an empty `calculation=` to puzzle over.
+ */
+function checkCalculationText(
+  calculation: RollCalculation | undefined
 ): string {
-  const fields: string[] = [];
-  if (source.sourceRef) fields.push(`ref=${source.sourceRef}`);
-  if (source.sourceId) {
-    fields.push(`source=${displayName(names, source.sourceId)}`);
-  }
-  return `{${fields.join(' ')}}`;
+  if (!calculation) return '';
+  return ` calculation=${formatDebugRollCalculation(calculation)}`;
+}
+
+/**
+ * The entities behind a keep record, for the line's hoverable ids — whose
+ * Help, whose rule. Same list `struck` already contributes.
+ */
+function keepSourceIds(calculation: RollCalculation | undefined): string[] {
+  const keep = (calculation?.components ?? [])
+    .map((component) => component.dice?.keep)
+    .find((record) => record !== undefined);
+  return [...(keep?.granted ?? []), ...(keep?.imposed ?? [])]
+    .map((source) => source.sourceId)
+    .filter((id) => id !== '');
 }
 
 function strikeDetailText(
   damageComponents: readonly DamageComponent[] | undefined,
-  advantageSources: readonly AttackModifierSource[] | undefined,
-  disadvantageSources: readonly AttackModifierSource[] | undefined,
-  names: Map<string, string>
+  calculation: RollCalculation | undefined
 ): string {
   const components = damageComponents ?? [];
-  const advantage = advantageSources ?? [];
-  const disadvantage = disadvantageSources ?? [];
   const segments: string[] = [];
   if (components.length > 0) {
     segments.push(`components=${formatDebugDamageComponents(components)}`);
   }
-  if (advantage.length > 0) {
-    segments.push(
-      `advantage=[${advantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
-    );
-  }
-  if (disadvantage.length > 0) {
-    segments.push(
-      `disadvantage=[${disadvantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
-    );
-  }
-  return segments.length === 0 ? '' : ` ${segments.join(' ')}`;
+  const detail = segments.length === 0 ? '' : ` ${segments.join(' ')}`;
+  // THE SAME ONE MECHANISM the check beats use. This used to render the keep
+  // itself, off the beat rather than off the trace, which was a second
+  // spelling of one fact — and the attack's own d20 faces were nowhere in the
+  // line at all. `debugDiceTrace` carries the keep now, so the whole roll
+  // arrives with it.
+  return `${detail}${checkCalculationText(calculation)}`;
 }
 
 /** Safe JSON stringify for the `default` branch — see module doc comment
@@ -185,11 +198,9 @@ export function formatDebugLine(
     }
     case 'struck': {
       const b = event.body.value;
-      const advantage = b.advantageSources ?? [];
-      const disadvantage = b.disadvantageSources ?? [];
-      const modifierSourceIds = [...advantage, ...disadvantage]
-        .map((source) => source.sourceId)
-        .filter((id) => id !== '');
+      // The entities behind the keep record are addressable on hover exactly
+      // as the old modifier sources were: whose Help, whose rule.
+      const modifierSourceIds = keepSourceIds(b.calculation);
       return {
         seq,
         ids: [b.attacker, b.target, ...modifierSourceIds],
@@ -197,7 +208,7 @@ export function formatDebugLine(
           `${prefix} struck attacker=${name(b.attacker)} target=${name(b.target)} ` +
           `roll=${b.roll} total=${b.total} against=${b.against} damage=${b.damage} ` +
           `crit=${b.critical} ${attackText(b.attack)}` +
-          strikeDetailText(b.damageComponents, advantage, disadvantage, names),
+          strikeDetailText(b.damageComponents, b.calculation),
       };
     }
     case 'missed': {
@@ -336,6 +347,10 @@ export function formatDebugLine(
       };
     }
     case 'door': {
+      // A LOCK IS A CHECK BEAT AND CARRIES THE ROLL (rpg-project#462, R4), so
+      // a forced lock prints both faces and the rule here exactly as a threat
+      // does. A door that merely changed state rolled nothing and prints
+      // neither the attempt nor a calculation.
       const b = event.body.value;
       const stateName = DoorState[b.state] ?? String(b.state);
       const attempt = b.dc
@@ -344,8 +359,10 @@ export function formatDebugLine(
       const actor = b.actor ? ` actor=${name(b.actor)}` : '';
       return {
         seq,
-        ids: b.actor ? [b.actor] : [],
-        text: `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}`,
+        ids: [...(b.actor ? [b.actor] : []), ...keepSourceIds(b.calculation)],
+        text:
+          `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}` +
+          checkCalculationText(b.calculation),
       };
     }
     // THE TWO SOCIAL CHECKS AND THE WORLD'S ANSWER TO THEM (rpg-project#458).
@@ -356,14 +373,22 @@ export function formatDebugLine(
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded': {
+      //
+      // AND THE WHOLE ROLL BEHIND THE VERDICT. `dc total beaten` is the
+      // OUTCOME; the calculation is what was thrown to reach it, which for an
+      // untrained character is two faces, the kept one, and the word
+      // "Untrained". Without it this line is the single settled number the
+      // slice exists to remove, and it reads as finished because the story
+      // half already shows the faces.
       const b = event.body.value;
       const verb = event.body.case;
       return {
         seq,
-        ids: [b.actor, b.target],
+        ids: [b.actor, b.target, ...keepSourceIds(b.calculation)],
         text:
           `${prefix} ${verb} actor=${name(b.actor)} target=${name(b.target)} ` +
-          `dc=${b.dc} total=${b.total} beaten=${b.beaten}`,
+          `dc=${b.dc} total=${b.total} beaten=${b.beaten}` +
+          checkCalculationText(b.calculation),
       };
     }
     // R1 IN FULL: the world's die, the summed weights it was thrown against,
