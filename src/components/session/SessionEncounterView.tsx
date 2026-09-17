@@ -318,13 +318,34 @@ function SessionEncounterScope({
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
   );
-  const scene = useMemo(
-    () =>
-      atlas && layoutOutcome?.ok
-        ? buildScene3D(atlas, HEX_SIZE, layoutOutcome.layout)
-        : null,
-    [atlas, layoutOutcome]
-  );
+  // The ONE scene build, memoized by atlas identity exactly as before —
+  // now also the boundary where a refused canonical room presentation is
+  // caught. A build either succeeds whole or reports a named refusal;
+  // it never half-constructs. `scene` stays null whenever the build
+  // refused, so an invalid current presentation can never refresh
+  // `lastGoodSceneRef` below — the cached prior scene is never
+  // re-drawn as if the invalid one were valid.
+  const sceneBuild = useMemo(() => {
+    if (!atlas || !layoutOutcome?.ok) return null;
+    try {
+      return {
+        ok: true as const,
+        scene: buildScene3D(atlas, HEX_SIZE, layoutOutcome.layout),
+      };
+    } catch (error) {
+      return {
+        ok: false as const,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [atlas, layoutOutcome]);
+  const scene = sceneBuild?.ok ? sceneBuild.scene : null;
+  // A PRESENT nonempty presentation that refuses to decode is an
+  // integrity error, not a transient load: it surfaces as a visible
+  // scene-error outcome until a later build succeeds. Valid legacy and
+  // valid canonical builds keep the ordinary refresh behavior below.
+  const scenePresentationError =
+    sceneBuild && !sceneBuild.ok ? sceneBuild.message : null;
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -1735,73 +1756,115 @@ function SessionEncounterScope({
             localWorldDieSettledPresentationId={
               localWorldDieSettledPresentationId
             }
-            location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+            location={{
+              name:
+                snapshotScene?.roomScene?.scene.name ?? 'The Reference Tomb',
+              area: snapshotScene?.roomScene
+                ? 'Authored room'
+                : 'Current chamber',
+            }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
                     nothing until a declared faction is on the roster. */}
                 <FactionLegend roster={roster} />
-                <SessionCanvas
-                  touchPanEnabled
-                  touchPinchEnabled
-                  touchRotateEnabled
-                  focusRequest={focusRequest}
-                  // The dungeon's own starting facing, read from the ATLAS
-                  // and nowhere else (rpg-project#374: rpg-api reads it from
-                  // the atlas mirror only, and there is no second source
-                  // here either). Absent when the author stated none, and
-                  // absent entirely for a dungeon with no start — the wire
-                  // omits `start` in that case, because a zero-valued one
-                  // would claim the party arrives at the origin looking
-                  // nowhere.
-                  startFacing={atlas?.start?.facing || undefined}
-                  scene={lastGoodSceneRef.current!}
-                  hexSize={HEX_SIZE}
-                  compositionSource={compositionSource}
-                  characterId={member}
-                  characterName={characterName}
-                  classRefId={classRefId}
-                  raceRefId={raceRefId}
-                  localCustomization={ownerCharacter?.appearance}
-                  localIsDowned={localIsDowned}
-                  mainHandPresentation={mainHandResolution.presentation}
-                  offHandPresentation={offHandResolution.presentation}
-                  roster={roster}
-                  doors={doors}
-                  onDoorClick={runEnded === null ? handleDoorClick : undefined}
-                  onInteractClick={
-                    runEnded === null ? handleVendorInteract : undefined
-                  }
-                  myPosition={displayPosition ?? lastGoodPositionRef.current!}
-                  movements={moves.movements}
-                  onHexClick={runEnded === null ? handleGroundClick : undefined}
-                  onCancelSelection={combat.onCancelSelection}
-                  onEntityClick={runEnded === null ? onTargetClick : undefined}
-                  cellAimEnabled={
-                    runEnded === null ? combat.cellCastArmed : false
-                  }
-                  onMovementPainted={
-                    runEnded === null ? handleMovementPainted : undefined
-                  }
-                  otherMembers={revealedMembers}
-                  attackableTargets={
-                    runEnded === null ? [...attackableTargets] : []
-                  }
-                  reactionMover={runEnded === null ? reactionMover : undefined}
-                  pathIndex={lastGoodPathIndexRef.current}
-                  movementPreviewEnabled={
-                    experienceClock === ClockKind.WORLD ||
-                    (experienceClock === ClockKind.TURN &&
-                      combat.movementEnabled)
-                  }
-                  areaFootprint={
-                    runEnded === null ? combat.cellCastFootprint : undefined
-                  }
-                  turnLocked={turnLocked}
-                  movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
-                  presentationLayer={localWorldDieLayer}
-                />
+                {scenePresentationError ? (
+                  // THE REFUSED CANONICAL PRESENTATION IS AN INTEGRITY
+                  // ERROR, not a transient load. The map area says so by
+                  // name, and the cached prior scene is never drawn as if
+                  // the invalid current one were valid. Only unusable
+                  // scene interaction is disabled (the map and its
+                  // handlers are simply not mounted); game-rule
+                  // eligibility elsewhere is untouched.
+                  <div
+                    data-testid="scene-presentation-error"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 16,
+                    }}
+                  >
+                    <ErrorDisplay
+                      title="Can't draw this room"
+                      message={scenePresentationError}
+                    />
+                  </div>
+                ) : (
+                  <SessionCanvas
+                    touchPanEnabled
+                    touchPinchEnabled
+                    touchRotateEnabled
+                    focusRequest={focusRequest}
+                    // The dungeon's own starting facing, read from the ATLAS
+                    // and nowhere else (rpg-project#374: rpg-api reads it from
+                    // the atlas mirror only, and there is no second source
+                    // here either). Absent when the author stated none, and
+                    // absent entirely for a dungeon with no start — the wire
+                    // omits `start` in that case, because a zero-valued one
+                    // would claim the party arrives at the origin looking
+                    // nowhere.
+                    startFacing={atlas?.start?.facing || undefined}
+                    scene={lastGoodSceneRef.current!}
+                    hexSize={HEX_SIZE}
+                    compositionSource={compositionSource}
+                    characterId={member}
+                    characterName={characterName}
+                    classRefId={classRefId}
+                    raceRefId={raceRefId}
+                    localCustomization={ownerCharacter?.appearance}
+                    localIsDowned={localIsDowned}
+                    mainHandPresentation={mainHandResolution.presentation}
+                    offHandPresentation={offHandResolution.presentation}
+                    roster={roster}
+                    doors={doors}
+                    onDoorClick={
+                      runEnded === null ? handleDoorClick : undefined
+                    }
+                    onInteractClick={
+                      runEnded === null ? handleVendorInteract : undefined
+                    }
+                    myPosition={displayPosition ?? lastGoodPositionRef.current!}
+                    movements={moves.movements}
+                    onHexClick={
+                      runEnded === null ? handleGroundClick : undefined
+                    }
+                    onCancelSelection={combat.onCancelSelection}
+                    onEntityClick={
+                      runEnded === null ? onTargetClick : undefined
+                    }
+                    cellAimEnabled={
+                      runEnded === null ? combat.cellCastArmed : false
+                    }
+                    onMovementPainted={
+                      runEnded === null ? handleMovementPainted : undefined
+                    }
+                    otherMembers={revealedMembers}
+                    attackableTargets={
+                      runEnded === null ? [...attackableTargets] : []
+                    }
+                    reactionMover={
+                      runEnded === null ? reactionMover : undefined
+                    }
+                    pathIndex={lastGoodPathIndexRef.current}
+                    movementPreviewEnabled={
+                      experienceClock === ClockKind.WORLD ||
+                      (experienceClock === ClockKind.TURN &&
+                        combat.movementEnabled)
+                    }
+                    areaFootprint={
+                      runEnded === null ? combat.cellCastFootprint : undefined
+                    }
+                    turnLocked={turnLocked}
+                    movementBudgetFeet={movementBudgetFeet(
+                      coherentDeclarations
+                    )}
+                    presentationLayer={localWorldDieLayer}
+                  />
+                )}
               </>
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
@@ -1914,6 +1977,22 @@ function SessionEncounterScope({
           />
         )}
       </div>
+    );
+  } else if (scenePresentationError) {
+    // FIRST-LOAD REFUSAL: the atlas arrived with an invalid nonempty
+    // presentation and no prior scene was ever drawn. The refusal gets
+    // the same visible named treatment as a layout refusal — never a
+    // silent "nothing to draw" and never a legacy fallback.
+    content = (
+      <CenteredCard>
+        <ErrorDisplay
+          title="Can't draw this room"
+          message={scenePresentationError}
+        />
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          Back
+        </Button>
+      </CenteredCard>
     );
   } else if (loading) {
     content = <LoadingOverlay visible text="Loading the tomb…" />;

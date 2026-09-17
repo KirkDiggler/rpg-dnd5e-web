@@ -1,8 +1,10 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { encodeRoomDocument } from '@/compositions/roomDocument';
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
+  act,
   createEvent,
   fireEvent,
   render,
@@ -27,6 +29,98 @@ const DRAG_MIME = 'application/x-rpg-world-building-item+json';
 
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
+}));
+
+/** Deferred authoring/lobby seams for the publishing busy-boundary tests:
+ * a held putDungeon keeps the Save & Play transaction (and its editor
+ * interaction lock) in flight deterministically. */
+const publishRpc = vi.hoisted(() => {
+  const makeDeferred = <T,>(): {
+    promise: Promise<T>;
+    resolve: (v: T) => void;
+    reject: (e: unknown) => void;
+  } => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  return {
+    makeDeferred,
+    gets: [] as Array<{
+      key: string;
+      deferred: ReturnType<typeof makeDeferred<never>>;
+    }>,
+    puts: [] as Array<{
+      request: { key: string; validateOnly: boolean };
+      deferred: ReturnType<typeof makeDeferred<never>>;
+    }>,
+    lobby: { created: 0, ready: 0, started: 0 },
+    reset: () => {
+      publishRpc.gets.length = 0;
+      publishRpc.puts.length = 0;
+      publishRpc.lobby.created = 0;
+      publishRpc.lobby.ready = 0;
+      publishRpc.lobby.started = 0;
+    },
+  };
+});
+
+vi.mock('@/author/authoringRpc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/author/authoringRpc')>();
+  return {
+    ...actual,
+    defaultAuthoringClient: {
+      putDungeon: vi.fn(
+        async (request: { key: string; validateOnly: boolean }) => {
+          const deferred = publishRpc.makeDeferred<never>();
+          publishRpc.puts.push({ request, deferred });
+          return deferred.promise as never;
+        }
+      ),
+      getDungeon: vi.fn(async (request: { key: string }) => {
+        const deferred = publishRpc.makeDeferred<never>();
+        publishRpc.gets.push({ key: request.key, deferred });
+        return deferred.promise as never;
+      }),
+      listScenarios: vi.fn(),
+    },
+  };
+});
+
+vi.mock('@/api/useCreateLobby', () => ({
+  useCreateLobby: () => ({
+    createLobby: vi.fn(async () => {
+      publishRpc.lobby.created += 1;
+      return { lobbyId: 'lobby-1' } as never;
+    }),
+    loading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/api/useSetLobbyReady', () => ({
+  useSetLobbyReady: () => ({
+    setReady: vi.fn(async () => {
+      publishRpc.lobby.ready += 1;
+    }),
+    loading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/api/useStartLobbyEncounter', () => ({
+  useStartLobbyEncounter: () => ({
+    startEncounter: vi.fn(async () => {
+      publishRpc.lobby.started += 1;
+      return { encounterId: 'enc-1' } as never;
+    }),
+    loading: false,
+    error: null,
+  }),
 }));
 
 vi.mock('./WorldBuildingViewport', () => ({
@@ -66,6 +160,17 @@ vi.mock('./WorldBuildingViewport', () => ({
         cells: Array<{ q: number; r: number }>,
         mode: 'paint' | 'erase'
       ) => void;
+      monsters?: Array<{
+        id: string;
+        ref: string;
+        cell: { q: number; r: number };
+      }>;
+      partyStart?: { q: number; r: number } | null;
+      selectedActorId?: string | null;
+      onPlaceMonster?: (cell: { q: number; r: number }) => void;
+      onMoveMonster?: (id: string, cell: { q: number; r: number }) => void;
+      onStartGesture?: (cell: { q: number; r: number }) => void;
+      onSelectActor?: (actor: string | null) => void;
     };
   }) => {
     const readPayload = (event: React.DragEvent) => {
@@ -192,6 +297,39 @@ vi.mock('./WorldBuildingViewport', () => ({
             >
               Erase empty cell
             </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onPlaceMonster?.({ q: 1, r: 0 })
+              }
+            >
+              Commit monster gesture
+            </button>
+            <button
+              onClick={() => {
+                const actor = props.roomAuthoring?.selectedActorId;
+                if (actor && actor !== 'start')
+                  props.roomAuthoring?.onMoveMonster?.(actor, {
+                    q: 2,
+                    r: -2,
+                  });
+              }}
+            >
+              Commit monster move gesture
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onStartGesture?.({ q: 0, r: 0 })
+              }
+            >
+              Commit start gesture
+            </button>
+            <output data-testid="viewport-actors">
+              {JSON.stringify({
+                monsters: props.roomAuthoring?.monsters ?? [],
+                partyStart: props.roomAuthoring?.partyStart ?? null,
+                selectedActorId: props.roomAuthoring?.selectedActorId ?? null,
+              })}
+            </output>
           </>
         )}
         <button
@@ -1609,21 +1747,20 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(2);
+    ).toBe(3);
   });
 
-  it('recovers valid legacy data visibly without replacing corrupt current bytes before explicit save', () => {
+  it('keeps corrupt current bytes and untouched legacy bytes until an explicit save', () => {
     const storage = new MemoryStorage();
-    const corrupt = '{bad-v2';
-    const legacyDraft = createRoomDraft(
-      createEmptyScene('legacy-scene'),
-      'legacy-room'
-    );
-    legacyDraft.room.walkableHexes = [{ q: 2, r: -1 }];
-    const legacyEnvelope = JSON.parse(stringifyRoomDraft(legacyDraft));
-    legacyEnvelope.version = 1;
-    legacyEnvelope.draft.version = 1;
-    delete legacyEnvelope.draft.workspace;
+    const corrupt = '{bad-v3';
+    const legacyEnvelope = JSON.parse(
+      stringifyRoomDraft(roomNamed('Legacy Cellar'))
+    ) as { version: number; draft: Record<string, unknown> };
+    // A fixed legacy local envelope: version 2 carrying draft version 2,
+    // which never had actor fields.
+    legacyEnvelope.version = 2;
+    legacyEnvelope.draft.version = 2;
+    delete legacyEnvelope.draft.monsters;
     const legacyRaw = JSON.stringify(legacyEnvelope);
     storage.values.set(ROOM_DRAFT_STORAGE_KEY, corrupt);
     storage.values.set(LEGACY_ROOM_DRAFT_STORAGE_KEY, legacyRaw);
@@ -1636,20 +1773,34 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
 
+    // The present-but-invalid current draft is never reinterpreted as
+    // absent: older bytes are not recovered, and autosave stays paused.
     expect(screen.getByRole('alert').textContent).toMatch(
-      /recovered the prior version 1 draft/
+      /Room draft load failed/
     );
-    expect(
-      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
-        .draft.id
-    ).toBe('legacy-room');
+    expect(screen.getByText(/Autosave paused/)).toBeTruthy();
+    const shown = JSON.parse(
+      screen.getByTestId('room-draft-json').textContent ?? '{}'
+    ) as { draft: RoomDraft };
+    expect(shown.draft.version).toBe(3);
+    expect(shown.draft.name).toBe('Untitled room');
+    expect(shown.draft.id).not.toBe('legacy-room');
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+
+    // Unrelated committed edits do not replace unreadable bytes either.
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
+    expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
+
+    // Only an explicit valid save replaces them, and it writes v3 to the
+    // current key alone; legacy bytes are never removed or rewritten.
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    expect(
+      JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
+    ).toBe(3);
     expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1686,7 +1837,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
     expect(
       JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(2);
+    ).toBe(3);
     expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1828,5 +1979,471 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       /not in the local prop catalog/i
     );
     expect(scene()).toEqual(before);
+  });
+});
+
+describe('room actor authoring', () => {
+  function actors(): {
+    monsters: Array<{
+      id: string;
+      ref: string;
+      cell: { q: number; r: number };
+    }>;
+    partyStart: { q: number; r: number } | null;
+    selectedActorId: string | null;
+  } {
+    return JSON.parse(
+      screen.getByTestId('viewport-actors').textContent ?? '{}'
+    );
+  }
+
+  it('places, moves and removes a monster as one-Undo whole-room transactions with stable ids', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The monster palette reuses the four existing promoted choices.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'Place skeleton' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    const placed = actors().monsters[0];
+    expect(placed.ref).toBe('dnd5e:monsters:skeleton');
+    expect(placed.cell).toEqual({ q: 1, r: 0 });
+    // A structurally valid placement on unpainted ground is retained: the
+    // encounter decides legality at Play, not this editor.
+    expect(
+      JSON.parse(screen.getByTestId('room-draft-json').textContent ?? '{}')
+        .draft.room.walkableHexes
+    ).toEqual([]);
+    expect(actors().selectedActorId).toBe(placed.id);
+
+    // A move keeps the minted id and changes only the cell.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Move monster Skeleton ${placed.id}$`),
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(actors().monsters[0]).toEqual({
+      id: placed.id,
+      ref: 'dnd5e:monsters:skeleton',
+      cell: { q: 2, r: -2 },
+    });
+
+    // One whole-room Undo, one Redo.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(actors().monsters[0].cell).toEqual({ q: 1, r: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(actors().monsters[0].cell).toEqual({ q: 2, r: -2 });
+
+    // Repeat placement keeps arming until the tool changes.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Remove monster Skeleton ${placed.id}$`),
+      })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    expect(actors().monsters[0].id).not.toBe(placed.id);
+  });
+
+  it('places, moves and clears the party start without ever inventing an origin', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Clear party start',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Place party start' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit start gesture' })
+    );
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+    expect(actors().selectedActorId).toBe('start');
+
+    // The start can sit off painted ground: structural validity only.
+    fireEvent.click(screen.getByRole('button', { name: 'Erase empty cell' }));
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(actors().partyStart).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear party start' }));
+    expect(actors().partyStart).toBeNull();
+    // Absence is the authored state: no key, never a null or origin stub.
+    expect(screen.getByTestId('room-draft-json').textContent).not.toContain(
+      'partyStart'
+    );
+  });
+
+  it('keeps actors through scenery edits and keeps every scenery pose through actor edits', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // A selected prop keeps its selection and its pose through actor edits.
+    dragLabelTo('Drag Books into scene');
+    const booksId = scene().items[0]?.id as string;
+    expect(actors().selectedActorId).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    const placed = actors().monsters[0];
+    // Placing an actor never deleted the selected scenery or remapped it.
+    expect(scene().items).toHaveLength(1);
+    expect(scene().items[0]?.id).toBe(booksId);
+    expect(scene().items[0]?.transform).toEqual({
+      x: 0.13,
+      y: 0,
+      z: -0.27,
+      rotationY: 0,
+    });
+
+    // A scenery edit retains the actors and the start.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(actors().monsters).toEqual([placed]);
+
+    // Selecting the actor keeps the prop's own selection untouched, and
+    // removing the actor leaves the prop exactly where it was.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(actors().monsters[0].id).toBe(placed.id);
+    expect(scene().items[0]?.id).toBe(booksId);
+    expect(actors().selectedActorId).toBe(placed.id);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(`^Remove monster Skeleton ${placed.id}$`),
+      })
+    );
+    expect(actors().monsters).toEqual([]);
+    expect(scene().items).toHaveLength(1);
+    expect(scene().items[0]?.id).toBe(booksId);
+  });
+
+  it('retains stable ids and the start through export, import and reopen', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    const placed = actors().monsters[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Place party start' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit start gesture' })
+    );
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    // Export → import is a lossless whole-draft transfer: actor identities
+    // are the stable join, never reminted.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export room draft JSON' })
+    );
+    const exported = (
+      screen.getByLabelText('Portable JSON') as HTMLInputElement
+    ).value;
+    expect(exported).toContain(placed.id);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import room draft JSON' })
+    );
+    expect(actors().monsters).toEqual([placed]);
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+
+    // Reload restores the autosaved bytes with the same actor identities.
+    fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    expect(actors().monsters).toEqual([placed]);
+    expect(actors().partyStart).toEqual({ q: 0, r: 0 });
+  });
+
+  it('never routes actor placement through prop drops, arrangements or a second editor', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    // A palette drag stays the prop contract: a real prop drop creates a
+    // freely-posed prop, and the armed monster tool does not intercept it.
+    dragLabelTo('Drag Books into scene');
+    expect(scene().items).toHaveLength(1);
+    expect(actors().monsters).toEqual([]);
+    expect(actors().partyStart).toBeNull();
+    // The placed actor count changes only through its own gesture.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    expect(actors().monsters).toHaveLength(1);
+    expect(scene().items).toHaveLength(1);
+  });
+});
+
+/** A complete seeded room draft whose PUBLISHED name deliberately differs
+ * from the scene presentation name, the way a distinct imported document
+ * arrives. */
+function seedImportedRoom(storageInstance: MemoryStorage): RoomDraft {
+  const draft = createRoomDraft(
+    {
+      version: 1,
+      id: 'scene-imported',
+      name: 'Scene title kept distinct',
+      items: [
+        {
+          id: 'prop-1',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:books',
+          label: 'Books',
+          transform: { x: 1, y: 0, z: 1, rotationY: 0 },
+        },
+      ],
+      groups: [],
+    },
+    'room-imported-1'
+  );
+  draft.name = 'Imported room title';
+  draft.room.walkableHexes = [{ q: 0, r: 0 }];
+  storageInstance.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+  return draft;
+}
+
+function publishedDraft(): RoomDraft {
+  const envelope = JSON.parse(
+    (screen.getByTestId('room-draft-json').textContent ?? '{}') as string
+  ) as { draft: RoomDraft };
+  return envelope.draft;
+}
+
+describe('WorldBuildingConcept room publishing', () => {
+  afterEach(() => publishRpc.reset());
+
+  it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
+    const storage = new MemoryStorage();
+    const original = seedImportedRoom(storage);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+    const oldKey = (
+      screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement
+    ).value;
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Checking key…',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((p) => !p.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    await act(async () =>
+      publishRpc.puts
+        .find((p) => !p.request.validateOnly)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    await screen.findByText(`Saved to the authoring server as “${oldKey}”.`);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    const fresh = publishedDraft();
+    expect(fresh.id).not.toBe(original.id);
+    expect(fresh.name).toBe('Untitled room');
+    expect(fresh.room.implicitRegionId).toBe(`${fresh.id}-region`);
+    expect(fresh.scene.items).toEqual([]);
+    expect(JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).draft.id).toBe(
+      fresh.id
+    );
+    expect(
+      (screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement)
+        .value
+    ).toBe(`room-${fresh.id}`);
+
+    // Deliberately target the previous file: a different document must ask,
+    // even though this same mounted publishing hook saved that key earlier.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Dungeon key' }), {
+      target: { value: oldKey },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(2));
+    expect(publishRpc.gets[1]!.key).toBe(oldKey);
+    await act(async () =>
+      publishRpc.gets[1]!.deferred.resolve({
+        yaml: 'previous document',
+      } as never)
+    );
+    await screen.findByRole('alertdialog', { name: `Overwrite ${oldKey}` });
+    expect(publishRpc.puts.filter((p) => !p.request.validateOnly)).toHaveLength(
+      1
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(publishedDraft()).toEqual(original);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(publishedDraft()).toEqual(fresh);
+  });
+
+  it('the explicit scene-name rename also publishes the draft name in one undoable transaction', () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Renamed by author' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+
+    const renamed = publishedDraft();
+    expect(renamed.name).toBe('Renamed by author');
+    expect(renamed.scene.name).toBe('Renamed by author');
+
+    // Exactly one Undo restores BOTH names.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    const restored = publishedDraft();
+    expect(restored.name).toBe('Imported room title');
+    expect(restored.scene.name).toBe('Scene title kept distinct');
+  });
+
+  it('unrelated edits never normalize a distinct imported name', () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+      />
+    );
+    // An unrelated canvas commit (walkable paint) must not touch names.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    const after = publishedDraft();
+    expect(after.name).toBe('Imported room title');
+    expect(after.scene.name).toBe('Scene title kept distinct');
+  });
+
+  it('an in-flight publishing transaction blocks keyboard, canvas and name edits, then releases the editor', async () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    const onPlay = vi.fn();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+      />
+    );
+
+    // Background validation is already in flight (the derived default key
+    // exists) and must NOT freeze editing: the rename below commits while
+    // the debounced preview putDungeon is still pending.
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Busy test room' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    expect(publishedDraft().name).toBe('Busy test room');
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    publishRpc.gets[0]!.deferred.reject(
+      new (await import('@connectrpc/connect')).ConnectError(
+        'no such key',
+        (await import('@connectrpc/connect')).Code.NotFound
+      )
+    );
+    await waitFor(() => expect(publishRpc.puts).toHaveLength(1));
+
+    // While the save is in flight: keyboard undo is a no-op.
+    const before = screen.getByTestId('room-draft-json').textContent;
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+
+    // A canvas gesture is refused.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+
+    // A name edit is refused too.
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Should not apply' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    expect(publishedDraft().name).toBe('Busy test room');
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
+    // The transaction completes: the shared launch ran for the same
+    // captured key, and the editor unlocks.
+    publishRpc.puts[0]!.deferred.resolve({ errors: [] } as never);
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(publishedDraft().name).toBe('Imported room title');
   });
 });

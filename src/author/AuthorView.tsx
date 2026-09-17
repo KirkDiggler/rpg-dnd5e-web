@@ -7,19 +7,18 @@
  * hand the encounter id up so `App` routes to the real game on the
  * authored dungeon.
  *
+ * The launch sequence itself lives in `usePlayAuthoredDungeon`, shared
+ * with the World Builder's room publishing panel — one sequence, one set
+ * of fencing guarantees (plan §1).
+ *
  * The button that routes here (`DungeonBuilderHomeButton`) is gated by
  * `useAuthoringGate`; by the time this mounts the gate has said yes.
  */
-import { useCreateLobby } from '@/api/useCreateLobby';
-import { useSetLobbyReady } from '@/api/useSetLobbyReady';
-import { useStartLobbyEncounter } from '@/api/useStartLobbyEncounter';
 import { ThemeSelector } from '@/components/ThemeSelector';
 import type { CompositionSource } from '@/compositions/compositionSource';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
-
-/** Matches `LobbyFlow.tsx`'s own dev campaign. */
-const DEV_CAMPAIGN_ID = 'default-campaign';
+import { usePlayAuthoredDungeon } from './usePlayAuthoredDungeon';
 
 interface AuthorViewProps {
   onBack: () => void;
@@ -37,44 +36,19 @@ export function AuthorView({
   onPlay,
   compositionSource,
 }: AuthorViewProps) {
-  const { createLobby } = useCreateLobby();
-  const { setReady } = useSetLobbyReady();
-  const { startEncounter } = useStartLobbyEncounter();
+  const {
+    play: playAuthored,
+    launching,
+    error: launchError,
+  } = usePlayAuthoredDungeon({ characterId, onPlay });
 
-  // A Save & Play that is still creating the lobby when the user leaves
-  // must not route them back into the encounter it then starts: Back is
-  // disabled while it runs, and a result arriving after unmount is
-  // dropped (Copilot review, PR #781).
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const [playing, setPlaying] = useState(false);
-
+  /** DungeonBuilder's onPlay is a fire-and-forget `Promise<void>`; the
+   * shared hook reports failures in `error` instead of throwing. */
   const play = useCallback(
     async (dungeonKey: string) => {
-      if (!characterId) return;
-      setPlaying(true);
-      try {
-        const lobby = await createLobby({
-          campaignId: DEV_CAMPAIGN_ID,
-          characterId,
-        });
-        await setReady({ lobbyId: lobby.lobbyId, ready: true });
-        const started = await startEncounter({
-          lobbyId: lobby.lobbyId,
-          dungeonKey,
-        });
-        if (!mounted.current) return;
-        onPlay(started.encounterId, characterId);
-      } finally {
-        if (mounted.current) setPlaying(false);
-      }
+      await playAuthored(dungeonKey);
     },
-    [characterId, createLobby, setReady, startEncounter, onPlay]
+    [playAuthored]
   );
 
   return (
@@ -86,8 +60,8 @@ export function AuthorView({
       <div className="flex items-center gap-4 shrink-0">
         <button
           onClick={onBack}
-          disabled={playing}
-          title={playing ? 'Starting the encounter…' : undefined}
+          disabled={launching}
+          title={launching ? 'Starting the encounter…' : undefined}
           className="px-3 py-1.5 rounded text-sm disabled:opacity-50"
           style={{
             backgroundColor: 'var(--bg-secondary)',
@@ -112,6 +86,11 @@ export function AuthorView({
           <ThemeSelector />
         </div>
       </div>
+      {launchError && (
+        <div role="alert" className="text-red-500 text-sm">
+          {launchError}
+        </div>
+      )}
       <div className="flex-1 min-h-0">
         <DungeonBuilder
           onPlay={play}

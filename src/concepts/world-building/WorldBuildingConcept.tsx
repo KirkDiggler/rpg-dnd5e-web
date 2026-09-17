@@ -1,3 +1,4 @@
+import { PALETTE_MONSTERS, paletteNameForRef } from '@/author/paletteData';
 import { useSerialThumbnailQueue } from '@/author/useSerialThumbnailQueue';
 import { compositionMetadata } from '@/compositions/compositionMetadata';
 import {
@@ -17,21 +18,28 @@ import {
 } from './catalog';
 import { addRepeatedProps } from './repeatPlacement';
 import {
+  clearRoomPartyStart,
   createRoomDraft,
   expandRoomWorkspace,
   loadRoomDraft,
+  moveRoomMonster,
   parseRoomDraftJson,
+  placeRoomMonster,
   reconcileRoomDraft,
   remapRoomDeclarations,
+  removeRoomMonster,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
+  setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
   type RoomDraft,
   type RoomGameplayData,
+  type RoomHexCell,
   type RoomPropDeclaration,
   type RoomWorkspace,
 } from './roomDraft';
+import { RoomPublishingPanel } from './RoomPublishingPanel';
 import {
   addProp,
   createEmptyScene,
@@ -72,6 +80,7 @@ import type {
   WorldPointLight,
   WorldScene,
 } from './types';
+import type { RoomPublishingCapability } from './useRoomPublishing';
 import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
 import { WorldAssetThumbnailRenderer } from './WorldAssetThumbnailRenderer';
 import './worldBuilding.css';
@@ -92,6 +101,15 @@ interface WorldBuildingConceptProps {
   onBack?: () => void;
   /** Dedicated local authoring-draft mode; never writes world compositions. */
   roomMode?: boolean;
+  /** Publishing capability injected by the World Builder route ONLY:
+   * the same selected character and App.handlePlayAuthored the legacy
+   * AuthorView receives. Absent in prop-composition mode and in every
+   * local-only concept mount, so those render no publishing controls
+   * and make no authoring RPC. */
+  roomPublishing?: RoomPublishingCapability;
+  /** Lifts the publishing transaction boundary: while busy, the route
+   * refuses Back and mode switching. */
+  onPublishBusyChange?: (busy: boolean) => void;
 }
 
 const DEFAULT_POINT_LIGHT: WorldPointLight = {
@@ -146,6 +164,8 @@ export function WorldBuildingConcept({
   onCompositionDeleted,
   onBack,
   roomMode = false,
+  roomPublishing,
+  onPublishBusyChange,
 }: WorldBuildingConceptProps) {
   const effectiveStorage = storage ?? browserStorage;
   const [initial] = useState(() => bootstrap(effectiveStorage, idFactory));
@@ -170,9 +190,22 @@ export function WorldBuildingConcept({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<WorldBuildingTool>('select');
   const [roomTool, setRoomTool] = useState<
-    'select' | 'move' | 'rotate' | 'paint' | 'erase' | 'rectangle' | 'repeat'
+    | 'select'
+    | 'move'
+    | 'rotate'
+    | 'paint'
+    | 'erase'
+    | 'rectangle'
+    | 'repeat'
+    | 'monster'
+    | 'start'
   >('paint');
   const [repeatAssetRef, setRepeatAssetRef] = useState<string | null>(null);
+  /** Room-only actor authoring state. Distinct from the scene's selectedIds:
+   * a selected actor is a monster id or 'start', never a WorldProp id, and
+   * actor operations never touch scenery selections. */
+  const [armedMonsterRef, setArmedMonsterRef] = useState<string | null>(null);
+  const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
     null
   );
@@ -223,6 +256,38 @@ export function WorldBuildingConcept({
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+  /** Publishing transaction boundary (plan §1): while a Save & Play (or
+   * plain server save) mutates server state, the editor refuses every
+   * source-changing path — commit, undo/redo, imports, new room, world
+   * snapshot operations, keyboard shortcuts and canvas gestures. Disabled
+   * buttons alone would not stop the canvas/keyboard handlers, so the
+   * guard lives at the actual mutation seams, backed by a ref for
+   * synchronous correctness. Background server validation never sets
+   * this boundary and never freezes editing. */
+  const publishBusyRef = useRef(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const handlePublishBusy = useCallback(
+    (busy: boolean) => {
+      publishBusyRef.current = busy;
+      setPublishBusy(busy);
+      // When the transaction releases the editor, a lingering lock notice
+      // would describe a boundary that no longer exists.
+      if (!busy) {
+        setNotice((current) =>
+          current.startsWith('Save & Play is running') ? '' : current
+        );
+      }
+      onPublishBusyChange?.(busy);
+    },
+    [onPublishBusyChange]
+  );
+  const refuseWhilePublishing = useCallback(() => {
+    if (!publishBusyRef.current) return false;
+    setNotice(
+      'Save & Play is running — the room is locked until the transaction finishes.'
+    );
+    return true;
   }, []);
   useEffect(() => {
     // A replaced composition source retires any busy latch this instance still
@@ -307,15 +372,35 @@ export function WorldBuildingConcept({
       next: WorldScene,
       selection = selectedIds,
       nextRoom: RoomGameplayData = roomDraft.room,
-      nextWorkspace: RoomWorkspace = roomDraft.workspace
+      nextWorkspace: RoomWorkspace = roomDraft.workspace,
+      /** Room mode's EXPLICIT rename sets the published draft name in the
+       * same one-transaction commit; every other path keeps the draft's
+       * name (reconcileRoomDraft retains it), so imported names are never
+       * normalized by unrelated edits. */
+      nextName?: string,
+      nextId = roomDraft.id
     ) => {
+      if (refuseWhilePublishing()) return;
       try {
         const valid = validateScene(next, {
           horizontalLimit: roomMode ? nextWorkspace.horizontalLimit : undefined,
         });
         if (roomMode) {
           const nextDraft = reconcileRoomDraft(
-            { ...roomDraft, room: nextRoom, workspace: nextWorkspace },
+            nextName === undefined
+              ? {
+                  ...roomDraft,
+                  id: nextId,
+                  room: nextRoom,
+                  workspace: nextWorkspace,
+                }
+              : {
+                  ...roomDraft,
+                  id: nextId,
+                  name: nextName,
+                  room: nextRoom,
+                  workspace: nextWorkspace,
+                },
             valid
           );
           if (JSON.stringify(nextDraft) === JSON.stringify(roomDraft)) return;
@@ -350,7 +435,7 @@ export function WorldBuildingConcept({
         );
       }
     },
-    [roomDraft, roomMode, selectedIds]
+    [refuseWhilePublishing, roomDraft, roomMode, selectedIds]
   );
 
   const dropIntoScene = useCallback(
@@ -458,6 +543,94 @@ export function WorldBuildingConcept({
     [commit, scene, selectedIds]
   );
 
+  /** Room-only actor authoring. Every actor mutation is one whole-room
+   * history transaction through the existing commit; a structurally valid
+   * cell is never refused as game-illegal, and an out-of-workspace snap is
+   * rejected non-destructively with a visible notice. */
+  const placeMonsterAt = (cell: RoomHexCell) => {
+    if (!armedMonsterRef) {
+      setNotice('Choose a monster to place first.');
+      return;
+    }
+    try {
+      const id = idFactory();
+      const next = placeRoomMonster(roomDraft, {
+        id,
+        ref: armedMonsterRef,
+        cell: { ...cell },
+      });
+      commit(scene, selectedIds, next.room);
+      setSelectedActorId(id);
+      setNotice('');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const moveMonsterTo = (id: string, cell: RoomHexCell) => {
+    try {
+      const next = moveRoomMonster(roomDraft, id, cell);
+      if (next === roomDraft) return;
+      commit(scene, selectedIds, next.room);
+      setNotice('');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** The party start gesture places or moves: presence means an actual
+   * authored cell, never an invented origin. */
+  const startGestureAt = (cell: RoomHexCell) => {
+    try {
+      const next = setRoomPartyStart(roomDraft, cell);
+      if (next === roomDraft) return;
+      commit(scene, selectedIds, next.room);
+      setSelectedActorId('start');
+      setNotice('');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const removeActor = useCallback(
+    (actor: string) => {
+      const next =
+        actor === 'start'
+          ? clearRoomPartyStart(roomDraft)
+          : removeRoomMonster(roomDraft, actor);
+      if (next === roomDraft) return;
+      commit(scene, selectedIds, next.room);
+      setSelectedActorId((current) => (current === actor ? null : current));
+      setNotice('');
+    },
+    [commit, roomDraft, scene, selectedIds]
+  );
+
+  const clearPartyStart = () => {
+    const next = clearRoomPartyStart(roomDraft);
+    if (next === roomDraft) return;
+    commit(scene, selectedIds, next.room);
+    setSelectedActorId((current) => (current === 'start' ? null : current));
+    setNotice('');
+  };
+
+  const armMonsterPlacement = (ref: string) => {
+    setPreviewScene(null);
+    setArmedMonsterRef(ref);
+    setSelectedActorId(null);
+    setRepeatAssetRef(null);
+    setRoomTool('monster');
+    setNotice('');
+  };
+
+  const armStartPlacement = () => {
+    setPreviewScene(null);
+    setSelectedActorId(null);
+    setRepeatAssetRef(null);
+    setRoomTool('start');
+    setNotice('');
+  };
+
   const duplicate = useCallback(() => {
     if (selectedIds.length === 0) {
       setNotice('Select at least one object first.');
@@ -484,6 +657,7 @@ export function WorldBuildingConcept({
   }, [commit, scene, selectedIds]);
 
   const undo = useCallback(() => {
+    if (refuseWhilePublishing()) return;
     setPreviewScene(null);
     if (roomMode) {
       setRoomHistory((current) =>
@@ -498,8 +672,9 @@ export function WorldBuildingConcept({
     } else setHistory((current) => undoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, [roomMode]);
+  }, [refuseWhilePublishing, roomMode]);
   const redo = useCallback(() => {
+    if (refuseWhilePublishing()) return;
     setPreviewScene(null);
     if (roomMode) {
       setRoomHistory((current) =>
@@ -514,7 +689,7 @@ export function WorldBuildingConcept({
     } else setHistory((current) => redoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, [roomMode]);
+  }, [refuseWhilePublishing, roomMode]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -536,7 +711,8 @@ export function WorldBuildingConcept({
         redo();
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        remove();
+        if (roomMode && selectedActorId) removeActor(selectedActorId);
+        else remove();
       } else if (modifier && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         duplicate();
@@ -553,11 +729,22 @@ export function WorldBuildingConcept({
       } else if (event.key === 'Escape') {
         setPreviewScene(null);
         setActiveDrag(null);
+        if (roomMode) setSelectedActorId(null);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [applyToSelection, duplicate, redo, remove, selectedIds, undo]);
+  }, [
+    applyToSelection,
+    duplicate,
+    redo,
+    remove,
+    removeActor,
+    roomMode,
+    selectedActorId,
+    selectedIds,
+    undo,
+  ]);
 
   const repeatDescriptor = useMemo(() => {
     if (!roomMode || !repeatAssetRef) return undefined;
@@ -590,6 +777,7 @@ export function WorldBuildingConcept({
   }, [search]);
 
   const saveNow = () => {
+    if (refuseWhilePublishing()) return;
     if (roomMode) {
       const error = saveRoomDraft(effectiveStorage, roomDraft);
       if (!error) {
@@ -623,6 +811,7 @@ export function WorldBuildingConcept({
   };
 
   const saveSelectedArrangement = () => {
+    if (refuseWhilePublishing()) return;
     try {
       const arrangement = saveArrangement(
         scene,
@@ -662,6 +851,7 @@ export function WorldBuildingConcept({
   };
 
   const importScene = () => {
+    if (refuseWhilePublishing()) return;
     try {
       if (roomMode) {
         const imported = parseRoomDraftJson(portableJson);
@@ -698,6 +888,7 @@ export function WorldBuildingConcept({
   };
 
   const importLibrary = () => {
+    if (refuseWhilePublishing()) return;
     try {
       const imported = parseLibraryJson(portableJson);
       setLibrary(imported);
@@ -711,7 +902,51 @@ export function WorldBuildingConcept({
     }
   };
 
+  /** Canonical single-room YAML import (publishing panel): replaces the
+   * room document exactly like a room-JSON import and reports acceptance
+   * so the panel adopts the file's root key only when the editor truly
+   * took the document. Refused while a publishing transaction runs. */
+  const importCanonicalRoomYaml = useCallback(
+    (imported: RoomDraft): boolean => {
+      if (refuseWhilePublishing()) return false;
+      try {
+        const saveError = saveRoomDraft(effectiveStorage, imported);
+        if (!saveError) {
+          roomAutosaveBlockedRef.current = false;
+          workspaceOriginRef.current = 'local';
+          setWorkspaceOrigin('local');
+        }
+        setRoomHistory((current) => ({
+          past: [...current.past.slice(-79), structuredClone(current.present)],
+          present: imported,
+          future: [],
+        }));
+        setSelectedIds([]);
+        setPreviewScene(null);
+        setTool('select');
+        setRoomTool('select');
+        setActiveDrag(null);
+        setNotice(saveError ?? '');
+        setSaveStatus(
+          saveError
+            ? 'Imported canonical YAML kept in memory — local save failed'
+            : 'Imported canonical single-room YAML'
+        );
+        return true;
+      } catch (error) {
+        setNotice(
+          `Canonical YAML import rejected; the open room was kept. ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        return false;
+      }
+    },
+    [effectiveStorage, refuseWhilePublishing]
+  );
+
   const reopen = () => {
+    if (refuseWhilePublishing()) return;
     if (roomMode) {
       const result = loadRoomDraft(effectiveStorage, roomDraft);
       if (result.error) {
@@ -752,6 +987,7 @@ export function WorldBuildingConcept({
 
   const saveCompositionToWorld = async () => {
     if (!compositionSource?.writer || worldBusy) return;
+    if (refuseWhilePublishing()) return;
     setWorldBusy(true);
     setNotice('');
     try {
@@ -775,6 +1011,7 @@ export function WorldBuildingConcept({
 
   const deleteComposition = async (id: string, label: string) => {
     if (!compositionSource?.writer || worldBusy) return;
+    if (refuseWhilePublishing()) return;
     setWorldBusy(true);
     setNotice('');
     try {
@@ -799,6 +1036,7 @@ export function WorldBuildingConcept({
 
   const openComposition = async (id: string) => {
     if (!compositionSource || worldBusy) return;
+    if (refuseWhilePublishing()) return;
     const source = compositionSource;
     const generation = ++openGenerationRef.current;
     /** A deferred Get can resolve after this instance unmounts or after its
@@ -971,22 +1209,24 @@ export function WorldBuildingConcept({
           </h2>
           <p>
             {roomMode
-              ? 'Paint declared walkable hexes and configure prop declarations. Not playable or engine-validated.'
+              ? roomPublishing
+                ? 'Paint walkable hexes, place monsters and the party start. Validate, save and play through the authoring server.'
+                : 'Paint walkable hexes, place monsters and the party start. Setup authoring is not engine-validated or playable yet.'
               : 'Compose freely in world space. Hexes are scale, not slots.'}
           </p>
         </div>
         <div className="wb-save-cluster">
           {onBack && <button onClick={onBack}>Back to main menu</button>}
           <span aria-live="polite">{saveStatus}</span>
-          <button onClick={saveNow}>
+          <button disabled={publishBusy} onClick={saveNow}>
             {roomMode ? 'Save room draft' : 'Save local draft'}
           </button>
-          <button onClick={reopen}>
+          <button disabled={publishBusy} onClick={reopen}>
             {roomMode ? 'Reload room draft' : 'Reopen local draft'}
           </button>
           {compositionSource?.writer && (
             <button
-              disabled={worldBusy}
+              disabled={worldBusy || publishBusy}
               onClick={() => void saveCompositionToWorld()}
             >
               {worldBusy
@@ -1015,7 +1255,10 @@ export function WorldBuildingConcept({
             </button>
           )}
           {!confirmBlank ? (
-            <button onClick={() => setConfirmBlank(true)}>
+            <button
+              disabled={publishBusy}
+              onClick={() => setConfirmBlank(true)}
+            >
               {roomMode ? 'New room' : 'New blank scene'}
             </button>
           ) : (
@@ -1026,6 +1269,7 @@ export function WorldBuildingConcept({
               <button
                 className="wb-danger"
                 onClick={() => {
+                  if (refuseWhilePublishing()) return;
                   const blank = createEmptyScene(idFactory());
                   const freshRoom = createRoomDraft(blank, idFactory());
                   const resetError = roomMode
@@ -1040,7 +1284,9 @@ export function WorldBuildingConcept({
                     blank,
                     [],
                     roomMode ? freshRoom.room : roomDraft.room,
-                    roomMode ? freshRoom.workspace : roomDraft.workspace
+                    roomMode ? freshRoom.workspace : roomDraft.workspace,
+                    roomMode ? freshRoom.name : undefined,
+                    roomMode ? freshRoom.id : undefined
                   );
                   setTool('select');
                   setActiveDrag(null);
@@ -1213,6 +1459,9 @@ export function WorldBuildingConcept({
                   onClick={() => {
                     setPreviewScene(null);
                     if (entry !== 'repeat') setRepeatAssetRef(null);
+                    // Actor arming lives in the Room setup controls; a tool
+                    // strip switch always disarms a placement.
+                    setArmedMonsterRef(null);
                     if (
                       entry === 'paint' ||
                       entry === 'erase' ||
@@ -1241,11 +1490,19 @@ export function WorldBuildingConcept({
                       ? repeatDescriptor
                         ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
                         : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
-                      : tool === 'select'
-                        ? 'Left: select · Shift-left: add selection'
-                        : tool === 'move'
-                          ? 'Drag arrows or planes · Esc/right-click: cancel'
-                          : 'Drag the Y ring · Esc/right-click: cancel'}
+                      : roomMode && roomTool === 'monster'
+                        ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
+                        : roomMode && roomTool === 'start'
+                          ? 'Click the floor: place or move the party start'
+                          : roomMode && roomTool === 'select' && selectedActorId
+                            ? selectedActorId === 'start'
+                              ? 'Click the floor: move the party start · Delete: clear it'
+                              : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
+                            : tool === 'select'
+                              ? 'Left: select · Shift-left: add selection'
+                              : tool === 'move'
+                                ? 'Drag arrows or planes · Esc/right-click: cancel'
+                                : 'Drag the Y ring · Esc/right-click: cancel'}
             </span>
           </div>
           <div className="wb-stage-bar">
@@ -1272,6 +1529,17 @@ export function WorldBuildingConcept({
                       workspace: roomDraft.workspace,
                       walkableHexes: roomDraft.room.walkableHexes,
                       repeat: repeatDescriptor,
+                      monsters: roomDraft.room.monsters,
+                      partyStart: roomDraft.room.partyStart ?? null,
+                      armedMonsterRef: armedMonsterRef,
+                      selectedActorId: selectedActorId,
+                      onPlaceMonster: placeMonsterAt,
+                      onMoveMonster: moveMonsterTo,
+                      onStartGesture: startGestureAt,
+                      onSelectActor: (actor) => {
+                        if (actor) setPreviewScene(null);
+                        setSelectedActorId(actor);
+                      },
                       propDeclarations:
                         footprintPreview && selectedProp
                           ? {
@@ -1308,7 +1576,12 @@ export function WorldBuildingConcept({
                     }
                   : undefined
               }
-              onSelect={selectInScene}
+              onSelect={(ids) => {
+                // A scenery selection always deselects the actor: the two
+                // selections stay distinct and never delete each other.
+                if (ids.length > 0) setSelectedActorId(null);
+                selectInScene(ids);
+              }}
               onDrop={dropIntoScene}
               onDragFinished={() => setActiveDrag(null)}
               onTransformPreview={setPreviewScene}
@@ -1345,7 +1618,16 @@ export function WorldBuildingConcept({
                     setSceneNameDraft(scene.name);
                     setNotice('Scene name cannot be empty.');
                   } else if (name !== scene.name) {
-                    commit({ ...scene, name });
+                    // The explicit rename is the one transaction that also
+                    // moves the published draft name (one Undo); unrelated
+                    // edits never normalize an imported draft name.
+                    commit(
+                      { ...scene, name },
+                      selectedIds,
+                      roomDraft.room,
+                      roomDraft.workspace,
+                      roomMode ? name : undefined
+                    );
                   }
                 }}
               />
@@ -1353,6 +1635,7 @@ export function WorldBuildingConcept({
             <div className="wb-actions">
               <button
                 disabled={
+                  publishBusy ||
                   (roomMode ? roomHistory.past : history.past).length === 0
                 }
                 onClick={undo}
@@ -1361,14 +1644,21 @@ export function WorldBuildingConcept({
               </button>
               <button
                 disabled={
+                  publishBusy ||
                   (roomMode ? roomHistory.future : history.future).length === 0
                 }
                 onClick={redo}
               >
                 Redo
               </button>
-              <button onClick={duplicate}>Duplicate</button>
-              <button className="wb-danger" onClick={remove}>
+              <button disabled={publishBusy} onClick={duplicate}>
+                Duplicate
+              </button>
+              <button
+                className="wb-danger"
+                disabled={publishBusy}
+                onClick={remove}
+              >
                 Delete
               </button>
             </div>
@@ -1672,6 +1962,120 @@ export function WorldBuildingConcept({
               </div>
             )}
           </section>
+
+          {roomMode && (
+            <section aria-label="Room setup">
+              <h3>Room setup</h3>
+              <p className="wb-help">
+                Monsters and the party start are authoring markers. Props stay
+                freely placed; the encounter decides legality at Play.
+              </p>
+              <div
+                className="wb-actions"
+                role="group"
+                aria-label="Monster palette"
+              >
+                {PALETTE_MONSTERS.map((monster) => (
+                  <button
+                    key={monster.ref}
+                    type="button"
+                    aria-label={`Place ${monster.label}`}
+                    aria-pressed={
+                      roomTool === 'monster' && armedMonsterRef === monster.ref
+                    }
+                    onClick={() => armMonsterPlacement(monster.ref)}
+                  >
+                    {monster.label}
+                  </button>
+                ))}
+              </div>
+              <div className="wb-actions" role="group" aria-label="Party start">
+                <button
+                  type="button"
+                  aria-label="Place party start"
+                  aria-pressed={roomTool === 'start'}
+                  onClick={armStartPlacement}
+                >
+                  Place party start
+                </button>
+                <button
+                  type="button"
+                  aria-label="Clear party start"
+                  disabled={!roomDraft.room.partyStart}
+                  onClick={clearPartyStart}
+                >
+                  Clear party start
+                </button>
+              </div>
+              <ul
+                className="wb-actor-list"
+                aria-label="Placed monsters"
+                data-testid="placed-monsters"
+              >
+                {roomDraft.room.monsters.map((monster) => (
+                  <li
+                    key={monster.id}
+                    className={
+                      selectedActorId === monster.id
+                        ? 'wb-actor-row wb-actor-row--selected'
+                        : 'wb-actor-row'
+                    }
+                    data-actor-id={monster.id}
+                  >
+                    <span>
+                      {paletteNameForRef(monster.ref)} ({monster.cell.q},{' '}
+                      {monster.cell.r})
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Move monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                      onClick={() => {
+                        setSelectedActorId(monster.id);
+                        setRoomTool('select');
+                        setNotice('');
+                      }}
+                    >
+                      Move
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Remove monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                      onClick={() => removeActor(monster.id)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {selectedActorId && (
+                <p
+                  className="wb-help"
+                  data-testid="actor-selection"
+                  aria-live="polite"
+                >
+                  {selectedActorId === 'start'
+                    ? 'Party start selected — click the floor to move it, or Delete to clear it.'
+                    : `Selected monster ${selectedActorId} — click the floor to move it, or Delete to remove it.`}
+                </p>
+              )}
+            </section>
+          )}
+
+          {roomMode && roomPublishing && (
+            <section aria-label="Publish room">
+              <h3>Publish &amp; Play</h3>
+              <p className="wb-help">
+                Validation and saving run on the authoring server; the local
+                draft and any world snapshot are untouched by refusals.
+              </p>
+              <RoomPublishingPanel
+                draft={roomDraft}
+                capability={roomPublishing}
+                onImportDraft={importCanonicalRoomYaml}
+                onBusyChange={handlePublishBusy}
+              />
+            </section>
+          )}
 
           <section>
             <h3>Scene objects ({scene.items.length})</h3>

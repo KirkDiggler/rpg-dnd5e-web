@@ -11,6 +11,7 @@ import {
   buildScene3D,
   resolveSceneLayout,
 } from '@/components/session/atlasToScene3D';
+import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
@@ -158,5 +159,85 @@ describe('previewScene', () => {
     if (gate.ok) return;
     expect(preview.message).toBe(gate.message);
     expect(preview.message).toMatch(/#763/);
+  });
+
+  /** A minimal valid canonical presentation, shared by the preview tests
+   * below — the same structural shape the atlas field carries. */
+  const canonicalPresentation = {
+    version: 1,
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
+  };
+
+  it('attaches the decoded canonical presentation to the shared scene path', () => {
+    const preview = previewScene({
+      ...atlas,
+      roomSceneJson: JSON.stringify(canonicalPresentation),
+    } as GetAtlasResponse);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.scene.roomScene).toEqual(canonicalPresentation);
+    // The legacy atlas scene channels are untouched.
+    expect(preview.scene.props).toEqual(
+      buildScene3D(atlas, HEX_SIZE, 'pointy').props
+    );
+  });
+
+  it('catches an invalid nonempty presentation into the existing ok:false refusal', () => {
+    const broken = previewScene({
+      ...atlas,
+      roomSceneJson: '{oops',
+    } as GetAtlasResponse);
+    expect(broken.ok).toBe(false);
+    if (broken.ok) return;
+    expect(broken.message).toMatch(/could not be parsed/);
+
+    const unsupported = previewScene({
+      ...atlas,
+      roomSceneJson: JSON.stringify({
+        ...canonicalPresentation,
+        version: 2,
+      }),
+    } as GetAtlasResponse);
+    expect(unsupported.ok).toBe(false);
+    if (unsupported.ok) return;
+    expect(unsupported.message).toMatch(/version must be 1/);
+
+    // Absent stays the legacy route — never a refusal, never a fallback.
+    const absent = previewScene({
+      ...atlas,
+      roomSceneJson: '',
+    } as GetAtlasResponse);
+    expect(absent.ok).toBe(true);
   });
 });

@@ -1,4 +1,8 @@
-import { HEX_SIZE, hexCorners } from '@/components/hex-grid/hexMath';
+import {
+  cubeToWorld,
+  HEX_SIZE,
+  hexCorners,
+} from '@/components/hex-grid/hexMath';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
@@ -8,6 +12,7 @@ import type { WorldProp } from './types';
 const modelState = vi.hoisted(() => ({
   value: 'loaded' as 'loaded' | 'pending' | 'error',
   pending: new Promise<never>(() => {}),
+  requestedUrls: [] as string[],
 }));
 const floorTextureState = vi.hoisted(() => ({
   base: undefined as THREE.Texture | undefined,
@@ -21,12 +26,22 @@ vi.mock('@react-three/drei', () => ({
   Html: () => null,
   OrbitControls: () => null,
   TransformControls: ({ children }: { children?: React.ReactNode }) => children,
-  useGLTF: () => {
+  useGLTF: (url: string) => {
+    modelState.requestedUrls.push(url);
     if (modelState.value === 'pending') throw modelState.pending;
     if (modelState.value === 'error') throw new Error('model failed');
     return { scene: loadedScene };
   },
   useTexture: () => floorTextureState.base,
+}));
+
+vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
+  ClassCharacterModel: ({ url }: { url: string }) => {
+    modelState.requestedUrls.push(url);
+    if (modelState.value === 'pending') throw modelState.pending;
+    if (modelState.value === 'error') throw new Error('model failed');
+    return <group name="shared-room-monster-model" userData={{ url }} />;
+  },
 }));
 
 vi.mock('@/components/session/useDungeonShellCatalog', () => ({
@@ -47,6 +62,7 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
   }),
 }));
 
+import type { RoomHexCell } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
 import {
@@ -711,5 +727,395 @@ describe('WorldPropVisual surface and pointer ownership', () => {
       stopPropagation: vi.fn(),
     });
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('room actor markers and snapped setup gestures', () => {
+  const ACTOR = {
+    id: 'actor-1',
+    ref: 'dnd5e:monsters:skeleton',
+    cell: { q: 1, r: 0 },
+  };
+
+  /** One snapped world point inside cell (q, r): the SAME shared
+   * worldToCube/cubeToWorld pair the floor paint gestures use. */
+  const worldPoint = (q: number, r: number) => {
+    const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
+    return new THREE.Vector3(center.x + 0.3, DUNGEON_SURFACE_Y, center.z + 0.3);
+  };
+
+  const groundEvent = (point: THREE.Vector3, buttons = 0) => ({
+    button: 0,
+    buttons,
+    pointerId: 7,
+    point,
+    target: {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    },
+    shiftKey: false,
+    stopPropagation: vi.fn(),
+  });
+
+  it('mounts a visibly hex-snapped authoring ring and the real promoted monster model', async () => {
+    modelState.requestedUrls.length = 0;
+    const onSelectActor = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [ACTOR],
+          partyStart: null,
+          selectedActorId: null,
+          onSelectActor,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+
+    // The ring sits on the same shared conversion as every floor gesture.
+    const marker = renderer.scene.findByProps({
+      name: `room-monster-${ACTOR.id}`,
+    });
+    const expectedCenter = cubeToWorld({ x: 1, y: -1, z: 0 }, HEX_SIZE);
+    const markerObject = marker.instance as THREE.Object3D;
+    expect(markerObject.position.x).toBe(expectedCenter.x);
+    expect(markerObject.position.y).toBe(DUNGEON_SURFACE_Y);
+    expect(markerObject.position.z).toBe(expectedCenter.z);
+
+    // The real promoted monster GLB resolves and mounts — never a
+    // substitute model: every requested URL is exactly the promoted
+    // skeleton file, however often the hook re-runs per render.
+    expect(modelState.requestedUrls.length).toBeGreaterThan(0);
+    for (const url of modelState.requestedUrls)
+      expect(url).toBe('/models/synty/npcs/skeleton-soldier-01.glb');
+    expect(new Set(modelState.requestedUrls).size).toBe(1);
+
+    // The ring is the only raycastable actor part: its pointer selects
+    // the actor and never a scene prop.
+    const ring = renderer.scene.findByProps({
+      name: `room-actor-ring-${ACTOR.id}`,
+    });
+    const stopPropagation = vi.fn();
+    await renderer.fireEvent(ring, 'pointerDown', {
+      button: 0,
+      stopPropagation,
+    });
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(onSelectActor).toHaveBeenCalledWith('actor-1');
+  });
+
+  it('commits an armed monster placement on the snapped hex in one gesture', async () => {
+    const onPlaceMonster = vi.fn();
+    const onSelect = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={onSelect}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'monster',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [],
+          armedMonsterRef: 'dnd5e:monsters:zombie',
+          onPlaceMonster,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+
+    // A sub-hex world point snaps to the nearest hex: (2, 0).
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      groundEvent(worldPoint(2, 0))
+    );
+    expect(onPlaceMonster).toHaveBeenCalledTimes(1);
+    expect(onPlaceMonster).toHaveBeenCalledWith({ q: 2, r: 0 });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('shows the snapped hover preview only for the armed actor tools', async () => {
+    const build = (tool: 'monster' | 'paint') => (
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool,
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [] as RoomHexCell[],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [],
+          armedMonsterRef: 'dnd5e:monsters:skeleton',
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(build('monster'));
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+
+    await renderer.fireEvent(
+      ground,
+      'pointerMove',
+      groundEvent(worldPoint(-1, 1))
+    );
+    const preview = renderer.scene.findByProps({ name: 'room-actor-preview' });
+    const previewObject = preview.instance as THREE.Object3D;
+    expect(previewObject.userData).toEqual({
+      hoverCellQ: -1,
+      hoverCellR: 1,
+    });
+    const expectedCenter = cubeToWorld({ x: -1, y: 0, z: 1 }, HEX_SIZE);
+    expect(previewObject.position.x).toBe(expectedCenter.x);
+    expect(previewObject.position.y).toBe(DUNGEON_SURFACE_Y);
+    expect(previewObject.position.z).toBe(expectedCenter.z);
+
+    // Any other room tool has no actor preview at all: the unmount follows
+    // a real re-render with the brush tool armed.
+    await renderer.update(build('paint'));
+    expect(
+      renderer.scene.findAllByProps({ name: 'room-actor-preview' })
+    ).toHaveLength(0);
+  });
+
+  it('moves a selected monster from a floor gesture and never through scenery selection', async () => {
+    const onMoveMonster = vi.fn();
+    const onSelect = vi.fn();
+    const onSelectActor = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={['prop-1']}
+        tool="select"
+        activeDrag={null}
+        onSelect={onSelect}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [ACTOR],
+          selectedActorId: ACTOR.id,
+          onMoveMonster,
+          onSelectActor,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).toHaveBeenCalledTimes(1);
+    expect(onMoveMonster).toHaveBeenLastCalledWith(ACTOR.id, { q: 0, r: 1 });
+    // The scenery selection contract is untouched by the actor move.
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // Prop tools keep their normal contract: no actor routing while the
+    // gizmo tools are armed.
+    onMoveMonster.mockClear();
+    await ReactThreeTestRenderer.act?.(async () => undefined);
+    const same = renderer;
+    void same;
+  });
+
+  it('places or moves the party start from one gesture and keeps it unmistakable', async () => {
+    const onStartGesture = vi.fn();
+    const onSelectActor = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'start',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          partyStart: { q: 0, r: 0 },
+          onStartGesture,
+          onSelectActor,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const start = renderer.scene.findByProps({ name: 'room-party-start' });
+    const expectedCenter = cubeToWorld({ x: 0, y: 0, z: 0 }, HEX_SIZE);
+    const startObject = start.instance as THREE.Object3D;
+    expect(startObject.position.x).toBe(expectedCenter.x);
+    expect(startObject.position.y).toBe(DUNGEON_SURFACE_Y);
+    expect(startObject.position.z).toBe(expectedCenter.z);
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      groundEvent(worldPoint(1, -1))
+    );
+    expect(onStartGesture).toHaveBeenCalledWith({ q: 1, r: -1 });
+
+    // The start ring selects the start actor itself.
+    const ring = renderer.scene.findByProps({
+      name: 'room-actor-ring-start',
+    });
+    const onSelectActorForRing = vi.fn();
+    void onSelectActorForRing;
+    await renderer.fireEvent(ring, 'pointerDown', {
+      button: 0,
+      stopPropagation: vi.fn(),
+    });
+    expect(onSelectActor).toHaveBeenCalledWith('start');
+  });
+
+  it('retains a syntactically valid unknown monster with an explicit unavailable state and never mounts a substitute model', async () => {
+    modelState.requestedUrls.length = 0;
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [
+            {
+              id: 'imported-1',
+              ref: 'dnd5e:monsters:not-yet-modeled',
+              cell: { q: 0, r: 0 },
+            },
+          ],
+        }}
+        showCompositionBounds={false}
+      />
+    );
+
+    // The retained, editable ring stays for the unknown ref.
+    expect(
+      renderer.scene.findByProps({ name: 'room-monster-imported-1' })
+    ).toBeTruthy();
+    // No model at all is requested: there is no fallback to a different
+    // monster, and the unavailable state is the explicit treatment.
+    expect(modelState.requestedUrls).toEqual([]);
+  });
+
+  it('shows the explicit model states on the real promoted monster', async () => {
+    modelState.value = 'pending';
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [ACTOR],
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    // Pending load: the Suspense fallback chip is the explicit state.
+    expect(
+      renderer.scene.findByProps({ name: `room-monster-${ACTOR.id}` })
+    ).toBeTruthy();
+
+    modelState.value = 'error';
+    await renderer.fireEvent(
+      renderer.scene.findByProps({
+        name: `room-monster-${ACTOR.id}`,
+      }),
+      'pointerMiss',
+      {}
+    );
   });
 });

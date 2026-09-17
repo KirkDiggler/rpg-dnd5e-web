@@ -68,6 +68,10 @@ export interface UsePutDungeonPreviewOptions {
    * no errors, never calling the server. */
   fixtureAtlas?: GetAtlasResponse | null;
   debounceMs?: number;
+  /** Run no validation at all (no RPC, no status churn) — the room
+   * publishing panel stays fully idle until a dungeon key exists.
+   * Default true preserves every existing caller. */
+  enabled?: boolean;
 }
 
 export function usePutDungeonPreview(
@@ -77,6 +81,7 @@ export function usePutDungeonPreview(
     client = defaultAuthoringClient,
     fixtureAtlas,
     debounceMs = PREVIEW_DEBOUNCE_MS,
+    enabled = true,
   }: UsePutDungeonPreviewOptions = {}
 ): PreviewState {
   const [state, setState] = useState<PreviewState>({
@@ -88,6 +93,7 @@ export function usePutDungeonPreview(
   const generation = useRef(0);
 
   useEffect(() => {
+    if (!enabled) return;
     if (fixtureAtlas !== undefined) {
       setState({
         status: 'compiled',
@@ -99,6 +105,12 @@ export function usePutDungeonPreview(
     }
     const mine = ++generation.current;
     setState((s) => ({ ...s, status: 'validating' }));
+    // Invalidation is monotonic and total: the generation check fences a
+    // response superseded by a NEWER key/yaml, and `live` fences one that
+    // outlives this effect (unmount). A retired response can neither
+    // replace current preview state nor keep the request conceptually
+    // alive. Ordinary background validation never blocks editing.
+    let live = true;
     const timer = setTimeout(async () => {
       let response: PutDungeonResponse;
       try {
@@ -106,7 +118,7 @@ export function usePutDungeonPreview(
           create(PutDungeonRequestSchema, { key, yaml, validateOnly: true })
         );
       } catch (err) {
-        if (mine !== generation.current) return;
+        if (!live || mine !== generation.current) return;
         setState((s) => ({
           ...s,
           status: 'unreachable',
@@ -114,7 +126,7 @@ export function usePutDungeonPreview(
         }));
         return;
       }
-      if (mine !== generation.current) return;
+      if (!live || mine !== generation.current) return;
       if (response.errors.length > 0) {
         setState((s) => ({
           status: 'errors',
@@ -131,8 +143,11 @@ export function usePutDungeonPreview(
         });
       }
     }, debounceMs);
-    return () => clearTimeout(timer);
-  }, [key, yaml, client, fixtureAtlas, debounceMs]);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [key, yaml, client, fixtureAtlas, debounceMs, enabled]);
 
   return state;
 }
@@ -192,8 +207,27 @@ export function useSaveDungeon(
     submittedYaml: null,
   });
 
+  /** Save previously had NO request fencing: two overlapping saves could
+   * interleave and the OLDER response would replace the newer one's
+   * error/saved state (and a response after unmount still wrote state).
+   * Each save now owns a monotonic slot; only the current owner of a live
+   * mount may touch state or report success. */
+  const generation = useRef(0);
+  const liveRef = useRef(true);
+  useEffect(() => {
+    // StrictMode replays setup after cleanup; only requests from the current
+    // mounted lifetime may report a successful save.
+    liveRef.current = true;
+    return () => {
+      liveRef.current = false;
+      generation.current += 1;
+    };
+  }, []);
+
   const save = useCallback(
     async (key: string, yaml: string): Promise<boolean> => {
+      const mine = ++generation.current;
+      const isCurrent = () => liveRef.current && mine === generation.current;
       setState((s) => ({
         ...s,
         status: 'saving',
@@ -204,6 +238,7 @@ export function useSaveDungeon(
         const response = await client.putDungeon(
           create(PutDungeonRequestSchema, { key, yaml, validateOnly: false })
         );
+        if (!isCurrent()) return false;
         if (response.errors.length > 0) {
           setState({
             status: 'invalid',
@@ -223,6 +258,7 @@ export function useSaveDungeon(
         });
         return true;
       } catch (err) {
+        if (!isCurrent()) return false;
         setState({
           status: 'error',
           errors: [],

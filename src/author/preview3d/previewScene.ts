@@ -21,9 +21,23 @@ export type PreviewScene =
 /** The one scene-building path, shared with the game route in spirit
  * and in code: gate on the wire's layout, then `buildScene3D` at the
  * game's `HEX_SIZE`. Pure, so the test can compare it to what
- * `SessionEncounterView` would build for the same atlas. */
+ * `SessionEncounterView` would build for the same atlas.
+ *
+ * A refused canonical room presentation is caught into the SAME
+ * `{ok:false,message}` result as a layout refusal: an invalid nonempty
+ * `room_scene_json` names its refusal instead of crashing the preview
+ * consumer or silently reverting it to a legacy-looking scene. There is
+ * no second renderer path — the refusal is `buildScene3D`'s own throw.
+ */
 export function previewScene(atlas: GetAtlasResponse): PreviewScene {
   const outcome: SceneLayoutOutcome = resolveSceneLayout(atlas);
   if (!outcome.ok) return outcome;
-  return { ok: true, scene: buildScene3D(atlas, HEX_SIZE, outcome.layout) };
+  try {
+    return { ok: true, scene: buildScene3D(atlas, HEX_SIZE, outcome.layout) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

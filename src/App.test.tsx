@@ -26,6 +26,12 @@ const hoisted = vi.hoisted(() => ({
     guildId: null as string | null,
   },
   sourceFactoryCalls: [] as unknown[],
+  worldBuilderConceptProps: null as null | {
+    roomPublishing?: {
+      characterId: string | null;
+      onPlay: (encounterId: string, characterId: string) => void;
+    };
+  },
   discord: {
     user: null as null | { id: string },
     isDiscord: false,
@@ -109,15 +115,42 @@ vi.mock('./character/sheet/CharacterSheet', () => ({
 }));
 
 vi.mock('./components/game/GameView', () => ({
-  GameView: ({ characterId }: { characterId?: string }) => (
-    <div data-testid="game-view" data-character-id={characterId}>
+  GameView: ({
+    characterId,
+    initialEncounterId,
+    onBack,
+  }: {
+    characterId?: string;
+    initialEncounterId?: string;
+    onBack?: () => void;
+  }) => (
+    <div
+      data-testid="game-view"
+      data-character-id={characterId}
+      data-encounter-id={initialEncounterId}
+    >
       Game View
+      <button onClick={onBack}>Back to main menu</button>
     </div>
   ),
 }));
 
 vi.mock('./components/home', () => ({
-  CharacterCarousel: () => <div>Home View</div>,
+  CharacterCarousel: ({
+    onSelect,
+  }: {
+    onSelect: (id: string, type: 'character' | 'draft') => void;
+  }) => (
+    <div>
+      Home View
+      <button onClick={() => onSelect('char-9', 'character')}>
+        Select test character
+      </button>
+      <button onClick={() => onSelect('draft-1', 'draft')}>
+        Select test draft
+      </button>
+    </div>
+  ),
   SelectedCharacterPanel: () => null,
 }));
 
@@ -135,12 +168,21 @@ vi.mock('./concepts/ConceptsView', () => ({
 }));
 
 vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
-  WorldBuildingConcept: ({ onBack }: { onBack: () => void }) => (
-    <section>
-      <h1>World Builder View</h1>
-      <button onClick={onBack}>Back to main menu</button>
-    </section>
-  ),
+  WorldBuildingConcept: (props: {
+    onBack: () => void;
+    roomPublishing?: {
+      characterId: string | null;
+      onPlay: (encounterId: string, characterId: string) => void;
+    };
+  }) => {
+    hoisted.worldBuilderConceptProps = props;
+    return (
+      <section>
+        <h1>World Builder View</h1>
+        <button onClick={props.onBack}>Back to main menu</button>
+      </section>
+    );
+  },
 }));
 
 vi.mock('./compositions/rpcCompositionSource', () => ({
@@ -204,6 +246,7 @@ beforeEach(() => {
   hoisted.authDecision.playerId = 'test-player';
   hoisted.authDecision.guildId = null;
   hoisted.sourceFactoryCalls.length = 0;
+  hoisted.worldBuilderConceptProps = null;
   hoisted.discord.user = null;
   hoisted.discord.isDiscord = false;
   hoisted.discord.isReady = true;
@@ -256,6 +299,105 @@ describe('App running-encounter resume', () => {
 
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.characterId).toBe('char-alice');
+  });
+});
+
+describe('App World Builder publish capability', () => {
+  it('passes the Home-selected character and the existing play route into the World Builder', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Select test character' })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'World Builder View' })
+    ).toBeTruthy();
+    const capability = hoisted.worldBuilderConceptProps?.roomPublishing;
+    expect(capability?.characterId).toBe('char-9');
+    expect(typeof capability?.onPlay).toBe('function');
+
+    // The SAME handlePlayAuthored callback the legacy AuthorView receives:
+    // invoking it routes to the lobby on the returned encounter.
+    capability?.onPlay('enc-77', 'char-9');
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.characterId).toBe('char-9');
+    expect(game.dataset.encounterId).toBe('enc-77');
+  });
+
+  it('still injects the capability with a null character so Play can be visibly disabled', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing).toEqual(
+      expect.objectContaining({ characterId: null })
+    );
+  });
+
+  it('carries the resumed encounter seat through Home so World Builder play is not disabled', async () => {
+    vi.stubEnv('MODE', 'development');
+    // A running encounter resumes straight into GameView, which never
+    // touches Home's selection. Coming Back must keep the player's known
+    // seat character as the explicit Home choice instead of losing it.
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    render(<App />);
+
+    await screen.findByTestId('game-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing?.characterId).toBe(
+      'char-alice'
+    );
+
+    // An explicit Home choice still wins over the adopted seat: leaving the
+    // World Builder must not resurrect the resumed character.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Select test character' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing?.characterId).toBe(
+      'char-9'
+    );
+  });
+
+  it('never replaces an explicitly selected draft with the resumed seat on leaving the game', async () => {
+    vi.stubEnv('MODE', 'development');
+    const { rerender } = render(<App />);
+    // A real Home selection exists before stale resume data arrives.
+    fireEvent.click(screen.getByRole('button', { name: 'Select test draft' }));
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    rerender(<App />);
+
+    await screen.findByTestId('game-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    // The draft selection is not a character; it must not have been swapped
+    // out for the resumed seat character.
+    expect(
+      hoisted.worldBuilderConceptProps?.roomPublishing?.characterId
+    ).toBeNull();
   });
 });
 
@@ -317,7 +459,9 @@ describe('App main-menu World Builder', () => {
       screen.getByRole('heading', { name: 'World Builder View' })
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
     expect(screen.getByText('Home View')).toBeTruthy();
   });
 
