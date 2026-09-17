@@ -1,5 +1,6 @@
 import type {
   DamageComponent,
+  DiceKeep,
   DiceTrace,
   RollCalculation,
   RollComponent,
@@ -307,6 +308,29 @@ function debugRollSource(source: RollSource | undefined): string {
   );
 }
 
+/**
+ * The keep record, rendered where the trace that owns it is rendered
+ * (rpg-project#462, R1).
+ *
+ * ONE PLACE, because a keep belongs to the pool it decided and every debug
+ * surface that dumps a calculation should show it: the check beats, the paused
+ * window's raw body, the strike. A second renderer keyed off the beat instead
+ * of the trace is a parallel spelling that can disagree with the dice it
+ * describes, which is the defect this whole slice is about.
+ *
+ * The RULE is printed by name. "cancelled" is not derivable from the two
+ * lists — it has both of them full and is neither advantage nor disadvantage.
+ */
+function debugDiceKeep(keep: DiceKeep | undefined): string {
+  if (!keep) return 'unset';
+  const sources = (list: readonly RollSource[] | undefined) =>
+    `[${(list ?? []).map(debugRollSource).join(', ')}]`;
+  return (
+    `{rule=${KeepRule[keep.rule] ?? String(keep.rule)} ` +
+    `granted=${sources(keep.granted)} imposed=${sources(keep.imposed)}}`
+  );
+}
+
 function debugDiceTrace(trace: DiceTrace | undefined): string {
   if (!trace) return 'unset';
   const rerolls = (trace.rerolls ?? []).map(
@@ -319,7 +343,8 @@ function debugDiceTrace(trace: DiceTrace | undefined): string {
     `original_rolls=${numberArray(trace.originalRolls)} ` +
     `rerolls=[${rerolls.join(', ')}] ` +
     `final_rolls=${numberArray(trace.finalRolls)} ` +
-    `kept_indices=${numberArray(trace.keptIndices)} subtotal=${trace.subtotal}}`
+    `kept_indices=${numberArray(trace.keptIndices)} subtotal=${trace.subtotal} ` +
+    `keep=${debugDiceKeep(trace.keep)}}`
   );
 }
 

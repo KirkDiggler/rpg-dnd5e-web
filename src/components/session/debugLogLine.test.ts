@@ -187,7 +187,11 @@ describe('formatDebugLine', () => {
         'components=[{source="weapon" legacy.ref="dnd5e:weapons:longsword" legacy.dice="1d8" legacy.final_rolls=[4] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="ability" legacy.ref="dnd5e:abilities:strength" legacy.dice="" legacy.final_rolls=[] legacy.flat=3 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="monster_trait" legacy.ref="dnd5e:monster_traits:immunity" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll=unset}] ' +
-        'keep=ADVANTAGE granted=[{ref=dnd5e:conditions:hidden name=Hidden source=Helper}]'
+        'calculation={components=[{source={ref="dnd5e:weapons:longsword" name="Longsword" label=undefined} ' +
+        'dice={notation="2d20" die_size=20 original_rolls=[11,17] rerolls=[] final_rolls=[11,17] ' +
+        'kept_indices=[1] subtotal=17 keep={rule=ADVANTAGE ' +
+        'granted=[{ref="dnd5e:conditions:hidden" name="Hidden" label=undefined}] imposed=[]}} ' +
+        'modifier.present=false modifier=unset}] total=20}'
     );
   });
 
@@ -287,7 +291,7 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
 
     expect(line.text).toBe(
-      String.raw`seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton roll=15 total=20 against=13 damage=12 crit=false attack.ref=provider:weapon:greatsword attack.name="Greatsword" type=SLASHING components=[{source="weapon" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:weapon:greatsword" name="Great \"Sword\"\nline\\tail" label=""} dice={notation="2d6" die_size=6 original_rolls=[1,5] rerolls=[{index=0 before=1 after=4 source={ref="provider:condition:gwf" name="Great Weapon Fighting" label="GWF \"reroll\"\nline\\tail"}}] final_rolls=[4,5] kept_indices=[0,1] subtotal=9} modifier.present=false modifier=unset}}, {source="ability" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:ability:strength" name="Strength" label="Strength modifier"} dice=unset modifier.present=true modifier=0}}, {source="monster_trait" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll={source={ref="provider:trait:immunity" name="Immunity" label=""} dice=unset modifier.present=false modifier=unset}}]`
+      String.raw`seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton roll=15 total=20 against=13 damage=12 crit=false attack.ref=provider:weapon:greatsword attack.name="Greatsword" type=SLASHING components=[{source="weapon" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:weapon:greatsword" name="Great \"Sword\"\nline\\tail" label=""} dice={notation="2d6" die_size=6 original_rolls=[1,5] rerolls=[{index=0 before=1 after=4 source={ref="provider:condition:gwf" name="Great Weapon Fighting" label="GWF \"reroll\"\nline\\tail"}}] final_rolls=[4,5] kept_indices=[0,1] subtotal=9 keep=unset} modifier.present=false modifier=unset}}, {source="ability" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:ability:strength" name="Strength" label="Strength modifier"} dice=unset modifier.present=true modifier=0}}, {source="monster_trait" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll={source={ref="provider:trait:immunity" name="Immunity" label=""} dice=unset modifier.present=false modifier=unset}}]`
     );
     expect(line.text).not.toContain('\n');
   });
@@ -613,7 +617,7 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
 
     expect(line.text).toBe(
-      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 roll=0 modifier=0 hp.before=8 hp.after=10 source.ref=provider:feature:wind source.name="Second Wind" calculation={components=[{source={ref="provider:feature:wind" name="Second \"Wind\"\nline\\tail" label=""} dice={notation="1d10" die_size=10 original_rolls=[6] rerolls=[] final_rolls=[6] kept_indices=[] subtotal=6} modifier.present=false modifier=unset}, {source={ref="provider:class:fighter" name="Fighter" label="Fighter \"level\"\nline\\tail"} dice=unset modifier.present=true modifier=0}] total=7}`
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 roll=0 modifier=0 hp.before=8 hp.after=10 source.ref=provider:feature:wind source.name="Second Wind" calculation={components=[{source={ref="provider:feature:wind" name="Second \"Wind\"\nline\\tail" label=""} dice={notation="1d10" die_size=10 original_rolls=[6] rerolls=[] final_rolls=[6] kept_indices=[] subtotal=6 keep=unset} modifier.present=false modifier=unset}, {source={ref="provider:class:fighter" name="Fighter" label="Fighter \"level\"\nline\\tail"} dice=unset modifier.present=true modifier=0}] total=7}`
     );
     expect(line.text).not.toContain('\n');
   });
@@ -907,5 +911,128 @@ describe('formatDebugLine', () => {
       },
     });
     expect(formatDebugLine(event, names).text).not.toContain('Big talk');
+  });
+
+  // THE DEBUG HALF OF THE DONE-WHEN (rpg-project#462). The design asks for two
+  // faces, the kept one and the word "Untrained" in the story AND debug logs.
+  // The story half is story.ts; this is the other half, and it was missing for
+  // exactly the three verbs the slice is about while looking finished — the
+  // paused window is covered only by ACCIDENT, because it has no typed case
+  // here and its raw JSON dump carries the calculation along with everything
+  // else.
+  function untrainedCheck() {
+    return {
+      total: 6,
+      components: [
+        {
+          source: {
+            ref: 'dnd5e:skills:intimidation',
+            name: 'Intimidation',
+            sourceId: 'char-1',
+          },
+          dice: {
+            notation: '2d20',
+            dieSize: 20,
+            originalRolls: [6, 14],
+            finalRolls: [6, 14],
+            keptIndices: [0],
+            subtotal: 6,
+            keep: {
+              rule: KeepRule.DISADVANTAGE,
+              granted: [],
+              imposed: [
+                {
+                  ref: 'dnd5e:rules:untrained',
+                  name: 'Untrained',
+                  sourceId: 'helper-1',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  it('an untrained intimidate prints both faces, the kept one and the rule', () => {
+    const event = baseEvent({
+      kind: EventKind.INTIMIDATED,
+      body: {
+        case: 'intimidated',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 13,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('dc=13 total=6 beaten=false');
+    expect(line.text).toContain('final_rolls=[6,14]');
+    expect(line.text).toContain('kept_indices=[0]');
+    expect(line.text).toContain('Untrained');
+    // The entity behind the rule is hoverable, the way struck's already is.
+    expect(line.ids).toContain('helper-1');
+  });
+
+  it('an untrained persuade prints the same, on the shared case', () => {
+    const event = baseEvent({
+      kind: EventKind.PERSUADED,
+      body: {
+        case: 'persuaded',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 10,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('persuaded');
+    expect(line.text).toContain('final_rolls=[6,14]');
+    expect(line.text).toContain('Untrained');
+  });
+
+  it('a forced lock prints the roll behind the door', () => {
+    const event = baseEvent({
+      kind: EventKind.DOOR,
+      body: {
+        case: 'door',
+        value: {
+          door: 'tomb-door',
+          state: 1,
+          actor: 'char-1',
+          dc: 12,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('dc=12 total=6 beaten=false');
+    expect(line.text).toContain('final_rolls=[6,14]');
+  });
+
+  it('a door nobody rolled for prints no calculation at all', () => {
+    // ABSENT MEANS ABSENT. Opening an unlocked door faces no DC, and an empty
+    // `calculation=` would be a puzzle rather than a fact — the same presence
+    // law the api keeps on the wire.
+    const event = baseEvent({
+      kind: EventKind.DOOR,
+      body: {
+        case: 'door',
+        value: { door: 'tomb-door', state: 1 },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).not.toContain('calculation=');
+    expect(line.text).not.toContain('dc=');
   });
 });

@@ -56,12 +56,10 @@ import type {
   DamageComponent,
   Event,
   RollCalculation,
-  RollSource,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AnswerWord,
   EventKind,
-  KeepRule,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
@@ -119,66 +117,42 @@ function attackText(
   return `attack.ref=${attack.ref} attack.name="${attack.name}" type=${typeName}`;
 }
 
-function rollSourceText(
-  source: RollSource,
-  names: Map<string, string>
+/**
+ * The whole roll behind a check beat, and the entities that decided it.
+ *
+ * THE DEBUG LOG IS WHERE THE DIE LIVES (R1). The story shows the outcome and
+ * the creature's line; this is where a builder reads what was actually thrown
+ * against what. A check beat that printed only `dc total beaten` would be the
+ * single settled number this slice exists to remove — and it would look
+ * finished, because the story half already shows the faces.
+ *
+ * ABSENT MEANS ABSENT, the same presence law the api keeps: a beat written
+ * before the field existed has no calculation, and a door nobody rolled for
+ * never had one. Neither gets an empty `calculation=` to puzzle over.
+ */
+function checkCalculationText(
+  calculation: RollCalculation | undefined
 ): string {
-  const fields: string[] = [];
-  if (source.ref) fields.push(`ref=${source.ref}`);
-  if (source.name) fields.push(`name=${source.name}`);
-  if (source.sourceId) {
-    fields.push(`source=${displayName(names, source.sourceId)}`);
-  }
-  return `{${fields.join(' ')}}`;
+  if (!calculation) return '';
+  return ` calculation=${formatDebugRollCalculation(calculation)}`;
 }
 
 /**
- * The keep record, read off the POOL IT DECIDED (rpg-project#462).
- *
- * THIS REPLACED `advantage=[…] disadvantage=[…]`, which read
- * `Struck.advantage_sources` / `disadvantage_sources`. Those were the older,
- * narrower spelling — refs and ids, no rule name, and no way at all to say
- * that two rules met and cancelled — and they are deprecated on the wire and
- * never filled. Reading both would give this log two places to learn one fact
- * and let them disagree with the dice they describe (R1).
- *
- * IT IS FOUND, NOT ASSUMED TO BE FIRST. The d20 is the first component today,
- * but a keep record belongs to whichever pool a rule decided, and a log that
- * indexed [0] would go quiet the day that stops being true.
- *
- * The RULE is printed by name because "cancelled" is not derivable from the
- * lists: a cancelled pool has both lists full and is neither advantage nor
- * disadvantage.
+ * The entities behind a keep record, for the line's hoverable ids — whose
+ * Help, whose rule. Same list `struck` already contributes.
  */
-function diceKeepText(
-  calculation: RollCalculation | undefined,
-  names: Map<string, string>
-): string {
+function keepSourceIds(calculation: RollCalculation | undefined): string[] {
   const keep = (calculation?.components ?? [])
     .map((component) => component.dice?.keep)
     .find((record) => record !== undefined);
-  if (!keep) return '';
-
-  const segments = [`keep=${KeepRule[keep.rule] ?? String(keep.rule)}`];
-  const granted = keep.granted ?? [];
-  const imposed = keep.imposed ?? [];
-  if (granted.length > 0) {
-    segments.push(
-      `granted=[${granted.map((source) => rollSourceText(source, names)).join(', ')}]`
-    );
-  }
-  if (imposed.length > 0) {
-    segments.push(
-      `imposed=[${imposed.map((source) => rollSourceText(source, names)).join(', ')}]`
-    );
-  }
-  return ` ${segments.join(' ')}`;
+  return [...(keep?.granted ?? []), ...(keep?.imposed ?? [])]
+    .map((source) => source.sourceId)
+    .filter((id) => id !== '');
 }
 
 function strikeDetailText(
   damageComponents: readonly DamageComponent[] | undefined,
-  calculation: RollCalculation | undefined,
-  names: Map<string, string>
+  calculation: RollCalculation | undefined
 ): string {
   const components = damageComponents ?? [];
   const segments: string[] = [];
@@ -186,7 +160,12 @@ function strikeDetailText(
     segments.push(`components=${formatDebugDamageComponents(components)}`);
   }
   const detail = segments.length === 0 ? '' : ` ${segments.join(' ')}`;
-  return `${detail}${diceKeepText(calculation, names)}`;
+  // THE SAME ONE MECHANISM the check beats use. This used to render the keep
+  // itself, off the beat rather than off the trace, which was a second
+  // spelling of one fact — and the attack's own d20 faces were nowhere in the
+  // line at all. `debugDiceTrace` carries the keep now, so the whole roll
+  // arrives with it.
+  return `${detail}${checkCalculationText(calculation)}`;
 }
 
 /** Safe JSON stringify for the `default` branch — see module doc comment
@@ -221,15 +200,7 @@ export function formatDebugLine(
       const b = event.body.value;
       // The entities behind the keep record are addressable on hover exactly
       // as the old modifier sources were: whose Help, whose rule.
-      const keepRecord = (b.calculation?.components ?? [])
-        .map((component) => component.dice?.keep)
-        .find((record) => record !== undefined);
-      const modifierSourceIds = [
-        ...(keepRecord?.granted ?? []),
-        ...(keepRecord?.imposed ?? []),
-      ]
-        .map((source) => source.sourceId)
-        .filter((id) => id !== '');
+      const modifierSourceIds = keepSourceIds(b.calculation);
       return {
         seq,
         ids: [b.attacker, b.target, ...modifierSourceIds],
@@ -237,7 +208,7 @@ export function formatDebugLine(
           `${prefix} struck attacker=${name(b.attacker)} target=${name(b.target)} ` +
           `roll=${b.roll} total=${b.total} against=${b.against} damage=${b.damage} ` +
           `crit=${b.critical} ${attackText(b.attack)}` +
-          strikeDetailText(b.damageComponents, b.calculation, names),
+          strikeDetailText(b.damageComponents, b.calculation),
       };
     }
     case 'missed': {
@@ -376,6 +347,10 @@ export function formatDebugLine(
       };
     }
     case 'door': {
+      // A LOCK IS A CHECK BEAT AND CARRIES THE ROLL (rpg-project#462, R4), so
+      // a forced lock prints both faces and the rule here exactly as a threat
+      // does. A door that merely changed state rolled nothing and prints
+      // neither the attempt nor a calculation.
       const b = event.body.value;
       const stateName = DoorState[b.state] ?? String(b.state);
       const attempt = b.dc
@@ -384,8 +359,10 @@ export function formatDebugLine(
       const actor = b.actor ? ` actor=${name(b.actor)}` : '';
       return {
         seq,
-        ids: b.actor ? [b.actor] : [],
-        text: `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}`,
+        ids: [...(b.actor ? [b.actor] : []), ...keepSourceIds(b.calculation)],
+        text:
+          `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}` +
+          checkCalculationText(b.calculation),
       };
     }
     // THE TWO SOCIAL CHECKS AND THE WORLD'S ANSWER TO THEM (rpg-project#458).
@@ -396,14 +373,22 @@ export function formatDebugLine(
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded': {
+      //
+      // AND THE WHOLE ROLL BEHIND THE VERDICT. `dc total beaten` is the
+      // OUTCOME; the calculation is what was thrown to reach it, which for an
+      // untrained character is two faces, the kept one, and the word
+      // "Untrained". Without it this line is the single settled number the
+      // slice exists to remove, and it reads as finished because the story
+      // half already shows the faces.
       const b = event.body.value;
       const verb = event.body.case;
       return {
         seq,
-        ids: [b.actor, b.target],
+        ids: [b.actor, b.target, ...keepSourceIds(b.calculation)],
         text:
           `${prefix} ${verb} actor=${name(b.actor)} target=${name(b.target)} ` +
-          `dc=${b.dc} total=${b.total} beaten=${b.beaten}`,
+          `dc=${b.dc} total=${b.total} beaten=${b.beaten}` +
+          checkCalculationText(b.calculation),
       };
     }
     // R1 IN FULL: the world's die, the summed weights it was thrown against,
