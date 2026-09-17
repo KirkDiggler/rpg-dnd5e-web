@@ -288,6 +288,10 @@ const FAMILY_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const REF_SUFFIX_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const REVIEW_URL_PATTERN =
   /^\/models\/synty\/asset-review\/([0-9a-f]{12})-([A-Za-z0-9][A-Za-z0-9_-]*)\.glb$/;
+// Authored preparation isolates models by source. Retain early local v3 root
+// URLs, but never relax the legacy converter URL contract or allow traversal.
+const AUTHORED_REVIEW_URL_PATTERN =
+  /^\/models\/synty\/asset-review\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*([0-9a-f]{12})-([A-Za-z0-9][A-Za-z0-9_-]*)\.glb$/;
 const BATCH_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const DISPLAY_NAME_MAX_CODE_POINTS = 80;
 const DISPLAY_NAME_FORBIDDEN_MARKERS = [
@@ -774,7 +778,9 @@ function parseCandidate(
 
   const source = parseSource(value.source, `${label}.source`, schemaVersion);
   const url = requireString(value.url, `${label}.url`);
-  const urlMatch = REVIEW_URL_PATTERN.exec(url);
+  const urlMatch = (
+    schemaVersion === 3 ? AUTHORED_REVIEW_URL_PATTERN : REVIEW_URL_PATTERN
+  ).exec(url);
   requireValue(
     urlMatch !== null && urlMatch[1] === source.glbSha256.slice(0, 12),
     `${label}.url must be a safe content-addressed asset-review GLB URL matching its source hash`

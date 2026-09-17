@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSET_REVIEW_STORAGE_KEY, AssetReviewLab } from './AssetReviewLab';
 import {
@@ -16,6 +17,7 @@ import {
 } from './model';
 
 const sceneHarness = vi.hoisted(() => ({
+  onLayout: undefined as (() => void) | undefined,
   callbacks: [] as Array<
     (
       url: string,
@@ -44,6 +46,9 @@ vi.mock('./AssetReviewScene', () => ({
     ) => void;
   }) => {
     sceneHarness.callbacks.push(onLoadStateChange);
+    useLayoutEffect(() => {
+      sceneHarness.onLayout?.();
+    });
     return (
       <div
         data-testid="asset-review-scene"
@@ -207,6 +212,7 @@ async function blobText(blob: Blob): Promise<string> {
 }
 
 beforeEach(() => {
+  sceneHarness.onLayout = undefined;
   window.localStorage.clear();
   downloadedBlobs.length = 0;
   sceneHarness.callbacks.length = 0;
@@ -956,6 +962,38 @@ async function switchToSource(value: string): Promise<void> {
 }
 
 describe('AssetReviewLab indexed sources', () => {
+  it('persists a retiring render only under its own source during a switch', async () => {
+    stubIndexedFetch();
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    // Switch after the edited legacy render commits, before its passive
+    // persistence effects run: the same ordering seen in the real browser.
+    sceneHarness.onLayout = () => {
+      sceneHarness.onLayout = undefined;
+      fireEvent.change(screen.getByLabelText('Review source'), {
+        target: { value: 'authored-trial' },
+      });
+    };
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Legacy edit immediately before switch' },
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+    fireEvent.click(screen.getByText('Report scene success'));
+    await waitFor(() => {
+      expect(window.localStorage.getItem(AUTHORED_SCOPED_KEY)).not.toBeNull();
+    });
+    for (const [key, value] of writes.mock.calls) {
+      if (key === AUTHORED_SCOPED_KEY) {
+        expect(JSON.parse(value).schemaVersion).toBe(3);
+      }
+      if (key === 'rpg.asset-review.context.v1:authored-trial') {
+        expect(JSON.parse(value).selectedKey).not.toContain('.fbx');
+      }
+    }
+    expect(screen.queryByText(/stale imported source/)).toBeNull();
+  });
+
   it('switches sources, isolates drafts and filters per source, and remembers the selection', async () => {
     stubIndexedFetch();
     const view = render(<AssetReviewLab />);

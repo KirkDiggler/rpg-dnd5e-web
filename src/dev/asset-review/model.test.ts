@@ -1477,6 +1477,57 @@ describe('schema-v3 authored GLB contract', () => {
     );
   });
 
+  it('accepts the namespaced model URLs emitted by authored preparation', () => {
+    const value = authoredCatalog([
+      authoredCandidate({
+        url: `/models/synty/asset-review/authored-trial/${FLOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+      }),
+    ]);
+    expect(parseAssetReviewCatalog(value)).toEqual(value);
+  });
+
+  it.each([
+    '../',
+    '%2e%2e/',
+    'authored-trial%2f/',
+    'authored-trial//',
+    'authored-trial/./',
+  ])('rejects unsafe authored model namespace %s', (namespace) => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          authoredCandidate({
+            url: `/models/synty/asset-review/${namespace}${FLOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/safe content-addressed/i);
+  });
+
+  it('rejects a namespaced URL whose hash differs from the authored source', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          authoredCandidate({
+            url: `/models/synty/asset-review/authored-trial/${DOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/matching its source hash/i);
+  });
+
+  it('keeps the legacy catalogue model URL boundary unchanged', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        catalog([
+          candidate({
+            url: `/models/synty/asset-review/authored-trial/${SOURCE_HASH.slice(0, 12)}-SM_Prop_Brazier_01.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/safe content-addressed/i);
+  });
+
   it('rejects v3 sources that impersonate the converter contract or drop fields', () => {
     expect(() =>
       parseAssetReviewCatalog(

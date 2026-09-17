@@ -378,7 +378,9 @@ function AssetBatchReviewLab() {
     // pristine and must not occupy the scoped key (it would block legacy
     // migration and count as an existing draft on the next launch).
     if (!batch || !batchDirtyRef.current) return;
-    writeStoredBatch(window.localStorage, activeSourceIdRef.current, batch);
+    // This effect owns the source of its render. The mutable ref may already
+    // point at the next source before this render's passive effects flush.
+    writeStoredBatch(window.localStorage, activeSourceId, batch);
   }, [batch, activeSourceId]);
 
   const context = useMemo<AssetReviewSourceContext>(
@@ -406,7 +408,7 @@ function AssetBatchReviewLab() {
     // Skip while a source switch is in flight: writing the cleared context
     // would clobber the target source's saved selection/filter context.
     if (!sources || !batch) return;
-    writeStoredContext(window.localStorage, activeSourceIdRef.current, context);
+    writeStoredContext(window.localStorage, activeSourceId, context);
   }, [context, activeSourceId, sources, batch]);
 
   const switchSource = useCallback(
