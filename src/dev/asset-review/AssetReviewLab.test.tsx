@@ -329,6 +329,37 @@ describe('AssetReviewLab drawer and navigation', () => {
   });
 });
 
+describe('AssetReviewLab legacy no-index fallback', () => {
+  it('loads the legacy catalogue when the dev server serves HTML for a missing source index', async () => {
+    vi.mocked(fetch).mockImplementation(((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === SOURCES_URL) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError(
+              `Unexpected token '<', "<!doctype "... is not valid JSON`
+            );
+          },
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => catalog,
+      } as Response);
+    }) as typeof fetch);
+
+    render(<AssetReviewLab />);
+
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+    expect(
+      screen.queryByText(/No prepared asset-review source index/)
+    ).toBeNull();
+  });
+});
+
 describe('AssetReviewLab decisions and property sheet', () => {
   it('re-derives the read-only ref from category and keeps incomplete entries discoverable', async () => {
     await renderLab();
