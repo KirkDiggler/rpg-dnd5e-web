@@ -204,7 +204,11 @@ export function RoomPublishingPanel({
 
       <div className="wb-actions">
         <button type="button" disabled={busy} onClick={() => void save()}>
-          {busy && phase === 'saving' ? 'Saving…' : 'Save to server'}
+          {busy && phase === 'checking-key'
+            ? 'Checking key…'
+            : busy && phase === 'saving'
+              ? 'Saving…'
+              : 'Save to server'}
         </button>
         <button
           type="button"

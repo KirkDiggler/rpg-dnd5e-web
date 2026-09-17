@@ -377,7 +377,8 @@ export function WorldBuildingConcept({
        * same one-transaction commit; every other path keeps the draft's
        * name (reconcileRoomDraft retains it), so imported names are never
        * normalized by unrelated edits. */
-      nextName?: string
+      nextName?: string,
+      nextId = roomDraft.id
     ) => {
       if (refuseWhilePublishing()) return;
       try {
@@ -387,9 +388,15 @@ export function WorldBuildingConcept({
         if (roomMode) {
           const nextDraft = reconcileRoomDraft(
             nextName === undefined
-              ? { ...roomDraft, room: nextRoom, workspace: nextWorkspace }
+              ? {
+                  ...roomDraft,
+                  id: nextId,
+                  room: nextRoom,
+                  workspace: nextWorkspace,
+                }
               : {
                   ...roomDraft,
+                  id: nextId,
                   name: nextName,
                   room: nextRoom,
                   workspace: nextWorkspace,
@@ -1277,7 +1284,9 @@ export function WorldBuildingConcept({
                     blank,
                     [],
                     roomMode ? freshRoom.room : roomDraft.room,
-                    roomMode ? freshRoom.workspace : roomDraft.workspace
+                    roomMode ? freshRoom.workspace : roomDraft.workspace,
+                    roomMode ? freshRoom.name : undefined,
+                    roomMode ? freshRoom.id : undefined
                   );
                   setTool('select');
                   setActiveDrag(null);

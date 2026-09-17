@@ -83,10 +83,10 @@ export function usePlayAuthoredDungeon({
   const [phase, setPhase] = useState<LobbyLaunchPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  /** Monotonic owner latch: only ONE launch may run, and only the holder
-   * of the CURRENT token may act. `nextOwner` hands out strictly-increasing
-   * tokens, so a retired token never becomes current again — even when the
-   * character identity returns to the abandoned launch's character. */
+  /** Only ONE launch may run, and only the CURRENT owner may act. Each
+   * launch receives a fresh object token; reference identity prevents a
+   * retired owner from becoming current again, even when the character
+   * identity returns to the abandoned launch's character. */
   const ownerRef = useRef<LaunchOwner | null>(null);
 
   /** A character-identity change retires any in-flight launch started for

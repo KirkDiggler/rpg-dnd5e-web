@@ -1,8 +1,10 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { encodeRoomDocument } from '@/compositions/roomDocument';
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
+  act,
   createEvent,
   fireEvent,
   render,
@@ -48,8 +50,14 @@ const publishRpc = vi.hoisted(() => {
   };
   return {
     makeDeferred,
-    gets: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
-    puts: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
+    gets: [] as Array<{
+      key: string;
+      deferred: ReturnType<typeof makeDeferred<never>>;
+    }>,
+    puts: [] as Array<{
+      request: { key: string; validateOnly: boolean };
+      deferred: ReturnType<typeof makeDeferred<never>>;
+    }>,
     lobby: { created: 0, ready: 0, started: 0 },
     reset: () => {
       publishRpc.gets.length = 0;
@@ -66,14 +74,16 @@ vi.mock('@/author/authoringRpc', async (importOriginal) => {
   return {
     ...actual,
     defaultAuthoringClient: {
-      putDungeon: vi.fn(async () => {
+      putDungeon: vi.fn(
+        async (request: { key: string; validateOnly: boolean }) => {
+          const deferred = publishRpc.makeDeferred<never>();
+          publishRpc.puts.push({ request, deferred });
+          return deferred.promise as never;
+        }
+      ),
+      getDungeon: vi.fn(async (request: { key: string }) => {
         const deferred = publishRpc.makeDeferred<never>();
-        publishRpc.puts.push({ deferred });
-        return deferred.promise as never;
-      }),
-      getDungeon: vi.fn(async () => {
-        const deferred = publishRpc.makeDeferred<never>();
-        publishRpc.gets.push({ deferred });
+        publishRpc.gets.push({ key: request.key, deferred });
         return deferred.promise as never;
       }),
       listScenarios: vi.fn(),
@@ -2251,6 +2261,85 @@ function publishedDraft(): RoomDraft {
 
 describe('WorldBuildingConcept room publishing', () => {
   afterEach(() => publishRpc.reset());
+
+  it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
+    const storage = new MemoryStorage();
+    const original = seedImportedRoom(storage);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+    const oldKey = (
+      screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement
+    ).value;
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Checking key…',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((p) => !p.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    await act(async () =>
+      publishRpc.puts
+        .find((p) => !p.request.validateOnly)!
+        .deferred.resolve({ errors: [] } as never)
+    );
+    await screen.findByText(`Saved to the authoring server as “${oldKey}”.`);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    const fresh = publishedDraft();
+    expect(fresh.id).not.toBe(original.id);
+    expect(fresh.name).toBe('Untitled room');
+    expect(fresh.room.implicitRegionId).toBe(`${fresh.id}-region`);
+    expect(fresh.scene.items).toEqual([]);
+    expect(JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).draft.id).toBe(
+      fresh.id
+    );
+    expect(
+      (screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement)
+        .value
+    ).toBe(`room-${fresh.id}`);
+
+    // Deliberately target the previous file: a different document must ask,
+    // even though this same mounted publishing hook saved that key earlier.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Dungeon key' }), {
+      target: { value: oldKey },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(2));
+    expect(publishRpc.gets[1]!.key).toBe(oldKey);
+    await act(async () =>
+      publishRpc.gets[1]!.deferred.resolve({
+        yaml: 'previous document',
+      } as never)
+    );
+    await screen.findByRole('alertdialog', { name: `Overwrite ${oldKey}` });
+    expect(publishRpc.puts.filter((p) => !p.request.validateOnly)).toHaveLength(
+      1
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(publishedDraft()).toEqual(original);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(publishedDraft()).toEqual(fresh);
+  });
 
   it('the explicit scene-name rename also publishes the draft name in one undoable transaction', () => {
     const storageInstance = new MemoryStorage();
