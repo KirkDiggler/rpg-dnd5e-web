@@ -455,3 +455,92 @@ describe('propWorldPosition', () => {
     expect(world.y).toBe(2.4 * hexSize);
   });
 });
+
+/**
+ * The canonical room presentation rides the SAME atlas build boundary:
+ * decoded exactly once per build, attached typed to Scene3D, absent for
+ * every legacy atlas, and refused by name when a present nonempty
+ * payload is not a fully valid presentation.
+ */
+describe('buildScene3D room scene presentation', () => {
+  const validPresentation = {
+    version: 1,
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
+  };
+
+  const atlas = (roomSceneJson?: string) =>
+    ({
+      cells: [pos(0, 0)],
+      props: [],
+      segments: [],
+      doorways: [],
+      regions: [],
+      exits: [],
+      ...(roomSceneJson === undefined ? {} : { roomSceneJson }),
+    }) as never;
+
+  it('attaches the decoded presentation once and keeps mechanical channels intact', () => {
+    const json = JSON.stringify(validPresentation);
+    const scene = buildScene3D(atlas(json), 1, 'pointy');
+    expect(scene.roomScene).toEqual(validPresentation);
+    // The atlas's own scene channels are untouched by the presentation.
+    expect(scene.floorTiles.size).toBe(1);
+    expect(scene.exits).toEqual([]);
+  });
+
+  it('keeps the legacy route for absent payloads (missing field and empty string)', () => {
+    expect(buildScene3D(atlas(), 1, 'pointy').roomScene).toBeUndefined();
+    expect(buildScene3D(atlas(''), 1, 'pointy').roomScene).toBeUndefined();
+  });
+
+  it('refuses an invalid nonempty payload by name instead of building a scene', () => {
+    expect(() => buildScene3D(atlas('not-json'), 1, 'pointy')).toThrow(
+      /could not be parsed/
+    );
+    expect(() =>
+      buildScene3D(
+        atlas(JSON.stringify({ ...validPresentation, version: 2 })),
+        1,
+        'pointy'
+      )
+    ).toThrow(/version must be 1/);
+  });
+
+  it('refuses a nonstandard hex size instead of guessing a scaling conversion', () => {
+    const json = JSON.stringify(validPresentation);
+    expect(() => buildScene3D(atlas(json), 2, 'pointy')).toThrow(
+      /refusing to guess a conversion for requested hex size 2/
+    );
+  });
+});

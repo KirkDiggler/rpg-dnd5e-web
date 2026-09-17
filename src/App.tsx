@@ -515,6 +515,8 @@ function AppContent() {
             onBack={handleBackToHome}
             compositionSource={compositionSource}
             onCompositionDeleted={invalidateCompositionResolutions}
+            characterId={selectedType === 'character' ? selectedId : null}
+            onPlay={handlePlayAuthored}
           />
         ) : currentView === 'author' ? (
           <AuthorView

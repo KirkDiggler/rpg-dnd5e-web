@@ -29,6 +29,90 @@ vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
 }));
 
+/** Deferred authoring/lobby seams for the publishing busy-boundary tests:
+ * a held putDungeon keeps the Save & Play transaction (and its editor
+ * interaction lock) in flight deterministically. */
+const publishRpc = vi.hoisted(() => {
+  const makeDeferred = <T,>(): {
+    promise: Promise<T>;
+    resolve: (v: T) => void;
+    reject: (e: unknown) => void;
+  } => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  return {
+    makeDeferred,
+    gets: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
+    puts: [] as Array<{ deferred: ReturnType<typeof makeDeferred<never>> }>,
+    lobby: { created: 0, ready: 0, started: 0 },
+    reset: () => {
+      publishRpc.gets.length = 0;
+      publishRpc.puts.length = 0;
+      publishRpc.lobby.created = 0;
+      publishRpc.lobby.ready = 0;
+      publishRpc.lobby.started = 0;
+    },
+  };
+});
+
+vi.mock('@/author/authoringRpc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/author/authoringRpc')>();
+  return {
+    ...actual,
+    defaultAuthoringClient: {
+      putDungeon: vi.fn(async () => {
+        const deferred = publishRpc.makeDeferred<never>();
+        publishRpc.puts.push({ deferred });
+        return deferred.promise as never;
+      }),
+      getDungeon: vi.fn(async () => {
+        const deferred = publishRpc.makeDeferred<never>();
+        publishRpc.gets.push({ deferred });
+        return deferred.promise as never;
+      }),
+      listScenarios: vi.fn(),
+    },
+  };
+});
+
+vi.mock('@/api/useCreateLobby', () => ({
+  useCreateLobby: () => ({
+    createLobby: vi.fn(async () => {
+      publishRpc.lobby.created += 1;
+      return { lobbyId: 'lobby-1' } as never;
+    }),
+    loading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/api/useSetLobbyReady', () => ({
+  useSetLobbyReady: () => ({
+    setReady: vi.fn(async () => {
+      publishRpc.lobby.ready += 1;
+    }),
+    loading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/api/useStartLobbyEncounter', () => ({
+  useStartLobbyEncounter: () => ({
+    startEncounter: vi.fn(async () => {
+      publishRpc.lobby.started += 1;
+      return { encounterId: 'enc-1' } as never;
+    }),
+    loading: false,
+    error: null,
+  }),
+}));
+
 vi.mock('./WorldBuildingViewport', () => ({
   WorldBuildingViewport: (props: {
     scene: WorldScene;
@@ -2127,5 +2211,150 @@ describe('room actor authoring', () => {
     );
     expect(actors().monsters).toHaveLength(1);
     expect(scene().items).toHaveLength(1);
+  });
+});
+
+/** A complete seeded room draft whose PUBLISHED name deliberately differs
+ * from the scene presentation name, the way a distinct imported document
+ * arrives. */
+function seedImportedRoom(storageInstance: MemoryStorage): RoomDraft {
+  const draft = createRoomDraft(
+    {
+      version: 1,
+      id: 'scene-imported',
+      name: 'Scene title kept distinct',
+      items: [
+        {
+          id: 'prop-1',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:books',
+          label: 'Books',
+          transform: { x: 1, y: 0, z: 1, rotationY: 0 },
+        },
+      ],
+      groups: [],
+    },
+    'room-imported-1'
+  );
+  draft.name = 'Imported room title';
+  draft.room.walkableHexes = [{ q: 0, r: 0 }];
+  storageInstance.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+  return draft;
+}
+
+function publishedDraft(): RoomDraft {
+  const envelope = JSON.parse(
+    (screen.getByTestId('room-draft-json').textContent ?? '{}') as string
+  ) as { draft: RoomDraft };
+  return envelope.draft;
+}
+
+describe('WorldBuildingConcept room publishing', () => {
+  afterEach(() => publishRpc.reset());
+
+  it('the explicit scene-name rename also publishes the draft name in one undoable transaction', () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Renamed by author' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+
+    const renamed = publishedDraft();
+    expect(renamed.name).toBe('Renamed by author');
+    expect(renamed.scene.name).toBe('Renamed by author');
+
+    // Exactly one Undo restores BOTH names.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    const restored = publishedDraft();
+    expect(restored.name).toBe('Imported room title');
+    expect(restored.scene.name).toBe('Scene title kept distinct');
+  });
+
+  it('unrelated edits never normalize a distinct imported name', () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+      />
+    );
+    // An unrelated canvas commit (walkable paint) must not touch names.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    const after = publishedDraft();
+    expect(after.name).toBe('Imported room title');
+    expect(after.scene.name).toBe('Scene title kept distinct');
+  });
+
+  it('an in-flight publishing transaction blocks keyboard, canvas and name edits, then releases the editor', async () => {
+    const storageInstance = new MemoryStorage();
+    seedImportedRoom(storageInstance);
+    const onPlay = vi.fn();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storageInstance}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+      />
+    );
+
+    // Background validation is already in flight (the derived default key
+    // exists) and must NOT freeze editing: the rename below commits while
+    // the debounced preview putDungeon is still pending.
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Busy test room' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    expect(publishedDraft().name).toBe('Busy test room');
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    publishRpc.gets[0]!.deferred.reject(
+      new (await import('@connectrpc/connect')).ConnectError(
+        'no such key',
+        (await import('@connectrpc/connect')).Code.NotFound
+      )
+    );
+    await waitFor(() => expect(publishRpc.puts).toHaveLength(1));
+
+    // While the save is in flight: keyboard undo is a no-op.
+    const before = screen.getByTestId('room-draft-json').textContent;
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+
+    // A canvas gesture is refused.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+
+    // A name edit is refused too.
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Should not apply' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    expect(publishedDraft().name).toBe('Busy test room');
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
+    // The transaction completes: the shared launch ran for the same
+    // captured key, and the editor unlocks.
+    publishRpc.puts[0]!.deferred.resolve({ errors: [] } as never);
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(publishedDraft().name).toBe('Imported room title');
   });
 });

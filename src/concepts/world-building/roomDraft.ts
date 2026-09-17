@@ -306,8 +306,11 @@ function validateCell(cell: unknown, field: string): RoomHexCell {
 }
 
 /** Structurally exact records only: unknown-invalid fields are refused, not
- * dropped or reinterpreted as valid data. Arrays are never mapping shapes. */
-function rejectUnknownKeys(
+ * dropped or reinterpreted as valid data. Arrays are never mapping shapes.
+ * Exported so sibling strict decoders (e.g. the atlas's room scene
+ * presentation) refuse unknown fields by the same words, not a second
+ * dialect. */
+export function rejectUnknownKeys(
   value: Record<string, unknown>,
   allowed: readonly string[],
   label: string
@@ -318,7 +321,7 @@ function rejectUnknownKeys(
   }
 }
 
-const objectShape = (
+export const objectShape = (
   value: unknown,
   label: string
 ): Record<string, unknown> => {

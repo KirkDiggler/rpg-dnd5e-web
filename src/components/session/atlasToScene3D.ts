@@ -78,6 +78,10 @@ import {
   type DoorGapPiece,
 } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
+import {
+  decodeRoomSceneJSON,
+  type RoomScenePresentation,
+} from './roomSceneJson';
 
 export { positionToCube, worldPositionOf };
 
@@ -167,6 +171,19 @@ export interface Scene3D {
   lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
+  /**
+   * The decoded canonical room presentation (`GetAtlasResponse
+   * .room_scene_json`), decoded exactly once at this build boundary.
+   * Undefined means absent/legacy: the atlas carries only its own cell
+   * scene, and every consumer keeps that route exactly as it was. A
+   * present, nonempty payload is ALWAYS a fully valid presentation — an
+   * invalid one throws out of `buildScene3D` by name instead of arriving
+   * here half-decoded, so no caller can ever draw it as if valid.
+   *
+   * Presentation only: the mechanical cells, boundaries and prop channels
+   * above remain the movement/sight truth regardless of this field.
+   */
+  roomScene?: RoomScenePresentation;
 }
 
 export type SceneLayoutOutcome =
@@ -269,7 +286,7 @@ export function buildScene3D(
     GetAtlasResponse,
     'cells' | 'props' | 'segments' | 'doorways' | 'regions'
   > &
-    Partial<Pick<GetAtlasResponse, 'exits'>>,
+    Partial<Pick<GetAtlasResponse, 'exits' | 'roomSceneJson'>>,
   hexSize: number,
   layout: HexLayout
 ): Scene3D {
@@ -277,6 +294,31 @@ export function buildScene3D(
     throw new Error(
       `buildScene3D: hexMath.ts places pointy-top hexes only; got "${layout}" (rpg-dnd5e-web#763)`
     );
+  }
+  // THE CANONICAL ROOM PRESENTATION, DECODED EXACTLY ONCE. This is the
+  // one JSON boundary on the atlas scene path: callers memoize whole
+  // builds by atlas identity, so nothing here parses per prop or per
+  // frame. Absent (undefined/'') keeps the legacy route; a PRESENT
+  // nonempty payload must fully decode or the refusal throws out of this
+  // call by name — an invalid presentation never becomes a scene.
+  // Rendering itself stays in game units: the frame declares hexRadius 1,
+  // the same unit hexMath places at, so any other requested hex size is
+  // refused rather than guessed into a scaling conversion.
+  let roomScene: RoomScenePresentation | undefined;
+  const roomSceneJson = atlas.roomSceneJson;
+  if (roomSceneJson !== undefined && roomSceneJson !== '') {
+    const presentation = decodeRoomSceneJSON(roomSceneJson);
+    if (!presentation) {
+      throw new Error(
+        'buildScene3D: a present nonempty room scene presentation must decode; got absent.'
+      );
+    }
+    if (hexSize !== presentation.coordinateFrame.hexRadius) {
+      throw new Error(
+        `buildScene3D: canonical room scene is authored at hexRadius ${presentation.coordinateFrame.hexRadius} world-scene units; refusing to guess a conversion for requested hex size ${hexSize}.`
+      );
+    }
+    roomScene = presentation;
   }
   const archetypes = Object.freeze(
     atlas.regions.map((region) => region.archetype)
@@ -353,6 +395,7 @@ export function buildScene3D(
     lighting,
     wallRuns,
     doorGaps,
+    roomScene,
     // The floor this member knows is what was just built above, so an
     // exit in a room they have not opened is skipped rather than floated
     // over void.

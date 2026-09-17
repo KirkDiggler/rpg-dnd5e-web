@@ -205,6 +205,61 @@ function pointyAtlas(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A minimal valid canonical room presentation, encoded exactly as the
+ * atlas's `room_scene_json` field would carry it. */
+function canonicalRoomSceneJson(): string {
+  return JSON.stringify({
+    version: 1,
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+        {
+          id: 'candles',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:candles',
+          label: 'Candles',
+          transform: { x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37 },
+          supportId: 'table',
+          pointLight: {
+            enabled: true,
+            offset: { x: 0, y: 0.5, z: 0 },
+            color: '#ff9d52',
+            intensity: 1.1,
+            range: 2.6,
+          },
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
+  });
+}
+
 function privateCharacterData(overrides: Record<string, unknown> = {}) {
   return {
     classRef: { module: 'dnd5e', type: 'class', id: 'fighter' },
@@ -1221,6 +1276,146 @@ describe('SessionEncounterView production combat integration', () => {
       x: 0,
       y: -0,
       z: 0,
+    });
+  });
+
+  /** The canonical room presentation crosses buildScene3D's ONE decode
+   * boundary at this caller: attached typed to the drawn scene, refused
+   * visibly when a CURRENT nonempty payload is invalid — never redrawing
+   * the cached prior scene as if valid — and memoized by atlas identity. */
+  describe('canonical room presentation at the caller boundary', () => {
+    const rerenderView = (rerender: (ui: React.ReactNode) => void) =>
+      rerender(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={() => {}}
+        />
+      );
+
+    it('attaches the decoded presentation to the drawn scene exactly once', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({
+        roomSceneJson: canonicalRoomSceneJson(),
+      });
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const first = hoisted.lastCanvasProps.current?.scene;
+      expect(screen.getByText('Workshop', { exact: true })).toBeTruthy();
+      expect(
+        screen.queryByText('The Reference Tomb', { exact: true })
+      ).toBeNull();
+      expect(first?.roomScene).toEqual({
+        version: 1,
+        coordinateFrame: {
+          horizontalPlane: 'world-xz',
+          verticalAxis: 'world-y-up',
+          distanceUnit: 'world-scene-unit',
+          hexRadius: 1,
+          footprintFrame: 'owner-local-xz',
+        },
+        workspace: { hexRadius: 6, horizontalLimit: 12 },
+        scene: {
+          version: 1,
+          id: 'scene-1',
+          name: 'Workshop',
+          items: [
+            {
+              id: 'table',
+              kind: 'prop',
+              assetRef: 'dnd5e:props:torture-table',
+              label: 'Table',
+              transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+              heightScale: 1.5,
+              parentId: 'furniture',
+            },
+            {
+              id: 'candles',
+              kind: 'prop',
+              assetRef: 'dnd5e:props:candles',
+              label: 'Candles',
+              transform: { x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37 },
+              supportId: 'table',
+              pointLight: {
+                enabled: true,
+                offset: { x: 0, y: 0.5, z: 0 },
+                color: '#ff9d52',
+                intensity: 1.1,
+                range: 2.6,
+              },
+            },
+          ],
+          groups: [
+            {
+              id: 'furniture',
+              kind: 'group',
+              label: 'Furniture',
+              transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+            },
+          ],
+        },
+      });
+
+      // ONE decode per atlas identity: an unrelated re-render keeps the
+      // same memoized scene object — no per-frame re-parse.
+      rerenderView(rerender);
+      expect(hoisted.lastCanvasProps.current?.scene).toBe(first);
+    });
+
+    it('refuses a current invalid nonempty presentation instead of redrawing the cached scene', async () => {
+      readyScene();
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const propsBefore = hoisted.lastCanvasProps.current;
+
+      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+      rerenderView(rerender);
+
+      // The refusal is a visible, named scene-error outcome in the map
+      // area — while the run's dock stays mounted (game-rule eligibility
+      // untouched, only unusable scene interaction gone).
+      expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
+      expect(screen.getByText("Can't draw this room")).toBeTruthy();
+      expect(screen.getByText(/could not be parsed/i)).toBeTruthy();
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+      // The cached prior scene was never re-drawn as if the invalid
+      // current one were valid.
+      expect(hoisted.lastCanvasProps.current).toBe(propsBefore);
+    });
+
+    it('refuses an invalid nonempty presentation on first load, never falling back to legacy', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      renderView();
+
+      expect(await screen.findByText("Can't draw this room")).toBeTruthy();
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+      expect(screen.getByRole('button', { name: /back/i })).toBeTruthy();
+    });
+
+    it('keeps ordinary refresh behavior when a later refresh presents a valid scene', async () => {
+      readyScene();
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+      rerenderView(rerender);
+      expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
+
+      hoisted.atlasResult.atlas = pointyAtlas({
+        roomSceneJson: canonicalRoomSceneJson(),
+      });
+      rerenderView(rerender);
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(screen.queryByTestId('scene-presentation-error')).toBeNull();
+      expect(
+        hoisted.lastCanvasProps.current?.scene?.roomScene
+      ).not.toBeUndefined();
     });
   });
 

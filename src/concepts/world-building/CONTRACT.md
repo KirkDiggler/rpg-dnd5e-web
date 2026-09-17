@@ -3,6 +3,28 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
+## Current room-mode promotion (#1112)
+
+Room mode now supports complete RoomDraft v3 with optional party start and stable
+monster placements, separate from visual scene items. Actor markers snap to the
+shared hex grid; scenery retains its free poses, groups, supports, lights and
+height. Structural validation does not decide gameplay legality. Canonical YAML
+v3 carries the full inline room plus its root dungeon key; room snapshots use
+wrapper v2. Local v2/v1 and snapshot v1 upgrade explicitly without deleting old
+bytes; invalid current v3 never falls back or autosaves over itself.
+
+The main World Builder route injects server validation/save and the selected
+character's existing lobby Play flow. Prop-only/local concept mounts do not make
+those RPCs. Save/launch freezes document mutation and is fenced by the exact
+source/key/room/character/client identity. Existing-key overwrite is explicit;
+errors retain work. Runtime rendering uses the same visual leaves through the
+canonical member-atlas presentation, without editor guides or duplicate legacy
+proxies; the session remains the authority for actors, visibility and rules.
+
+This room-mode addition supersedes the historical **room/gameplay limitations**
+below, not the standalone composition interaction or ownership contract. See
+`docs/how-to/world-builder-play-verification.md` for current proof and limits.
+
 ## Boundary and promoted mount
 
 The same editor implementation has two mounts:

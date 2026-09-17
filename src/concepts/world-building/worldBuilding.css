@@ -698,3 +698,59 @@
 .wb-actor-row--selected {
   color: #fde68a;
 }
+
+/* Room publishing panel (plan §2): the root dungeon key, its validation
+   status, and the canonical YAML exchange live together at the end of the
+   room inspector. */
+.wb-publish {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.wb-publish label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wb-publish input,
+.wb-publish textarea {
+  background: var(--bg-secondary, #1c1917);
+  color: var(--text-primary, #e7e5e4);
+  border: 1px solid var(--border-primary, #57534e);
+  border-radius: 4px;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.wb-publish textarea {
+  min-height: 7rem;
+  font-family: monospace;
+}
+
+.wb-publish-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-primary, #57534e);
+  border-radius: 4px;
+}
+
+.wb-publish-status[role='alert'] {
+  border-color: #b45309;
+  background: #4a260d;
+  color: #ffedd5;
+}
+
+.wb-field-errors {
+  margin: 0;
+  padding-left: 1rem;
+  list-style: disc;
+}
+
+.wb-yaml-exchange summary {
+  cursor: pointer;
+}

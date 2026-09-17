@@ -26,6 +26,12 @@ const hoisted = vi.hoisted(() => ({
     guildId: null as string | null,
   },
   sourceFactoryCalls: [] as unknown[],
+  worldBuilderConceptProps: null as null | {
+    roomPublishing?: {
+      characterId: string | null;
+      onPlay: (encounterId: string, characterId: string) => void;
+    };
+  },
   discord: {
     user: null as null | { id: string },
     isDiscord: false,
@@ -109,15 +115,36 @@ vi.mock('./character/sheet/CharacterSheet', () => ({
 }));
 
 vi.mock('./components/game/GameView', () => ({
-  GameView: ({ characterId }: { characterId?: string }) => (
-    <div data-testid="game-view" data-character-id={characterId}>
+  GameView: ({
+    characterId,
+    initialEncounterId,
+  }: {
+    characterId?: string;
+    initialEncounterId?: string;
+  }) => (
+    <div
+      data-testid="game-view"
+      data-character-id={characterId}
+      data-encounter-id={initialEncounterId}
+    >
       Game View
     </div>
   ),
 }));
 
 vi.mock('./components/home', () => ({
-  CharacterCarousel: () => <div>Home View</div>,
+  CharacterCarousel: ({
+    onSelect,
+  }: {
+    onSelect: (id: string, type: 'character' | 'draft') => void;
+  }) => (
+    <div>
+      Home View
+      <button onClick={() => onSelect('char-9', 'character')}>
+        Select test character
+      </button>
+    </div>
+  ),
   SelectedCharacterPanel: () => null,
 }));
 
@@ -135,12 +162,21 @@ vi.mock('./concepts/ConceptsView', () => ({
 }));
 
 vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
-  WorldBuildingConcept: ({ onBack }: { onBack: () => void }) => (
-    <section>
-      <h1>World Builder View</h1>
-      <button onClick={onBack}>Back to main menu</button>
-    </section>
-  ),
+  WorldBuildingConcept: (props: {
+    onBack: () => void;
+    roomPublishing?: {
+      characterId: string | null;
+      onPlay: (encounterId: string, characterId: string) => void;
+    };
+  }) => {
+    hoisted.worldBuilderConceptProps = props;
+    return (
+      <section>
+        <h1>World Builder View</h1>
+        <button onClick={props.onBack}>Back to main menu</button>
+      </section>
+    );
+  },
 }));
 
 vi.mock('./compositions/rpcCompositionSource', () => ({
@@ -204,6 +240,7 @@ beforeEach(() => {
   hoisted.authDecision.playerId = 'test-player';
   hoisted.authDecision.guildId = null;
   hoisted.sourceFactoryCalls.length = 0;
+  hoisted.worldBuilderConceptProps = null;
   hoisted.discord.user = null;
   hoisted.discord.isDiscord = false;
   hoisted.discord.isReady = true;
@@ -256,6 +293,43 @@ describe('App running-encounter resume', () => {
 
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.characterId).toBe('char-alice');
+  });
+});
+
+describe('App World Builder publish capability', () => {
+  it('passes the Home-selected character and the existing play route into the World Builder', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Select test character' })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'World Builder View' })
+    ).toBeTruthy();
+    const capability = hoisted.worldBuilderConceptProps?.roomPublishing;
+    expect(capability?.characterId).toBe('char-9');
+    expect(typeof capability?.onPlay).toBe('function');
+
+    // The SAME handlePlayAuthored callback the legacy AuthorView receives:
+    // invoking it routes to the lobby on the returned encounter.
+    capability?.onPlay('enc-77', 'char-9');
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.characterId).toBe('char-9');
+    expect(game.dataset.encounterId).toBe('enc-77');
+  });
+
+  it('still injects the capability with a null character so Play can be visibly disabled', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing).toEqual(
+      expect.objectContaining({ characterId: null })
+    );
   });
 });
 
