@@ -70,6 +70,8 @@ const STATUS_TABS = [
 ] as const;
 type StatusTab = (typeof STATUS_TABS)[number][0];
 
+let nextAssetReviewGeneration = 0;
+
 function sourceKey(entry: AssetReviewEntry): string {
   return stableSourceKey(entry.source);
 }
@@ -188,6 +190,10 @@ function AssetBatchReviewLab() {
   const [sources, setSources] = useState<AssetReviewSourceDescriptor[]>();
   const [activeSourceId, setActiveSourceId] = useState(LEGACY_SOURCE_ID);
   const activeSourceIdRef = useRef(LEGACY_SOURCE_ID);
+  const activeSourceGenerationRef = useRef<number | undefined>(undefined);
+  if (activeSourceGenerationRef.current === undefined) {
+    activeSourceGenerationRef.current = ++nextAssetReviewGeneration;
+  }
   const requestRef = useRef(0);
   /** True once the loaded batch carries user work worth persisting. */
   const batchDirtyRef = useRef(false);
@@ -410,6 +416,7 @@ function AssetBatchReviewLab() {
       if (!descriptor || nextId === activeSourceId) return;
       const requestId = ++requestRef.current;
       activeSourceIdRef.current = nextId;
+      activeSourceGenerationRef.current = ++nextAssetReviewGeneration;
       setActiveSourceId(nextId);
       setCatalog(undefined);
       setBatch(undefined);
@@ -591,8 +598,13 @@ function AssetBatchReviewLab() {
     // Captured per active source: late callbacks from a scene that belonged to
     // a previous source are ignored entirely, including same-URL successes.
     const sourceId = activeSourceId;
+    const sourceGeneration = activeSourceGenerationRef.current;
     return (url: string, status: AssetReviewLoadStatus, detail?: string) => {
-      if (activeSourceIdRef.current !== sourceId) return;
+      if (
+        activeSourceIdRef.current !== sourceId ||
+        activeSourceGenerationRef.current !== sourceGeneration
+      )
+        return;
       setSceneStates((current) => ({
         ...current,
         [url]: { status, detail },
@@ -611,8 +623,17 @@ function AssetBatchReviewLab() {
 
   const importReview = async (file: File | undefined) => {
     if (!file || !catalog) return;
+    const sourceId = activeSourceIdRef.current;
+    const sourceGeneration = activeSourceGenerationRef.current;
+    const requestId = requestRef.current;
+    const isCurrentImport = () =>
+      activeSourceIdRef.current === sourceId &&
+      activeSourceGenerationRef.current === sourceGeneration &&
+      requestRef.current === requestId;
     try {
-      const imported = JSON.parse(await readFileText(file)) as AssetReviewBatch;
+      const raw = await readFileText(file);
+      if (!isCurrentImport()) return;
+      const imported = JSON.parse(raw) as AssetReviewBatch;
       const merged = mergeCatalogWithReview(catalog, imported);
       mutateBatch(() => merged.batch);
       setBatchIdValue(merged.batch.batchId);
@@ -625,6 +646,7 @@ function AssetBatchReviewLab() {
       setImportError('');
       setNotice('Review imported successfully.');
     } catch (error) {
+      if (!isCurrentImport()) return;
       setImportError(error instanceof Error ? error.message : String(error));
     }
   };

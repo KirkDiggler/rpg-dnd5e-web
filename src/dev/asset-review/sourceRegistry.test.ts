@@ -90,13 +90,16 @@ describe('parseSourceIndex', () => {
     ).toThrow(/defaultSourceId must match a registered source id/i);
   });
 
-  it('rejects duplicate ids, bad id formats, and unknown kinds', () => {
+  it('rejects duplicate ids, bad id formats, reserved ids, and unknown kinds', () => {
     expect(() => parseSourceIndex(index([descriptor(), descriptor()]))).toThrow(
       /duplicate source id/i
     );
     expect(() =>
       parseSourceIndex(index([descriptor({ id: '-leading' })]))
     ).toThrow(/id has an invalid format/i);
+    expect(() =>
+      parseSourceIndex(index([descriptor({ id: LEGACY_SOURCE_ID })]))
+    ).toThrow(/reserved/i);
     expect(() =>
       parseSourceIndex(
         index([
@@ -118,6 +121,13 @@ describe('parseSourceIndex', () => {
       '/models/synty/asset-review//catalog.json',
       'models/synty/asset-review/catalog.json',
       '/models/synty/asset-review/catalog.JSON',
+      '/models/synty/asset-review/%2e%2e/secrets/catalog.json',
+      '/models/synty/asset-review/authored%2ftrial/catalog.json',
+      '/models/synty/asset-review/authored%5ctrial/catalog.json',
+      '/models/synty/asset-review/catalog.json?source=authored',
+      '/models/synty/asset-review/catalog.json#authored',
+      '/models/synty/asset-review/.json',
+      '/models/synty/asset-review/authored/catalog.json/extra',
     ];
     for (const catalogUrl of cases) {
       expect(() =>

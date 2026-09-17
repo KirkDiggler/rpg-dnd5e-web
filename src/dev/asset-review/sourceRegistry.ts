@@ -53,6 +53,7 @@ export const SELECTED_SOURCE_STORAGE_KEY = 'rpg.asset-review.source.v1';
 export const LEGACY_SOURCE_ID = 'legacy';
 
 const PREPARED_ROOT = '/models/synty/asset-review/';
+const PREPARED_PATH_SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const BATCH_KEY_PREFIX = 'rpg.asset-review.batch.v2:';
 const CONTEXT_KEY_PREFIX = 'rpg.asset-review.context.v1:';
 
@@ -128,14 +129,17 @@ function parsePreparedCatalogUrl(value: unknown, label: string): string {
   const remainder = url.startsWith(PREPARED_ROOT)
     ? url.slice(PREPARED_ROOT.length)
     : '';
+  const segments = remainder.split('/');
   requireValue(
     remainder !== '' &&
       !url.includes('://') &&
+      !url.includes('%') &&
+      !url.includes('?') &&
+      !url.includes('#') &&
       !remainder.includes('\\') &&
-      remainder
-        .split('/')
-        .every((part) => part !== '' && part !== '.' && part !== '..') &&
-      remainder.endsWith('.json'),
+      segments.length > 0 &&
+      segments.every((part) => PREPARED_PATH_SEGMENT_PATTERN.test(part)) &&
+      segments.at(-1)?.endsWith('.json'),
     `${label} must be a same-origin prepared catalogue path under ${PREPARED_ROOT}`
   );
   return url;
@@ -153,8 +157,15 @@ function parseSourceDescriptor(
     SOURCE_KINDS.has(kind as AssetReviewSourceKind),
     `${label}.kind must be converted-fbx or authored-glb`
   );
+  const id = requireString(value.id, `${label}.id`, {
+    pattern: SOURCE_ID_PATTERN,
+  });
+  requireValue(
+    id !== LEGACY_SOURCE_ID,
+    `${label}.id is reserved for the no-index legacy source`
+  );
   return {
-    id: requireString(value.id, `${label}.id`, { pattern: SOURCE_ID_PATTERN }),
+    id,
     label: requireString(value.label, `${label}.label`, { nonEmpty: true }),
     kind: kind as AssetReviewSourceKind,
     catalogUrl: parsePreparedCatalogUrl(

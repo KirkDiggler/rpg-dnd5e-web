@@ -1150,7 +1150,66 @@ describe('AssetReviewLab indexed sources', () => {
     ).toBeNull();
   });
 
-  it('ignores same-URL success callbacks from a previous source', async () => {
+  it('ignores delayed import success after switching sources', async () => {
+    stubIndexedFetch();
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+
+    let resolveRead!: (value: string) => void;
+    const file = {
+      text: () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve;
+        }),
+    } as unknown as File;
+    fireEvent.change(screen.getByLabelText('Import review JSON'), {
+      target: { files: [file] },
+    });
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+    resolveRead(JSON.stringify(mergeCatalogWithReview(catalog).batch));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('doors/double-door.glb')).toBeTruthy();
+    });
+    expect(
+      screen.queryByDisplayValue(catalog.candidates[3]!.source.sourcePath)
+    ).toBeNull();
+    expect(screen.queryByText(/Import failed/i)).toBeNull();
+  });
+
+  it('ignores delayed import errors after switching sources', async () => {
+    stubIndexedFetch();
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(catalog.candidates[3]!.source.sourcePath);
+
+    let rejectRead!: (error: Error) => void;
+    const file = {
+      text: () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectRead = reject;
+        }),
+    } as unknown as File;
+    fireEvent.change(screen.getByLabelText('Import review JSON'), {
+      target: { files: [file] },
+    });
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('doors/double-door.glb');
+    rejectRead(new Error('late read failure'));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('doors/double-door.glb')).toBeTruthy();
+    });
+    expect(screen.queryByText(/Import failed/i)).toBeNull();
+  });
+
+  it('rejects same-URL callbacks from an older source generation after A to B to A', async () => {
     const sharedLegacy = candidate(0, {
       source: {
         ...candidate(0).source,
@@ -1206,6 +1265,124 @@ describe('AssetReviewLab indexed sources', () => {
     expect(screen.getByText(/Model:/).textContent).toContain('not loaded');
 
     act(() => activeCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
+  it('rejects same-URL callbacks from an older source generation after A to B to A', async () => {
+    const sharedLegacy = candidate(0, {
+      source: {
+        ...candidate(0).source,
+        sourcePath: 'SourceFiles/DarkFortress/FBX/A0_Shared.fbx',
+        glbSha256: '9'.repeat(64),
+      },
+      url: SHARED_URL,
+      suggestedDisplayName: 'Shared',
+      browsingFamily: 'shared',
+      refSuffix: 'shared',
+    });
+    const sharedAuthored = authoredFloorCandidate({
+      source: authoredSourceFixture('a-shared.glb', '9'.repeat(64)),
+      url: SHARED_URL,
+      suggestedDisplayName: 'Shared Authored',
+      browsingFamily: 'shared',
+      refSuffix: 'shared',
+      sourceFamily: 'shared',
+    });
+    stubIndexedFetch({
+      legacyCatalog: {
+        schemaVersion: 1,
+        candidates: [sharedLegacy, ...catalog.candidates],
+      },
+      authoredCatalog: {
+        schemaVersion: 3,
+        candidates: [sharedAuthored, authoredDoorCandidate()],
+      },
+    });
+
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(
+      'SourceFiles/DarkFortress/FBX/A0_Shared.fbx'
+    );
+    const firstCallback = sceneHarness.callbacks.at(-1)!;
+
+    await act(async () => {
+      switchToSource('authored-trial');
+    });
+    await screen.findByDisplayValue('a-shared.glb');
+    await act(async () => {
+      switchToSource('dark-fortress-legacy');
+    });
+    await screen.findByDisplayValue(
+      'SourceFiles/DarkFortress/FBX/A0_Shared.fbx'
+    );
+    const currentCallback = sceneHarness.callbacks.at(-1)!;
+    expect(currentCallback).not.toBe(firstCallback);
+
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    act(() => firstCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(screen.getByText(/Model:/).textContent).toContain('not loaded');
+
+    act(() => currentCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
+  it('rejects same-URL callbacks from an older source generation after reload', async () => {
+    const shared = candidate(0, {
+      source: {
+        ...candidate(0).source,
+        sourcePath: 'SourceFiles/DarkFortress/FBX/A0_Shared.fbx',
+        glbSha256: '9'.repeat(64),
+      },
+      url: SHARED_URL,
+      suggestedDisplayName: 'Shared',
+      browsingFamily: 'shared',
+      refSuffix: 'shared',
+    });
+    stubIndexedFetch({
+      legacyCatalog: {
+        schemaVersion: 1,
+        candidates: [shared, ...catalog.candidates],
+      },
+    });
+
+    const view = render(<AssetReviewLab />);
+    await screen.findByDisplayValue(
+      'SourceFiles/DarkFortress/FBX/A0_Shared.fbx'
+    );
+    const oldCallback = sceneHarness.callbacks.at(-1)!;
+    view.unmount();
+
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(
+      'SourceFiles/DarkFortress/FBX/A0_Shared.fbx'
+    );
+    const currentCallback = sceneHarness.callbacks.at(-1)!;
+    expect(currentCallback).not.toBe(oldCallback);
+
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    act(() => oldCallback(SHARED_URL, 'success'));
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+
+    act(() => currentCallback(SHARED_URL, 'success'));
     expect(
       (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
         .disabled
