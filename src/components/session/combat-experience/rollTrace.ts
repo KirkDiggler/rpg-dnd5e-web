@@ -194,6 +194,18 @@ function componentTerms(
   );
   const source = providerText(component.source, resolveSourceName);
   if (dice) {
+    // WHETHER TO NAME WHOSE DIE THIS IS. Left exactly as it was, and that is
+    // a deliberate non-change (rpg-project#462): R7 gives every pool an entity
+    // now, the roller's own d20 included, so this test fires on pools it never
+    // used to — a check d20 was anonymous before and is not now.
+    //
+    // NOT TIGHTENED HERE, because the two surfaces that would be affected
+    // disagree about what is right. The design's example lines show a check
+    // d20 with no attribution, while saves and concentration checks have
+    // SHIPPED printing theirs ("Concentration check (staniel)") and three
+    // tests encode that as correct. Choosing one silently would change output
+    // Kirk has already accepted, on a slice whose brief does not mention
+    // attribution at all. Reported instead.
     terms.push({
       kind: 'dice',
       text: dice,

@@ -322,6 +322,18 @@ describe('roll trace presentation', () => {
 // record saying two rules met, which is the whole case the log has never been
 // able to show.
 describe('the keep record in the log line', () => {
+  // ON THE TRAILING `Intimidation (char-bob)` IN THESE EXPECTATIONS: that is
+  // the d20 pool's own provider. R7 puts the roller's id on every pool now, and
+  // this renderer attributes any pool that names an entity, so a check d20 that
+  // used to be anonymous carries one. The design's example lines show the
+  // dice-and-keep portion only and do not have it.
+  //
+  // Whether a check d20 should name its own roller is reported to the lead
+  // rather than decided here: saves and concentration checks have SHIPPED
+  // printing theirs ("Concentration check (staniel)") and three tests encode
+  // that as correct, so silently suppressing it would move output Kirk has
+  // already accepted, on a slice whose brief never mentions attribution. These
+  // assertions pin what the log ACTUALLY prints today.
   function d20(
     faces: number[],
     keptIndices: number[],
@@ -377,8 +389,8 @@ describe('the keep record in the log line', () => {
   });
 
   it('disadvantage names the rule that imposed it', () => {
-    // The sentence the front room goblin shipped without: a character who
-    // threw two dice and kept the lower now learns WHY.
+    // The sentence the front room goblin shipped without: a character who threw
+    // two dice and kept the lower now learns WHY.
     const calculation = d20(
       [7, 18],
       [0],
@@ -459,8 +471,8 @@ describe('the keep record in the log line', () => {
   });
 
   it('keeps the old text out of the line entirely', () => {
-    // The `(kept indices [N])` text is REPLACED, not kept beside the new
-    // words: it named a position in an array and said nothing about why.
+    // The `(kept indices [N])` text is REPLACED, not kept beside the new words:
+    // it named a position in an array and said nothing about why.
     const calculation = d20(
       [7, 18],
       [0],
