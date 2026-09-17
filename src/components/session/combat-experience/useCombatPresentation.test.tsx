@@ -797,7 +797,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toBe(
-        'Second Wind rolled 2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label + 3 Modifier label = 12; ' +
+        'Second Wind rolled 2d6 [1 → 4, 5] + 0 Provider label + 3 Modifier label = 12; ' +
           '2 applied (8 → 10 HP).'
       );
       expect(result.current.diceEvents).toEqual([]);
@@ -823,7 +823,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toContain(
-        '2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label × 0 Multiplier label = 12 slashing damage'
+        '2d6 [1 → 4, 5] + 0 Provider label × 0 Multiplier label = 12 slashing damage'
       );
       expect(result.current.diceEvents).toHaveLength(2);
       expect(

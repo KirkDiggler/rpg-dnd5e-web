@@ -5,6 +5,7 @@ import type {
   RollComponent,
   RollSource,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { KeepRule } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
 type ResolveSourceName = (sourceId: string) => string | undefined;
@@ -51,12 +52,117 @@ function rollFaces(trace: DiceTrace): string {
   return `[${faces.join(', ')}]`;
 }
 
-function formatDice(trace: DiceTrace | undefined): string | undefined {
+/**
+ * One keep source as the log names it: the rule's own word, and the entity
+ * behind it when that entity is somebody else.
+ *
+ * THE NAME COMES DOWN FROM THE SERVER. `RollSource.name` is authored — the
+ * untrained rule publishes "Untrained", Help publishes "Help" — and this
+ * client never invents or maps a word for a rule it was not told about.
+ *
+ * "FROM <ENTITY>" IS OMITTED WHEN IT WOULD SAY NOTHING: when there is no
+ * resolver, when the id does not resolve, and when it resolves to the ROLLER
+ * themself. "advantage: Reckless Attack, from Bob" told to Bob about Bob's own
+ * feat is noise; "advantage (Help, from Alice)" is the fact that matters,
+ * because somebody else spent something on this roll.
+ */
+function keepSourceText(
+  source: RollSource,
+  resolveSourceName?: ResolveSourceName,
+  rollerId?: string
+): string {
+  const name = source.name || source.ref || '';
+  const entity =
+    source.sourceId && source.sourceId !== rollerId
+      ? resolveSourceName?.(source.sourceId)
+      : undefined;
+  return entity ? `${name}, from ${entity}` : name;
+}
+
+function keepSourcesText(
+  sources: readonly RollSource[] | undefined,
+  resolveSourceName?: ResolveSourceName,
+  rollerId?: string
+): string {
+  return (sources ?? [])
+    .map((source) => keepSourceText(source, resolveSourceName, rollerId))
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * The faces that counted, read off the trace's own kept indices.
+ *
+ * NEVER DERIVED FROM THE RULE. A reader could compute "advantage keeps the
+ * max", and it would be right until the first rule that does not — Elven
+ * Accuracy keeps one of three, and a reroll changes which face is even a
+ * candidate. The producer said which index counted; this prints that.
+ */
+function keptFacesText(trace: DiceTrace): string {
+  const final = trace.finalRolls ?? [];
+  return (trace.keptIndices ?? [])
+    .map((index) => final[index])
+    .filter((face): face is number => face !== undefined)
+    .join(', ');
+}
+
+/**
+ * One dice pool as a line of log: the notation, every face, and — when a rule
+ * decided between them — which face counted and whose rule it was.
+ *
+ * ```
+ * 1d20 [11]
+ * 2d20 [7, 18] kept 18 · advantage: Reckless Attack
+ * 2d20 [7, 18] kept 7 · disadvantage: Untrained
+ * 1d20 [11] · advantage (Help, from Alice) cancelled by disadvantage (Untrained)
+ * ```
+ *
+ * THE RULE IS READ, NEVER INFERRED (rpg-project#462, R1). Two faces do not
+ * mean advantage and one face does not mean a straight roll: a CANCELLED pool
+ * has one face and a record saying two rules met. The old
+ * `(kept indices [1])` text is replaced rather than kept beside it — it named
+ * a position in an array and said nothing about why.
+ *
+ * NO `keep`, NO RULE PRINTED, even on a pool with two faces and no kept
+ * index. Server-side validation refuses that combination, so it is a producer
+ * defect; this client renders the faces and invents nothing.
+ *
+ * THE DISCARDED FACE IS NOT STRUCK THROUGH HERE, and that is deliberate: this
+ * function returns a plain string that the story log, the debug feed and the
+ * beat line all print as text, with no markup channel between them. `kept 18`
+ * says which face counted in a form every one of those surfaces can show.
+ * Drawing the discarded die struck through belongs to the tray slice, which
+ * owns pixels (rpg-project#463, R6).
+ */
+function formatDice(
+  trace: DiceTrace | undefined,
+  resolveSourceName?: ResolveSourceName,
+  rollerId?: string
+): string | undefined {
   if (!trace?.notation) return undefined;
-  const kept = trace.keptIndices ?? [];
-  const keptText =
-    kept.length === 0 ? '' : ` (kept indices [${kept.join(', ')}])`;
-  return `${trace.notation} ${rollFaces(trace)}${keptText}`;
+  const faces = `${trace.notation} ${rollFaces(trace)}`;
+  const keep = trace.keep;
+  if (!keep) return faces;
+
+  const granted = keepSourcesText(keep.granted, resolveSourceName, rollerId);
+  const imposed = keepSourcesText(keep.imposed, resolveSourceName, rollerId);
+
+  switch (keep.rule) {
+    case KeepRule.ADVANTAGE:
+      return `${faces} kept ${keptFacesText(trace)} · advantage: ${granted}`;
+    case KeepRule.DISADVANTAGE:
+      return `${faces} kept ${keptFacesText(trace)} · disadvantage: ${imposed}`;
+    case KeepRule.CANCELLED:
+      // THE CASE THE LOG HAS NEVER BEEN ABLE TO SHOW (R2). One die was rolled
+      // and it was NOT a straight roll: two rules met and ate each other. No
+      // "kept" clause, because every face counted.
+      return `${faces} · advantage (${granted}) cancelled by disadvantage (${imposed})`;
+    default:
+      // A rule this build cannot name. The server refuses to send one, so this
+      // is unreachable against a current server — and if it ever is reached,
+      // printing the faces without a claim is the honest degradation.
+      return faces;
+  }
 }
 
 type AdditiveTerm =
@@ -78,7 +184,14 @@ function componentTerms(
   showDiceSources = false
 ): AdditiveTerm[] {
   const terms: AdditiveTerm[] = [];
-  const dice = formatDice(component.dice);
+  // The pool's own entity is the roller for a d20 (R7: every pool names the
+  // entity whose rule threw it), which is what lets the keep line omit
+  // "from <me>" and keep "from Alice".
+  const dice = formatDice(
+    component.dice,
+    resolveSourceName,
+    component.source?.sourceId
+  );
   const source = providerText(component.source, resolveSourceName);
   if (dice) {
     terms.push({

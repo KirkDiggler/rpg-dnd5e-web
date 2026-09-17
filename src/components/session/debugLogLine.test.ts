@@ -1,6 +1,7 @@
 // @vitest-environment node
 import {
   EventKind,
+  KeepRule,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -136,13 +137,43 @@ describe('formatDebugLine', () => {
               multiplier: 0,
             },
           ],
-          advantageSources: [
-            {
-              sourceRef: 'dnd5e:conditions:hidden',
-              sourceId: 'helper-1',
-            },
-          ],
-          disadvantageSources: [],
+          // THE ATTRIBUTION MOVED ONTO THE POOL IT DECIDED
+          // (rpg-project#462). This used to be advantageSources /
+          // disadvantageSources beside the beat — refs and ids, no rule name,
+          // and no way to say two rules cancelled. Those fields are deprecated
+          // on the wire and never filled; the keep record on the d20's own
+          // trace replaced them, and it carries the rule BY NAME.
+          calculation: {
+            total: 20,
+            components: [
+              {
+                source: {
+                  ref: 'dnd5e:weapons:longsword',
+                  name: 'Longsword',
+                  sourceId: 'char-1',
+                },
+                dice: {
+                  notation: '2d20',
+                  dieSize: 20,
+                  originalRolls: [11, 17],
+                  finalRolls: [11, 17],
+                  keptIndices: [1],
+                  subtotal: 17,
+                  keep: {
+                    rule: KeepRule.ADVANTAGE,
+                    granted: [
+                      {
+                        ref: 'dnd5e:conditions:hidden',
+                        name: 'Hidden',
+                        sourceId: 'helper-1',
+                      },
+                    ],
+                    imposed: [],
+                  },
+                },
+              },
+            ],
+          },
         },
       },
     });
@@ -156,7 +187,7 @@ describe('formatDebugLine', () => {
         'components=[{source="weapon" legacy.ref="dnd5e:weapons:longsword" legacy.dice="1d8" legacy.final_rolls=[4] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="ability" legacy.ref="dnd5e:abilities:strength" legacy.dice="" legacy.final_rolls=[] legacy.flat=3 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="monster_trait" legacy.ref="dnd5e:monster_traits:immunity" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll=unset}] ' +
-        'advantage=[{ref=dnd5e:conditions:hidden source=Helper}]'
+        'keep=ADVANTAGE granted=[{ref=dnd5e:conditions:hidden name=Hidden source=Helper}]'
     );
   });
 
