@@ -86,6 +86,7 @@ import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -766,9 +767,22 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
-          factionColor={factionPalette.get(
-            roster?.get(member.subject)?.faction ?? ''
-          )}
+          // THE RING IS WHAT THIS PLAYER BELIEVES, falling back to what the
+          // roster knows (rpg-project#458). The sighting's own stance is
+          // per-observer testimony and wins when it has a word; an empty one
+          // means this observer holds no belief, which is a different claim
+          // from "neutral" and resolves to the faction colour the ring has
+          // always been.
+          //
+          // IT LOOKS IDENTICAL TODAY and will until `pretend` lands: with no
+          // deception in play every viewer's believed stance equals the
+          // derived one. The seam does not carry a stance yet either, so every
+          // sighting takes the fallback — which is exactly why the fallback,
+          // and not the belief, is the branch that has to be right.
+          factionColor={
+            stanceRingColor(member.stance) ??
+            factionPalette.get(roster?.get(member.subject)?.faction ?? '')
+          }
           knowledgeState={member.remembered ? 'remembered' : undefined}
           // Observed hands, not the peer's sheet — this component never
           // fetches another player's sheet, and could not honestly draw from

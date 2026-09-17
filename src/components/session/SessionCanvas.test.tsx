@@ -1631,6 +1631,7 @@ describe('SessionScene', () => {
       position: { x: 1, y: -1, z: 0 },
       remembered: false,
       standing: Standing.UP,
+      stance: '',
       equipment: undefined,
     };
 
@@ -2152,6 +2153,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2214,6 +2216,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2244,6 +2247,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2270,6 +2274,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2296,6 +2301,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2338,6 +2344,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2510,6 +2517,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2684,6 +2692,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2731,6 +2740,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2765,6 +2775,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2793,6 +2804,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2826,6 +2838,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2875,6 +2888,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2949,6 +2963,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        stance: '',
         equipment: undefined,
       },
     ];
@@ -3151,6 +3166,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        stance: '',
         equipment: undefined,
       },
     ];
@@ -3332,6 +3348,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -3365,6 +3382,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}

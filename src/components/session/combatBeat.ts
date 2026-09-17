@@ -26,6 +26,7 @@
  * comment.
  */
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { AnswerWord } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
   DoorState,
@@ -164,6 +165,45 @@ export function formatBeat(
         `${resolveNameLower(names, i.target, member)} — ${i.total} vs DC ` +
         `${i.dc}. ${i.beaten ? 'Cowed.' : 'Unmoved.'}`
       );
+    }
+    case 'persuaded': {
+      // THE APPEAL (rpg-project#458). The threat's line above with Persuasion
+      // where Intimidation is, under the same three laws: this beat is the
+      // ONLY account of the roll, a miss is narrated as much as a hit, and
+      // `beaten` is the SERVER'S reading, copied and never derived here from
+      // total against dc.
+      //
+      // NOTHING ABOUT WHAT THE CREATURE SAYS OR DOES. That is the `answered`
+      // beat below, which is the world's roll on the author's own table.
+      const pd = event.body.value;
+      const verb = pd.actor === member ? 'persuade' : 'persuades';
+      return (
+        `${resolveName(names, pd.actor, member)} ${verb} ` +
+        `${resolveNameLower(names, pd.target, member)} — ${pd.total} vs DC ` +
+        `${pd.dc}. ${pd.beaten ? 'Won round.' : 'Unconvinced.'}`
+      );
+    }
+    case 'answered': {
+      // WHAT THE CREATURE DID ABOUT IT (rpg-project#458): the author's line,
+      // VERBATIM and quoted, plus one sentence for the word.
+      //
+      // THE DIE IS NOT HERE (R1). The roll, the summed weights and the entry
+      // index are on the beat and rendered in the debug log; this line is the
+      // fiction, and a d100 face in the middle of a goblin's sentence is not.
+      //
+      // AN ENTRY THAT ONLY SPEAKS GETS NO CLAUSE. An empty word is an answer,
+      // not a gap, and appending an outcome to it would narrate a thing that
+      // did not happen.
+      const a = event.body.value;
+      const who = resolveName(names, a.creature, member);
+      const spoken = a.say ? `${who}: “${a.say}”` : `${who} answers`;
+      if (a.word === AnswerWord.FACT) {
+        return `${spoken} …and the party learned something.`;
+      }
+      if (a.word === AnswerWord.FLEE) {
+        return `${spoken} …and bolts.`;
+      }
+      return `${spoken}`;
     }
     case 'ended': {
       // The run's own last word — the key is content vocabulary and the

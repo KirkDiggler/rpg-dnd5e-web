@@ -4,6 +4,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import type { QuickOverflowGroup } from './quickOverflow';
+import { isExecutableVerb } from './verbRegistry';
 
 /**
  * Presentation-only ordering hints. They are supplied by the concept (or a
@@ -50,18 +51,20 @@ export function organizeDeclarations(
   declarations: readonly Declaration[],
   presentation: OrganizedActionPresentation | undefined
 ): OrganizedDeclarations {
+  // ASKED OF THE ONE REGISTRY, not restated as a list (rpg-dnd5e-web#1104).
+  // This filter decides what the dock DRAWS, so a verb missing from it is not
+  // a dead button — it is no button at all, dropped before anything
+  // downstream ever sees it. That was one of six hand-written lists; it is
+  // now one question, and a verb the table does not know is a red test in
+  // verbRegistry.test.ts rather than a missing row on a walk.
+  //
+  // THE DEATH-SAVE SHAPE CHECK STAYS HERE, deliberately. It is a fact about
+  // one DECLARATION's shape rather than about the verb, so the registry has
+  // no business answering it.
   const executable = declarations.filter(
     (declaration) =>
-      declaration.verb === Verb.ATTACK ||
-      declaration.verb === Verb.MOVE ||
-      declaration.verb === Verb.ACTIVATE ||
-      declaration.verb === Verb.CAST ||
-      // A THREAT IS AN ORDINARY PRICED ROW (rpg-project#454). Left out of
-      // this filter the offer is not a dead button — it is no button at
-      // all: this list decides what the dock DRAWS, so an unlisted verb is
-      // dropped before anything downstream ever sees it.
-      declaration.verb === Verb.INTIMIDATE ||
-      (declaration.verb === Verb.DEATH_SAVE &&
+      isExecutableVerb(declaration.verb) &&
+      (declaration.verb !== Verb.DEATH_SAVE ||
         isDeathSaveExecutableShape(declaration, 'display'))
   );
   const byId = new Map(
@@ -105,12 +108,8 @@ export function currentExecutableDeclaration(
     (declaration) =>
       declaration.id === id &&
       declaration.available &&
-      (declaration.verb === Verb.ATTACK ||
-        declaration.verb === Verb.MOVE ||
-        declaration.verb === Verb.ACTIVATE ||
-        declaration.verb === Verb.CAST ||
-        declaration.verb === Verb.INTIMIDATE ||
-        (declaration.verb === Verb.DEATH_SAVE &&
-          isDeathSaveExecutableShape(declaration, 'display')))
+      isExecutableVerb(declaration.verb) &&
+      (declaration.verb !== Verb.DEATH_SAVE ||
+        isDeathSaveExecutableShape(declaration, 'display'))
   );
 }

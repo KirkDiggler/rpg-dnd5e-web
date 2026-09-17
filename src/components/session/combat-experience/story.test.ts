@@ -2,6 +2,8 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActivatedSchema,
   ActivationResultSchema,
+  AnsweredSchema,
+  AnswerWord,
   ArrivedSchema,
   AttackModifierSourceSchema,
   CapacityGrantedSchema,
@@ -17,6 +19,7 @@ import {
   HealingAppliedSchema,
   IntimidatedSchema,
   MoveImposedSchema,
+  PersuadedSchema,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
@@ -30,6 +33,7 @@ import {
   DissolveKind,
   PlacementKind,
   ReactionRefSchema,
+  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
@@ -1133,5 +1137,238 @@ describe('a threat surviving the reducer (rpg-project#454)', () => {
 
     expect(story).toHaveLength(1);
     expect(story[0]?.detail).toContain('Unmoved');
+  });
+});
+
+// The front room goblin (rpg-project#458). TWO beats per attempt: the check,
+// which is the only account of the player's roll, and the ANSWER, which is the
+// world's roll on the author's own table and the only place the creature's
+// line exists.
+describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
+  function appealBeat(
+    seq: bigint,
+    total: number,
+    dc: number,
+    beaten: boolean
+  ): CombatStoryFact {
+    return visible(
+      create(EventSchema, {
+        session: 'front-room',
+        seq,
+        kind: EventKind.PERSUADED,
+        body: {
+          case: 'persuaded',
+          value: create(PersuadedSchema, {
+            actor: 'aldric',
+            target: 'skeleton-guard',
+            dc,
+            total,
+            beaten,
+          }),
+        },
+      })
+    );
+  }
+
+  function answerBeat(
+    seq: bigint,
+    fields: {
+      word: AnswerWord;
+      say?: string;
+      fact?: string;
+      beaten?: boolean;
+      roll?: number;
+      of?: number;
+      entry?: number;
+    }
+  ): CombatStoryFact {
+    return visible(
+      create(EventSchema, {
+        session: 'front-room',
+        seq,
+        kind: EventKind.ANSWERED,
+        body: {
+          case: 'answered',
+          value: create(AnsweredSchema, {
+            creature: 'skeleton-guard',
+            verb: Verb.PERSUADE,
+            beaten: fields.beaten ?? true,
+            roll: fields.roll ?? 42,
+            of: fields.of ?? 100,
+            entry: fields.entry ?? 0,
+            word: fields.word,
+            say: fields.say ?? '',
+            fact: fields.fact ?? '',
+          }),
+        },
+      })
+    );
+  }
+
+  it('a landed appeal is one entry carrying both numbers', () => {
+    const [entry] = buildCombatStory([appealBeat(11n, 13, 10, true)], context);
+    expect(entry.eyebrow).toBe('Appeal');
+    expect(entry.headline).toBe('Aldric talks to Skeleton Guard');
+    expect(entry.detail).toContain('13 against DC 10');
+    expect(entry.detail).toContain('Won round');
+    expect(entry.tone).toBe('success');
+  });
+
+  it('a failed appeal gets an entry too — it is where the bad directions come from', () => {
+    const [entry] = buildCombatStory([appealBeat(12n, 4, 10, false)], context);
+    expect(entry.detail).toContain('4 against DC 10');
+    expect(entry.detail).toContain('Unconvinced');
+    expect(entry.tone).toBe('neutral');
+  });
+
+  it('the reading is COPIED, never derived from total against dc', () => {
+    const [entry] = buildCombatStory([appealBeat(13n, 20, 10, false)], context);
+    expect(entry.detail).toContain('Unconvinced');
+  });
+
+  it("the answer prints the author's line VERBATIM, quoted and attributed", () => {
+    // `say` is the one field in this whole slice the engine is forbidden to
+    // compose. A test that matched loosely would not notice a renderer that
+    // trimmed, re-cased or re-punctuated what the author typed.
+    const line = 'Bandits took the cellar. Go left at the rope.';
+    const [entry] = buildCombatStory(
+      [answerBeat(14n, { word: AnswerWord.FACT, say: line, fact: 'x' })],
+      context
+    );
+    expect(entry.eyebrow).toBe('Answer');
+    expect(entry.headline).toBe(`Skeleton Guard: “${line}”`);
+  });
+
+  it('adds one outcome sentence for FACT, and one for FLEE', () => {
+    const learned = buildCombatStory(
+      [answerBeat(15n, { word: AnswerWord.FACT, say: 'Fine!', fact: 'cowed' })],
+      context
+    )[0];
+    expect(learned.detail).toContain('the party learned something');
+
+    const bolted = buildCombatStory(
+      [answerBeat(16n, { word: AnswerWord.FLEE, say: 'Boss! BOSS!' })],
+      context
+    )[0];
+    expect(bolted.detail).toContain('bolts');
+  });
+
+  it('adds NO outcome sentence for an entry that only speaks', () => {
+    // An empty word is an answer, not a gap: the author wrote a line and no
+    // consequence. Appending one would narrate a thing that did not happen.
+    const [entry] = buildCombatStory(
+      [
+        answerBeat(17n, {
+          word: AnswerWord.UNSPECIFIED,
+          say: 'Big talk, for someone standing in my doorway.',
+        }),
+      ],
+      context
+    );
+    expect(entry.headline).toContain('Big talk');
+    expect(entry.detail).toBe('');
+  });
+
+  it('keeps the die out of the story (R1)', () => {
+    // The roll, the summed weights and the entry index are on the beat and
+    // rendered in the DEBUG log. Kirk ruled the story shows the outcome and
+    // the line; a d100 face in the middle of a goblin's sentence is not that.
+    const [entry] = buildCombatStory(
+      [
+        answerBeat(18n, {
+          word: AnswerWord.FLEE,
+          say: 'Boss! BOSS!',
+          roll: 83,
+          of: 100,
+          entry: 1,
+        }),
+      ],
+      context
+    );
+    const line = `${entry.eyebrow} ${entry.headline} ${entry.detail}`;
+    expect(line).not.toContain('83');
+    expect(line).not.toContain('100');
+  });
+});
+
+/**
+ * THE GAP THE BUILDER TESTS ABOVE CANNOT SEE, closed ahead of the walk — the
+ * same one slice two fell into with `saved` and Intimidate fell into with its
+ * own beat. `buildCombatStory` is called directly above, which skips the
+ * reducer: a body with no row in `EXPECTED_OTHER_KIND` is discarded by
+ * `relevantOtherEvent` as a typed kind/body mismatch and is gone before any
+ * story arm runs.
+ */
+describe('the appeal and its answer surviving the reducer (rpg-project#458)', () => {
+  function configured() {
+    return reduceCombatPresentation(emptyPresentation(), {
+      type: 'configure',
+      session: 'front-room',
+      viewerMember: 'aldric',
+      memberNames: { aldric: 'Aldric', 'skeleton-guard': 'Skeleton Guard' },
+      rollerRoles: { aldric: 'player', 'skeleton-guard': 'monster' },
+    });
+  }
+
+  it('an appeal reaches the log through the real stream path', () => {
+    const state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: create(EventSchema, {
+        session: 'front-room',
+        seq: 11n,
+        at: 20n,
+        recipient: 'aldric',
+        kind: EventKind.PERSUADED,
+        body: {
+          case: 'persuaded',
+          value: create(PersuadedSchema, {
+            actor: 'aldric',
+            target: 'skeleton-guard',
+            dc: 10,
+            total: 13,
+            beaten: true,
+          }),
+        },
+      }),
+      metadata: { source: 'live' },
+    });
+
+    const story = selectVisibleStory(state);
+    expect(story).toHaveLength(1);
+    expect(story[0]?.headline).toBe('Aldric talks to Skeleton Guard');
+  });
+
+  it("the answer does too — it is the only place the creature's line exists", () => {
+    // The one that would hurt most to lose. Dropped here, a goblin walks out
+    // of the room and the log says nothing at all about why.
+    const state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: create(EventSchema, {
+        session: 'front-room',
+        seq: 12n,
+        at: 21n,
+        recipient: 'aldric',
+        kind: EventKind.ANSWERED,
+        body: {
+          case: 'answered',
+          value: create(AnsweredSchema, {
+            creature: 'skeleton-guard',
+            verb: Verb.PERSUADE,
+            beaten: false,
+            roll: 3,
+            of: 4,
+            entry: 1,
+            word: AnswerWord.FLEE,
+            say: 'Boss! BOSS!',
+          }),
+        },
+      }),
+      metadata: { source: 'live' },
+    });
+
+    const story = selectVisibleStory(state);
+    expect(story).toHaveLength(1);
+    expect(story[0]?.headline).toBe('Skeleton Guard: “Boss! BOSS!”');
+    expect(story[0]?.detail).toContain('bolts');
   });
 });

@@ -57,11 +57,15 @@ import type {
   DamageComponent,
   Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
+  AnswerWord,
+  EventKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
   DissolveKind,
   DoorState,
+  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   formatDebugDamageComponents,
@@ -342,6 +346,44 @@ export function formatDebugLine(
         seq,
         ids: b.actor ? [b.actor] : [],
         text: `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}`,
+      };
+    }
+    // THE TWO SOCIAL CHECKS AND THE WORLD'S ANSWER TO THEM (rpg-project#458).
+    // Typed lines rather than the `default` branch's raw JSON, because R1
+    // puts THE DIE HERE and nowhere else: the story log shows the outcome and
+    // the creature's line, and this is where a builder reads what was
+    // actually rolled against what.
+    case 'intimidated':
+    // eslint-disable-next-line no-fallthrough
+    case 'persuaded': {
+      const b = event.body.value;
+      const verb = event.body.case;
+      return {
+        seq,
+        ids: [b.actor, b.target],
+        text:
+          `${prefix} ${verb} actor=${name(b.actor)} target=${name(b.target)} ` +
+          `dc=${b.dc} total=${b.total} beaten=${b.beaten}`,
+      };
+    }
+    // R1 IN FULL: the world's die, the summed weights it was thrown against,
+    // the entry that fired, the word and the fact. `of` is the die SIZE and
+    // not the entry count — 70 and 30 is a d100 — and `entry` indexes the
+    // AUTHOR's own list, so a builder can find the line in the file they are
+    // looking at. `say` is deliberately absent: it is prose, it is in the
+    // story log verbatim, and it would bury this line's numbers.
+    case 'answered': {
+      const b = event.body.value;
+      const word = AnswerWord[b.word] ?? String(b.word);
+      const verbName = Verb[b.verb] ?? String(b.verb);
+      const fact = b.fact ? ` fact=${b.fact}` : '';
+      return {
+        seq,
+        ids: [b.creature],
+        text:
+          `${prefix} answered creature=${name(b.creature)} verb=${verbName} ` +
+          `beaten=${b.beaten} roll=${b.roll} of=${b.of} entry=${b.entry} ` +
+          `word=${word}${fact}`,
       };
     }
     case 'ended': {

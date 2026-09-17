@@ -175,10 +175,35 @@ export function refreshKeysFor(
     // what it is worth is the threatened creature's mind's to decide; that
     // arrives as its next turn, on that turn's own beats. There is nothing
     // to re-read here because nothing has been decided yet.
+    //
+    // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
+    // shares this row, with ONE correction the threat's comment above did not
+    // have to make: on the WORLD clock a social verb costs nothing at all (R3),
+    // so `characterData` re-reads a sheet that did not change. It stays anyway,
+    // because the clock is not on this beat and guessing it from an absent
+    // field is exactly the kind of local decision that goes wrong the first
+    // time a rule moves. One wasted read is cheaper than a stale action bar.
     case 'intimidated':
+    // eslint-disable-next-line no-fallthrough
+    case 'persuaded':
       return event.body.value.actor === member
         ? ['characterData', 'afford']
         : [];
+    // THE CREATURE ANSWERED (rpg-project#458). `afford` FOR EVERYBODY, and
+    // this is the one social beat that is not scoped to the actor: an answer
+    // can move the creature (`flee` routes it away) and can teach a fact that
+    // flips a stance, and either changes what every player at the table may do
+    // next and who they may do it to.
+    //
+    // `view` TOO, and it is the reason this row exists at all. A goblin that
+    // bolts leaves somebody's sight and enters somebody else's, and a client
+    // that did not re-read its view would go on drawing a creature that walked
+    // out of the room.
+    //
+    // `characterData` IS NOT HERE. The creature spent its own nothing; no
+    // player's sheet moved.
+    case 'answered':
+      return ['afford', 'view'];
     case 'looted':
     case 'activated':
     case 'exited':

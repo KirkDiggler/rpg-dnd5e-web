@@ -73,6 +73,7 @@ function member(
     name: subject,
     kind: MemberKind.MONSTER,
     monsterRefId: 'skeleton',
+    stance: '',
     position: { x: 0, y: 0, z: 0 },
     remembered: false,
     standing,

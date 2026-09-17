@@ -35,6 +35,7 @@ import type {
   CombatExperienceActionPresentation,
   CombatExperienceRollWindow,
 } from './types';
+import { isExecutableVerb } from './verbRegistry';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -82,13 +83,16 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.CAST) {
     return castLabel(declaration);
   }
-  // The threat names itself, like the two reaction answers above and unlike
-  // the weapon, the ability and the spell: the server compiles no action
-  // definition for it (`buildIntimidateOffer` sends a sealed selector and no
+  // The social verbs name themselves, like the two reaction answers above and
+  // unlike the weapon, the ability and the spell: the server compiles no
+  // action definition for either (the seam sends a sealed selector and no
   // AttackRef), so there is no authored label to prefer and nothing here is
   // going stale against content.
   if (declaration.verb === Verb.INTIMIDATE) {
     return 'Intimidate';
+  }
+  if (declaration.verb === Verb.PERSUADE) {
+    return 'Persuade';
   }
   return 'Move';
 }
@@ -119,6 +123,10 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.REACT) return '⚡';
   if (declaration.verb === Verb.CAST) return '✧';
   if (declaration.verb === Verb.INTIMIDATE) return '☠';
+  // The appeal's own mark, and deliberately not the threat's: the two verbs
+  // share one machine and are opposite choices, so a player scanning the dock
+  // must not have to read the label to tell them apart.
+  if (declaration.verb === Verb.PERSUADE) return '☮';
   return '➜';
 }
 
@@ -183,6 +191,7 @@ function ActionDeclaration({
   armed,
   authorityFresh,
   index,
+  showCost = true,
   onSelect,
 }: {
   declaration: Declaration;
@@ -191,6 +200,18 @@ function ActionDeclaration({
   /** Disambiguates the tooltip id: one verb can compile many offers, and two
    * of them may share a declaration id within a render. */
   index: number;
+  /**
+   * Whether to draw the cost badge. Default true, which is every turn-clock
+   * row: a death save carries a "No turn slot" badge there and that badge is
+   * a real statement, because a turn economy exists around it and this row is
+   * free WITHIN it.
+   *
+   * FALSE ON THE WORLD CLOCK (rpg-project#457 R3). There is no economy there
+   * at all — Move's own rule, not a discount — so a badge would be this
+   * client inventing a price where the server said there is none, and worse,
+   * implying a budget the player could run out of.
+   */
+  showCost?: boolean;
   onSelect: (declaration: Declaration) => void;
 }) {
   const label = declarationLabel(declaration);
@@ -224,7 +245,7 @@ function ActionDeclaration({
               <small>{declaration.remaining} ft</small>
             )}
         </span>
-        <CostBadge slot={declaration.slot} />
+        {showCost && <CostBadge slot={declaration.slot} />}
         {!declaration.available && (
           <span className={styles.semanticOnly}>
             Unavailable: {unavailable}
@@ -541,7 +562,56 @@ export function ActionDock({
         )
       : standingGroup;
 
+  // EVERY OFFER AFFORD SENDS IS DRAWN, and which verbs those are is ONE
+  // QUESTION to the registry rather than a hand-written list
+  // (rpg-dnd5e-web#1104). Afford mints the rows — one per cantrip this build
+  // can actually cast and none for one it cannot, one per social verb on
+  // either clock — so the client decides nothing about membership. What this
+  // filter decides is what gets DRAWN, which is why a verb missing from it
+  // was never a dead button but no button at all: dropped before the arm,
+  // before the click, before anything downstream could be wrong about it.
+  //
+  // THE DEATH-SAVE SHAPE CHECK STAYS HERE. It asks about one declaration's
+  // shape rather than about the verb, so the registry has no business
+  // answering it.
+  const executableDeclarations = declarations.filter(
+    (declaration) =>
+      isExecutableVerb(declaration.verb) &&
+      (declaration.verb !== Verb.DEATH_SAVE ||
+        isDeathSaveExecutableShape(declaration, 'display'))
+  );
+
+  // WHAT THE WORLD CLOCK DRAWS: the rows Afford sent, and no row it did not.
+  // Afford used to return an empty list outside a fight, so that branch drew a
+  // message and nothing else and that was the whole truth. It now returns the
+  // social verbs (rpg-project#457 R3), and drawing only the message would hide
+  // rows the SERVER SENT — a player standing in front of the goblin would be
+  // looking at a creature they are being offered a way to deal with, with
+  // nothing on screen saying so.
+  //
+  // MOVE IS THE ONE OMISSION, and it is not this client withholding an
+  // affordance: on the world clock movement is the FLOOR CLICK, which the
+  // message immediately above advertises in as many words, and the view sends
+  // an empty move selector there precisely because there is no Move
+  // declaration to echo. A Move row here would be a second, competing
+  // affordance for the thing the panel already tells you how to do.
+  const worldClockDeclarations = executableDeclarations.filter(
+    (declaration) => declaration.verb !== Verb.MOVE
+  );
+
   if (clock === ClockKind.WORLD) {
+    // THE WORLD CLOCK HAS ROWS NOW (rpg-project#457 R3, rpg-project#458).
+    // Afford used to return an empty list here, so this branch drew a message
+    // and nothing else, and that was the whole truth. It now returns the
+    // social verbs — the front room goblin is standing in the doorway and the
+    // entire scenario is talking to it — so drawing only the message would
+    // hide rows the SERVER SENT and leave a player looking at a creature they
+    // are being offered a way to deal with.
+    //
+    // ONLY WHAT AFFORD RETURNED, and no local decision about which. This
+    // draws `executableDeclarations`, which is the same registry-filtered
+    // list the turn clock draws; if the server sends nothing, nothing is
+    // drawn and the message stands alone exactly as before.
     return (
       <div className={styles.actionRow}>
         <div className={styles.passiveActionRow}>
@@ -558,6 +628,55 @@ export function ActionDock({
           </small>
         </div>
         {standing}
+        {/* AFTER `{standing}`, NOT BEFORE IT, and the order is load-bearing
+            rather than aesthetic. React reconciles these children BY POSITION,
+            and this dock returns a differently shaped tree per clock — the
+            "Synchronizing" branch below is `[status, standing]`. Inserting
+            anything AHEAD of `{standing}` here moves it from slot 1 to slot 2,
+            so the first render that crosses from one branch to the other
+            REMOUNTS the whole standing-actions subtree: Search, Loot, Hold and
+            Leave all get fresh DOM nodes, and whatever was already holding one
+            — a focus, a pointer, a test's handle — is left pointing at a
+            detached button whose click goes nowhere.
+
+            Found exactly that way: three SessionEncounterView search scenes
+            went red against a group that rendered NOTHING AT ALL, because the
+            empty slot was enough. Rendered last, `{standing}` keeps slot 1 in
+            every branch and this group is simply mounted beside it.
+
+            It is also rendered unconditionally, empty or not, for the same
+            reason one step smaller: a group that came and went would shift
+            nothing now, but would the moment anything followed it. */}
+        <div
+          className={styles.actionGroup}
+          data-testid="world-clock-actions"
+          role="group"
+          aria-label="Actions"
+        >
+          {worldClockDeclarations.length > 0 && (
+            <span className={styles.groupLabel}>Actions</span>
+          )}
+          {worldClockDeclarations.map((declaration, index) => (
+            <ActionDeclaration
+              key={`${declaration.id}-${index}`}
+              declaration={declaration}
+              armed={declaration.id === armedDeclarationId}
+              authorityFresh={authorityFresh}
+              index={index}
+              // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
+              // Slot.NONE because the world clock has no economy to charge
+              // against, so a badge here would invent a price the server said
+              // there is none of. A row that DOES arrive priced still draws
+              // its badge, so this reads what the server sent rather than
+              // applying a blanket rule about the clock.
+              showCost={
+                declaration.slot !== Slot.NONE &&
+                declaration.slot !== Slot.UNSPECIFIED
+              }
+              onSelect={onSelectDeclaration}
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -722,26 +841,6 @@ export function ActionDock({
   // could drive. rpg-toolkit#1274 gave it one, so the client no longer has to
   // decline to draw anything, which is the state this filter should always be
   // in: the server decides what is offered, and the dock draws it.
-  const executableDeclarations = declarations.filter(
-    (declaration) =>
-      declaration.verb === Verb.ATTACK ||
-      declaration.verb === Verb.MOVE ||
-      declaration.verb === Verb.ACTIVATE ||
-      // A CAST IS DRAWN LIKE EVERY OTHER OFFER. Afford mints one row per
-      // cantrip this build can actually cast and none for one it cannot
-      // (design rpg-project#405, R9), so a bard with two behaviourless
-      // cantrips — and every fighter — gets no Cast rows without the client
-      // deciding anything.
-      declaration.verb === Verb.CAST ||
-      // A THREAT IS DRAWN LIKE EVERY OTHER OFFER (rpg-project#454). Afford
-      // mints exactly one row for it on the turn clock, priced at the
-      // standard action, and an unlisted verb is dropped HERE — before the
-      // arm, before the click, before anything downstream can be wrong
-      // about it. Not a dead button: no button.
-      declaration.verb === Verb.INTIMIDATE ||
-      (declaration.verb === Verb.DEATH_SAVE &&
-        isDeathSaveExecutableShape(declaration, 'display'))
-  );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
   // LOOKED BACK UP IN THE CURRENT DECLARATIONS, never held as the row that was
   // clicked. A menu drawn from a captured declaration would go on offering a

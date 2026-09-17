@@ -36,10 +36,12 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.CAST) return castLabel(declaration);
   if (declaration.verb === Verb.DEATH_SAVE)
     return declaration.deathSave?.name || 'Death Save';
-  // The threat names itself: it compiles no action definition, so there is
-  // no server-authored label to prefer. Unlisted, this row fell through to
-  // the 'Move' default and drew as a move that was not one.
+  // The social verbs name themselves: neither compiles an action definition,
+  // so there is no server-authored label to prefer. Unlisted, either row
+  // falls through to the 'Move' default and draws as a move that is not one —
+  // which is one of the four symptoms rpg-dnd5e-web#1104 catalogues.
   if (declaration.verb === Verb.INTIMIDATE) return 'Intimidate';
+  if (declaration.verb === Verb.PERSUADE) return 'Persuade';
   return 'Move';
 }
 function icon(declaration: Declaration): string {
@@ -47,6 +49,7 @@ function icon(declaration: Declaration): string {
   if (declaration.verb === Verb.CAST) return '✧';
   if (declaration.verb === Verb.ACTIVATE) return '✦';
   if (declaration.verb === Verb.INTIMIDATE) return '☠';
+  if (declaration.verb === Verb.PERSUADE) return '☮';
   return declaration.verb === Verb.MOVE ? '➜' : '✚';
 }
 function OfferFace({ declaration }: { declaration: Declaration }) {

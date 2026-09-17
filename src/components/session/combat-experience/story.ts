@@ -1,6 +1,7 @@
 import { getConditionDisplay } from '@/utils/conditionIcons';
 import { refId } from '@/utils/refs';
 import {
+  AnswerWord,
   EventKind,
   type AttackModifierSource,
   type Event,
@@ -615,6 +616,73 @@ function buildOtherStory(
           threat.beaten ? 'Cowed' : 'Unmoved'
         }`,
         tone: threat.beaten ? 'success' : 'neutral',
+      });
+    }
+    case 'persuaded': {
+      // THE APPEAL (rpg-project#458), narrated as the threat's twin one case
+      // up and built from the same fields under the same laws: the numbers,
+      // and the SERVER'S reading of them. `beaten` is copied rather than
+      // derived from total against dc.
+      //
+      // ONE ENTRY WHETHER IT LANDED OR NOT, because `PersuadeResponse`
+      // carries no verdict and this is the actor's only account of their own
+      // die. A failed appeal especially: it is the entry the goblin's bad
+      // directions follow from.
+      //
+      // NOTHING ABOUT WHAT THE CREATURE DOES. That is the `answered` beat
+      // below — the world's roll on the author's table — and putting a word
+      // of it here would make this one beat claim two things.
+      const appeal = event.body.value;
+      const actor = memberName(appeal.actor, context);
+      const target = memberName(appeal.target, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Appeal',
+        headline: `${actor} talks to ${target}`,
+        detail: `${appeal.total} against DC ${appeal.dc} · ${
+          appeal.beaten ? 'Won round' : 'Unconvinced'
+        }`,
+        tone: appeal.beaten ? 'success' : 'neutral',
+      });
+    }
+    case 'answered': {
+      // WHAT THE CREATURE DID ABOUT IT (rpg-project#458) — the second roll,
+      // the author's table read by the world.
+      //
+      // THE AUTHOR'S LINE IS THE ENTRY, verbatim and quoted, attributed to
+      // the creature. The engine never composes speech and neither does this:
+      // what is written here is exactly what the author typed into `say:`,
+      // and the one sentence this client adds is about the WORD, not the
+      // line.
+      //
+      // R1 KEEPS THE DIE OUT OF THIS. The roll, the summed weights, the entry
+      // index and the fact id are on the beat and rendered in the DEBUG log;
+      // the story shows the outcome and the line, which is what Kirk ruled.
+      //
+      // AN ENTRY THAT ONLY SPEAKS GETS NO OUTCOME CLAUSE. An empty word is an
+      // answer — the author wrote a line and no consequence — and appending
+      // one would be this client inventing a thing that did not happen.
+      const answer = event.body.value;
+      const creature = memberName(answer.creature, context);
+      const spoken = answer.say ? `${creature}: “${answer.say}”` : null;
+      const outcome =
+        answer.word === AnswerWord.FACT
+          ? 'and the party learned something'
+          : answer.word === AnswerWord.FLEE
+            ? 'and bolts'
+            : null;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Answer',
+        // The creature is the subject even when it says nothing: somebody
+        // needs to be named, and the beat exists because an entry fired.
+        headline: spoken ?? `${creature} answers`,
+        detail: outcome ? `…${outcome}.` : '',
+        // A creature that runs is not a success for anybody, and a fact it
+        // taught is not either — what the party learned may be a lie. Neutral
+        // for every word: the tone of a CONSEQUENCE is not this beat's to
+        // claim, and the check beat above already carried the verdict.
+        tone: 'neutral',
       });
     }
     case 'door': {
