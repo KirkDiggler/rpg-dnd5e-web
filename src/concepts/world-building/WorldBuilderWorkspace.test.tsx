@@ -154,8 +154,11 @@ describe('WorldBuilderWorkspace', () => {
     expect(onBack).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        /Save or export your unsaved work before discarding it\./i
+        /Leave the World Builder\? Saved rooms and autosaved local drafts/i
       )
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/any change not saved or exported may be lost/i)
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -166,7 +169,9 @@ describe('WorldBuilderWorkspace', () => {
     expect(onBack).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -259,7 +264,9 @@ describe('WorldBuilderWorkspace', () => {
 
     // While the transaction mutates server state, navigation is locked.
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
-    expect(screen.queryByText(/Save or export your unsaved work/i)).toBeNull();
+    expect(
+      screen.queryByText(/Leave the World Builder\? Saved rooms/i)
+    ).toBeNull();
     expect(onBack).not.toHaveBeenCalled();
     expect(
       (
@@ -290,9 +297,13 @@ describe('WorldBuilderWorkspace', () => {
       ).toBe(false)
     );
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
-    expect(screen.getByText(/Save or export your unsaved work/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Leave the World Builder\? Saved rooms/i)
+    ).toBeTruthy();
     expect(onBack).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -325,7 +336,9 @@ describe('WorldBuilderWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
     expect(onBack).not.toHaveBeenCalled();
     expect(onPlay).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Save or export your unsaved work/i)).toBeNull();
+    expect(
+      screen.queryByText(/Leave the World Builder\? Saved rooms/i)
+    ).toBeNull();
     await act(async () =>
       rpc.lobby.startDeferred!.resolve({ encounterId: 'enc-1' } as never)
     );

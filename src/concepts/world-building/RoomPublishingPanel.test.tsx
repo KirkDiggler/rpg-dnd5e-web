@@ -433,7 +433,14 @@ describe('RoomPublishingPanel — existing key confirmation', () => {
     const dialog = await screen.findByRole('alertdialog', {
       name: 'Overwrite room-room-abc123',
     });
-    expect(dialog.textContent).toMatch(/already exists/);
+    expect(dialog.textContent).toMatch(/No save happened yet/);
+    expect(dialog.textContent).toMatch(/already\s+names a dungeon/);
+    // The opaque key alone is not enough to recognise a renamed room, so
+    // the confirmation names the room being saved and takes focus.
+    expect(dialog.textContent).toMatch(/Torture chamber/);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Overwrite “room-room-abc123”' })
+    );
 
     // Cancel: no stored bytes change.
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));

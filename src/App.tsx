@@ -350,6 +350,25 @@ function AppContent() {
     setCurrentView('home');
   };
 
+  /** Leaving the LIVE game/lobby for Home. Resume-after-refresh (#444)
+   * routes straight into the running encounter without ever touching
+   * Home's selection, so this is the only Back path that carries the
+   * authoritative seat character forward. It adopts that seat ONLY when
+   * Home has no explicit selection at all: an already selected character
+   * or draft is a real author/player choice and is never replaced. Other
+   * Back handlers keep clearing (a stale active-lobby seat must not leak
+   * into arbitrary returns). */
+  const handleLeaveGameToHome = () => {
+    if (!selectedId) {
+      const seatedCharacterId = resumedLobbyCharacter.characterId;
+      if (seatedCharacterId) {
+        setSelectedType('character');
+        setSelectedId(seatedCharacterId);
+      }
+    }
+    handleBackToHome();
+  };
+
   const handleOpenAuthor = () => {
     setCurrentView('author');
   };
@@ -498,7 +517,7 @@ function AppContent() {
           <GameView
             characterId={lobbyCharacterId ?? resumedLobbyCharacter.characterId}
             playerId={playerId || 'test-player'}
-            onBack={handleBackToHome}
+            onBack={handleLeaveGameToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
             compositionSource={compositionSource}

@@ -123,11 +123,11 @@ export function WorldBuilderWorkspace({
             aria-label="Confirm leaving World Builder"
           >
             <span>
-              Save or export your unsaved work before discarding it. Leave the
-              World Builder?
+              Leave the World Builder? Saved rooms and autosaved local drafts
+              are kept, but any change not saved or exported may be lost.
             </span>
             <button type="button" onClick={leaveWorkspace}>
-              Discard and leave
+              Leave World Builder
             </button>
             <button type="button" onClick={() => setConfirmLeave(false)}>
               Cancel

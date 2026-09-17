@@ -118,9 +118,11 @@ vi.mock('./components/game/GameView', () => ({
   GameView: ({
     characterId,
     initialEncounterId,
+    onBack,
   }: {
     characterId?: string;
     initialEncounterId?: string;
+    onBack?: () => void;
   }) => (
     <div
       data-testid="game-view"
@@ -128,6 +130,7 @@ vi.mock('./components/game/GameView', () => ({
       data-encounter-id={initialEncounterId}
     >
       Game View
+      <button onClick={onBack}>Back to main menu</button>
     </div>
   ),
 }));
@@ -142,6 +145,9 @@ vi.mock('./components/home', () => ({
       Home View
       <button onClick={() => onSelect('char-9', 'character')}>
         Select test character
+      </button>
+      <button onClick={() => onSelect('draft-1', 'draft')}>
+        Select test draft
       </button>
     </div>
   ),
@@ -331,6 +337,68 @@ describe('App World Builder publish capability', () => {
       expect.objectContaining({ characterId: null })
     );
   });
+
+  it('carries the resumed encounter seat through Home so World Builder play is not disabled', async () => {
+    vi.stubEnv('MODE', 'development');
+    // A running encounter resumes straight into GameView, which never
+    // touches Home's selection. Coming Back must keep the player's known
+    // seat character as the explicit Home choice instead of losing it.
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    render(<App />);
+
+    await screen.findByTestId('game-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing?.characterId).toBe(
+      'char-alice'
+    );
+
+    // An explicit Home choice still wins over the adopted seat: leaving the
+    // World Builder must not resurrect the resumed character.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Select test character' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    expect(hoisted.worldBuilderConceptProps?.roomPublishing?.characterId).toBe(
+      'char-9'
+    );
+  });
+
+  it('never replaces an explicitly selected draft with the resumed seat on leaving the game', async () => {
+    vi.stubEnv('MODE', 'development');
+    const { rerender } = render(<App />);
+    // A real Home selection exists before stale resume data arrives.
+    fireEvent.click(screen.getByRole('button', { name: 'Select test draft' }));
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+    rerender(<App />);
+
+    await screen.findByTestId('game-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open World Builder' }));
+    // The draft selection is not a character; it must not have been swapped
+    // out for the resumed seat character.
+    expect(
+      hoisted.worldBuilderConceptProps?.roomPublishing?.characterId
+    ).toBeNull();
+  });
 });
 
 describe('App prop calibration route', () => {
@@ -391,7 +459,9 @@ describe('App main-menu World Builder', () => {
       screen.getByRole('heading', { name: 'World Builder View' })
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Discard and leave' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave World Builder' })
+    );
     expect(screen.getByText('Home View')).toBeTruthy();
   });
 

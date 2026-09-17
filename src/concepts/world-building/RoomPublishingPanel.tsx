@@ -14,7 +14,7 @@
  * busy upward (Back, mode switching, document changes are refused there)
  * and disables its own controls.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   RoomPublishingCapability,
   UseRoomPublishingInput,
@@ -76,6 +76,12 @@ export function RoomPublishingPanel({
   } = publishing;
   /** In-flight textarea text; null shows the encoded current source. */
   const [yamlDraft, setYamlDraft] = useState<string | null>(null);
+  /** The armed overwrite confirmation takes focus when it appears, so a
+   * Save click that only asked a question cannot read as a silent no-op. */
+  const overwriteConfirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (overwritePending) overwriteConfirmRef.current?.focus();
+  }, [overwritePending]);
 
   /** Save refusals describe the exact submitted text; they are truthful
    * only while the current document still is that text. The "Saved"
@@ -175,11 +181,14 @@ export function RoomPublishingPanel({
           aria-label={`Overwrite ${overwritePending.key}`}
         >
           <span>
-            A dungeon named “{overwritePending.key}” already exists on the
-            authoring server.
+            No save happened yet. The key “{overwritePending.key}” already names
+            a dungeon on the authoring server
+            {draft.name.trim() ? ` — this room is “${draft.name.trim()}”` : ''}.
+            Overwrite that existing dungeon with the current source?
           </span>
           <button
             type="button"
+            ref={overwriteConfirmRef}
             disabled={busy}
             onClick={() => void confirmOverwrite()}
           >
