@@ -1,9 +1,14 @@
 # Testing Sanctuary
 
-This web branch targets API PR #1007, local image `rpg-api:sanctuary-1006`
-(commit `d1717ba2e409f0ac0651782b7f559ccd8b5a9d98`). Its four Toolkit providers
-are development pins, not released versions. Do not use an arbitrary `dev` API
-image and assume it contains Sanctuary.
+This web branch targets merged API PR #1007, merge
+`8e8f596456d20d057d99eac6dcdfb47d11d59e5b`. The API adopts published Toolkit
+root v0.181.0, resolution v0.54.0, encounter v0.89.0, and session v0.96.0.
+No additional web SDK bump is required for this provider release adoption.
+
+The existing local image `rpg-api:sanctuary-1006` and running stack remain the
+earlier tested API commit `d1717ba2e409f0ac0651782b7f559ccd8b5a9d98`, which used
+the development provider commits. Build the merged API revision into a new image
+when verifying the released combination; do not assume the old local tag changed.
 
 The web SDK is v0.1.201, lockfile commit
 `0655dbbca56c17e9f97bddf4715570ce7d840e7a`. This also brings the additive creature
@@ -12,13 +17,15 @@ table rendering remains separate web PR #1123 / API #1005 work.
 
 ## Local setup
 
-Use your local development Compose stack with the API service's **image** set
-to `rpg-api:sanctuary-1006` (not just the registry tag variable). Keep its existing
-auth, Redis, content and Envoy settings. This PR does not switch existing stacks.
+Use your local development stack with an API image built from the merged revision
+above. Keep its existing auth, Redis, content and Envoy settings. Updating this PR
+does not switch the existing local stack.
 Then check out this web branch and run:
 
 ```sh
 npm ci
+# Restore the approved private models/textures for this checkout.
+npm run assets:sync
 VITE_API_HOST=http://localhost:8080 VITE_DEV_PLAYER_ID=sanctuary-tester npm run dev
 ```
 
@@ -64,7 +71,11 @@ combination for the basic smoke test; no client workaround is added here.
 
 Automated tests cover serialized replay, duplicate/conflicting facts, zero
 values, calculation totals, mixed targets, response ordering, cast notices and
-refreshes. Full browser gameplay acceptance is still a separate manual step.
+refreshes. On the preceding development stack, the user observed Sanctuary Immune
+in Story, saw it remain after the ward, and confirmed that no eligible targets
+prevented recasting. Those observations verify the anti-recast interaction; they
+do not establish manual timer expiry or every ward-save scenario above. The
+20-recipient-turn expiry is covered by provider regression tests.
 
 ## Existing work incorporated
 
