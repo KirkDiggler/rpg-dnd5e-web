@@ -3,8 +3,9 @@
  * query-selected fixture loaded (`reference-tomb` by default,
  * `crypt-prop-showcase` for `?authorFixture=crypt-props` and
  * `crypt-lighting-showcase` for `?authorFixture=crypt-lighting`,
- * `reference-tomb-heirloom` for `?authorFixture=heirloom`, and
- * `reference-raider-camp` for `?authorFixture=raider-camp`), fixtures mode
+ * `reference-tomb-heirloom` for `?authorFixture=heirloom`,
+ * `reference-raider-camp` for `?authorFixture=raider-camp`, and
+ * `reference-front-room` for `?authorFixture=front-room`), fixtures mode
  * (`fixtureCompile` shapes an atlas from the CURRENT document on every
  * edit; `PutDungeon` is never called), no draft persistence. The real
  * `/author` mount is `AuthorView.tsx`.
@@ -15,6 +16,7 @@ import { emitDungeon, type DungeonDoc } from './dungeonYaml';
 import { cryptLightingShowcaseDoc } from './fixtures/cryptLightingShowcase';
 import { cryptPropShowcaseDoc } from './fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
+import { referenceFrontRoomDoc } from './fixtures/referenceFrontRoom';
 import { referenceRaiderCampDoc } from './fixtures/referenceRaiderCamp';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 import { referenceTombHeirloomDoc } from './fixtures/referenceTombHeirloom';
@@ -34,6 +36,11 @@ export function sandboxDocForSearch(search: string): DungeonDoc {
   // Lab opens on a dungeon whose Factions and Dispositions sections have
   // something to show.
   if (fixture === 'raider-camp') return referenceRaiderCampDoc();
+  // The front room (rpg-dnd5e-web#1118), the API's own file: a neutral
+  // goblin, the two social checks, and the ONLY authored answer table in
+  // the project. It mounts here for the same reason the others do — it is
+  // what the sections it exercises have something to show ON.
+  if (fixture === 'front-room') return referenceFrontRoomDoc();
   return referenceTombDoc();
 }
 
