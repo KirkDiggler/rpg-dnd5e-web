@@ -211,6 +211,17 @@ export function formatDebugLine(
           strikeDetailText(b.damageComponents, b.calculation),
       };
     }
+    case 'warded':
+    case 'castWarded': {
+      const b = event.body.value;
+      const actor = 'attacker' in b ? b.attacker : b.actor;
+      const action = 'attacker' in b ? b.attack : b.spell;
+      return {
+        seq,
+        ids: [actor, b.target, b.source, ...keepSourceIds(b.calculation)],
+        text: `${prefix} ${event.body.case} actor=${name(actor)} target=${name(b.target)} source=${name(b.source)} ref=${action?.ref ?? '?'} name=${quoteDebugString(action?.name ?? '')} ability=${b.ability} roll=${b.roll} total=${b.total} dc=${b.dc} calculation=${safeJson(b.calculation ?? null)}`,
+      };
+    }
     case 'missed': {
       const b = event.body.value;
       return {

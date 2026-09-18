@@ -18,6 +18,7 @@ import {
 import { damageTypeWord } from '../combatBeat';
 import { dissolveSentence, formatFactionBeat } from '../factionBeat';
 import { formatHoldingBeat } from '../holdingBeat';
+import { formatWardBeat } from '../wardBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
   CombatExperienceAttackModifierSource,
@@ -773,6 +774,22 @@ function buildOtherStory(
               : `Story sequence ${event.seq}.`,
         tone: 'neutral',
       });
+    }
+    case 'warded':
+    case 'castWarded': {
+      const ward = formatWardBeat(event, (id) => memberName(id, context));
+      return ward
+        ? Object.freeze({
+            ...base,
+            eyebrow: event.body.case === 'castWarded' ? 'Spell' : 'Ward',
+            attack:
+              event.body.case === 'warded'
+                ? attackSnapshot(event.body.value.attack)
+                : undefined,
+            ...ward,
+            tone: 'neutral' as const,
+          })
+        : undefined;
     }
     case 'castMissed': {
       if (event.kind !== EventKind.CAST_MISSED) return undefined;

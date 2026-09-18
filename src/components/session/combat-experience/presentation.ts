@@ -470,8 +470,31 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   // `against` CARRIES THE DC. It is the number the total was measured
   // against, which is what that field means for an attack too; `succeeded` is
   // the rulebook's own reading and no receiver recomputes it.
-  if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
-    const saved = event.body.value;
+  if (
+    (event.body.case === 'saved' && event.kind === EventKind.SAVED) ||
+    (event.body.case === 'warded' && event.kind === EventKind.WARDED) ||
+    (event.body.case === 'castWarded' && event.kind === EventKind.CAST_WARDED)
+  ) {
+    // Continue the existing Sanctuary work: the aggressor rolls a saving
+    // throw, not an attack. Both ward event kinds mean that save failed.
+    const body = event.body.value;
+    const saved =
+      event.body.case === 'saved'
+        ? event.body.value
+        : {
+            saver:
+              'attacker' in body
+                ? body.attacker
+                : 'actor' in body
+                  ? body.actor
+                  : '',
+            ability: body.ability,
+            roll: body.roll,
+            total: body.total,
+            dc: body.dc,
+            succeeded: false,
+            source: { ref: '', name: 'Ward' },
+          };
     // Saved carries no provider-issued presentation token. Keep its animation
     // recipient-local until the provider contract deliberately grows one; a
     // session/seq identity must never be mistaken for cross-recipient truth.
@@ -602,6 +625,8 @@ function attackEventFacts(event: Event): string | undefined {
     event.body.case !== 'missed' &&
     event.body.case !== 'deathSaveRolled' &&
     event.body.case !== 'saved' &&
+    event.body.case !== 'warded' &&
+    event.body.case !== 'castWarded' &&
     event.body.case !== 'rollWindowOpened'
   ) {
     return undefined;
@@ -1044,6 +1069,8 @@ function acceptResponse(
   }
   let authority: AuthoritySnapshot;
   try {
+    // A warded response has no attack roll. Its typed event owns the save.
+    if (fact.type === 'attack-response' && fact.response.warded) return state;
     authority =
       fact.type === 'attack-response'
         ? authorityFromResponse(fact)
@@ -1286,6 +1313,9 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
   EventKind.CAST_MISSED,
+  EventKind.WARDED,
+  EventKind.CAST_WARDED,
+  EventKind.TEMPERED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
   EventKind.INTIMIDATED,
@@ -1306,7 +1336,13 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   }
   // The bodies that become authority instead: they carry a die, so they are
   // presentation records rather than other-story rows.
-  if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
+  if (
+    bodyCase === 'struck' ||
+    bodyCase === 'missed' ||
+    bodyCase === 'saved' ||
+    bodyCase === 'warded' ||
+    bodyCase === 'castWarded'
+  ) {
     return undefined;
   }
   // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
@@ -1319,7 +1355,7 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // Excluded HERE rather than by leaving a hole in the table: an unlisted
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
-  if (bodyCase === 'sighted') {
+  if (bodyCase === 'sighted' || bodyCase === 'tempered') {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;

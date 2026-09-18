@@ -1,3 +1,4 @@
+import { formatWardBeat } from './wardBeat';
 /**
  * combatBeat — turns one typed `Event.body` into the combat panel's single
  * beat-line string (rpg-project#249 §3/§4, rpg-dnd5e-web#762). Framework-
@@ -89,6 +90,9 @@ export function formatBeat(
   // (`factionBeat.ts`, rpg-project#375 §5).
   const faction = formatFactionBeat(event);
   if (faction !== null) return faction;
+
+  const ward = formatWardBeat(event, (id) => resolveName(names, id, member));
+  if (ward) return `${ward.headline}. ${ward.detail}`;
 
   switch (event.body?.case) {
     case 'struck': {
