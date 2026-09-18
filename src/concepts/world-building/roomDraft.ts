@@ -3,8 +3,15 @@ import {
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
+import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { KeyValueStorage, WorldScene } from './types';
+
+// Re-exported so every sibling strict decoder keeps importing them from here
+// (rpg-dnd5e-web#1136 moved the definitions to `strictShape.ts` so the
+// answer-table adapter is not an import cycle; the words are unchanged).
+export { objectShape, rejectUnknownKeys } from './strictShape';
 
 export const ROOM_DRAFT_STORAGE_KEY =
   'rpg.concepts.world-building.room-draft.v3';
@@ -49,11 +56,46 @@ export interface RoomPropDeclaration {
 }
 /** One authored monster actor. `ref` uses the existing monster reference
  * grammar; an unknown-but-syntactically-valid monster id stays editable and
- * is reported as an unavailable model, never dropped or substituted. */
+ * is reported as an unavailable model, never dropped or substituted.
+ *
+ * `faction` is the site-scope membership and is OPTIONAL, ABSENT WHEN
+ * UNAUTHORED (rpg-project#477 Decision 4). It is never written out as
+ * `faction: monsters`: `factionOf` (`encounter/field.go`) stores it "as given,
+ * never resolved here, so a member in the default faction persists
+ * byte-identically to one from before factions existed" and resolves the
+ * kind's default on every read. Membership sits on the ACTOR because it is
+ * what SELECTS the defaults, while everything a faction supplies (`on`,
+ * `actions`) is overridable and therefore lives in the orders block below. */
 export interface RoomMonsterPlacement {
   id: string;
   ref: string;
   cell: RoomHexCell;
+  faction?: string;
+}
+/** The orders block for one creature, under its stable id — the THIRD
+ * declaration kind on a placed thing, after `propDeclarations` and the
+ * proposed `doorBindings` (rpg-project#477 Decision 4).
+ *
+ * It carries the authored facts the FACTION would otherwise supply, because
+ * being supplied by the faction is exactly what makes them overridable:
+ * `FactionSpec.On` is "LAYERED, NEAREST KEY WINS WHOLESALE" and `TemperSpec`
+ * says "A PLACEMENT'S OWN WORD WINS". `faction` is deliberately NOT here —
+ * nothing overrides it.
+ *
+ * `on` and `actions` land first; `temper`, `intimidate`, `persuade` and
+ * `arrives` are the engine's own `PlaceSpec` fields and have a home here when
+ * a use case brings them. NOTHING READS EITHER KEY YET (slice 1, shape only).
+ *
+ * `actions` mirrors `dungeonspec.PlaceSpec.Actions`: full
+ * `dnd5e:weapons:<id>` refs, monsters only, "CARRIED, NOT INTERPRETED", and
+ * THE ORDER IS THE POINT — both drivers take the first action whose target is
+ * in reach. The single room has no equivalent yet (`RoomMonsterSource` is
+ * `{ id, ref, cell }` and its compile leaves `Actions` empty), so this widens
+ * the web's room shape ahead of the engine's, which is the intended
+ * outside-in direction. */
+export interface RoomMonsterBinding {
+  on?: AnswerTableShape;
+  actions?: string[];
 }
 export interface RoomGameplayData {
   implicitRegionId: string;
@@ -67,6 +109,9 @@ export interface RoomGameplayData {
   partyStart?: RoomHexCell;
   /** Authoring actor markers only; the encounter owns legality at Play. */
   monsters: RoomMonsterPlacement[];
+  /** Stable monster id -> its authored orders. ABSENT when nothing has any,
+   * so a room with no orders emits the bytes it always did. */
+  monsterBindings?: Record<string, RoomMonsterBinding>;
 }
 export interface RoomDraft {
   version: 3;
@@ -229,10 +274,21 @@ export function moveRoomMonster(
   return { ...draft, room: { ...draft.room, monsters } };
 }
 
+/** Removing the creature removes its orders. A binding can never outlive the
+ * creature it names (rpg-project#477, "a declaration can never outlive the
+ * creature it names") — the decoder refuses an orphan, and this helper must
+ * not be the thing that creates one. */
 export function removeRoomMonster(draft: RoomDraft, id: string): RoomDraft {
   const monsters = draft.room.monsters.filter((monster) => monster.id !== id);
   if (monsters.length === draft.room.monsters.length) return draft;
-  return { ...draft, room: { ...draft.room, monsters } };
+  const room: RoomGameplayData = { ...draft.room, monsters };
+  if (room.monsterBindings?.[id]) {
+    const bindings = { ...room.monsterBindings };
+    delete bindings[id];
+    if (Object.keys(bindings).length === 0) delete room.monsterBindings;
+    else room.monsterBindings = bindings;
+  }
+  return { ...draft, room };
 }
 
 export function setRoomPartyStart(
@@ -312,30 +368,8 @@ function validateCell(cell: unknown, field: string): RoomHexCell {
   return { q: (cell as RoomHexCell).q, r: (cell as RoomHexCell).r };
 }
 
-/** Structurally exact records only: unknown-invalid fields are refused, not
- * dropped or reinterpreted as valid data. Arrays are never mapping shapes.
- * Exported so sibling strict decoders (e.g. the atlas's room scene
- * presentation) refuse unknown fields by the same words, not a second
- * dialect. */
-export function rejectUnknownKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  label: string
-): void {
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key))
-      throw new Error(`${label} has an unsupported field: ${key}.`);
-  }
-}
-
-export const objectShape = (
-  value: unknown,
-  label: string
-): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error(`${label} must be an object.`);
-  return value as Record<string, unknown>;
-};
+// `rejectUnknownKeys` / `objectShape` live in `strictShape.ts` and are
+// re-exported at the top of this module — one home, the same words.
 
 const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'] as const;
 
@@ -396,7 +430,18 @@ function validateDeclarationMap(
 }
 
 const MONSTER_REF_RE = /^[-a-z0-9]+:monsters:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'cell'] as const;
+/** A faction id has the same grammar as the room key: lower-case, digits,
+ * dashes. Membership itself is the engine's to confirm against the declared
+ * factions — the room draft is decoded before the site root's `factions` are
+ * known, and guessing here would refuse a file the server reads. */
+const FACTION_ID_RE = /^[-a-z0-9]+$/;
+/** `PlaceSpec.Actions` is "FULL REFS, like every other ref in this file:
+ * `dnd5e:weapons:shortbow`, never `shortbow`." Weapons are the only action
+ * type the engine accepts today, and refusing the rest here is what makes a
+ * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise. */
+const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
+const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
+const BINDING_KEYS = ['on', 'actions'] as const;
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -422,13 +467,72 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id ?? ''} ref must be a monster reference such as dnd5e:monsters:skeleton.`
       );
     ids.add(source.id);
-    monsters.push({
+    const monster: RoomMonsterPlacement = {
       id: source.id,
       ref: source.ref,
       cell: validateCell(source.cell, `Monster ${source.id} cell`),
-    });
+    };
+    // ABSENT WHEN UNAUTHORED: the key is added only when the file wrote one,
+    // so an unauthored creature stays byte-identical to one from before
+    // factions existed.
+    if (source.faction !== undefined && source.faction !== null) {
+      if (
+        typeof source.faction !== 'string' ||
+        !FACTION_ID_RE.test(source.faction)
+      )
+        throw new Error(
+          `Monster ${source.id} faction must be a faction id such as goblins.`
+        );
+      monster.faction = source.faction;
+    }
+    monsters.push(monster);
   }
   return monsters;
+}
+
+/** The orders blocks, keyed by the creature's stable id. A binding whose
+ * creature is gone is REFUSED, not silently dropped — the same discipline
+ * `propDeclarations` already keeps ("Declaration owner does not exist"). */
+function validateMonsterBindings(
+  value: unknown,
+  monsters: readonly RoomMonsterPlacement[]
+): Record<string, RoomMonsterBinding> {
+  const source = objectShape(value, 'Monster bindings');
+  const ids = new Set(monsters.map((monster) => monster.id));
+  const bindings: Record<string, RoomMonsterBinding> = {};
+  for (const [id, binding] of Object.entries(source)) {
+    if (!ids.has(id))
+      throw new Error(`Monster binding owner does not exist: ${id}`);
+    const block = objectShape(binding, `Monster binding for ${id}`);
+    rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
+    const parsed: RoomMonsterBinding = {};
+    if (Object.hasOwn(block, 'on'))
+      parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
+    if (Object.hasOwn(block, 'actions')) {
+      const actions = block.actions;
+      if (!Array.isArray(actions))
+        throw new Error(`Monster binding for ${id} actions must be a list.`);
+      if (actions.length === 0)
+        throw new Error(
+          `Monster binding for ${id} actions is empty; omit the key instead.`
+        );
+      parsed.actions = actions.map((action, index) => {
+        if (typeof action !== 'string' || !WEAPON_REF_RE.test(action))
+          throw new Error(
+            `Monster binding for ${id} action ${index} must be a weapon reference such as dnd5e:weapons:shortbow.`
+          );
+        return action;
+      });
+    }
+    // A block that says nothing is a key the file did not need: absence is
+    // the authored state, exactly as it is for the faction it overrides.
+    if (parsed.on === undefined && parsed.actions === undefined)
+      throw new Error(
+        `Monster binding for ${id} declares no orders; omit the binding instead.`
+      );
+    bindings[id] = parsed;
+  }
+  return bindings;
 }
 
 function validateDraft(value: unknown): RoomDraft {
@@ -488,6 +592,7 @@ function validateDraft(value: unknown): RoomDraft {
       'arrangementDeclarations',
       'partyStart',
       'monsters',
+      'monsterBindings',
     ],
     'Room gameplay data'
   );
@@ -546,6 +651,11 @@ function validateDraft(value: unknown): RoomDraft {
         `Monster ${monster.id} cell is outside the authoring floor.`
       );
   }
+  // The bindings are validated AFTER the monsters, because a binding names a
+  // creature: an orphan can only be detected once the roster is known.
+  const monsterBindings = Object.hasOwn(room, 'monsterBindings')
+    ? validateMonsterBindings(room.monsterBindings, monsters)
+    : undefined;
   const draft: RoomDraft = {
     ...input,
     version: 3,
@@ -569,6 +679,11 @@ function validateDraft(value: unknown): RoomDraft {
       arrangementDeclarations,
       monsters,
       ...(partyStart ? { partyStart } : {}),
+      // ABSENT, NOT EMPTY: a room with no orders must emit the bytes it
+      // emitted before `monsterBindings` existed.
+      ...(monsterBindings && Object.keys(monsterBindings).length > 0
+        ? { monsterBindings }
+        : {}),
     },
   } as RoomDraft;
   return draft;

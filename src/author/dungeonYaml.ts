@@ -65,6 +65,14 @@ import {
   whenShapeRefusal,
 } from './answerVocabulary';
 import {
+  MONSTERS,
+  PARTY,
+  PREDICATE_SHAPE,
+  STANCES,
+  type PredicateDoc,
+  type Stance,
+} from './factionVocabulary';
+import {
   isPositionOffset,
   latticeKey,
   latticeOf,
@@ -93,6 +101,21 @@ import {
 } from './hexOffset';
 
 export type { PositionRef } from './hexGeometry';
+
+// The faction and disposition vocabulary moved to `factionVocabulary.ts`
+// (rpg-dnd5e-web#1136) so the single-room site scope can read the same closed
+// sets without importing this version-2 document model. RE-EXPORTED here
+// unchanged, so every existing consumer keeps importing it from
+// `dungeonYaml` and there is exactly one declaration.
+export {
+  MONSTERS,
+  PARTY,
+  PREDICATE_FORMS,
+  PREDICATE_SHAPE,
+  predicateForm,
+  STANCES,
+} from './factionVocabulary';
+export type { PredicateDoc, PredicateForm, Stance } from './factionVocabulary';
 
 export type VoidKind = 'opaque' | 'transparent';
 
@@ -428,62 +451,6 @@ export interface ExitDoc {
 export interface IntelDoc {
   id: string;
   reveals: Record<string, string>;
-}
-
-/** The three stances a disposition may declare (rpg-project#375 §2) — a
- * closed set, in the compiler's own words. `hostile` is the only one an
- * `until` is legal with: a predicate says when the hostility ENDS, and
- * when it holds the stance becomes `neutral` (R2). */
-export const STANCES = ['hostile', 'neutral', 'allied'] as const;
-export type Stance = (typeof STANCES)[number];
-
-/** The players' side. NEVER DECLARED under `factions:` — it is the one
- * faction every dungeon has without saying so, and a file that declares it
- * is refused by name (§2). It IS nameable in a disposition's `between`. */
-export const PARTY = 'party';
-/** Where every monster that names no faction belongs (R4). Hostile to the
- * party, exactly as every dungeon written before factions existed behaved.
- * A monster's `faction:` is written only when the author chose one, so
- * membership here is spelled by ABSENCE. The side itself MAY be declared
- * under `factions[]` (ruling 2026-09-05) — `{ id: monsters, mind: chief }`
- * is how the unauthored side is given a mind — and its members are then
- * exactly the monsters with no faction key (`factionMembers`). */
-export const MONSTERS = 'monsters';
-
-/**
- * A PREDICATE — the one authorable grammar `until` (and, in step B,
- * `arrives` and `endings[].when`) are written in (rpg-project#375 §2).
- *
- * EXACTLY ONE KEY, and the key says which form it is:
- *
- *   `{ round: N }`     any fight in the run has started round N (N ≥ 1)
- *   `{ down: <id> }`   that placement is Down
- *   `{ fact: <id> }`   the fact is known — by the faction's mind on
- *                      `until`, by anyone on `arrives`
- *   `{ stance: { between: [a, b], is: <stance> } }`
- *                      the pair's stance folds to that value
- *
- * Each form compiles to an encounter `Trigger`; the set is sealed the way
- * `Trigger` is and grows one form per use case. Two keys in one map is not
- * a predicate this module can represent, so the parser refuses the shape;
- * whether the thing a form names exists is the refusal logic's question
- * (`factionRules.ts`), rendered inline at the field.
- */
-export type PredicateDoc =
-  | { round: number }
-  | { down: string }
-  | { fact: string }
-  | { stance: { between: [string, string]; is: Stance } };
-
-export const PREDICATE_FORMS = ['round', 'down', 'fact', 'stance'] as const;
-export type PredicateForm = (typeof PREDICATE_FORMS)[number];
-
-/** Which form a predicate is — the one key it carries. */
-export function predicateForm(p: PredicateDoc): PredicateForm {
-  if ('round' in p) return 'round';
-  if ('down' in p) return 'down';
-  if ('fact' in p) return 'fact';
-  return 'stance';
 }
 
 /** One declared faction: who fights as one side (rpg-project#375 §2).
@@ -1385,11 +1352,6 @@ function assertTemperWord(word: string, path: string): void {
     throw new DungeonParseError(`${path}: ${unknownTemperRefusal(word)}`);
   }
 }
-
-/** The predicate grammar, spelled for a refusal a streamer can act on. */
-export const PREDICATE_SHAPE =
-  'a predicate is exactly one of { round: N }, { down: <placement id> }, ' +
-  '{ fact: <id> }, or { stance: { between: [a, b], is: hostile|neutral|allied } }';
 
 /** `[faction, faction]` — two strings, carried verbatim. */
 function factionPair(v: unknown, path: string): [string, string] {

@@ -1,10 +1,62 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createRoomDraft } from './roomDraft';
+import { createRoomDraft, type RoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
+
+/** The canonical writer's output for a document with NO v4 key, captured from
+ * the encoder as it stood before this slice (rpg-dnd5e-web#1136) and committed
+ * byte-accurate. This is the one test the issue says not to skip: the file
+ * format is the expensive thing to walk back. */
+const readV3Golden = () =>
+  readFileSync(
+    'src/concepts/world-building/fixtures/singleRoomV3.golden.yaml',
+    'utf8'
+  );
+
+/** The golden's own draft: a room with a prop, a start and one actor, and none
+ * of the new keys. */
+function goldenDraft(): RoomDraft {
+  const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+  draft.scene.items.push({
+    id: 'prop-1',
+    kind: 'prop',
+    assetRef: 'dnd5e:props:torture-table',
+    label: 'table',
+    transform: { x: -2.25, y: 1.2, z: 1.3, rotationY: 0.37 },
+    heightScale: 1.5,
+  });
+  draft.room.partyStart = { q: 0, r: 0 };
+  draft.room.monsters = [
+    {
+      id: 'skeleton-a',
+      ref: 'dnd5e:monsters:skeleton',
+      cell: { q: 2, r: -1 },
+    },
+  ];
+  return draft;
+}
+
+/** The room block of every hand-written site document below. */
+const ROOM_BLOCK = `room:
+  version: 3
+  id: room-1
+  name: Crypt
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
+  workspace: {hexRadius: 6, horizontalLimit: 12}
+  scene: {version: 1, id: scene-1, name: Crypt, items: [], groups: []}
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: [{q: 0, r: 0}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsters:
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}`;
+
+const PLAY_BLOCK = `play: {void: transparent, lighting: bright, standing: centre-covered}`;
 
 describe('single-room dungeon source', () => {
   it('round trips the complete v3 draft and fixed play contract', () => {
@@ -42,7 +94,7 @@ describe('single-room dungeon source', () => {
   });
 
   it('accepts the v4 root ahead of its keys, without loosening strictness', () => {
-    // The version seam lands BEFORE either wave's keys: the authored door
+    // The version seam landed BEFORE either wave's keys: the authored door
     // wants `doorBindings` at v4 (rpg-project#468) and this slice wants the
     // site scope and `monsterBindings` (rpg-project#477). Landing the bump
     // once is what stops them both bumping, so a v4 root carrying only v3
@@ -55,9 +107,11 @@ describe('single-room dungeon source', () => {
     expect(decodeSingleRoomDungeon(asV4).key).toBe('crypt-room');
 
     // The version does not buy leniency: an unknown root key is still refused,
-    // and so is a version nobody has agreed on.
-    expect(() => decodeSingleRoomDungeon(`${asV4}\nfactions: []\n`)).toThrow(
-      /Unsupported single-room field/
+    // and so is a version nobody has agreed on. `factions` is no longer the
+    // probe — it is a key this slice lands — so the probe is a key the design
+    // explicitly does NOT have yet.
+    expect(() => decodeSingleRoomDungeon(`${asV4}\nkind: dungeon\n`)).toThrow(
+      /Unsupported single-room field: kind/
     );
     expect(() => decodeSingleRoomDungeon('version: 5\nkey: room')).toThrow(
       /Unsupported single-room source envelope/
@@ -161,5 +215,187 @@ play:
     );
     expect(decoded.draft.room.monsters).toEqual(draft.room.monsters);
     expect(decoded.draft.room.partyStart).toEqual({ q: 3, r: -3 });
+  });
+
+  it('emits exactly the bytes it emitted before the v4 keys existed', () => {
+    // THE PROOF THE ISSUE SAYS NOT TO SKIP. `singleRoomV3.golden.yaml` is the
+    // pre-slice encoder's own output, committed byte-accurate. A site with no
+    // `factions`, no `dispositions`, no `faction` and no `monsterBindings`
+    // must reproduce it exactly — not "equivalently".
+    const emitted = encodeSingleRoomDungeon({
+      key: 'crypt-room',
+      draft: goldenDraft(),
+    });
+    expect(emitted).toBe(readV3Golden());
+    // The version is the LOWEST that carries the document, and none of the v4
+    // keys is present as an empty placeholder.
+    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted).not.toContain('factions');
+    expect(emitted).not.toContain('dispositions');
+    expect(emitted).not.toContain('faction');
+    expect(emitted).not.toContain('monsterBindings');
+  });
+
+  it('treats an empty site scope and empty bindings as absence, not as bytes', () => {
+    // "Omitted means none" cuts both ways: an explicitly empty list is the
+    // authored state "no factions", so it is neither refused nor written.
+    const emitted = encodeSingleRoomDungeon({
+      key: 'crypt-room',
+      draft: goldenDraft(),
+      factions: [],
+      dispositions: [],
+    });
+    expect(emitted).toBe(readV3Golden());
+
+    const decoded = decodeSingleRoomDungeon(
+      `${readV3Golden()}factions: []\ndispositions: []\n`
+    );
+    expect(decoded.factions).toBeUndefined();
+    expect(decoded.dispositions).toBeUndefined();
+    expect(
+      encodeSingleRoomDungeon({ key: decoded.key, draft: decoded.draft })
+    ).toBe(readV3Golden());
+  });
+
+  it('round trips hand-written monster orders and a creature faction at v4', () => {
+    const source = `version: 4
+key: crypt-room
+${PLAY_BLOCK}
+${ROOM_BLOCK}
+    monsterBindings:
+      goblin-1:
+        on:
+          intimidated:
+            - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
+            - {weight: 30, say: 'Boss! BOSS!', flee: {}}
+          time:
+            - {when: {enemy: reach}, attack: enemy}
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']
+`;
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.draft.room.monsters[0].faction).toBe('goblins');
+    expect(decoded.draft.room.monsterBindings).toEqual({
+      'goblin-1': {
+        on: {
+          intimidated: [
+            {
+              weight: 70,
+              say: 'Fine! The cellar door is behind the barrels.',
+              fact: 'goblin-cowed',
+            },
+            { weight: 30, say: 'Boss! BOSS!', flee: {} },
+          ],
+          time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+        },
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
+      },
+    });
+
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+    });
+    // A v4 key was present, so the document claims v4 — and it carries the
+    // authored values, in the author's own order.
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('monsterBindings:');
+    expect(emitted).toContain('dnd5e:weapons:shortbow');
+    expect(emitted).toContain('faction: goblins');
+    // Parse -> emit -> parse is idempotent: the canonical writer's second pass
+    // changes nothing.
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+    expect(
+      encodeSingleRoomDungeon({
+        key: decoded.key,
+        draft: decodeSingleRoomDungeon(emitted).draft,
+      })
+    ).toBe(emitted);
+  });
+
+  it('round trips a hand-written site scope and claims v4 for it alone', () => {
+    const source = `version: 4
+key: front-room
+${PLAY_BLOCK}
+factions:
+  - id: goblins
+    on:
+      intimidated:
+        - {say: 'Fine!', fact: goblin-cowed}
+    temper: {coward: 2, soldier: 1, aggressive: 1}
+  - id: bandits
+    mind: bandit-chief
+dispositions:
+  - {between: [goblins, party], stance: hostile, until: {fact: saved-wiseman}}
+  - {between: [bandits, party], stance: neutral}
+${ROOM_BLOCK}
+`;
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.factions).toEqual([
+      {
+        id: 'goblins',
+        on: { intimidated: [{ say: 'Fine!', fact: 'goblin-cowed' }] },
+        temper: { coward: 2, soldier: 1, aggressive: 1 },
+      },
+      { id: 'bandits', mind: 'bandit-chief' },
+    ]);
+    expect(decoded.dispositions).toEqual([
+      {
+        between: ['goblins', 'party'],
+        stance: 'hostile',
+        until: { fact: 'saved-wiseman' },
+      },
+      { between: ['bandits', 'party'], stance: 'neutral' },
+    ]);
+
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+      factions: decoded.factions,
+      dispositions: decoded.dispositions,
+    });
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('dispositions:');
+    expect(emitted).toContain('temper:');
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+  });
+
+  it('refuses an orphan binding and an unknown binding key inside the document', () => {
+    // A binding naming a creature that is gone is REFUSED, not silently
+    // dropped — the discipline `propDeclarations` already keeps.
+    expect(() =>
+      decodeSingleRoomDungeon(
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      long-gone:\n        actions: ['dnd5e:weapons:scimitar']\n`
+      )
+    ).toThrow(/Monster binding owner does not exist: long-gone/);
+    // The binding carries `on` and `actions` in this slice and nothing else;
+    // `temper` is refused as the unknown key it is.
+    expect(() =>
+      decodeSingleRoomDungeon(
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
+      )
+    ).toThrow(/Monster binding for goblin-1 has an unsupported field: temper/);
+  });
+
+  it('refuses an answer table this build cannot roll, in the engine’s own words', () => {
+    const withOn = (on: string) =>
+      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n${on}\n`;
+    // An unknown trigger, an action word on a social key, and a missing say on
+    // an entry with no word: all three are the vocabulary's sentences.
+    expect(() =>
+      decodeSingleRoomDungeon(withOn('          taunted: [{say: hi}]'))
+    ).toThrow(/"taunted" is not a trigger this build rolls/);
+    expect(() =>
+      decodeSingleRoomDungeon(
+        withOn('          intimidated: [{attack: enemy}]')
+      )
+    ).toThrow(
+      /`attack` is what a creature does with time, and `intimidated` is an outcome/
+    );
+    expect(() =>
+      decodeSingleRoomDungeon(withOn('          intimidated: [{}]'))
+    ).toThrow(/this entry does nothing and says nothing/);
+    expect(() =>
+      decodeSingleRoomDungeon(withOn('          intimidated: []'))
+    ).toThrow(/this names a trigger and lists nothing that happens on it/);
   });
 });
