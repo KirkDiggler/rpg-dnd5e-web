@@ -16,6 +16,11 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
   type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
+import {
+  declarationMapForSelection,
+  seedDeclarations,
+} from './declarationFootprint';
+import type { MeasuredWorldPropBounds } from './placementGuides';
 import { addRepeatedProps } from './repeatPlacement';
 import {
   clearRoomPartyStart,
@@ -48,10 +53,10 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
-  heightSelectionPropIds,
   redoHistory,
   rotateSelection,
   saveArrangement,
+  selectionPropIds,
   setPropPointLight,
   setSelectionHeight,
   stampArrangement,
@@ -215,6 +220,22 @@ export function WorldBuildingConcept({
   const [portableJson, setPortableJson] = useState('');
   const [footprintPreview, setFootprintPreview] =
     useState<RoomPropDeclaration | null>(null);
+  /** Each placed prop's measured world bounds, keyed by scene item id. The
+   * viewport measures them anyway; this keeps a copy where the declaration
+   * editor can seed a blocker from the mesh instead of a 1×1 guess. */
+  const [measuredBounds, setMeasuredBounds] = useState<
+    ReadonlyMap<string, MeasuredWorldPropBounds>
+  >(() => new Map());
+  const handleMeasuredBounds = useCallback(
+    (id: string, measurement: MeasuredWorldPropBounds) => {
+      setMeasuredBounds((current) => {
+        const next = new Map(current);
+        next.set(id, measurement);
+        return next;
+      });
+    },
+    []
+  );
   const [notice, setNotice] = useState(
     [initial.error, initialRoom.error].filter(Boolean).join(' ')
   );
@@ -1152,7 +1173,7 @@ export function WorldBuildingConcept({
   const selectedDeclaration = selectedProp
     ? roomDraft.room.propDeclarations[selectedProp.id]
     : undefined;
-  const selectedHeightValues = [...heightSelectionPropIds(scene, selectedIds)]
+  const selectedHeightValues = [...selectionPropIds(scene, selectedIds)]
     .map((id) => scene.items.find((item) => item.id === id)?.heightScale ?? 1)
     .filter((value): value is number => Number.isFinite(value));
   const selectedHeightMixed =
@@ -1165,19 +1186,57 @@ export function WorldBuildingConcept({
     if (!selectedHeightMixed)
       setHeightDraftPercent(Math.round(selectedHeight * 100));
   }, [selectedHeight, selectedHeightMixed]);
-  const defaultDeclaration: RoomPropDeclaration = {
-    blocksMovement: false,
-    blocksLineOfSight: false,
-    footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 },
-  };
-  const commitSelectedDeclaration = (declaration: RoomPropDeclaration) => {
-    if (!selectedProp) return;
+  /** The props an authored declaration lands on: the SELECTION, resolved the
+   * same way visual height resolves it — group members in, support-linked
+   * decorations out (`selectionPropIds`). Not `selectedProp`, which is only
+   * ever defined for a single selection and made the panel inert for several. */
+  const declarationIds = [...selectionPropIds(scene, selectedIds)];
+  /** Selected props that have NO declaration yet. `Add` adds; it must not
+   * silently reset a blocker an author already tuned. */
+  const undeclaredIds = declarationIds.filter(
+    (id) => roomDraft.room.propDeclarations[id] === undefined
+  );
+  /** The declaration the panel edits. `selectedProp` is undefined for a
+   * multi-selection, so a multi-selection edits its first prop's values as
+   * the visible state — and every edit is applied to ALL selected props, not
+   * just that one. */
+  const panelDeclaration =
+    selectedDeclaration ??
+    (declarationIds.length > 0
+      ? roomDraft.room.propDeclarations[declarationIds[0]]
+      : undefined);
+
+  /** Seed a declaration for EVERY undeclared selected prop, each from its own
+   * measured mesh. A single shared box would hand a long wall a short wall's
+   * blocker — the 1×1 default's bug in a new costume. */
+  const addDeclarationsToSelection = () => {
+    if (undeclaredIds.length === 0) return;
     commit(scene, selectedIds, {
       ...roomDraft.room,
       propDeclarations: {
         ...roomDraft.room.propDeclarations,
-        [selectedProp.id]: declaration,
+        ...seedDeclarations(
+          undeclaredIds,
+          (id) => measuredBounds.get(id)?.bounds
+        ),
       },
+    });
+    setFootprintPreview(null);
+  };
+
+  /** Editing a flag or the box is the AUTHOR'S explicit override, so it is
+   * applied as written to every selected prop — imposing one box on a whole
+   * selection is a legitimate thing to want, and it is the only way the
+   * blocking checkboxes do anything for more than one prop. */
+  const commitSelectedDeclaration = (declaration: RoomPropDeclaration) => {
+    if (declarationIds.length === 0) return;
+    commit(scene, selectedIds, {
+      ...roomDraft.room,
+      propDeclarations: declarationMapForSelection(
+        roomDraft.room.propDeclarations,
+        declarationIds,
+        declaration
+      ),
     });
     setFootprintPreview(null);
   };
@@ -1595,6 +1654,7 @@ export function WorldBuildingConcept({
                   current[id] === state ? current : { ...current, [id]: state }
                 )
               }
+              onMeasuredBounds={handleMeasuredBounds}
             />
           </div>
         </main>
@@ -1746,30 +1806,34 @@ export function WorldBuildingConcept({
                 </p>
               </div>
             )}
-            {roomMode && selectedProp && (
+            {roomMode && declarationIds.length > 0 && (
               <div
                 className="wb-light-editor"
                 aria-label="Authored prop declarations"
               >
                 <h4>Movement &amp; sight declaration</h4>
-                {!selectedDeclaration ? (
-                  <button
-                    onClick={() =>
-                      commitSelectedDeclaration(defaultDeclaration)
-                    }
-                  >
-                    Add authored footprint
+                {undeclaredIds.length > 0 ? (
+                  <button onClick={addDeclarationsToSelection}>
+                    {undeclaredIds.length > 1
+                      ? `Add authored footprint to ${undeclaredIds.length} props`
+                      : 'Add authored footprint'}
                   </button>
-                ) : (
+                ) : panelDeclaration ? (
                   <>
+                    {declarationIds.length > 1 && (
+                      <p className="wb-help" data-testid="declaration-scope">
+                        Editing {declarationIds.length} selected props. The
+                        outline below is applied to all of them.
+                      </p>
+                    )}
                     <label className="wb-light-toggle">
                       <input
                         type="checkbox"
                         aria-label="Blocks movement"
-                        checked={selectedDeclaration.blocksMovement}
+                        checked={panelDeclaration.blocksMovement}
                         onChange={(event) =>
                           commitSelectedDeclaration({
-                            ...selectedDeclaration,
+                            ...panelDeclaration,
                             blocksMovement: event.target.checked,
                           })
                         }
@@ -1780,10 +1844,10 @@ export function WorldBuildingConcept({
                       <input
                         type="checkbox"
                         aria-label="Blocks line of sight"
-                        checked={selectedDeclaration.blocksLineOfSight}
+                        checked={panelDeclaration.blocksLineOfSight}
                         onChange={(event) =>
                           commitSelectedDeclaration({
-                            ...selectedDeclaration,
+                            ...panelDeclaration,
                             blocksLineOfSight: event.target.checked,
                           })
                         }
@@ -1797,7 +1861,7 @@ export function WorldBuildingConcept({
                     </p>
                     {(['width', 'depth', 'offsetX', 'offsetZ'] as const).map(
                       (field) => {
-                        const preview = footprintPreview ?? selectedDeclaration;
+                        const preview = footprintPreview ?? panelDeclaration;
                         const size = field === 'width' || field === 'depth';
                         return (
                           <label key={field}>
@@ -1830,7 +1894,7 @@ export function WorldBuildingConcept({
                       }
                     )}
                   </>
-                )}
+                ) : null}
               </div>
             )}
             {selectedProp && (

@@ -85,6 +85,12 @@ export interface WorldBuildingViewportProps {
   onTransformCommit: (scene: WorldScene) => void;
   onTransformReject: (message: string) => void;
   onAssetState: (id: string, state: 'loaded' | 'error') => void;
+  /** Every placed prop's measured world bounds, reported as each one loads.
+   * The composition guide aggregates these; the builder also seeds an authored
+   * movement/sight footprint from them (`declarationFootprint.ts`), so an
+   * author's blocker starts the size of the mesh instead of 1×1. Reported in
+   * world units by both model loaders. */
+  onMeasuredBounds?: (id: string, measurement: MeasuredWorldPropBounds) => void;
   roomAuthoring?: {
     tool:
       | 'select'
@@ -523,8 +529,11 @@ export function WorldSceneContents(
         next.set(id, measurement);
         return next;
       });
+      // Reported upward as well as kept locally: the guide needs the
+      // aggregate, and the declaration editor needs one prop's own size.
+      props.onMeasuredBounds?.(id, measurement);
     },
-    []
+    [props.onMeasuredBounds]
   );
   const guideBounds = useMemo(
     () => compositionGuideBounds(displayScene, measuredById),
