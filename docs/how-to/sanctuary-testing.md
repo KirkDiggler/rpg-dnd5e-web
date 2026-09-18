@@ -1,7 +1,7 @@
 # Testing Sanctuary
 
 This web branch targets API PR #1007, local image `rpg-api:sanctuary-1006`
-(commit `8da02bcf018fdd6f7398e57df606e7568bf3ae8a`). Its four Toolkit providers
+(commit `d1717ba2e409f0ac0651782b7f559ccd8b5a9d98`). Its four Toolkit providers
 are development pins, not released versions. Do not use an arbitrary `dev` API
 image and assume it contains Sanctuary.
 
@@ -32,19 +32,26 @@ Use the Envoy port of that stack if it is not 8080. Open the URL Vite prints
 2. Enter a test session. Cast Sanctuary using its offered target selection.
    Check the authoritative slot, bonus action and concentration/condition state.
    The current provider models Sanctuary as a touch spell with concentration.
-3. Make a weapon attack against the protected creature. On a failed ward save,
+3. The protected recipient must immediately show Sanctuary Immune. After the
+   next turn refresh, try Sanctuary on that recipient again: the target must
+   be unavailable with a cooldown reason. Refusal must spend no bonus action
+   or slot. Another caster must also be blocked from reapplying it.
+   Ending the ward must leave this cooldown in place; it expires after 20
+   recipient turn ends, with progress retained across reloads.
+4. Make a weapon attack against the protected creature. On a failed ward save,
    Story says the ward blocked the attack and shows the **attacker's** ability,
    roll, total, DC and warding caster. No normal attack die, miss or damage is
    fabricated. Action availability refreshes.
-4. Try a hostile spell against a protected creature. A failed ward save names
+5. Try a hostile spell against a protected creature. A failed ward save names
    the **hostile caster**, not the target, as the saver. The response notice
    lists only warded targets; neighboring target results remain independent.
    Sacred Flame is suitable for this test. Casting Bane from the same Cleric
    would replace their Sanctuary concentration before the ward test.
-5. Repeat until a ward save passes; ordinary provider attack/spell results must
+6. Repeat until a ward save passes; ordinary provider attack/spell results must
    continue through their existing presentation. No client-side save arithmetic
-   or success inference is used.
-6. Reload/reconnect and compare recovered Story and Debug with the live facts.
+   or success inference is used. Passing the save must not grant the attacker
+   Sanctuary Immune.
+7. Reload/reconnect and compare recovered Story and Debug with the live facts.
    Confirm the protected target's HP and the acting player's spent resources.
 
 Ward saves use the existing saving-throw dice presentation, attributed to the
