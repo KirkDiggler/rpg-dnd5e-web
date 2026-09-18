@@ -26,6 +26,9 @@ import {
   clearRoomPartyStart,
   createRoomDraft,
   expandRoomWorkspace,
+  FOOTPRINT_MAXIMUM_EXTENT,
+  FOOTPRINT_MAXIMUM_OFFSET,
+  FOOTPRINT_MINIMUM_EXTENT,
   loadRoomDraft,
   moveRoomMonster,
   parseRoomDraftJson,
@@ -1871,8 +1874,16 @@ export function WorldBuildingConcept({
                             <input
                               type="range"
                               aria-label={`Footprint ${field}`}
-                              min={size ? 0.25 : -3}
-                              max={size ? 6 : 3}
+                              min={
+                                size
+                                  ? FOOTPRINT_MINIMUM_EXTENT
+                                  : -FOOTPRINT_MAXIMUM_OFFSET
+                              }
+                              max={
+                                size
+                                  ? FOOTPRINT_MAXIMUM_EXTENT
+                                  : FOOTPRINT_MAXIMUM_OFFSET
+                              }
                               step={0.05}
                               value={preview.footprint[field]}
                               onChange={(event) =>
