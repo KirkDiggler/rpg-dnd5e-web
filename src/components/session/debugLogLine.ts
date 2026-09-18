@@ -487,6 +487,34 @@ export function formatDebugLine(
     // questions (rpg-project#463). It is a faction id rather than a member id,
     // so it is deliberately NOT in `ids`: nothing resolves it to a display name
     // and hovering it would offer an id lookup that cannot answer.
+    // A ROUTED WALK THAT MOVED NOBODY (rpg-project#465, from Kirk's walk).
+    // The world clock charges a round per driven creature whether or not
+    // anybody moves, and before this beat that round was narrated as nothing
+    // at all — a reader could not tell a creature nobody asked from one that
+    // refused from one sent somewhere it could not reach.
+    //
+    // `cause` IS A REF AND IS PRINTED RAW: `encounter:table:toward` says the
+    // creature was walking under its own orders, and a spell's ref says
+    // something else. This log neither parses it nor prettifies it, so a
+    // router nobody has written yet still reads correctly here.
+    //
+    // `why` IS THE ROUTE'S OWN SENTENCE, verbatim — the fold's refusal phrase.
+    // It is prose, which this log otherwise keeps out, and it is here because
+    // it is the ONLY account of where the walk stopped; the story log has
+    // none. EMPTY IS PRINTED AS EMPTY and is the commonest case: the route had
+    // nowhere strictly nearer to offer, which is a reason rather than a
+    // blocker it could name. Omitting the field when empty would hide the
+    // difference between the two.
+    case 'stayed': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text:
+          `${prefix} stayed member=${name(b.member)} cause=${b.cause} ` +
+          `why=${quoteDebugString(b.why)}`,
+      };
+    }
     case 'tempered': {
       const b = event.body.value;
       return {

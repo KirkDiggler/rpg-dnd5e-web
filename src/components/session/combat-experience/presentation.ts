@@ -1257,6 +1257,23 @@ const EXPECTED_OTHER_KIND = {
   // nothing anywhere saying why.
   persuaded: EventKind.PERSUADED,
   answered: EventKind.ANSWERED,
+  // A SANCTUARY-STYLE WARD STOPPED AN ATTACK, and its Cast sibling. THESE ARE
+  // NOT THIS WAVE'S BEATS: they arrive with the protos v0.1.202 pin the
+  // creature's table needed, from the ward slice, and this file's index guard
+  // makes every new body a decision somebody has to write down.
+  //
+  // LISTED RATHER THAN EXCLUDED, which is the difference that matters. Each
+  // carries a real roll — the attacker's own failed save against the warding
+  // caster's DC — so excluding them before the index, the way `sighted` and
+  // `tempered` are excluded, would assert they are not story, and that is a
+  // claim about somebody else's slice that nobody here is entitled to make.
+  // Listed, the kind/body pairing is still checked and the beat is accepted.
+  //
+  // NO STORY ROW YET, on `doorRevealed`'s precedent below: the ward slice's
+  // own consumer change owns what a warded attack reads like, and guessing it
+  // here would be a sentence the engine never asked for.
+  warded: EventKind.WARDED,
+  castWarded: EventKind.CAST_WARDED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1333,6 +1350,19 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // time words `answered` now carries. Excluded HERE rather than by leaving a
   // hole in the table, so the exclusion is a decision on the page.
   if (bodyCase === 'tempered') {
+    return undefined;
+  }
+  // A SPENT ROUND IN WHICH NOTHING MOVED IS NOT STORY EITHER, and is excluded
+  // by name for `tempered`'s reason (rpg-project#465, from Kirk's walk). The
+  // beat carries the route's own refusal phrase, which is debug prose — the
+  // debug line prints the whole of it — and a story row saying a creature
+  // stood still would fire on every blocked step of every driven walk, burying
+  // the rounds where something did happen.
+  //
+  // NARRATING IT IS THE SAME SLICE AS THE REST, filed as rpg-dnd5e-web#1119
+  // beside the time words and the Tempered beat. Excluded HERE rather than by
+  // leaving a hole in the table, so the exclusion is a decision on the page.
+  if (bodyCase === 'stayed') {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
@@ -1700,8 +1730,13 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
         reason: event.body.value.reason,
       });
+    // The reveals, plus the two WARD beats accepted and not narrated — see
+    // their entry in EXPECTED_OTHER_KIND above for why this file answers for
+    // them at all and why the answer stops here.
     case 'doorRevealed':
     case 'regionRevealed':
+    case 'warded':
+    case 'castWarded':
       return undefined;
   }
 }

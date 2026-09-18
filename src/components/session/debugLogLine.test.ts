@@ -1063,6 +1063,58 @@ describe('formatDebugLine', () => {
     expect(line.text).toContain('entry=-1 ');
   });
 
+  it("a stayed beat prints the cause and the route's own sentence", () => {
+    // A ROUTED WALK THAT MOVED NOBODY (rpg-project#465, from Kirk's walk). The
+    // world clock charges a round per driven creature whether or not anybody
+    // moves, and this beat is the whole account of one that spent it standing
+    // still.
+    //
+    // THE CAUSE IS A REF AND IS PRINTED RAW. `encounter:table:away` says the
+    // creature was walking under its own orders; a spell's ref says something
+    // else. This log neither parses nor prettifies it.
+    const event = baseEvent({
+      kind: EventKind.STAYED,
+      body: {
+        case: 'stayed',
+        value: {
+          member: 'skeleton-1',
+          cause: 'encounter:table:away',
+          why: 'is blocked by dnd5e:props:pillar',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('stayed member=Skeleton');
+    expect(line.text).toContain('cause=encounter:table:away');
+    expect(line.text).toContain('why="is blocked by dnd5e:props:pillar"');
+  });
+
+  it('a stayed beat with no reason prints an empty why rather than dropping it', () => {
+    // EMPTY IS THE COMMONEST CASE, NOT THE EDGE: the route had nowhere
+    // strictly nearer to offer — a creature already standing where it was
+    // sent, or one with no cell closer than the one it is on. That is a reason
+    // rather than a blocker it could name.
+    //
+    // SO THE FIELD STAYS ON THE LINE. Omitting it when empty would hide the
+    // difference between "nowhere better to go" and "blocked by a pillar", and
+    // inventing a phrase would be this client narrating.
+    const event = baseEvent({
+      kind: EventKind.STAYED,
+      body: {
+        case: 'stayed',
+        value: {
+          member: 'skeleton-1',
+          cause: 'encounter:table:toward',
+          why: '',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('cause=encounter:table:toward');
+    expect(line.text).toContain('why=""');
+  });
+
   it('a tempered beat prints the deal, and names the faction that threw it', () => {
     // WHICH GOBLIN CAME OUT THE COWARD (rpg-project#465 §3). The mix belongs
     // to the FACTION, so the faction threw the die and the member is who the

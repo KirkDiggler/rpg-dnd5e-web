@@ -41,6 +41,24 @@ export function refreshKeysFor(
     case 'struck':
     case 'missed':
       return ['characterData', 'afford', 'view'];
+    // A WARD STOPPED AN ATTACK BEFORE ANY ROLL AGAINST THE TARGET, and its
+    // Cast sibling. NOT THIS WAVE'S BEATS: they arrive with the protos
+    // v0.1.202 pin the creature's table needed, and this switch is exhaustive
+    // on body case, so they cannot be left unanswered.
+    //
+    // THE SAME ROW AS `missed`, deliberately, because that is what a warded
+    // attack IS from this client's side: an attempt that did not land. The
+    // attacker still spent the action Afford priced, so their card and what
+    // they may still declare both moved.
+    //
+    // POSSIBLY ONE READ MORE THAN IT NEEDS, and this file already says that
+    // trade is the right way round: "One wasted read is cheaper than a stale
+    // action bar." The ward slice's own consumer change may narrow it; what it
+    // must not be is silently empty, which would leave an action bar showing a
+    // spent attack as still available.
+    case 'warded':
+    case 'castWarded':
+      return ['characterData', 'afford', 'view'];
     case 'activationResult':
       return event.body.value.result.case === 'stabilized'
         ? ['characterData', 'afford', 'turn', 'view']
@@ -216,6 +234,14 @@ export function refreshKeysFor(
     // purpose, so a new body has to be a decision somebody wrote down rather
     // than a beat that silently refetches nothing.
     case 'tempered':
+      return [];
+    // NOBODY MOVED, SO NOTHING CACHED MOVED EITHER (rpg-project#465). A
+    // routed walk that found no path spent its round on the cell it started
+    // on: no position changed, no action was spent, no stance folded, and no
+    // sight was gained or lost. `view` is the tempting one and is deliberately
+    // absent — refetching the scene because a creature did NOT move would be
+    // work for the one beat that guarantees the scene is unchanged.
+    case 'stayed':
       return [];
     case 'looted':
     case 'activated':
