@@ -1274,6 +1274,13 @@ const EXPECTED_OTHER_KIND = {
   // here would be a sentence the engine never asked for.
   warded: EventKind.WARDED,
   castWarded: EventKind.CAST_WARDED,
+  // The creature's table's own two (rpg-project#465). LISTED, so the
+  // kind/body pairing is checked and the beat is accepted, and given no story
+  // row below — narrating them is rpg-dnd5e-web#1122. They are quiet rather
+  // than accused because [SILENT_OTHER_BODIES] names them; see it for why the
+  // diagnostic could not tell a decision from a defect.
+  tempered: EventKind.TEMPERED,
+  stayed: EventKind.STAYED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1315,6 +1322,68 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.SIGHTED,
 ]);
 
+// Body cases this layer deliberately gives NO STORY ROW, so that
+// `acceptStreamEvent` can drop them in silence rather than diagnosing them.
+//
+// THE DIAGNOSTIC WAS LYING ABOUT THEM (found on Kirk's walk, rpg-project#465).
+// `relevantOtherEvent` answers `undefined` for two unrelated reasons — a
+// genuine kind/body MISMATCH, which is a defect worth saying out loud, and a
+// decision that this beat is not story — and the caller could not tell them
+// apart, so it printed "typed event kind/body mismatch ignored" after every
+// well-formed `tempered`. A debug feed that cries defect on a correct beat
+// teaches a reader to ignore it, which costs the one time it is right.
+//
+// TWO REASONS TO BE IN HERE, and they are different claims:
+//   - `tempered` and `stayed` are NOT STORY. A mix dealt at the door, before
+//     the party has met anybody, and a round in which nothing moved: the debug
+//     line carries both in full, and narrating them is rpg-dnd5e-web#1122.
+//   - `warded` and `castWarded` are NOT THIS WAVE'S. They arrive with the
+//     protos v0.1.202 pin and they carry a real roll, so "not story" is a
+//     claim about the ward slice nobody here may make. They are listed in
+//     EXPECTED_OTHER_KIND so the pairing is still checked, and they are here
+//     only so an accepted-but-unnarrated beat is quiet rather than accused.
+//
+// WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed` and
+// `regionRevealed` have the identical shape and produce the identical false
+// warning on `dev` today, unchanged by this branch — `sighted` at the early
+// return below, the reveals in the switch's last arm. They are pre-existing
+// and not this PR's to move; adding them would be a fix nobody asked for
+// riding in on a pin bump. One line each when somebody wants it.
+const SILENT_OTHER_BODIES = [
+  'tempered',
+  'stayed',
+  'warded',
+  'castWarded',
+] as const satisfies readonly (keyof typeof EXPECTED_OTHER_KIND)[];
+
+type SilentOtherBody = (typeof SILENT_OTHER_BODIES)[number];
+
+/** Narrows a body case to one this layer deliberately does not narrate, so the
+ * kind lookup below is an indexed read rather than a cast. Listing a body here
+ * that EXPECTED_OTHER_KIND does not know is a type error, which is what keeps
+ * the two lists from drifting apart. */
+function isSilentBody(bodyCase: string): bodyCase is SilentOtherBody {
+  return (SILENT_OTHER_BODIES as readonly string[]).includes(bodyCase);
+}
+
+// isSilentOtherEvent is a WELL-FORMED beat this layer chose not to narrate:
+// its body is one of [SILENT_OTHER_BODIES] and its kind is the one that body
+// is supposed to arrive under.
+//
+// THE PAIRING IS CHECKED HERE TOO, and that is the whole reason this is a
+// function rather than a set lookup at the call site. Silencing on the body
+// case alone would also swallow a `tempered` body arriving under some other
+// kind — a genuine mismatch, and exactly the defect the diagnostic exists to
+// catch. Not narrating a beat is a decision about a CORRECT beat; a malformed
+// one is still somebody's bug and still says so.
+function isSilentOtherEvent(event: Event): boolean {
+  const bodyCase = event.body.case;
+  if (bodyCase === undefined || !isSilentBody(bodyCase)) {
+    return false;
+  }
+  return event.kind === EXPECTED_OTHER_KIND[bodyCase];
+}
+
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   const bodyCase = event.body.case;
   if (bodyCase === undefined) {
@@ -1337,32 +1406,6 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
   if (bodyCase === 'sighted') {
-    return undefined;
-  }
-  // A DEALT TEMPERAMENT IS NOT STORY EITHER, and is absent from
-  // EXPECTED_OTHER_KIND for `sighted`'s reason rather than by oversight
-  // (rpg-project#465 §3). A faction's mix is thrown at the door, before the
-  // party has met anybody, and "this goblin came out the coward" is a fact
-  // about how the world was built rather than a thing that happened in front
-  // of anyone. The streamer reads it in the debug log, where the whole die is.
-  //
-  // NARRATING IT IS ITS OWN SLICE, filed as rpg-dnd5e-web#1122 beside the four
-  // time words `answered` now carries. Excluded HERE rather than by leaving a
-  // hole in the table, so the exclusion is a decision on the page.
-  if (bodyCase === 'tempered') {
-    return undefined;
-  }
-  // A SPENT ROUND IN WHICH NOTHING MOVED IS NOT STORY EITHER, and is excluded
-  // by name for `tempered`'s reason (rpg-project#465, from Kirk's walk). The
-  // beat carries the route's own refusal phrase, which is debug prose — the
-  // debug line prints the whole of it — and a story row saying a creature
-  // stood still would fire on every blocked step of every driven walk, burying
-  // the rounds where something did happen.
-  //
-  // NARRATING IT IS THE SAME SLICE AS THE REST, filed as rpg-dnd5e-web#1119
-  // beside the time words and the Tempered beat. Excluded HERE rather than by
-  // leaving a hole in the table, so the exclusion is a decision on the page.
-  if (bodyCase === 'stayed') {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
@@ -1730,13 +1773,16 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
         reason: event.body.value.reason,
       });
-    // The reveals, plus the two WARD beats accepted and not narrated — see
-    // their entry in EXPECTED_OTHER_KIND above for why this file answers for
-    // them at all and why the answer stops here.
+    // The reveals, the two WARD beats, and the creature's table's own two —
+    // every body this file accepts and does not narrate. See their entries in
+    // EXPECTED_OTHER_KIND above for why each is here and why the answer stops
+    // at acceptance.
     case 'doorRevealed':
     case 'regionRevealed':
     case 'warded':
     case 'castWarded':
+    case 'tempered':
+    case 'stayed':
       return undefined;
   }
 }
@@ -1811,6 +1857,14 @@ function acceptStreamEvent(
     );
   }
   if (authority) return acceptAttackEvent(state, fact, authority);
+
+  // A BEAT WE CHOSE NOT TO NARRATE IS NOT A DEFECT, and must not be reported
+  // as one (found on Kirk's walk, rpg-project#465). The raw feed already holds
+  // it — appendRawDebug ran at the top of this function — so dropping it here
+  // loses nothing and keeps the diagnostic meaning what it says.
+  if (isSilentOtherEvent(fact.event)) {
+    return state;
+  }
 
   const relevantFacts = relevantOtherEvent(fact.event);
   if (!relevantFacts) {
