@@ -131,6 +131,13 @@ const storage = {
 
 const savePuts = () => rpc.puts.filter((put) => !put.validateOnly);
 
+/** Walk the route's destination nav (web#1152): saving, loading, snapshots and
+ * publishing live in the Library; the room document's identity lives on The
+ * site; building stays on Rooms; the composer is its own editor. */
+const goTo = (
+  destination: 'Rooms' | 'Prop compositions' | 'The site' | 'Library'
+) => fireEvent.click(screen.getByRole('button', { name: destination }));
+
 beforeEach(() => {
   rpc.reset();
   storage.values.clear();
@@ -147,7 +154,8 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Scene name' }), {
+    goTo('The site');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Room name' }), {
       target: { value: 'Unexported room work' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
@@ -163,7 +171,7 @@ describe('WorldBuilderWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
-      (screen.getByRole('textbox', { name: 'Scene name' }) as HTMLInputElement)
+      (screen.getByRole('textbox', { name: 'Room name' }) as HTMLInputElement)
         .value
     ).toBe('Unexported room work');
     expect(onBack).not.toHaveBeenCalled();
@@ -211,6 +219,74 @@ describe('WorldBuilderWorkspace', () => {
     ).toBeNull();
   });
 
+  it('separates building from saving: the room screen carries no save/load, the Library does', () => {
+    render(
+      <WorldBuilderWorkspace
+        compositionSource={source}
+        storage={storage}
+        onBack={vi.fn()}
+        characterId="char-1"
+        onPlay={vi.fn()}
+      />
+    );
+
+    // Rooms is building: tools, palette, canvas, the selected thing's
+    // declarations, and the actors. No save/load in the chrome.
+    expect(
+      screen.getByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Room setup' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Back to main menu' })
+    ).toBeTruthy();
+    for (const name of ['Save room draft', 'Reload room draft', 'New room']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.queryByRole('region', { name: 'Publish room' })).toBeNull();
+    expect(screen.queryByText('Arrangement library')).toBeNull();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+
+    // The Library is a place you go: saving, loading, snapshots,
+    // arrangements — and the server publish.
+    goTo('Library');
+    expect(
+      screen.getByRole('button', { name: 'Save room draft' })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Reload room draft' })
+    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Publish room' })).toBeTruthy();
+    expect(screen.getByText('Arrangement library')).toBeTruthy();
+    expect(screen.getByLabelText('Portable JSON')).toBeTruthy();
+    expect(
+      screen.queryByRole('region', { name: 'Room Authoring Draft' })
+    ).toBeNull();
+
+    // The site is the scope that belongs to no single selection: identity
+    // here, and no select-then-declare panel.
+    goTo('The site');
+    expect(screen.getByRole('region', { name: 'Site identity' })).toBeTruthy();
+    expect(screen.getByLabelText('Room name')).toBeTruthy();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+
+    // The composer keeps its own screen, chrome and libraries: the design
+    // leaves it as it already is.
+    goTo('Prop compositions');
+    fireEvent.click(screen.getByRole('button', { name: 'Switch editor' }));
+    expect(
+      screen.getByRole('region', { name: 'World Building Concept' })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Save local draft' })
+    ).toBeTruthy();
+    expect(screen.getByText('Arrangement library')).toBeTruthy();
+    // The composer keeps its own save verbs too: no room snapshot button
+    // appears in its panel under a room's name.
+    expect(
+      screen.queryByRole('button', { name: 'Save room snapshot to world' })
+    ).toBeNull();
+  });
+
   it('renders publishing controls only when the route injects a play capability', () => {
     render(
       <WorldBuilderWorkspace
@@ -220,6 +296,7 @@ describe('WorldBuilderWorkspace', () => {
         onPlay={vi.fn()}
       />
     );
+    goTo('Library');
     expect(screen.getByRole('region', { name: 'Publish room' })).toBeTruthy();
     expect(
       (screen.getByRole('button', { name: 'Save & Play' }) as HTMLButtonElement)
@@ -233,6 +310,7 @@ describe('WorldBuilderWorkspace', () => {
     render(
       <WorldBuilderWorkspace compositionSource={source} storage={storage} />
     );
+    goTo('Library');
     expect(screen.queryByRole('region', { name: 'Publish room' })).toBeNull();
   });
 
@@ -249,6 +327,7 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
+    goTo('Library');
     // A debounced preview may finish before the user's save on a busy CI
     // runner. Exercise that ordering rather than relying on fast execution.
     await waitFor(() => expect(rpc.puts).toHaveLength(1));
@@ -321,6 +400,7 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
     await waitFor(() => expect(rpc.gets).toHaveLength(1));
     rpc.gets[0]!.deferred.reject(

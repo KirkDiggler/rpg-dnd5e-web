@@ -25,6 +25,29 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Destinations — separate by task, not by document (#1152)
+
+The World Builder route has four destinations: **Rooms** (building — tools,
+palette, canvas, the selected thing's declarations, and the actors),
+**Prop compositions** (its own screen, unchanged), **The site** (a document
+section for the scope belonging to no single selection — identity today;
+factions, temperament mixes and dispositions next), and **Library** (saving,
+loading, snapshots, arrangements, and the server publish — a place you go).
+
+`Rooms`, `The site` and `Library` are surfaces of **one** rooms-editor
+instance, so going to the Library and back keeps the live draft and its undo
+history; only `Prop compositions` is a different editor, and switching between
+the two editors still asks first. The room chrome carries no save/load control:
+the room-building header keeps one `role="status"` readout, and only when the
+draft is _not_ being autosaved (a world snapshot is open, or the stored bytes
+could not be read). The concepts mount at `?concept=room-authoring` owns its own
+destination nav, because it has no route to inject one.
+
+The placement anchor and the composition-bounds guide are the **composer's**
+vocabulary: while a room is being built, neither the legend, the
+`Show composition bounds` control, nor the meshes are rendered (design
+`ideas/site-authoring/design.md` §UI surfaces, violation 3).
+
 ## Boundary and promoted mount
 
 The same editor implementation has two mounts:
@@ -43,10 +66,11 @@ or gameplay behavior.
 
 The first-run scene is blank and the author-created arrangement library is
 empty. Hex lines use the shared hex math and are visible only as scale/planning
-references. They are not placement slots. The highlighted X0/Z0 hex marks the
-composition placement anchor, while a separate orange box encloses the loaded
-props' measured visual bounds. Both are non-interactive visual guides; the box
-is not a mechanical footprint and neither guide changes authored transforms.
+references. They are not placement slots. In the **composer**, the highlighted
+X0/Z0 hex marks the composition placement anchor, while a separate orange box
+encloses the loaded props' measured visual bounds. Both are non-interactive
+visual guides; the box is not a mechanical footprint and neither guide changes
+authored transforms. Room mode renders neither guide (see Destinations).
 
 ## Proved behavior
 

@@ -57,6 +57,13 @@
   overflow: hidden;
 }
 
+/* The destination nav the local-only concept mount owns; the route renders
+ * its own above the shell instead (rpg-dnd5e-web#1152). */
+.wb-destination-nav {
+  border-bottom: 1px solid #33504d;
+  background: #0c1718;
+}
+
 .wb-mode-pane-hidden {
   display: none;
 }
@@ -203,6 +210,65 @@
     );
 }
 
+/* The site and the Library (rpg-dnd5e-web#1152). A destination you go to,
+ * with document-shaped sections instead of the build workspace. Their
+ * columns reuse `.wb-panel` for field/section styling. */
+.wb-surface {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: auto;
+  padding: 0.9rem;
+  background: var(--wb-bg);
+  scrollbar-color: #416561 transparent;
+  scrollbar-width: thin;
+}
+
+.wb-surface-columns {
+  display: grid;
+  align-items: start;
+  gap: 0.9rem;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr);
+}
+
+.wb-surface-column {
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+}
+
+.wb-document-facts {
+  display: grid;
+  gap: 0.25rem 0.75rem;
+  margin: 0.6rem 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.wb-document-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid #283c3a;
+  padding-bottom: 0.2rem;
+}
+
+.wb-document-facts dt {
+  color: var(--wb-muted);
+  font-size: 0.68rem;
+}
+
+.wb-document-facts dd {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+/* The one building-surface status kept in the chrome: a world snapshot open
+ * here is not locally autosaved, so saying nothing would be a silent loss. */
+.wb-save-alert {
+  color: #f9d989;
+  font-size: 0.68rem;
+}
+
 .wb-panel {
   min-width: 0;
   overflow: auto;
@@ -242,7 +308,7 @@
 }
 
 .wb-library-heading h3 {
-  margin: 0;
+  margin: 0 auto 0 0;
 }
 
 .wb-library-error {
@@ -371,6 +437,13 @@
 .wb-tool-strip > span {
   color: #f9d989;
   font-size: 0.64rem;
+}
+
+/* Canvas extent is a canvas control, so it sits with the tools rather than
+ * in the room chrome (rpg-dnd5e-web#1152). */
+.wb-workspace-size {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .wb-stage-bar {

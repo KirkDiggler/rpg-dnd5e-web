@@ -27,6 +27,12 @@ import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
 
+/** Walk the room's destination nav the way an author does (web#1152).
+ * Save/load and the libraries live on `Library`; the document's identity lives
+ * on `The site`; building stays on `Rooms`. */
+const goTo = (destination: 'Rooms' | 'The site' | 'Library') =>
+  fireEvent.click(screen.getByRole('button', { name: destination }));
+
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
 }));
@@ -1321,6 +1327,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // The saved-room list and open action are labeled by the authored visible
     // scene name, not the stored room metadata name.
+    goTo('Library');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Tavern Cellar' })
     );
@@ -1359,6 +1366,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
     const openRemote = async () => {
+      goTo('Library');
       fireEvent.click(
         await screen.findByRole('button', { name: 'Open Remote Cellar' })
       );
@@ -1371,6 +1379,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       );
     };
     const expectLocalAutosave = async () => {
+      goTo('Rooms');
       fireEvent.click(
         screen.getByRole('button', { name: 'Commit rectangle gesture' })
       );
@@ -1441,6 +1450,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={source}
       />
     );
+    goTo('Library');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Cellar' })
     );
@@ -1504,6 +1514,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={oldSource}
       />
     );
+    goTo('Library');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Old Cellar' })
     );
@@ -1684,7 +1695,9 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     await waitFor(() =>
       expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBeTruthy()
     );
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    goTo('Rooms');
     expect(scene()).toEqual(secondRun);
   });
 
@@ -1743,6 +1756,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
 
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1796,6 +1810,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // Only an explicit valid save replaces them, and it writes v3 to the
     // current key alone; legacy bytes are never removed or rewritten.
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1854,6 +1869,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
 
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/);
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
@@ -2180,6 +2196,7 @@ describe('room actor authoring', () => {
 
     // Export → import is a lossless whole-draft transfer: actor identities
     // are the stable join, never reminted.
+    goTo('Library');
     fireEvent.click(
       screen.getByRole('button', { name: 'Export room draft JSON' })
     );
@@ -2190,11 +2207,14 @@ describe('room actor authoring', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Import room draft JSON' })
     );
+    goTo('Rooms');
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
 
     // Reload restores the autosaved bytes with the same actor identities.
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    goTo('Rooms');
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
   });
@@ -2273,6 +2293,7 @@ describe('WorldBuildingConcept room publishing', () => {
         roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
       />
     );
+    goTo('Library');
     const oldKey = (
       screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement
     ).value;
@@ -2335,6 +2356,7 @@ describe('WorldBuildingConcept room publishing', () => {
       1
     );
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    goTo('Rooms');
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(publishedDraft()).toEqual(original);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
@@ -2351,16 +2373,18 @@ describe('WorldBuildingConcept room publishing', () => {
         idFactory={deterministicIds()}
       />
     );
-    fireEvent.change(screen.getByLabelText('Scene name'), {
+    goTo('The site');
+    fireEvent.change(screen.getByLabelText('Room name'), {
       target: { value: 'Renamed by author' },
     });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
+    fireEvent.blur(screen.getByLabelText('Room name'));
 
     const renamed = publishedDraft();
     expect(renamed.name).toBe('Renamed by author');
     expect(renamed.scene.name).toBe('Renamed by author');
 
     // Exactly one Undo restores BOTH names.
+    goTo('Rooms');
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     const restored = publishedDraft();
     expect(restored.name).toBe('Imported room title');
@@ -2402,11 +2426,13 @@ describe('WorldBuildingConcept room publishing', () => {
     // Background validation is already in flight (the derived default key
     // exists) and must NOT freeze editing: the rename below commits while
     // the debounced preview putDungeon is still pending.
-    fireEvent.change(screen.getByLabelText('Scene name'), {
+    goTo('The site');
+    fireEvent.change(screen.getByLabelText('Room name'), {
       target: { value: 'Busy test room' },
     });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
+    fireEvent.blur(screen.getByLabelText('Room name'));
     expect(publishedDraft().name).toBe('Busy test room');
+    goTo('Library');
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
     await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
     publishRpc.gets[0]!.deferred.reject(
@@ -2431,17 +2457,25 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
 
-    // A canvas gesture is refused.
+    // Every source-changing path reachable on this destination is refused.
+    // (The canvas is no longer mounted while the publish surface is up: the
+    // transaction now runs in the Library, so the gesture it used to be
+    // asserted against cannot be produced. `commit`'s guard is unchanged for
+    // the programmatic paths.)
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Reload room draft',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.change(screen.getByLabelText('Portable JSON'), {
+      target: { value: '{"kind":"rpg-room-authoring-draft","version":3}' },
+    });
     fireEvent.click(
-      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+      screen.getByRole('button', { name: 'Import room draft JSON' })
     );
     expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
-
-    // A name edit is refused too.
-    fireEvent.change(screen.getByLabelText('Scene name'), {
-      target: { value: 'Should not apply' },
-    });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
     expect(publishedDraft().name).toBe('Busy test room');
     expect(screen.getByRole('alert').textContent).toMatch(
       /Save & Play is running/

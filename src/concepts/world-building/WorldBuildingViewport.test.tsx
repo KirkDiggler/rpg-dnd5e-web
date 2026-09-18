@@ -220,6 +220,66 @@ describe('room-only workspace floor', () => {
   });
 });
 
+describe('composition guides stay in the composer', () => {
+  it('never draws the X0/Z0 anchor or composition bounds while authoring a room', async () => {
+    const baseProps = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+    };
+    const roomAuthoring = {
+      tool: 'select' as const,
+      workspace: { hexRadius: 6, horizontalLimit: 12 },
+      walkableHexes: [],
+      propDeclarations: {},
+      onWalkableGesture: vi.fn(),
+    };
+
+    // The composer owns the placement anchor and its bounds guide.
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...baseProps} showCompositionBounds />
+    );
+    expect(
+      renderer.scene.findByProps({ name: 'world-building-placement-guides' })
+    ).toBeTruthy();
+
+    // A room has no composition origin: while building, neither the anchor
+    // nor the bounds box is drawn at all (rpg-dnd5e-web#1152, the design's
+    // third observed violation).
+    await renderer.update(
+      <WorldSceneContents
+        {...baseProps}
+        showCompositionBounds
+        roomAuthoring={roomAuthoring}
+      />
+    );
+    for (const name of [
+      'world-building-placement-guides',
+      'world-building-placement-anchor-fill',
+      'world-building-placement-anchor-outline',
+      'world-building-composition-bounds',
+    ]) {
+      expect(renderer.scene.findAllByProps({ name })).toHaveLength(0);
+    }
+    await renderer.unmount();
+  });
+});
+
 describe('room boundary lifetime and floor layering', () => {
   const baseProps = {
     scene: {

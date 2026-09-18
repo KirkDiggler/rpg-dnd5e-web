@@ -868,10 +868,15 @@ export function WorldSceneContents(
       >
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
-      <WorldPlacementGuides
-        bounds={guideBounds}
-        showCompositionBounds={props.showCompositionBounds}
-      />
+      {/* The composition origin and its bounds are prop-composition
+          vocabulary (design §UI surfaces, violation 3). While a room is being
+          built they mean nothing, so they are not drawn at all. */}
+      {!isRoomAuthoring && (
+        <WorldPlacementGuides
+          bounds={guideBounds}
+          showCompositionBounds={props.showCompositionBounds}
+        />
+      )}
       {props.roomAuthoring && (
         <RoomAuthoringDeclarations
           scene={displayScene}
@@ -954,6 +959,10 @@ export function WorldBuildingFog({
 
 export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
   const [showCompositionBounds, setShowCompositionBounds] = useState(true);
+  /** The placement anchor and the composition-bounds guide are the prop
+   * composer's vocabulary. In room authoring they are a leak, so the legend,
+   * the toggle and the meshes are all absent (rpg-dnd5e-web#1152). */
+  const compositionGuides = !props.roomAuthoring;
 
   return (
     <>
@@ -962,23 +971,31 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
         dpr={[1, 1.6]}
         shadows
         data-testid="world-building-canvas"
-        aria-label="World building 3D canvas. The gold X0/Z0 hex is the placement anchor; the optional orange box is the visual composition bounds, not a mechanical footprint. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
+        aria-label={
+          compositionGuides
+            ? 'World building 3D canvas. The gold X0/Z0 hex is the placement anchor; the optional orange box is the visual composition bounds, not a mechanical footprint. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform.'
+            : 'Room authoring 3D canvas. Hexes are slots for the room grid, not free world space. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform.'
+        }
       >
         <WorldSceneContents
           {...props}
           showCompositionBounds={showCompositionBounds}
         />
       </Canvas>
-      <div className="wb-placement-guide-legend" aria-hidden="true">
-        <span>
-          <i className="wb-placement-guide-swatch wb-placement-guide-swatch--anchor" />
-          Placement anchor · X0 / Z0
-        </span>
-      </div>
-      <WorldPlacementGuideControl
-        showCompositionBounds={showCompositionBounds}
-        onShowCompositionBoundsChange={setShowCompositionBounds}
-      />
+      {compositionGuides && (
+        <>
+          <div className="wb-placement-guide-legend" aria-hidden="true">
+            <span>
+              <i className="wb-placement-guide-swatch wb-placement-guide-swatch--anchor" />
+              Placement anchor · X0 / Z0
+            </span>
+          </div>
+          <WorldPlacementGuideControl
+            showCompositionBounds={showCompositionBounds}
+            onShowCompositionBoundsChange={setShowCompositionBounds}
+          />
+        </>
+      )}
     </>
   );
 }
