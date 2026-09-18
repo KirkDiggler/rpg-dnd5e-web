@@ -38,6 +38,11 @@ export function refreshKeysFor(
       return event.body.value.member === member
         ? ['where', 'afford', 'turn']
         : ['view'];
+    case 'warded':
+    case 'castWarded':
+      return ['characterData', 'afford', 'turn', 'view'];
+    case 'tempered':
+      return [];
     case 'struck':
     case 'missed':
       return ['characterData', 'afford', 'view'];
