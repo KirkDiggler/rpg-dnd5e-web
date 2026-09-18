@@ -1,7 +1,9 @@
 // @vitest-environment node
 import {
+  AnswerKey,
   EventKind,
   KeepRule,
+  Temper,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -787,6 +789,23 @@ describe('formatDebugLine', () => {
     expect(line.text).toBe('seq=7 clock=42 kind=SCENE_OPENED body=null');
   });
 
+  it('a TICK renders by name through the bodyless branch, and gets no line of its own', () => {
+    // A WORLD ROUND ADVANCED, and since the creature's table that is when
+    // every standing creature was given time (rpg-project#465 §5). It matters
+    // to somebody reading a walk, which is why this is pinned rather than
+    // left to chance — the beat is already named here.
+    //
+    // NO DEDICATED ARM, DELIBERATELY. EVENT_KIND_TICK carries no typed body on
+    // the wire at all, so there is not one field for an arm to print that this
+    // branch does not already print: a `tick` line could only say `tick`,
+    // which is `kind=TICK` with a shorter spelling. The reading itself lives
+    // in `Event.at`, which every line here carries as `clock=`.
+    const event = baseEvent({ kind: EventKind.TICK });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual([]);
+    expect(line.text).toBe('seq=7 clock=42 kind=TICK body=null');
+  });
+
   it('an UNKNOWN-kind event renders honestly, never decoding payload (a genuine wire signal since v0.1.135, not a catch-up artifact)', () => {
     const event = baseEvent({
       kind: EventKind.UNKNOWN,
@@ -830,23 +849,31 @@ describe('formatDebugLine', () => {
   });
 
   it('an answered beat renders the die, the weights, the entry, the word and the fact', () => {
-    // EVERY FIELD R1 NAMES. `of` is the die SIZE and not the entry count — 70
-    // and 30 is a d100 — and `entry` indexes the AUTHOR's own list, so a
-    // builder can find the line in the file they are looking at.
+    // EVERY FIELD R1 NAMES. `of` is the die SIZE and not the entry count, and
+    // since the creature's table it is in HUNDREDTHS of a weight — 70 and 30
+    // rolls against 10000 — so nothing on this line is a percentage. `entry`
+    // indexes the AUTHOR's own list, so a builder can find the line in the
+    // file they are looking at.
     const event = baseEvent({
       kind: EventKind.ANSWERED,
       body: {
         case: 'answered',
         value: {
           creature: 'skeleton-1',
+          key: AnswerKey.PERSUADE_FAILED,
           verb: 9,
           beaten: true,
-          roll: 83,
-          of: 100,
+          roll: 8300,
+          of: 10000,
           entry: 1,
           word: 2,
           say: 'Boss! BOSS!',
           fact: '',
+          temper: Temper.NONE,
+          candidates: [
+            { entry: 0, weight: 70, percent: 100, loaded: 7000 },
+            { entry: 1, weight: 30, percent: 100, loaded: 3000 },
+          ],
         },
       },
     });
@@ -854,7 +881,7 @@ describe('formatDebugLine', () => {
     expect(line.ids).toEqual(['skeleton-1']);
     expect(line.text).toContain('answered');
     expect(line.text).toContain('verb=PERSUADE');
-    expect(line.text).toContain('roll=83 of=100 entry=1');
+    expect(line.text).toContain('roll=8300 of=10000 entry=1');
     expect(line.text).toContain('word=FLEE');
     // The fact never rides this beat at all — see the scene below.
     expect(line.text).not.toContain('fact=');
@@ -872,14 +899,17 @@ describe('formatDebugLine', () => {
         case: 'answered',
         value: {
           creature: 'skeleton-1',
+          key: AnswerKey.INTIMIDATED,
           verb: 8,
           beaten: true,
-          roll: 42,
-          of: 100,
+          roll: 4200,
+          of: 10000,
           entry: 0,
           word: 1,
           say: 'Fine! FINE.',
           fact: 'goblin-cowed',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 70, percent: 100, loaded: 7000 }],
         },
       },
     });
@@ -888,6 +918,179 @@ describe('formatDebugLine', () => {
     expect(line.text).toContain('word=FACT');
     expect(line.text).not.toContain('fact=');
     expect(line.text).not.toContain('goblin-cowed');
+  });
+
+  it('a TIME pick prints its key, its temperament and the loaded table, and no verb', () => {
+    // THE CREATURE TOOK ITS TURN (rpg-project#465). Nothing spoke and nothing
+    // was beaten, so `verb` and `beaten` are unset on the wire and must be
+    // absent from the line: `verb=UNSPECIFIED beaten=false` would read as a
+    // threat that failed, which is a sentence about an event that never
+    // happened.
+    //
+    // AND THE WHOLE ARITHMETIC IS HERE, line by line. `percent` is the
+    // temperament's multiplier, so a coward's trebled `away` reads ×300 —
+    // which is why the same table under two temperaments produces two
+    // different creatures, and why this log has to show it rather than the
+    // total alone.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 900,
+          of: 1600,
+          entry: 3,
+          word: 6,
+          say: '',
+          fact: '',
+          temper: Temper.COWARD,
+          candidates: [
+            { entry: 0, weight: 3, percent: 300, loaded: 900 },
+            { entry: 3, weight: 1, percent: 700, loaded: 700 },
+          ],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('key=TIME');
+    expect(line.text).toContain('temper=COWARD');
+    expect(line.text).toContain('word=AWAY');
+    expect(line.text).toContain('candidates=[0:3×300=900 3:1×700=700]');
+    expect(line.text).not.toContain('verb=');
+    expect(line.text).not.toContain('beaten=');
+  });
+
+  it('a social pick still prints the deprecated verb and beaten beside the key', () => {
+    // THE COMPATIBILITY HALF. The pair is deprecated by `key` and still filled
+    // on all four social keys, so a reader built against the shipped shape
+    // goes on working — and this line shows both, because the debug log's
+    // whole job is every field on the wire.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.INTIMIDATED,
+          verb: 8,
+          beaten: true,
+          roll: 4200,
+          of: 10000,
+          entry: 0,
+          word: 1,
+          say: 'Fine! FINE.',
+          fact: '',
+          temper: Temper.AGGRESSIVE,
+          candidates: [
+            { entry: 0, weight: 70, percent: 100, loaded: 7000 },
+            { entry: 1, weight: 30, percent: 25, loaded: 750 },
+          ],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('key=INTIMIDATED');
+    expect(line.text).toContain('verb=INTIMIDATE');
+    expect(line.text).toContain('beaten=true');
+    expect(line.text).toContain('temper=AGGRESSIVE');
+    // The quartered `flee` line is the temperament doing its work, visible as
+    // arithmetic rather than as a word: 30 authored, ×25, 750 on the die.
+    expect(line.text).toContain('candidates=[0:70×100=7000 1:30×25=750]');
+  });
+
+  it('an untempered creature prints NONE, never UNSPECIFIED and never SOLDIER', () => {
+    // NONE IS A VALUE, NOT THE ZERO. Having no temperament is a real answer
+    // about a creature; UNSPECIFIED means the producer failed. And SOLDIER is
+    // a different claim again — somebody NAMED that word — even though the two
+    // multiply identically.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 100,
+          of: 100,
+          entry: 0,
+          word: 3,
+          say: '',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 1, percent: 100, loaded: 100 }],
+        },
+      },
+    });
+    expect(formatDebugLine(event, names).text).toContain('temper=NONE');
+  });
+
+  it('a silent table prints an empty candidate list rather than dropping the field', () => {
+    // FAIL CLOSED LOUDLY. A TIME roll where no entry's `when` held put nothing
+    // on the die: the creature was asked and stood there, and the beat says so
+    // with no candidates, a die of zero and an entry of -1. "Nothing was
+    // eligible" is a different fact from "this line forgot a field", so the
+    // empty list is printed.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 0,
+          of: 0,
+          entry: -1,
+          word: 3,
+          say: '',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('candidates=[]');
+    expect(line.text).toContain('word=HOLD');
+    expect(line.text).toContain('entry=-1 ');
+  });
+
+  it('a tempered beat prints the deal, and names the faction that threw it', () => {
+    // WHICH GOBLIN CAME OUT THE COWARD (rpg-project#465 §3). The mix belongs
+    // to the FACTION, so the faction threw the die and the member is who the
+    // word landed on — two separate fields, and this line must not fill one
+    // from the other.
+    //
+    // THE FACTION IS NOT IN `ids`. It is a faction id rather than a member id,
+    // nothing resolves it to a display name, and offering it on hover would be
+    // an id lookup that cannot answer.
+    const event = baseEvent({
+      kind: EventKind.TEMPERED,
+      body: {
+        case: 'tempered',
+        value: {
+          member: 'skeleton-1',
+          temper: Temper.COWARD,
+          roll: 2,
+          of: 4,
+          faction: 'goblins',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('tempered member=Skeleton');
+    expect(line.text).toContain('temper=COWARD');
+    expect(line.text).toContain('roll=2 of=4');
+    expect(line.text).toContain('faction=goblins');
   });
 
   it("keeps the creature's LINE out of the debug log — it is prose, and it is in the story", () => {
@@ -899,14 +1102,17 @@ describe('formatDebugLine', () => {
         case: 'answered',
         value: {
           creature: 'skeleton-1',
+          key: AnswerKey.PERSUADE_FAILED,
           verb: 9,
           beaten: false,
-          roll: 1,
-          of: 1,
+          roll: 100,
+          of: 100,
           entry: 0,
           word: 0,
           say: 'Big talk, for someone standing in my doorway.',
           fact: '',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 1, percent: 100, loaded: 100 }],
         },
       },
     });

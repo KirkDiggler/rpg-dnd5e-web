@@ -1322,6 +1322,19 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   if (bodyCase === 'sighted') {
     return undefined;
   }
+  // A DEALT TEMPERAMENT IS NOT STORY EITHER, and is absent from
+  // EXPECTED_OTHER_KIND for `sighted`'s reason rather than by oversight
+  // (rpg-project#465 §3). A faction's mix is thrown at the door, before the
+  // party has met anybody, and "this goblin came out the coward" is a fact
+  // about how the world was built rather than a thing that happened in front
+  // of anyone. The streamer reads it in the debug log, where the whole die is.
+  //
+  // NARRATING IT IS ITS OWN SLICE, filed as rpg-dnd5e-web#1122 beside the four
+  // time words `answered` now carries. Excluded HERE rather than by leaving a
+  // hole in the table, so the exclusion is a decision on the page.
+  if (bodyCase === 'tempered') {
+    return undefined;
+  }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
 
   switch (bodyCase) {
