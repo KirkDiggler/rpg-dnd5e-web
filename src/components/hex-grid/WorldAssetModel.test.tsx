@@ -34,7 +34,19 @@ const roleFixtures = vi.hoisted(() => {
         { role: 'leaf', node: 'Leaf_West', door: 'west' },
         { role: 'leaf', node: 'Gate_Left', door: 'gate' },
         { role: 'leaf', node: 'Gate_Right', door: 'gate' },
+        { role: 'leaf', node: 'Bridge_Leaf', door: 'bridge' },
         { role: 'above', node: 'Masonry_Above' },
+      ],
+    },
+    cornerRef: 'dnd5e:env:dark-fortress:roles_corner_01',
+    cornerAsset: {
+      ...base,
+      ref: 'dnd5e:env:dark-fortress:roles_corner_01',
+      url: '/models/synty/world-assets/env/dark-fortress/roles-corner.glb',
+      boundsMeters: [4, 3, 4],
+      roles: [
+        { role: 'leaf', node: 'Leaf_East', door: 'a' },
+        { role: 'leaf', node: 'Leaf_West', door: 'b' },
       ],
     },
     missingRef: 'dnd5e:env:dark-fortress:roles_missing_01',
@@ -61,6 +73,9 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
       }
       if (ref === roleFixtures.missingRef) {
         return roleFixtures.missingAsset as unknown as GeneratedWorldAsset;
+      }
+      if (ref === roleFixtures.cornerRef) {
+        return roleFixtures.cornerAsset as unknown as GeneratedWorldAsset;
       }
       return actual.resolveWorldAsset(ref, onDiagnostic);
     },
@@ -97,6 +112,10 @@ vi.mock('@react-three/drei', () => ({
       add('Gate_Left', 1, 2.4, 0.1, 0.5, 1.2, 1);
       add('Gate_Right', 1, 2.4, 0.1, 1.5, 1.2, 1);
       add('Masonry_Above', 4, 0.5, 0.4, 0, 3.25, 0);
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 4), material);
+      bridge.name = 'Bridge_Leaf';
+      bridge.geometry.translate(0, 0.1, 2);
+      scene.add(bridge);
       return { scene };
     }
     const scene = new THREE.Group();
@@ -265,6 +284,7 @@ describe('WorldAssetModel named roles', () => {
       position: [number, number, number];
     }>;
     expect(doors.map((door) => door.id).sort()).toEqual([
+      'bridge',
       'east',
       'gate',
       'west',
@@ -274,6 +294,9 @@ describe('WorldAssetModel named roles', () => {
     ]);
     expect(doors.find((door) => door.id === 'gate')!.position).toEqual([
       0.5, 1.2, 1,
+    ]);
+    expect(doors.find((door) => door.id === 'bridge')!.position).toEqual([
+      0, 0, 0,
     ]);
     await renderer.unmount();
   });
@@ -320,11 +343,57 @@ describe('WorldAssetModel named roles', () => {
     expect(model.instance.getObjectByName('Leaf_East')!.scale.y).toBeCloseTo(1);
     expect(onBoundsMeasured).toHaveBeenCalledWith({
       minY: 0,
-      maxY: 4.5,
+      maxY: 4 + 0.5 * SYNTY_SCALE,
       width: 4,
-      height: 4.5,
+      height: 4 + 0.5 * SYNTY_SCALE,
       depth: 0.4,
     });
+    await renderer.unmount();
+  });
+
+  it('leaves the bounds unchanged when roles have no above part', async () => {
+    const onBoundsMeasured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.cornerRef}
+        position={[0, 0, 0]}
+        heightScale={2}
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    expect(model.instance.scale.y).toBeCloseTo(SYNTY_SCALE);
+    expect(
+      model.instance.getObjectByName('Masonry_Above')!.scale.y
+    ).toBeCloseTo(1);
+    expect(onBoundsMeasured).toHaveBeenCalledWith({
+      minY: 0,
+      maxY: 3,
+      width: 4,
+      height: 3,
+      depth: 4,
+    });
+    await renderer.unmount();
+  });
+
+  it('derives a horizontal hinge for a drawbridge-style leaf', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.ref}
+        position={[0, 0, 0]}
+        openDoors={['bridge']}
+      />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    const leaf = model.instance.getObjectByName('Bridge_Leaf')!;
+    const axis = new THREE.Vector3(
+      leaf.quaternion.x,
+      leaf.quaternion.y,
+      leaf.quaternion.z
+    ).normalize();
+    expect(Math.abs(axis.x)).toBeCloseTo(1, 2);
+    expect(axis.y).toBeCloseTo(0, 2);
+    expect(axis.z).toBeCloseTo(0, 2);
     await renderer.unmount();
   });
 

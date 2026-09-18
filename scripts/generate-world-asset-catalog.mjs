@@ -350,10 +350,15 @@ export function renderWorldAssetCatalogModule({ commit, catalog }) {
       ];
       if (asset.roles) pairs.push(['roles', asset.roles]);
       return `  ${q(asset.ref)}: Object.freeze({\n${pairs
-        .map(
-          ([key, value]) =>
-            `    ${key}: ${q(value)}${key === 'boundsMeters' ? ' as [number, number, number]' : ''},`
-        )
+        .map(([key, value]) => {
+          const assertion =
+            key === 'boundsMeters'
+              ? ' as [number, number, number]'
+              : key === 'roles'
+                ? " as GeneratedWorldAsset['roles']"
+                : '';
+          return `    ${key}: ${q(value)}${assertion},`;
+        })
         .join('\n')}\n  }),`;
     })
     .join('\n');

@@ -183,6 +183,23 @@ describe('world asset catalog generator', () => {
     expect(generated).toContain("'frame'");
     expect(generated).toContain("'above'");
     expect(generated.match(/roles:/g)).toHaveLength(1);
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), 'node_modules', 'typescript', 'bin', 'tsc'),
+        '--noEmit',
+        '--strict',
+        '--skipLibCheck',
+        '--target',
+        'es2022',
+        '--module',
+        'esnext',
+        '--moduleResolution',
+        'bundler',
+        fixture.output,
+      ],
+      { cwd: fixture.root, stdio: 'pipe' }
+    );
 
     const without = makeFixture();
     generateWorldAssetCatalog({

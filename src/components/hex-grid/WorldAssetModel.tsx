@@ -71,6 +71,64 @@ interface MissingRoleNode {
 
 const OPEN_ANGLE = Math.PI / 2;
 
+/** Bounding box of a node's geometry expressed in its parent's frame. */
+function parentFrameBounds(node: THREE.Object3D): THREE.Box3 {
+  const parent = node.parent;
+  if (!parent) return new THREE.Box3().setFromObject(node);
+  parent.updateWorldMatrix(true, false);
+  const toParent = parent.matrixWorld.clone().invert();
+  const world = new THREE.Box3().setFromObject(node);
+  const box = new THREE.Box3();
+  const corner = new THREE.Vector3();
+  for (const x of [world.min.x, world.max.x]) {
+    for (const y of [world.min.y, world.max.y]) {
+      for (const z of [world.min.z, world.max.z]) {
+        box.expandByPoint(corner.set(x, y, z).applyMatrix4(toParent));
+      }
+    }
+  }
+  return box;
+}
+
+/**
+ * Derive a leaf's hinge axis from its own hierarchy: the panel's thinnest
+ * dimension is its normal, and the hinge is the remaining principal axis the
+ * pivot does not sit on as a boundary — or the longer one when the pivot sits
+ * at a corner (an upright door's hinge edge meets the floor there). This is
+ * what lets a horizontal-hinged asset (drawbridge) swing without a new role.
+ */
+function deriveHingeAxis(
+  node: THREE.Object3D,
+  parent: THREE.Object3D
+): THREE.Vector3 {
+  const box = parentFrameBounds(node);
+  const size = box.getSize(new THREE.Vector3());
+  parent.updateWorldMatrix(true, false);
+  const pivot = node
+    .getWorldPosition(new THREE.Vector3())
+    .applyMatrix4(parent.matrixWorld.clone().invert());
+  const dimensions = [size.x, size.y, size.z];
+  const thin = dimensions.reduce(
+    (best, value, index) => (value < dimensions[best]! ? index : best),
+    0
+  );
+  const principal = [0, 1, 2].filter((axis) => axis !== thin);
+  const epsilon = Math.max(1e-6, size.length() * 1e-4);
+  const onBoundary = (axis: number) =>
+    pivot.getComponent(axis) - box.min.getComponent(axis) <= epsilon ||
+    box.max.getComponent(axis) - pivot.getComponent(axis) <= epsilon;
+  const interior = principal.filter((axis) => !onBoundary(axis));
+  const chosen =
+    interior.length === 1
+      ? interior[0]!
+      : principal.reduce(
+          (best, axis) =>
+            dimensions[axis]! >= dimensions[best]! ? axis : best,
+          principal[0]!
+        );
+  return new THREE.Vector3().setComponent(chosen, 1);
+}
+
 /**
  * Bind declared role names to the loaded hierarchy. Never falls back: a
  * declared node that is absent is reported by asset, role, and node.
@@ -128,16 +186,12 @@ function resolveRoles(
 }
 
 /**
- * Swing every leaf of a group about its own hinge, restoring the authored rest
- * pose first so repeated renders are idempotent. Directions alternate along the
- * leaves' hinge spread, which is what a split pair needs; the doorway binding
- * owns whether a group is a door and which way it faces.
+ * Swing every leaf of a group about its own derived hinge, restoring the
+ * authored rest pose first so repeated renders are idempotent. Directions
+ * alternate along the leaves' hinge spread, which is what a split pair needs;
+ * the doorway binding owns whether a group is a door and which way it faces.
  */
-function applyLeafSwing(
-  leaves: ResolvedLeaf[],
-  open: boolean,
-  assetAxis: THREE.Vector3 = new THREE.Vector3(0, 1, 0)
-) {
+function applyLeafSwing(leaves: ResolvedLeaf[], open: boolean) {
   const ordered = [...leaves].sort(
     (left, right) => left.node.position.x - right.node.position.x
   );
@@ -149,8 +203,10 @@ function applyLeafSwing(
     if (!open) continue;
     const parent = leaf.node.parent;
     if (!parent) continue;
+    parent.updateWorldMatrix(true, true);
     const parentQuaternion = parent.getWorldQuaternion(new THREE.Quaternion());
-    const localAxis = assetAxis
+    const hingeInParent = deriveHingeAxis(leaf.node, parent);
+    const localAxis = hingeInParent
       .clone()
       .applyQuaternion(parentQuaternion.invert())
       .normalize();
@@ -234,12 +290,23 @@ function LoadedWorldAssetModel({
   const measuredBounds = useMemo<PropModelBounds>(() => {
     if (resolved?.above) {
       const totalHeight =
-        boundsMeters[1] + resolved.aboveRestHeight * (heightScale - 1);
+        boundsMeters[1] +
+        resolved.aboveRestHeight * SYNTY_SCALE * (heightScale - 1);
       return {
         minY: 0,
         maxY: totalHeight,
         width: boundsMeters[0],
         height: totalHeight,
+        depth: boundsMeters[2],
+      };
+    }
+    if (resolved) {
+      // Roles without an `above` part do not grow: the group stays unscaled.
+      return {
+        minY: 0,
+        maxY: boundsMeters[1],
+        width: boundsMeters[0],
+        height: boundsMeters[1],
         depth: boundsMeters[2],
       };
     }
