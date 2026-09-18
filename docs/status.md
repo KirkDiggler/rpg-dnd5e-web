@@ -12,6 +12,13 @@ let it rot.
 
 ## Active work
 
+- **Sanctuary web adoption** — SDK `v0.1.201`, paired with merged API #1007 and
+  released Toolkit providers. Warded attacks and casts render their aggressor-owned
+  failed save in live/recovered Story and Debug; warded responses cannot invent an
+  attack roll. The user confirmed recipient immunity and unavailable repeat targets
+  on the development stack. Manual timer expiry remains unverified.
+  See [test setup and acceptance](how-to/sanctuary-testing.md).
+
 - **World Builder single-room Play (#1112 / PR #1116)** — candidate supports
   lossless v3 room authoring, snapped monster/start markers, existing server
   validation/save and character/lobby launch, and complete canonical scene
