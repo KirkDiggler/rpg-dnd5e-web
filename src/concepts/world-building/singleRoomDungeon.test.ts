@@ -41,6 +41,29 @@ describe('single-room dungeon source', () => {
     ).toThrow();
   });
 
+  it('accepts the v4 root ahead of its keys, without loosening strictness', () => {
+    // The version seam lands BEFORE either wave's keys: the authored door
+    // wants `doorBindings` at v4 (rpg-project#468) and this slice wants the
+    // site scope and `monsterBindings` (rpg-project#477). Landing the bump
+    // once is what stops them both bumping, so a v4 root carrying only v3
+    // keys is a valid document and must decode.
+    const draft = createRoomDraft(createEmptyScene('scene-v4'), 'room-v4');
+    const asV4 = encodeSingleRoomDungeon({ key: 'crypt-room', draft }).replace(
+      'version: 3',
+      'version: 4'
+    );
+    expect(decodeSingleRoomDungeon(asV4).key).toBe('crypt-room');
+
+    // The version does not buy leniency: an unknown root key is still refused,
+    // and so is a version nobody has agreed on.
+    expect(() => decodeSingleRoomDungeon(`${asV4}\nfactions: []\n`)).toThrow(
+      /Unsupported single-room field/
+    );
+    expect(() => decodeSingleRoomDungeon('version: 5\nkey: room')).toThrow(
+      /Unsupported single-room source envelope/
+    );
+  });
+
   it('decodes the fixed play contract in any YAML mapping order', () => {
     const reordered = `version: 3
 room:
