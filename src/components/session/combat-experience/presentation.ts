@@ -9,6 +9,7 @@ import {
   isDicePresentationIdentifier,
 } from '@/components/ui/dice/dicePresentationRelease';
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
+import { parseRef } from '@/utils/refs';
 import { clone } from '@bufbuild/protobuf';
 import {
   EventKind,
@@ -901,6 +902,16 @@ function markConflicted(
   return diagnose(conflicted, message);
 }
 
+// The provider catalog type identifies spell presentation; no spell rules or
+// individual spell IDs are reconstructed here.
+function isStreamDeliveredRoll(authority: AuthoritySnapshot): boolean {
+  return (
+    authority.kind === 'save' ||
+    (authority.kind === 'attack' &&
+      parseRef(authority.attack?.ref ?? '')?.type === 'spells')
+  );
+}
+
 function initialRecord(
   state: CombatPresentationState,
   authority: AuthoritySnapshot,
@@ -915,21 +926,10 @@ function initialRecord(
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
   const historical =
     options.event !== undefined && options.source === 'catchup';
-  // NOBODY ARMS A SAVE, INCLUDING THE SAVER'S OWN CLIENT. Every other roll
-  // attributed to the local player is one they START: an attack arms the tray
-  // from the dock and lands as an `attack-response`, and a death save has its
-  // own dock affordance and its own `death-save-response`. A save has neither.
-  // `kind: 'save'` is minted in exactly one place — the SAVED beat, already
-  // rolled by the server — and no response fact of that shape exists, so a
-  // save marked pending waits on a release that can never arrive: it sits
-  // `armed`, stays invisible, and holds `pendingLocalKeys` open forever.
-  //
-  // Kirk's walk is what this costs when it is wrong. A skeleton hit the bard,
-  // the bard rolled a CON check to hold True Strike, and the story showed the
-  // strike and then the break with NO CHECK BETWEEN — the one card that says
-  // why the spell ended. The saver is a witness to their own save, like every
-  // other recipient, so it settles the way every witnessed roll does.
-  const pending = localPlayer && !historical && authority.kind !== 'save';
+  // Saves and spell attacks arrive fully resolved on the stream. CastResponse
+  // carries no attack result, so there is no dock response to release their dice.
+  const pending =
+    localPlayer && !historical && !isStreamDeliveredRoll(authority);
   const settlement = historical
     ? ('auto' as const)
     : !roleKnown
@@ -2077,7 +2077,7 @@ function configurePresentation(
     if (record.settlement === 'unresolved') {
       if (!roleKnown) return record;
       const request = createRequest(configured, record.authority);
-      if (newlyLocal) {
+      if (newlyLocal && !isStreamDeliveredRoll(record.authority)) {
         pendingLocalKeys.push(record.key);
         return Object.freeze({
           ...record,
