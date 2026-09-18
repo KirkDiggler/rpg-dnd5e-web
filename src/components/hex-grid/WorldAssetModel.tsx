@@ -113,7 +113,12 @@ function deriveHingeAxis(
     0
   );
   const principal = [0, 1, 2].filter((axis) => axis !== thin);
-  const epsilon = Math.max(1e-6, size.length() * 1e-4);
+  // Authored trim can protrude a few millimetres past the hinge line, so a
+  // small fraction of the panel's thinnest dimension also counts as on-edge.
+  const epsilon = Math.max(
+    size.length() * 1e-4,
+    0.02 * Math.min(...dimensions)
+  );
   const onBoundary = (axis: number) =>
     pivot.getComponent(axis) - box.min.getComponent(axis) <= epsilon ||
     box.max.getComponent(axis) - pivot.getComponent(axis) <= epsilon;
