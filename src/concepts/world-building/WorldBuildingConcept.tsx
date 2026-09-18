@@ -232,6 +232,26 @@ export function WorldBuildingConcept({
   const handleMeasuredBounds = useCallback(
     (id: string, measurement: MeasuredWorldPropBounds) => {
       setMeasuredBounds((current) => {
+        // IDENTITY IS THE POINT (PR #1127 review, Critical). An identical
+        // report must return the SAME map, because the viewport calls upward
+        // outside its own de-dup guard: a fresh Map here re-renders, which
+        // re-creates the inline `recordBounds` passed to each model, which
+        // re-fires that model's measurement effect, which reports again — an
+        // unbounded loop that rendered 402 deep before the reviewer's guard
+        // stopped it. Returning `current` ends the cycle at its source, the
+        // same way the viewport already ends it locally.
+        const previous = current.get(id);
+        if (
+          previous &&
+          previous.assetRef === measurement.assetRef &&
+          previous.bounds.minY === measurement.bounds.minY &&
+          previous.bounds.maxY === measurement.bounds.maxY &&
+          previous.bounds.width === measurement.bounds.width &&
+          previous.bounds.height === measurement.bounds.height &&
+          previous.bounds.depth === measurement.bounds.depth
+        ) {
+          return current;
+        }
         const next = new Map(current);
         next.set(id, measurement);
         return next;
@@ -1243,6 +1263,33 @@ export function WorldBuildingConcept({
     });
     setFootprintPreview(null);
   };
+
+  /** Flip a blocking answer on every selected prop WITHOUT touching any
+   * footprint (PR #1127 review, Important).
+   *
+   * The checkbox must not go through `commitSelectedDeclaration`: for a
+   * multi-selection the panel's visible declaration is the first prop's, so
+   * spreading it would collapse ten per-prop boxes onto wall #1's — silently
+   * undoing the per-item seeding this slice exists to provide, and putting
+   * the author right back to hand-tuning every wall.
+   *
+   * A flag is a flag; an outline is an outline. Imposing one box across a
+   * selection stays available, but only by actually dragging a box slider. */
+  const commitSelectedFlags = (
+    patch: Partial<
+      Pick<RoomPropDeclaration, 'blocksMovement' | 'blocksLineOfSight'>
+    >
+  ) => {
+    if (declarationIds.length === 0) return;
+    const propDeclarations = { ...roomDraft.room.propDeclarations };
+    for (const id of declarationIds) {
+      const existing = propDeclarations[id];
+      if (!existing) continue;
+      propDeclarations[id] = { ...existing, ...patch };
+    }
+    commit(scene, selectedIds, { ...roomDraft.room, propDeclarations });
+    setFootprintPreview(null);
+  };
   const numberFrom = (value: string): number =>
     value.trim() === '' ? Number.NaN : Number(value);
 
@@ -1854,8 +1901,9 @@ export function WorldBuildingConcept({
                   <>
                     {declarationIds.length > 1 && (
                       <p className="wb-help" data-testid="declaration-scope">
-                        Editing {declarationIds.length} selected props. The
-                        outline below is applied to all of them.
+                        Flags apply to all {declarationIds.length} selected
+                        props, each keeping its OWN outline. The outline below
+                        is applied to all of them only when you move a slider.
                       </p>
                     )}
                     <label className="wb-light-toggle">
@@ -1864,8 +1912,7 @@ export function WorldBuildingConcept({
                         aria-label="Blocks movement"
                         checked={panelDeclaration.blocksMovement}
                         onChange={(event) =>
-                          commitSelectedDeclaration({
-                            ...panelDeclaration,
+                          commitSelectedFlags({
                             blocksMovement: event.target.checked,
                           })
                         }
@@ -1878,8 +1925,7 @@ export function WorldBuildingConcept({
                         aria-label="Blocks line of sight"
                         checked={panelDeclaration.blocksLineOfSight}
                         onChange={(event) =>
-                          commitSelectedDeclaration({
-                            ...panelDeclaration,
+                          commitSelectedFlags({
                             blocksLineOfSight: event.target.checked,
                           })
                         }
