@@ -28,6 +28,11 @@ let it rot.
   author-edit isolation, and API/browser reload. User environments stayed pinned;
   final CI/review/merge state belongs to the PR. See
   [verification and limits](how-to/world-builder-play-verification.md).
+- **Visible domain grants (draft)** — Character creation renders server-authored
+  spell/cantrip grants as disabled options labeled with their source. Life's
+  Bless/Cure Wounds and Light's bonus cantrip remain visible outside selectable
+  counts. The web does not infer grants from missing options or domain names.
+  Requires the API grant projection from rpg-api#1012 and protos#348.
 
 - **Spare the Dying** — SDK `v0.1.190` exposes typed stabilization in live and
   recovered Story and Debug, including full progress identity with zero/false
