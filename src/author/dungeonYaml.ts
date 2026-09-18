@@ -23,6 +23,13 @@
 import { refSlug } from '@/utils/refs';
 import { parse as parseYamlText } from 'yaml';
 import {
+  ANSWER_ENTRY_RULES,
+  ANSWER_TRIGGER_KEYS,
+  ANSWER_WORD_KEYS,
+  answerWord,
+  suggestKey,
+} from './answerVocabulary';
+import {
   isPositionOffset,
   latticeKey,
   latticeOf,
@@ -114,6 +121,46 @@ export interface DoorDoc {
  * floor). */
 export type PlacementOffset = [number, number] | [number, number, number];
 
+/**
+ * One entry of an answer table: what the creature does, and what it says,
+ * when a trigger fires. `weight` is optional and OMITTED IS 1 — the engine
+ * keeps it a pointer upstream precisely so an authored `0` differs from an
+ * absent key, so this module must not default it. `word` is at most one
+ * word of the sealed vocabulary (`answerVocabulary.ts`); an entry with no
+ * word must still carry `say`, or it does nothing at all.
+ */
+export interface AnswerEntryDoc {
+  weight?: number;
+  say?: string;
+  word?: AnswerWordDoc;
+}
+
+/** One word plus what it carries. `fact` carries an opaque id; `flee`
+ * carries nothing and is written `flee: {}`. Kept word-agnostic so a word
+ * the engine adds arrives through the vocabulary declaration rather than a
+ * new field here. */
+export interface AnswerWordDoc {
+  word: string;
+  value?: string;
+}
+
+/** One trigger and the entries it fires, in the author's own order. */
+export interface AnswerTriggerDoc {
+  trigger: string;
+  entries: AnswerEntryDoc[];
+}
+
+/**
+ * A placement's answer table (`on:` in the file) — the surface Kirk named
+ * as the point of the feature: *"This is also a place where the dungeon
+ * author can put text the goblin would say for each outcome."*
+ *
+ * A LIST, not a map, because the author's trigger order is part of what
+ * they wrote: re-emitting a parsed file must not reshuffle it, and the
+ * engine's own `map[string][]AnswerSpec` gives no order to fall back on.
+ */
+export type AnswerTableDoc = AnswerTriggerDoc[];
+
 export interface PlacementDoc {
   ref: string;
   at: Axial;
@@ -201,6 +248,24 @@ export interface PlacementDoc {
    * step behind the compiler. `at` still MUST be floor — it is where the
    * placement lands when the predicate holds. */
   arrives?: PredicateDoc;
+  /** Monsters only, REFUSED on props: the authored check that intimidates
+   * this creature — the accepted approaches and their DCs, the same shape a
+   * door's lock uses (`CheckDoc`). Success by any listed approach. Absent
+   * means the verb is not offered against it here. */
+  intimidate?: CheckDoc;
+  /** Persuade's twin, on the same machine (`front-room-goblin.md`). */
+  persuade?: CheckDoc;
+  /** Monsters only. The arms the author names for this placement, carried
+   * verbatim — `dnd5e:weapons:scimitar` and friends. PARSED AND EMITTED
+   * HERE, NOT YET AUTHORED, on `arrives`'s rule: this module carries the
+   * field so a file written with it round-trips rather than being refused
+   * by a builder one step behind the compiler. The editor for it is
+   * rpg-project#448, "an author names what a placed monster can do". */
+  actions?: string[];
+  /** Monsters only. The answer table: per verb and verdict, the weighted
+   * entries the world rolls between. See `AnswerTableDoc` — a list, in the
+   * author's order. */
+  on?: AnswerTableDoc;
 }
 
 /**
@@ -551,9 +616,15 @@ function isRecord(v: unknown): v is Raw {
 
 function expectKeys(obj: Raw, allowed: string[], path: string): void {
   for (const k of Object.keys(obj)) {
-    if (!allowed.includes(k)) {
-      throw new DungeonParseError(`${path}: unknown key "${k}"`);
-    }
+    if (allowed.includes(k)) continue;
+    // Say what was meant when something is close (rpg-dnd5e-web#1118). The
+    // refusal still refuses — this only stops a one-letter slip reading as
+    // "this key does not exist", which is the weakest form of the typo
+    // protection a strict parser is for.
+    const meant = suggestKey(k, allowed);
+    throw new DungeonParseError(
+      `${path}: unknown key "${k}"${meant ? ` — did you mean "${meant}"?` : ''}`
+    );
   }
 }
 
@@ -730,6 +801,100 @@ function checkList(v: unknown, path: string): CheckDoc {
     throw new DungeonParseError(`${path}: expected a list`);
   }
   return v.map((a, i) => approach(a, `${path}[${i}]`));
+}
+
+/**
+ * A placement's answer table (`on:`). Both of its key spaces are CLOSED sets
+ * the compiler enforces — triggers and entry words — so an unknown one is
+ * refused here, with the nearest legal key named, rather than travelling to
+ * the server to come back as a `FieldError`.
+ *
+ * The entry rules are the engine's (`answerVocabulary.ts`
+ * `ANSWER_ENTRY_RULES`): at most one word per entry, and an entry carrying
+ * no word must still say something, because an entry that says nothing and
+ * does nothing is not an instruction.
+ */
+function answerTable(v: unknown, path: string): AnswerTableDoc {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(
+      `${path}: expected a map of trigger to entries (${ANSWER_TRIGGER_KEYS.join(', ')})`
+    );
+  }
+  const table: AnswerTableDoc = [];
+  for (const [trigger, entriesRaw] of Object.entries(v)) {
+    const triggerPath = `${path}.${trigger}`;
+    if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
+      const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
+      throw new DungeonParseError(
+        `${triggerPath}: unknown trigger "${trigger}"` +
+          `${meant ? ` — did you mean "${meant}"?` : ''}` +
+          ` (expected ${ANSWER_TRIGGER_KEYS.join(', ')})`
+      );
+    }
+    const entries = list(entriesRaw, triggerPath).map((e, i) =>
+      answerEntry(e, `${triggerPath}[${i}]`)
+    );
+    table.push({ trigger, entries });
+  }
+  return table;
+}
+
+/** One entry: `{ weight?, say?, <one word> }`. */
+function answerEntry(v: unknown, path: string): AnswerEntryDoc {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(`${path}: expected a map`);
+  }
+  // Unknown keys first, so a misspelling is reported as a misspelling
+  // rather than as the entry rule it happens to break on the way past.
+  const known = ['weight', 'say', ...ANSWER_WORD_KEYS];
+  for (const k of Object.keys(v)) {
+    if (known.includes(k)) continue;
+    const meant = suggestKey(k, known);
+    throw new DungeonParseError(
+      `${path}: unknown key "${k}"${meant ? ` — did you mean "${meant}"?` : ''}`
+    );
+  }
+  const entry: AnswerEntryDoc = {};
+  if (v.weight !== undefined && v.weight !== null) {
+    const weight = v.weight;
+    if (typeof weight !== 'number' || !Number.isInteger(weight)) {
+      throw new DungeonParseError(`${path}.weight: expected a whole number`);
+    }
+    if (weight < ANSWER_ENTRY_RULES.minimumWeight) {
+      throw new DungeonParseError(
+        `${path}.weight: must be at least ${ANSWER_ENTRY_RULES.minimumWeight}`
+      );
+    }
+    // An authored weight is KEPT as authored — including a redundant `1` —
+    // because omitted is 1 to the engine and the two are different bytes.
+    entry.weight = weight;
+  }
+  if (v.say !== undefined && v.say !== null) {
+    entry.say = str(v, 'say', path);
+  }
+  // The words, found by ASKING THE VOCABULARY rather than by listing keys
+  // here: a word the engine adds is read by this loop with no change.
+  const spoken = ANSWER_WORD_KEYS.filter(
+    (k) => v[k] !== undefined && v[k] !== null
+  );
+  if (spoken.length > 1) {
+    throw new DungeonParseError(
+      `${path}: an entry does one thing — found ${spoken.join(' and ')}`
+    );
+  }
+  if (spoken.length === 1) {
+    const word = spoken[0];
+    entry.word =
+      answerWord(word)?.value === 'string'
+        ? { word, value: str(v, word, path) }
+        : { word };
+  }
+  if (!entry.word && entry.say === undefined) {
+    throw new DungeonParseError(
+      `${path}: an entry with no word must carry a line to say`
+    );
+  }
+  return entry;
 }
 
 /** The predicate grammar, spelled for a refusal a streamer can act on. */
@@ -1002,6 +1167,14 @@ export function parseDungeon(text: string): DungeonDoc {
         'holdable',
         'faction',
         'arrives',
+        // The social surface (rpg-dnd5e-web#1118). This list is the
+        // COMPILER'S vocabulary, not the panels' — a field the builder
+        // cannot yet edit still loads, so a file one step ahead of the
+        // builder is readable rather than refused (`arrives`'s rule).
+        'intimidate',
+        'persuade',
+        'actions',
+        'on',
       ],
       path
     );
@@ -1059,6 +1232,30 @@ export function parseDungeon(text: string): DungeonDoc {
     }
     if (p.arrives !== undefined && p.arrives !== null) {
       placement.arrives = predicate(p.arrives, `${path}.arrives`);
+    }
+    // The social surface. `intimidate`/`persuade` are the same check shape a
+    // door's lock uses, so they share its parser; the "monsters only" rule
+    // is the compiler's refusal to make, as it is for `faction`.
+    if (p.intimidate !== undefined && p.intimidate !== null) {
+      placement.intimidate = checkList(p.intimidate, `${path}.intimidate`);
+    }
+    if (p.persuade !== undefined && p.persuade !== null) {
+      placement.persuade = checkList(p.persuade, `${path}.persuade`);
+    }
+    // Carried verbatim and NOT read: what a weapon ref means is the
+    // compiler's and the catalogue's business (rpg-project#448).
+    if (p.actions !== undefined && p.actions !== null) {
+      placement.actions = list(p.actions, `${path}.actions`).map((a, j) => {
+        if (typeof a !== 'string') {
+          throw new DungeonParseError(
+            `${path}.actions[${j}]: expected a string`
+          );
+        }
+        return a;
+      });
+    }
+    if (p.on !== undefined && p.on !== null) {
+      placement.on = answerTable(p.on, `${path}.on`);
     }
     return placement;
   });
@@ -1239,6 +1436,24 @@ function fmtApproach(a: ApproachDoc): string {
   if (a.tool !== undefined) fields.push(`tool: ${scalar(a.tool)}`);
   fields.push(`dc: ${a.dc}`);
   return `{ ${fields.join(', ')} }`;
+}
+
+/** One authored answer entry, as the file writes it: the weight, then the
+ * line the creature says, then its ONE word — the order the front-room file
+ * itself uses (weight, say, word), so a re-emitted table reads like the one
+ * the author wrote. */
+function answerEntryText(entry: AnswerEntryDoc): string {
+  const fields: string[] = [];
+  if (entry.weight !== undefined) fields.push(`weight: ${entry.weight}`);
+  if (entry.say !== undefined) fields.push(`say: ${scalar(entry.say)}`);
+  if (entry.word !== undefined) {
+    fields.push(
+      entry.word.value !== undefined
+        ? `${entry.word.word}: ${scalar(entry.word.value)}`
+        : `${entry.word.word}: {}`
+    );
+  }
+  return fields.join(', ');
 }
 
 /** One predicate as the file writes it — a one-key flow map, the key's
@@ -1465,7 +1680,47 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.arrives !== undefined) {
         fields.push(`arrives: ${predicateText(p.arrives)}`);
       }
-      out.push(`  - { ${fields.join(', ')} }`);
+      // The social checks and the named arms are FLAT, so they ride the
+      // same flow map every other field uses.
+      if (p.intimidate !== undefined) {
+        fields.push(
+          `intimidate: [${p.intimidate.map(fmtApproach).join(', ')}]`
+        );
+      }
+      if (p.persuade !== undefined) {
+        fields.push(`persuade: [${p.persuade.map(fmtApproach).join(', ')}]`);
+      }
+      if (p.actions !== undefined) {
+        fields.push(`actions: [${p.actions.map(scalar).join(', ')}]`);
+      }
+      // The answer table is NESTED — a map of lists of maps — and a flow map
+      // holding that is legal YAML and unreadable, while the author is the
+      // one who reads this file. So an entry carrying a table is written in
+      // BLOCK form. An entry WITHOUT one emits exactly what every entry
+      // emitted before this field existed, so no existing dungeon's bytes
+      // move (`arrives`'s law, and this module's).
+      if (p.on === undefined) {
+        out.push(`  - { ${fields.join(', ')} }`);
+        continue;
+      }
+      const [lead, ...rest] = fields;
+      out.push(`  - ${lead}`);
+      for (const field of rest) out.push(`    ${field}`);
+      if (p.on.length === 0) {
+        out.push('    on: {}');
+        continue;
+      }
+      out.push('    on:');
+      for (const trigger of p.on) {
+        if (trigger.entries.length === 0) {
+          out.push(`      ${trigger.trigger}: []`);
+          continue;
+        }
+        out.push(`      ${trigger.trigger}:`);
+        for (const entry of trigger.entries) {
+          out.push(`        - { ${answerEntryText(entry)} }`);
+        }
+      }
     }
   }
 
