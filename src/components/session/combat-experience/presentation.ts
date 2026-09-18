@@ -470,8 +470,31 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   // `against` CARRIES THE DC. It is the number the total was measured
   // against, which is what that field means for an attack too; `succeeded` is
   // the rulebook's own reading and no receiver recomputes it.
-  if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
-    const saved = event.body.value;
+  if (
+    (event.body.case === 'saved' && event.kind === EventKind.SAVED) ||
+    (event.body.case === 'warded' && event.kind === EventKind.WARDED) ||
+    (event.body.case === 'castWarded' && event.kind === EventKind.CAST_WARDED)
+  ) {
+    // Continue the existing Sanctuary work: the aggressor rolls a saving
+    // throw, not an attack. Both ward event kinds mean that save failed.
+    const body = event.body.value;
+    const saved =
+      event.body.case === 'saved'
+        ? event.body.value
+        : {
+            saver:
+              'attacker' in body
+                ? body.attacker
+                : 'actor' in body
+                  ? body.actor
+                  : '',
+            ability: body.ability,
+            roll: body.roll,
+            total: body.total,
+            dc: body.dc,
+            succeeded: false,
+            source: { ref: '', name: 'Ward' },
+          };
     // Saved carries no provider-issued presentation token. Keep its animation
     // recipient-local until the provider contract deliberately grows one; a
     // session/seq identity must never be mistaken for cross-recipient truth.
@@ -602,6 +625,8 @@ function attackEventFacts(event: Event): string | undefined {
     event.body.case !== 'missed' &&
     event.body.case !== 'deathSaveRolled' &&
     event.body.case !== 'saved' &&
+    event.body.case !== 'warded' &&
+    event.body.case !== 'castWarded' &&
     event.body.case !== 'rollWindowOpened'
   ) {
     return undefined;
@@ -1044,6 +1069,8 @@ function acceptResponse(
   }
   let authority: AuthoritySnapshot;
   try {
+    // A warded response has no attack roll. Its typed event owns the save.
+    if (fact.type === 'attack-response' && fact.response.warded) return state;
     authority =
       fact.type === 'attack-response'
         ? authorityFromResponse(fact)
@@ -1257,28 +1284,15 @@ const EXPECTED_OTHER_KIND = {
   // nothing anywhere saying why.
   persuaded: EventKind.PERSUADED,
   answered: EventKind.ANSWERED,
-  // A SANCTUARY-STYLE WARD STOPPED AN ATTACK, and its Cast sibling. THESE ARE
-  // NOT THIS WAVE'S BEATS: they arrive with the protos v0.1.202 pin the
-  // creature's table needed, from the ward slice, and this file's index guard
-  // makes every new body a decision somebody has to write down.
-  //
-  // LISTED RATHER THAN EXCLUDED, which is the difference that matters. Each
-  // carries a real roll — the attacker's own failed save against the warding
-  // caster's DC — so excluding them before the index, the way `sighted` and
-  // `tempered` are excluded, would assert they are not story, and that is a
-  // claim about somebody else's slice that nobody here is entitled to make.
-  // Listed, the kind/body pairing is still checked and the beat is accepted.
-  //
-  // NO STORY ROW YET, on `doorRevealed`'s precedent below: the ward slice's
-  // own consumer change owns what a warded attack reads like, and guessing it
-  // here would be a sentence the engine never asked for.
-  warded: EventKind.WARDED,
-  castWarded: EventKind.CAST_WARDED,
   // The creature's table's own two (rpg-project#465). LISTED, so the
   // kind/body pairing is checked and the beat is accepted, and given no story
   // row below — narrating them is rpg-dnd5e-web#1122. They are quiet rather
   // than accused because [SILENT_OTHER_BODIES] names them; see it for why the
   // diagnostic could not tell a decision from a defect.
+  //
+  // THE WARD BEATS ARE NOT HERE, and that is the ward slice's own answer
+  // rather than an omission: `warded` and `castWarded` carry a die, so they
+  // become AUTHORITY above and never reach this table at all.
   tempered: EventKind.TEMPERED,
   stayed: EventKind.STAYED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
@@ -1310,6 +1324,9 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
   EventKind.CAST_MISSED,
+  EventKind.WARDED,
+  EventKind.CAST_WARDED,
+  EventKind.TEMPERED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
   EventKind.INTIMIDATED,
@@ -1333,15 +1350,12 @@ const TYPED_EVENT_KINDS = new Set<number>([
 // well-formed `tempered`. A debug feed that cries defect on a correct beat
 // teaches a reader to ignore it, which costs the one time it is right.
 //
-// TWO REASONS TO BE IN HERE, and they are different claims:
-//   - `tempered` and `stayed` are NOT STORY. A mix dealt at the door, before
-//     the party has met anybody, and a round in which nothing moved: the debug
-//     line carries both in full, and narrating them is rpg-dnd5e-web#1122.
-//   - `warded` and `castWarded` are NOT THIS WAVE'S. They arrive with the
-//     protos v0.1.202 pin and they carry a real roll, so "not story" is a
-//     claim about the ward slice nobody here may make. They are listed in
-//     EXPECTED_OTHER_KIND so the pairing is still checked, and they are here
-//     only so an accepted-but-unnarrated beat is quiet rather than accused.
+// BOTH MEMBERS ARE NOT STORY: a mix dealt at the door, before the party has
+// met anybody, and a round in which nothing moved. The debug line carries each
+// in full, and narrating them is rpg-dnd5e-web#1122.
+// THE WARD BEATS NEEDED NOTHING HERE. `warded` and `castWarded` carry a die,
+// so the ward slice makes them AUTHORITY; they never reach the diagnostic and
+// were never accused.
 //
 // WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed` and
 // `regionRevealed` have the identical shape and produce the identical false
@@ -1352,8 +1366,6 @@ const TYPED_EVENT_KINDS = new Set<number>([
 const SILENT_OTHER_BODIES = [
   'tempered',
   'stayed',
-  'warded',
-  'castWarded',
 ] as const satisfies readonly (keyof typeof EXPECTED_OTHER_KIND)[];
 
 type SilentOtherBody = (typeof SILENT_OTHER_BODIES)[number];
@@ -1392,7 +1404,13 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   }
   // The bodies that become authority instead: they carry a die, so they are
   // presentation records rather than other-story rows.
-  if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
+  if (
+    bodyCase === 'struck' ||
+    bodyCase === 'missed' ||
+    bodyCase === 'saved' ||
+    bodyCase === 'warded' ||
+    bodyCase === 'castWarded'
+  ) {
     return undefined;
   }
   // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
@@ -1773,14 +1791,11 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
         reason: event.body.value.reason,
       });
-    // The reveals, the two WARD beats, and the creature's table's own two —
-    // every body this file accepts and does not narrate. See their entries in
-    // EXPECTED_OTHER_KIND above for why each is here and why the answer stops
-    // at acceptance.
+    // The reveals, plus the creature's table's own two — every body this file
+    // accepts and does not narrate. See their entries in EXPECTED_OTHER_KIND
+    // above for why each is here and why the answer stops at acceptance.
     case 'doorRevealed':
     case 'regionRevealed':
-    case 'warded':
-    case 'castWarded':
     case 'tempered':
     case 'stayed':
       return undefined;

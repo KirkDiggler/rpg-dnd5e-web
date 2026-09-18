@@ -26,6 +26,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
+import { wardedCastNotice } from '../wardBeat';
 import { caughtNotice } from './caughtNotice';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -1501,7 +1502,7 @@ export function useSessionCombatExperience({
       setTargeting(false);
       void (async () => {
         try {
-          await cast({
+          const response = await cast({
             session,
             member,
             declarationId: current.id,
@@ -1510,6 +1511,15 @@ export function useSessionCombatExperience({
           });
           if (!mountedRef.current) return;
           invalidateAuthority();
+          const wardNotice = wardedCastNotice(
+            response.wardedTargets ?? [],
+            (id) => memberNames?.get(id) ?? id
+          );
+          if (wardNotice)
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: wardNotice,
+            });
           scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
         } catch (error) {
           if (!mountedRef.current) return;
@@ -1533,6 +1543,7 @@ export function useSessionCombatExperience({
       cast,
       invalidateAuthority,
       member,
+      memberNames,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
