@@ -8,12 +8,12 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
-  heightSelectionPropIds,
   moveSelection,
   previewSelectionTransform,
   redoHistory,
   rotateSelection,
   saveArrangement,
+  selectionPropIds,
   setPropPointLight,
   setSelectionHeight,
   stampArrangement,
@@ -66,7 +66,7 @@ describe('world-building continuous scene math', () => {
     scene = groupSelection(scene, ['wall', 'banner'], 'run', 'Run');
     scene.items[0]!.heightScale = 1.5;
     scene.items[1]!.heightScale = 2;
-    expect(heightSelectionPropIds(scene, ['run'])).toEqual(
+    expect(selectionPropIds(scene, ['run'])).toEqual(
       new Set(['wall', 'banner'])
     );
     expect(setSelectionHeight(scene, ['run'], Number.NaN)).toEqual(scene);
