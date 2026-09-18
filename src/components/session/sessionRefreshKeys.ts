@@ -38,6 +38,9 @@ export function refreshKeysFor(
       return event.body.value.member === member
         ? ['where', 'afford', 'turn']
         : ['view'];
+    case 'warded':
+    case 'castWarded':
+      return ['characterData', 'afford', 'turn', 'view'];
     case 'struck':
     case 'missed':
       return ['characterData', 'afford', 'view'];
@@ -204,6 +207,27 @@ export function refreshKeysFor(
     // player's sheet moved.
     case 'answered':
       return ['afford', 'view'];
+    // A TEMPERAMENT WAS DEALT (rpg-project#465 §3) AND NOTHING CACHED MOVED.
+    // A faction's mix is thrown once per member at the door, before anybody
+    // has perceived anything: nobody stepped, nobody spent, no stance folded,
+    // and a creature's temperament is on no projection this client reads —
+    // not the roster, not the view, not afford or turn. It reaches the reader
+    // on the beat itself and on every later `answered`, which carries the word
+    // that loaded that pick.
+    //
+    // EMPTY IS THE ROW, not a missing one. This switch is exhaustive on
+    // purpose, so a new body has to be a decision somebody wrote down rather
+    // than a beat that silently refetches nothing.
+    case 'tempered':
+      return [];
+    // NOBODY MOVED, SO NOTHING CACHED MOVED EITHER (rpg-project#465). A
+    // routed walk that found no path spent its round on the cell it started
+    // on: no position changed, no action was spent, no stance folded, and no
+    // sight was gained or lost. `view` is the tempting one and is deliberately
+    // absent — refetching the scene because a creature did NOT move would be
+    // work for the one beat that guarantees the scene is unchanged.
+    case 'stayed':
+      return [];
     case 'looted':
     case 'activated':
     case 'exited':

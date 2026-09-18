@@ -53,13 +53,16 @@
  * one from crashing the whole log instead of one line.
  */
 import type {
+  AnswerCandidate,
   DamageComponent,
   Event,
   RollCalculation,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  AnswerKey,
   AnswerWord,
   EventKind,
+  Temper,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
@@ -168,6 +171,54 @@ function strikeDetailText(
   return `${detail}${checkCalculationText(calculation)}`;
 }
 
+/** `key=` and `temper=` render by their enum NAMES, like every other enum on
+ * this line. Unknown falls back to the raw number rather than to a word: a
+ * debug log inventing a spelling for a value it does not know is exactly the
+ * thing this log exists not to do. */
+function answerKeyName(key: AnswerKey): string {
+  return AnswerKey[key] ?? String(key);
+}
+
+function temperName(temper: Temper): string {
+  return Temper[temper] ?? String(temper);
+}
+
+/** Whether a key had a verb and a check behind it — which is the whole
+ * question `verb` and `beaten` answer (rpg-project#465).
+ *
+ * THE PAIR IS DEPRECATED AND UNSET ON A TIME PICK, and printing it anyway
+ * would render `verb=UNSPECIFIED beaten=false` about a creature that simply
+ * took its turn — a sentence about a threat that never happened. The server
+ * leaves both unset there by contract; this line leaves them out. */
+function answerKeyIsSocial(key: AnswerKey): boolean {
+  return (
+    key === AnswerKey.INTIMIDATED ||
+    key === AnswerKey.INTIMIDATE_FAILED ||
+    key === AnswerKey.PERSUADED ||
+    key === AnswerKey.PERSUADE_FAILED
+  );
+}
+
+/** THE LOADED TABLE AS ROLLED, one pair per eligible entry:
+ * `entry:weight×percent=loaded`.
+ *
+ * EVERY NUMBER THE ROLL WAS MADE OF, which is the whole point of carrying
+ * candidates rather than the total alone — add the `loaded` values and you get
+ * `of`, and the face lands in exactly one of them, so a reader can redo the
+ * engine's arithmetic instead of trusting it. `percent` is the temperament's
+ * multiplier, so a coward's halved line reads `2:1×50=50` beside a soldier's
+ * `2:1×100=100`.
+ *
+ * EMPTY PRINTS `[]` RATHER THAN VANISHING. A `time` roll where no entry's
+ * `when` held put nothing on the die, and "the creature was asked and had
+ * nothing to do" is a different fact from "this line forgot a field". */
+function answerCandidatesText(candidates: readonly AnswerCandidate[]): string {
+  const pairs = candidates.map(
+    (c) => `${c.entry}:${c.weight}×${c.percent}=${c.loaded}`
+  );
+  return `[${pairs.join(' ')}]`;
+}
+
 /** Safe JSON stringify for the `default` branch — see module doc comment
  * on why a hypothetical future `bigint` field must not crash the whole
  * log over one unrenderable line. */
@@ -209,6 +260,17 @@ export function formatDebugLine(
           `roll=${b.roll} total=${b.total} against=${b.against} damage=${b.damage} ` +
           `crit=${b.critical} ${attackText(b.attack)}` +
           strikeDetailText(b.damageComponents, b.calculation),
+      };
+    }
+    case 'warded':
+    case 'castWarded': {
+      const b = event.body.value;
+      const actor = 'attacker' in b ? b.attacker : b.actor;
+      const action = 'attacker' in b ? b.attack : b.spell;
+      return {
+        seq,
+        ids: [actor, b.target, b.source, ...keepSourceIds(b.calculation)],
+        text: `${prefix} ${event.body.case} actor=${name(actor)} target=${name(b.target)} source=${name(b.source)} ref=${action?.ref ?? '?'} name=${quoteDebugString(action?.name ?? '')} ability=${b.ability} roll=${b.roll} total=${b.total} dc=${b.dc} calculation=${safeJson(b.calculation ?? null)}`,
       };
     }
     case 'missed': {
@@ -391,10 +453,18 @@ export function formatDebugLine(
           checkCalculationText(b.calculation),
       };
     }
-    // R1 IN FULL: the world's die, the summed weights it was thrown against,
-    // the entry that fired, and the word. `of` is the die SIZE and not the
-    // entry count — 70 and 30 is a d100 — and `entry` indexes the AUTHOR's own
-    // list, so a builder can find the line in the file they are looking at.
+    // R1 IN FULL, AND NOW ITS ARITHMETIC (rpg-project#465 §6): which table the
+    // world rolled on, what loaded the die, every eligible entry with its own
+    // numbers, the die, the face, the entry that fired and the word. `of` is
+    // the die SIZE and not the entry count, and since the table it is in
+    // HUNDREDTHS of a weight — an untempered 70-and-30 rolls against 10000 —
+    // so nothing here is a percentage. `entry` indexes the AUTHOR's own list,
+    // so a builder can find the line in the file they are looking at.
+    //
+    // ONE BEAT FOR TWO THINGS. A social verdict's answer and a creature
+    // spending one turn's worth of doing are the same roll on the same table
+    // under different keys, so they are the same line here; `key=` is what
+    // tells them apart, and it is the field to read rather than `verb=`.
     //
     // TWO FIELDS ARE DELIBERATELY ABSENT. `say` is prose, it is in the story
     // log verbatim, and it would bury this line's numbers. `fact` never
@@ -405,14 +475,66 @@ export function formatDebugLine(
     case 'answered': {
       const b = event.body.value;
       const word = AnswerWord[b.word] ?? String(b.word);
-      const verbName = Verb[b.verb] ?? String(b.verb);
+      const key = answerKeyIsSocial(b.key)
+        ? `key=${answerKeyName(b.key)} verb=${Verb[b.verb] ?? String(b.verb)} beaten=${b.beaten}`
+        : `key=${answerKeyName(b.key)}`;
       return {
         seq,
         ids: [b.creature],
         text:
-          `${prefix} answered creature=${name(b.creature)} verb=${verbName} ` +
-          `beaten=${b.beaten} roll=${b.roll} of=${b.of} entry=${b.entry} ` +
-          `word=${word}`,
+          `${prefix} answered creature=${name(b.creature)} ${key} ` +
+          `temper=${temperName(b.temper)} roll=${b.roll} of=${b.of} ` +
+          `entry=${b.entry} word=${word} ` +
+          `candidates=${answerCandidatesText(b.candidates)}`,
+      };
+    }
+    // WHICH GOBLIN CAME OUT THE COWARD (rpg-project#465 §3). A faction's mix is
+    // dealt once per member, at the door, and this beat is the only account of
+    // that roll anybody gets — an authored `temper:` is not dealt and raises
+    // none.
+    //
+    // THE FACTION IS THE DIE'S ENTITY and is printed as its own field beside
+    // the member, because the thrower and the subject of a throw are different
+    // questions (rpg-project#463). It is a faction id rather than a member id,
+    // so it is deliberately NOT in `ids`: nothing resolves it to a display name
+    // and hovering it would offer an id lookup that cannot answer.
+    // A ROUTED WALK THAT MOVED NOBODY (rpg-project#465, from Kirk's walk).
+    // The world clock charges a round per driven creature whether or not
+    // anybody moves, and before this beat that round was narrated as nothing
+    // at all — a reader could not tell a creature nobody asked from one that
+    // refused from one sent somewhere it could not reach.
+    //
+    // `cause` IS A REF AND IS PRINTED RAW: `encounter:table:toward` says the
+    // creature was walking under its own orders, and a spell's ref says
+    // something else. This log neither parses it nor prettifies it, so a
+    // router nobody has written yet still reads correctly here.
+    //
+    // `why` IS THE ROUTE'S OWN SENTENCE, verbatim — the fold's refusal phrase.
+    // It is prose, which this log otherwise keeps out, and it is here because
+    // it is the ONLY account of where the walk stopped; the story log has
+    // none. EMPTY IS PRINTED AS EMPTY and is the commonest case: the route had
+    // nowhere strictly nearer to offer, which is a reason rather than a
+    // blocker it could name. Omitting the field when empty would hide the
+    // difference between the two.
+    case 'stayed': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text:
+          `${prefix} stayed member=${name(b.member)} cause=${b.cause} ` +
+          `why=${quoteDebugString(b.why)}`,
+      };
+    }
+    case 'tempered': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text:
+          `${prefix} tempered member=${name(b.member)} ` +
+          `temper=${temperName(b.temper)} roll=${b.roll} of=${b.of} ` +
+          `faction=${b.faction}`,
       };
     }
     case 'ended': {

@@ -511,6 +511,23 @@ describe('sending the cast', () => {
     expect(screen.getByTestId('armed').textContent).toBe('none');
   });
 
+  it('reports a warded target from the cast response without dispatching an attack', async () => {
+    hoisted.castFn.mockResolvedValue({ wardedTargets: ['skeleton-1'] });
+    const declaration = mockeryDeclaration();
+    render(<Harness declarations={[declaration]} />);
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onTargetClick('skeleton-1');
+      await Promise.resolve();
+    });
+    expect(latest.presentationState.changedOptionNotice).toContain(
+      'blocked by a ward'
+    );
+    expect(hoisted.castFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.activateFn).not.toHaveBeenCalled();
+  });
+
   it('a one-creature cast sends the chosen member with the armed selector', async () => {
     const declaration = mockeryDeclaration();
     render(<Harness declarations={[declaration]} />);
