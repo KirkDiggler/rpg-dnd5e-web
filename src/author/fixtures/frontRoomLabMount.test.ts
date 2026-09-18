@@ -15,7 +15,7 @@ import { sandboxDocForSearch } from '../DungeonBuilderSandbox';
  * the builder's tests use.
  */
 describe('the front room is selectable in the Concepts Lab', () => {
-  it('loads the server’s own file for ?authorFixture=front-room', () => {
+  it('loads the pinned snapshot for ?authorFixture=front-room', () => {
     expect(sandboxDocForSearch('?authorFixture=front-room').key).toBe(
       'reference-front-room'
     );
@@ -26,14 +26,21 @@ describe('the front room is selectable in the Concepts Lab', () => {
   });
 
   it('carries a real answer table, or the mount would show nothing', () => {
-    const goblin = sandboxDocForSearch('?authorFixture=front-room').place.find(
-      (p) => p.id === 'front-goblin'
-    );
-    expect(goblin?.on?.map((t) => t.trigger)).toEqual([
+    // THE GOBLINS' TABLE LIVES ON THEIR FACTION (rpg-project#466), inherited
+    // by all four placements — so this reads the faction, not the goblin.
+    const doc = sandboxDocForSearch('?authorFixture=front-room');
+    const goblins = doc.factions.find((f) => f.id === 'goblins');
+    expect(goblins?.on?.map((t) => t.trigger)).toEqual([
       'intimidated',
       'intimidate_failed',
       'persuaded',
       'persuade_failed',
+    ]);
+    // And the mix that gives four goblins four behaviours off one table.
+    expect(goblins?.temper?.mix?.map((s) => s.word)).toEqual([
+      'coward',
+      'soldier',
+      'aggressive',
     ]);
   });
 });

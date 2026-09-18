@@ -16,21 +16,24 @@ function goblin(doc = referenceFrontRoomDoc()): PlacementDoc {
   return found;
 }
 
-describe('the reference front room is the server’s own file', () => {
-  it('parses the file the compiler compiles, byte for byte', () => {
-    // The copy exists so the builder's fixture and the server's fixture are
-    // ONE text. A formatter, a hand-edit, or upstream drift breaks that
+describe('the reference front room is a pinned snapshot of the server’s file', () => {
+  it('is the bytes taken at the pinned sha', () => {
+    // The copy exists so the builder's fixture and the server's fixture were
+    // ONE text WHEN IT WAS TAKEN. A formatter or a hand-edit breaks that
     // silently, and no other test would notice — so the bytes are pinned.
+    // The hash does NOT prove the copy still matches upstream: the server
+    // moves on and this is a snapshot at `1f2a6ac8`, not the live file.
     expect(
       createHash('sha256').update(REFERENCE_FRONT_ROOM_YAML).digest('hex')
     ).toBe(REFERENCE_FRONT_ROOM_SHA256);
     expect(REFERENCE_FRONT_ROOM_YAML).toContain('key: reference-front-room');
   });
 
-  it('loads at all — the four keys the builder used to refuse', () => {
-    // Before #1118 this threw `place[0]: unknown key "actions"` and the
-    // room could not be opened. Every assertion below is downstream of
-    // this one: the front room's authoring began with it not loading.
+  it('loads at all — the grammar the builder used to refuse', () => {
+    // The room's authoring began with it not loading: before #1118 it threw
+    // `place[0]: unknown key "actions"`, and before #1137 the shipped grammar
+    // — `time`, `when:`, `temper` and the mix — was still refused. Every
+    // assertion below is downstream of this one.
     expect(() => parseDungeon(REFERENCE_FRONT_ROOM_YAML)).not.toThrow();
   });
 
@@ -45,9 +48,13 @@ describe('the reference front room is the server’s own file', () => {
     expect(doc.actions).toEqual(['dnd5e:weapons:scimitar']);
   });
 
-  it('reads the answer table in the author’s own order', () => {
-    const doc = goblin();
-    expect(doc.on?.map((t) => t.trigger)).toEqual([
+  it('reads the faction’s answer table in the author’s own order', () => {
+    // THE TABLE MOVED TO THE FACTION (rpg-project#466): four goblins answer
+    // ONE table, and a table on one placement cannot be shared. The placement
+    // therefore authors no table of its own, which is what inheritance means.
+    const doc = referenceFrontRoomDoc();
+    expect(goblin(doc).on).toBeUndefined();
+    expect(doc.factions[0].on?.map((t) => t.trigger)).toEqual([
       'intimidated',
       'intimidate_failed',
       'persuaded',
@@ -55,9 +62,11 @@ describe('the reference front room is the server’s own file', () => {
     ]);
   });
 
-  it('reads each entry’s weight, line and single word', () => {
-    const doc = goblin();
-    const table = new Map(doc.on?.map((t) => [t.trigger, t.entries]));
+  it('reads each entry’s weight, word and condition', () => {
+    const doc = referenceFrontRoomDoc();
+    const table = new Map(
+      doc.factions[0].on?.map((t) => [t.trigger, t.entries])
+    );
 
     // A landed threat, 70/30. The weight is authored and kept; the line is
     // carried verbatim; each entry does exactly ONE thing.
