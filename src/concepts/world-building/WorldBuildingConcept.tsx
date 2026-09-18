@@ -1761,6 +1761,35 @@ export function WorldBuildingConcept({
                 Ungroup
               </button>
             </div>
+            {/* Cardinal turns. `R` walks 15° at a time, so a right angle is
+                six presses and 180° is twelve — the reason an author asked
+                "how do I rotate 90, 180, 270?". These are the same
+                `rotateSelection` the gizmo and `R` use, so a single prop
+                turns about its own origin and a multi-selection turns about
+                its shared centre, exactly as dragging the ring does. */}
+            <div className="wb-actions" data-testid="rotate-cardinal">
+              {(
+                [
+                  ['-90°', -Math.PI / 2],
+                  ['+90°', Math.PI / 2],
+                  ['180°', Math.PI],
+                ] as const
+              ).map(([label, angle]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={selectedIds.length === 0}
+                  aria-label={`Rotate ${label}`}
+                  onClick={() =>
+                    applyToSelection((current) =>
+                      rotateSelection(current, selectedIds, angle)
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <p className="wb-help">
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
