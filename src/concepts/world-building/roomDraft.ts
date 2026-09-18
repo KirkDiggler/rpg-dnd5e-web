@@ -35,6 +35,13 @@ export interface RoomFootprint {
   offsetX: number;
   offsetZ: number;
 }
+/** The authored footprint's limits, in owner-local scene units. ONE home: the
+ * validator below and the seeded default (`declarationFootprint.ts`) both read
+ * these, so a footprint the builder seeds for an author can never be refused
+ * by the rule it was built against. */
+export const FOOTPRINT_MINIMUM_EXTENT = 0.1;
+export const FOOTPRINT_MAXIMUM_EXTENT = 12;
+export const FOOTPRINT_MAXIMUM_OFFSET = 12;
 export interface RoomPropDeclaration {
   blocksMovement: boolean;
   blocksLineOfSight: boolean;
@@ -342,8 +349,10 @@ function validateFootprint(value: unknown, owner: string): RoomFootprint {
     if (
       typeof n !== 'number' ||
       !Number.isFinite(n) ||
-      ((field === 'width' || field === 'depth') && (n < 0.1 || n > 12)) ||
-      ((field === 'offsetX' || field === 'offsetZ') && Math.abs(n) > 12)
+      ((field === 'width' || field === 'depth') &&
+        (n < FOOTPRINT_MINIMUM_EXTENT || n > FOOTPRINT_MAXIMUM_EXTENT)) ||
+      ((field === 'offsetX' || field === 'offsetZ') &&
+        Math.abs(n) > FOOTPRINT_MAXIMUM_OFFSET)
     )
       throw new Error(`Invalid footprint ${field}.`);
   }

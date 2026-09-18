@@ -130,9 +130,15 @@ function mapTransforms(
   };
 }
 
-/** Props affected by visual height: selected props and group members only.
- * Support-linked decorations are deliberately not traversed. */
-export function heightSelectionPropIds(
+/** The props a selection RESOLVES TO: the selected props themselves, plus the
+ * members of any selected group. Support-linked decorations are deliberately
+ * not traversed — a candle resting on a table is not what the author selected.
+ *
+ * Named for the selection rather than for one consumer of it. Visual height
+ * and authored movement/sight declarations both need exactly this answer, and
+ * a second helper that filtered the same selection its own way is how two
+ * features end up disagreeing about what "selected" means. */
+export function selectionPropIds(
   scene: WorldScene,
   selectedIds: readonly string[]
 ): Set<string> {
@@ -161,7 +167,7 @@ export function setSelectionHeight(
 ): WorldScene {
   if (!Number.isFinite(heightScale)) return scene;
   const bounded = Math.min(4, Math.max(0.25, heightScale));
-  const included = heightSelectionPropIds(scene, selectedIds);
+  const included = selectionPropIds(scene, selectedIds);
   return {
     ...scene,
     items: scene.items.map((item) =>
