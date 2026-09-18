@@ -2,8 +2,10 @@ import {
   PropModel,
   type PropModelBounds,
 } from '@/components/hex-grid/PropModel';
-import { WorldAssetModel } from '@/components/hex-grid/WorldAssetModel';
-import type { WorldAssetResolutionDiagnostic } from '@/generated/worldAssetCatalog';
+import {
+  WorldAssetModel,
+  type WorldAssetModelDiagnostic,
+} from '@/components/hex-grid/WorldAssetModel';
 import type { WorldBuildingCatalogEntry } from './catalog';
 
 export interface WorldPropModelProps {
@@ -12,7 +14,7 @@ export interface WorldPropModelProps {
   rotationY: number;
   heightScale?: number;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
-  onGeneratedDiagnostic?: (diagnostic: WorldAssetResolutionDiagnostic) => void;
+  onGeneratedDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
 }
 
 /**

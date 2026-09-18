@@ -161,6 +161,55 @@ describe('world asset catalog generator', () => {
     expect(first).not.toMatch(/harness\/|sourcePath|packSlug|licensed/i);
   });
 
+  it('emits optional ordered roles and leaves absent roles legal', () => {
+    const fixture = makeFixture();
+    fixture.catalog.assets[0]!.roles = [
+      { role: 'leaf', node: 'Door_Left', door: 'gate' },
+      { role: 'frame', node: 'Door_Frame' },
+      { role: 'above', node: 'Door_Wall_Above' },
+    ];
+    rewriteCatalog(fixture);
+
+    const receipt = generateWorldAssetCatalog({
+      providerRoot: fixture.provider,
+      runtimeRoot: fixture.runtime,
+      outputPath: fixture.output,
+    });
+    expect(receipt.assetCount).toBe(1);
+    const generated = readFileSync(fixture.output, 'utf8');
+    expect(generated).toContain('roles?:');
+    expect(generated).toContain("'Door_Left'");
+    expect(generated).toContain("'gate'");
+    expect(generated).toContain("'frame'");
+    expect(generated).toContain("'above'");
+    expect(generated.match(/roles:/g)).toHaveLength(1);
+    execFileSync(
+      process.execPath,
+      [
+        join(process.cwd(), 'node_modules', 'typescript', 'bin', 'tsc'),
+        '--noEmit',
+        '--strict',
+        '--skipLibCheck',
+        '--target',
+        'es2022',
+        '--module',
+        'esnext',
+        '--moduleResolution',
+        'bundler',
+        fixture.output,
+      ],
+      { cwd: fixture.root, stdio: 'pipe' }
+    );
+
+    const without = makeFixture();
+    generateWorldAssetCatalog({
+      providerRoot: without.provider,
+      runtimeRoot: without.runtime,
+      outputPath: without.output,
+    });
+    expect(readFileSync(without.output, 'utf8')).not.toContain('roles:');
+  });
+
   it('rejects a dirty or uncommitted provider', () => {
     const fixture = makeFixture();
     put(join(fixture.provider, 'untracked'), 'dirty');
@@ -209,6 +258,49 @@ describe('world asset catalog generator', () => {
     [
       'recipe digest disagreement',
       (f: Fixture) => (f.catalog.recipes[0]!.sha256 = '0'.repeat(64)),
+    ],
+    [
+      'roles that are not an array',
+      (f: Fixture) => (f.catalog.assets[0]!.roles = { role: 'leaf' }),
+    ],
+    ['empty roles', (f: Fixture) => (f.catalog.assets[0]!.roles = [])],
+    [
+      'unknown role word',
+      (f: Fixture) =>
+        (f.catalog.assets[0]!.roles = [
+          { role: 'handle', node: 'Door_Handle' },
+        ]),
+    ],
+    [
+      'missing role node',
+      (f: Fixture) => (f.catalog.assets[0]!.roles = [{ role: 'leaf' }]),
+    ],
+    [
+      'empty role node',
+      (f: Fixture) =>
+        (f.catalog.assets[0]!.roles = [{ role: 'leaf', node: '' }]),
+    ],
+    [
+      'empty door id',
+      (f: Fixture) =>
+        (f.catalog.assets[0]!.roles = [
+          { role: 'leaf', node: 'Door_Left', door: '' },
+        ]),
+    ],
+    [
+      'duplicate role node',
+      (f: Fixture) =>
+        (f.catalog.assets[0]!.roles = [
+          { role: 'leaf', node: 'Door_Left', door: 'a' },
+          { role: 'leaf', node: 'Door_Left', door: 'b' },
+        ]),
+    ],
+    [
+      'extra role key',
+      (f: Fixture) =>
+        (f.catalog.assets[0]!.roles = [
+          { role: 'leaf', node: 'Door_Left', pivot: [0, 0, 0] },
+        ]),
     ],
   ] as Array<[string, (fixture: Fixture) => void]>)(
     'rejects %s',
