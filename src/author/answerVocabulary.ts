@@ -297,18 +297,24 @@ export const ANSWER_TEMPER: AnswerTemperSpec = Object.freeze({
 /** The engine's entry rules (`dungeonspec` `answerEntry` / `placeOn`), in
  * one place so the parser and the panel refuse the same things. An entry does
  * AT MOST ONE thing: two words in one entry is an error rather than an
- * ordering the author has to guess. */
+ * ordering the author has to guess.
+ *
+ * THERE IS NO `emptyMappingWords` HERE ON PURPOSE (review round 1). Which
+ * words carry nothing is already spelled by `AnswerWordSpec.value === 'none'`,
+ * and a second list beside it is two spellings of one fact in a module whose
+ * contract is one declaration — the declaration's copy could drift from the
+ * enforced one with no test failing, which is the failure mode this module
+ * exists to prevent. */
 export const ANSWER_ENTRY_RULES = Object.freeze({
   /** `weight` is a pointer upstream precisely so that omitted differs from
    * `0`: omitted IS 1, and anything below 1 is refused. An authored 1 is
    * therefore redundant but legal, and must round-trip as written. */
   minimumWeight: 1,
-  /** An entry with no word must still say something, or it does nothing. */
+  /** An entry with no word must still say something, or it does nothing.
+   * Read at the enforcement point, not restated there. */
   wordRequiredUnlessSaid: true,
   /** And an entry carries one word at most. */
   maximumWords: 1,
-  /** `flee`/`hold` carry nothing and are written `{}`. */
-  emptyMappingWords: Object.freeze(['flee', 'hold']),
 });
 
 export function answerWord(key: string): AnswerWordSpec | undefined {
@@ -372,6 +378,32 @@ export function unknownTriggerRefusal(trigger: string): string {
   return `"${trigger}" is not a trigger this build rolls: they are ${ANSWER_TRIGGER_KEYS.join(
     ', '
   )}`;
+}
+
+/**
+ * A body on a `none`-shaped word that is not a mapping. THIS ONE IS NOT THE
+ * ENGINE'S SENTENCE, and the reason is worth stating rather than hiding.
+ *
+ * `FleeSpec`/`HoldSpec` are `struct{}`, so the Go decoder refuses a scalar or
+ * a sequence with the YAML LIBRARY'S error, not a designed refusal:
+ *
+ *   flee: 5      → cannot unmarshal !!int `5` into dungeonspec.FleeSpec
+ *   hold: [1]    → cannot unmarshal !!seq into dungeonspec.HoldSpec
+ *
+ * The web cannot reproduce that text faithfully: JavaScript's number model
+ * cannot tell `5.0` from `5`, so the `!!int`/`!!float` tag the decoder prints
+ * from the YAML source cannot be mirrored from the parsed value. Rather than
+ * print a tag that is sometimes wrong, the web says the same thing in its own
+ * words and refuses the same inputs.
+ *
+ * A MAPPING WITH KEYS IN IT IS ACCEPTED, because the engine accepts it: the
+ * custom unmarshaler means `KnownFields` never reaches inside `FleeSpec`, so
+ * `flee: { x: 1 }` decodes clean there too. Refusing it here would be the
+ * harmful direction — the web refusing a file the server reads — which is the
+ * exact failure this whole issue exists to undo.
+ */
+export function noneWordBodyRefusal(word: string): string {
+  return `${word} takes a mapping — write \`${word}: {}\``;
 }
 
 /** `validate.go` `placeOn`: a trigger key with no entries at all. */

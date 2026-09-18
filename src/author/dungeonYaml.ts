@@ -32,6 +32,7 @@ import {
 } from 'yaml';
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
+  ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_TEMPER,
   ANSWER_TRIGGER_KEYS,
@@ -49,6 +50,7 @@ import {
   isSelectorWord,
   MISSING_AT_REFUSAL,
   missingSpanRefusal,
+  noneWordBodyRefusal,
   spanRefusal,
   suggestKey,
   temperShareRefusal,
@@ -965,6 +967,24 @@ function withLine(sentence: string, line: number | undefined): string {
 }
 
 /**
+ * What `yaml.Node.Value` would hold for this parsed value — the text of a
+ * SCALAR, and the empty string for anything else.
+ *
+ * The engine, reading a raw node, sees `""` where the author wrote a mapping
+ * or a sequence (`body.Value` on a non-scalar is empty). Two refusals quote
+ * that text — `` `enemy: ` is not a condition this build reads `` and
+ * `"5" is not a temperament this build ships` — so the web has to see what
+ * the node saw, not what `JSON.stringify` would print.
+ */
+function scalarText(v: unknown): string {
+  return typeof v === 'string' ||
+    typeof v === 'number' ||
+    typeof v === 'boolean'
+    ? String(v)
+    : '';
+}
+
+/**
  * A placement's or a faction's answer table (`on:`). Both of its key spaces
  * are CLOSED sets the compiler enforces — triggers and entry words — so an
  * unknown one is refused here, with the nearest legal key named, rather than
@@ -1106,7 +1126,14 @@ function answerEntry(
     );
   }
 
-  if (words.length === 0 && entry.say === undefined) {
+  // The rule is READ from the declaration, not restated here (review round 1):
+  // a second spelling of "an entry with no word must still say something" is
+  // one that can drift from this one with no test failing.
+  if (
+    ANSWER_ENTRY_RULES.wordRequiredUnlessSaid &&
+    words.length === 0 &&
+    entry.say === undefined
+  ) {
     throw new DungeonParseError(
       `${path}: ${withLine(EMPTY_ENTRY_REFUSAL, entryLine)}`
     );
@@ -1162,10 +1189,10 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
   const key = keys[0];
 
   if (key === 'enemy') {
-    const band = v.enemy;
-    if (typeof band !== 'string') {
-      throw new DungeonParseError(`${path}: ${whenShapeRefusal()}`);
-    }
+    // The engine reads a raw node here, so `enemy: [1,2]` reaches it as the
+    // empty string and `enemy: 5` as "5" — both refused by the SAME sentence
+    // an unknown band gets, not by the `when`-shape sentence (review round 1).
+    const band = scalarText(v.enemy);
     if (!ANSWER_WHEN.enemyBands.includes(band)) {
       throw new DungeonParseError(`${path}: ${unknownEnemyBandRefusal(band)}`);
     }
@@ -1225,7 +1252,7 @@ function answerSelector(
 }
 
 /** One outcome word's value, by the shape the declaration gives it: an opaque
- * id for `fact`, nothing at all for `flee`/`hold`, a selector for
+ * id for `fact`, a MAPPING for `flee`/`hold`, a selector for
  * `attack`/`toward`/`away`. */
 function answerWordValue(
   word: string,
@@ -1242,6 +1269,15 @@ function answerWordValue(
   }
   if (shape === 'selector') {
     return { word, selector: answerSelector(raw, path, orientation) };
+  }
+  // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
+  // scalar or a sequence body is a decode error there and is refused here.
+  // A MAPPING IS ACCEPTED WHATEVER IS IN IT, because the engine accepts it:
+  // its custom unmarshaler never runs `KnownFields` inside `FleeSpec`, so
+  // `flee: { x: 1 }` decodes clean too. Refusing that would be the web
+  // refusing a file the server reads (review round 1, finding 2).
+  if (!isRecord(raw)) {
+    throw new DungeonParseError(`${path}: ${noneWordBodyRefusal(word)}`);
   }
   return { word };
 }
@@ -1268,7 +1304,9 @@ function answerSelectorRules(
   if (word === undefined || selector === undefined) return;
   const selectorLine = lineOf([...yamlPath, word]);
   if (selector.at !== undefined) {
-    if (word !== 'toward') {
+    // The one word `at:` is legal on is READ from the declaration rather
+    // than restated here (review round 1, finding 4).
+    if (word !== ANSWER_AT_SELECTOR.onlyWord) {
       throw new DungeonParseError(
         `${path}.${word}: ${withLine(atSelectorRefusal(word), selectorLine)}`
       );
@@ -1298,6 +1336,15 @@ function temper(v: unknown, path: string, allowMix: boolean): TemperDoc {
   if (typeof v === 'string') {
     assertTemperWord(v, path);
     return { word: v };
+  }
+  // A NON-STRING SCALAR reaches the engine's `TemperSpec.UnmarshalYAML` as a
+  // scalar node, so it is read as a word and refused BY NAME — `temper: 5`
+  // reports `"5" is not a temperament this build ships` there, not the shape
+  // sentence. `scalarText` gives the web the same value the raw node holds
+  // (review round 1, finding 3).
+  if (typeof v === 'number' || typeof v === 'boolean') {
+    assertTemperWord(scalarText(v), path);
+    return { word: scalarText(v) };
   }
   if (!isRecord(v)) {
     throw new DungeonParseError(
