@@ -2415,7 +2415,16 @@ describe('WorldBuildingConcept room publishing', () => {
         (await import('@connectrpc/connect')).Code.NotFound
       )
     );
-    await waitFor(() => expect(publishRpc.puts).toHaveLength(1));
+    // Wait for the TRANSACTIONAL save, not merely the first `putDungeon`:
+    // the debounced background preview also issues one (validateOnly) and
+    // can land first, because the click's synchronous DOM work can outlast
+    // the 400ms preview debounce on a slow runner. Indexing `puts[0]` then
+    // resolves the preview's deferred and strands the save forever.
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((p) => !p.request.validateOnly)
+      ).toHaveLength(1)
+    );
 
     // While the save is in flight: keyboard undo is a no-op.
     const before = screen.getByTestId('room-draft-json').textContent;
@@ -2439,8 +2448,11 @@ describe('WorldBuildingConcept room publishing', () => {
     );
 
     // The transaction completes: the shared launch ran for the same
-    // captured key, and the editor unlocks.
-    publishRpc.puts[0]!.deferred.resolve({ errors: [] } as never);
+    // captured key, and the editor unlocks. Resolve the save itself, never
+    // whichever `putDungeon` happened to be recorded first.
+    publishRpc.puts
+      .find((p) => !p.request.validateOnly)!
+      .deferred.resolve({ errors: [] } as never);
     await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
