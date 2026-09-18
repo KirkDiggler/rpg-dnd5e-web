@@ -35,24 +35,66 @@ const ASSET_KEYS = [
   'supportsDecoration',
   'tags',
 ];
+const OPTIONAL_ASSET_KEYS = ['roles'];
+const ROLE_WORDS = new Set(['frame', 'leaf', 'above']);
 
 function fail(message) {
   throw new Error(`World asset catalog: ${message}`);
 }
 
-function exactObject(value, keys, label) {
+function exactObject(value, keys, label, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     fail(`${label} must be an object`);
   }
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
+  const allowed = new Set([...keys, ...optional]);
+  const present = Object.keys(value);
   if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
+    present.some((key) => !allowed.has(key)) ||
+    keys.some((key) => !present.includes(key))
   ) {
-    fail(`${label} fields must be exactly: ${expected.join(', ')}`);
+    const suffix = optional.length
+      ? ` (optional: ${[...optional].sort().join(', ')})`
+      : '';
+    fail(
+      `${label} fields must be exactly: ${[...keys].sort().join(', ')}${suffix}`
+    );
   }
   return value;
+}
+
+/** Optional ordered semantic role bindings: names only, never numbers. */
+function parseRoles(value, label) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) {
+    fail(`${label}.roles must be a non-empty array`);
+  }
+  const nodes = new Set();
+  return value.map((raw, index) => {
+    const rowLabel = `${label}.roles[${index}]`;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      fail(`${rowLabel} must be an object`);
+    }
+    const keys = Object.keys(raw);
+    if (
+      keys.some((key) => key !== 'role' && key !== 'node' && key !== 'door') ||
+      !('role' in raw) ||
+      !('node' in raw)
+    ) {
+      fail(`${rowLabel} fields must be exactly: door, node, role`);
+    }
+    const role = raw.role;
+    if (typeof role !== 'string' || !ROLE_WORDS.has(role)) {
+      fail(`${rowLabel}.role is unknown: ${String(role)}`);
+    }
+    const node = nonempty(raw.node, `${rowLabel}.node`, 200);
+    if (nodes.has(node)) fail(`${label}.roles has duplicate node: ${node}`);
+    nodes.add(node);
+    const parsed = { role, node };
+    if ('door' in raw) {
+      parsed.door = nonempty(raw.door, `${rowLabel}.door`, 120);
+    }
+    return parsed;
+  });
 }
 
 function nonempty(value, label, max = 200) {
@@ -190,7 +232,7 @@ function parseCatalog(providerRoot, runtimeRoot) {
   const urls = new Set();
   const assets = catalog.assets.map((rawAsset, index) => {
     const label = `assets[${index}]`;
-    const asset = exactObject(rawAsset, ASSET_KEYS, label);
+    const asset = exactObject(rawAsset, ASSET_KEYS, label, OPTIONAL_ASSET_KEYS);
     const category = nonempty(asset.category, `${label}.category`);
     if (!CATEGORIES.has(category))
       fail(`${label}.category is unknown: ${category}`);
@@ -267,6 +309,7 @@ function parseCatalog(providerRoot, runtimeRoot) {
     if (typeof asset.supportsDecoration !== 'boolean') {
       fail(`${label}.supportsDecoration must be boolean`);
     }
+    const roles = parseRoles(asset.roles, label);
     return {
       ref,
       displayName: nonempty(asset.displayName, `${label}.displayName`, 120),
@@ -277,6 +320,7 @@ function parseCatalog(providerRoot, runtimeRoot) {
       boundsMeters: asset.boundsMeters,
       tags: [...tags].sort(),
       supportsDecoration: asset.supportsDecoration,
+      ...(roles ? { roles } : {}),
     };
   });
   assets.sort((left, right) => left.ref.localeCompare(right.ref));
@@ -292,25 +336,26 @@ const q = (value) => JSON.stringify(value);
 
 export function renderWorldAssetCatalogModule({ commit, catalog }) {
   const entries = catalog.assets
-    .map(
-      (asset) =>
-        `  ${q(asset.ref)}: Object.freeze({\n${[
-          ['ref', asset.ref],
-          ['displayName', asset.displayName],
-          ['category', asset.category],
-          ['url', asset.url],
-          ['glbSha256', asset.glbSha256],
-          ['sizeBytes', asset.sizeBytes],
-          ['boundsMeters', asset.boundsMeters],
-          ['tags', asset.tags],
-          ['supportsDecoration', asset.supportsDecoration],
-        ]
-          .map(
-            ([key, value]) =>
-              `    ${key}: ${q(value)}${key === 'boundsMeters' ? ' as [number, number, number]' : ''},`
-          )
-          .join('\n')}\n  }),`
-    )
+    .map((asset) => {
+      const pairs = [
+        ['ref', asset.ref],
+        ['displayName', asset.displayName],
+        ['category', asset.category],
+        ['url', asset.url],
+        ['glbSha256', asset.glbSha256],
+        ['sizeBytes', asset.sizeBytes],
+        ['boundsMeters', asset.boundsMeters],
+        ['tags', asset.tags],
+        ['supportsDecoration', asset.supportsDecoration],
+      ];
+      if (asset.roles) pairs.push(['roles', asset.roles]);
+      return `  ${q(asset.ref)}: Object.freeze({\n${pairs
+        .map(
+          ([key, value]) =>
+            `    ${key}: ${q(value)}${key === 'boundsMeters' ? ' as [number, number, number]' : ''},`
+        )
+        .join('\n')}\n  }),`;
+    })
     .join('\n');
   const recipes = catalog.recipes
     .map(
@@ -318,7 +363,7 @@ export function renderWorldAssetCatalogModule({ commit, catalog }) {
         `    Object.freeze({ batchId: ${q(recipe.batchId)}, sha256: ${q(recipe.sha256)} }),`
     )
     .join('\n');
-  const source = `// Generated by scripts/generate-world-asset-catalog.mjs. Do not edit.\n\nexport const GENERATED_WORLD_ASSET_PROVIDER = Object.freeze({\n  commit: ${q(commit)},\n  catalogSha256: ${q(catalog.catalogSha256)},\n  generatedBy: ${q(catalog.generatedBy)},\n  recipes: Object.freeze([\n${recipes}\n  ]) as ReadonlyArray<Readonly<{ batchId: string; sha256: string }>>,\n});\n\nexport interface GeneratedWorldAsset {\n  ref: string;\n  displayName: string;\n  category: 'props' | 'items' | 'weapons' | 'env';\n  url: string;\n  glbSha256: string;\n  sizeBytes: number;\n  boundsMeters: [number, number, number];\n  tags: string[];\n  supportsDecoration: boolean;\n}\n\nexport interface WorldAssetResolutionDiagnostic {\n  ref: string;\n  reason: 'unsupported-exact-ref';\n}\n\nexport const GENERATED_WORLD_ASSETS: Readonly<Record<string, GeneratedWorldAsset>> = Object.freeze({\n${entries}\n});\n\n/** Exact-only lookup. It never substitutes a family/default asset. */\nexport function resolveWorldAsset(\n  ref: string,\n  onDiagnostic?: (diagnostic: WorldAssetResolutionDiagnostic) => void\n): GeneratedWorldAsset | undefined {\n  const asset = GENERATED_WORLD_ASSETS[ref];\n  if (!asset) onDiagnostic?.({ ref, reason: 'unsupported-exact-ref' });\n  return asset;\n}\n`;
+  const source = `// Generated by scripts/generate-world-asset-catalog.mjs. Do not edit.\n\nexport const GENERATED_WORLD_ASSET_PROVIDER = Object.freeze({\n  commit: ${q(commit)},\n  catalogSha256: ${q(catalog.catalogSha256)},\n  generatedBy: ${q(catalog.generatedBy)},\n  recipes: Object.freeze([\n${recipes}\n  ]) as ReadonlyArray<Readonly<{ batchId: string; sha256: string }>>,\n});\n\nexport interface GeneratedWorldAsset {\n  ref: string;\n  displayName: string;\n  category: 'props' | 'items' | 'weapons' | 'env';\n  url: string;\n  glbSha256: string;\n  sizeBytes: number;\n  boundsMeters: [number, number, number];\n  tags: string[];\n  supportsDecoration: boolean;\n  roles?: ReadonlyArray<\n    Readonly<{ role: 'frame' | 'leaf' | 'above'; node: string; door?: string }>\n  >;\n}\n\nexport interface WorldAssetResolutionDiagnostic {\n  ref: string;\n  reason: 'unsupported-exact-ref';\n}\n\nexport const GENERATED_WORLD_ASSETS: Readonly<Record<string, GeneratedWorldAsset>> = Object.freeze({\n${entries}\n});\n\n/** Exact-only lookup. It never substitutes a family/default asset. */\nexport function resolveWorldAsset(\n  ref: string,\n  onDiagnostic?: (diagnostic: WorldAssetResolutionDiagnostic) => void\n): GeneratedWorldAsset | undefined {\n  const asset = GENERATED_WORLD_ASSETS[ref];\n  if (!asset) onDiagnostic?.({ ref, reason: 'unsupported-exact-ref' });\n  return asset;\n}\n`;
   return execFileSync(
     process.execPath,
     [PRETTIER_CLI, '--stdin-filepath', GENERATED_FORMAT_PATH],
