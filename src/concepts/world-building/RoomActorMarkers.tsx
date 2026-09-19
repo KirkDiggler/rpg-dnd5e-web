@@ -5,6 +5,7 @@ import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Html } from '@react-three/drei';
+import type { ThreeEvent } from '@react-three/fiber';
 import { Suspense } from 'react';
 import type { RoomHexCell, RoomMonsterPlacement } from './roomDraft';
 
@@ -21,8 +22,24 @@ function roomActorCenter(cell: RoomHexCell) {
   return cubeToWorld({ x: cell.q, y: -cell.q - cell.r, z: cell.r }, HEX_SIZE);
 }
 
-/** One unmistakable authoring ring. It is the only raycastable part of a
- * marker: clicking it selects the actor and never a scene prop. */
+/** One unmistakable authoring ring, plus the actor's PICK SURFACE.
+ *
+ * THE PICK SURFACE IS THE WHOLE CELL, AND THAT IS THE FIX. The ring alone is a
+ * thin band (0.72–0.96 of a hex), and for as long as it was the marker's only
+ * raycastable part, selecting a placed actor meant hitting that band exactly —
+ * clicking the model or the middle of the cell, which is where anyone actually
+ * aims, selected NOTHING. The panel was reachable only from the actor list's
+ * Move button (Kirk, 2026-09-19).
+ *
+ * The pick mesh is invisible but NOT `visible={false}`: a hidden mesh is not
+ * raycastable at all, which would put this straight back where it started.
+ * BOTH it and the visible ring carry the same selection gesture, so clicking
+ * the ring selects exactly as it always did and the rest of the cell now does
+ * too. `stopPropagation` is what keeps a click on an actor from also selecting
+ * the scene prop beneath it.
+ *
+ * The pick surface is added BEFORE the ring so the ring's colour is drawn over
+ * it; both sit just above the floor. */
 function ActorRing({
   actorId,
   color,
@@ -34,27 +51,39 @@ function ActorRing({
   selected: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
+  const select = (event: ThreeEvent<PointerEvent>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    onSelectActor(actorId);
+  };
   return (
-    <mesh
-      name={`room-actor-ring-${actorId}`}
-      userData={{ roomActorId: actorId }}
-      position={[0, 0.05, 0]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.stopPropagation();
-        onSelectActor(actorId);
-      }}
-    >
-      <ringGeometry args={[0.72, 0.96, 6]} />
-      <meshBasicMaterial
-        color={selected ? SELECTED_COLOR : color}
-        transparent
-        opacity={selected ? 1 : 0.85}
-        depthTest={false}
-        toneMapped={false}
-      />
-    </mesh>
+    <>
+      <mesh
+        name={`room-actor-pick-${actorId}`}
+        userData={{ roomActorId: actorId }}
+        position={[0, 0.04, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onPointerDown={select}
+      >
+        <circleGeometry args={[0.96, 6]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh
+        name={`room-actor-ring-${actorId}`}
+        position={[0, 0.05, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onPointerDown={select}
+      >
+        <ringGeometry args={[0.72, 0.96, 6]} />
+        <meshBasicMaterial
+          color={selected ? SELECTED_COLOR : color}
+          transparent
+          opacity={selected ? 1 : 0.85}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </>
   );
 }
 

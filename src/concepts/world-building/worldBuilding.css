@@ -91,11 +91,28 @@
 
 .wb-shell button,
 .wb-shell input,
+.wb-shell select,
 .wb-shell textarea,
 .wb-palette-entry,
 .wb-library article[draggable='true'] {
   border: 1px solid var(--wb-border);
   border-radius: 5px;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+}
+
+/* THE POPUP IS NOT THE CONTROL. Styling the closed `<select>` leaves the native
+ * option list painted by the OS, so every dropdown in this panel opened WHITE
+ * beside a dark control — and `select` was missing from the palette rule above
+ * entirely (Kirk, 2026-09-19). `color-scheme` is what tells the browser to
+ * paint its own form-control chrome dark; the explicit `option` rule is the
+ * belt to that braces, because some platforms ignore `color-scheme` for popups
+ * and would otherwise keep the light list. */
+.wb-shell select {
+  color-scheme: dark;
+}
+
+.wb-shell select option {
   background: var(--wb-raised);
   color: var(--wb-text);
 }
@@ -431,10 +448,12 @@ button.wb-tree-row[aria-pressed='true'] {
   line-height: 1.35;
 }
 
-/* The read-only site policies (rpg-dnd5e-web#1157): a faction's temperament
- * and shared answer table, the dispositions between factions, and one
- * creature's inherited-vs-overridden split. FACTS, NEVER CONTROLS — there is
- * deliberately no input style here because none of this is editable yet. */
+/* The site policies (rpg-dnd5e-web#1157) and one creature's ORDERS
+ * (rpg-dnd5e-web#1164): a faction's temperament and shared answer table, the
+ * dispositions between factions, and what one creature overrides. The INHERITS
+ * half is FACTS, NEVER CONTROLS and stays that way. The OVERRIDES half became
+ * controls in #1164 — which is why there are now inputs here, and why the old
+ * "nothing here is editable yet" note was removed rather than left to mislead. */
 .wb-policy-block + .wb-policy-block {
   margin-top: 0.5rem;
 }

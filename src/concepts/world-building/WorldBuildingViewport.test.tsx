@@ -867,8 +867,23 @@ describe('room actor markers and snapped setup gestures', () => {
       expect(url).toBe('/models/synty/npcs/skeleton-soldier-01.glb');
     expect(new Set(modelState.requestedUrls).size).toBe(1);
 
-    // The ring is the only raycastable actor part: its pointer selects
-    // the actor and never a scene prop.
+    // The actor's cell is the target: clicking anywhere on it selects the
+    // actor and never a scene prop. The ring used to be the ONLY raycastable
+    // part, which left the middle of the cell — where anyone actually aims —
+    // dead, so a placed actor could not be re-selected at all (Kirk,
+    // 2026-09-19).
+    const pick = renderer.scene.findByProps({
+      name: `room-actor-pick-${ACTOR.id}`,
+    });
+    const pickStop = vi.fn();
+    await renderer.fireEvent(pick, 'pointerDown', {
+      button: 0,
+      stopPropagation: pickStop,
+    });
+    expect(pickStop).toHaveBeenCalled();
+    expect(onSelectActor).toHaveBeenCalledWith('actor-1');
+
+    // …and the VISIBLE ring still selects too, exactly as it always did.
     const ring = renderer.scene.findByProps({
       name: `room-actor-ring-${ACTOR.id}`,
     });
