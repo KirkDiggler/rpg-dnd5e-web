@@ -1,6 +1,6 @@
 /**
  * GENERATED FILE — DO NOT EDIT.
- * Provider commit: 87d1d6aa99c0c2a50e1af8ce262e42728123c12a
+ * Provider commit: 85fdf94bf55ac3cd40db0d79fa65dbfac4f98563
  * Aggregate manifest SHA-256: e23578904527f6b80fc49587d779c79544184ef33c250c4de0d40f0db023f603
  */
 
@@ -118,7 +118,7 @@ export interface CharacterCustomizationCatalog {
 }
 
 export const CHARACTER_CUSTOMIZATION_PROVIDER = Object.freeze({
-  providerCommit: '87d1d6aa99c0c2a50e1af8ce262e42728123c12a',
+  providerCommit: '85fdf94bf55ac3cd40db0d79fa65dbfac4f98563',
   aggregateManifestSha256:
     'e23578904527f6b80fc49587d779c79544184ef33c250c4de0d40f0db023f603',
   outfitManifestSha256:
