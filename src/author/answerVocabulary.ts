@@ -1,46 +1,35 @@
 /**
- * The answer table's sealed vocabulary — ONE declaration, three jobs.
+ * The answer table's vocabulary — OFFERS, NOT RULES.
  *
- * The engine owns this vocabulary, not this module: `dungeonspec`'s
- * `AnswerSpec.UnmarshalYAML` allowlists the entry keys and refuses the rest
- * by name, `encounter.TableKeys` seals the triggers, and
- * `dungeonspec/validate.go`'s `placeOn` enforces the entry rules. Everything
- * here is a transcription of that contract so the builder can read it without
- * re-deriving it, and so there is exactly one place to edit when the
- * engine's vocabulary grows one word per use case.
+ * WHAT THIS IS (rpg-project#481 R3). These are the words a palette puts in
+ * front of an author: the triggers a picker lists, the outcome words it
+ * offers under each, the enemy bands and deeds a `when` builder shows, the
+ * selector words, the temperaments. They exist so a panel can offer something
+ * real instead of a free-text box.
  *
- * WHAT THIS BUYS (rpg-dnd5e-web#1118, extended by #1137). Before #1118 the
- * parser's allowlist was the UI's subset rather than the spec's vocabulary, so
- * a file carrying `on:`, `intimidate:`, `persuade:` or `actions:` was refused
- * as an unknown key — the front room would not open at all. #1118 declared the
- * four social triggers and the two social words; the creature's table wave
- * (rpg-project#466, `rulebooks/dnd5e/encounter` v0.90.0) then SHIPPED a bigger
- * grammar while that PR was open. This module now carries the shipped grammar:
- * the fifth trigger `time`, the four `time`-only words, the word-to-trigger
- * applicability rule, the structured `when:`, the selectors, and `temper`.
+ * WHAT IT IS NOT. It is not a gate. NOTHING IN THE WEB REFUSES A FILE AGAINST
+ * THIS LIST. `dungeonspec` owns the vocabulary — `AnswerSpec.UnmarshalYAML`
+ * allowlists the entry keys, `encounter.TableKeys` seals the triggers,
+ * `validate.go`'s `placeOn` enforces the entry rules — and
+ * `PutDungeon{validate_only}` is where a file is graded against it, in the
+ * engine's own paths and sentences.
  *
- * THE DECLARATION IS READ BY THE PARSER (what may appear), the PANELS (what
- * may be authored) and the REFUSALS (what the author probably meant). The
- * author-facing reference for the rows is
+ * THE ENGINE'S SENTENCES USED TO LIVE HERE, transcribed word for word so a
+ * refusal read the same from the builder and from the server. That is a
+ * mirror, and a mirror drifts one release at a time: rpg-dnd5e-web#1119 was
+ * the builder refusing the only authored `on:` block in the project, and
+ * #1145 refused a `temper` the engine takes. Both were the web declining a
+ * file the engine plays. The sentences are deleted; the codec carries what
+ * the author wrote and the compiler answers.
+ *
+ * THE COST, NAMED. An offer can fall behind the engine. A word this list has
+ * not learned is a word no picker offers — and a file that uses it still
+ * opens, still round-trips, and is still graded by the engine. Falling behind
+ * costs a completion; it no longer costs an author their file.
+ *
+ * The author-facing reference for the rows is
  * `rpg-project/docs/howto/author-a-creature.md`; when the engine and that page
- * disagree, the engine's `dungeonspec` is the tiebreak and the page is the
- * thing to fix.
- *
- * TWO DIMENSIONS, NOT ROWS. Two of the shipped facts cannot be expressed by a
- * flat word table and are modelled as their own dimensions:
- *
- *   1. a word is legal on SOME triggers — `fact`/`flee` answer a social
- *      verdict, `hold`/`attack`/`toward`/`away` are what a creature does with
- *      time — so `legalOn` is a field on every word. A picker built from this
- *      declaration therefore offers only the words the engine will take;
- *   2. `when:` is a structured condition (one enemy band, or one deed with a
- *      span) rather than one of the sealed flat words, so it has its own shape
- *      ([ANSWER_WHEN]) and its own place in an entry.
- *
- * WHAT IT DOES NOT DO. It never decides which entry fires, never sums
- * weights, and never reads a `when`. Eligibility and the roll are the
- * engine's; the builder's job ends at a document that means what the author
- * said.
+ * disagree, the engine's `dungeonspec` is the tiebreak.
  */
 
 /**
@@ -71,11 +60,10 @@ export interface AnswerWordSpec {
   readonly legalOn: AnswerApplicability;
 }
 
-/** The entry words the engine accepts today, in the order the panels offer
- * them. `dungeonspec.AnswerSpec.UnmarshalYAML` allowlists exactly these;
- * `laterWords` refuses `alarm`, `lure`, `pretend`, `tell` and `patrol` by
- * name, each pointing at the slice that owns it — so a word appears HERE only
- * once the engine accepts it.
+/** The entry words the panels OFFER, in the order they offer them — the ones
+ * the engine accepted when this list was last read. A word appears here once
+ * the engine accepts it; a word the engine accepts and this list has not
+ * learned is simply one no picker offers, never one a file is refused for.
  *
  * THE ORDER IS THE AUTHOR-FACING REFERENCE'S OWN (`author-a-creature.md`,
  * "One word, or none"): the two social words first, then the four time
@@ -294,28 +282,15 @@ export const ANSWER_TEMPER: AnswerTemperSpec = Object.freeze({
   factionShape: 'word-or-mix',
 });
 
-/** The engine's entry rules (`dungeonspec` `answerEntry` / `placeOn`), in
- * one place so the parser and the panel refuse the same things. An entry does
- * AT MOST ONE thing: two words in one entry is an error rather than an
- * ordering the author has to guess.
+/**
+ * THE ENTRY RULES ARE NOT DECLARED HERE ANY MORE (rpg-project#481 R3).
  *
- * THERE IS NO `emptyMappingWords` HERE ON PURPOSE (review round 1). Which
- * words carry nothing is already spelled by `AnswerWordSpec.value === 'none'`,
- * and a second list beside it is two spellings of one fact in a module whose
- * contract is one declaration — the declaration's copy could drift from the
- * enforced one with no test failing, which is the failure mode this module
- * exists to prevent. */
-export const ANSWER_ENTRY_RULES = Object.freeze({
-  /** `weight` is a pointer upstream precisely so that omitted differs from
-   * `0`: omitted IS 1, and anything below 1 is refused. An authored 1 is
-   * therefore redundant but legal, and must round-trip as written. */
-  minimumWeight: 1,
-  /** An entry with no word must still say something, or it does nothing.
-   * Read at the enforcement point, not restated there. */
-  wordRequiredUnlessSaid: true,
-  /** And an entry carries one word at most. */
-  maximumWords: 1,
-});
+ * `ANSWER_ENTRY_RULES` used to carry the minimum weight, "an entry does one
+ * thing" and "an entry with no word must still say something" so the parser
+ * and the panel could refuse the same things. They are `validate.go`'s
+ * `answerEntry` rules, they are enforced there, and the builder reads the
+ * verdict off `PutDungeon{validate_only}` rather than deciding it twice.
+ */
 
 export function answerWord(key: string): AnswerWordSpec | undefined {
   return ANSWER_WORDS.find((w) => w.key === key);
@@ -363,185 +338,20 @@ export function isSelectorWord(word: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// The engine's own sentences
+// THE ENGINE'S OWN SENTENCES USED TO LIVE HERE — twenty of them, transcribed
+// from `dungeonspec/validate.go`, `WhenSpec.UnmarshalYAML`,
+// `SelectorSpec.UnmarshalYAML` and `TemperSpec.UnmarshalYAML` so an author met
+// the same words from the builder and from the server.
 //
-// A refusal a streamer meets twice — once here on load, once from the server —
-// must read the same both times, or the two look like two different problems
-// (`dungeonYaml.ts`'s law for `knows` and the deleted wall form). Each of
-// these is `dungeonspec`'s sentence, word for word, minus the `(line N)` the
-// validator appends — the parser resolves the line from the document and
-// appends it.
+// They are deleted (rpg-project#481 R3). Each one was a verdict the web made
+// about whether a file plays, and the engine makes that verdict: an author now
+// meets ONE sentence, from the owner, at the path the compiler names. A
+// sentence authored in two places drifts in one of them, and the drift is what
+// #1119 and #1145 were.
+//
+// `suggestKey` below SURVIVES, because it is not a verdict: it is what a
+// palette says beside a completion.
 // ---------------------------------------------------------------------------
-
-/** `validate.go` `placeOn`: a key nobody designed. */
-export function unknownTriggerRefusal(trigger: string): string {
-  return `"${trigger}" is not a trigger this build rolls: they are ${ANSWER_TRIGGER_KEYS.join(
-    ', '
-  )}`;
-}
-
-/**
- * A body on a `none`-shaped word that is not a mapping. THIS ONE IS NOT THE
- * ENGINE'S SENTENCE, and the reason is worth stating rather than hiding.
- *
- * `FleeSpec`/`HoldSpec` are `struct{}`, so the Go decoder refuses a scalar or
- * a sequence with the YAML LIBRARY'S error, not a designed refusal:
- *
- *   flee: 5      → cannot unmarshal !!int `5` into dungeonspec.FleeSpec
- *   hold: [1]    → cannot unmarshal !!seq into dungeonspec.HoldSpec
- *
- * The web cannot reproduce that text faithfully: JavaScript's number model
- * cannot tell `5.0` from `5`, so the `!!int`/`!!float` tag the decoder prints
- * from the YAML source cannot be mirrored from the parsed value. Rather than
- * print a tag that is sometimes wrong, the web says the same thing in its own
- * words and refuses the same inputs.
- *
- * A MAPPING WITH KEYS IN IT IS ACCEPTED, because the engine accepts it: the
- * custom unmarshaler means `KnownFields` never reaches inside `FleeSpec`, so
- * `flee: { x: 1 }` decodes clean there too. Refusing it here would be the
- * harmful direction — the web refusing a file the server reads — which is the
- * exact failure this whole issue exists to undo.
- */
-export function noneWordBodyRefusal(word: string): string {
-  return `${word} takes a mapping — write \`${word}: {}\``;
-}
-
-/** `validate.go` `placeOn`: a trigger key with no entries at all. */
-export const EMPTY_TRIGGER_REFUSAL =
-  'this names a trigger and lists nothing that happens on it';
-
-/** `validate.go` `answerEntry`: a row that can never fire. */
-export function weightRefusal(weight: number): string {
-  return `a weight of ${weight} can never be rolled: omit it for 1, or give it a share`;
-}
-
-/** `validate.go` `answerEntry`: a `fact:` that does not say what. */
-export const EMPTY_FACT_REFUSAL =
-  'this says the world learns something and does not say what';
-
-/** `validate.go` `answerEntry`: two outcome words in one entry. */
-export function entryDoesOneThingRefusal(words: readonly string[]): string {
-  return `an entry does one thing: \`${words.join(
-    '` and `'
-  )}\` in the same entry is ${words.length}`;
-}
-
-/** `validate.go` `answerEntry`: a row written for no reason. */
-export const EMPTY_ENTRY_REFUSAL = 'this entry does nothing and says nothing';
-
-/**
- * `validate.go` `wordLegality`: a word under a key it is not legal on, or
- * undefined when the pair is legal.
- *
- * The engine has TWO sentences here and which one an author gets depends on
- * the direction of the mistake:
- *
- *   - a social word on `time` — "`fact` answers a social verdict, and `time`
- *     is not one";
- *   - an action word on a social key — "`attack` is what a creature does with
- *     time, and `intimidated` is an outcome".
- *
- * A picker built from [answerWordsForTrigger] never produces either; this is
- * for the file an author hand-edited, so the sentence has to be the one the
- * server would have said.
- */
-export function answerWordRefusal(
-  word: string,
-  trigger: string
-): string | undefined {
-  if (answerWordLegalOn(word, trigger)) return undefined;
-  const spec = answerWord(word);
-  if (spec?.legalOn === 'social') {
-    return `\`${word}\` answers a social verdict, and \`${trigger}\` is not one`;
-  }
-  return `\`${word}\` is what a creature does with time, and \`${trigger}\` is an outcome`;
-}
-
-/** `validate.go` `wordLegality`: a `when` under a social key, or undefined
- * when the trigger takes one. */
-export function answerWhenRefusal(trigger: string): string | undefined {
-  if (answerWhenLegalOn(trigger)) return undefined;
-  return `\`${trigger}\` is already the condition — a \`when\` under it asks when a thing that just happened happened`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: two conditions in one `when`, or none. */
-export function whenIsOneConditionRefusal(count: number): string {
-  return `a \`when\` is one condition, and this names ${count}`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: the shape, for a `when` that is not a map at
- * all. */
-export function whenShapeRefusal(): string {
-  return `a \`when\` is one of { enemy: ${ANSWER_WHEN.enemyBands.join(
-    ' | '
-  )} } or { <deed>: { within: N } }`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: an `enemy:` value outside the four bands. */
-export function unknownEnemyBandRefusal(band: string): string {
-  return `\`enemy: ${band}\` is not a condition this build reads: they are ${ANSWER_WHEN.enemyBands.join(
-    ', '
-  )}`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: a deed key this build does not hold. */
-export function unknownDeedRefusal(deed: string): string {
-  return `\`${deed}\` is not a deed this build holds: they are ${ANSWER_WHEN.deeds.join(
-    ', '
-  )} (and \`enemy\`)`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: a deed with no span written. */
-export function missingSpanRefusal(deed: string): string {
-  return `\`${deed}\` names no span — write { within: N }`;
-}
-
-/** `WhenSpec.UnmarshalYAML`: a span counted from zero. */
-export function spanRefusal(within: number): string {
-  return `a span of ${within} rounds is counted from 1`;
-}
-
-/** `SelectorSpec.UnmarshalYAML`: a scalar outside the sealed three. */
-export function unknownSelectorRefusal(word: string): string {
-  return `"${word}" is not a selector this build resolves: they are ${ANSWER_SELECTOR_WORDS.map(
-    (s) => s.key
-  ).join(', ')}, or { at: [col, row] }`;
-}
-
-/** `SelectorSpec.UnmarshalYAML`: a selector mapping that names anything but
- * `at`. */
-export function unknownSelectorKeyRefusal(key: string): string {
-  return `field ${key} not found in type dungeonspec.SelectorSpec`;
-}
-
-/** `SelectorSpec.UnmarshalYAML`: an `at:` mapping with no cell in it. */
-export const MISSING_AT_REFUSAL = 'a cell selector is { at: [col, row] }';
-
-/** `validate.go` `entrySelector`: a cell where only a word is legal. */
-export function atSelectorRefusal(word: string): string {
-  return `a cell is somewhere to walk toward, and \`${word}\` acts on a creature`;
-}
-
-/** `validate.go` `entrySelector`: `actor` with no deed to have been the
- * actor of. */
-export const ACTOR_WITHOUT_DEED_REFUSAL =
-  "`actor` is the actor of the deed this entry's `when` names, and this entry names no deed";
-
-/** `TemperSpec.UnmarshalYAML`: a word outside the sealed three. */
-export function unknownTemperRefusal(word: string): string {
-  return `"${word}" is not a temperament this build ships: they are ${ANSWER_TEMPER.words.join(
-    ', '
-  )}`;
-}
-
-/** `TemperSpec.UnmarshalYAML`: a share that can never be dealt. */
-export function temperShareRefusal(share: number, word: string): string {
-  return `a share of ${share} can never be dealt — give "${word}" a share of at least ${ANSWER_TEMPER.minimumShare}`;
-}
-
-/** `TemperSpec.UnmarshalYAML`: a mix with nothing in it. */
-export const EMPTY_TEMPER_MIX_REFUSAL =
-  'a temper mix with nothing in it deals nothing';
 
 /**
  * The nearest legal key to what the author typed, or undefined when nothing

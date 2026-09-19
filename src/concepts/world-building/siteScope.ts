@@ -15,56 +15,51 @@
  * the block, save, reload and get exactly the bytes they wrote back, with the
  * typos the strict decode is for still refused.
  *
- * THE CLOSED SETS ARE READ, NOT RESTATED. Stance words and predicate forms come
- * from `factionVocabulary.ts` and the temper words from `answerVocabulary.ts`,
- * so a word the engine seals is a word this decoder already knows. Semantic
- * questions — does the faction exist, is the pair reachable, does the mind name
- * a member — are the ENGINE's (`validate.go`, `factionRules.ts`); this refuses
- * only the shapes it cannot represent, exactly as `dungeonYaml.ts` does.
+ * THE CLOSED SETS ARE NOT READ HERE AT ALL (rpg-project#481 R3). A stance word,
+ * a temperament, a predicate form and a faction id are the ENGINE's vocabulary,
+ * and `PutDungeon{validate_only}` is where a file is graded against it. This
+ * decoder used to refuse each of them in the engine's own sentences — a mirror
+ * of a closed set, and a mirror drifts (rpg-dnd5e-web#1119, #1145). It now
+ * carries what the author wrote and refuses only the shapes it cannot hold:
+ * a faction that is not a mapping, a `between` that is not two names.
+ *
+ * `factionVocabulary.ts` and `answerVocabulary.ts` still declare the words the
+ * panels OFFER as completions. An offer is not a rule.
  */
 
-import {
-  ANSWER_TEMPER,
-  EMPTY_TEMPER_MIX_REFUSAL,
-  temperShareRefusal,
-  unknownTemperRefusal,
-} from '@/author/answerVocabulary';
-import {
-  PARTY,
-  PREDICATE_FORMS,
-  PREDICATE_SHAPE,
-  STANCES,
-  type PredicateDoc,
-  type Stance,
-} from '@/author/factionVocabulary';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
-import { objectShape, rejectUnknownKeys } from './strictShape';
+import { objectShape } from './strictShape';
 
-/** A faction id has the same grammar as the room key: lower-case, digits,
- * dashes. `party` is never declared — it is the players' side — and the
- * engine refuses it by name. */
-const FACTION_ID_RE = /^[-a-z0-9]+$/;
-
-/** A `temper:` as written: one sealed word, or a word->share mix on a faction.
- * A placement names one creature, so it takes a word; a faction is several and
- * deals one per member. */
-export type SiteTemper = string | Record<string, number>;
+/** A `temper:` as written — a word, or a word->share mix. WHICH WORDS THIS
+ * BUILD SHIPS, and whether a mix is legal where it was written, are the
+ * engine's answers (`TemperSpec`); this carries what the file says. */
+export type SiteTemper = unknown;
 
 /** One declared faction. `on` is the shared answer table its members inherit,
- * validated by the ONE answer grammar; `temper` is the mix dealt per member. */
+ * carried by the ONE answer codec; `temper` is the mix dealt per member.
+ * `id`, `mind` and every value below are carried as written — the engine
+ * grades them. */
 export interface SiteFaction {
   id: string;
   mind?: string;
   on?: AnswerTableShape;
   temper?: SiteTemper;
+  /** EVERY OTHER KEY THE FILE WROTE, CARRIED IN PLACE. This document IS the
+   * emitted shape, so a key held here reaches the compiler at its own path —
+   * `factions[0].tempre` comes back named instead of stopping the file. */
+  [key: string]: unknown;
 }
 
 /** How two factions stand to each other, and the predicate that ends the
- * hostility. `until` is legal only with `stance: hostile`. */
+ * hostility. `stance` and `until` are carried as written: "`until` is legal
+ * only with `stance: hostile`" is `validate.go`'s rule and `validate.go`
+ * makes it. */
 export interface SiteDisposition {
   between: [string, string];
-  stance: Stance;
-  until?: PredicateDoc;
+  stance: string;
+  until?: unknown;
+  /** Every other key the file wrote, carried in place. */
+  [key: string]: unknown;
 }
 
 /** The authored site scope. Each key is absent when nothing was authored, so a
@@ -73,12 +68,6 @@ export interface SiteScope {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
 }
-
-const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
-const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
-
-const isMapping = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`);
@@ -93,14 +82,17 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site faction at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, FACTION_KEYS, path);
-    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
+    // A FACTION IS KEYED BY ITS ID, so an id this decoder cannot use as a key
+    // is the one thing it still refuses: a string. Its GRAMMAR — lower-case,
+    // digits, dashes, and `party` reserved — is the engine's, and the engine
+    // names a bad one at `factions[i].id`.
+    if (typeof raw.id !== 'string' || raw.id === '')
       fail(path, 'needs an id such as goblins');
-    if (raw.id === PARTY)
-      fail(path, `\`${PARTY}\` is the players' side and is never declared`);
     if (ids.has(raw.id)) fail(path, `duplicate faction id: ${raw.id}`);
     ids.add(raw.id);
-    const faction: SiteFaction = { id: raw.id };
+    // The block AS WRITTEN, with the keys this decoder models checked in
+    // place. Everything else rides along untouched.
+    const faction: SiteFaction = { ...raw, id: raw.id };
     // ABSENT WHEN UNAUTHORED: each key is added only when the file wrote one.
     if (raw.mind !== undefined && raw.mind !== null) {
       if (typeof raw.mind !== 'string' || !raw.mind)
@@ -109,40 +101,11 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
     }
     if (Object.hasOwn(raw, 'on'))
       faction.on = validateAnswerTable(raw.on, `${path} on`);
-    if (Object.hasOwn(raw, 'temper'))
-      faction.temper = validateFactionTemper(raw.temper, `${path} temper`);
+    // CARRIED, NOT GRADED: a word this build does not ship, a share of zero,
+    // a mix where the engine wants a word — each is `TemperSpec`'s to refuse.
     factions.push(faction);
   }
   return factions;
-}
-
-/** A faction's `temper:` — one sealed word, or a mix to deal one from. Shares
- * are counted from 1 (`TemperSpec.UnmarshalYAML`): a share of 0 can never be
- * dealt. */
-function validateFactionTemper(value: unknown, path: string): SiteTemper {
-  if (typeof value === 'string') {
-    if (!ANSWER_TEMPER.words.includes(value))
-      fail(path, unknownTemperRefusal(value));
-    return value;
-  }
-  if (isMapping(value)) {
-    const mix: Record<string, number> = {};
-    for (const [word, share] of Object.entries(value)) {
-      if (!ANSWER_TEMPER.words.includes(word))
-        fail(path, unknownTemperRefusal(word));
-      if (typeof share !== 'number' || !Number.isInteger(share))
-        fail(`${path}.${word}`, `"${word}" takes a whole-number share`);
-      if (share < ANSWER_TEMPER.minimumShare)
-        fail(`${path}.${word}`, temperShareRefusal(share, word));
-      mix[word] = share;
-    }
-    if (Object.keys(mix).length === 0) fail(path, EMPTY_TEMPER_MIX_REFUSAL);
-    return mix;
-  }
-  fail(
-    path,
-    `a temper is a word (${ANSWER_TEMPER.words.join(' | ')}) or a mix of them with shares`
-  );
 }
 
 /** The site's `dispositions:`. `between` is UNORDERED in meaning and kept in
@@ -154,74 +117,41 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
   for (const [index, entry] of value.entries()) {
     const path = `Site disposition at index ${index}`;
     const raw = objectShape(entry, path);
-    rejectUnknownKeys(raw, DISPOSITION_KEYS, path);
     const between = validateFactionPair(raw.between, `${path} between`);
     const pairKey = [...between].sort().join('\u0000');
     if (pairs.has(pairKey))
       fail(path, `the pair ${between[0]} and ${between[1]} is declared twice`);
     pairs.add(pairKey);
-    if (typeof raw.stance !== 'string' || !isStance(raw.stance))
+    // THE WORD AS WRITTEN. Which three stances this build folds is
+    // `DispositionSpec`'s sealed set, named by the engine at
+    // `dispositions[i].stance`.
+    if (typeof raw.stance !== 'string')
       fail(
         `${path} stance`,
-        `must be one of ${STANCES.join(', ')}, and this is ${String(raw.stance)}`
+        `must be a word, and this is ${String(raw.stance)}`
       );
-    const disposition: SiteDisposition = { between, stance: raw.stance };
-    if (Object.hasOwn(raw, 'until')) {
-      // `until` says when the hostility ENDS, so a pair that is not hostile
-      // has nothing for it to stop (`validate.go`).
-      if (raw.stance !== 'hostile')
-        fail(
-          `${path} until`,
-          `is legal only with stance hostile, and this one is ${raw.stance}`
-        );
-      disposition.until = validatePredicate(raw.until, `${path} until`);
-    }
+    // CARRIED, NOT GRADED: "`until` is legal only with stance hostile" and
+    // the predicate's own grammar are both `validate.go`'s. The block rides
+    // along as written, with the two keys this decoder models checked.
+    const disposition: SiteDisposition = {
+      ...raw,
+      between,
+      stance: raw.stance,
+    };
     dispositions.push(disposition);
   }
   return dispositions;
 }
 
-function isStance(word: string): word is Stance {
-  return (STANCES as readonly string[]).includes(word);
-}
-
-/** `[faction, faction]` — two ids, carried in the author's order. */
+/** `[faction, faction]` — two names, carried in the author's order. Their
+ * GRAMMAR is the engine's; the pair being two of them is what this decoder
+ * has to be able to key and de-duplicate. */
 function validateFactionPair(value: unknown, path: string): [string, string] {
   if (
     !Array.isArray(value) ||
     value.length !== 2 ||
-    !value.every((id) => typeof id === 'string' && FACTION_ID_RE.test(id))
+    !value.every((id) => typeof id === 'string')
   )
     fail(path, 'expected [faction, faction]');
   return [value[0] as string, value[1] as string];
-}
-
-/** One predicate — EXACTLY ONE of the four forms, in the form names the
- * vocabulary seals. Whether the thing a form names exists is `factionRules`'
- * question, not this decoder's. */
-function validatePredicate(value: unknown, path: string): PredicateDoc {
-  if (!isMapping(value) || Object.keys(value).length !== 1)
-    fail(path, PREDICATE_SHAPE);
-  const form = Object.keys(value)[0];
-  if (!(PREDICATE_FORMS as readonly string[]).includes(form))
-    fail(path, PREDICATE_SHAPE);
-
-  if (form === 'round') {
-    const round = value.round;
-    if (typeof round !== 'number' || !Number.isInteger(round) || round < 1)
-      fail(`${path}.round`, 'must be a whole number of at least 1');
-    return { round };
-  }
-  if (form === 'down' || form === 'fact') {
-    const id = value[form];
-    if (typeof id !== 'string' || !id)
-      fail(`${path}.${form}`, 'must name an id');
-    return { [form]: id } as PredicateDoc;
-  }
-  const body = value.stance;
-  if (!isMapping(body)) fail(`${path}.stance`, PREDICATE_SHAPE);
-  const between = validateFactionPair(body.between, `${path}.stance.between`);
-  if (typeof body.is !== 'string' || !isStance(body.is))
-    fail(`${path}.stance.is`, `must be one of ${STANCES.join(', ')}`);
-  return { stance: { between, is: body.is } };
 }

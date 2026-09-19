@@ -21,7 +21,6 @@ import {
   isFloor,
   isScenery,
   isStandable,
-  KNOWS_IS_GONE,
   namedMonsters,
   paintCell,
   paintRect,
@@ -61,6 +60,7 @@ import {
   wallsThrough,
   type DungeonDoc,
   type PositionRef,
+  type PredicateDoc,
 } from './dungeonYaml';
 import { referenceTombDoc, seamEdges } from './fixtures/referenceTomb';
 import {
@@ -213,12 +213,19 @@ describe('emitDungeon / parseDungeon', () => {
     );
   });
 
-  it('refuses unknown keys (the server is strict, so is the loader)', () => {
-    expect(() =>
-      parseDungeon(
-        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nrooms: []\n'
-      )
-    ).toThrow(/unknown key "rooms"/);
+  it('carries a root key it has not learned, and writes it back last', () => {
+    // WAS A REFUSAL (rpg-project#481 R3). A block a newer engine reads is a
+    // block this builder has not learned, and learning it is not a condition
+    // of opening the file: it travels in the bytes and `PutDungeon` names it.
+    const source =
+      'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nrooms: []\n';
+    const doc = parseDungeon(source);
+    expect(doc.extra).toEqual([{ key: 'rooms', value: [] }]);
+    const bytes = emitDungeon(doc);
+    expect(bytes).toContain('rooms: []');
+    // Written LAST, so every modelled key keeps the position it always had.
+    expect(bytes.trimEnd().endsWith('rooms: []')).toBe(true);
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
   it('round-trips facing and offset byte-for-byte', () => {
@@ -410,19 +417,21 @@ describe('emitDungeon / parseDungeon', () => {
       ).toThrow(/deleted pair form/);
     });
 
-    it('refuses a wall object with an unknown key or a non-number height', () => {
+    it('carries a wall key it has not learned, and refuses a height it cannot draw', () => {
       const head =
         'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
-      expect(() =>
-        parseDungeon(
-          `${head}  - start: { cell: [0,0], offset: [0,0] }\n    end: { cell: [1,0], offset: [0,0] }\n    hieght: 2\n`
-        )
-      ).toThrow(/walls\[0\]: unknown key "hieght"/);
-      expect(() =>
-        parseDungeon(
-          `${head}  - start: { cell: [0,0], offset: [0,0] }\n    end: { cell: [1,0], offset: [0,0] }\n    height: tall\n`
-        )
-      ).toThrow(/walls\[0\]\.height: expected a number/);
+      const line =
+        '  - start: { cell: [0,0], offset: [0,0] }\n    end: { cell: [1,0], offset: [0,0] }\n';
+      // A misspelled key rides to the compiler, which names it.
+      const doc = parseDungeon(`${head}${line}    hieght: 2\n`);
+      expect(doc.walls[0].extra).toEqual([{ key: 'hieght', value: 2 }]);
+      expect(emitDungeon(doc)).toContain('hieght: 2');
+      // A height that is not a number is one the wall cannot be RAISED by —
+      // the picker's preview and the renderer both multiply by it. "Can't
+      // draw" stays a refusal.
+      expect(() => parseDungeon(`${head}${line}    height: tall\n`)).toThrow(
+        /walls\[0\]\.height: expected a number/
+      );
     });
 
     it('addWall is idempotent and undirected — the same line either way round is not added twice', () => {
@@ -1542,31 +1551,25 @@ describe('holds — intel record ids, monsters only (rpg-project#372 §2)', () =
   });
 });
 
-describe('`knows:` is gone, and refused by name (rpg-project#372 R1)', () => {
+describe('`knows:` is gone, and the compiler is what says so (rpg-project#481 R3)', () => {
   const withKnows = () =>
     emitDungeon(twoPlacements()).replace(
       'ref: "dnd5e:monsters:skeleton-captain", at: [1,0]',
       'ref: "dnd5e:monsters:skeleton-captain", at: [1,0], knows: [vault]'
     );
 
-  it('refuses the deleted field in the compiler’s own words', () => {
-    // A refusal a streamer meets twice — once on load here, once from the
-    // server — must read the same both times, or the two look like two
-    // different problems.
-    expect(() => parseDungeon(withKnows())).toThrow(KNOWS_IS_GONE);
+  it('carries the deleted field to the compiler instead of refusing it', () => {
+    // The refusal here was `dungeonspec`'s own sentence, transcribed — a
+    // second copy, and a second copy drifts. rpg-project#372 R1 removed the
+    // field; the engine is what names it, at `place[1].knows`.
+    const doc = parseDungeon(withKnows());
+    expect(doc.place[1].extra).toEqual([{ key: 'knows', value: ['vault'] }]);
   });
 
-  it('names the line it is on, and points at the replacement', () => {
-    expect(() => parseDungeon(withKnows())).toThrow(/place\[1\]\.knows/);
-    expect(() => parseDungeon(withKnows())).toThrow(/intel/);
-    expect(() => parseDungeon(withKnows())).toThrow(/holds/);
-  });
-
-  it('refuses BEFORE the unknown-key complaint, so the author gets the sentence that explains it', () => {
-    // Without the early refusal this file would fail with `unknown key
-    // "knows"`, which says the loader failed to learn a field rather than
-    // that the field was deleted.
-    expect(() => parseDungeon(withKnows())).not.toThrow(/unknown key/);
+  it('writes it back where the author put it, so the bytes still say it', () => {
+    const bytes = emitDungeon(parseDungeon(withKnows()));
+    expect(bytes).toContain('knows: [vault]');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
   it('leaves a file that never mentioned it alone', () => {
@@ -2155,14 +2158,16 @@ describe('factions (rpg-project#375 §2)', () => {
     expect(factionMembers(doc, 'goblins').map((m) => m.index)).toEqual([1]);
   });
 
-  it('refuses an unknown key on a faction', () => {
+  it('carries a faction key it has not learned', () => {
     const bytes = emitDungeon(twoPlacements()).replace(
       /\n$/,
       '\nfactions:\n  - { id: goblins, leader: captain }\n'
     );
-    expect(() => parseDungeon(bytes)).toThrow(
-      /factions\[0\]: unknown key "leader"/
-    );
+    const doc = parseDungeon(bytes);
+    expect(doc.factions[0].extra).toEqual([
+      { key: 'leader', value: 'captain' },
+    ]);
+    expect(emitDungeon(doc)).toContain('leader: captain');
   });
 });
 
@@ -2228,14 +2233,17 @@ describe('dispositions (rpg-project#375 §2)', () => {
     expect(parseDungeon(bytes).dispositions[0].until).toEqual({ round: 2 });
   });
 
-  it('refuses a stance outside the three', () => {
+  it('carries a stance outside the three, for the engine to name', () => {
+    // `DispositionSpec` seals the three, and `validate.go` says so at
+    // `dispositions[0].stance`. The panel's select offers the three and shows
+    // anything else as written.
     const bytes = emitDungeon(withFaction()).replace(
       /\n$/,
       '\ndispositions:\n  - { between: [goblins, party], stance: furious }\n'
     );
-    expect(() => parseDungeon(bytes)).toThrow(
-      /dispositions\[0\]\.stance: expected hostile \| neutral \| allied/
-    );
+    const doc = parseDungeon(bytes);
+    expect(doc.dispositions[0].stance).toBe('furious');
+    expect(emitDungeon(doc)).toContain('stance: furious');
   });
 
   it('refuses a `between` that is not two names', () => {
@@ -2293,22 +2301,35 @@ describe('the predicate grammar (rpg-project#375 §2) — one shape, four forms'
     expect(roundTrips(doc)).toContain(
       'until: { stance: { between: [goblins, party], is: neutral } } }'
     );
-    expect(predicateForm(doc.dispositions[0].until!)).toBe('stance');
+    expect(predicateForm(doc.dispositions[0].until as PredicateDoc)).toBe(
+      'stance'
+    );
   });
 
-  it('refuses two keys in one predicate, and a form it has not learned', () => {
-    expect(() => withUntil('{ round: 6, down: captain }')).toThrow(
-      /dispositions\[0\]\.until: a predicate is exactly one of/
-    );
-    expect(() => withUntil('{ moon: full }')).toThrow(
-      /dispositions\[0\]\.until: a predicate is exactly one of/
-    );
-    expect(() => withUntil('{ round: soon }')).toThrow(
-      /dispositions\[0\]\.until\.round: expected an integer/
-    );
-    expect(() => withUntil('{ stance: [goblins, party] }')).toThrow(
-      /dispositions\[0\]\.until\.stance: expected \{ between/
-    );
+  it('holds a predicate shape it has not learned, whole', () => {
+    // Two keys, a form nobody designed, a `round` that is not a number, a
+    // `stance` that is not a map: each was a refusal, and each is a predicate
+    // the ENGINE reads. The codec holds the map and the editors show it
+    // read-only rather than replacing it with a guess.
+    expect(
+      withUntil('{ round: 6, down: captain }').dispositions[0].until
+    ).toEqual({ raw: { round: 6, down: 'captain' } });
+    expect(withUntil('{ moon: full }').dispositions[0].until).toEqual({
+      raw: { moon: 'full' },
+    });
+    expect(withUntil('{ round: soon }').dispositions[0].until).toEqual({
+      raw: { round: 'soon' },
+    });
+    expect(
+      withUntil('{ stance: [goblins, party] }').dispositions[0].until
+    ).toEqual({ raw: { stance: ['goblins', 'party'] } });
+  });
+
+  it('writes a held predicate back as the author wrote it', () => {
+    const doc = withUntil('{ moon: full }');
+    const bytes = emitDungeon(doc);
+    expect(bytes).toContain('until: { moon: full }');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
   it('a `round: 0` LOADS — counting from 1 is the panel’s refusal, not the parser’s', () => {
@@ -2417,14 +2438,17 @@ describe('endings (rpg-project#375 R10) — the predicate grammar’s third cons
     expect(removeEnding(doc, 0).endings.map((e) => e.id)).toEqual(['ending-2']);
   });
 
-  it('refuses an ending that does not say when — nothing is defaulted', () => {
+  it('carries an ending that does not say when — the compiler refuses it', () => {
+    // "An ending that does not say when it fires" is `validate.go`'s refusal
+    // and nothing is defaulted here either: the key stays absent, the bytes
+    // stay as written, and the engine names `endings[0].when`.
     const bytes = emitDungeon(withFaction()).replace(
       /\n$/,
       '\nendings:\n  - { id: turned }\n'
     );
-    expect(() => parseDungeon(bytes)).toThrow(
-      /endings\[0\]\.when: the ending does not say when it fires/
-    );
+    const doc = parseDungeon(bytes);
+    expect(doc.endings[0]).toEqual({ id: 'turned' });
+    expect(emitDungeon(doc)).toContain('- { id: turned }');
   });
 
   it('a faction rename follows through to an ending’s stance predicate', () => {

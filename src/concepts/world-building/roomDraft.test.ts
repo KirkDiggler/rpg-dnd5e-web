@@ -510,17 +510,10 @@ describe('room draft v3 migration and structural exactness', () => {
       (draft.coordinateFrame as unknown as Record<string, unknown>).engineUnit =
         'feet';
     }, /Room coordinate frame has an unsupported field: engineUnit/);
-    expectRejected((draft) => {
-      draft.room.walkableHexes = [{ q: 0, r: 0 }];
-      draft.room.monsters = [
-        {
-          id: 'm',
-          ref: 'dnd5e:monsters:zombie',
-          cell: { q: 0, r: 0 },
-          facing: 0,
-        },
-      ] as unknown as RoomDraft['room']['monsters'];
-    }, /Monster placement at index 0 has an unsupported field: facing/);
+    // A CREATURE'S OWN KEYS ARE NOT ON THIS LIST ANY MORE
+    // (rpg-project#481 R3): `monsters[]` is the engine's `RoomMonsterSource`,
+    // so a key this build has not learned is carried to the compiler rather
+    // than refused here. Asserted as a carry in its own case below.
     expectRejected((draft) => {
       draft.scene.items.push({
         id: 'prop-x',
@@ -743,7 +736,13 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
   });
 
-  it("a binding's temper is ONE word — the faction's mix is refused there", () => {
+  it("a binding's temper is carried, whatever the author wrote", () => {
+    // rpg-dnd5e-web#1145 IS THIS CASE. `temper` on a binding was refused here
+    // four different ways — a mix, a word outside the sealed three, a
+    // non-string scalar — each in a sentence transcribed from `TemperSpec`.
+    // The engine takes the key; the web declined the file. rpg-project#481 R3
+    // moved the verdict back to `PutDungeon{validate_only}`, so every one of
+    // these now round-trips and is graded there.
     const draft = createRoomDraft(
       createEmptyScene('scene-temper'),
       'room-temper'
@@ -751,39 +750,50 @@ describe('room draft v3 migration and structural exactness', () => {
     draft.room.monsters = [
       { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
     ];
-    const rejection = (value: unknown) => {
+    const carried = (value: unknown) => {
       (draft.room as unknown as Record<string, unknown>).monsterBindings = {
-        'goblin-1': value,
+        'goblin-1': { temper: value },
       };
-      return () => stringifyRoomDraft(structuredClone(draft));
+      const roundTrip = parseRoomDraftJson(
+        stringifyRoomDraft(structuredClone(draft))
+      );
+      return roundTrip.room.monsterBindings?.['goblin-1'].temper;
     };
 
-    // One sealed word is the shape. `RoomMonsterBinding.Temper` is a plain
-    // `string` where `FactionSpec.Temper` is a `TemperSpec`
-    // (`dungeonspec/single_room.go`), so this is the engine's asymmetry.
-    expect(rejection({ temper: 'coward' })).not.toThrow();
-
-    // A MIX is the faction's shape, and it is refused here by name.
-    expect(rejection({ temper: { coward: 2, soldier: 1 } })).toThrow(
-      /a temper mix belongs on the faction/
-    );
-
-    // A word outside the sealed three is refused by name, as the engine does.
-    expect(rejection({ temper: 'cowardly' })).toThrow(
-      /temper "cowardly" is not a temperament this build ships/
-    );
-
-    // A non-string scalar reaches the engine as a scalar node and is read as a
-    // word, so it is refused BY NAME rather than with the shape sentence.
-    expect(rejection({ temper: 5 })).toThrow(
-      /temper "5" is not a temperament this build ships/
-    );
-
-    // `temper` ALONE is a complete binding: it is an override, not an absence.
-    expect(rejection({ temper: 'aggressive' })).not.toThrow();
+    // `RoomMonsterBinding.Temper` is a plain `string` where
+    // `FactionSpec.Temper` is a `TemperSpec` (`dungeonspec/single_room.go`).
+    // The asymmetry is the ENGINE'S, and the engine enforces it.
+    expect(carried('coward')).toBe('coward');
+    expect(carried({ coward: 2, soldier: 1 })).toEqual({
+      coward: 2,
+      soldier: 1,
+    });
+    expect(carried('cowardly')).toBe('cowardly');
+    expect(carried(5)).toBe(5);
   });
 
-  it('refuses an orphan binding, an unknown binding key and an empty block', () => {
+  it('carries a binding key and a creature key this build has not learned', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-held'), 'room-held');
+    draft.room.monsters = [
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        cell: { q: 1, r: 0 },
+        // `PlaceSpec` carries keys this dialect's decoder has never modelled.
+        arrives: { round: 2 },
+      },
+    ];
+    (draft.room as unknown as Record<string, unknown>).monsterBindings = {
+      'goblin-1': { intimidate: [{ ability: 'charisma', dc: 12 }] },
+    };
+    const roundTrip = parseRoomDraftJson(stringifyRoomDraft(draft));
+    expect(roundTrip.room.monsters[0].arrives).toEqual({ round: 2 });
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].intimidate).toEqual([
+      { ability: 'charisma', dc: 12 },
+    ]);
+  });
+
+  it('refuses only what it cannot draw: an orphan binding and an empty block', () => {
     const draft = createRoomDraft(
       createEmptyScene('scene-orphan'),
       'room-orphan'
@@ -797,21 +807,22 @@ describe('room draft v3 migration and structural exactness', () => {
       return () => stringifyRoomDraft(structuredClone(draft));
     };
 
+    // A binding belongs to a marker on the canvas. One whose creature is gone
+    // has no marker to hang off and no editor that can reach it — "can't
+    // draw", which is this codec's own refusal to make.
     expect(
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
-    expect(rejection({ 'goblin-1': { intimidate: {} } })).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidate/
-    );
     expect(rejection({ 'goblin-1': {} })).toThrow(
       /Monster binding for goblin-1 declares no orders/
     );
-    expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
-      /Monster binding for goblin-1 actions is empty/
-    );
-    expect(rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })).toThrow(
-      /must be a weapon reference/
-    );
+
+    // THE WEAPON REF GRAMMAR IS THE ENGINE'S (`validate.go` `placeActions`),
+    // and so is "an empty list of actions": both are carried now.
+    expect(rejection({ 'goblin-1': { actions: [] } })).not.toThrow();
+    expect(
+      rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })
+    ).not.toThrow();
   });
 
   it('drops the orders when their creature is removed, leaving no orphan', () => {
@@ -845,7 +856,11 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(json).not.toContain('"faction"');
   });
 
-  it('refuses a faction id that is not a faction id', () => {
+  it('carries a faction id whose grammar is the engine’s to judge', () => {
+    // `factionOf` (`encounter/field.go`) stores a faction "as given, never
+    // resolved here", and `validate.go` is what says whether the id names a
+    // declared faction and whether it is spelled the way ids are spelled.
+    // Refusing it here was the web declining a file the server reads.
     const draft = createRoomDraft(
       createEmptyScene('scene-bad-faction'),
       'room-bad-faction'
@@ -858,9 +873,8 @@ describe('room draft v3 migration and structural exactness', () => {
         faction: 'The Goblins',
       },
     ];
-    expect(() => stringifyRoomDraft(draft)).toThrow(
-      /faction must be a faction id such as goblins/
-    );
+    const roundTrip = parseRoomDraftJson(stringifyRoomDraft(draft));
+    expect(roundTrip.room.monsters[0].faction).toBe('The Goblins');
   });
 
   it('retains structurally valid actor arrangements that are merely game-illegal', () => {

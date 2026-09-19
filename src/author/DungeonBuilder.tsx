@@ -944,14 +944,41 @@ export function DungeonBuilder({
           <div className="text-xs opacity-80" data-testid="status-line">
             {statusLine}
           </div>
+          {/* TWO GRADES, TWO OWNERS, SIDE BY SIDE (rpg-project#481 R3).
+
+              "Won't play" is the ENGINE's: `PutDungeon{validate_only}`
+              compiled the bytes and answered with paths and sentences it
+              owns. It is the verdict on whether the file plays, and the web
+              never authors one of these sentences — that was the mirror
+              #1119 and #1145 came out of.
+
+              "Can't draw" is the CODEC's: the builder could not read the
+              text in front of it into a document it can lay out. It says
+              nothing about whether the file plays, which is why it is
+              labelled rather than mixed into the list above. */}
           {errors.length > 0 && (
-            <ul className="dg-errors" data-testid="error-list">
-              {errors.map((err, i) => (
-                <li key={`${err.path}-${i}`}>
-                  <code>{err.path}</code> {err.message}
-                </li>
-              ))}
-            </ul>
+            <div data-testid="engine-grade">
+              <div className="dg-grade-label">
+                won&rsquo;t play — the engine&rsquo;s grade
+              </div>
+              <ul className="dg-errors" data-testid="error-list">
+                {errors.map((err, i) => (
+                  <li key={`${err.path}-${i}`}>
+                    <code>{err.path}</code> {err.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {yamlParseError !== null && (
+            <div data-testid="codec-grade">
+              <div className="dg-grade-label">
+                can&rsquo;t draw — the builder&rsquo;s codec
+              </div>
+              <ul className="dg-errors" data-testid="codec-error-list">
+                <li>{yamlParseError}</li>
+              </ul>
+            </div>
           )}
           {leaks.length > 0 && (
             <ul className="dg-warnings" data-testid="warning-list">

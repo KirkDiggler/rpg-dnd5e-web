@@ -1,4 +1,3 @@
-import { ANSWER_TEMPER, unknownTemperRefusal } from '@/author/answerVocabulary';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -72,6 +71,11 @@ export interface RoomMonsterPlacement {
   ref: string;
   cell: RoomHexCell;
   faction?: string;
+  /** Every other key the file wrote, CARRIED IN PLACE (rpg-project#481 R3).
+   * A creature's keys are the engine's `RoomMonsterSource`, and a key this
+   * build has not learned reaches the compiler and comes back named at its
+   * own path rather than stopping the file at the door. */
+  [key: string]: unknown;
 }
 /** The orders block for one creature, under its stable id — the THIRD
  * declaration kind on a placed thing, after `propDeclarations` and the
@@ -102,8 +106,17 @@ export interface RoomMonsterPlacement {
  * in reach. */
 export interface RoomMonsterBinding {
   on?: AnswerTableShape;
-  temper?: string;
+  /** The temperament word AS WRITTEN. Which words this build ships, and
+   * whether a mix is legal on a placement, are `TemperSpec`'s answers —
+   * rpg-dnd5e-web#1145 was this decoder refusing a `temper` the engine takes,
+   * and rpg-project#481 R3 moved the verdict back to the engine. */
+  temper?: unknown;
   actions?: string[];
+  /** EVERY OTHER KEY THE FILE WROTE, CARRIED IN PLACE. This document IS the
+   * emitted shape — the draft is stringified as it stands — so a key held
+   * here is a key the compiler reads at its own path, and what was an
+   * unknown-key refusal is now a value that travels. */
+  [key: string]: unknown;
 }
 export interface RoomGameplayData {
   implicitRegionId: string;
@@ -456,18 +469,6 @@ function validateDeclarationMap(
 }
 
 const MONSTER_REF_RE = /^[-a-z0-9]+:monsters:[-a-z0-9]+$/;
-/** A faction id has the same grammar as the room key: lower-case, digits,
- * dashes. Membership itself is the engine's to confirm against the declared
- * factions — the room draft is decoded before the site root's `factions` are
- * known, and guessing here would refuse a file the server reads. */
-const FACTION_ID_RE = /^[-a-z0-9]+$/;
-/** `PlaceSpec.Actions` is "FULL REFS, like every other ref in this file:
- * `dnd5e:weapons:shortbow`, never `shortbow`." Weapons are the only action
- * type the engine accepts today, and refusing the rest here is what makes a
- * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise. */
-const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
-const BINDING_KEYS = ['on', 'temper', 'actions'] as const;
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -479,11 +480,6 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       placement,
       `Monster placement at index ${index}`
     );
-    rejectUnknownKeys(
-      source,
-      MONSTER_KEYS,
-      `Monster placement at index ${index}`
-    );
     if (typeof source.id !== 'string' || !source.id || ids.has(source.id))
       throw new Error(
         `Invalid monster placement at index ${index}: stable nonempty unique ids are required.`
@@ -493,7 +489,11 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id ?? ''} ref must be a monster reference such as dnd5e:monsters:skeleton.`
       );
     ids.add(source.id);
+    // The placement AS WRITTEN, with the keys this decoder models checked in
+    // place: an id to key it by, a ref the marker resolves a model from, and
+    // a cell to draw it on.
     const monster: RoomMonsterPlacement = {
+      ...source,
       id: source.id,
       ref: source.ref,
       cell: validateCell(source.cell, `Monster ${source.id} cell`),
@@ -501,11 +501,11 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
     // ABSENT WHEN UNAUTHORED: the key is added only when the file wrote one,
     // so an unauthored creature stays byte-identical to one from before
     // factions existed.
+    // CARRIED, NOT GRADED: a faction id's grammar, and whether the id names a
+    // declared faction, are both the engine's (`factionOf`, `validate.go`).
+    // A refusal here is the web declining a file the server plays.
     if (source.faction !== undefined && source.faction !== null) {
-      if (
-        typeof source.faction !== 'string' ||
-        !FACTION_ID_RE.test(source.faction)
-      )
+      if (typeof source.faction !== 'string')
         throw new Error(
           `Monster ${source.id} faction must be a faction id such as goblins.`
         );
@@ -514,32 +514,6 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
     monsters.push(monster);
   }
   return monsters;
-}
-
-/** A binding's `temper:` — ONE SEALED WORD, never a mix.
- *
- * The declaration already carries both shapes (`ANSWER_TEMPER.placementShape`
- * is `'word'` and `.factionShape` is `'word-or-mix'`), so this asks the one
- * grammar instead of keeping a second copy of the rule. The sentence for a mix
- * matches `dungeonYaml.ts`'s v2 placement refusal, because it is the same
- * mistake in the same place. */
-function validateBindingTemper(value: unknown, path: string): string {
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    // A NON-STRING SCALAR reaches the engine as a scalar node, so it is read
-    // as a word and refused BY NAME — `temper: 5` reports `"5" is not a
-    // temperament this build ships`. Same value, same sentence.
-    const word = String(value);
-    if (!ANSWER_TEMPER.words.includes(word))
-      throw new Error(`${path} ${unknownTemperRefusal(word)}`);
-    return word;
-  }
-  throw new Error(
-    `${path} is a placement, and a placement names one creature — a temper mix belongs on the faction`
-  );
 }
 
 /** The orders blocks, keyed by the creature's stable id. A binding whose
@@ -556,25 +530,23 @@ function validateMonsterBindings(
     if (!ids.has(id))
       throw new Error(`Monster binding owner does not exist: ${id}`);
     const block = objectShape(binding, `Monster binding for ${id}`);
-    rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
-    const parsed: RoomMonsterBinding = {};
+    // The block AS WRITTEN, with the keys this decoder models checked in
+    // place. Everything else rides along untouched.
+    const parsed: RoomMonsterBinding = { ...block };
     if (Object.hasOwn(block, 'on'))
       parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
-    if (Object.hasOwn(block, 'temper'))
-      parsed.temper = validateBindingTemper(
-        block.temper,
-        `Monster binding for ${id} temper`
-      );
+    // CARRIED, NOT GRADED (rpg-dnd5e-web#1145).
+    if (Object.hasOwn(block, 'temper')) parsed.temper = block.temper;
     if (Object.hasOwn(block, 'actions')) {
       const actions = block.actions;
       if (!Array.isArray(actions))
         throw new Error(`Monster binding for ${id} actions must be a list.`);
-      if (actions.length === 0)
-        throw new Error(
-          `Monster binding for ${id} actions is empty; omit the key instead.`
-        );
+      // THE REF GRAMMAR IS THE ENGINE'S (`validate.go` `placeActions`: module
+      // `dnd5e`, type `weapons`), so a typo'd `dnd5e:weapon:shortbow` is a
+      // `FieldError` at its own path rather than a file that will not open.
+      // An empty list is an authored state the engine reads, not a refusal.
       parsed.actions = actions.map((action, index) => {
-        if (typeof action !== 'string' || !WEAPON_REF_RE.test(action))
+        if (typeof action !== 'string')
           throw new Error(
             `Monster binding for ${id} action ${index} must be a weapon reference such as dnd5e:weapons:shortbow.`
           );
@@ -583,11 +555,7 @@ function validateMonsterBindings(
     }
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
-    if (
-      parsed.on === undefined &&
-      parsed.temper === undefined &&
-      parsed.actions === undefined
-    )
+    if (Object.keys(block).length === 0)
       throw new Error(
         `Monster binding for ${id} declares no orders; omit the binding instead.`
       );

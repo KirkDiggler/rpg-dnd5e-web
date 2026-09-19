@@ -74,12 +74,12 @@ describe('the reference front room is a pinned snapshot of the server’s file',
       {
         weight: 70,
         say: "Fine! FINE. The cellar door is behind the barrels. Just don't.",
-        word: { word: 'fact', value: 'goblin-cowed' },
+        words: [{ word: 'fact', value: 'goblin-cowed' }],
       },
       {
         weight: 30,
         say: 'Boss! BOSS!',
-        word: { word: 'flee' },
+        words: [{ word: 'flee' }],
       },
     ]);
 
@@ -102,7 +102,7 @@ describe('the reference front room is a pinned snapshot of the server’s file',
       {
         weight: 100,
         say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.",
-        word: { word: 'fact', value: 'cellar-is-clear' },
+        words: [{ word: 'fact', value: 'cellar-is-clear' }],
       },
     ]);
   });

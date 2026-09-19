@@ -135,6 +135,57 @@ describe('DungeonBuilder', () => {
     );
   });
 
+  it('renders the two grades side by side, each labelled by its owner', async () => {
+    // rpg-project#481 R3. "Won't play" is the ENGINE's: a `FieldError` from
+    // `PutDungeon{validate_only}`, shown at the path and in the sentence the
+    // compiler owns — the web authors neither. "Can't draw" is the CODEC's:
+    // the builder cannot read the text in front of it into a document it can
+    // lay out. Two owners, two questions, so two labelled lists rather than
+    // one pile an author has to sort by guessing who is speaking.
+    const client = fakeClient([
+      {
+        path: 'factions[0].tempre',
+        message: 'field tempre not found in type dungeonspec.FactionSpec',
+      },
+    ]);
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+
+    // The engine's grade: its own path, its own sentence, verbatim.
+    await waitFor(() =>
+      expect(screen.getByTestId('engine-grade').textContent).toContain(
+        'factions[0].tempre'
+      )
+    );
+    const engine = screen.getByTestId('engine-grade');
+    expect(engine.textContent).toContain(
+      'field tempre not found in type dungeonspec.FactionSpec'
+    );
+    expect(engine.textContent).toContain('won’t play');
+    expect(engine.textContent).toContain('the engine’s grade');
+
+    // Nothing is wrong with the DOCUMENT, so the codec has nothing to say.
+    expect(screen.queryByTestId('codec-grade')).toBeNull();
+
+    // Type something the codec cannot read, and its grade appears beside the
+    // engine's — labelled, not merged into it.
+    const pane = sourceText() as HTMLTextAreaElement;
+    fireEvent.focus(pane);
+    fireEvent.change(pane, { target: { value: 'version: 2\nkey: [unclosed' } });
+    const codec = screen.getByTestId('codec-grade');
+    expect(codec.textContent).toContain('can’t draw');
+    expect(codec.textContent).toContain('the builder’s codec');
+    // And the engine's grade is still the one that says whether it plays.
+    expect(screen.getByTestId('engine-grade').textContent).toContain(
+      'factions[0].tempre'
+    );
+  });
+
   it('enables Save once the file compiles and sends the pane bytes verbatim', async () => {
     const client = fakeClient([]);
     const yaml = emitDungeon(referenceTombDoc());

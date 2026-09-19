@@ -359,17 +359,20 @@ ${ROOM_BLOCK}
     expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
   });
 
-  it('refuses an orphan binding and an unknown binding key inside the document', () => {
+  it('refuses an orphan binding and carries every other binding key', () => {
     // A binding naming a creature that is gone is REFUSED, not silently
-    // dropped — the discipline `propDeclarations` already keeps.
+    // dropped — the discipline `propDeclarations` already keeps, and the
+    // reason it survives rpg-project#481 R3: a binding hangs off a marker on
+    // the canvas, and one whose creature is gone has no marker and no editor
+    // that can reach it. "Can't draw", which is this codec's own call.
     expect(() =>
       decodeSingleRoomDungeon(
         `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      long-gone:\n        actions: ['dnd5e:weapons:scimitar']\n`
       )
     ).toThrow(/Monster binding owner does not exist: long-gone/);
-    // `temper` IS accepted, and it is ONE word: the placement's own word wins
-    // over its faction's mix (`RoomMonsterBinding.Temper` is a plain string
-    // where `FactionSpec.Temper` is a `TemperSpec`).
+    // `temper` is carried as written (rpg-dnd5e-web#1145). Whether one word
+    // beats a faction's mix is `RoomMonsterBinding.Temper`'s rule, enforced
+    // where that type lives.
     const withTemper = decodeSingleRoomDungeon(
       `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
     );
@@ -377,36 +380,68 @@ ${ROOM_BLOCK}
       'coward'
     );
     // `intimidate` is a `PlaceSpec` field this dialect's binding does not
-    // carry, and is refused as the unknown key it is.
-    expect(() =>
-      decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: {dc: 12}\n`
-      )
-    ).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidate/
-    );
+    // model. It travels to the compiler rather than stopping the file, and
+    // survives the round trip byte-for-byte.
+    const source = `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: {dc: 12}\n`;
+    const held = decodeSingleRoomDungeon(source);
+    expect(held.draft.room.monsterBindings?.['goblin-1'].intimidate).toEqual({
+      dc: 12,
+    });
+    const emitted = encodeSingleRoomDungeon({
+      key: held.key,
+      draft: held.draft,
+    });
+    expect(emitted).toContain('intimidate:');
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(held);
   });
 
-  it('refuses an answer table this build cannot roll, in the engine’s own words', () => {
+  it('carries an answer table this build cannot roll, for the engine to grade', () => {
     const withOn = (on: string) =>
       `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n${on}\n`;
-    // An unknown trigger, an action word on a social key, and a missing say on
-    // an entry with no word: all three are the vocabulary's sentences.
-    expect(() =>
-      decodeSingleRoomDungeon(withOn('          taunted: [{say: hi}]'))
-    ).toThrow(/"taunted" is not a trigger this build rolls/);
-    expect(() =>
-      decodeSingleRoomDungeon(
-        withOn('          intimidated: [{attack: enemy}]')
-      )
-    ).toThrow(
-      /`attack` is what a creature does with time, and `intimidated` is an outcome/
-    );
-    expect(() =>
-      decodeSingleRoomDungeon(withOn('          intimidated: [{}]'))
-    ).toThrow(/this entry does nothing and says nothing/);
-    expect(() =>
-      decodeSingleRoomDungeon(withOn('          intimidated: []'))
-    ).toThrow(/this names a trigger and lists nothing that happens on it/);
+    const on = (source: string) =>
+      decodeSingleRoomDungeon(source).draft.room.monsterBindings?.['goblin-1']
+        .on;
+
+    // An unknown trigger, an action word on a social key, an entry that does
+    // nothing and an empty trigger list: four of `dungeonspec`'s refusals,
+    // and `dungeonspec` is where an author now meets them.
+    expect(on(withOn('          taunted: [{say: hi}]'))).toEqual({
+      taunted: [{ say: 'hi' }],
+    });
+    expect(on(withOn('          intimidated: [{attack: enemy}]'))).toEqual({
+      intimidated: [{ attack: 'enemy' }],
+    });
+    expect(on(withOn('          intimidated: [{}]'))).toEqual({
+      intimidated: [{}],
+    });
+    expect(on(withOn('          intimidated: []'))).toEqual({
+      intimidated: [],
+    });
+  });
+
+  it('round-trips an unknown answer key through the codec untouched', () => {
+    // THE PROPERTY THE WHOLE SLICE RESTS ON (rpg-project#481 R3): a key the
+    // builder has never heard of goes in, comes back out, and the bytes it
+    // emits are the bytes the compiler grades — which is what lets the
+    // compiler name it at its own path instead of the builder guessing.
+    const source = `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n          intimidated:\n            - {say: 'Fine.', fcat: goblin-cowed, wibble: 3}\n`;
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.draft.room.monsterBindings?.['goblin-1'].on).toEqual({
+      intimidated: [{ say: 'Fine.', fcat: 'goblin-cowed', wibble: 3 }],
+    });
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+    });
+    expect(emitted).toContain('fcat: goblin-cowed');
+    expect(emitted).toContain('wibble: 3');
+    // Settled: a second pass moves nothing.
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+    expect(
+      encodeSingleRoomDungeon({
+        key: decoded.key,
+        draft: decodeSingleRoomDungeon(emitted).draft,
+      })
+    ).toBe(emitted);
   });
 });

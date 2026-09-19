@@ -379,6 +379,19 @@ function DispositionRow({
           value={disposition.stance}
           onChange={(e) => onChange({ stance: e.target.value as Stance })}
         >
+          {/* THE THREE THIS BUILD OFFERS, plus whatever the file actually
+              says (rpg-project#481 R3). A select whose value is not among its
+              options renders blank, which would show an authored `furious` as
+              nothing at all — the author would see an empty field rather than
+              the word they wrote, and the engine's grade beside it would look
+              like it was about something else. */}
+          {(STANCES as readonly string[]).includes(
+            disposition.stance
+          ) ? null : (
+            <option key={disposition.stance} value={disposition.stance}>
+              {disposition.stance}
+            </option>
+          )}
           {STANCES.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -396,7 +409,12 @@ function DispositionRow({
               ? 'They fight on sight. `until` says when that ends; when it holds the pair becomes neutral.'
               : disposition.stance === 'neutral'
                 ? 'Neither side attacks the other.'
-                : 'They fight together.'}
+                : disposition.stance === 'allied'
+                  ? 'They fight together.'
+                  : // A word this build does not fold. Saying what it MEANS
+                    // would be inventing a rule; the engine's grade says
+                    // whether the file plays.
+                    'This build offers hostile, neutral and allied. What the engine does with this word is its answer, not the builder’s.'}
           </div>
         )}
       </label>

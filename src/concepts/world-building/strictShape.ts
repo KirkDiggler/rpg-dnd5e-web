@@ -1,5 +1,17 @@
 /**
- * The two strict-decoder primitives every authored-document decoder shares.
+ * The two strict-decoder primitives the PRESENTATION decoders share.
+ *
+ * WHERE THESE STILL APPLY (rpg-project#481 R3): the scene, the coordinate
+ * frame, the workspace extent, a prop's footprint and declaration, and the
+ * room draft's own envelope — the shapes the builder DRAWS, whose contract it
+ * owns end to end (rpg-project#479). An unknown key in one of those is a
+ * document this editor cannot lay out.
+ *
+ * WHERE THEY NO LONGER DO: every block an author writes GAMEPLAY in — a
+ * creature, its orders, a faction, a disposition. Those carry what the file
+ * wrote and are graded by `PutDungeon{validate_only}`, because the engine
+ * owns that vocabulary and the web refusing it is how #1119 and #1145
+ * happened.
  *
  * EXTRACTED FROM `roomDraft.ts` UNCHANGED (rpg-dnd5e-web#1136). The
  * answer-table shape adapter (`answerTableShape.ts`) refuses an unknown field

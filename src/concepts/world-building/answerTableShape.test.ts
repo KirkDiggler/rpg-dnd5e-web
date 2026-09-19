@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { validateAnswerTable } from './answerTableShape';
 
-/** A refusal is asserted through the same path a document takes, so the
- * sentence an author meets is the one pinned here. */
+/**
+ * THE ANSWER TABLE IS CARRIED, NOT GRADED (rpg-project#481 R3).
+ *
+ * This file used to pin twenty refusals — unknown trigger, word under the
+ * wrong trigger, unknown band, deed with no span, unresolvable selector, zero
+ * weight, empty fact — each in a sentence transcribed from `dungeonspec`.
+ * They are deleted. `PutDungeon{validate_only}` compiles the bytes and
+ * answers at the path it owns, and a second copy of a sentence is a copy that
+ * drifts (rpg-dnd5e-web#1119, #1145).
+ *
+ * What is asserted now is the property the rest of the document depends on:
+ * whatever the author wrote comes back IDENTICAL, so the bytes that reach the
+ * compiler are the bytes that were authored.
+ */
 const table = (on: unknown) => () => validateAnswerTable(on, 'on');
 
 describe('answer table shape', () => {
@@ -28,80 +40,71 @@ describe('answer table shape', () => {
     expect(validateAnswerTable(authored, 'on')).toEqual(authored);
   });
 
-  it('refuses an unknown trigger and an unknown entry key, with a suggestion', () => {
-    expect(table({ taunted: [{ say: 'hi' }] })).toThrow(
-      /"taunted" is not a trigger this build rolls: they are intimidated/
-    );
-    expect(table({ intimidate: [{ say: 'hi' }] })).toThrow(
-      /did you mean "intimidated"\?/
-    );
-    expect(table({ intimidated: [{ fcat: 'x', say: 'hi' }] })).toThrow(
-      /did you mean "fact"\?/
-    );
-    expect(table({ intimidated: [{ temper: 'coward' }] })).toThrow(
-      /unknown key "temper"/
-    );
+  it('carries a trigger key and an entry key this build has never heard of', () => {
+    // `taunted` is not a trigger `encounter.TableKeys` rolls and `fcat` is a
+    // slip for `fact`. Both used to stop the document here; both now reach
+    // the compiler, which names them at `factions[i].on.taunted` and at the
+    // entry's own path.
+    const authored = {
+      taunted: [{ say: 'hi' }],
+      intimidated: [{ fcat: 'x', say: 'hi' }, { temper: 'coward' }],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
   });
 
-  it('refuses an empty trigger list and an entry that does nothing', () => {
-    expect(table({ time: [] })).toThrow(
-      /this names a trigger and lists nothing that happens on it/
-    );
-    expect(table({ time: [{}] })).toThrow(
-      /this entry does nothing and says nothing/
-    );
+  it('carries an empty trigger list and an entry that does nothing', () => {
+    expect(validateAnswerTable({ time: [] }, 'on')).toEqual({ time: [] });
+    expect(validateAnswerTable({ time: [{}] }, 'on')).toEqual({ time: [{}] });
   });
 
-  it('refuses a word under a trigger it is not legal on, in the engine sentences', () => {
-    expect(table({ intimidated: [{ attack: 'enemy' }] })).toThrow(
-      /`attack` is what a creature does with time, and `intimidated` is an outcome/
-    );
-    expect(table({ time: [{ fact: 'x' }] })).toThrow(
-      /`fact` answers a social verdict, and `time` is not one/
-    );
-    expect(
-      table({ intimidated: [{ when: { enemy: 'reach' }, flee: {} }] })
-    ).toThrow(
-      /`intimidated` is already the condition — a `when` under it asks when a thing that just happened happened/
-    );
+  it('carries a word written under a trigger it is not legal on', () => {
+    // `wordLegality` is `validate.go`'s rule and `validate.go` makes it.
+    const authored = {
+      intimidated: [
+        { attack: 'enemy' },
+        { when: { enemy: 'reach' }, flee: {} },
+      ],
+      time: [{ fact: 'x' }],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
   });
 
-  it('refuses more than one word, a zero weight and an empty fact', () => {
-    expect(table({ intimidated: [{ fact: 'x', flee: {} }] })).toThrow(
-      /an entry does one thing/
-    );
-    expect(table({ intimidated: [{ weight: 0, say: 'hi' }] })).toThrow(
-      /a weight of 0 can never be rolled/
-    );
-    expect(table({ intimidated: [{ fact: '' }] })).toThrow(
-      /this says the world learns something and does not say what/
-    );
+  it('carries two words, a zero weight and an empty fact', () => {
+    const authored = {
+      intimidated: [
+        { fact: 'x', flee: {} },
+        { weight: 0, say: 'hi' },
+        { fact: '' },
+      ],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
   });
 
-  it('refuses a malformed when and a selector the engine cannot resolve', () => {
-    expect(table({ time: [{ when: { enemy: 'near' }, hold: {} }] })).toThrow(
-      /`enemy: near` is not a condition this build reads/
+  it('carries a `when` and a selector this build cannot read', () => {
+    const authored = {
+      time: [
+        { when: { enemy: 'near' }, hold: {} },
+        { when: { enemy: 'reach', seen: 'x' }, hold: {} },
+        { when: { fled: {} }, hold: {} },
+        { when: { fled: { within: 0 } }, hold: {} },
+        { toward: 'nobody' },
+        { attack: { at: [1, 2] } },
+        { attack: 'actor' },
+        { away: 'actor', when: { attacked: { within: 2 } } },
+      ],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
+  });
+
+  it('refuses only what it has nowhere to put', () => {
+    // The one refusal left: this document type stores the block as a mapping,
+    // so a scalar or a list has no home in the decoded document. That is
+    // "can't hold it", not "won't play".
+    expect(table('intimidated')).toThrow(
+      /on: expected a map of trigger to entries/
     );
-    expect(
-      table({ time: [{ when: { enemy: 'reach', seen: 'x' }, hold: {} }] })
-    ).toThrow(/a `when` is one condition, and this names 2/);
-    expect(table({ time: [{ when: { fled: {} }, hold: {} }] })).toThrow(
-      /`fled` names no span/
+    expect(table([{ intimidated: [] }])).toThrow(
+      /on: expected a map of trigger to entries/
     );
-    expect(
-      table({ time: [{ when: { fled: { within: 0 } }, hold: {} }] })
-    ).toThrow(/a span of 0 rounds is counted from 1/);
-    expect(table({ time: [{ toward: 'nobody' }] })).toThrow(
-      /"nobody" is not a selector this build resolves/
-    );
-    expect(table({ time: [{ attack: { at: [1, 2] } }] })).toThrow(
-      /a cell is somewhere to walk toward, and `attack` acts on a creature/
-    );
-    expect(table({ time: [{ attack: 'actor' }] })).toThrow(
-      /`actor` is the actor of the deed this entry's `when` names/
-    );
-    expect(
-      table({ time: [{ away: 'actor', when: { attacked: { within: 2 } } }] })
-    ).not.toThrow();
   });
 });
