@@ -1,3 +1,4 @@
+import { ANSWER_TEMPER, unknownTemperRefusal } from '@/author/answerVocabulary';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -82,19 +83,26 @@ export interface RoomMonsterPlacement {
  * says "A PLACEMENT'S OWN WORD WINS". `faction` is deliberately NOT here —
  * nothing overrides it.
  *
- * `on` and `actions` land first; `temper`, `intimidate`, `persuade` and
- * `arrives` are the engine's own `PlaceSpec` fields and have a home here when
- * a use case brings them. NOTHING READS EITHER KEY YET (slice 1, shape only).
+ * `on`, `temper` and `actions` are all here, because the engine carries all
+ * three on a binding (`RoomMonsterBinding`, `dungeonspec/single_room.go`).
+ * `intimidate`, `persuade` and `arrives` are its own `PlaceSpec` fields and
+ * have a home here when a use case brings them. NOTHING READS ANY OF THEM YET
+ * (slice 1, shape only).
  *
- * `actions` mirrors `dungeonspec.PlaceSpec.Actions`: full
+ * `temper` is ONE WORD here and a word or a MIX on a faction, and that
+ * asymmetry is the engine's rather than a preference: `RoomMonsterBinding.Temper`
+ * is a plain `string` where `FactionSpec.Temper` is a `TemperSpec` — "ONE WORD,
+ * and it WINS over its faction's word or mix". A placement names one creature,
+ * so dealing a spread for it would be an author rolling for a goblin they have
+ * already described.
+ *
+ * `actions` mirrors `dungeonspec.RoomMonsterBinding.Actions`: full
  * `dnd5e:weapons:<id>` refs, monsters only, "CARRIED, NOT INTERPRETED", and
  * THE ORDER IS THE POINT — both drivers take the first action whose target is
- * in reach. The single room has no equivalent yet (`RoomMonsterSource` is
- * `{ id, ref, cell }` and its compile leaves `Actions` empty), so this widens
- * the web's room shape ahead of the engine's, which is the intended
- * outside-in direction. */
+ * in reach. */
 export interface RoomMonsterBinding {
   on?: AnswerTableShape;
+  temper?: string;
   actions?: string[];
 }
 export interface RoomGameplayData {
@@ -441,7 +449,7 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise. */
 const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
 const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
-const BINDING_KEYS = ['on', 'actions'] as const;
+const BINDING_KEYS = ['on', 'temper', 'actions'] as const;
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -490,6 +498,32 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   return monsters;
 }
 
+/** A binding's `temper:` — ONE SEALED WORD, never a mix.
+ *
+ * The declaration already carries both shapes (`ANSWER_TEMPER.placementShape`
+ * is `'word'` and `.factionShape` is `'word-or-mix'`), so this asks the one
+ * grammar instead of keeping a second copy of the rule. The sentence for a mix
+ * matches `dungeonYaml.ts`'s v2 placement refusal, because it is the same
+ * mistake in the same place. */
+function validateBindingTemper(value: unknown, path: string): string {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    // A NON-STRING SCALAR reaches the engine as a scalar node, so it is read
+    // as a word and refused BY NAME — `temper: 5` reports `"5" is not a
+    // temperament this build ships`. Same value, same sentence.
+    const word = String(value);
+    if (!ANSWER_TEMPER.words.includes(word))
+      throw new Error(`${path} ${unknownTemperRefusal(word)}`);
+    return word;
+  }
+  throw new Error(
+    `${path} is a placement, and a placement names one creature — a temper mix belongs on the faction`
+  );
+}
+
 /** The orders blocks, keyed by the creature's stable id. A binding whose
  * creature is gone is REFUSED, not silently dropped — the same discipline
  * `propDeclarations` already keeps ("Declaration owner does not exist"). */
@@ -508,6 +542,11 @@ function validateMonsterBindings(
     const parsed: RoomMonsterBinding = {};
     if (Object.hasOwn(block, 'on'))
       parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
+    if (Object.hasOwn(block, 'temper'))
+      parsed.temper = validateBindingTemper(
+        block.temper,
+        `Monster binding for ${id} temper`
+      );
     if (Object.hasOwn(block, 'actions')) {
       const actions = block.actions;
       if (!Array.isArray(actions))
@@ -526,7 +565,11 @@ function validateMonsterBindings(
     }
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
-    if (parsed.on === undefined && parsed.actions === undefined)
+    if (
+      parsed.on === undefined &&
+      parsed.temper === undefined &&
+      parsed.actions === undefined
+    )
       throw new Error(
         `Monster binding for ${id} declares no orders; omit the binding instead.`
       );

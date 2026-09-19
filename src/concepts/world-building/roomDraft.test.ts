@@ -721,6 +721,7 @@ describe('room draft v3 migration and structural exactness', () => {
             { toward: { at: [3, 4] } },
           ],
         },
+        temper: 'coward',
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
       },
     };
@@ -737,7 +738,49 @@ describe('room draft v3 migration and structural exactness', () => {
       'dnd5e:weapons:scimitar',
       'dnd5e:weapons:shortbow',
     ]);
+    // One word, and it is the placement's own — it beats the faction's mix.
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].temper).toBe('coward');
     expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
+  });
+
+  it("a binding's temper is ONE word — the faction's mix is refused there", () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-temper'),
+      'room-temper'
+    );
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const rejection = (value: unknown) => {
+      (draft.room as unknown as Record<string, unknown>).monsterBindings = {
+        'goblin-1': value,
+      };
+      return () => stringifyRoomDraft(structuredClone(draft));
+    };
+
+    // One sealed word is the shape. `RoomMonsterBinding.Temper` is a plain
+    // `string` where `FactionSpec.Temper` is a `TemperSpec`
+    // (`dungeonspec/single_room.go`), so this is the engine's asymmetry.
+    expect(rejection({ temper: 'coward' })).not.toThrow();
+
+    // A MIX is the faction's shape, and it is refused here by name.
+    expect(rejection({ temper: { coward: 2, soldier: 1 } })).toThrow(
+      /a temper mix belongs on the faction/
+    );
+
+    // A word outside the sealed three is refused by name, as the engine does.
+    expect(rejection({ temper: 'cowardly' })).toThrow(
+      /temper "cowardly" is not a temperament this build ships/
+    );
+
+    // A non-string scalar reaches the engine as a scalar node and is read as a
+    // word, so it is refused BY NAME rather than with the shape sentence.
+    expect(rejection({ temper: 5 })).toThrow(
+      /temper "5" is not a temperament this build ships/
+    );
+
+    // `temper` ALONE is a complete binding: it is an override, not an absence.
+    expect(rejection({ temper: 'aggressive' })).not.toThrow();
   });
 
   it('refuses an orphan binding, an unknown binding key and an empty block', () => {
@@ -757,8 +800,8 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
-    expect(rejection({ 'goblin-1': { temper: 'coward' } })).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: temper/
+    expect(rejection({ 'goblin-1': { intimidate: {} } })).toThrow(
+      /Monster binding for goblin-1 has an unsupported field: intimidate/
     );
     expect(rejection({ 'goblin-1': {} })).toThrow(
       /Monster binding for goblin-1 declares no orders/

@@ -367,13 +367,24 @@ ${ROOM_BLOCK}
         `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      long-gone:\n        actions: ['dnd5e:weapons:scimitar']\n`
       )
     ).toThrow(/Monster binding owner does not exist: long-gone/);
-    // The binding carries `on` and `actions` in this slice and nothing else;
-    // `temper` is refused as the unknown key it is.
+    // `temper` IS accepted, and it is ONE word: the placement's own word wins
+    // over its faction's mix (`RoomMonsterBinding.Temper` is a plain string
+    // where `FactionSpec.Temper` is a `TemperSpec`).
+    const withTemper = decodeSingleRoomDungeon(
+      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
+    );
+    expect(withTemper.draft.room.monsterBindings?.['goblin-1'].temper).toBe(
+      'coward'
+    );
+    // `intimidate` is a `PlaceSpec` field this dialect's binding does not
+    // carry, and is refused as the unknown key it is.
     expect(() =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        temper: coward\n`
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: {dc: 12}\n`
       )
-    ).toThrow(/Monster binding for goblin-1 has an unsupported field: temper/);
+    ).toThrow(
+      /Monster binding for goblin-1 has an unsupported field: intimidate/
+    );
   });
 
   it('refuses an answer table this build cannot roll, in the engine’s own words', () => {

@@ -27,3 +27,17 @@ src/compositions/fixtures/*.scene.json
 # — and it had already done it to reference-tomb.yaml before anyone
 # noticed, because no test asserted a byte prettier would touch.
 src/author/fixtures/*.yaml
+
+# The World Builder's own pinned snapshots, for the same reason as the two
+# groups above and with the same failure already observed once: every file here
+# is either the toolkit's exact text or this repo's exact emitted bytes, and a
+# test asserts the hash. Prettier's YAML formatter respaces flow maps
+# (`{weight: 70}` -> `{ weight: 70 }`) and breaks them across lines, which is a
+# silent divergence from the file the copy was taken from.
+#
+# `src/author/fixtures/*.yaml` did not cover this directory, so
+# `worldBuilderV4Site.yaml` was reformatted the first time `npm run format` ran
+# — caught by its own hash assertion, which is what that assertion is for. This
+# pattern also protects `singleRoomV3.golden.yaml`, which was stable only by
+# luck: nothing asserted a byte Prettier would have touched.
+src/concepts/world-building/fixtures/*.yaml
