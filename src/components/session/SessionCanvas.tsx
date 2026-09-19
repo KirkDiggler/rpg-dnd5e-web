@@ -274,6 +274,7 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -327,6 +328,7 @@ export function SessionScene({
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -656,6 +658,27 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
+      {sightAreas.map(
+        (area) =>
+          area.center && (
+            <group
+              key={`sight-area-${area.id}`}
+              position={[area.center.x, 0.08, area.center.z]}
+            >
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry
+                  args={[area.radiusFeet * ((Math.sqrt(3) * hexSize) / 5), 48]}
+                />
+                <meshBasicMaterial
+                  color="#64748b"
+                  transparent
+                  opacity={0.42}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          )
+      )}
       {presentationLayer}
       <AreaFootprintPreview
         footprint={areaFootprint}
