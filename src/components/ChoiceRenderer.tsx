@@ -189,13 +189,43 @@ export function ChoiceRenderer({
     choice.options?.case === 'spellOptions'
   ) {
     return (
-      <EnumChoice
-        choice={choice}
-        available={choice.options.value.availableRefs}
-        currentSelections={currentSelections}
-        getDisplayInfo={(ref: string) => ({ name: spellRefLabel(ref) })}
-        onSelectionChange={onSelectionChange}
-      />
+      <div className="space-y-3">
+        <EnumChoice
+          choice={choice}
+          available={choice.options.value.availableRefs}
+          currentSelections={currentSelections}
+          getDisplayInfo={(ref: string) => ({ name: spellRefLabel(ref) })}
+          onSelectionChange={onSelectionChange}
+        />
+        {(choice.options.value.grants ?? []).length > 0 && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(choice.options.value.grants ?? []).map((grant) => (
+              <button
+                key={grant.spellRef}
+                aria-label={`${spellRefLabel(grant.spellRef)} Granted by ${grant.sourceName}`}
+                type="button"
+                disabled
+                className="rounded-lg border p-3 text-left cursor-not-allowed"
+                style={{
+                  borderColor: 'var(--border-primary)',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <span className="block font-semibold">
+                  {spellRefLabel(grant.spellRef)}{' '}
+                </span>
+                <span
+                  className="block text-sm"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Granted by {grant.sourceName}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     );
   }
 
