@@ -448,6 +448,24 @@ button.wb-tree-row[aria-pressed='true'] {
   border-left: 1px solid var(--wb-border);
 }
 
+/* The real asset palette is long, and the search box is the only way to find
+ * anything in it — so it stays put while the cards scroll under it.
+ *
+ * `position: sticky` needs an OPAQUE background or the cards show through it,
+ * and the negative inline margin bleeds it across the panel's own padding so
+ * nothing peeks through the seam at the sides. `display: block` is required
+ * because a `<label>` is inline by default and an inline box does not stick
+ * reliably (rpg-dnd5e-web#1152). */
+.wb-palette-search {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-inline: -0.65rem;
+  padding-inline: 0.65rem;
+  background: var(--wb-panel);
+}
+
 .wb-panel h3 {
   margin: 0 0 0.45rem;
   color: #b6f4eb;

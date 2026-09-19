@@ -1654,7 +1654,9 @@ export function WorldBuildingConcept({
    * same noun. */
   const assetPalette = (
     <>
-      <label>
+      {/* The palette is long and this box is the only way to find anything in
+          it, so it stays put while the cards scroll under it (rpg-dnd5e-web#1152). */}
+      <label className="wb-palette-search">
         <span>Search assets</span>
         <input
           type="search"
