@@ -101,6 +101,13 @@ export interface UseRoomPublishingResult {
   /** The canonical YAML of the current (key, draft) pair; null while no
    * key is entered. This exact text is what a save submits. */
   yaml: string | null;
+  /** The strict-SHAPE layer's refusal when the current scope cannot be
+   * encoded (rpg-dnd5e-web#1160). Null while the document encodes. */
+  encodeError: string | null;
+  /** Ask the server to validate the current bytes again, without waiting for
+   * the next edit. The live preview already validates on every change; this is
+   * the deliberate verb. */
+  validate: () => void;
   /** Live server validation of the current source (never blocks editing). */
   preview: PreviewState;
   /** True while a save/launch transaction mutates server state. */
@@ -262,26 +269,45 @@ export function useRoomPublishing({
    * transaction through the mechanism that exists. No second invalidation
    * path is added. */
   const trimmedKey = keyState.value.trim();
-  const yaml = useMemo(() => {
-    if (!trimmedKey) return null;
+  /** Bumping this re-runs the server's validation of the SAME bytes, so the
+   * author can ask the engine deliberately (rpg-dnd5e-web#1160). */
+  const [validateNonce, setValidateNonce] = useState(0);
+  const encoded = useMemo(() => {
+    if (!trimmedKey) return { yaml: null, error: null };
     try {
-      return encodeSingleRoomDungeon({
-        key: trimmedKey,
-        draft,
-        factions: scope.factions,
-        dispositions: scope.dispositions,
-      });
-    } catch {
-      return null;
+      return {
+        yaml: encodeSingleRoomDungeon({
+          key: trimmedKey,
+          draft,
+          factions: scope.factions,
+          dispositions: scope.dispositions,
+        }),
+        error: null,
+      };
+    } catch (error) {
+      // The strict-SHAPE layer's own sentence, surfaced verbatim rather than
+      // swallowed: a document the decoder cannot represent is NAMED instead of
+      // leaving the panel inert. Semantic refusals are the server's and come
+      // back through `preview` below.
+      return {
+        yaml: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }, [trimmedKey, draft, scope]);
+  const yaml = encoded.yaml;
+  const encodeError = encoded.error;
   const yamlRef = useRef(yaml);
   yamlRef.current = yaml;
 
   const preview = usePutDungeonPreview(trimmedKey, yaml ?? '', {
     client,
     enabled: yaml !== null,
+    nonce: validateNonce,
   });
+  const validate = useCallback(() => {
+    setValidateNonce((current) => current + 1);
+  }, []);
 
   /** A different room identity (new room, imported document) resets the
    * key to that room's derived default. Retirement of any in-flight
@@ -533,6 +559,8 @@ export function useRoomPublishing({
     key: keyState.value,
     setKey,
     yaml,
+    encodeError,
+    validate,
     preview,
     busy,
     phase,

@@ -6,6 +6,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
+import { validateSiteScope, type SiteScope } from './siteScope';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { KeyValueStorage, WorldScene } from './types';
 
@@ -154,10 +155,16 @@ export type RoomScenePresentation = Pick<
   'coordinateFrame' | 'workspace' | 'scene'
 >;
 
+/** The local-storage envelope. `version` is the ENVELOPE version, separate
+ * from the draft's own `version: 3`: v3 carries only the draft (the bytes
+ * every document wrote before policies could be authored), and v4 carries the
+ * site scope beside it (rpg-dnd5e-web#1160). A document with no scope keeps
+ * emitting v3 byte-identically. */
 interface RoomDraftEnvelope {
   kind: typeof ROOM_DRAFT_KIND;
-  version: 3;
+  version: 3 | 4;
   draft: RoomDraft;
+  scope?: SiteScope;
 }
 
 const cellKey = (cell: RoomHexCell) => `${cell.q},${cell.r}`;
@@ -750,12 +757,28 @@ function validateDraft(value: unknown): RoomDraft {
   return draft;
 }
 
-export function stringifyRoomDraft(draft: RoomDraft): string {
+export function stringifyRoomDraft(
+  draft: RoomDraft,
+  scope?: SiteScope
+): string {
+  // THE SCOPE IS VALIDATED ON THE WAY OUT, exactly as the draft is: an
+  // oversize or invalid scope is refused before any caller can store it, so
+  // the editor can never persist a document its own reader would refuse
+  // (rpg-dnd5e-web#1160). An empty scope normalizes to no scope at all.
+  const validatedScope = validateSiteScope(scope ?? {});
+  const carriesScope =
+    (validatedScope.factions?.length ?? 0) > 0 ||
+    (validatedScope.dispositions?.length ?? 0) > 0;
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
-      version: 3,
+      // ABSENT, NOT EMPTY: a document with no site scope keeps the v3 envelope
+      // bytes it always wrote. The envelope version is what decides whether a
+      // scope is read, exactly as the v1/v2 legacy paths decide whether
+      // `monsters`/`workspace` are synthesized.
+      version: carriesScope ? 4 : 3,
       draft: validateDraft(draft),
+      ...(carriesScope ? { scope: validatedScope } : {}),
     } satisfies RoomDraftEnvelope,
     null,
     2
@@ -768,7 +791,25 @@ export function stringifyRoomDraft(draft: RoomDraft): string {
     );
   return json;
 }
-export function parseRoomDraftJson(json: string): RoomDraft {
+
+/**
+ * The storage envelope's full contents: the room draft AND the site scope that
+ * was saved beside it. The scope is absent from the returned object when the
+ * envelope carried none, which is the same authored state the decoder keeps.
+ */
+export interface RoomDraftDocument {
+  draft: RoomDraft;
+  scope: SiteScope;
+}
+
+/**
+ * Read the envelope, scope and all. The envelope VERSION decides whether a
+ * scope is read (rpg-dnd5e-web#1160): v4 carries one, v3 and the legacy v1/v2
+ * paths never do, and a scope key under a version that cannot mean it is
+ * refused rather than silently dropped — losing authored policies on reload is
+ * the trap this half of the slice exists to remove.
+ */
+export function parseRoomDocumentJson(json: string): RoomDraftDocument {
   if (json.length > MAX_JSON_LENGTH)
     throw new Error(
       `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
@@ -777,6 +818,7 @@ export function parseRoomDraftJson(json: string): RoomDraft {
     kind?: unknown;
     version?: unknown;
     draft?: Record<string, unknown>;
+    scope?: unknown;
   };
   if (envelope.kind !== ROOM_DRAFT_KIND)
     throw new Error('Expected a room authoring draft.');
@@ -785,34 +827,74 @@ export function parseRoomDraftJson(json: string): RoomDraft {
       throw new Error(
         'Expected a version 1 room authoring draft in the legacy envelope.'
       );
-    return validateDraft({
-      ...envelope.draft,
-      version: 3,
-      workspace: { ...ROOM_WORKSPACE_STEPS[0] },
-      room: { ...(envelope.draft.room as object), monsters: [] },
-    });
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 1 room authoring draft carries no site scope.'
+      );
+    return {
+      draft: validateDraft({
+        ...envelope.draft,
+        version: 3,
+        workspace: { ...ROOM_WORKSPACE_STEPS[0] },
+        room: { ...(envelope.draft.room as object), monsters: [] },
+      }),
+      scope: {},
+    };
   }
   if (envelope.version === 2) {
     if (envelope.draft?.version !== 2)
       throw new Error(
         'Expected a version 2 room authoring draft in the legacy envelope.'
       );
-    return validateDraft({
-      ...envelope.draft,
-      version: 3,
-      room: { ...(envelope.draft.room as object), monsters: [] },
-    });
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 2 room authoring draft carries no site scope.'
+      );
+    return {
+      draft: validateDraft({
+        ...envelope.draft,
+        version: 3,
+        room: { ...(envelope.draft.room as object), monsters: [] },
+      }),
+      scope: {},
+    };
   }
-  if (envelope.version !== 3)
-    throw new Error('Expected a version 1, 2 or 3 room authoring draft.');
-  return validateDraft(envelope.draft);
+  if (envelope.version !== 3 && envelope.version !== 4)
+    throw new Error('Expected a version 1, 2, 3 or 4 room authoring draft.');
+  if (envelope.version === 3) {
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 3 room authoring draft carries no site scope; a scope is a version 4 envelope.'
+      );
+    return { draft: validateDraft(envelope.draft), scope: {} };
+  }
+  return {
+    draft: validateDraft(envelope.draft),
+    scope: validateSiteScope(envelope.scope ?? {}),
+  };
+}
+
+/** The room draft alone. A DRAFT-ONLY reader deliberately refuses an envelope
+ * that carries a scope rather than dropping the author's policies on the
+ * floor: callers that must keep the scope read `parseRoomDocumentJson`. */
+export function parseRoomDraftJson(json: string): RoomDraft {
+  const document = parseRoomDocumentJson(json);
+  if (
+    (document.scope.factions?.length ?? 0) > 0 ||
+    (document.scope.dispositions?.length ?? 0) > 0
+  )
+    throw new Error(
+      'This room authoring draft carries a site scope; read it with parseRoomDocumentJson.'
+    );
+  return document.draft;
 }
 export function saveRoomDraft(
   storage: KeyValueStorage,
-  draft: RoomDraft
+  draft: RoomDraft,
+  scope?: SiteScope
 ): string | null {
   try {
-    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft, scope));
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -821,21 +903,31 @@ export function saveRoomDraft(
 export function loadRoomDraft(
   storage: KeyValueStorage,
   fallback: RoomDraft
-): { value: RoomDraft; error?: string } {
+): { value: RoomDraft; scope: SiteScope; error?: string } {
   try {
     const current = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     // A present-but-empty or malformed current draft is never "absent": it
     // must not recover older keys and must not be silently overwritten by
     // autosave. Recovery requires an explicit valid save/import action.
-    if (current !== null) return { value: parseRoomDraftJson(current) };
+    if (current !== null) {
+      const document = parseRoomDocumentJson(current);
+      return { value: document.draft, scope: document.scope };
+    }
     const legacyV2 = storage.getItem(LEGACY_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV2 !== null) return { value: parseRoomDraftJson(legacyV2) };
+    if (legacyV2 !== null) {
+      const document = parseRoomDocumentJson(legacyV2);
+      return { value: document.draft, scope: document.scope };
+    }
     const legacyV1 = storage.getItem(LEGACY_V1_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV1 !== null) return { value: parseRoomDraftJson(legacyV1) };
-    return { value: fallback };
+    if (legacyV1 !== null) {
+      const document = parseRoomDocumentJson(legacyV1);
+      return { value: document.draft, scope: document.scope };
+    }
+    return { value: fallback, scope: {} };
   } catch (error) {
     return {
       value: fallback,
+      scope: {},
       error: `Room draft load failed; prior data was kept. ${
         error instanceof Error ? error.message : String(error)
       }`,

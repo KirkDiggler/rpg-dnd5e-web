@@ -65,6 +65,8 @@ export function RoomPublishingPanel({
     key,
     setKey,
     yaml,
+    encodeError,
+    validate,
     preview,
     busy,
     phase,
@@ -126,6 +128,15 @@ export function RoomPublishingPanel({
         <p className="wb-help" data-testid="key-request">
           This room ID cannot form a default key — enter an explicit dungeon key
           to publish.
+        </p>
+      )}
+
+      {/* The strict-SHAPE layer's own refusal, verbatim: a document the
+          decoder cannot represent is named here instead of leaving the server
+          preview silently inert (rpg-dnd5e-web#1160). */}
+      {encodeError && (
+        <p className="wb-alert" role="alert" data-testid="encode-refusal">
+          This document cannot be encoded yet: {encodeError}
         </p>
       )}
 
@@ -218,6 +229,14 @@ export function RoomPublishingPanel({
       )}
 
       <div className="wb-actions">
+        <button
+          type="button"
+          disabled={busy || !yaml}
+          title={yaml ? undefined : 'Fix the document before validating it'}
+          onClick={validate}
+        >
+          Validate with server
+        </button>
         <button type="button" disabled={busy} onClick={() => void save()}>
           {busy && phase === 'checking-key'
             ? 'Checking key…'

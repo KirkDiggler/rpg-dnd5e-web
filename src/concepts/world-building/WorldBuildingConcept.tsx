@@ -31,7 +31,7 @@ import {
   FOOTPRINT_MINIMUM_EXTENT,
   loadRoomDraft,
   moveRoomMonster,
-  parseRoomDraftJson,
+  parseRoomDocumentJson,
   placeRoomMonster,
   reconcileRoomDraft,
   remapRoomDeclarations,
@@ -44,6 +44,7 @@ import {
   type RoomDraft,
   type RoomGameplayData,
   type RoomHexCell,
+  type RoomMonsterPlacement,
   type RoomPropDeclaration,
   type RoomWorkspace,
 } from './roomDraft';
@@ -138,17 +139,15 @@ interface WorldBuildingConceptProps {
 }
 
 /** One editor document: the room draft plus the site scope (`factions` /
- * `dispositions`) that arrived with it (rpg-dnd5e-web#1157, rpg-project#477).
+ * `dispositions`) that belongs with it (rpg-dnd5e-web#1157, #1160,
+ * rpg-project#477).
  *
- * THE SCOPE IS EDITOR STATE, NOT DRAFT STATE, AND IT IS NOT PERSISTED. The
- * local draft's storage envelope under `ROOM_DRAFT_STORAGE_KEY` is
- * `{ kind, version, draft }` — it carries nothing beside the draft — and the
- * spec forbids inventing a second storage key for this. So the scope is
- * re-established by the canonical-YAML import that authored it and is lost
- * when the page reloads; the room bytes round-trip through local storage
- * exactly as before.
- *
- * IT TRAVELS IN THE HISTORY ENTRY so Undo/Redo moves the draft and its
+ * THE SCOPE IS EDITOR STATE, AND IT IS PERSISTED BESIDE THE DRAFT. The local
+ * draft's storage envelope under `ROOM_DRAFT_STORAGE_KEY` carries the scope in
+ * a v4 envelope when one is authored (and stays byte-identical v3 when none
+ * is), so an author who edits policies and reloads gets them back — saving the
+ * room and dropping the policies is a document the engine refuses. The scope
+ * still travels in the HISTORY ENTRY so Undo/Redo moves the draft and its
  * policies together: a bare `SiteScope` beside the history would let one
  * Undo across two imports publish document A's room with document B's
  * policies, which is the same silent mismatch this slice exists to remove. */
@@ -224,6 +223,7 @@ export function WorldBuildingConcept({
     if (!roomMode)
       return {
         value: createRoomDraft(initial.history.present, 'inactive-room'),
+        scope: {} as SiteScope,
       };
     const fallback = createRoomDraft(
       createEmptyScene(idFactory()),
@@ -237,7 +237,7 @@ export function WorldBuildingConcept({
     future: RoomDocument[];
   }>(() => ({
     past: [],
-    present: { draft: initialRoom.value, scope: {} },
+    present: { draft: initialRoom.value, scope: initialRoom.scope },
     future: [],
   }));
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
@@ -343,15 +343,20 @@ export function WorldBuildingConcept({
   const skippedInitialLibrarySave = useRef(false);
   const workspaceOriginRef = useRef<'local' | 'world'>('local');
   const roomDraft = roomHistory.present.draft;
-  /** The policies of the open document, read-only in this slice. Hydrated by
-   * the canonical-YAML import that decoded them and emptied by every path
-   * that replaces the document with one that carries none. */
+  /** The policies of the open document (rpg-dnd5e-web#1160): edited in the
+   * `Policies` node, persisted beside the draft, and hydrated on reload by
+   * `loadRoomDraft`; emptied by every path that replaces the document with one
+   * that authors none. */
   const siteScope = roomHistory.present.scope;
   const scene = roomMode ? roomDraft.scene : history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   const roomDraftRef = useRef(roomDraft);
   roomDraftRef.current = roomDraft;
+  /** The scope the latest local draft belongs to, mirrored for the deferred
+   * world-snapshot preservation write below (which runs outside render). */
+  const siteScopeRef = useRef(siteScope);
+  siteScopeRef.current = siteScope;
   const sourceRef = useRef(compositionSource);
   sourceRef.current = compositionSource;
   const openGenerationRef = useRef(0);
@@ -455,14 +460,14 @@ export function WorldBuildingConcept({
       );
       return;
     }
-    const error = saveRoomDraft(effectiveStorage, roomDraft);
+    const error = saveRoomDraft(effectiveStorage, roomDraft, siteScope);
     setSaveStatus(
       error
         ? 'Room save failed — draft kept in memory'
         : 'Room authoring draft saved locally'
     );
     if (error) setNotice(error);
-  }, [effectiveStorage, roomDraft, roomMode, workspaceOrigin]);
+  }, [effectiveStorage, roomDraft, roomMode, siteScope, workspaceOrigin]);
 
   useEffect(() => {
     if (!skippedInitialLibrarySave.current) {
@@ -514,11 +519,21 @@ export function WorldBuildingConcept({
                 },
             valid
           );
-          if (JSON.stringify(nextDraft) === JSON.stringify(roomDraft)) return;
+          const resolvedScope = nextScope ?? siteScope;
+          // A SCOPE-ONLY EDIT IS STILL AN EDIT: compare both halves, or the
+          // first policy the author writes would be dropped as a no-op.
+          if (
+            JSON.stringify(nextDraft) === JSON.stringify(roomDraft) &&
+            JSON.stringify(resolvedScope) === JSON.stringify(siteScope)
+          )
+            return;
           setRoomHistory((current) => {
+            const presentScope = nextScope ?? current.present.scope;
             if (
               JSON.stringify(nextDraft) ===
-              JSON.stringify(current.present.draft)
+                JSON.stringify(current.present.draft) &&
+              JSON.stringify(presentScope) ===
+                JSON.stringify(current.present.scope)
             )
               return current;
             return {
@@ -528,7 +543,7 @@ export function WorldBuildingConcept({
               ],
               present: structuredClone({
                 draft: nextDraft,
-                scope: nextScope ?? current.present.scope,
+                scope: presentScope,
               }),
               future: [],
             };
@@ -552,7 +567,7 @@ export function WorldBuildingConcept({
         );
       }
     },
-    [refuseWhilePublishing, roomDraft, roomMode, selectedIds]
+    [refuseWhilePublishing, roomDraft, roomMode, selectedIds, siteScope]
   );
 
   const dropIntoScene = useCallback(
@@ -731,6 +746,53 @@ export function WorldBuildingConcept({
     setNotice('');
   };
 
+  /** One policy edit is one history transaction (rpg-dnd5e-web#1160). The form
+   * writes the document and the strict-SHAPE layer refuses to ENCODE what it
+   * cannot represent — whether a reference resolves, whether a share can be
+   * dealt, whether a stance may carry an `until` are the engine's calls, and
+   * they come back through the publish panel's server validation. The form
+   * does not pre-judge any of them. */
+  const commitPolicies = useCallback(
+    (nextScope: SiteScope, nextRoom?: RoomGameplayData) => {
+      if (refuseWhilePublishing()) return;
+      commit(
+        scene,
+        selectedIds,
+        nextRoom ?? roomDraft.room,
+        roomDraft.workspace,
+        undefined,
+        undefined,
+        nextScope
+      );
+    },
+    [
+      commit,
+      refuseWhilePublishing,
+      roomDraft.room,
+      roomDraft.workspace,
+      scene,
+      selectedIds,
+    ]
+  );
+
+  /** The ACTOR carries its faction (design Decision 4): assigning one is the
+   * creature's identity, not a policy edit, and the faction's shared table
+   * stays the faction's to own in `Policies` — a creature's panel never writes
+   * another creature's policy. */
+  const setMonsterFaction = useCallback(
+    (id: string, faction: string | undefined) => {
+      const monsters = roomDraft.room.monsters.map((monster) => {
+        if (monster.id !== id) return monster;
+        const next: RoomMonsterPlacement = { ...monster };
+        if (faction === undefined) delete next.faction;
+        else next.faction = faction;
+        return next;
+      });
+      commit(scene, selectedIds, { ...roomDraft.room, monsters });
+    },
+    [commit, roomDraft.room, scene, selectedIds]
+  );
+
   const armMonsterPlacement = (ref: string) => {
     setPreviewScene(null);
     setArmedMonsterRef(ref);
@@ -896,7 +958,7 @@ export function WorldBuildingConcept({
   const saveNow = () => {
     if (refuseWhilePublishing()) return;
     if (roomMode) {
-      const error = saveRoomDraft(effectiveStorage, roomDraft);
+      const error = saveRoomDraft(effectiveStorage, roomDraft, siteScope);
       if (!error) {
         markAutosaveBlocked(false);
         workspaceOriginRef.current = 'local';
@@ -934,7 +996,7 @@ export function WorldBuildingConcept({
     const blank = createEmptyScene(idFactory());
     const freshRoom = createRoomDraft(blank, idFactory());
     const resetError = roomMode
-      ? saveRoomDraft(effectiveStorage, freshRoom)
+      ? saveRoomDraft(effectiveStorage, freshRoom, {})
       : null;
     if (roomMode && !resetError) {
       markAutosaveBlocked(false);
@@ -1012,8 +1074,12 @@ export function WorldBuildingConcept({
     if (refuseWhilePublishing()) return;
     try {
       if (roomMode) {
-        const imported = parseRoomDraftJson(portableJson);
-        const saveError = saveRoomDraft(effectiveStorage, imported);
+        const imported = parseRoomDocumentJson(portableJson);
+        const saveError = saveRoomDraft(
+          effectiveStorage,
+          imported.draft,
+          imported.scope
+        );
         if (!saveError) {
           markAutosaveBlocked(false);
           workspaceOriginRef.current = 'local';
@@ -1021,9 +1087,10 @@ export function WorldBuildingConcept({
         }
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
-          // Portable room JSON is room-only: it carries no site scope, so the
-          // scope is emptied rather than inheriting the replaced document's.
-          present: { draft: imported, scope: {} },
+          // The portable envelope carries the site scope when one was authored
+          // (rpg-dnd5e-web#1160), so an imported file is adopted with its own
+          // policies rather than inheriting the replaced document's.
+          present: { draft: imported.draft, scope: imported.scope },
           future: [],
         }));
         setSelectedIds([]);
@@ -1071,7 +1138,7 @@ export function WorldBuildingConcept({
     (imported: RoomDraft, scope: SiteScope): boolean => {
       if (refuseWhilePublishing()) return false;
       try {
-        const saveError = saveRoomDraft(effectiveStorage, imported);
+        const saveError = saveRoomDraft(effectiveStorage, imported, scope);
         if (!saveError) {
           markAutosaveBlocked(false);
           workspaceOriginRef.current = 'local';
@@ -1119,9 +1186,10 @@ export function WorldBuildingConcept({
       setWorkspaceOrigin('local');
       setRoomHistory({
         past: [],
-        // The local draft's envelope carries only the draft, so a reopen has
-        // no scope to restore: the stored document authors no policies.
-        present: { draft: result.value, scope: {} },
+        // The stored envelope carries the scope beside the draft, so a reopen
+        // publishes exactly what was saved — policies included
+        // (rpg-dnd5e-web#1160).
+        present: { draft: result.value, scope: result.scope },
         future: [],
       });
       setPreviewScene(null);
@@ -1249,7 +1317,11 @@ export function WorldBuildingConcept({
       }
       if (workspaceOriginRef.current === 'local') {
         const localError = roomMode
-          ? saveRoomDraft(effectiveStorage, roomDraftRef.current)
+          ? saveRoomDraft(
+              effectiveStorage,
+              roomDraftRef.current,
+              siteScopeRef.current
+            )
           : saveSceneToStorage(effectiveStorage, sceneRef.current).error;
         if (localError) {
           setSaveStatus('Save failed — current data kept in memory');
@@ -1668,16 +1740,24 @@ export function WorldBuildingConcept({
       <div className="wb-actions">
         <button
           onClick={() => {
-            const json = roomMode
-              ? stringifyRoomDraft(roomDraft)
-              : stringifyScene(scene);
-            setPortableJson(json);
-            downloadJson(
-              roomMode
-                ? 'room-authoring-draft.json'
-                : 'world-building-scene.json',
-              json
-            );
+            try {
+              const json = roomMode
+                ? stringifyRoomDraft(roomDraft, siteScope)
+                : stringifyScene(scene);
+              setPortableJson(json);
+              downloadJson(
+                roomMode
+                  ? 'room-authoring-draft.json'
+                  : 'world-building-scene.json',
+                json
+              );
+            } catch (error) {
+              setNotice(
+                `Export refused; the open document was kept. ${
+                  error instanceof Error ? error.message : String(error)
+                }`
+              );
+            }
           }}
         >
           {roomMode ? 'Export room draft JSON' : 'Export scene JSON'}
@@ -2420,6 +2500,21 @@ export function WorldBuildingConcept({
       </section>
     ) : null;
 
+  /** The draft envelope as text, or the strict-SHAPE layer's own refusal when
+   * an in-progress scope cannot be represented. The editor holds what the
+   * author typed, so this must never crash the render: it renders the
+   * encoder's sentence instead. */
+  const roomDraftJson = (() => {
+    if (!roomMode) return '';
+    try {
+      return stringifyRoomDraft(roomDraft, siteScope);
+    } catch (error) {
+      return JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+
   return (
     <section
       className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
@@ -2863,6 +2958,9 @@ export function WorldBuildingConcept({
                   scope={siteScope}
                   monster={selectedMonster}
                   binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
+                  onFactionChange={(faction) =>
+                    setMonsterFaction(selectedMonster.id, faction)
+                  }
                 />
               )}
               {selectedActorId === 'start' && (
@@ -2898,10 +2996,17 @@ export function WorldBuildingConcept({
 
             <details className="wb-collapse">
               <summary aria-label="Policies">Policies</summary>
-              {/* Read-only document facts (design slice 2): the site's
-                  factions and dispositions are a site noun, present in every
-                  room, and this view only reports what the file says. */}
-              <SitePolicies scope={siteScope} />
+              {/* Editable document facts (design slices 3/4, #1160): the
+                  site's factions, their temperaments and shared tables, and
+                  the dispositions between sides. The form writes the document
+                  and the SERVER judges it through the publish panel's
+                  validation. */}
+              <SitePolicies
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={commitPolicies}
+                onNotice={setNotice}
+              />
             </details>
 
             {/* Selection declarations belong to a selection, not to the
@@ -2966,7 +3071,7 @@ export function WorldBuildingConcept({
       </output>
       {roomMode && (
         <output data-testid="room-draft-json" hidden>
-          {stringifyRoomDraft(roomDraft)}
+          {roomDraftJson}
         </output>
       )}
     </section>

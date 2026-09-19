@@ -31,6 +31,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
+import type { SiteScope } from './siteScope';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -2310,7 +2311,7 @@ function publishedDraft(): RoomDraft {
 describe('WorldBuildingConcept room publishing', () => {
   afterEach(() => publishRpc.reset());
 
-  it('imports the engine’s own v4 site, shows its policies read-only, and publishes them unchanged', async () => {
+  it('imports the engine’s own v4 site, shows its policies, and publishes them unchanged', async () => {
     // The whole slice on one document (rpg-dnd5e-web#1157): the import
     // hydrates the editor's scope, the Policies and creature views report
     // document facts without editing them, and the publish transaction emits
@@ -2335,12 +2336,19 @@ describe('WorldBuildingConcept room publishing', () => {
     await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
 
     // Part 2 — the Policies node renders the site's factions and dispositions
-    // as facts: the mix, the shared table with each entry's weight, say and
-    // one word, and the pair's stance and `until`.
+    // as EDITABLE facts (rpg-dnd5e-web#1160): the id, the mix, the shared table
+    // with each entry's weight, say and one word, and the pair's stance and
+    // `until`.
     const policies = screen.getByTestId('site-policies');
-    expect(within(policies).getByText('goblins')).toBeTruthy();
     expect(
-      within(policies).getByText('coward ×2 · soldier ×1 · aggressive ×1')
+      (
+        within(policies).getByLabelText(
+          'Faction id for goblins'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('goblins');
+    expect(
+      within(policies).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
     ).toBeTruthy();
     expect(within(policies).getByText('intimidated')).toBeTruthy();
     expect(
@@ -2348,20 +2356,31 @@ describe('WorldBuildingConcept room publishing', () => {
         /Fine! The cellar door is behind the barrels\./
       )
     ).toBeTruthy();
-    expect(within(policies).getByText('goblins ↔ party')).toBeTruthy();
-    expect(within(policies).getByText('hostile')).toBeTruthy();
-    expect(within(policies).getByText('fact goblin-cowed')).toBeTruthy();
-    // Read-only: no input, button or select anywhere in the facts.
     expect(
-      policies.querySelectorAll('input, textarea, select, button')
-    ).toHaveLength(0);
+      (
+        within(policies).getByLabelText(
+          'Between first faction'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('goblins');
+    expect(
+      (within(policies).getByLabelText('Stance') as HTMLSelectElement).value
+    ).toBe('hostile');
+    expect(within(policies).getByText('fact goblin-cowed')).toBeTruthy();
+    // Editable: the facts are controls now, not a readout.
+    expect(
+      policies.querySelectorAll('input, select, button').length
+    ).toBeGreaterThan(0);
 
     // Part 3 — the selected goblin's inheritance against its own orders.
     fireEvent.click(
       screen.getByRole('button', { name: /^Move monster .* goblin-1$/ })
     );
     const creature = screen.getByLabelText('Selected creature');
-    expect(within(creature).getByText('goblins')).toBeTruthy();
+    expect(
+      (within(creature).getByLabelText('Creature faction') as HTMLInputElement)
+        .value
+    ).toBe('goblins');
     // ITS FACTION SUPPLIES the mix and the two-trigger table …
     expect(
       within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
@@ -2448,7 +2467,9 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(publishedDraft().id).toBe('room-1');
     expect(
-      within(screen.getByTestId('site-policies')).getByText('goblins')
+      within(screen.getByTestId('site-policies')).getByLabelText(
+        'Faction id for goblins'
+      )
     ).toBeTruthy();
 
     // New room is a fresh document: it authors no policies.
@@ -2456,6 +2477,71 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New room' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
     expect(screen.getByTestId('policies-none')).toBeTruthy();
+  });
+
+  it('authors policies with no YAML, keeps them across a reload, and publishes them', async () => {
+    // The whole loop this slice exists for (rpg-dnd5e-web#1160): an author
+    // creates a faction and a disposition in the Policies node with no YAML,
+    // the local envelope carries them, a RELOAD brings them back, and the
+    // reloaded room publishes the document it was saved as instead of one the
+    // engine refuses for an undeclared faction.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+    // A faction, then its id renamed to what a placement would name.
+    fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+    const idInput = screen.getByLabelText(
+      'Faction id for faction-1'
+    ) as HTMLInputElement;
+    fireEvent.change(idInput, { target: { value: 'goblins' } });
+    fireEvent.blur(idInput);
+    // A disposition between the new faction and the party.
+    fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
+    expect(screen.getByLabelText('Faction id for goblins')).toBeTruthy();
+
+    // The local envelope carries the scope beside the draft.
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as { version: number; scope?: SiteScope };
+      expect(stored.version).toBe(4);
+      expect(stored.scope?.factions?.[0]?.id).toBe('goblins');
+    });
+    first.unmount();
+
+    // Reload from the same storage: the policies are back, with no import.
+    render(mount());
+    expect(screen.getByLabelText('Faction id for goblins')).toBeTruthy();
+
+    // Publish, and the emitted document carries what was saved.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.factions?.map((faction) => faction.id)).toEqual(['goblins']);
+    expect(emitted.dispositions?.[0]?.between).toEqual(['goblins', 'party']);
   });
 
   it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {

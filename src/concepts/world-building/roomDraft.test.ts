@@ -8,6 +8,7 @@ import {
   LEGACY_V1_ROOM_DRAFT_STORAGE_KEY,
   loadRoomDraft,
   moveRoomMonster,
+  parseRoomDocumentJson,
   parseRoomDraftJson,
   placeRoomMonster,
   reconcileRoomDraft,
@@ -29,6 +30,7 @@ import {
   stampArrangement,
 } from './sceneState';
 import { validateScene } from './serialization';
+import type { SiteScope } from './siteScope';
 import type { KeyValueStorage } from './types';
 
 describe('room authoring draft', () => {
@@ -943,5 +945,95 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(isCellWithinWorkspace({ q: 7, r: -3 }, 6)).toBe(false);
     expect(isCellWithinWorkspace({ q: 0.5, r: 0 }, 6)).toBe(false);
     expect(isCellWithinWorkspace({ q: NaN, r: 0 }, 6)).toBe(false);
+  });
+});
+
+describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => {
+  const scope: SiteScope = {
+    factions: [
+      { id: 'goblins', temper: { coward: 2, soldier: 1 } },
+      {
+        id: 'bandits',
+        mind: 'bandit-1',
+        on: { time: [{ when: { enemy: 'reach' }, attack: 'enemy' }] },
+      },
+    ],
+    dispositions: [{ between: ['goblins', 'party'], stance: 'hostile' }],
+  };
+
+  it('keeps a document with no scope emitting the byte-identical v3 envelope', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const bare = stringifyRoomDraft(draft);
+    // No scope, or an explicitly empty one, is the same document.
+    expect(stringifyRoomDraft(draft, {})).toBe(bare);
+    expect(stringifyRoomDraft(draft, { factions: [], dispositions: [] })).toBe(
+      bare
+    );
+    const envelope = JSON.parse(bare) as { version: number; scope?: unknown };
+    expect(envelope.version).toBe(3);
+    expect('scope' in envelope).toBe(false);
+  });
+
+  it('writes a v4 envelope carrying the scope and reads it back', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const json = stringifyRoomDraft(draft, scope);
+    const envelope = JSON.parse(json) as {
+      version: number;
+      scope: typeof scope;
+    };
+    expect(envelope.version).toBe(4);
+    expect(envelope.scope).toEqual(scope);
+    expect(parseRoomDocumentJson(json)).toEqual({ draft, scope });
+  });
+
+  it('loads the stored scope beside the stored draft', () => {
+    const storage = new RecordingStorage();
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(saveRoomDraft(storage, draft, scope)).toBeNull();
+    const loaded = loadRoomDraft(storage, draft);
+    expect(loaded.error).toBeUndefined();
+    expect(loaded.value.id).toBe('room-1');
+    expect(loaded.scope).toEqual(scope);
+    // A document saved with no scope reloads as one that authors none.
+    expect(saveRoomDraft(storage, draft)).toBeNull();
+    expect(loadRoomDraft(storage, draft).scope).toEqual({});
+  });
+
+  it('refuses a scope-carrying envelope to the draft-only reader instead of dropping it', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(() => parseRoomDraftJson(stringifyRoomDraft(draft, scope))).toThrow(
+      /carries a site scope/
+    );
+    // A scope under a version that cannot mean it is refused, not ignored.
+    const v3WithScope = JSON.stringify({
+      kind: 'rpg-room-authoring-draft',
+      version: 3,
+      draft: JSON.parse(stringifyRoomDraft(draft)).draft,
+      scope,
+    });
+    expect(() => parseRoomDocumentJson(v3WithScope)).toThrow(
+      /version 3 room authoring draft carries no site scope/
+    );
+  });
+
+  it('refuses an invalid scope on the way out and keeps the prior stored bytes', () => {
+    const storage = new RecordingStorage();
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(saveRoomDraft(storage, draft, scope)).toBeNull();
+    const prior = storage.values.get(ROOM_DRAFT_STORAGE_KEY);
+
+    // A share below the minimum can never be dealt — the strict decoder's own
+    // sentence, refused before the bytes are replaced.
+    const error = saveRoomDraft(storage, draft, {
+      factions: [{ id: 'goblins', temper: { coward: 0 } }],
+    });
+    expect(error).toMatch(/can never be dealt/);
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(prior);
+
+    expect(() =>
+      stringifyRoomDraft(draft, {
+        factions: [{ id: 'party' }],
+      })
+    ).toThrow(/players' side/);
   });
 });
