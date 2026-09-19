@@ -20,6 +20,7 @@ import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
+import { withBinding } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { addRepeatedProps } from './repeatPlacement';
 import {
@@ -44,6 +45,7 @@ import {
   type RoomDraft,
   type RoomGameplayData,
   type RoomHexCell,
+  type RoomMonsterBinding,
   type RoomMonsterPlacement,
   type RoomPropDeclaration,
   type RoomWorkspace,
@@ -253,7 +255,7 @@ export function WorldBuildingConcept({
     | 'repeat'
     | 'monster'
     | 'start'
-  >('paint');
+  >('select');
   const [repeatAssetRef, setRepeatAssetRef] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
    * a selected actor is a monster id or 'start', never a WorldProp id, and
@@ -700,6 +702,12 @@ export function WorldBuildingConcept({
   };
 
   const moveMonsterTo = (id: string, cell: RoomHexCell) => {
+    // ONE-SHOT, AND THAT IS THE POINT. The move gesture is spent by the click
+    // that performs it. Leaving the tool armed meant every LATER floor click
+    // relocated the creature — so an author who selected a monster to edit its
+    // orders could not then click a prop, or even empty ground, without moving
+    // it (Kirk, 2026-09-19). Moving is armed deliberately from the actor list.
+    setRoomTool('select');
     try {
       const next = moveRoomMonster(roomDraft, id, cell);
       if (next === roomDraft) return;
@@ -791,6 +799,23 @@ export function WorldBuildingConcept({
       commit(scene, selectedIds, { ...roomDraft.room, monsters });
     },
     [commit, roomDraft.room, scene, selectedIds]
+  );
+
+  /** The creature's OWN orders (rpg-dnd5e-web#1164). The MAP is normalized
+   * here rather than in the panel: an emptied creature becomes a DELETED
+   * binding, and an emptied map omits the key entirely, because the encoder
+   * refuses both `actions: []` ("omit the key instead") and a binding that
+   * "declares no orders". The panel edits one creature and knows nothing about
+   * the room it lives in. */
+  const setMonsterOrders = useCallback(
+    (id: string, next: RoomMonsterBinding | undefined) => {
+      const bindings = withBinding(roomDraft.room.monsterBindings, id, next);
+      const room: RoomGameplayData = { ...roomDraft.room };
+      if (bindings === undefined) delete room.monsterBindings;
+      else room.monsterBindings = bindings;
+      commit(scene, selectedIds, room, roomDraft.workspace);
+    },
+    [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
 
   const armMonsterPlacement = (ref: string) => {
@@ -2731,7 +2756,7 @@ export function WorldBuildingConcept({
                         ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
                         : roomMode && roomTool === 'start'
                           ? 'Click the floor: place or move the party start'
-                          : roomMode && roomTool === 'select' && selectedActorId
+                          : roomMode && roomTool === 'move' && selectedActorId
                             ? selectedActorId === 'start'
                               ? 'Click the floor: move the party start · Delete: clear it'
                               : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
@@ -2931,9 +2956,15 @@ export function WorldBuildingConcept({
                     <button
                       type="button"
                       aria-label={`Move monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                      aria-pressed={
+                        roomTool === 'move' && selectedActorId === monster.id
+                      }
                       onClick={() => {
+                        // ARMS the move; it does not merely select. Selecting an
+                        // actor is what clicking it on the board does, and that
+                        // must never relocate it.
                         setSelectedActorId(monster.id);
-                        setRoomTool('select');
+                        setRoomTool('move');
                         setNotice('');
                       }}
                     >
@@ -2960,6 +2991,9 @@ export function WorldBuildingConcept({
                   binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
                   onFactionChange={(faction) =>
                     setMonsterFaction(selectedMonster.id, faction)
+                  }
+                  onOrdersChange={(next) =>
+                    setMonsterOrders(selectedMonster.id, next)
                   }
                 />
               )}

@@ -471,8 +471,14 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
 /** `PlaceSpec.Actions` is "FULL REFS, like every other ref in this file:
  * `dnd5e:weapons:shortbow`, never `shortbow`." Weapons are the only action
  * type the engine accepts today, and refusing the rest here is what makes a
- * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise. */
-const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
+ * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise.
+ *
+ * EXPORTED so the creature's weapon editor (`monsterOrderEdits.ts`'s control)
+ * checks the SAME grammar the encoder does. There is no weapons catalog on the
+ * wire — the engine carries these refs and never interprets them — so this
+ * shape check is the whole of what the builder may say about a weapon, and it
+ * must not live in two places. */
+export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
 const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
 const BINDING_KEYS = ['on', 'temper', 'actions'] as const;
 

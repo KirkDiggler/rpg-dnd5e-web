@@ -867,8 +867,23 @@ describe('room actor markers and snapped setup gestures', () => {
       expect(url).toBe('/models/synty/npcs/skeleton-soldier-01.glb');
     expect(new Set(modelState.requestedUrls).size).toBe(1);
 
-    // The ring is the only raycastable actor part: its pointer selects
-    // the actor and never a scene prop.
+    // The actor's cell is the target: clicking anywhere on it selects the
+    // actor and never a scene prop. The ring used to be the ONLY raycastable
+    // part, which left the middle of the cell — where anyone actually aims —
+    // dead, so a placed actor could not be re-selected at all (Kirk,
+    // 2026-09-19).
+    const pick = renderer.scene.findByProps({
+      name: `room-actor-pick-${ACTOR.id}`,
+    });
+    const pickStop = vi.fn();
+    await renderer.fireEvent(pick, 'pointerDown', {
+      button: 0,
+      stopPropagation: pickStop,
+    });
+    expect(pickStop).toHaveBeenCalled();
+    expect(onSelectActor).toHaveBeenCalledWith('actor-1');
+
+    // …and the VISIBLE ring still selects too, exactly as it always did.
     const ring = renderer.scene.findByProps({
       name: `room-actor-ring-${ACTOR.id}`,
     });
@@ -982,7 +997,7 @@ describe('room actor markers and snapped setup gestures', () => {
     ).toHaveLength(0);
   });
 
-  it('moves a selected monster from a floor gesture and never through scenery selection', async () => {
+  it('moves a selected monster when the MOVE tool is armed, never through scenery selection', async () => {
     const onMoveMonster = vi.fn();
     const onSelect = vi.fn();
     const onSelectActor = vi.fn();
@@ -1001,7 +1016,7 @@ describe('room actor markers and snapped setup gestures', () => {
         onTransformReject={vi.fn()}
         onAssetState={vi.fn()}
         roomAuthoring={{
-          tool: 'select',
+          tool: 'move',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
           walkableHexes: [],
           propDeclarations: {},
@@ -1033,6 +1048,55 @@ describe('room actor markers and snapped setup gestures', () => {
     await ReactThreeTestRenderer.act?.(async () => undefined);
     const same = renderer;
     void same;
+  });
+
+  it('never moves a selected monster from `select` — a floor click only drops it', async () => {
+    // THE COUPLING THIS GUARDS: `select` plus a selected actor used to mean
+    // every floor click relocated it, so an author could not select a creature
+    // to edit its orders and then click a prop — or empty ground — without
+    // moving the creature (Kirk, 2026-09-19). Selecting is not a move gesture.
+    const onMoveMonster = vi.fn();
+    const onSelectActor = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [ACTOR],
+          selectedActorId: ACTOR.id,
+          onMoveMonster,
+          onSelectActor,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).not.toHaveBeenCalled();
+    // It clears the selection instead, which is what makes "select a creature,
+    // edit it, then click something else" possible.
+    expect(onSelectActor).toHaveBeenCalledWith(null);
   });
 
   it('places or moves the party start from one gesture and keeps it unmistakable', async () => {
