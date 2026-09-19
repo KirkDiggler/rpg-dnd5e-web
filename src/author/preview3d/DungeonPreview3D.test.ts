@@ -11,9 +11,9 @@ import {
   buildScene3D,
   resolveSceneLayout,
 } from '@/components/session/atlasToScene3D';
-import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
 import { isMonsterRef } from '../dungeonYaml';
 import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
@@ -161,10 +161,11 @@ describe('previewScene', () => {
     expect(preview.message).toMatch(/#763/);
   });
 
-  /** A minimal valid canonical presentation, shared by the preview tests
-   * below — the same structural shape the atlas field carries. */
-  const canonicalPresentation = {
-    version: 1,
+  /** A room the author could be holding in the editor — the same
+   * `RoomScenePresentation` the play view reads out of the authored
+   * file. Handed to the preview DIRECTLY; nothing round-trips it
+   * through the atlas any more (rpg-project#479). */
+  const authoredRoom: RoomScenePresentation = {
     coordinateFrame: {
       horizontalPlane: 'world-xz',
       verticalAxis: 'world-y-up',
@@ -199,45 +200,21 @@ describe('previewScene', () => {
     },
   };
 
-  it('attaches the decoded canonical presentation to the shared scene path', () => {
-    const preview = previewScene({
-      ...atlas,
-      roomSceneJson: JSON.stringify(canonicalPresentation),
-    } as GetAtlasResponse);
+  it('draws the authored room the caller hands it, on the shared scene path', () => {
+    const preview = previewScene(atlas, authoredRoom);
     expect(preview.ok).toBe(true);
     if (!preview.ok) return;
-    expect(preview.scene.roomScene).toEqual(canonicalPresentation);
+    expect(preview.scene.roomScene).toBe(authoredRoom);
     // The legacy atlas scene channels are untouched.
     expect(preview.scene.props).toEqual(
       buildScene3D(atlas, HEX_SIZE, 'pointy').props
     );
   });
 
-  it('catches an invalid nonempty presentation into the existing ok:false refusal', () => {
-    const broken = previewScene({
-      ...atlas,
-      roomSceneJson: '{oops',
-    } as GetAtlasResponse);
-    expect(broken.ok).toBe(false);
-    if (broken.ok) return;
-    expect(broken.message).toMatch(/could not be parsed/);
-
-    const unsupported = previewScene({
-      ...atlas,
-      roomSceneJson: JSON.stringify({
-        ...canonicalPresentation,
-        version: 2,
-      }),
-    } as GetAtlasResponse);
-    expect(unsupported.ok).toBe(false);
-    if (unsupported.ok) return;
-    expect(unsupported.message).toMatch(/version must be 1/);
-
-    // Absent stays the legacy route — never a refusal, never a fallback.
-    const absent = previewScene({
-      ...atlas,
-      roomSceneJson: '',
-    } as GetAtlasResponse);
-    expect(absent.ok).toBe(true);
+  it('draws the atlas alone when there is no authored room', () => {
+    const preview = previewScene(atlas);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.scene.roomScene).toBeUndefined();
   });
 });

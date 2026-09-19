@@ -83,6 +83,24 @@ export interface RoomDraft {
   scene: WorldScene;
   room: RoomGameplayData;
 }
+/**
+ * What a renderer needs to draw an authored room, and nothing else: the
+ * frame its transforms are expressed in, the workspace extent that sizes
+ * the floor, and the scene graph itself.
+ *
+ * It is a `Pick` of `RoomDraft` deliberately — ONE type, never a second
+ * copy of the shape. Both producers hand over a `RoomDraft`: the editor
+ * its live draft, and the play view the draft `decodeSingleRoomDungeon`
+ * read out of the authored file the session was launched from. A field
+ * that moves here moves for both of them or for neither, so the picture
+ * the author places and the picture the player sees cannot drift apart
+ * through a hand-maintained mirror.
+ */
+export type RoomScenePresentation = Pick<
+  RoomDraft,
+  'coordinateFrame' | 'workspace' | 'scene'
+>;
+
 interface RoomDraftEnvelope {
   kind: typeof ROOM_DRAFT_KIND;
   version: 3;

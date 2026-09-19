@@ -16,12 +16,15 @@ YAML, not the room draft. Overwriting an existing key requires explicit intent.
 Server errors leave the draft intact. Request ownership includes source, key,
 room, character and client; stale continuations cannot save or launch new state.
 
-The session atlas's nonempty roomSceneJson is decoded once into the canonical
-visual scene. Empty/absent is legacy; malformed/unsupported nonempty data is a
-visible refusal, never a fallback. Shared prop/floor/light renderers retain full
-poses, relationships and grounded height. Canonical rooms suppress duplicate
-legacy scenery/shell walls and editor guides. Actual actors/visibility and rules
-remain session-owned.
+The session atlas names the dungeon it was launched from (dungeonKey); the play
+view fetches that authored file by key through GetDungeon and reads the room out
+of it with the World Building codec (rpg-project#479). No key, or a dungeonspec
+(v2) dungeon, is legacy and draws exactly what it drew before. A single-room file
+this build cannot read whole, and a key whose file cannot be fetched, are visible
+refusals, never a fallback. Shared prop/floor/light renderers retain full poses,
+relationships and grounded height. Authored rooms suppress duplicate legacy
+scenery/shell walls and editor guides. Actual actors/visibility and rules remain
+session-owned.
 
 ## Local integrated evidence (2026-09-17)
 
