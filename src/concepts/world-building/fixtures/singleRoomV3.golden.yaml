@@ -1,0 +1,49 @@
+version: 3
+key: crypt-room
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+room:
+  version: 3
+  id: room-1
+  name: Untitled room
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  workspace:
+    hexRadius: 6
+    horizontalLimit: 12
+  scene:
+    version: 1
+    id: scene-1
+    name: Untitled world
+    items:
+      - id: prop-1
+        kind: prop
+        assetRef: dnd5e:props:torture-table
+        label: table
+        transform:
+          x: -2.25
+          y: 1.2
+          z: 1.3
+          rotationY: 0.37
+        heightScale: 1.5
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: []
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsters:
+      - id: skeleton-a
+        ref: dnd5e:monsters:skeleton
+        cell:
+          q: 2
+          r: -1
+    partyStart:
+      q: 0
+      r: 0
