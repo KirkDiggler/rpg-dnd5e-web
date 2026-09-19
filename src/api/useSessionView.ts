@@ -2,8 +2,17 @@ import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { useCallback, useEffect, useState } from 'react';
 import { sessionClient } from './client';
 
+export interface SessionSightArea {
+  id: string;
+  name: string;
+  sourceRef?: { module: string; type: string; id: string };
+  center?: { x: number; y: number };
+  radiusFeet: number;
+}
+
 export interface UseSessionViewResult {
   sightings: Sighting[];
+  areas: SessionSightArea[];
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
@@ -34,12 +43,14 @@ export function useSessionView(
   member: string
 ): UseSessionViewResult {
   const [sightings, setSightings] = useState<Sighting[]>([]);
+  const [areas, setAreas] = useState<SessionSightArea[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchView = useCallback(async () => {
     if (!session || !member) {
       setSightings([]);
+      setAreas([]);
       setError(null);
       setLoading(false);
       return;
@@ -49,6 +60,13 @@ export function useSessionView(
     try {
       const response = await sessionClient.getView({ session, member });
       setSightings(response.sightings);
+      setAreas(
+        ((response as unknown as { areas?: SessionSightArea[] }).areas ?? [])
+          .map((area) => ({ ...area, radiusFeet: Number(area.radiusFeet) }))
+          .filter(
+            (area) => Number.isFinite(area.radiusFeet) && area.radiusFeet > 0
+          )
+      );
     } catch (err) {
       setSightings([]);
       setError(err instanceof Error ? err : new Error('GetView RPC failed'));
@@ -63,10 +81,11 @@ export function useSessionView(
   useEffect(() => {
     if (!session || !member) {
       setSightings([]);
+      setAreas([]);
       setError(null);
       setLoading(false);
     }
   }, [session, member]);
 
-  return { sightings, loading, error, refetch: fetchView };
+  return { sightings, areas, loading, error, refetch: fetchView };
 }
