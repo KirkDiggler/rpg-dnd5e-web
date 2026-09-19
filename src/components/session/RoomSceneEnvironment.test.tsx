@@ -117,11 +117,10 @@ vi.mock('@/components/hex-grid/WorldAssetModel', () => ({
 }));
 
 import { WORLD_BUILDING_CATALOG_BY_REF } from '@/concepts/world-building/catalog';
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import { RoomSceneEnvironment } from './RoomSceneEnvironment';
-import type { RoomScenePresentation } from './roomSceneJson';
 
 const presentation: RoomScenePresentation = {
-  version: 1 as const,
   coordinateFrame: {
     horizontalPlane: 'world-xz' as const,
     verticalAxis: 'world-y-up' as const,

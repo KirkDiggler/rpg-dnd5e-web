@@ -132,9 +132,40 @@ export function encodeSingleRoomDungeon(
   });
 }
 
-export function decodeSingleRoomDungeon(
-  source: string
-): DecodeSingleRoomDungeonResult {
+/**
+ * Which authored dialect a file speaks, read from its root `version`
+ * alone — the one tag the two dialects share.
+ *
+ * **Below the first single-room version is the OTHER dialect** (the
+ * dungeonspec document: regions, walls, doors, arrivals), which this
+ * codec does not read and does not judge. It is not ours; a caller
+ * draws whatever it drew before and no refusal is raised.
+ *
+ * **At or above it, the file claims to be a single room**, and this
+ * build either reads it whole or names why it cannot. A version this
+ * build has not heard of is a gap, not another dialect.
+ *
+ * A root that is not YAML, is not a mapping, or carries no numeric
+ * version is neither answer: it is named too, because "we cannot tell
+ * what this file is" must never be delivered as "this dungeon has no
+ * authored room."
+ */
+export type SingleRoomDungeonRead =
+  | ({ dialect: 'single-room' } & DecodeSingleRoomDungeonResult)
+  | { dialect: 'other'; version: number };
+
+const FIRST_SINGLE_ROOM_VERSION = SUPPORTED_VERSIONS[0];
+
+export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
+  const root = parseSingleRoomSource(source);
+  const version = root.version;
+  if (typeof version !== 'number' || !Number.isFinite(version))
+    throw new Error('Authored dungeon source is missing a numeric version.');
+  if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
+  return { dialect: 'single-room', ...decodeSingleRoomRoot(root) };
+}
+
+function parseSingleRoomSource(source: string): Record<string, unknown> {
   let value: unknown;
   try {
     value = parse(source);
@@ -145,7 +176,18 @@ export function decodeSingleRoomDungeon(
   }
   if (!isPlainObject(value))
     throw new Error('Single-room source must be an object.');
-  const root = value;
+  return value;
+}
+
+export function decodeSingleRoomDungeon(
+  source: string
+): DecodeSingleRoomDungeonResult {
+  return decodeSingleRoomRoot(parseSingleRoomSource(source));
+}
+
+function decodeSingleRoomRoot(
+  root: Record<string, unknown>
+): DecodeSingleRoomDungeonResult {
   for (const key of Object.keys(root)) {
     if (!ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number]))
       throw new Error(`Unsupported single-room field: ${key}.`);
