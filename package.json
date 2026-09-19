@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Web-based D&D 5e game interface for Discord Activities",
   "type": "module",
+  "engines": {
+    "node": "^22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

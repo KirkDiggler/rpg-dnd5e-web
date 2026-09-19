@@ -695,6 +695,174 @@ describe('room draft v3 migration and structural exactness', () => {
     );
   });
 
+  it('round trips monster orders, and an unauthored faction stays absent', () => {
+    const base = createRoomDraft(
+      createEmptyScene('scene-orders'),
+      'room-orders'
+    );
+    const withActors = placeRoomMonster(
+      placeRoomMonster(base, {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        cell: { q: 1, r: 0 },
+        faction: 'goblins',
+      }),
+      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } }
+    );
+    withActors.room.monsterBindings = {
+      'goblin-1': {
+        on: {
+          intimidated: [
+            { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
+            { weight: 30, flee: {} },
+          ],
+          time: [
+            { when: { enemy: 'reach' }, attack: 'enemy' },
+            { toward: { at: [3, 4] } },
+          ],
+        },
+        temper: 'coward',
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
+      },
+    };
+
+    const json = stringifyRoomDraft(withActors);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(withActors);
+    // The authored faction is written; the unauthored one is not written out
+    // as `faction: monsters` (rpg-project#477 Decision 4).
+    expect(json).toContain('"faction": "goblins"');
+    expect(json.match(/"faction"/g)).toHaveLength(1);
+    // The order of actions IS the point, so it survives verbatim.
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].actions).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+    // One word, and it is the placement's own — it beats the faction's mix.
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].temper).toBe('coward');
+    expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
+  });
+
+  it("a binding's temper is ONE word — the faction's mix is refused there", () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-temper'),
+      'room-temper'
+    );
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const rejection = (value: unknown) => {
+      (draft.room as unknown as Record<string, unknown>).monsterBindings = {
+        'goblin-1': value,
+      };
+      return () => stringifyRoomDraft(structuredClone(draft));
+    };
+
+    // One sealed word is the shape. `RoomMonsterBinding.Temper` is a plain
+    // `string` where `FactionSpec.Temper` is a `TemperSpec`
+    // (`dungeonspec/single_room.go`), so this is the engine's asymmetry.
+    expect(rejection({ temper: 'coward' })).not.toThrow();
+
+    // A MIX is the faction's shape, and it is refused here by name.
+    expect(rejection({ temper: { coward: 2, soldier: 1 } })).toThrow(
+      /a temper mix belongs on the faction/
+    );
+
+    // A word outside the sealed three is refused by name, as the engine does.
+    expect(rejection({ temper: 'cowardly' })).toThrow(
+      /temper "cowardly" is not a temperament this build ships/
+    );
+
+    // A non-string scalar reaches the engine as a scalar node and is read as a
+    // word, so it is refused BY NAME rather than with the shape sentence.
+    expect(rejection({ temper: 5 })).toThrow(
+      /temper "5" is not a temperament this build ships/
+    );
+
+    // `temper` ALONE is a complete binding: it is an override, not an absence.
+    expect(rejection({ temper: 'aggressive' })).not.toThrow();
+  });
+
+  it('refuses an orphan binding, an unknown binding key and an empty block', () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-orphan'),
+      'room-orphan'
+    );
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const rejection = (value: unknown) => {
+      (draft.room as unknown as Record<string, unknown>).monsterBindings =
+        value;
+      return () => stringifyRoomDraft(structuredClone(draft));
+    };
+
+    expect(
+      rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
+    ).toThrow(/Monster binding owner does not exist: gone/);
+    expect(rejection({ 'goblin-1': { intimidate: {} } })).toThrow(
+      /Monster binding for goblin-1 has an unsupported field: intimidate/
+    );
+    expect(rejection({ 'goblin-1': {} })).toThrow(
+      /Monster binding for goblin-1 declares no orders/
+    );
+    expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
+      /Monster binding for goblin-1 actions is empty/
+    );
+    expect(rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })).toThrow(
+      /must be a weapon reference/
+    );
+  });
+
+  it('drops the orders when their creature is removed, leaving no orphan', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-drop'), 'room-drop');
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } },
+    ];
+    draft.room.monsterBindings = {
+      'goblin-1': { actions: ['dnd5e:weapons:scimitar'] },
+      'goblin-2': { actions: ['dnd5e:weapons:shortbow'] },
+    };
+    const removed = removeRoomMonster(draft, 'goblin-1');
+    expect(removed.room.monsterBindings).toEqual({
+      'goblin-2': { actions: ['dnd5e:weapons:shortbow'] },
+    });
+    // The last removal takes the now-empty map with it, so the key never
+    // survives as an empty placeholder.
+    const emptied = removeRoomMonster(removed, 'goblin-2');
+    expect('monsterBindings' in emptied.room).toBe(false);
+    expect(() => stringifyRoomDraft(emptied)).not.toThrow();
+  });
+
+  it('writes no monsterBindings and no faction when nothing authored them', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-none'), 'room-none');
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const json = stringifyRoomDraft(draft);
+    expect(json).not.toContain('monsterBindings');
+    expect(json).not.toContain('"faction"');
+  });
+
+  it('refuses a faction id that is not a faction id', () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-bad-faction'),
+      'room-bad-faction'
+    );
+    (draft.room as unknown as Record<string, unknown>).monsters = [
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        cell: { q: 1, r: 0 },
+        faction: 'The Goblins',
+      },
+    ];
+    expect(() => stringifyRoomDraft(draft)).toThrow(
+      /faction must be a faction id such as goblins/
+    );
+  });
+
   it('retains structurally valid actor arrangements that are merely game-illegal', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     draft.room.walkableHexes = [{ q: 0, r: 0 }];
