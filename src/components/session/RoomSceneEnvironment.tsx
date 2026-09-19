@@ -1,11 +1,11 @@
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '@/concepts/world-building/catalog';
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import type { WorldProp } from '@/concepts/world-building/types';
 import { WorkspaceFloorSurface } from '@/concepts/world-building/WorkspaceFloorUnderlay';
 import { WorldPropModel } from '@/concepts/world-building/WorldPropModel';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Suspense } from 'react';
-import type { RoomScenePresentation } from './roomSceneJson';
 import { useDungeonShellCatalog } from './useDungeonShellCatalog';
 
 export interface RoomSceneEnvironmentProps {

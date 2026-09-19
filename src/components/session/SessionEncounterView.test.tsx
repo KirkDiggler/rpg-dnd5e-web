@@ -1,3 +1,4 @@
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
@@ -83,6 +84,11 @@ const hoisted = vi.hoisted(() => ({
     refetch: vi.fn(),
     applyReveal: vi.fn(),
   },
+  dungeonSceneResult: {
+    presentation: null as unknown,
+    loading: false,
+    error: null as string | null,
+  },
   whereResult: {
     position: null as unknown,
     loading: true,
@@ -137,6 +143,10 @@ vi.mock('./SessionCanvas', () => ({
 
 vi.mock('../../api/useSessionAtlas', () => ({
   useSessionAtlas: () => hoisted.atlasResult,
+}));
+
+vi.mock('./useDungeonScene', () => ({
+  useDungeonScene: () => hoisted.dungeonSceneResult,
 }));
 
 vi.mock('../../api/useSessionWhere', () => ({
@@ -205,11 +215,10 @@ function pointyAtlas(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** A minimal valid canonical room presentation, encoded exactly as the
- * atlas's `room_scene_json` field would carry it. */
-function canonicalRoomSceneJson(): string {
-  return JSON.stringify({
-    version: 1,
+/** The authored room `useDungeonScene` reads out of the file the
+ * session's dungeon key names. */
+function authoredRoom(): RoomScenePresentation {
+  return {
     coordinateFrame: {
       horizontalPlane: 'world-xz',
       verticalAxis: 'world-y-up',
@@ -257,7 +266,7 @@ function canonicalRoomSceneJson(): string {
         },
       ],
     },
-  });
+  };
 }
 
 function privateCharacterData(overrides: Record<string, unknown> = {}) {
@@ -565,6 +574,11 @@ beforeEach(() => {
     error: null,
   });
   hoisted.atlasResult.refetch.mockReset();
+  Object.assign(hoisted.dungeonSceneResult, {
+    presentation: null,
+    loading: false,
+    error: null,
+  });
   Object.assign(hoisted.whereResult, {
     position: null,
     loading: true,
@@ -1279,11 +1293,12 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
-  /** The canonical room presentation crosses buildScene3D's ONE decode
-   * boundary at this caller: attached typed to the drawn scene, refused
-   * visibly when a CURRENT nonempty payload is invalid — never redrawing
-   * the cached prior scene as if valid — and memoized by atlas identity. */
-  describe('canonical room presentation at the caller boundary', () => {
+  /** THE ROOM ARRIVES BY KEY (rpg-project#479). The atlas names the
+   * dungeon; `useDungeonScene` reads the authored file and hands back
+   * the room, no room, or a named refusal. The view draws the room on
+   * the shared scene path, waits rather than flashing the legacy one,
+   * and never turns a refusal into a quietly legacy-looking room. */
+  describe('the authored room at the caller boundary', () => {
     const rerenderView = (rerender: (ui: React.ReactNode) => void) =>
       rerender(
         <SessionEncounterView
@@ -1294,11 +1309,11 @@ describe('SessionEncounterView production combat integration', () => {
         />
       );
 
-    it('attaches the decoded presentation to the drawn scene exactly once', async () => {
-      hoisted.atlasResult.atlas = pointyAtlas({
-        roomSceneJson: canonicalRoomSceneJson(),
-      });
+    it('draws the room the key named, and names the place after it', async () => {
+      const room = authoredRoom();
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
       hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.presentation = room;
       hoisted.whereResult.position = { x: 0, y: 0 };
       hoisted.whereResult.loading = false;
       const { rerender } = renderView();
@@ -1308,70 +1323,53 @@ describe('SessionEncounterView production combat integration', () => {
       expect(
         screen.queryByText('The Reference Tomb', { exact: true })
       ).toBeNull();
-      expect(first?.roomScene).toEqual({
-        version: 1,
-        coordinateFrame: {
-          horizontalPlane: 'world-xz',
-          verticalAxis: 'world-y-up',
-          distanceUnit: 'world-scene-unit',
-          hexRadius: 1,
-          footprintFrame: 'owner-local-xz',
-        },
-        workspace: { hexRadius: 6, horizontalLimit: 12 },
-        scene: {
-          version: 1,
-          id: 'scene-1',
-          name: 'Workshop',
-          items: [
-            {
-              id: 'table',
-              kind: 'prop',
-              assetRef: 'dnd5e:props:torture-table',
-              label: 'Table',
-              transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
-              heightScale: 1.5,
-              parentId: 'furniture',
-            },
-            {
-              id: 'candles',
-              kind: 'prop',
-              assetRef: 'dnd5e:props:candles',
-              label: 'Candles',
-              transform: { x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37 },
-              supportId: 'table',
-              pointLight: {
-                enabled: true,
-                offset: { x: 0, y: 0.5, z: 0 },
-                color: '#ff9d52',
-                intensity: 1.1,
-                range: 2.6,
-              },
-            },
-          ],
-          groups: [
-            {
-              id: 'furniture',
-              kind: 'group',
-              label: 'Furniture',
-              transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
-            },
-          ],
-        },
-      });
+      expect(first?.roomScene).toBe(room);
 
-      // ONE decode per atlas identity: an unrelated re-render keeps the
-      // same memoized scene object — no per-frame re-parse.
+      // ONE build per atlas/room identity: an unrelated re-render keeps
+      // the same memoized scene object.
       rerenderView(rerender);
       expect(hoisted.lastCanvasProps.current?.scene).toBe(first);
     });
 
-    it('refuses a current invalid nonempty presentation instead of redrawing the cached scene', async () => {
+    it('draws the legacy atlas room when the dungeon has no authored room', async () => {
+      readyScene();
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(hoisted.lastCanvasProps.current?.scene?.roomScene).toBeUndefined();
+      expect(
+        screen.getByText('The Reference Tomb', { exact: true })
+      ).toBeTruthy();
+    });
+
+    it('waits for the room rather than drawing the legacy one first', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.loading = true;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      const { rerender } = renderView();
+      // No canvas yet: the atlas alone would have drawn the duplicated
+      // legacy props for a frame, which is the wrong room.
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+
+      hoisted.dungeonSceneResult.loading = false;
+      hoisted.dungeonSceneResult.presentation = authoredRoom();
+      rerenderView(rerender);
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(
+        hoisted.lastCanvasProps.current?.scene?.roomScene
+      ).not.toBeUndefined();
+    });
+
+    it('refuses a room it could not read instead of redrawing the cached scene', async () => {
       readyScene();
       const { rerender } = renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
       const propsBefore = hoisted.lastCanvasProps.current;
 
-      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.dungeonSceneResult.error =
+        'Could not read the room authored under “room-workshop”: Unsupported single-room field: walls.';
       rerenderView(rerender);
 
       // The refusal is a visible, named scene-error outcome in the map
@@ -1379,16 +1377,18 @@ describe('SessionEncounterView production combat integration', () => {
       // untouched, only unusable scene interaction gone).
       expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
       expect(screen.getByText("Can't draw this room")).toBeTruthy();
-      expect(screen.getByText(/could not be parsed/i)).toBeTruthy();
+      expect(screen.getByText(/Unsupported single-room field/i)).toBeTruthy();
       expect(screen.queryByTestId('session-canvas')).toBeNull();
-      // The cached prior scene was never re-drawn as if the invalid
-      // current one were valid.
+      // The cached prior scene was never re-drawn as if the unreadable
+      // room were the one on screen.
       expect(hoisted.lastCanvasProps.current).toBe(propsBefore);
     });
 
-    it('refuses an invalid nonempty presentation on first load, never falling back to legacy', async () => {
-      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+    it('refuses an unreadable room on first load, never falling back to legacy', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
       hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.error =
+        'Could not load the dungeon “room-workshop” this session is playing: Unavailable';
       hoisted.whereResult.position = { x: 0, y: 0 };
       hoisted.whereResult.loading = false;
       renderView();
@@ -1398,18 +1398,17 @@ describe('SessionEncounterView production combat integration', () => {
       expect(screen.getByRole('button', { name: /back/i })).toBeTruthy();
     });
 
-    it('keeps ordinary refresh behavior when a later refresh presents a valid scene', async () => {
+    it('keeps ordinary refresh behavior when a later read answers with a room', async () => {
       readyScene();
       const { rerender } = renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
 
-      hoisted.atlasResult.atlas = pointyAtlas({ roomSceneJson: 'not-json' });
+      hoisted.dungeonSceneResult.error = 'Could not read the room.';
       rerenderView(rerender);
       expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
 
-      hoisted.atlasResult.atlas = pointyAtlas({
-        roomSceneJson: canonicalRoomSceneJson(),
-      });
+      hoisted.dungeonSceneResult.error = null;
+      hoisted.dungeonSceneResult.presentation = authoredRoom();
       rerenderView(rerender);
       await waitFor(() => screen.getByTestId('session-canvas'));
       expect(screen.queryByTestId('scene-presentation-error')).toBeNull();
