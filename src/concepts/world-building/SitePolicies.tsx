@@ -49,11 +49,21 @@ import type {
   AnswerTableShape,
   AnswerWhenShape,
 } from './answerTableShape';
+import {
+  addMonsterAction,
+  addMonsterAnswerEntry,
+  moveMonsterAction,
+  patchMonsterAnswerEntry,
+  removeMonsterAction,
+  removeMonsterAnswerEntry,
+  setMonsterTemper,
+} from './monsterOrderEdits';
 import type {
   RoomGameplayData,
   RoomMonsterBinding,
   RoomMonsterPlacement,
 } from './roomDraft';
+import { WEAPON_REF_RE } from './roomDraft';
 import {
   addSiteAnswerEntry,
   addSiteDisposition,
@@ -168,16 +178,27 @@ function AnswerEntryRow({
   entry,
   onCommit,
   onRemove,
+  allowCellSelector = true,
 }: {
   trigger: string;
   entry: AnswerEntryShape;
   onCommit: (entry: AnswerEntryShape) => void;
   onRemove: () => void;
+  /** A PLACEMENT'S table may not name a cell: `{ at: [col, row] }` is refused
+   * by name on a binding, because this dialect's cells are axial and the same
+   * bytes would mean two things in the two dialects. A faction's table keeps
+   * it. Defaults to `true` so the faction editor is untouched — a control that
+   * can never save is not authoring, it is a trap. */
+  allowCellSelector?: boolean;
 }) {
   const words = answerWordsForTrigger(trigger);
   const word = entryWord(entry) ?? words[0]?.key ?? '';
   const spec = answerWord(word);
   const value = (entry as Record<string, unknown>)[word];
+  /** `at:` is offered only where the engine accepts it — the `toward` word on a
+   * FACTION's table. See the prop's own note. */
+  const cellSelectorAllowed =
+    allowCellSelector && word === ANSWER_AT_SELECTOR.onlyWord;
 
   const withWordValue = (next: unknown): AnswerEntryShape => {
     const draft = { ...(entry as Record<string, unknown>) } as AnswerEntryShape;
@@ -249,7 +270,13 @@ function AnswerEntryRow({
             <span>{word} acts on</span>
             <select
               aria-label={`${word} selector for ${trigger} entry`}
-              value={typeof value === 'string' ? value : ANSWER_AT_SELECTOR.key}
+              value={
+                typeof value === 'string'
+                  ? value
+                  : cellSelectorAllowed
+                    ? ANSWER_AT_SELECTOR.key
+                    : (ANSWER_SELECTOR_WORDS[0]?.key ?? '')
+              }
               onChange={(event) =>
                 onCommit(
                   withWordValue(
@@ -265,39 +292,41 @@ function AnswerEntryRow({
                   {selector.label} ({selector.key})
                 </option>
               ))}
-              {word === ANSWER_AT_SELECTOR.onlyWord && (
+              {cellSelectorAllowed && (
                 <option value={ANSWER_AT_SELECTOR.key}>
                   {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
                 </option>
               )}
             </select>
           </label>
-          {isMapping(value) && Array.isArray(value.at) && (
-            <label>
-              <span>Cell</span>
-              <span className="wb-policy-cell">
-                {([0, 1] as const).map((axis) => {
-                  const at = value.at as [number, number];
-                  return (
-                    <input
-                      key={axis}
-                      type="number"
-                      step={1}
-                      aria-label={`${
-                        axis === 0 ? 'Column' : 'Row'
-                      } for ${trigger} entry`}
-                      value={String(at[axis] ?? 0)}
-                      onChange={(event) => {
-                        const cell = [...at] as [number, number];
-                        cell[axis] = Number(event.target.value);
-                        onCommit(withWordValue({ at: cell }));
-                      }}
-                    />
-                  );
-                })}
-              </span>
-            </label>
-          )}
+          {cellSelectorAllowed &&
+            isMapping(value) &&
+            Array.isArray(value.at) && (
+              <label>
+                <span>Cell</span>
+                <span className="wb-policy-cell">
+                  {([0, 1] as const).map((axis) => {
+                    const at = value.at as [number, number];
+                    return (
+                      <input
+                        key={axis}
+                        type="number"
+                        step={1}
+                        aria-label={`${
+                          axis === 0 ? 'Column' : 'Row'
+                        } for ${trigger} entry`}
+                        value={String(at[axis] ?? 0)}
+                        onChange={(event) => {
+                          const cell = [...at] as [number, number];
+                          cell[axis] = Number(event.target.value);
+                          onCommit(withWordValue({ at: cell }));
+                        }}
+                      />
+                    );
+                  })}
+                </span>
+              </label>
+            )}
         </>
       )}
       <button
@@ -959,8 +988,217 @@ export function SitePolicies({
 }
 
 // ---------------------------------------------------------------------------
-// One selected creature (design slice 2, #1157) — still read-only
+// One selected creature — its own orders, editable (rpg-dnd5e-web#1164)
 // ---------------------------------------------------------------------------
+
+/** The creature's weapon list: ORDERED, and the order is the point. Both turn
+ * drivers take the first action whose target is in reach, so this control
+ * MOVES weapons rather than merely listing them — it is what authors "the
+ * archer draws a scimitar only when cornered".
+ *
+ * THERE IS NO WEAPONS CATALOG ON THE WIRE. `rpg-project#448` opens that door
+ * later (the web palette is its last step), and the engine carries these refs
+ * and NEVER INTERPRETS them. So the author writes one, checked against the
+ * SAME grammar the encoder uses, and the builder offers no list of its own
+ * invention — a closed list here would assert a vocabulary the engine does not
+ * have. */
+function CreatureWeaponEditor({
+  actions,
+  onAdd,
+  onRemove,
+  onMove,
+}: {
+  actions: readonly string[];
+  onAdd: (ref: string) => void;
+  onRemove: (index: number) => void;
+  onMove: (from: number, to: number) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const usable = WEAPON_REF_RE.test(draft.trim());
+  return (
+    <div className="wb-policy-table-editor" data-testid="creature-weapons">
+      <p className="wb-help">What it fights with, in order.</p>
+      {actions.length === 0 ? (
+        <p className="wb-help" data-testid="creature-weapons-none">
+          No weapons authored — this creature keeps its kind’s default.
+        </p>
+      ) : (
+        <ol className="wb-policy-list">
+          {actions.map((ref, index) => (
+            <li key={`${ref}-${index}`} className="wb-policy-entry">
+              <code>{ref}</code>
+              <div className="wb-actions">
+                <button
+                  type="button"
+                  aria-label={`Move ${ref} earlier`}
+                  disabled={index === 0}
+                  onClick={() => onMove(index, index - 1)}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move ${ref} later`}
+                  disabled={index === actions.length - 1}
+                  onClick={() => onMove(index, index + 1)}
+                >
+                  Move down
+                </button>
+                <button
+                  type="button"
+                  className="wb-danger"
+                  aria-label={`Remove ${ref}`}
+                  onClick={() => onRemove(index)}
+                >
+                  Remove
+                </button>
+              </div>
+              {index === 0 && (
+                <p className="wb-help">
+                  First in reach — this is what it reaches for.
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="wb-actions">
+        <input
+          aria-label="New weapon reference"
+          value={draft}
+          placeholder="dnd5e:weapons:shortbow"
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button
+          type="button"
+          aria-label="Add weapon"
+          disabled={!usable}
+          onClick={() => {
+            onAdd(draft.trim());
+            setDraft('');
+          }}
+        >
+          Add weapon
+        </button>
+      </div>
+      {draft.trim() !== '' && !usable && (
+        <p className="wb-help">
+          A weapon reference looks like dnd5e:weapons:shortbow.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A creature's `temper`: ONE WORD, or absent. Never a mix — the placement
+ * names one creature, so dealing a spread for it would be an author rolling
+ * for a goblin they have already described (`RoomMonsterBinding.Temper` is a
+ * plain `string`). */
+function CreatureTemperEditor({
+  temper,
+  onCommit,
+}: {
+  temper: string | undefined;
+  onCommit: (temper: string | undefined) => void;
+}) {
+  return (
+    <div className="wb-policy-temper">
+      <label>
+        <span>Temper</span>
+        <select
+          aria-label="Creature temper"
+          value={temper ?? ''}
+          onChange={(event) =>
+            onCommit(event.target.value === '' ? undefined : event.target.value)
+          }
+        >
+          <option value="">Absent — the faction’s word or mix stands</option>
+          {ANSWER_TEMPER.words.map((word) => (
+            <option key={word} value={word}>
+              {word}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** The creature's OWN `on:` table — driven by the SAME one vocabulary
+ * declaration the faction editor uses, with the one thing a placement may not
+ * write left out: a selector may not name a cell here, because
+ * `{ at: [col, row] }` is refused by name on a binding. */
+function CreatureTableEditor({
+  table,
+  onAdd,
+  onPatch,
+  onRemove,
+}: {
+  table: AnswerTableShape;
+  onAdd: (trigger: string) => void;
+  onPatch: (trigger: string, index: number, entry: AnswerEntryShape) => void;
+  onRemove: (trigger: string, index: number) => void;
+}) {
+  const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
+    (key) => table[key] !== undefined
+  );
+  const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
+    (key) => table[key] === undefined
+  );
+  const [newTrigger, setNewTrigger] = useState(available[0] ?? '');
+  return (
+    <div className="wb-policy-table-editor" data-testid="creature-table">
+      <p className="wb-help">Its own table, laid over the faction’s.</p>
+      {authored.length === 0 && (
+        <p className="wb-help" data-testid="creature-table-none">
+          No table of its own — the faction’s answers stand.
+        </p>
+      )}
+      {authored.map((trigger) => (
+        <div key={trigger} className="wb-policy-trigger-block">
+          <p className="wb-policy-trigger">
+            <code>{trigger}</code>{' '}
+            {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
+          </p>
+          <ul className="wb-policy-entries">
+            {(table[trigger] ?? []).map((entry, index) => (
+              <AnswerEntryRow
+                key={index}
+                trigger={trigger}
+                entry={entry}
+                allowCellSelector={false}
+                onCommit={(next) => onPatch(trigger, index, next)}
+                onRemove={() => onRemove(trigger, index)}
+              />
+            ))}
+          </ul>
+        </div>
+      ))}
+      {available.length > 0 && (
+        <div className="wb-actions">
+          <select
+            aria-label="Add trigger to this creature"
+            value={newTrigger}
+            onChange={(event) => setNewTrigger(event.target.value)}
+          >
+            {available.map((key) => (
+              <option key={key} value={key}>
+                {answerTrigger(key)?.label ?? key} ({key})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            aria-label={`Add entry on ${newTrigger} to this creature`}
+            onClick={() => onAdd(newTrigger)}
+          >
+            Add entry on {newTrigger}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface CreatureOrdersProps {
   scope: SiteScope;
@@ -970,11 +1208,24 @@ export interface CreatureOrdersProps {
    * identity and placement (Decision 4), and the shared table stays the
    * faction's to edit in `Policies`. */
   onFactionChange?: (factionId: string | undefined) => void;
+  /** When given, the creature's OWN orders are editable. It answers with this
+   * creature's orders, or `undefined` for "this creature overrides nothing".
+   * THE MAP IS THE CALLER'S: this component edits one creature and never holds
+   * the room, so the caller folds the answer in with
+   * `monsterOrderEdits.withBinding` — which is where an emptied creature
+   * becomes a deleted entry rather than an empty block the encoder refuses. */
+  onOrdersChange?: (next: RoomMonsterBinding | undefined) => void;
 }
 
 /** One selected creature, read as document facts: the faction it belongs to,
  * what that faction SUPPLIES, and what this placement's own orders block
  * OVERRIDES — with the two asymmetries stated where an author reads them.
+ *
+ * The OVERRIDES half becomes an editor when `onOrdersChange` is given, and
+ * stays the read-only readout it has been since slice 2 when it is not. The
+ * INHERITS half is always a readout and deliberately so: inheritance is what
+ * confuses authors, and seeing it next to the overrides is what makes the
+ * layering rule legible rather than merely stated.
  *
  * A `faction` key that is ABSENT is the kind's default (rpg-project#477
  * Decision 4), and is deliberately never rendered as a faction named
@@ -985,6 +1236,7 @@ export function CreatureOrders({
   monster,
   binding,
   onFactionChange,
+  onOrdersChange,
 }: CreatureOrdersProps) {
   const faction = monster.faction
     ? (scope.factions ?? []).find((entry) => entry.id === monster.faction)
@@ -1046,7 +1298,42 @@ export function CreatureOrders({
 
       <div className="wb-policy-block">
         <h5>Overrides</h5>
-        {binding === undefined ? (
+        {onOrdersChange !== undefined ? (
+          <>
+            <CreatureWeaponEditor
+              actions={binding?.actions ?? []}
+              onAdd={(ref) => onOrdersChange(addMonsterAction(binding, ref))}
+              onRemove={(index) =>
+                onOrdersChange(removeMonsterAction(binding, index))
+              }
+              onMove={(from, to) =>
+                onOrdersChange(moveMonsterAction(binding, from, to))
+              }
+            />
+            <CreatureTemperEditor
+              temper={binding?.temper}
+              onCommit={(temper) =>
+                onOrdersChange(setMonsterTemper(binding, temper))
+              }
+            />
+            <CreatureTableEditor
+              table={binding?.on ?? {}}
+              onAdd={(trigger) =>
+                onOrdersChange(addMonsterAnswerEntry(binding, trigger))
+              }
+              onPatch={(trigger, index, entry) =>
+                onOrdersChange(
+                  patchMonsterAnswerEntry(binding, trigger, index, entry)
+                )
+              }
+              onRemove={(trigger, index) =>
+                onOrdersChange(
+                  removeMonsterAnswerEntry(binding, trigger, index)
+                )
+              }
+            />
+          </>
+        ) : binding === undefined ? (
           <p className="wb-help" data-testid="creature-overrides-none">
             No orders block — this placement keeps everything its faction
             supplies.

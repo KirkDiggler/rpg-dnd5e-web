@@ -2388,14 +2388,21 @@ describe('WorldBuildingConcept room publishing', () => {
     expect(within(creature).getAllByText('intimidated').length).toBeGreaterThan(
       0
     );
-    // … and ITS OWN BLOCK overrides with one word, one trigger and actions.
-    expect(within(creature).getByText(/^temper coward$/)).toBeTruthy();
+    // … and ITS OWN ORDERS override it: one word, one trigger, and a weapon
+    // list read AS A LIST — the order is the point, so it is asserted in order
+    // rather than as a joined string.
+    expect(
+      (within(creature).getByLabelText('Creature temper') as HTMLSelectElement)
+        .value
+    ).toBe('coward');
     expect(within(creature).getAllByText(/^time$/).length).toBeGreaterThan(0);
     expect(
-      within(creature).getByText(
-        /dnd5e:weapons:scimitar, dnd5e:weapons:shortbow/
-      )
-    ).toBeTruthy();
+      [
+        ...within(creature)
+          .getByTestId('creature-weapons')
+          .querySelectorAll('ol li code'),
+      ].map((weapon) => weapon.textContent)
+    ).toEqual(['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']);
     expect(
       within(creature).getByTestId('faction-layer-rule').textContent
     ).toMatch(/nearest key wins WHOLESALE/);
@@ -2542,6 +2549,113 @@ describe('WorldBuildingConcept room publishing', () => {
     const emitted = decodeSingleRoomDungeon(emittedYaml);
     expect(emitted.factions?.map((faction) => faction.id)).toEqual(['goblins']);
     expect(emitted.dispositions?.[0]?.between).toEqual(['goblins', 'party']);
+  });
+
+  it("authors a creature's weapon list in order with no YAML, and publishes that order", async () => {
+    // The loop this slice exists for (rpg-dnd5e-web#1164): an author selects a
+    // placed creature and gives it weapons in a deliberate order, with no YAML.
+    // ORDER IS THE POINT — the driver reaches for the FIRST action in reach —
+    // so the REORDER is the assertion that matters. Two refs surviving would
+    // pass even if the list were sorted, which is exactly the bug this test is
+    // here to catch.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+
+    // The bow, then the blade, then the blade moved FIRST — the author's order
+    // is deliberately not the order they were typed in.
+    fireEvent.change(screen.getByLabelText('New weapon reference'), {
+      target: { value: 'dnd5e:weapons:shortbow' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add weapon' }));
+    fireEvent.change(screen.getByLabelText('New weapon reference'), {
+      target: { value: 'dnd5e:weapons:scimitar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add weapon' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Move dnd5e:weapons:scimitar earlier',
+      })
+    );
+
+    const shownWeapons = () =>
+      [
+        ...screen
+          .getByTestId('creature-weapons')
+          .querySelectorAll('ol li code'),
+      ].map((weapon) => weapon.textContent);
+    expect(shownWeapons()).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+
+    // The order is what the local envelope carries …
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as {
+        draft?: {
+          room?: { monsterBindings?: Record<string, { actions?: string[] }> };
+        };
+      };
+      const bindings = stored.draft?.room?.monsterBindings ?? {};
+      const ids = Object.keys(bindings);
+      expect(ids).toHaveLength(1);
+      expect(bindings[ids[0]!]?.actions).toEqual([
+        'dnd5e:weapons:scimitar',
+        'dnd5e:weapons:shortbow',
+      ]);
+    });
+    first.unmount();
+
+    // … it survives a reload with no import …
+    render(mount());
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(shownWeapons()).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+
+    // … and it is what the ENGINE is handed. Orders alone are a v4 key, so the
+    // document must claim 4 even with no site scope authored.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    const bindings = emitted.draft.room.monsterBindings ?? {};
+    const ids = Object.keys(bindings);
+    expect(ids).toHaveLength(1);
+    expect(bindings[ids[0]!]?.actions).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
   });
 
   it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
@@ -2928,7 +3042,15 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     // `faction` absent is the kind's default, never a faction named
     // `monsters` and never an error.
     expect(screen.getByTestId('creature-inherits-none')).toBeTruthy();
-    expect(screen.getByTestId('creature-overrides-none')).toBeTruthy();
+    // The OVERRIDES half is an EDITOR on the authoring surface, so its empty
+    // state is stated per section and each statement is actionable. The
+    // read-only single line survives only where no editor is wired
+    // (`SitePolicies.test.tsx` covers that path).
+    expect(screen.getByTestId('creature-weapons-none')).toBeTruthy();
+    expect(screen.getByTestId('creature-table-none')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Creature temper') as HTMLSelectElement).value
+    ).toBe('');
     // Both asymmetries are stated where an author reads the split.
     expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
       /nearest key wins WHOLESALE/
