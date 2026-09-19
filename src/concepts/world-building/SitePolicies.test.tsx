@@ -1,17 +1,18 @@
 /**
- * The read-only site-policy views against the engine's own pinned v4 example
- * (rpg-dnd5e-web#1157, design slice 2).
+ * The site-policy views against the engine's own pinned v4 example
+ * (rpg-dnd5e-web#1157 read-only; #1160 makes the site's own facts editable).
  *
  * These are RENDER tests, not grammar tests: the decoder's strictness is
- * already covered by `singleRoomDungeon.test.ts` and the fixture's own test.
- * What is asserted here is that the document's facts appear as facts — the
- * mix, the shared table with each entry's weight, say and one word, the
- * disposition's stance and `until`, and one creature's inherited-vs-
- * overridden split with both asymmetries stated — and that nothing offers an
- * editing control.
+ * covered by `singleRoomDungeon.test.ts` and the fixture's own test, and the
+ * edit mechanics by `sitePolicyEdits.test.ts`. What is asserted here is that
+ * the document's facts appear as CONTROLS holding the document's values — the
+ * faction's id, its mix, its shared table with each entry's weight, say and one
+ * word, the disposition's pair and stance — that the add verbs hand the parent
+ * a next scope, and that a creature's inherited-vs-overridden split stays a
+ * readout with both asymmetries stated.
  */
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { CreatureOrders, SitePolicies } from './SitePolicies';
 import type { SiteScope } from './siteScope';
@@ -29,19 +30,29 @@ const goblin = fixture.draft.room.monsters.find(
   (monster) => monster.id === 'goblin-1'
 )!;
 
-describe('SitePolicies — the site’s own facts', () => {
-  it('renders a faction’s mix and shared table, and the dispositions between factions', () => {
-    render(<SitePolicies scope={siteScope} />);
+describe('SitePolicies — the site’s own facts, editable', () => {
+  it('shows a faction’s id, mix and shared table, and the dispositions between sides', () => {
+    render(
+      <SitePolicies
+        scope={siteScope}
+        room={fixture.draft.room}
+        onChange={() => {}}
+      />
+    );
 
     const panel = screen.getByTestId('site-policies');
-    // Identity and the temperament MIX, which is legal on a faction alone.
-    expect(within(panel).getByText('goblins')).toBeTruthy();
+    // The id is a control holding the document's value.
+    const idInput = within(panel).getByLabelText(
+      'Faction id for goblins'
+    ) as HTMLInputElement;
+    expect(idInput.value).toBe('goblins');
+    // The mix is shown with the words the declaration seals.
     expect(
-      within(panel).getByText('coward ×2 · soldier ×1 · aggressive ×1')
+      within(panel).getByText('temper coward ×2 · soldier ×1 · aggressive ×1')
     ).toBeTruthy();
 
-    // The shared table its members inherit, trigger by trigger, with each
-    // entry's weight, its `say` and the one word it does.
+    // The shared table, trigger by trigger, with each entry's weight, its
+    // `say` and the one word it does.
     expect(within(panel).getByText('intimidated')).toBeTruthy();
     expect(
       within(panel).getByText(
@@ -52,50 +63,81 @@ describe('SitePolicies — the site’s own facts', () => {
       within(panel).getByText('weight 30 · say “Boss! BOSS!” · flee')
     ).toBeTruthy();
     expect(within(panel).getByText('time')).toBeTruthy();
-    // An omitted weight is the engine's 1, and the word's selector is named.
     expect(
       within(panel).getByText('weight 1 · when enemy reach · attack enemy')
     ).toBeTruthy();
 
     // A disposition is the pair, its stance, and the `until` that ends it.
-    expect(within(panel).getByText('goblins ↔ party')).toBeTruthy();
-    expect(within(panel).getByText('hostile')).toBeTruthy();
+    expect(
+      (
+        within(panel).getByLabelText(
+          'Between first faction'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('goblins');
+    expect(
+      (
+        within(panel).getByLabelText(
+          'Between second faction'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('party');
+    expect(
+      (within(panel).getByLabelText('Stance') as HTMLSelectElement).value
+    ).toBe('hostile');
     expect(within(panel).getByText('fact goblin-cowed')).toBeTruthy();
-  });
 
-  it('is read-only: the facts offer no input, textarea, select or button', () => {
-    const { container } = render(<SitePolicies scope={siteScope} />);
+    // It IS editable: the facts are controls now.
     expect(
-      container.querySelectorAll('input, textarea, select, button')
-    ).toHaveLength(0);
+      panel.querySelectorAll('input, select, button').length
+    ).toBeGreaterThan(0);
   });
 
-  it('renders a word temper and an authored mind, and says when nothing is authored', () => {
+  it('hands the parent a next scope when a faction or a disposition is added', () => {
+    const onChange = vi.fn();
     render(
-      <SitePolicies
-        scope={{
-          factions: [
-            { id: 'bandits', mind: 'bandit-chief', temper: 'soldier' },
-          ],
-        }}
-      />
+      <SitePolicies scope={{}} room={fixture.draft.room} onChange={onChange} />
     );
-    const panel = screen.getByTestId('site-policies');
-    expect(within(panel).getByText('bandits')).toBeTruthy();
-    expect(within(panel).getByText('bandit-chief')).toBeTruthy();
-    expect(within(panel).getByText('soldier')).toBeTruthy();
-    // Absence is a statement, not an error.
-    expect(
-      within(panel).getByText('No dispositions are authored.')
-    ).toBeTruthy();
 
-    // A site with nothing authored says so plainly.
-    render(<SitePolicies scope={{}} />);
-    render(<SitePolicies scope={{ factions: [], dispositions: [] }} />);
-    expect(screen.getAllByTestId('policies-none')).toHaveLength(2);
-    expect(screen.getAllByTestId('policies-none')[0]!.textContent).toMatch(
+    fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+    expect(onChange).toHaveBeenCalled();
+    const withFaction = onChange.mock.calls[0]![0] as SiteScope;
+    expect(withFaction.factions).toHaveLength(1);
+    expect(withFaction.factions?.[0]?.id).toBeTruthy();
+  });
+
+  it('says when nothing is authored, and offers the add verb', () => {
+    render(
+      <SitePolicies scope={{}} room={fixture.draft.room} onChange={() => {}} />
+    );
+    expect(screen.getByTestId('policies-none').textContent).toMatch(
       /No factions and no dispositions are authored on this site\./
     );
+    expect(screen.getByRole('button', { name: 'Add faction' })).toBeTruthy();
+    // No faction exists, so there is nothing to declare a stance about.
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Add disposition',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+  });
+
+  it('adds a disposition once a faction exists', () => {
+    const onChange = vi.fn();
+    render(
+      <SitePolicies
+        scope={{ factions: [{ id: 'goblins' }] }}
+        room={fixture.draft.room}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
+    const withDisposition = onChange.mock.calls[0]![0] as SiteScope;
+    expect(withDisposition.dispositions).toEqual([
+      { between: ['goblins', 'party'], stance: 'hostile' },
+    ]);
   });
 });
 

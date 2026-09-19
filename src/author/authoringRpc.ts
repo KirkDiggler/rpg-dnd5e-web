@@ -72,6 +72,10 @@ export interface UsePutDungeonPreviewOptions {
    * publishing panel stays fully idle until a dungeon key exists.
    * Default true preserves every existing caller. */
   enabled?: boolean;
+  /** Bumping this re-runs the validation of the SAME key/yaml, so an author
+   * can ask the server deliberately instead of waiting for the next edit
+   * (rpg-dnd5e-web#1160). Default 0 preserves every existing caller. */
+  nonce?: number;
 }
 
 export function usePutDungeonPreview(
@@ -82,6 +86,7 @@ export function usePutDungeonPreview(
     fixtureAtlas,
     debounceMs = PREVIEW_DEBOUNCE_MS,
     enabled = true,
+    nonce = 0,
   }: UsePutDungeonPreviewOptions = {}
 ): PreviewState {
   const [state, setState] = useState<PreviewState>({
@@ -147,7 +152,7 @@ export function usePutDungeonPreview(
       live = false;
       clearTimeout(timer);
     };
-  }, [key, yaml, client, fixtureAtlas, debounceMs, enabled]);
+  }, [key, yaml, client, fixtureAtlas, debounceMs, enabled, nonce]);
 
   return state;
 }

@@ -776,6 +776,60 @@ describe('RoomPublishingPanel — the site scope (web#1157)', () => {
     expect(scope.dispositions).toEqual(fixture.dispositions);
   });
 
+  it('validates the current bytes on demand and surfaces the engine’s own answer', async () => {
+    const fixture = decodeWorldBuilderV4Site();
+    render(
+      <RoomPublishingPanel
+        draft={fixture.draft}
+        scope={{
+          factions: fixture.factions,
+          dispositions: fixture.dispositions,
+        }}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={vi.fn(() => true)}
+      />
+    );
+    // The live preview validates on change; the deliberate verb re-sends the
+    // SAME bytes so an author can ask again without editing.
+    await waitFor(() =>
+      expect(rpc.puts.some((put) => put.request.validateOnly)).toBe(true)
+    );
+    const before = rpc.puts.length;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Validate with server' })
+    );
+    await waitFor(() => expect(rpc.puts.length).toBeGreaterThan(before));
+    const last = rpc.puts[rpc.puts.length - 1]!;
+    expect(last.request.validateOnly).toBe(true);
+    expect(last.request.yaml.startsWith('version: 4\n')).toBe(true);
+  });
+
+  it('names a document the strict encoder refuses instead of going inert', () => {
+    render(
+      <RoomPublishingPanel
+        draft={richDraft('room-abc123')}
+        // `party` is the players' side and is never declared — the strict
+        // decoder's refusal, shown verbatim (rpg-dnd5e-web#1160).
+        scope={{ factions: [{ id: 'party' }] }}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={vi.fn(() => true)}
+      />
+    );
+    expect(screen.getByTestId('encode-refusal').textContent).toMatch(
+      /players' side/
+    );
+    // There are no bytes to validate, so the deliberate verb is disabled.
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Validate with server',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+  });
+
   it('retires an in-flight transaction when the scope changes under the same room', async () => {
     // The fencing change is the scope joining the `yaml` memo's dependency
     // list: the emitted YAML is the request identity, so a scope change

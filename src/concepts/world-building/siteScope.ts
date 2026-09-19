@@ -84,6 +84,20 @@ function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`);
 }
 
+/** Why an id cannot be a faction id, or undefined when it can. ONE HOME for
+ * the grammar and the sentence, so the field refusal and the duplicate-list
+ * refusal can never drift apart (rpg-dnd5e-web#1160). */
+function factionIdRefusal(
+  id: string,
+  otherIds: readonly string[] = []
+): string | undefined {
+  if (!FACTION_ID_RE.test(id)) return 'needs an id such as goblins';
+  if (id === PARTY)
+    return `\`${PARTY}\` is the players' side and is never declared`;
+  if (otherIds.includes(id)) return `duplicate faction id: ${id}`;
+  return undefined;
+}
+
 /** The site's `factions:`, or an empty list when the key carried none. An
  * empty list is the authored state "no factions", not an error. */
 export function validateSiteFactions(value: unknown): SiteFaction[] {
@@ -94,11 +108,9 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
     const path = `Site faction at index ${index}`;
     const raw = objectShape(entry, path);
     rejectUnknownKeys(raw, FACTION_KEYS, path);
-    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
-      fail(path, 'needs an id such as goblins');
-    if (raw.id === PARTY)
-      fail(path, `\`${PARTY}\` is the players' side and is never declared`);
-    if (ids.has(raw.id)) fail(path, `duplicate faction id: ${raw.id}`);
+    if (typeof raw.id !== 'string') fail(path, 'needs an id such as goblins');
+    const idRefusal = factionIdRefusal(raw.id, [...ids]);
+    if (idRefusal) fail(path, idRefusal);
     ids.add(raw.id);
     const faction: SiteFaction = { id: raw.id };
     // ABSENT WHEN UNAUTHORED: each key is added only when the file wrote one.
@@ -183,6 +195,31 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
 
 function isStance(word: string): word is Stance {
   return (STANCES as readonly string[]).includes(word);
+}
+
+const SCOPE_KEYS = ['factions', 'dispositions'] as const;
+
+/** The whole site scope, validated and NORMALIZED: each key is kept only when
+ * it carries at least one entry, because absence is the authored state "none"
+ * and an empty list must never become bytes the engine reads as a declaration.
+ *
+ * ONE HOME for the scope's shape, read ON THE WAY OUT of every encoder
+ * (`roomDraft.ts`'s storage envelope, `singleRoomDungeon.ts`'s canonical YAML),
+ * so a scope that cannot be represented is refused before it is written rather
+ * than corrupting state (rpg-dnd5e-web#1160). */
+export function validateSiteScope(value: unknown): SiteScope {
+  const raw = objectShape(value, 'Site scope');
+  rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
+  const scope: SiteScope = {};
+  if (Object.hasOwn(raw, 'factions')) {
+    const factions = validateSiteFactions(raw.factions);
+    if (factions.length > 0) scope.factions = factions;
+  }
+  if (Object.hasOwn(raw, 'dispositions')) {
+    const dispositions = validateSiteDispositions(raw.dispositions);
+    if (dispositions.length > 0) scope.dispositions = dispositions;
+  }
+  return scope;
 }
 
 /** `[faction, faction]` — two ids, carried in the author's order. */

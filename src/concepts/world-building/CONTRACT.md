@@ -59,8 +59,11 @@ nouns persist across rooms.
   faction, mind table (`monsterBindings[id].on`) and weapons (`actions`), which
   are named placeholders until those v4 shapes land), `Doors` (placeholder;
   `doorBindings` is proposed v4 and needs the Go key) and `Policies`
-  (factions, temperament mixes, dispositions; the read-only inherited-vs-
-  overridden view is design slice 2). An `Edit` collapsible holds Undo/Redo.
+  (editable factions — add/remove; `id`, `mind`, and `temper` as absent, one
+  word, or a word→share mix — editable dispositions — add/remove; `between`,
+  `stance`, `until` — and each faction's shared `on:` table, per trigger, with
+  weighted `say`/one-word entries; the inherited-vs-overridden readout for a
+  selected creature is design slice 2). An `Edit` collapsible holds Undo/Redo.
   **Selection declarations stay contextual** — they appear only while props are
   selected, because they belong to a selection and not to the site.
 
@@ -72,6 +75,21 @@ and the saved snapshot list with open), `Publish & Play`
 (`RoomPublishingPanel`), and the arrangement library and portable JSON. Its
 `Save`/`Reload`/`New` and publish verbs are refused while a publishing
 transaction runs, and the route keeps its `publishingBusy` nav lock.
+
+**The site scope persists with the draft** (#1160). `factions`/`dispositions`
+are editor state carried in the room document's history entry, and the local
+draft's storage envelope — under the same `ROOM_DRAFT_STORAGE_KEY` — carries
+them beside the `draft` in a **v4** envelope, emitted only when a scope is
+authored; a document that authors none keeps the byte-identical **v3** bytes
+and reads back unchanged. Authoring is therefore not lost on reload, and a
+reloaded room publishes the document it was saved as. **Semantic checks are the
+SERVER's**: the `Publish & Play` `validate_only` preview (with a deliberate
+`Validate with server` verb) surfaces the engine's path-addressed refusals
+verbatim. The client's strict-shape layer refuses only what it cannot
+represent — an unknown trigger or word, a share below 1, a `until` on a
+non-hostile pair, a `party` declaration — and it runs on the way OUT, so a
+renamed or removed faction may leave a reference the engine names rather than
+the form pre-judging it.
 
 **Prop compositions** is deferred this wave and unchanged: its own editor, its
 own chrome, its own panel libraries. `worldLibrarySection`,

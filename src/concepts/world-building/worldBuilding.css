@@ -465,6 +465,82 @@ button.wb-tree-row[aria-pressed='true'] {
   color: var(--wb-muted);
 }
 
+/* The EDITABLE policies (rpg-dnd5e-web#1160): the same facts, now controls.
+ * Compact rows, because a whole camp shares one scroll. */
+.wb-policy-faction,
+.wb-policy-disposition {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #283c3a;
+  border-radius: 4px;
+  list-style: none;
+}
+
+.wb-policy-faction label,
+.wb-policy-disposition label,
+.wb-policy-entry label,
+.wb-policy-temper label,
+.wb-policy-until label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.25rem 0;
+  color: var(--wb-muted);
+  font-size: 0.62rem;
+}
+
+.wb-policy-faction input,
+.wb-policy-faction select,
+.wb-policy-disposition input,
+.wb-policy-disposition select,
+.wb-policy-entry input,
+.wb-policy-entry select,
+.wb-policy-temper input,
+.wb-policy-temper select,
+.wb-policy-until input,
+.wb-policy-until select {
+  width: 100%;
+  padding: 0.28rem;
+  font-size: 0.7rem;
+}
+
+.wb-policy-entries {
+  margin: 0.3rem 0 0;
+  padding-left: 0.6rem;
+  list-style: none;
+}
+
+.wb-policy-entry {
+  margin: 0.3rem 0;
+  padding: 0.3rem 0.4rem;
+  border-left: 2px solid #35564f;
+}
+
+.wb-policy-trigger-block {
+  margin-top: 0.4rem;
+}
+
+.wb-policy-trigger-block code {
+  color: #f9d989;
+}
+
+.wb-policy-mix,
+.wb-policy-pair,
+.wb-policy-until-stance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+  gap: 0.3rem;
+}
+
+.wb-policy-cell {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.wb-policy-table-editor {
+  margin-top: 0.4rem;
+}
+
 .wb-panel {
   min-width: 0;
   overflow: auto;
