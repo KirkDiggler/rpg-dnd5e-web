@@ -19,9 +19,14 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  decodeWorldBuilderV4Site,
+  WORLD_BUILDER_V4_SITE_YAML,
+} from './fixtures/worldBuilderV4Site';
 import { createRoomDraft, type RoomDraft } from './roomDraft';
 import { RoomPublishingPanel } from './RoomPublishingPanel';
 import { decodeSingleRoomDungeon } from './singleRoomDungeon';
+import type { SiteScope } from './siteScope';
 import type { WorldScene } from './types';
 
 /** ── Deferred authoring client ─────────────────────────────────────── */
@@ -711,6 +716,101 @@ describe('RoomPublishingPanel — canonical YAML exchange', () => {
       (screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement)
         .value
     ).toBe('room-room-abc123');
+  });
+});
+
+describe('RoomPublishingPanel — the site scope (web#1157)', () => {
+  it('publishes an imported site’s factions and dispositions instead of dropping them', async () => {
+    // THE REGRESSION THE SLICE EXISTS FOR: before this, `encodeSingleRoomDungeon`
+    // was called with no scope and the imported policies vanished on publish.
+    const fixture = decodeWorldBuilderV4Site();
+    render(
+      <RoomPublishingPanel
+        draft={fixture.draft}
+        scope={{
+          factions: fixture.factions,
+          dispositions: fixture.dispositions,
+        }}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={vi.fn(() => true)}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(rpc.gets).toHaveLength(1));
+    await act(async () =>
+      getAnswers[0]!.reject(new ConnectError('absent', Code.NotFound))
+    );
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    const yaml = savePuts()[0]!.request.yaml;
+    // The document carries v4 keys, so the root claims v4.
+    expect(yaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(yaml);
+    expect(emitted.factions).toEqual(fixture.factions);
+    expect(emitted.dispositions).toEqual(fixture.dispositions);
+  });
+
+  it('hands the imported document’s scope to the editor callback', () => {
+    const fixture = decodeWorldBuilderV4Site();
+    const onImportDraft = vi.fn<
+      (draft: RoomDraft, scope: SiteScope) => boolean
+    >(() => true);
+    render(
+      <RoomPublishingPanel
+        draft={richDraft('room-abc123')}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={onImportDraft}
+      />
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Canonical YAML' }), {
+      target: { value: WORLD_BUILDER_V4_SITE_YAML },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import canonical YAML' })
+    );
+    expect(onImportDraft).toHaveBeenCalledTimes(1);
+    const [draft, scope] = onImportDraft.mock.calls[0]!;
+    expect(draft.id).toBe('room-1');
+    expect(scope.factions).toEqual(fixture.factions);
+    expect(scope.dispositions).toEqual(fixture.dispositions);
+  });
+
+  it('retires an in-flight transaction when the scope changes under the same room', async () => {
+    // The fencing change is the scope joining the `yaml` memo's dependency
+    // list: the emitted YAML is the request identity, so a scope change
+    // retires through `owner.yaml !== yaml` and no second mechanism.
+    const fixture = decodeWorldBuilderV4Site();
+    const client = fakeClient();
+    const onImportDraft = vi.fn(() => true);
+    const panel = (scope: SiteScope) => (
+      <RoomPublishingPanel
+        draft={fixture.draft}
+        scope={scope}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={client}
+        onImportDraft={onImportDraft}
+      />
+    );
+    const view = render(
+      panel({
+        factions: fixture.factions,
+        dispositions: fixture.dispositions,
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(rpc.gets).toHaveLength(1));
+    // Same room, same draft bytes — only the policies changed.
+    view.rerender(panel({}));
+    await act(async () =>
+      getAnswers[0]!.reject(new ConnectError('absent', Code.NotFound))
+    );
+    expect(savePuts()).toHaveLength(0);
+    // The editor lock released with the retired transaction.
+    expect(
+      (screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement)
+        .disabled
+    ).toBe(false);
   });
 });
 

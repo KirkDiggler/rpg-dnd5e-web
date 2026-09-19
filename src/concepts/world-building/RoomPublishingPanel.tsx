@@ -13,6 +13,10 @@
  * While a save/launch transaction mutates server state the panel reports
  * busy upward (Back, mode switching, document changes are refused there)
  * and disables its own controls.
+ *
+ * The site `scope` (root `factions`/`dispositions`) is forwarded verbatim to
+ * the transaction: it is the editor document's own state and the emitted
+ * YAML — the request identity — is a function of it (rpg-dnd5e-web#1157).
  */
 import { useEffect, useRef, useState } from 'react';
 import type {
@@ -43,6 +47,7 @@ function previewLine(status: string): string | null {
 
 export function RoomPublishingPanel({
   draft,
+  scope,
   capability,
   client,
   onImportDraft,
@@ -50,6 +55,7 @@ export function RoomPublishingPanel({
 }: RoomPublishingPanelProps) {
   const publishing = useRoomPublishing({
     draft,
+    scope,
     capability,
     client,
     onImportDraft,

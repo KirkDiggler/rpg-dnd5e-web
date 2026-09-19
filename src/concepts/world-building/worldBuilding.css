@@ -431,6 +431,40 @@ button.wb-tree-row[aria-pressed='true'] {
   line-height: 1.35;
 }
 
+/* The read-only site policies (rpg-dnd5e-web#1157): a faction's temperament
+ * and shared answer table, the dispositions between factions, and one
+ * creature's inherited-vs-overridden split. FACTS, NEVER CONTROLS — there is
+ * deliberately no input style here because none of this is editable yet. */
+.wb-policy-block + .wb-policy-block {
+  margin-top: 0.5rem;
+}
+
+.wb-policy-block h5 {
+  margin: 0 0 0.2rem;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wb-policy-list,
+.wb-policy-table {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.wb-policy-name {
+  margin: 0;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-policy-trigger {
+  color: var(--wb-muted);
+}
+
 .wb-panel {
   min-width: 0;
   overflow: auto;
