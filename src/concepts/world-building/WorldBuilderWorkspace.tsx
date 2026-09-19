@@ -18,18 +18,27 @@ interface WorldBuilderWorkspaceProps {
   onPlay?: (encounterId: string, characterId: string) => void;
 }
 
-/** Only one editor is live at a time. WorldBuildingConcept bootstraps
- * mode-specific state at mount, so a mode key gives each entry a clean,
- * correctly fenced history without leaving keyboard handlers or autosaves
- * from an inactive editor alive. Switching is deliberately explicit: this
- * first pass treats it as a leave, so world-origin work cannot disappear
- * silently. Local drafts are already persisted by the editor's normal saves.
+/** The World Builder's destinations (rpg-dnd5e-web#1152, corrected model:
+ * the site is the document, so there are only two screens). */
+type Destination = 'site' | 'props';
+
+const DESTINATIONS: { id: Destination; label: string }[] = [
+  { id: 'site', label: 'Site' },
+  { id: 'props', label: 'Prop compositions' },
+];
+
+/** Two editors, two destinations. `Prop compositions` is its own screen and is
+ * deferred this wave; `Site` is the document screen that owns the rooms, the
+ * props, the active site nouns and — behind the header's `Identity` control —
+ * the identity, the local draft, the revision history and publishing. The two
+ * destinations are different EDITORS, so a switch asks first:
+ * WorldBuildingConcept bootstraps edition-specific state at mount, and the
+ * confirm keeps world-origin work from disappearing silently.
  *
- * During a publishing Save & Play transaction the workspace blocks Back
- * and mode switching outright (plan §1): a route change mid-transaction
+ * During a publishing Save & Play transaction the workspace blocks Back and
+ * every destination change outright (plan §1): a route change mid-transaction
  * would either abandon a running launch or route this editor into the
- * encounter it is still creating. The existing leave confirmation is
- * untouched while idle — the block is a real guard on the request
+ * encounter it is still creating. The block is a real guard on the request
  * handlers, not just disabled buttons. */
 export function WorldBuilderWorkspace({
   storage,
@@ -40,10 +49,9 @@ export function WorldBuilderWorkspace({
   characterId,
   onPlay,
 }: WorldBuilderWorkspaceProps) {
-  const [mode, setMode] = useState<'rooms' | 'props'>('rooms');
-  const [pendingMode, setPendingMode] = useState<'rooms' | 'props' | null>(
-    null
-  );
+  const [destination, setDestination] = useState<Destination>('site');
+  const [pendingDestination, setPendingDestination] =
+    useState<Destination | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   /** Publishing transactions lock navigation; the ref keeps the guard
    * synchronous with the child's first busy report. */
@@ -53,13 +61,15 @@ export function WorldBuilderWorkspace({
     publishingBusyRef.current = busy;
     setPublishingBusy(busy);
   }, []);
-  const requestMode = (next: 'rooms' | 'props') => {
+  const isComposer = (value: Destination) => value === 'props';
+  const requestDestination = (next: Destination) => {
     if (publishingBusyRef.current) return;
-    if (next !== mode) setPendingMode(next);
+    if (next === destination) return;
+    setPendingDestination(next);
   };
-  const confirmMode = () => {
-    if (pendingMode) setMode(pendingMode);
-    setPendingMode(null);
+  const confirmDestination = () => {
+    if (pendingDestination) setDestination(pendingDestination);
+    setPendingDestination(null);
   };
   const requestLeave = () => {
     if (publishingBusyRef.current) return;
@@ -74,44 +84,40 @@ export function WorldBuilderWorkspace({
   const capability: RoomPublishingCapability | undefined = onPlay
     ? { characterId: characterId ?? null, onPlay }
     : undefined;
+  /** One instance per EDITOR, not per destination — Site keeps the live draft,
+   * its undo history and its publishing transaction across internal changes. */
+  const editorKey = isComposer(destination) ? 'props' : 'site';
 
   return (
     <section
       className="wb-workspace-route"
       aria-label="World Builder workspace"
     >
-      <nav className="wb-mode-nav" aria-label="World Builder mode">
-        <button
-          type="button"
-          aria-pressed={mode === 'rooms'}
-          disabled={publishingBusy}
-          title={publishingBusy ? 'Save & Play is running…' : undefined}
-          className={mode === 'rooms' ? 'wb-mode-active' : undefined}
-          onClick={() => requestMode('rooms')}
-        >
-          Rooms
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === 'props'}
-          disabled={publishingBusy}
-          title={publishingBusy ? 'Save & Play is running…' : undefined}
-          className={mode === 'props' ? 'wb-mode-active' : undefined}
-          onClick={() => requestMode('props')}
-        >
-          Prop compositions
-        </button>
-        {pendingMode && (
+      <nav className="wb-mode-nav" aria-label="World Builder destination">
+        {DESTINATIONS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            aria-pressed={destination === entry.id}
+            disabled={publishingBusy}
+            title={publishingBusy ? 'Save & Play is running…' : undefined}
+            className={destination === entry.id ? 'wb-mode-active' : undefined}
+            onClick={() => requestDestination(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+        {pendingDestination && (
           <span
             className="wb-mode-confirm"
             role="group"
             aria-label="Confirm editor switch"
           >
             <span>Leave current editor?</span>
-            <button type="button" onClick={confirmMode}>
+            <button type="button" onClick={confirmDestination}>
               Switch editor
             </button>
-            <button type="button" onClick={() => setPendingMode(null)}>
+            <button type="button" onClick={() => setPendingDestination(null)}>
               Cancel switch
             </button>
           </span>
@@ -136,15 +142,15 @@ export function WorldBuilderWorkspace({
         )}
         {publishingBusy && (
           <span className="wb-mode-confirm" role="status">
-            Save &amp; Play is running — Back and editor switching are locked
-            until it finishes.
+            Save &amp; Play is running — Back and switching are locked until it
+            finishes.
           </span>
         )}
       </nav>
       <div className="wb-mode-pane">
         <WorldBuildingConcept
-          key={mode}
-          roomMode={mode === 'rooms'}
+          key={editorKey}
+          roomMode={!isComposer(destination)}
           storage={storage}
           idFactory={idFactory}
           compositionSource={compositionSource}
