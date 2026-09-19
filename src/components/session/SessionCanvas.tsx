@@ -55,6 +55,7 @@ import type {
   DoorInfo,
   Footprint,
   PublicMemberInfo,
+  SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
@@ -85,6 +86,7 @@ import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
+import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
@@ -274,6 +276,7 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -327,6 +330,7 @@ export function SessionScene({
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -656,6 +660,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
+      <SightAreaOverlay areas={sightAreas} hexSize={hexSize} />
       {presentationLayer}
       <AreaFootprintPreview
         footprint={areaFootprint}

@@ -182,7 +182,10 @@ export function PromptModal({
     }
   };
 
-  const handleSubmitReaction = async (takeReaction: boolean) => {
+  const handleSubmitReaction = async (
+    takeReaction: boolean,
+    optionId?: string
+  ) => {
     const promptBeingResolved = prompt;
     try {
       await submitCheck({
@@ -192,7 +195,7 @@ export function PromptModal({
         takeReaction,
       });
       onLog?.(
-        `SubmitCheck{take_reaction:${takeReaction.toString()}} → reaction ${takeReaction ? 'taken' : 'skipped'}`
+        `SubmitCheck{take_reaction:${takeReaction.toString()}, option:${optionId ?? 'none'}} → reaction ${takeReaction ? 'taken' : 'skipped'}`
       );
       if (latestPromptRef.current === promptBeingResolved) {
         onDismiss();
@@ -327,6 +330,11 @@ export function PromptModal({
       rp.displayText !== ''
         ? rp.displayText
         : `${rp.triggerKind} reaction from ${rp.triggerSourceEntityId}`;
+    // Newer providers may attach authored choices. Keep this tolerant while
+    // older generated SDKs only expose the take/skip reaction boolean.
+    const authoredOptions =
+      (rp as unknown as { options?: Array<{ id: string; label: string }> })
+        .options ?? [];
     return (
       <div
         data-testid="reaction-prompt"
@@ -342,6 +350,35 @@ export function PromptModal({
           Reaction prompt: {refStr}
         </h3>
         <div style={{ fontSize: 13, marginBottom: 8 }}>{description}</div>
+        {authoredOptions.length > 0 && (
+          <div
+            data-testid="reaction-options"
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 8,
+            }}
+          >
+            {authoredOptions.map((option) => (
+              <button
+                key={option.id}
+                data-testid={`reaction-option-${option.id}`}
+                onClick={() => void handleSubmitReaction(true, option.id)}
+                disabled={submitCheckLoading}
+                style={{
+                  padding: '4px 12px',
+                  background: '#3a2a2a',
+                  color: '#faa',
+                  border: '1px solid #aa4a4a',
+                  cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             data-testid="reaction-take-btn"
