@@ -15,60 +15,39 @@
  * what makes `GetDungeon`'s verbatim bytes and the builder's own output
  * the same text.
  *
- * Validation is the SERVER's job (`PutDungeon{validate_only}` answers
- * with path-addressed `FieldError`s); this module only refuses what it
- * cannot represent (wrong version, unknown keys, non-numeric cells).
+ * THE ENGINE'S GRADE IS THE VERDICT (rpg-project#481 R3). Validation is the
+ * SERVER's job: `PutDungeon{validate_only}` compiles the bytes and answers
+ * with path-addressed `FieldError`s, and those are the sentences the author
+ * reads. This module refuses only what it CANNOT DRAW — a version it does
+ * not write, a cell that is not two integers, a wall with no line — and
+ * CARRIES EVERYTHING ELSE VERBATIM: a key it has never heard of, a trigger,
+ * an outcome word, a selector, a temperament, a stance, a predicate form.
+ *
+ * WHY CARRYING, NOT REFUSING. A closed set transcribed here is a mirror, and
+ * a mirror drifts: rpg-dnd5e-web#1119 was the builder refusing the only
+ * authored file in the project, and #1145 refused a `temper` the engine
+ * takes. Both were the web declining a file the engine plays. A value the
+ * codec carries reaches the compiler, and the compiler names it at its own
+ * path in its own words — one refusal, from the owner, instead of two.
+ *
+ * The vocabulary declarations (`answerVocabulary.ts`, `factionVocabulary.ts`)
+ * are still read here, but only to recognise the shapes this module models
+ * (a selector to convert, a span to hold). They are OFFERS a palette makes,
+ * never rules this parser enforces.
  */
 
 import { refSlug } from '@/utils/refs';
+import { parse as parseYamlText } from 'yaml';
 import {
-  isMap as isYamlMap,
-  isScalar as isYamlScalar,
-  isSeq as isYamlSeq,
-  LineCounter,
-  parseDocument,
-  parse as parseYamlText,
-  type Document,
-} from 'yaml';
-import {
-  ACTOR_WITHOUT_DEED_REFUSAL,
-  ANSWER_AT_SELECTOR,
-  ANSWER_ENTRY_RULES,
-  ANSWER_TEMPER,
-  ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
   ANSWER_WORD_KEYS,
-  answerWhenRefusal,
   answerWord,
-  answerWordRefusal,
-  atSelectorRefusal,
-  EMPTY_ENTRY_REFUSAL,
-  EMPTY_FACT_REFUSAL,
-  EMPTY_TEMPER_MIX_REFUSAL,
-  EMPTY_TRIGGER_REFUSAL,
-  entryDoesOneThingRefusal,
-  isSelectorWord,
-  MISSING_AT_REFUSAL,
-  missingSpanRefusal,
-  noneWordBodyRefusal,
-  spanRefusal,
   suggestKey,
-  temperShareRefusal,
-  unknownDeedRefusal,
-  unknownEnemyBandRefusal,
-  unknownSelectorKeyRefusal,
-  unknownSelectorRefusal,
-  unknownTemperRefusal,
-  unknownTriggerRefusal,
-  weightRefusal,
-  whenIsOneConditionRefusal,
-  whenShapeRefusal,
 } from './answerVocabulary';
 import {
   MONSTERS,
   PARTY,
-  PREDICATE_SHAPE,
-  STANCES,
+  PREDICATE_FORMS,
   type PredicateDoc,
   type Stance,
 } from './factionVocabulary';
@@ -134,6 +113,8 @@ export interface RegionDoc {
    * repeated client-side — this module only refuses what it cannot
    * represent. Omitted means not concealed; only ever written `true`. */
   concealed?: boolean;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** One authored check's approach: an ability or skill, an optional tool,
@@ -143,7 +124,12 @@ export interface RegionDoc {
 export interface ApproachDoc {
   ability: string;
   tool?: string;
+  /** A whole number the row editor can hold. NOT a vocabulary rule: the
+   * builder edits a DC with a number input, so a `dc` that is not one is a
+   * row it cannot draw, and that refusal stays. */
   dc: number;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** A door's lock or its find check: the accepted approaches through it,
@@ -172,12 +158,45 @@ export interface DoorDoc {
    * it is there are separate authored facts (rpg-project#350). Same
    * nil-vs-empty law as `locked`. */
   concealed?: CheckDoc;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** A placement's authored offset: `[x, y]` or `[x, y, height]`
  * (rpg-project#272 — the third component raises the prop off the
  * floor). */
 export type PlacementOffset = [number, number] | [number, number, number];
+
+/**
+ * ONE KEY THIS CODEC DOES NOT MODEL, HELD AS THE AUTHOR WROTE IT.
+ *
+ * Every block that can carry one keeps a list of these in the author's own
+ * order, and the emitter writes them back after the keys it does model. That
+ * is the whole mechanism behind "the engine's grade is the verdict": a key
+ * the builder has never heard of reaches the compiler in the bytes, and the
+ * compiler answers `factions[0].tempre: …` at its own path — where a refusal
+ * here would have stopped the file at the door with the builder's guess.
+ *
+ * It is NOT a place to put keys this module knows: a modelled key that
+ * landed here would round-trip but never be editable, so the parser adds an
+ * entry only for a key no branch above it claimed.
+ */
+export interface RawField {
+  key: string;
+  value: unknown;
+}
+
+/** The four predicate forms, or a predicate shape this grammar has not
+ * learned — held whole so the compiler can name it. `{ raw }` is what an
+ * author gets for two keys in one map, a form this build has no reader for,
+ * or a body of the wrong type; the panels show it read-only in the file's
+ * own words and offer no editor for it. */
+export type PredicateHolder = PredicateDoc | { raw: unknown };
+
+/** Whether a held predicate is one of the four forms the editors can edit. */
+export function isPredicateDoc(p: PredicateHolder): p is PredicateDoc {
+  return !('raw' in p);
+}
 
 /**
  * One entry of an answer table: what the creature does, and what it says,
@@ -196,35 +215,53 @@ export interface AnswerEntryDoc {
   weight?: number;
   say?: string;
   when?: AnswerWhenDoc;
-  word?: AnswerWordDoc;
+  /** The words this entry carries, in the author's order. The engine's rule
+   * is at most one — and an entry that breaks it is the ENGINE's to name, so
+   * a file with two is held with both and graded there, not stopped here. */
+  words?: AnswerWordDoc[];
+  /** Keys no branch above claimed — a word this build has not learned, a
+   * misspelling, a field from a newer engine. Carried, so the compiler names
+   * them. See [RawField]. */
+  extra?: RawField[];
+  /** An entry that is not a mapping at all — a bare string, a list. Held
+   * whole; the engine reads what the author wrote and says so. */
+  raw?: unknown;
 }
 
 /**
- * A `when:` — EXACTLY ONE of an enemy band or a deed with a span
- * (`answerVocabulary.ts`'s `ANSWER_WHEN`, `dungeonspec.WhenSpec`).
- *
- * Modelled as a union rather than an open map because the engine's shape is
- * exactly two: the four exclusive bands, or one deed counted over N rounds.
- * Two keys in one `when` is refused rather than read as `and`, so there is no
- * state here to represent both.
+ * A `when:` — an enemy band, a deed with a span, or a condition this build
+ * has no reader for (`answerVocabulary.ts`'s `ANSWER_WHEN`,
+ * `dungeonspec.WhenSpec`).
  *
  * The language is the file's own: an enemy band is `{ enemy: reach }`, and a
  * deed is `{ fled: { within: 3 } }` — the deed's own past-tense name, not a
  * generic `deed` key.
+ *
+ * `{ kind: 'raw' }` IS NOT AN ERROR STATE. Two keys in one map, a deed this
+ * build does not hold, a band outside the four: each is a condition the
+ * ENGINE reads and grades, so the codec holds the map whole and lets it
+ * travel. The two modelled arms exist because the builder edits them, not
+ * because the other spellings are illegal here.
  */
 export type AnswerWhenDoc =
   | { kind: 'enemy'; band: string }
-  | { kind: 'deed'; deed: string; within: number };
+  | { kind: 'deed'; deed: string; within: number }
+  | { kind: 'raw'; raw: unknown };
 
 /** What a selector word or an authored cell names
  * (`answerVocabulary.ts`'s selectors). EXACTLY ONE of the two is set: a word
  * (`enemy`/`attacker`/`actor`) or a cell, and the cell is legal on `toward`
  * alone. */
 export interface AnswerSelectorDoc {
+  /** The scalar as written — one of the sealed words, or a word this build
+   * has not learned. Which it is, is the engine's to say. */
   word?: string;
   /** The authored cell, AXIAL like every other cell in the model — the file's
    * `[col,row]` spelling is `parseDungeon`'s and `emitDungeon`'s business. */
   at?: Axial;
+  /** A selector shape the codec does not model — a mapping that is not
+   * `{ at: [col,row] }`, or a list. Held whole and graded by the engine. */
+  raw?: unknown;
 }
 
 /** One word plus what it carries. `fact` carries an opaque id; `flee` and
@@ -237,6 +274,10 @@ export interface AnswerWordDoc {
   value?: string;
   /** The selector on `attack`/`toward`/`away`. */
   selector?: AnswerSelectorDoc;
+  /** The body as written, for a word whose value is not the shape the
+   * declaration gives it — `fact: [1]`, `flee: 5`. Carried so the engine
+   * reports the mismatch at the word's own path. */
+  raw?: unknown;
 }
 
 /** One share of a faction's `temper:` mix — a word and how much of the die it
@@ -244,23 +285,34 @@ export interface AnswerWordDoc {
  * round trip, the same law `AnswerTableDoc` keeps for triggers. */
 export interface TemperShareDoc {
   word: string;
-  share: number;
+  share: unknown;
 }
 
 /** A `temper:` (`answerVocabulary.ts`'s `ANSWER_TEMPER`, `dungeonspec`
  * `TemperSpec`). A WORD ON A PLACEMENT, A WORD OR A MIX ON A FACTION — a
  * placement names one creature, so there is nobody to deal a spread to. */
 export interface TemperDoc {
-  /** The single word, on either a placement or a faction. */
+  /** The single word as written, on either a placement or a faction. Whether
+   * it is a temperament this build ships is the engine's answer, not this
+   * module's — #1145 was that refusal, here, on a word the engine takes. */
   word?: string;
-  /** The faction's mix, in the author's own order. */
+  /** The mix, in the author's own order. A mix on a PLACEMENT is carried
+   * too: "a placement names one creature" is a rule, and rules are graded
+   * where they are owned. */
   mix?: TemperShareDoc[];
+  /** A temper that is neither a scalar nor a mapping. Held whole. */
+  raw?: unknown;
 }
 
-/** One trigger and the entries it fires, in the author's own order. */
+/** One trigger and the entries it fires, in the author's own order. The
+ * trigger key is whatever the file wrote: a key this build does not roll is
+ * carried and named by the compiler, never refused here. */
 export interface AnswerTriggerDoc {
   trigger: string;
   entries: AnswerEntryDoc[];
+  /** The value under the trigger when it is not a list of entries — held
+   * whole, so `intimidated: 5` reaches the engine as written. */
+  raw?: unknown;
 }
 
 /**
@@ -360,7 +412,7 @@ export interface PlacementDoc {
    * written with it round-trips rather than being refused by a builder one
    * step behind the compiler. `at` still MUST be floor — it is where the
    * placement lands when the predicate holds. */
-  arrives?: PredicateDoc;
+  arrives?: PredicateHolder;
   /** Monsters only, REFUSED on props: the authored check that intimidates
    * this creature — the accepted approaches and their DCs, the same shape a
    * door's lock uses (`CheckDoc`). Success by any listed approach. Absent
@@ -383,9 +435,15 @@ export interface PlacementDoc {
    * the sealed words (`ANSWER_TEMPER`) — `temper: coward`. A WORD HERE, A MIX
    * ON THE FACTION: a placement names one creature, so dealing a spread for
    * it would be an author rolling for a goblin they have already described.
-   * Carried verbatim; whether the word is one of the three is this module's
-   * refusal because the panel's select has to show a value it knows. */
-  temper?: string;
+   * Carried verbatim — including a word this build does not ship and a MIX
+   * written where a word belongs: both are the compiler's to grade, and a
+   * refusal here is what #1145 was. The panel's select offers the three and
+   * shows anything else read-only. */
+  temper?: TemperDoc;
+  /** Keys this codec does not model, held as written ([RawField]) — the
+   * deleted `knows:`, a field from a newer engine, a misspelling. Each
+   * reaches the compiler and comes back named at `place[i].<key>`. */
+  extra?: RawField[];
 }
 
 /**
@@ -413,6 +471,8 @@ export interface PlacementDoc {
  */
 export interface StartDoc {
   at: Axial;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
   /** One of the eight true-compass names, or absent. Carried verbatim —
    * this module never checks that the word is one of the eight; that is
    * the server's call, surfaced as a `start.facing` `FieldError` the way
@@ -431,6 +491,8 @@ export interface StartDoc {
 export interface ExitDoc {
   id: string;
   at: Axial;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** One authored piece of intel: an id, and what learning it reveals
@@ -451,6 +513,8 @@ export interface ExitDoc {
 export interface IntelDoc {
   id: string;
   reveals: Record<string, string>;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** One declared faction: who fights as one side (rpg-project#375 §2).
@@ -480,6 +544,10 @@ export interface FactionDoc {
    * from per member. A placement that names its own word wins, and the mix is
    * not dealt for it. */
   temper?: TemperDoc;
+  /** Keys this codec does not model, held as written ([RawField]). `tempre`
+   * lands here and comes back named by the compiler, at `factions[0].tempre`
+   * — the probe the design doc runs. */
+  extra?: RawField[];
 }
 
 /** One disposition: how two factions stand to each other, and the
@@ -492,9 +560,17 @@ export interface FactionDoc {
  * with `stance: hostile` and, when it holds, the stance becomes `neutral`.
  * Omitted means the stance never changes. */
 export interface DispositionDoc {
+  /** Two names, in the author's order. NOT a vocabulary rule: the panel
+   * draws a disposition as two named sides, so a `between` that is not two
+   * strings is one it cannot draw, and that refusal stays. */
   between: [string, string];
-  stance: Stance;
-  until?: PredicateDoc;
+  /** The stance word as written. Whether it is one of the three is the
+   * engine's answer; the panel offers the three and shows anything else
+   * read-only. */
+  stance: string;
+  until?: PredicateHolder;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** One authored way the run ends: a name, and when (rpg-project#375 R10).
@@ -509,7 +585,11 @@ export interface DispositionDoc {
  * `exits` and before `scenarios`, the compiler's own order. */
 export interface EndingDoc {
   id: string;
-  when: PredicateDoc;
+  /** Absent when the file wrote none — "an ending that does not say when it
+   * fires" is the compiler's refusal to make, and it makes it. */
+  when?: PredicateHolder;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** One scenario's bindings: the form's field keys mapped to the ids the
@@ -551,6 +631,8 @@ export interface WallDoc {
    * number). VISUAL ONLY: a wall blocks movement and sight identically —
    * and cannot be seen past — at every height. */
   height?: number;
+  /** Keys this codec does not model, held as written ([RawField]). */
+  extra?: RawField[];
 }
 
 /** A wall's two ends on the lattice — the form every derivation takes
@@ -669,6 +751,10 @@ export interface DungeonDoc {
    * bytes do not depend on the order an author happened to fill the form
    * in — the same determinism `cells` and `walls` already have. */
   scenarios: Record<string, ScenarioBindings>;
+  /** Top-level keys this codec does not model, held as written
+   * ([RawField]) — a block a newer engine reads and this builder has not
+   * learned. Emitted last, so the keys it does model keep their order. */
+  extra?: RawField[];
 }
 
 export const MONSTER_REF_PREFIX = 'dnd5e:monsters:';
@@ -692,18 +778,48 @@ function isRecord(v: unknown): v is Raw {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/**
+ * A key this codec does not model is REFUSED here — reserved for the small
+ * shapes the canvas draws out of numbers alone (a wall end's
+ * `{ cell, offset }`, a region's `{ intensity }`). There is nowhere in those
+ * to hold a key, and a wall end carrying one is a line the picker cannot
+ * preview.
+ *
+ * EVERY BLOCK AN AUTHOR WRITES GAMEPLAY IN USES [extraFields] INSTEAD
+ * (rpg-project#481 R3). The suggestion survives because a refusal that says
+ * what was meant still beats one that does not.
+ */
 function expectKeys(obj: Raw, allowed: string[], path: string): void {
   for (const k of Object.keys(obj)) {
     if (allowed.includes(k)) continue;
-    // Say what was meant when something is close (rpg-dnd5e-web#1118). The
-    // refusal still refuses — this only stops a one-letter slip reading as
-    // "this key does not exist", which is the weakest form of the typo
-    // protection a strict parser is for.
     const meant = suggestKey(k, allowed);
     throw new DungeonParseError(
       `${path}: unknown key "${k}"${meant ? ` — did you mean "${meant}"?` : ''}`
     );
   }
+}
+
+/**
+ * The keys of `obj` this codec does not model, IN THE AUTHOR'S ORDER, or
+ * undefined when there are none.
+ *
+ * This is the whole of "the builder keeps word lists, not rules" on the
+ * unknown-key axis: what was a `DungeonParseError` at the door is now a
+ * value held in the document and written back out, so the bytes the author
+ * wrote are the bytes the compiler grades. `undefined` rather than `[]`
+ * keeps a document with nothing extra byte-identical and `toEqual`-identical
+ * to one parsed before this field existed.
+ */
+function extraFields(
+  obj: Raw,
+  modelled: readonly string[]
+): RawField[] | undefined {
+  const extra: RawField[] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    if (modelled.includes(key)) continue;
+    extra.push({ key, value });
+  }
+  return extra.length > 0 ? extra : undefined;
 }
 
 function str(obj: Raw, key: string, path: string, fallback?: string): string {
@@ -791,30 +907,21 @@ const POSITION_HELP: Record<Orientation, string> = {
     '[-0.375,0.25], [-0.375,-0.25]',
 };
 
-/** THE DELETED `knows:` FIELD, refused by name (rpg-project#372 R1).
+/**
+ * THE DELETED `knows:` FIELD IS NO LONGER REFUSED HERE (rpg-project#481 R3).
  *
- * A monster no longer knows a door; it HOLDS AN INTEL RECORD, and the
- * record says what it reveals. One spelling of knowledge, so the next
- * thing intel can reveal — a region, a treasure, how a lock opens —
- * arrives on the record and not as a second field here.
+ * `knows` was removed from the grammar (rpg-project#372 R1) — a monster HOLDS
+ * an intel record now — and this module used to refuse it at the door in the
+ * compiler's own words. That is the same shape as every other vocabulary
+ * mirror: a sentence authored twice, which drifts the moment the engine's
+ * changes. `knows` now rides `PlacementDoc.extra` to the compiler, which
+ * names it at `place[i].knows` with the sentence it owns.
  *
- * Refused before anything else is read, and in the COMPILER'S OWN WORDS,
- * because a refusal a streamer meets twice — once here on load, once from
- * the server — must read the same both times or the two look like two
- * different problems. Same treatment `refusePairForm` gives the deleted
- * wall form.
+ * `refusePairForm` below KEEPS its refusal, and the difference is the line
+ * this module draws: a wall written in the deleted pair form has no line, and
+ * a wall with no line is one the picker cannot preview or the canvas draw.
+ * That is "can't draw", not "won't play".
  */
-function refuseKnows(raw: Raw): void {
-  const place = Array.isArray(raw.place) ? raw.place : [];
-  const bad = place.findIndex((p) => isRecord(p) && p.knows !== undefined);
-  if (bad === -1) return;
-  throw new DungeonParseError(`place[${bad}].knows: ${KNOWS_IS_GONE}`);
-}
-
-/** The compiler's sentence for the deleted field, word for word. */
-export const KNOWS_IS_GONE =
-  '`knows` is gone: declare an `intel:` record with what it reveals, and ' +
-  'give the monster `holds: [<record id>]`.';
 
 /** The pair form, refused at the header (F4). A `walls[]` entry written
  * as a bare `[[col,row],[col,row]]` or carrying `between`/`edges`, or a
@@ -856,7 +963,6 @@ function list(v: unknown, path: string): unknown[] {
  * convention as every other doc type here. */
 function approach(v: unknown, path: string): ApproachDoc {
   if (!isRecord(v)) throw new DungeonParseError(`${path}: expected a map`);
-  expectKeys(v, ['ability', 'tool', 'dc'], path);
   if (!Number.isInteger(v.dc)) {
     throw new DungeonParseError(`${path}.dc: expected an integer`);
   }
@@ -867,6 +973,8 @@ function approach(v: unknown, path: string): ApproachDoc {
   if (v.tool !== undefined && v.tool !== null) {
     out.tool = str(v, 'tool', path);
   }
+  const extra = extraFields(v, ['ability', 'tool', 'dc']);
+  if (extra) out.extra = extra;
   return out;
 }
 
@@ -881,57 +989,15 @@ function checkList(v: unknown, path: string): CheckDoc {
   return v.map((a, i) => approach(a, `${path}[${i}]`));
 }
 
-/** The line each value was written on, resolved from the document the same
- * text parsed into — the engine's own `Line`, captured at decode so a refusal
- * points an author at the line they wrote (`dungeonspec.AnswerSpec.Line`,
- * `WhenSpec.Line`, `SelectorSpec.Line`).
+/**
+ * THE LINE RESOLVER IS GONE (rpg-project#481 R3).
  *
- * The path is the YAML document path (keys and list indices), NOT the display
- * path the refusals print; the two are built side by side and only the display
- * path is joined into a sentence. */
-export type LineOf = (path: readonly (string | number)[]) => number | undefined;
-
-/** Build the resolver for one document, or a resolver that never answers when
- * the text cannot be re-read as an AST. The value parse already succeeded, so
- * this is belt-and-braces rather than a second error path. */
-function lineResolver(text: string): LineOf {
-  let doc: Document | undefined;
-  const counter = new LineCounter();
-  try {
-    doc = parseDocument(text, { lineCounter: counter });
-  } catch {
-    return () => undefined;
-  }
-  const contents = doc?.contents;
-  if (!contents) return () => undefined;
-  return (path) => {
-    let node: unknown = contents;
-    for (const step of path) {
-      if (node === null || node === undefined) return undefined;
-      if (typeof step === 'number') {
-        if (!isYamlSeq(node)) return undefined;
-        node = node.items[step];
-      } else {
-        if (!isYamlMap(node)) return undefined;
-        const pair = node.items.find(
-          (p) => isYamlScalar(p.key) && p.key.value === step
-        );
-        if (!pair) return undefined;
-        node = pair.value;
-      }
-    }
-    if (node === null || node === undefined) return undefined;
-    const range = (node as { range?: [number, number, number] }).range;
-    return range ? counter.linePos(range[0]).line : undefined;
-  };
-}
-
-/** The line suffix the engine's validator appends to a refusal whose message
- * carries one — and nothing at all when the line is unknown, rather than a
- * number that might point at the wrong row. */
-function withLine(sentence: string, line: number | undefined): string {
-  return line === undefined ? sentence : `${sentence} (line ${line})`;
-}
+ * `lineResolver`/`LineOf` re-read the document as an AST so a refusal could
+ * append `(line N)` the way `dungeonspec`'s validator does. Every refusal
+ * that carried a line was a gameplay verdict, and those are the compiler's
+ * now — it resolves the line from the node it is holding, which is the only
+ * place the number can be right. Nothing here needs the AST any more.
+ */
 
 /**
  * What `yaml.Node.Value` would hold for this parsed value — the text of a
@@ -952,408 +1018,201 @@ function scalarText(v: unknown): string {
 }
 
 /**
- * A placement's or a faction's answer table (`on:`). Both of its key spaces
- * are CLOSED sets the compiler enforces — triggers and entry words — so an
- * unknown one is refused here, with the nearest legal key named, rather than
- * travelling to the server to come back as a `FieldError`.
+ * A placement's or a faction's answer table (`on:`).
  *
- * WHAT IS NEW IN #1137, and it is a dimension rather than a row: A WORD IS
- * LEGAL ON SOME TRIGGERS AND NOT OTHERS. `fact`/`flee` answer a social
- * verdict; `hold`/`attack`/`toward`/`away` are what a creature does with time.
- * The declaration carries the rule (`answerWordsForTrigger`) and the refusal
- * is the engine's own sentence, because a picker built from the declaration
- * would never offer the illegal pair but a hand-edited file still can.
+ * NOTHING HERE IS A VERDICT (rpg-project#481 R3). The trigger keys and the
+ * entry words are the ENGINE's closed sets, and the engine grades them: this
+ * reads the shapes the builder edits — a trigger with a list of entries, an
+ * entry with a weight, a line, a condition and its words — and holds
+ * everything else exactly as the author wrote it. A trigger this build does
+ * not roll, an entry that is not a mapping, a key nobody designed: each
+ * travels in the bytes and comes back as a `FieldError` at its own path.
  *
- * The entry rules are the engine's (`answerVocabulary.ts`
- * `ANSWER_ENTRY_RULES`, `dungeonspec/validate.go` `answerEntry`): one word per
- * entry at most, and an entry carrying no word must still say something.
+ * WHY. A closed set transcribed in the web is a mirror of the engine's, and
+ * a mirror drifts one release at a time. #1119 was this parser refusing the
+ * only authored `on:` block in the project; #1145 was a `temper` the engine
+ * takes. Both were a file the server plays and the builder would not open.
  */
-function answerTable(
-  v: unknown,
-  path: string,
-  lineOf: LineOf,
-  yamlPath: readonly (string | number)[],
-  orientation: Orientation
-): AnswerTableDoc {
-  if (!isRecord(v)) {
-    throw new DungeonParseError(
-      `${path}: expected a map of trigger to entries (${ANSWER_TRIGGER_KEYS.join(', ')})`
-    );
-  }
+function answerTable(v: Raw, orientation: Orientation): AnswerTableDoc {
   const table: AnswerTableDoc = [];
   for (const [trigger, entriesRaw] of Object.entries(v)) {
-    const triggerPath = `${path}.${trigger}`;
-    if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
-      const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
-      throw new DungeonParseError(
-        `${triggerPath}: ${unknownTriggerRefusal(trigger)}` +
-          `${meant ? ` — did you mean "${meant}"?` : ''}`
-      );
-    }
-    const entries = list(entriesRaw, triggerPath);
-    if (entries.length === 0) {
-      throw new DungeonParseError(`${triggerPath}: ${EMPTY_TRIGGER_REFUSAL}`);
+    // A trigger whose value is not a list of entries is held whole: the
+    // author wrote something, and the compiler is what reads it.
+    if (!Array.isArray(entriesRaw)) {
+      table.push({ trigger, entries: [], raw: entriesRaw });
+      continue;
     }
     table.push({
       trigger,
-      entries: entries.map((e, i) =>
-        answerEntry(e, `${triggerPath}[${i}]`, trigger, orientation, lineOf, [
-          ...yamlPath,
-          trigger,
-          i,
-        ])
-      ),
+      entries: entriesRaw.map((e) => answerEntry(e, orientation)),
     });
   }
   return table;
 }
 
-/** One entry: `{ weight?, say?, when?, <one word> }`.
+/**
+ * One entry: `{ weight?, say?, when?, <words> }`, and whatever else is there.
  *
- * The refusals run in the ENGINE'S OWN ORDER (`answerEntry`) so an author who
- * made one mistake gets one sentence: the weight, then an empty `fact` (which
- * is reported INSTEAD of the no-word refusal below, not beside it), then two
- * words, then an entry that does nothing, then the word's legality, then the
- * selector. */
-function answerEntry(
-  v: unknown,
-  path: string,
-  trigger: string,
-  orientation: Orientation,
-  lineOf: LineOf,
-  yamlPath: readonly (string | number)[]
-): AnswerEntryDoc {
-  if (!isRecord(v)) {
-    throw new DungeonParseError(
-      `${path}: an entry is { weight, say, when } plus exactly one of { ${ANSWER_WORD_KEYS.join(
-        ', '
-      )} }`
-    );
-  }
-  // Unknown keys first, so a misspelling is reported as a misspelling
-  // rather than as the entry rule it happens to break on the way past.
-  const known = ['weight', 'say', 'when', ...ANSWER_WORD_KEYS];
-  for (const k of Object.keys(v)) {
-    if (known.includes(k)) continue;
-    const meant = suggestKey(k, known);
-    throw new DungeonParseError(
-      `${path}: unknown key "${k}"${meant ? ` — did you mean "${meant}"?` : ''}`
-    );
-  }
+ * THE ENTRY RULES ARE THE ENGINE'S TO ENFORCE, not this module's to mirror:
+ * one word per entry, a wordless entry that still says something, a weight of
+ * at least 1, `fact` with something to teach, a word legal on its trigger.
+ * Every one of those was a refusal here and is now a value carried to the
+ * compiler, which answers at the same path in its own sentence.
+ *
+ * `trigger` and the line resolver are no longer parameters: the only things
+ * they were read for were the word-legality verdict and the `(line N)` suffix
+ * on it, and both belong to the compiler now.
+ */
+function answerEntry(v: unknown, orientation: Orientation): AnswerEntryDoc {
+  // An entry that is not a mapping is not a shape this model holds — so it
+  // holds it whole rather than declining the file.
+  if (!isRecord(v)) return { raw: v };
 
   const entry: AnswerEntryDoc = {};
   if (v.weight !== undefined && v.weight !== null) {
-    const weight = v.weight;
-    if (typeof weight !== 'number' || !Number.isInteger(weight)) {
-      throw new DungeonParseError(`${path}.weight: expected a whole number`);
-    }
     // An authored weight is KEPT as authored — including a redundant `1` —
     // because omitted is 1 to the engine and the two are different bytes.
-    entry.weight = weight;
+    // A weight that is not a whole number rides `extra` to the compiler.
+    if (typeof v.weight === 'number' && Number.isInteger(v.weight)) {
+      entry.weight = v.weight;
+    }
   }
-  if (v.say !== undefined && v.say !== null) {
-    entry.say = str(v, 'say', path);
+  if (v.say !== undefined && v.say !== null && typeof v.say === 'string') {
+    entry.say = v.say;
   }
   if (v.when !== undefined && v.when !== null) {
-    entry.when = answerWhen(v.when, `${path}.when`);
+    entry.when = answerWhen(v.when);
   }
   // The words, found by ASKING THE VOCABULARY rather than by listing keys
-  // here: a word the engine adds is read by this loop with no change.
+  // here: a word the engine adds is read by this loop with no change, and a
+  // word it has not added yet rides `extra` instead of stopping the file.
   const words = ANSWER_WORD_KEYS.filter(
     (k) => v[k] !== undefined && v[k] !== null
   );
-  if (words.length === 1) {
-    const word = words[0];
-    entry.word = answerWordValue(word, v[word], `${path}.${word}`, orientation);
-  }
-
-  // --- the engine's own rules, in `answerEntry`'s order ---
-
-  const entryLine = lineOf(yamlPath);
-
-  // The engine's `AnswerSpec.Weight` check, in the engine's own words.
-  if (
-    entry.weight !== undefined &&
-    entry.weight < ANSWER_ENTRY_RULES.minimumWeight
-  ) {
-    throw new DungeonParseError(
-      `${path}.weight: ${weightRefusal(entry.weight)}`
+  if (words.length > 0) {
+    entry.words = words.map((word) =>
+      answerWordValue(word, v[word], orientation)
     );
   }
-
-  // An empty `fact:` is its own sentence rather than a missing word: the
-  // author wrote the key, so they meant to teach something.
-  if (entry.word?.word === 'fact' && entry.word.value === '') {
-    throw new DungeonParseError(`${path}.fact: ${EMPTY_FACT_REFUSAL}`);
-  }
-
-  if (words.length > ANSWER_ENTRY_RULES.maximumWords) {
-    throw new DungeonParseError(
-      `${path}: ${withLine(entryDoesOneThingRefusal(words), entryLine)}`
-    );
-  }
-
-  // The rule is READ from the declaration, not restated here (review round 1):
-  // a second spelling of "an entry with no word must still say something" is
-  // one that can drift from this one with no test failing.
-  if (
-    ANSWER_ENTRY_RULES.wordRequiredUnlessSaid &&
-    words.length === 0 &&
-    entry.say === undefined
-  ) {
-    throw new DungeonParseError(
-      `${path}: ${withLine(EMPTY_ENTRY_REFUSAL, entryLine)}`
-    );
-  }
-
-  // THE APPLICABILITY DIMENSION. A word under a trigger it is not legal on
-  // is refused with the engine's own sentence, and which sentence an author
-  // gets depends on the direction of the mistake.
-  for (const word of words) {
-    const refusal = answerWordRefusal(word, trigger);
-    if (refusal) {
-      throw new DungeonParseError(
-        `${path}.${word}: ${withLine(refusal, entryLine)}`
-      );
-    }
-  }
-
-  // `when` is a `time` word: a social key IS the condition.
-  if (entry.when !== undefined) {
-    const refusal = answerWhenRefusal(trigger);
-    if (refusal) {
-      throw new DungeonParseError(
-        `${path}.when: ${withLine(refusal, lineOf([...yamlPath, 'when']))}`
-      );
-    }
-  }
-
-  answerSelectorRules(entry, path, lineOf, yamlPath);
-
+  // Anything this entry did not model — a misspelling, a word from a newer
+  // build, a weight that is not whole, a `say` that is not a string.
+  const held = ['when', ...words];
+  if (entry.weight !== undefined) held.push('weight');
+  if (entry.say !== undefined) held.push('say');
+  const extra = extraFields(v, held);
+  if (extra) entry.extra = extra;
   return entry;
 }
 
 /**
- * A `when:` — EXACTLY ONE of the four exclusive enemy bands, or one of the
- * four deeds with `{ within: N }` (`dungeonspec.WhenSpec`).
+ * A `when:` — an enemy band, a deed with a span, or held whole.
  *
- * TWO KEYS IS REFUSED, not read as `and`: an author who wrote two meant
- * something, and guessing which of two readings they meant is exactly what a
- * sealed vocabulary exists to avoid. A deed names its own past tense as the
- * key — `{ fled: { within: 3 } }` — so the shape is the file's, not a generic
- * `deed:` field this module invented.
+ * The two modelled arms are the two the builder edits. Two keys in one map,
+ * a deed this build does not hold, a band outside the four, a span of zero:
+ * each was a refusal and is now `{ kind: 'raw' }`, because `WhenSpec` is the
+ * engine's type and `WhenSpec.UnmarshalYAML` is where its sentences live.
  */
-function answerWhen(v: unknown, path: string): AnswerWhenDoc {
-  if (!isRecord(v) || Object.keys(v).length === 0) {
-    throw new DungeonParseError(`${path}: ${whenShapeRefusal()}`);
-  }
+function answerWhen(v: unknown): AnswerWhenDoc {
+  if (!isRecord(v)) return { kind: 'raw', raw: v };
   const keys = Object.keys(v);
-  if (keys.length > 1) {
-    throw new DungeonParseError(
-      `${path}: ${whenIsOneConditionRefusal(keys.length)}`
-    );
-  }
+  if (keys.length !== 1) return { kind: 'raw', raw: v };
   const key = keys[0];
 
   if (key === 'enemy') {
-    // The engine reads a raw node here, so `enemy: [1,2]` reaches it as the
-    // empty string and `enemy: 5` as "5" — both refused by the SAME sentence
-    // an unknown band gets, not by the `when`-shape sentence (review round 1).
     const band = scalarText(v.enemy);
-    if (!ANSWER_WHEN.enemyBands.includes(band)) {
-      throw new DungeonParseError(`${path}: ${unknownEnemyBandRefusal(band)}`);
-    }
-    return { kind: 'enemy', band };
+    return ANSWER_WHEN.enemyBands.includes(band)
+      ? { kind: 'enemy', band }
+      : { kind: 'raw', raw: v };
   }
 
-  if (!ANSWER_WHEN.deeds.includes(key)) {
-    throw new DungeonParseError(`${path}: ${unknownDeedRefusal(key)}`);
-  }
+  if (!ANSWER_WHEN.deeds.includes(key)) return { kind: 'raw', raw: v };
   const body = v[key];
-  if (!isRecord(body)) {
-    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
+  if (!isRecord(body)) return { kind: 'raw', raw: v };
+  if (Object.keys(body).length !== 1 || !Number.isInteger(body.within)) {
+    return { kind: 'raw', raw: v };
   }
-  const within = body.within;
-  if (within === undefined || within === null) {
-    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
-  }
-  if (typeof within !== 'number' || !Number.isInteger(within)) {
-    throw new DungeonParseError(
-      `${path}.${key}.within: expected a whole number`
-    );
-  }
-  if (within < ANSWER_WHEN.minimumWithin) {
-    throw new DungeonParseError(`${path}: ${spanRefusal(within)}`);
-  }
-  return { kind: 'deed', deed: key, within };
+  return { kind: 'deed', deed: key, within: body.within as number };
 }
 
-/** One selector: a word (`enemy`/`attacker`/`actor`) or `{ at: [col,row] }`.
- * The `at:` spelling is parsed here and its legality on the entry's word is
- * the rules pass's job (`answerSelectorRules`). */
+/** One selector: a scalar as written, `{ at: [col,row] }`, or held whole.
+ * Which scalars name something this build resolves, and which word a cell is
+ * legal on, are the engine's answers (`SelectorSpec`, `entrySelector`). */
 function answerSelector(
   v: unknown,
   path: string,
   orientation: Orientation
 ): AnswerSelectorDoc {
-  if (typeof v === 'string') {
-    if (!isSelectorWord(v)) {
-      throw new DungeonParseError(`${path}: ${unknownSelectorRefusal(v)}`);
-    }
-    return { word: v };
-  }
+  if (typeof v === 'string') return { word: v };
   if (isRecord(v)) {
-    for (const k of Object.keys(v)) {
-      if (k !== 'at') {
-        throw new DungeonParseError(`${path}: ${unknownSelectorKeyRefusal(k)}`);
-      }
+    const keys = Object.keys(v);
+    if (keys.length === 1 && keys[0] === 'at' && isPair(v.at)) {
+      return { at: fromOffset(orientation, pair(v.at, `${path}.at`)) };
     }
-    if (v.at === undefined || v.at === null) {
-      throw new DungeonParseError(`${path}: ${MISSING_AT_REFUSAL}`);
-    }
-    return { at: fromOffset(orientation, pair(v.at, `${path}.at`)) };
   }
-  throw new DungeonParseError(
-    `${path}: a selector is one of enemy, attacker, actor, or { at: [col, row] }`
+  return { raw: v };
+}
+
+/** Two integers — the one cell spelling this model converts to axial. Any
+ * other `at:` body is carried as written instead. */
+function isPair(v: unknown): boolean {
+  return (
+    Array.isArray(v) &&
+    v.length === 2 &&
+    Number.isInteger(v[0]) &&
+    Number.isInteger(v[1])
   );
 }
 
 /** One outcome word's value, by the shape the declaration gives it: an opaque
  * id for `fact`, a MAPPING for `flee`/`hold`, a selector for
- * `attack`/`toward`/`away`. */
+ * `attack`/`toward`/`away`. A body that is not that shape is held whole. */
 function answerWordValue(
   word: string,
   raw: unknown,
-  path: string,
   orientation: Orientation
 ): AnswerWordDoc {
   const shape = answerWord(word)?.value;
   if (shape === 'string') {
-    if (typeof raw !== 'string') {
-      throw new DungeonParseError(`${path}: expected a string`);
-    }
-    return { word, value: raw };
+    return typeof raw === 'string' ? { word, value: raw } : { word, raw };
   }
   if (shape === 'selector') {
-    return { word, selector: answerSelector(raw, path, orientation) };
+    const selector = answerSelector(raw, word, orientation);
+    return selector.raw !== undefined ? { word, raw } : { word, selector };
   }
-  // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
-  // scalar or a sequence body is a decode error there and is refused here.
-  // A MAPPING IS ACCEPTED WHATEVER IS IN IT, because the engine accepts it:
-  // its custom unmarshaler never runs `KnownFields` inside `FleeSpec`, so
-  // `flee: { x: 1 }` decodes clean too. Refusing that would be the web
-  // refusing a file the server reads (review round 1, finding 2).
-  if (!isRecord(raw)) {
-    throw new DungeonParseError(`${path}: ${noneWordBodyRefusal(word)}`);
-  }
-  return { word };
+  // `value: 'none'` — `FleeSpec`/`HoldSpec` are structs and take a mapping.
+  // A MAPPING IS CARRIED WHATEVER IS IN IT, because the engine accepts it:
+  // its custom unmarshaler never runs `KnownFields` inside `FleeSpec`. A
+  // scalar or a sequence is carried too, and refused where it is refused.
+  return isRecord(raw) && Object.keys(raw).length === 0
+    ? { word }
+    : { word, raw };
 }
 
 /**
- * `validate.go` `entrySelector`, on an entry already decoded: a cell where
- * only a word is legal, and `actor` in an entry whose `when` names no deed.
+ * A `temper:` — a word, a mix, or held whole (`dungeonspec.TemperSpec`).
  *
- * The floor check the engine makes after the `at:` legality check is NOT
- * repeated here, deliberately: whether a cell is floor is membership
- * (`regions`/`scenery` own it), and this module leaves membership to the
- * server exactly as it does for a `faction` naming a declared faction or a
- * `holds` naming a record. Shape and vocabulary are this module's; existence
- * is the compiler's.
+ * NEITHER THE WORDS NOR THE SHAPE IS A RULE HERE. Which three temperaments
+ * this build ships, whether a share can be dealt, and whether a mix is legal
+ * on a placement are all `TemperSpec.UnmarshalYAML`'s and `validate.go`'s.
+ * rpg-dnd5e-web#1145 was this function refusing a `temper` the engine takes.
  */
-function answerSelectorRules(
-  entry: AnswerEntryDoc,
-  path: string,
-  lineOf: LineOf,
-  yamlPath: readonly (string | number)[]
-): void {
-  const word = entry.word?.word;
-  const selector = entry.word?.selector;
-  if (word === undefined || selector === undefined) return;
-  const selectorLine = lineOf([...yamlPath, word]);
-  if (selector.at !== undefined) {
-    // The one word `at:` is legal on is READ from the declaration rather
-    // than restated here (review round 1, finding 4).
-    if (word !== ANSWER_AT_SELECTOR.onlyWord) {
-      throw new DungeonParseError(
-        `${path}.${word}: ${withLine(atSelectorRefusal(word), selectorLine)}`
-      );
-    }
-    return;
-  }
-  if (
-    selector.word === 'actor' &&
-    (entry.when === undefined || entry.when.kind !== 'deed')
-  ) {
-    throw new DungeonParseError(
-      `${path}.${word}: ${withLine(ACTOR_WITHOUT_DEED_REFUSAL, selectorLine)}`
-    );
-  }
-}
-
-/**
- * A `temper:` — a word on a placement, a word OR A MIX on a faction
- * (`dungeonspec.TemperSpec`). The words are the engine's three, refused by
- * name because the panel's select has to show a value it knows; a share below
- * 1 is a temperament that can never be dealt.
- *
- * WHICH SHAPE IS LEGAL WHERE IS THE CALLER'S, because it is the owner's: a
- * placement names one creature, so a mix there is refused (`allowMix: false`).
- */
-function temper(v: unknown, path: string, allowMix: boolean): TemperDoc {
-  if (typeof v === 'string') {
-    assertTemperWord(v, path);
-    return { word: v };
-  }
-  // A NON-STRING SCALAR reaches the engine's `TemperSpec.UnmarshalYAML` as a
-  // scalar node, so it is read as a word and refused BY NAME — `temper: 5`
-  // reports `"5" is not a temperament this build ships` there, not the shape
-  // sentence. `scalarText` gives the web the same value the raw node holds
-  // (review round 1, finding 3).
-  if (typeof v === 'number' || typeof v === 'boolean') {
-    assertTemperWord(scalarText(v), path);
-    return { word: scalarText(v) };
-  }
-  if (!isRecord(v)) {
-    throw new DungeonParseError(
-      `${path}: a temper is a word (${ANSWER_TEMPER.words.join(
-        ' | '
-      )}) or a mix of them with shares`
-    );
-  }
-  if (!allowMix) {
-    throw new DungeonParseError(
-      `${path}: a placement names one creature — a temper mix belongs on the faction`
-    );
-  }
-  const mix: TemperShareDoc[] = [];
-  for (const [word, rawShare] of Object.entries(v)) {
-    assertTemperWord(word, `${path}.${word}`);
-    if (typeof rawShare !== 'number' || !Number.isInteger(rawShare)) {
-      throw new DungeonParseError(
-        `${path}.${word}: expected a whole-number share`
-      );
-    }
-    if (rawShare < ANSWER_TEMPER.minimumShare) {
-      throw new DungeonParseError(
-        `${path}.${word}: ${temperShareRefusal(rawShare, word)}`
-      );
-    }
-    mix.push({ word, share: rawShare });
-  }
-  if (mix.length === 0) {
-    throw new DungeonParseError(`${path}: ${EMPTY_TEMPER_MIX_REFUSAL}`);
-  }
+function temper(v: unknown): TemperDoc {
+  if (typeof v === 'string') return { word: v };
+  // A NON-STRING SCALAR reaches `TemperSpec.UnmarshalYAML` as a scalar node
+  // and is read there as a word — but `temper: 5` and `temper: "5"` are
+  // different bytes, and collapsing them would rewrite the author's file on
+  // save. Held whole, it re-emits as the author typed it.
+  if (!isRecord(v)) return { raw: v };
+  const mix: TemperShareDoc[] = Object.entries(v).map(([word, share]) => ({
+    word,
+    share,
+  }));
   return { mix };
 }
 
-/** One temperament word, refused by name otherwise. */
-function assertTemperWord(word: string, path: string): void {
-  if (!ANSWER_TEMPER.words.includes(word)) {
-    throw new DungeonParseError(`${path}: ${unknownTemperRefusal(word)}`);
-  }
-}
-
-/** `[faction, faction]` — two strings, carried verbatim. */
+/** `[faction, faction]` — two strings, carried verbatim. NOT a vocabulary
+ * rule: the panel draws a disposition as two named sides, so a `between`
+ * that is not two strings is one it cannot draw. */
 function factionPair(v: unknown, path: string): [string, string] {
   if (
     !Array.isArray(v) ||
@@ -1365,57 +1224,49 @@ function factionPair(v: unknown, path: string): [string, string] {
   return [v[0] as string, v[1] as string];
 }
 
-/** One of the three stances, refused by name otherwise — a closed set the
- * panel's select has to be able to show. */
-function stanceWord(obj: Raw, key: string, path: string): Stance {
-  const word = str(obj, key, path);
-  if (!(STANCES as readonly string[]).includes(word)) {
-    throw new DungeonParseError(
-      `${path}.${key}: expected hostile | neutral | allied`
-    );
-  }
-  return word as Stance;
-}
-
-/** One predicate (`PredicateDoc`): a map with EXACTLY ONE of the four keys.
- * Refused by SHAPE only — a `{ down }` naming nobody or a `{ round: 0 }`
- * is a predicate this module can hold and the panel refuses inline; a map
- * with two keys, or a key this grammar has not learned, is not a predicate
- * at all. */
-function predicate(v: unknown, path: string): PredicateDoc {
-  if (!isRecord(v)) throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+/**
+ * One predicate — one of the four forms, or the map held whole.
+ *
+ * The forms are modelled because [PredicateEditor] edits them. A map with
+ * two keys, a form this grammar has not learned, a `round` that is not a
+ * number: each is a predicate the ENGINE reads, so it travels as written and
+ * the editors show it read-only.
+ */
+function predicate(v: unknown): PredicateHolder {
+  if (!isRecord(v)) return { raw: v };
   const keys = Object.keys(v);
-  if (keys.length !== 1) {
-    throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  if (keys.length !== 1) return { raw: v };
+  const form = keys[0];
+  if (!(PREDICATE_FORMS as readonly string[]).includes(form)) return { raw: v };
+
+  if (form === 'round') {
+    return Number.isInteger(v.round)
+      ? { round: v.round as number }
+      : { raw: v };
   }
-  switch (keys[0]) {
-    case 'round':
-      if (!Number.isInteger(v.round)) {
-        throw new DungeonParseError(`${path}.round: expected an integer`);
-      }
-      return { round: v.round as number };
-    case 'down':
-      return { down: str(v, 'down', path) };
-    case 'fact':
-      return { fact: str(v, 'fact', path) };
-    case 'stance': {
-      const s = v.stance;
-      if (!isRecord(s)) {
-        throw new DungeonParseError(
-          `${path}.stance: expected { between: [a, b], is: hostile | neutral | allied }`
-        );
-      }
-      expectKeys(s, ['between', 'is'], `${path}.stance`);
-      return {
-        stance: {
-          between: factionPair(s.between, `${path}.stance.between`),
-          is: stanceWord(s, 'is', `${path}.stance`),
-        },
-      };
-    }
-    default:
-      throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  if (form === 'down' || form === 'fact') {
+    return typeof v[form] === 'string'
+      ? ({ [form]: v[form] } as PredicateDoc)
+      : { raw: v };
   }
+  const s = v.stance;
+  if (!isRecord(s)) return { raw: v };
+  const between = s.between;
+  if (
+    Object.keys(s).length !== 2 ||
+    typeof s.is !== 'string' ||
+    !Array.isArray(between) ||
+    between.length !== 2 ||
+    !between.every((x) => typeof x === 'string')
+  ) {
+    return { raw: v };
+  }
+  return {
+    stance: {
+      between: [between[0] as string, between[1] as string],
+      is: s.is as Stance,
+    },
+  };
 }
 
 export function parseDungeon(text: string): DungeonDoc {
@@ -1428,39 +1279,34 @@ export function parseDungeon(text: string): DungeonDoc {
     );
   }
   if (!isRecord(raw)) throw new DungeonParseError('document: expected a map');
-  // The line of any node, for the refusals whose engine sentence carries one.
-  // Built from the same text so a refusal names the line the author wrote.
-  const lineOf = lineResolver(text);
-  expectKeys(
-    raw,
-    [
-      'version',
-      'key',
-      'name',
-      'orientation',
-      'void',
-      'regions',
-      'scenery',
-      'start',
-      'walls',
-      'doors',
-      'place',
-      'exits',
-      'scenarios',
-      'intel',
-      'factions',
-      'dispositions',
-      'endings',
-    ],
-    'document'
-  );
+  // THE ROOT'S OWN UNMODELLED KEYS, held rather than refused: a block a newer
+  // engine reads is a block this builder has not learned, and learning it is
+  // not a precondition for opening the file (rpg-project#481 R3).
+  const documentExtra = extraFields(raw, [
+    'version',
+    'key',
+    'name',
+    'orientation',
+    'void',
+    'regions',
+    'scenery',
+    'start',
+    'walls',
+    'doors',
+    'place',
+    'exits',
+    'scenarios',
+    'intel',
+    'factions',
+    'dispositions',
+    'endings',
+  ]);
   if (raw.version !== 2) {
     throw new DungeonParseError(
       `version: this builder writes dungeonspec version 2; got ${JSON.stringify(raw.version)} (version 1 is deleted, not supported)`
     );
   }
   refusePairForm(raw);
-  refuseKnows(raw);
   const orientation = str(raw, 'orientation', 'document');
   if (orientation !== 'pointy' && orientation !== 'flat') {
     throw new DungeonParseError('orientation: expected pointy | flat');
@@ -1473,11 +1319,6 @@ export function parseDungeon(text: string): DungeonDoc {
   const regions = list(raw.regions, 'regions').map((r, i): RegionDoc => {
     const path = `regions[${i}]`;
     if (!isRecord(r)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(
-      r,
-      ['id', 'name', 'archetype', 'lighting', 'cells', 'concealed'],
-      path
-    );
     const lighting = r.lighting;
     let intensity = 0;
     if (lighting !== undefined && lighting !== null) {
@@ -1513,6 +1354,15 @@ export function parseDungeon(text: string): DungeonDoc {
       }
       if (r.concealed) region.concealed = true;
     }
+    const extra = extraFields(r, [
+      'id',
+      'name',
+      'archetype',
+      'lighting',
+      'cells',
+      'concealed',
+    ]);
+    if (extra) region.extra = extra;
     return region;
   });
 
@@ -1533,8 +1383,9 @@ export function parseDungeon(text: string): DungeonDoc {
     if (Array.isArray(raw.start)) {
       start = { at: fromOffset(orientation, pair(raw.start, 'start')) };
     } else if (isRecord(raw.start)) {
-      expectKeys(raw.start, ['at', 'facing'], 'start');
       start = { at: fromOffset(orientation, pair(raw.start.at, 'start.at')) };
+      const extra = extraFields(raw.start, ['at', 'facing']);
+      if (extra) start.extra = extra;
       // EMPTY FACING IS NO FACING — the zero value telling the truth, not
       // a third state. `AtlasStart.facing`'s own law says empty means the
       // author stated none, and every reader downstream collapses it that
@@ -1559,7 +1410,6 @@ export function parseDungeon(text: string): DungeonDoc {
         `${path}: expected { start, end, height?, name? }`
       );
     }
-    expectKeys(w, ['start', 'end', 'height', 'name'], path);
     const wall: WallDoc = {
       start: position(w.start, `${path}.start`, orientation),
       end: position(w.end, `${path}.end`, orientation),
@@ -1576,13 +1426,14 @@ export function parseDungeon(text: string): DungeonDoc {
       }
       wall.height = w.height as number;
     }
+    const extra = extraFields(w, ['start', 'end', 'height', 'name']);
+    if (extra) wall.extra = extra;
     return wall;
   });
 
   const doors = list(raw.doors, 'doors').map((d, i): DoorDoc => {
     const path = `doors[${i}]`;
     if (!isRecord(d)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(d, ['id', 'at', 'closed', 'locked', 'concealed'], path);
     const door: DoorDoc = {
       id: str(d, 'id', path),
       at: position(d.at, `${path}.at`, orientation),
@@ -1599,43 +1450,14 @@ export function parseDungeon(text: string): DungeonDoc {
     if (d.concealed !== undefined && d.concealed !== null) {
       door.concealed = checkList(d.concealed, `${path}.concealed`);
     }
+    const extra = extraFields(d, ['id', 'at', 'closed', 'locked', 'concealed']);
+    if (extra) door.extra = extra;
     return door;
   });
 
   const place = list(raw.place, 'place').map((p, i): PlacementDoc => {
     const path = `place[${i}]`;
     if (!isRecord(p)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(
-      p,
-      [
-        'ref',
-        'at',
-        'blocks_movement',
-        'blocks_los',
-        'facing',
-        'offset',
-        'targeting',
-        'boss',
-        'id',
-        'holds',
-        'holdable',
-        'faction',
-        'arrives',
-        // The social surface (rpg-dnd5e-web#1118). This list is the
-        // COMPILER'S vocabulary, not the panels' — a field the builder
-        // cannot yet edit still loads, so a file one step ahead of the
-        // builder is readable rather than refused (`arrives`'s rule).
-        'intimidate',
-        'persuade',
-        'actions',
-        'on',
-        // The creature's temperament (rpg-dnd5e-web#1137): one of the three
-        // sealed words, and a WORD here — a mix is a faction's, so nobody
-        // rolls for a goblin the author has already described.
-        'temper',
-      ],
-      path
-    );
     const placement: PlacementDoc = {
       ref: str(p, 'ref', path),
       at: fromOffset(orientation, pair(p.at, `${path}.at`)),
@@ -1689,7 +1511,7 @@ export function parseDungeon(text: string): DungeonDoc {
       placement.faction = str(p, 'faction', path);
     }
     if (p.arrives !== undefined && p.arrives !== null) {
-      placement.arrives = predicate(p.arrives, `${path}.arrives`);
+      placement.arrives = predicate(p.arrives);
     }
     // The social surface. `intimidate`/`persuade` are the same check shape a
     // door's lock uses, so they share its parser; the "monsters only" rule
@@ -1712,21 +1534,40 @@ export function parseDungeon(text: string): DungeonDoc {
         return a;
       });
     }
-    if (p.on !== undefined && p.on !== null) {
-      placement.on = answerTable(
-        p.on,
-        `${path}.on`,
-        lineOf,
-        ['place', i, 'on'],
-        orientation
-      );
+    // An `on:` that is a map is the table the builder edits; anything else
+    // rides `extra` to the compiler, whole.
+    if (isRecord(p.on)) {
+      placement.on = answerTable(p.on, orientation);
     }
-    // A placement names ONE creature, so a temperament here is a word and a
-    // mix is refused by name (`ANSWER_TEMPER.placementShape`).
+    // A word here and a mix on the faction is the ENGINE'S asymmetry
+    // (`TemperSpec`), and the engine is where it is enforced: a mix written
+    // on a placement is carried and graded there. #1145 was the refusal.
     if (p.temper !== undefined && p.temper !== null) {
-      const word = temper(p.temper, `${path}.temper`, false).word;
-      if (word !== undefined) placement.temper = word;
+      placement.temper = temper(p.temper);
     }
+    const extra = extraFields(p, [
+      'ref',
+      'at',
+      'blocks_movement',
+      'blocks_los',
+      'facing',
+      'offset',
+      'targeting',
+      'boss',
+      'id',
+      'holds',
+      'holdable',
+      'faction',
+      'arrives',
+      'intimidate',
+      'persuade',
+      'actions',
+      // `on` is modelled only when it is a map — otherwise it belongs in
+      // `extra`, so it is named here and re-added below.
+      ...(isRecord(p.on) ? ['on'] : []),
+      'temper',
+    ]);
+    if (extra) placement.extra = extra;
     return placement;
   });
 
@@ -1736,11 +1577,13 @@ export function parseDungeon(text: string): DungeonDoc {
     if (!isRecord(e)) {
       throw new DungeonParseError(`${path}: expected { id, at: [col,row] }`);
     }
-    expectKeys(e, ['id', 'at'], path);
-    return {
+    const exit: ExitDoc = {
       id: str(e, 'id', path),
       at: fromOffset(orientation, pair(e.at, `${path}.at`)),
     };
+    const extra = extraFields(e, ['id', 'at']);
+    if (extra) exit.extra = extra;
+    return exit;
   });
 
   // The intel records this dungeon declares. `reveals` is read as a map of
@@ -1751,7 +1594,6 @@ export function parseDungeon(text: string): DungeonDoc {
     if (!isRecord(r)) {
       throw new DungeonParseError(`${path}: expected { id, reveals }`);
     }
-    expectKeys(r, ['id', 'reveals'], path);
     const reveals: Record<string, string> = {};
     if (r.reveals !== undefined && r.reveals !== null) {
       if (!isRecord(r.reveals)) {
@@ -1766,7 +1608,10 @@ export function parseDungeon(text: string): DungeonDoc {
         reveals[key] = value;
       }
     }
-    return { id: str(r, 'id', path), reveals };
+    const record: IntelDoc = { id: str(r, 'id', path), reveals };
+    const extra = extraFields(r, ['id', 'reveals']);
+    if (extra) record.extra = extra;
+    return record;
   });
 
   // The factions this dungeon declares. `mind` is read as a string and
@@ -1784,25 +1629,23 @@ export function parseDungeon(text: string): DungeonDoc {
     if (!isRecord(f)) {
       throw new DungeonParseError(`${path}: expected { id, mind? }`);
     }
-    expectKeys(f, ['id', 'mind', 'on', 'temper'], path);
     const faction: FactionDoc = { id: str(f, 'id', path) };
     if (f.mind !== undefined && f.mind !== null) {
       faction.mind = str(f, 'mind', path);
     }
-    if (f.on !== undefined && f.on !== null) {
-      faction.on = answerTable(
-        f.on,
-        `${path}.on`,
-        lineOf,
-        ['factions', i, 'on'],
-        orientation
-      );
+    if (isRecord(f.on)) {
+      faction.on = answerTable(f.on, orientation);
     }
-    // A faction is several creatures, so a mix is legal here — a word too,
-    // which every placement in it then has (`ANSWER_TEMPER.factionShape`).
     if (f.temper !== undefined && f.temper !== null) {
-      faction.temper = temper(f.temper, `${path}.temper`, true);
+      faction.temper = temper(f.temper);
     }
+    const extra = extraFields(f, [
+      'id',
+      'mind',
+      ...(isRecord(f.on) ? ['on'] : []),
+      'temper',
+    ]);
+    if (extra) faction.extra = extra;
     return faction;
   });
 
@@ -1818,14 +1661,17 @@ export function parseDungeon(text: string): DungeonDoc {
           `${path}: expected { between: [a, b], stance, until? }`
         );
       }
-      expectKeys(d, ['between', 'stance', 'until'], path);
       const disposition: DispositionDoc = {
         between: factionPair(d.between, `${path}.between`),
-        stance: stanceWord(d, 'stance', path),
+        // The stance word AS WRITTEN. Which three this build folds is the
+        // engine's sealed set, so an unknown one travels and is named there.
+        stance: str(d, 'stance', path),
       };
       if (d.until !== undefined && d.until !== null) {
-        disposition.until = predicate(d.until, `${path}.until`);
+        disposition.until = predicate(d.until);
       }
+      const extra = extraFields(d, ['between', 'stance', 'until']);
+      if (extra) disposition.extra = extra;
       return disposition;
     }
   );
@@ -1840,16 +1686,15 @@ export function parseDungeon(text: string): DungeonDoc {
         `${path}: expected { id, when: <predicate> }`
       );
     }
-    expectKeys(e, ['id', 'when'], path);
-    if (e.when === undefined || e.when === null) {
-      throw new DungeonParseError(
-        `${path}.when: the ending does not say when it fires — ${PREDICATE_SHAPE}`
-      );
+    const ending: EndingDoc = { id: str(e, 'id', path, '') };
+    // "The ending does not say when it fires" is the COMPILER'S refusal, and
+    // it makes it: an ending with no `when` is held and graded there.
+    if (e.when !== undefined && e.when !== null) {
+      ending.when = predicate(e.when);
     }
-    return {
-      id: str(e, 'id', path, ''),
-      when: predicate(e.when, `${path}.when`),
-    };
+    const extra = extraFields(e, ['id', 'when']);
+    if (extra) ending.extra = extra;
+    return ending;
   });
 
   // CARRIED OPAQUELY. Every binding value is read as a string and nothing
@@ -1899,6 +1744,7 @@ export function parseDungeon(text: string): DungeonDoc {
     factions,
     dispositions,
     endings,
+    ...(documentExtra ? { extra: documentExtra } : {}),
   };
 }
 
@@ -1919,12 +1765,48 @@ function scalar(s: string): string {
 
 const fmtPair = ([c, r]: OffsetPair): string => `[${c},${r}]`;
 
+/**
+ * ANY parsed value, written back as flow YAML — the other half of carrying a
+ * value verbatim ([RawField]). A key held on the way in has to come out
+ * again, or the document the compiler grades is not the document the author
+ * wrote.
+ *
+ * Flow style throughout: these are values this module does not model, so it
+ * has no shape to lay out and no business inventing one. Map keys keep the
+ * author's order for the same reason `AnswerTableDoc` is a list — a map has
+ * no order of its own, and re-sorting one would move bytes nobody asked to
+ * move.
+ */
+function rawText(v: unknown): string {
+  if (v === null || v === undefined) return 'null';
+  if (typeof v === 'string') return scalar(v);
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return `[${v.map(rawText).join(', ')}]`;
+  if (typeof v === 'object') {
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (entries.length === 0) return '{}';
+    return `{ ${entries
+      .map(([k, value]) => `${scalar(k)}: ${rawText(value)}`)
+      .join(', ')} }`;
+  }
+  // A YAML value is one of the above; anything else came from a caller
+  // building a document by hand, and `null` is the honest reading of it.
+  return 'null';
+}
+
+/** The carried keys of one block, as `key: value` fields for a flow map, in
+ * the author's own order. Empty when the block carried none. */
+function extraText(extra: RawField[] | undefined): string[] {
+  return (extra ?? []).map((f) => `${scalar(f.key)}: ${rawText(f.value)}`);
+}
+
 /** One `{ ability, tool?, dc }` row, key order matching
  * dungeonspec.ApproachSpec's own field order (ability, tool, dc). */
 function fmtApproach(a: ApproachDoc): string {
   const fields = [`ability: ${scalar(a.ability)}`];
   if (a.tool !== undefined) fields.push(`tool: ${scalar(a.tool)}`);
   fields.push(`dc: ${a.dc}`);
+  fields.push(...extraText(a.extra));
   return `{ ${fields.join(', ')} }`;
 }
 
@@ -1932,6 +1814,7 @@ function fmtApproach(a: ApproachDoc): string {
  * past-tense name with its span. The language is the author's, not a generic
  * `deed:` key this module invented. */
 function whenText(when: AnswerWhenDoc): string {
+  if (when.kind === 'raw') return rawText(when.raw);
   return when.kind === 'enemy'
     ? `{ enemy: ${when.band} }`
     : `{ ${when.deed}: { within: ${when.within} } }`;
@@ -1940,9 +1823,10 @@ function whenText(when: AnswerWhenDoc): string {
 /** One selector as the file writes it: a word, or the authored cell — axial
  * in the model, `[col,row]` in the bytes, like every other cell. */
 function selectorText(selector: AnswerSelectorDoc, o: Orientation): string {
-  return selector.at !== undefined
-    ? `{ at: ${fmtPair(toOffset(o, selector.at))} }`
-    : (selector.word ?? '');
+  if (selector.at !== undefined)
+    return `{ at: ${fmtPair(toOffset(o, selector.at))} }`;
+  if (selector.word !== undefined) return scalar(selector.word);
+  return rawText(selector.raw);
 }
 
 /** One outcome word and what it carries, by the shape the declaration gave
@@ -1953,6 +1837,9 @@ function answerWordText(word: AnswerWordDoc, o: Orientation): string {
   if (word.selector !== undefined) {
     return `${word.word}: ${selectorText(word.selector, o)}`;
   }
+  // A body the declaration's shape did not fit — held on the way in, written
+  // back on the way out, so the compiler grades what the author wrote.
+  if (word.raw !== undefined) return `${word.word}: ${rawText(word.raw)}`;
   return `${word.word}: {}`;
 }
 
@@ -1965,7 +1852,8 @@ function answerEntryText(entry: AnswerEntryDoc, o: Orientation): string {
   if (entry.weight !== undefined) fields.push(`weight: ${entry.weight}`);
   if (entry.say !== undefined) fields.push(`say: ${scalar(entry.say)}`);
   if (entry.when !== undefined) fields.push(`when: ${whenText(entry.when)}`);
-  if (entry.word !== undefined) fields.push(answerWordText(entry.word, o));
+  for (const word of entry.words ?? []) fields.push(answerWordText(word, o));
+  fields.push(...extraText(entry.extra));
   return fields.join(', ');
 }
 
@@ -1973,8 +1861,10 @@ function answerEntryText(entry: AnswerEntryDoc, o: Orientation): string {
  * author's own order. */
 function temperText(t: TemperDoc): string {
   if (t.word !== undefined) return scalar(t.word);
-  return `{ ${(t.mix ?? [])
-    .map((share) => `${share.word}: ${share.share}`)
+  if (t.mix === undefined) return rawText(t.raw);
+  if (t.mix.length === 0) return '{}';
+  return `{ ${t.mix
+    .map((share) => `${scalar(share.word)}: ${rawText(share.share)}`)
     .join(', ')} }`;
 }
 
@@ -1991,13 +1881,25 @@ function answerTableLines(
   if (table.length === 0) return [`${indent}on: {}`];
   const lines = [`${indent}on:`];
   for (const trigger of table) {
-    if (trigger.entries.length === 0) {
-      lines.push(`${indent}  ${trigger.trigger}: []`);
+    // A trigger whose value was never a list is written back as it came in.
+    if (trigger.raw !== undefined) {
+      lines.push(
+        `${indent}  ${scalar(trigger.trigger)}: ${rawText(trigger.raw)}`
+      );
       continue;
     }
-    lines.push(`${indent}  ${trigger.trigger}:`);
+    if (trigger.entries.length === 0) {
+      lines.push(`${indent}  ${scalar(trigger.trigger)}: []`);
+      continue;
+    }
+    lines.push(`${indent}  ${scalar(trigger.trigger)}:`);
     for (const entry of trigger.entries) {
-      lines.push(`${indent}    - { ${answerEntryText(entry, o)} }`);
+      // An entry that was not a mapping keeps the shape it had.
+      lines.push(
+        entry.raw !== undefined
+          ? `${indent}    - ${rawText(entry.raw)}`
+          : `${indent}    - { ${answerEntryText(entry, o)} }`
+      );
     }
   }
   return lines;
@@ -2006,7 +1908,8 @@ function answerTableLines(
 /** One predicate as the file writes it — a one-key flow map, the key's
  * spelling being the form (`PredicateDoc`). Exported for the panels that
  * show a predicate read-only in the file's own words. */
-export function predicateText(p: PredicateDoc): string {
+export function predicateText(p: PredicateHolder): string {
+  if ('raw' in p) return rawText(p.raw);
   if ('round' in p) return `{ round: ${p.round} }`;
   if ('down' in p) return `{ down: ${scalar(p.down)} }`;
   if ('fact' in p) return `{ fact: ${scalar(p.fact)} }`;
@@ -2132,6 +2035,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (region.concealed) {
         out.push('    concealed: true');
       }
+      for (const field of extraText(region.extra)) out.push(`    ${field}`);
     }
   }
 
@@ -2153,10 +2057,15 @@ export function emitDungeon(doc: DungeonDoc): string {
     // THE BARE PAIR WHEN THERE IS NO FACING. Every dungeon written before
     // facing existed keeps the bytes it has always had, which is what the
     // toolkit fixtures are and what their byte-pins check.
+    const startFields: string[] = [];
+    if (doc.start.facing !== undefined) {
+      startFields.push(`facing: ${scalar(doc.start.facing)}`);
+    }
+    startFields.push(...extraText(doc.start.extra));
     out.push(
-      doc.start.facing === undefined
+      startFields.length === 0
         ? `start: [${c}, ${r}]`
-        : `start: { at: [${c}, ${r}], facing: ${scalar(doc.start.facing)} }`
+        : `start: { at: [${c}, ${r}], ${startFields.join(', ')} }`
     );
   }
 
@@ -2171,6 +2080,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       out.push(`    end: ${fmtPosition(o, w.end)}`);
       if (w.name !== undefined) out.push(`    name: ${scalar(w.name)}`);
       if (w.height !== undefined) out.push(`    height: ${w.height}`);
+      for (const field of extraText(w.extra)) out.push(`    ${field}`);
     }
   }
 
@@ -2189,6 +2099,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (d.concealed !== undefined) {
         out.push(`    concealed: [${d.concealed.map(fmtApproach).join(', ')}]`);
       }
+      for (const field of extraText(d.extra)) out.push(`    ${field}`);
     }
   }
 
@@ -2211,7 +2122,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       // A placement's temperament is ONE word (`ANSWER_TEMPER`), so it rides
       // the flat fields beside `faction`.
       if (p.temper !== undefined) {
-        fields.push(`temper: ${scalar(p.temper)}`);
+        fields.push(`temper: ${temperText(p.temper)}`);
       }
       if (p.blocksMovement !== undefined) {
         fields.push(`blocks_movement: ${p.blocksMovement}`);
@@ -2245,6 +2156,9 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.actions !== undefined) {
         fields.push(`actions: [${p.actions.map(scalar).join(', ')}]`);
       }
+      // The keys this codec never modelled, written back in the author's own
+      // order, after the ones it did ([RawField]).
+      fields.push(...extraText(p.extra));
       // The answer table is NESTED — a map of lists of maps — and a flow map
       // holding that is legal YAML and unreadable, while the author is the
       // one who reads this file. So an entry carrying a table is written in
@@ -2278,6 +2192,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (f.mind !== undefined) fields.push(`mind: ${scalar(f.mind)}`);
       if (f.temper !== undefined)
         fields.push(`temper: ${temperText(f.temper)}`);
+      fields.push(...extraText(f.extra));
       if (f.on === undefined) {
         out.push(`  - { ${fields.join(', ')} }`);
         continue;
@@ -2297,11 +2212,12 @@ export function emitDungeon(doc: DungeonDoc): string {
     for (const d of doc.dispositions) {
       const fields = [
         `between: [${scalar(d.between[0])}, ${scalar(d.between[1])}]`,
-        `stance: ${d.stance}`,
+        `stance: ${scalar(d.stance)}`,
       ];
       if (d.until !== undefined) {
         fields.push(`until: ${predicateText(d.until)}`);
       }
+      fields.push(...extraText(d.extra));
       out.push(`  - { ${fields.join(', ')} }`);
     }
   }
@@ -2327,6 +2243,7 @@ export function emitDungeon(doc: DungeonDoc): string {
             .join(', ')} }`
         );
       }
+      for (const field of extraText(record.extra)) out.push(`    ${field}`);
     }
   }
 
@@ -2337,7 +2254,9 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('exits:');
     for (const e of layout.exits) {
       const [c, r] = toOffset(o, e.at);
-      out.push(`  - { id: ${scalar(e.id)}, at: [${c}, ${r}] }`);
+      const fields = [`id: ${scalar(e.id)}`, `at: [${c}, ${r}]`];
+      fields.push(...extraText(e.extra));
+      out.push(`  - { ${fields.join(', ')} }`);
     }
   }
 
@@ -2346,7 +2265,10 @@ export function emitDungeon(doc: DungeonDoc): string {
   if (doc.endings.length > 0) {
     out.push('endings:');
     for (const e of doc.endings) {
-      out.push(`  - { id: ${scalar(e.id)}, when: ${predicateText(e.when)} }`);
+      const fields = [`id: ${scalar(e.id)}`];
+      if (e.when !== undefined) fields.push(`when: ${predicateText(e.when)}`);
+      fields.push(...extraText(e.extra));
+      out.push(`  - { ${fields.join(', ')} }`);
     }
   }
 
@@ -2373,6 +2295,11 @@ export function emitDungeon(doc: DungeonDoc): string {
       }
     }
   }
+
+  // The root keys this codec never modelled, LAST, so every key it does
+  // model keeps the position it has always had and no existing file's bytes
+  // move ([RawField]).
+  for (const field of extraText(doc.extra)) out.push(field);
 
   return out.join('\n') + '\n';
 }
@@ -3416,22 +3343,26 @@ function nextFactionId(doc: DungeonDoc): string {
 }
 
 /** One predicate with every mention of faction `from` renamed to `to` —
- * only the `stance` form names a faction. */
+ * only the `stance` form names a faction. A predicate this grammar has not
+ * learned is returned UNTOUCHED: the rename follows the forms this module can
+ * read, and inventing a substitution inside a shape it does not understand
+ * would rewrite an author's file on a guess. */
 function renamePredicateFaction(
-  p: PredicateDoc,
+  p: PredicateHolder,
   from: string,
   to: string
-): PredicateDoc {
-  if (!('stance' in p)) return p;
+): PredicateHolder {
+  if (!isPredicateDoc(p) || !('stance' in p)) return p;
   const follow = (name: string) => (name === from ? to : name);
   const [a, b] = p.stance.between;
   return { stance: { between: [follow(a), follow(b)], is: p.stance.is } };
 }
 
 /** Whether a predicate names faction `id` — the `stance` form is the only
- * one that can. */
-function predicateNamesFaction(p: PredicateDoc, id: string): boolean {
-  return 'stance' in p && p.stance.between.includes(id);
+ * one that can, and a held-whole predicate names nothing this module can
+ * read, so it is left alone. */
+function predicateNamesFaction(p: PredicateHolder, id: string): boolean {
+  return isPredicateDoc(p) && 'stance' in p && p.stance.between.includes(id);
 }
 
 /**
@@ -3476,10 +3407,11 @@ export function updateFaction(
       }
       return next;
     }),
-    endings: doc.endings.map((e) => ({
-      ...e,
-      when: renamePredicateFaction(e.when, id, to),
-    })),
+    endings: doc.endings.map((e) =>
+      e.when === undefined
+        ? e
+        : { ...e, when: renamePredicateFaction(e.when, id, to) }
+    ),
   };
 }
 

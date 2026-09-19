@@ -4,7 +4,6 @@ import {
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
   ANSWER_WORD_KEYS,
-  answerWordRefusal,
   answerWordsForTrigger,
 } from './answerVocabulary';
 import { emitDungeon, parseDungeon } from './dungeonYaml';
@@ -15,15 +14,29 @@ import {
 import { fromOffset } from './hexOffset';
 
 /**
- * THE TWO DIMENSIONS #1137 ADDS, each asserted against the real front-room
- * snapshot with one targeted substitution, so a rule here is a rule about the
- * dialect the engine compiles rather than about a toy document.
+ * THE ENGINE'S GRADE IS THE VERDICT (rpg-project#481 R3).
  *
- * The sentences are the ENGINE'S OWN (`dungeonspec/validate.go`,
- * `WhenSpec.UnmarshalYAML`, `TemperSpec.UnmarshalYAML`) — an author meets the
- * same words from the form and from the server, so a test that pinned a
- * paraphrase would let the two drift apart. Where the engine's sentence ends
- * in `(line N)` the assertion allows the number and pins the words.
+ * This file used to pin twenty refusals: a word under the wrong trigger, a
+ * band outside the four, a deed with no span, a selector outside the sealed
+ * three, a temperament this build does not ship. Each asserted that the WEB
+ * refused a file, in a sentence transcribed from `dungeonspec`. Every one of
+ * those is deleted, because the assertion behind them was the wrong one: the
+ * web's job is not to decide whether a file plays.
+ *
+ * WHAT IS ASSERTED INSTEAD. Each of the same mutations is applied to the real
+ * front-room snapshot, and the file must:
+ *
+ *   1. open — no refusal, no exception, the canvas gets a document;
+ *   2. survive — the value the author wrote is in the bytes the codec emits,
+ *      unchanged, so the compiler grades what was written and not a repair;
+ *   3. settle — `emit(parse(bytes))` is byte-identical to `bytes`, so a
+ *      carried value is not a value that shifts every time the file is saved.
+ *
+ * That is what "carries the value through verbatim" has to mean to be worth
+ * anything: a mutation that round-trips proves the file reached the engine.
+ *
+ * The declarations in `answerVocabulary.ts` are still asserted here, as the
+ * OFFERS they now are — a palette's list, not a gate.
  */
 function mutated(from: string, to: string): string {
   if (!REFERENCE_FRONT_ROOM_YAML.includes(from)) {
@@ -33,6 +46,23 @@ function mutated(from: string, to: string): string {
     );
   }
   return REFERENCE_FRONT_ROOM_YAML.replace(from, to);
+}
+
+/**
+ * Apply one mutation to the snapshot and assert all three properties. Returns
+ * the emitted bytes so a caller can look at anything else it cares about.
+ *
+ * `carried` is the exact text the emitter must produce for the mutated value.
+ * Asserting on the BYTES rather than on the parsed model is deliberate: the
+ * bytes are what `PutDungeon` grades, and a model that held a value but wrote
+ * something else back would pass a model assertion and still lose the file.
+ */
+function carries(from: string, to: string, carried: string): string {
+  const doc = parseDungeon(mutated(from, to));
+  const bytes = emitDungeon(doc);
+  expect(bytes).toContain(carried);
+  expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
+  return bytes;
 }
 
 /** The `time` table's rows, whole, so each anchor is an authored line and not
@@ -47,49 +77,9 @@ const TIME_NONE =
 const GOBLIN_MIX = 'temper: { coward: 2, soldier: 1, aggressive: 1 }';
 /** A plain placement, for the placement-vs-faction temper rule. */
 const PLAIN_PLACEMENT = '    at: [4, 1]';
-
-/**
- * THE ENGINE'S OWN LEGALITY MATRIX, HAND-TRANSCRIBED — NEVER DERIVED FROM THE
- * DECLARATION.
- *
- * This table and `answerVocabulary.ts` are TWO INDEPENDENT COPIES of the same
- * Go, and that is the point: the test below asserts they agree, so an edit to
- * either one goes red instead of the two quietly agreeing with each other.
- *
- * THE FIRST VERSION OF THAT TEST DID NOT DO THIS (review round 1, Important).
- * It derived its "legal" set from `answerWordsForTrigger` and its expected
- * sentence from `word.legalOn`, so it only proved the refusal function agreed
- * with the declaration. A mutation swapping `flee` and `hold` between the two
- * applicability groups passed it — `checked === 18`, zero failures — while
- * inverting the engine's actual rule. Only literals written here, from the Go
- * and not from the declaration, pin membership.
- *
- * Read at rpg-toolkit `origin/main`, `rulebooks/dnd5e/encounter` v0.90.0
- * (`f672c888`; identical to `origin/main`):
- *
- *   - the five trigger keys and their order — `encounter/table.go:154-193`
- *     (`AnswerIntimidated` … `AnswerPersuadeFailed`, `AnswerTime`, `TableKeys`);
- *   - the word grouping and the two refusal sentences —
- *     `dungeonspec/validate.go:1501-1518` (`wordLegality`'s
- *     `case "fact", "flee"` and its `default`; the case names the word, the
- *     `v.fail` string is the sentence);
- *   - the sealed word set — `dungeonspec/spec.go:905-1010` (`AnswerSpec`).
- *
- * Trigger -> the words the ENGINE accepts under it.
- */
-const ENGINE_WORD_LEGALITY: Readonly<Record<string, readonly string[]>> = {
-  intimidated: ['fact', 'flee'],
-  intimidate_failed: ['fact', 'flee'],
-  persuaded: ['fact', 'flee'],
-  persuade_failed: ['fact', 'flee'],
-  time: ['hold', 'attack', 'toward', 'away'],
-};
-
-/** The words `wordLegality`'s `case "fact", "flee"` names — the branch that
- * decides WHICH of the two sentences an illegal pair gets. Written here for
- * the same reason the matrix is: reading it from the declaration would put the
- * expectation back inside the thing under test. */
-const ENGINE_SOCIAL_WORDS: readonly string[] = ['fact', 'flee'];
+/** One authored social entry, for the entry-level mutations. */
+const COWED_ENTRY =
+  '- { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don\'t.", fact: goblin-cowed }';
 
 describe('the front room snapshot carries the shipped grammar', () => {
   it('reads a placement `time` table whole — conditions, words, selectors', () => {
@@ -101,32 +91,31 @@ describe('the front room snapshot carries the shipped grammar', () => {
       {
         weight: 3,
         when: { kind: 'deed', deed: 'fled', within: 3 },
-        word: { word: 'away', selector: { word: 'actor' } },
+        words: [{ word: 'away', selector: { word: 'actor' } }],
       },
       {
         weight: 3,
         when: { kind: 'deed', deed: 'attacked', within: 3 },
-        word: { word: 'attack', selector: { word: 'attacker' } },
+        words: [{ word: 'attack', selector: { word: 'attacker' } }],
       },
       {
         when: { kind: 'enemy', band: 'reach' },
-        word: { word: 'attack', selector: { word: 'enemy' } },
+        words: [{ word: 'attack', selector: { word: 'enemy' } }],
       },
       {
         when: { kind: 'enemy', band: 'seen' },
-        word: { word: 'toward', selector: { word: 'enemy' } },
+        words: [{ word: 'toward', selector: { word: 'enemy' } }],
       },
       {
         when: { kind: 'enemy', band: 'remembered' },
-        word: { word: 'toward', selector: { word: 'enemy' } },
+        words: [{ word: 'toward', selector: { word: 'enemy' } }],
       },
       {
         when: { kind: 'enemy', band: 'none' },
         // The authored cell is AXIAL in the model, `[3,3]` in the bytes.
-        word: {
-          word: 'toward',
-          selector: { at: fromOffset('pointy', [3, 3]) },
-        },
+        words: [
+          { word: 'toward', selector: { at: fromOffset('pointy', [3, 3]) } },
+        ],
       },
     ]);
   });
@@ -168,7 +157,7 @@ describe('the front room snapshot carries the shipped grammar', () => {
       'persuaded',
       'persuade_failed',
     ]);
-    expect(goblins?.on?.[0].entries[1].word).toEqual({ word: 'flee' });
+    expect(goblins?.on?.[0].entries[1].words).toEqual([{ word: 'flee' }]);
   });
 
   it('re-emits and re-parses the whole room byte-for-byte', () => {
@@ -177,259 +166,166 @@ describe('the front room snapshot carries the shipped grammar', () => {
   });
 });
 
-describe('a word is legal on some triggers and not others', () => {
-  it('refuses `flee` on `time` with the engine’s own sentence', () => {
-    // The dimension #1118 could not express. A picker built from the flat word
-    // list offered this pair; the parser must refuse it in the server's words.
-    const text = mutated(
+describe('the word-to-trigger rule is the engine’s, and the file still opens', () => {
+  it('carries `flee` written on `time`', () => {
+    // The pair the engine refuses (`validate.go` `wordLegality`). The builder
+    // has no opinion: it writes the word back where the author put it and the
+    // compiler answers at `place[i].on.time[j].flee`.
+    carries(
       TIME_NONE,
-      TIME_NONE.replace('toward: { at: [3, 3] }', 'flee: {}')
-    );
-    expect(() => parseDungeon(text)).toThrow(
-      /`flee` answers a social verdict, and `time` is not one \(line \d+\)/
+      TIME_NONE.replace('toward: { at: [3, 3] }', 'flee: {}'),
+      'flee: {}'
     );
   });
 
-  it('refuses an action word on a social key with the engine’s own sentence', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(
-          '{ say: "Big talk, for someone standing in my doorway." }',
-          '{ say: "Big talk.", hold: {} }'
-        )
-      )
-    ).toThrow(
-      /`hold` is what a creature does with time, and `intimidate_failed` is an outcome \(line \d+\)/
+  it('carries an action word written on a social key', () => {
+    carries(
+      '{ say: "Big talk, for someone standing in my doorway." }',
+      '{ say: "Big talk.", hold: {} }',
+      'hold: {}'
     );
   });
 
-  it('refuses a `when` under a social key, because the key IS the condition', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(
-          '{ say: "Big talk, for someone standing in my doorway." }',
-          '{ say: "Big talk.", when: { enemy: none } }'
-        )
-      )
-    ).toThrow(
-      /`intimidate_failed` is already the condition — a `when` under it asks when a thing that just happened happened \(line \d+\)/
+  it('carries a `when` written under a social key', () => {
+    carries(
+      '{ say: "Big talk, for someone standing in my doorway." }',
+      '{ say: "Big talk.", when: { enemy: none } }',
+      'when: { enemy: none }'
     );
   });
 
-  it('matches the ENGINE’s legality matrix, transcribed independently', () => {
-    // EVERY expectation below comes from `ENGINE_WORD_LEGALITY`, and nothing
-    // in it is read from the declaration or from `word.legalOn`. A mutation
-    // that swaps two words between the applicability groups changes this
-    // table's *content* and fails here — which the version this replaced did
-    // not do.
-
-    // The declaration's grouping must equal the hand transcription...
-    for (const [trigger, words] of Object.entries(ENGINE_WORD_LEGALITY)) {
-      expect(answerWordsForTrigger(trigger).map((w) => w.key)).toEqual(words);
-    }
-    // ...its trigger seal must be exactly the transcription's keys...
-    expect([...ANSWER_TRIGGER_KEYS].sort()).toEqual(
-      Object.keys(ENGINE_WORD_LEGALITY).sort()
+  it('carries a body the word’s declared shape does not fit', () => {
+    // `FleeSpec`/`HoldSpec` are structs, so the Go refuses `flee: 5` and
+    // `hold: [1]` at boot — with a sentence naming the YAML tag, which this
+    // codec could never reproduce faithfully. It writes the body back instead.
+    carries(COWED_ENTRY, '- { say: "Boss! BOSS!", flee: 5 }', 'flee: 5');
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('away: actor', 'hold: [1]'),
+      'hold: [1]'
     );
-    // ...and its word seal must be exactly the words the transcription names.
-    const transcribedWords = [
-      ...new Set(Object.values(ENGINE_WORD_LEGALITY).flat()),
-    ];
-    expect([...ANSWER_WORD_KEYS].sort()).toEqual(transcribedWords.sort());
-
-    // Exhaustive over the transcription: every (word, trigger) the ENGINE
-    // does not accept, and only those, in the engine's own two sentences.
-    let checked = 0;
-    for (const [trigger, words] of Object.entries(ENGINE_WORD_LEGALITY)) {
-      const legal = new Set(words);
-      for (const word of transcribedWords) {
-        const refusal = answerWordRefusal(word, trigger);
-        if (legal.has(word)) {
-          expect(refusal).toBeUndefined();
-          continue;
-        }
-        checked += 1;
-        // WHICH sentence comes from the TRANSCRIPTION's membership — the Go's
-        // `case "fact", "flee"` — never from the declaration's `legalOn`.
-        expect(refusal).toBe(
-          ENGINE_SOCIAL_WORDS.includes(word)
-            ? `\`${word}\` answers a social verdict, and \`${trigger}\` is not one`
-            : `\`${word}\` is what a creature does with time, and \`${trigger}\` is an outcome`
-        );
-      }
-    }
-    // 2 social words x 1 time trigger + 4 time words x 4 social triggers.
-    expect(checked).toBe(18);
   });
 
-  it('refuses a scalar or sequence body on a word that carries nothing', () => {
-    // MEASURED AGAINST THE REAL DECODER (review round 1, finding 2):
-    // `FleeSpec`/`HoldSpec` are structs, so the Go refuses `flee: 5`,
-    // `hold: 5` and `hold: [1]` at boot. The web used to read all three as
-    // the bare word.
-    expect(() =>
-      parseDungeon(
-        mutated(
-          '- { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don\'t.", fact: goblin-cowed }',
-          '- { say: "Boss! BOSS!", flee: 5 }'
-        )
-      )
-    ).toThrow(/flee takes a mapping — write `flee: \{\}`/);
-    expect(() =>
-      parseDungeon(
-        mutated(TIME_FLED, TIME_FLED.replace('away: actor', 'hold: [1]'))
-      )
-    ).toThrow(/hold takes a mapping — write `hold: \{\}`/);
-  });
-
-  it('accepts a mapping body with keys in it, exactly as the Go does', () => {
-    // THE OTHER DIRECTION MATTERS MORE. The engine's custom unmarshaler never
-    // runs `KnownFields` inside `FleeSpec`, so `flee: { x: 1 }` decodes clean
-    // there — measured. Refusing it here would be the web refusing a file the
-    // server reads, the failure this whole issue exists to undo.
-    expect(() =>
-      parseDungeon(
-        mutated(
-          '- { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don\'t.", fact: goblin-cowed }',
-          '- { say: "Boss! BOSS!", flee: { x: 1 } }'
-        )
-      )
-    ).not.toThrow();
+  it('carries a mapping body with keys in it, exactly as the Go reads it', () => {
+    // The engine's custom unmarshaler never runs `KnownFields` inside
+    // `FleeSpec`, so `flee: { x: 1 }` decodes clean there.
+    carries(
+      COWED_ENTRY,
+      '- { say: "Boss! BOSS!", flee: { x: 1 } }',
+      'flee: { x: 1 }'
+    );
   });
 });
 
-describe('the `when` shape', () => {
-  it('refuses two conditions rather than reading them as `and`', () => {
-    const text = mutated(
+describe('a `when` this build has no reader for still reaches the compiler', () => {
+  it('carries two conditions in one `when`, rather than guessing at `and`', () => {
+    carries(
       TIME_NONE,
       TIME_NONE.replace(
         '{ enemy: none }',
         '{ enemy: none, fled: { within: 1 } }'
-      )
-    );
-    expect(() => parseDungeon(text)).toThrow(
-      /a `when` is one condition, and this names 2/
+      ),
+      'when: { enemy: none, fled: { within: 1 } }'
     );
   });
 
-  it('refuses an enemy band outside the four', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(TIME_REACH, TIME_REACH.replace('enemy: reach', 'enemy: nearby'))
-      )
-    ).toThrow(
-      /`enemy: nearby` is not a condition this build reads: they are reach, seen, remembered, none/
+  it('carries an enemy band outside the four', () => {
+    carries(
+      TIME_REACH,
+      TIME_REACH.replace('enemy: reach', 'enemy: nearby'),
+      'when: { enemy: nearby }'
     );
   });
 
-  it('refuses a deed the build does not hold', () => {
-    expect(() =>
-      parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('fled:', 'fleeing:')))
-    ).toThrow(
-      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`\)/
+  it('carries a deed this build does not hold', () => {
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('fled:', 'fleeing:'),
+      'when: { fleeing: { within: 3 } }'
     );
   });
 
-  it('refuses a deed with no span written', () => {
-    expect(() =>
-      parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('{ within: 3 }', '{}')))
-    ).toThrow(/`fled` names no span — write \{ within: N \}/);
+  it('carries a deed with no span written', () => {
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('{ within: 3 }', '{}'),
+      'when: { fled: {} }'
+    );
   });
 
-  it('refuses a span counted from zero', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(TIME_FLED, TIME_FLED.replace('within: 3', 'within: 0'))
-      )
-    ).toThrow(/a span of 0 rounds is counted from 1/);
+  it('carries a span counted from zero', () => {
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('within: 3', 'within: 0'),
+      'when: { fled: { within: 0 } }'
+    );
   });
 
-  it('carries the shape the declaration seals', () => {
-    expect(ANSWER_WHEN.enemyBands).toHaveLength(4);
-    expect(ANSWER_WHEN.deeds).toHaveLength(4);
-  });
-
-  it('refuses a non-scalar band exactly as the raw node reads it', () => {
-    // `yaml.Node.Value` is empty for a sequence, so `enemy: [1, 2]` reaches
-    // `unknownEnemyBandRefusal("")` in the Go — ``` `enemy: ` is not a
-    // condition this build reads ``` (review round 1, finding 3).
-    expect(() =>
-      parseDungeon(
-        mutated(TIME_REACH, TIME_REACH.replace('enemy: reach', 'enemy: [1, 2]'))
-      )
-    ).toThrow(
-      /`enemy: ` is not a condition this build reads: they are reach, seen, remembered, none/
+  it('carries a non-scalar band as the sequence it is', () => {
+    // The Go reads `yaml.Node.Value`, which is empty for a sequence — a
+    // detail of ITS decoder, and not one the web has to reproduce now that it
+    // does not author the refusal. The bytes go back as written.
+    carries(
+      TIME_REACH,
+      TIME_REACH.replace('enemy: reach', 'enemy: [1, 2]'),
+      'when: { enemy: [1, 2] }'
     );
   });
 });
 
 describe('selectors', () => {
-  it('refuses a cell on a word that acts on a creature', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(
-          TIME_FLED,
-          TIME_FLED.replace('away: actor', 'away: { at: [3, 3] }')
-        )
-      )
-    ).toThrow(
-      /a cell is somewhere to walk toward, and `away` acts on a creature \(line \d+\)/
+  it('carries a cell on a word that acts on a creature', () => {
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('away: actor', 'away: { at: [3, 3] }'),
+      // The cell is a shape the model DOES hold, so it takes the emitter's
+      // own compact spelling, exactly as `toward`'s does. Which word a cell
+      // is legal on is `entrySelector`'s question, asked of the compiler.
+      'away: { at: [3,3] }'
     );
   });
 
-  it('refuses `actor` in an entry whose `when` names no deed', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(
-          TIME_REACH,
-          TIME_REACH.replace('attack: enemy', 'attack: actor')
-        )
-      )
-    ).toThrow(
-      /`actor` is the actor of the deed this entry's `when` names, and this entry names no deed \(line \d+\)/
+  it('carries `actor` in an entry whose `when` names no deed', () => {
+    carries(
+      TIME_REACH,
+      TIME_REACH.replace('attack: enemy', 'attack: actor'),
+      'attack: actor'
     );
   });
 
-  it('refuses a selector word outside the sealed three', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(TIME_FLED, TIME_FLED.replace('away: actor', 'away: nobody'))
-      )
-    ).toThrow(
-      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, or \{ at: \[col, row\] \}/
+  it('carries a selector word outside the sealed three', () => {
+    carries(
+      TIME_FLED,
+      TIME_FLED.replace('away: actor', 'away: nobody'),
+      'away: nobody'
     );
   });
 });
 
 describe('temper', () => {
-  it('refuses a word outside the sealed three', () => {
-    expect(() =>
-      parseDungeon(mutated(GOBLIN_MIX, GOBLIN_MIX.replace('coward', 'brave')))
-    ).toThrow(
-      /"brave" is not a temperament this build ships: they are soldier, coward, aggressive/
+  it('carries a word outside the sealed three', () => {
+    // rpg-dnd5e-web#1145, in the version-2 dialect: the refusal that stopped
+    // a file the engine takes.
+    carries(
+      GOBLIN_MIX,
+      GOBLIN_MIX.replace('coward', 'brave'),
+      'temper: { brave: 2, soldier: 1, aggressive: 1 }'
     );
   });
 
-  it('refuses a share that can never be dealt', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(GOBLIN_MIX, GOBLIN_MIX.replace('coward: 2', 'coward: 0'))
-      )
-    ).toThrow(
-      /a share of 0 can never be dealt — give "coward" a share of at least 1/
+  it('carries a share that can never be dealt', () => {
+    carries(
+      GOBLIN_MIX,
+      GOBLIN_MIX.replace('coward: 2', 'coward: 0'),
+      'temper: { coward: 0, soldier: 1, aggressive: 1 }'
     );
   });
 
-  it('refuses a mix on a placement, where there is nobody to deal to', () => {
-    expect(() =>
-      parseDungeon(
-        mutated(
-          PLAIN_PLACEMENT,
-          `${PLAIN_PLACEMENT}\n    temper: { coward: 1, soldier: 1 }`
-        )
-      )
-    ).toThrow(
-      /a placement names one creature — a temper mix belongs on the faction/
+  it('carries a mix on a placement, where the engine wants a word', () => {
+    carries(
+      PLAIN_PLACEMENT,
+      `${PLAIN_PLACEMENT}\n    temper: { coward: 1, soldier: 1 }`,
+      'temper: { coward: 1, soldier: 1 }'
     );
   });
 
@@ -437,21 +333,118 @@ describe('temper', () => {
     const doc = parseDungeon(
       mutated(PLAIN_PLACEMENT, `${PLAIN_PLACEMENT}\n    temper: coward`)
     );
-    expect(doc.place.find((p) => p.id === 'front-goblin-2')?.temper).toBe(
-      'coward'
+    expect(doc.place.find((p) => p.id === 'front-goblin-2')?.temper).toEqual({
+      word: 'coward',
+    });
+  });
+
+  it('writes a non-string scalar back as the author typed it', () => {
+    // `temper: 5` and `temper: "5"` are different bytes. The engine reads a
+    // scalar node either way; the codec must not pick one for the author.
+    carries(GOBLIN_MIX, 'temper: 5', 'temper: 5');
+  });
+});
+
+describe('an unknown key travels to the compiler', () => {
+  it('carries a misspelled faction key at its own path', () => {
+    // The design doc's own probe (rpg-project#481): `tempre` on a faction
+    // used to stop the file at the door with the builder's guess. It now
+    // reaches the compiler, which answers `factions[0].tempre: field tempre
+    // not found in type dungeonspec.FactionSpec`.
+    const bytes = carries(GOBLIN_MIX, 'tempre: coward', 'tempre: coward');
+    expect(bytes).not.toContain('temper: { coward: 2');
+  });
+
+  it('carries a trigger key this build does not roll', () => {
+    carries(
+      '    intimidated:',
+      '    intimdate_failed:',
+      '    intimdate_failed:'
     );
   });
 
-  it('seals the words to the engine’s three, in the engine’s order', () => {
+  it('carries an entry key nobody designed', () => {
+    carries(
+      COWED_ENTRY,
+      COWED_ENTRY.replace('fact: goblin-cowed', 'fcat: goblin-cowed'),
+      'fcat: goblin-cowed'
+    );
+  });
+
+  it('carries a placement key from a newer engine', () => {
+    carries(
+      PLAIN_PLACEMENT,
+      `${PLAIN_PLACEMENT}\n    patrols: [[1, 1], [2, 2]]`,
+      'patrols: [[1, 1], [2, 2]]'
+    );
+  });
+
+  it('carries the deleted `knows:` field instead of refusing it by name', () => {
+    // rpg-project#372 R1 removed `knows`; the codec used to refuse it in the
+    // compiler's own sentence. That sentence is the compiler's to say.
+    carries(
+      PLAIN_PLACEMENT,
+      `${PLAIN_PLACEMENT}\n    knows: cellar-door`,
+      'knows: cellar-door'
+    );
+  });
+});
+
+describe('the declarations are offers', () => {
+  it('lists the five triggers and the six words a palette shows', () => {
+    // READ FROM THE ENGINE at `rulebooks/dnd5e/encounter` v0.90.0:
+    // `encounter/table.go` (`TableKeys`) and `dungeonspec/spec.go`
+    // (`AnswerSpec`). Written out here rather than derived from the
+    // declaration, so an edit to either side goes red.
+    expect([...ANSWER_TRIGGER_KEYS]).toEqual([
+      'intimidated',
+      'intimidate_failed',
+      'persuaded',
+      'persuade_failed',
+      'time',
+    ]);
+    expect([...ANSWER_WORD_KEYS]).toEqual([
+      'fact',
+      'flee',
+      'hold',
+      'attack',
+      'toward',
+      'away',
+    ]);
+  });
+
+  it('offers only the words a trigger takes, so a picker never builds a bad pair', () => {
+    // `dungeonspec/validate.go` `wordLegality`: `fact`/`flee` answer a social
+    // verdict, the four action words are what a creature does with time. This
+    // is what a PICKER shows — nothing refuses a file against it.
+    const engineLegality: Readonly<Record<string, readonly string[]>> = {
+      intimidated: ['fact', 'flee'],
+      intimidate_failed: ['fact', 'flee'],
+      persuaded: ['fact', 'flee'],
+      persuade_failed: ['fact', 'flee'],
+      time: ['hold', 'attack', 'toward', 'away'],
+    };
+    for (const [trigger, words] of Object.entries(engineLegality)) {
+      expect(answerWordsForTrigger(trigger).map((w) => w.key)).toEqual(words);
+    }
+    // A trigger the declaration has not learned offers nothing, rather than
+    // offering everything.
+    expect(answerWordsForTrigger('taunted')).toEqual([]);
+  });
+
+  it('carries the `when` shape and the three temperaments a panel lists', () => {
+    expect(ANSWER_WHEN.enemyBands).toEqual([
+      'reach',
+      'seen',
+      'remembered',
+      'none',
+    ]);
+    expect(ANSWER_WHEN.deeds).toEqual([
+      'attacked',
+      'intimidated',
+      'persuaded',
+      'fled',
+    ]);
     expect(ANSWER_TEMPER.words).toEqual(['soldier', 'coward', 'aggressive']);
-  });
-
-  it('reads a non-word scalar as a word, the way the raw node does', () => {
-    // The engine's `TemperSpec.UnmarshalYAML` sees a scalar node and refuses
-    // it with `%q is not a temperament…`, so `temper: 5` reports `"5"` —
-    // not the mix-or-word shape sentence (review round 1, finding 3).
-    expect(() => parseDungeon(mutated(GOBLIN_MIX, 'temper: 5'))).toThrow(
-      /"5" is not a temperament this build ships: they are soldier, coward, aggressive/
-    );
   });
 });

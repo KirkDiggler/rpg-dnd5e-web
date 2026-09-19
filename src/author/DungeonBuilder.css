@@ -258,6 +258,17 @@
   color: var(--text-primary);
   opacity: 0.9;
 }
+/* Who is speaking. The two grades sit one above the other in the rail head
+   and look alike, so each says whose it is (rpg-project#481 R3): the engine
+   decides whether the file PLAYS, the codec whether the builder can DRAW it.
+   Without the label they read as one list with two kinds of sentence in it. */
+.dg-grade-label {
+  margin: 4px 0 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
 .dg-errors {
   max-height: 140px;
   overflow: auto;

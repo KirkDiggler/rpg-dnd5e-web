@@ -1,31 +1,35 @@
 /**
- * The faction and disposition vocabulary — the closed sets the engine's
- * authoring dialect seals, in ONE home.
+ * The faction and disposition vocabulary — OFFERS, NOT RULES.
  *
- * EXTRACTED FROM `dungeonYaml.ts` UNCHANGED (rpg-dnd5e-web#1136). The site
- * scope in the single-room v4 document (`singleRoomDungeon.ts`,
- * `siteScope.ts`) needs the stance words and the predicate forms, and
- * `dungeonYaml.ts` is the version-2 document model — importing it into the
- * single-room decoder would make the newer dialect depend on the older
- * builder's whole model for three words. So the words live here, both
- * dialects read them, and `dungeonYaml.ts` re-exports every one of them so its
- * existing consumers are untouched.
+ * WHAT THIS IS (rpg-project#481 R3). The stance words a select lists, the
+ * predicate forms [PredicateEditor] can edit, and the two reserved side names
+ * the panels reason about. They exist so a panel can offer real choices.
  *
- * A SECOND SPELLING OF ANY OF THESE IS THE BUG THIS MODULE PREVENTS: a stance
- * the compiler knows and the parser does not is a file the server reads and
- * the builder refuses, which is the failure #1118 undid.
+ * WHAT IT IS NOT. It is not a gate. NO DECODER IN THE WEB REFUSES A FILE
+ * AGAINST THESE SETS: `DispositionSpec` seals the stances and
+ * `dungeonspec/validate.go` grades a predicate, and
+ * `PutDungeon{validate_only}` is where an author meets that verdict. A stance
+ * word this list has not learned is a word no select offers and a file that
+ * still opens; a predicate form it has not learned is shown read-only in the
+ * file's own words and travels to the compiler untouched.
+ *
+ * EXTRACTED FROM `dungeonYaml.ts` (rpg-dnd5e-web#1136) so the single-room
+ * dialect could read the same words without importing the version-2 document
+ * model; `dungeonYaml.ts` re-exports every one of them, so its existing
+ * consumers are untouched.
  */
 
-/** The three stances a disposition may declare (rpg-project#375 §2) — a
- * closed set, in the compiler's own words. `hostile` is the only one an
- * `until` is legal with: a predicate says when the hostility ENDS, and
- * when it holds the stance becomes `neutral` (R2). */
+/** The three stances the selects OFFER (rpg-project#375 §2). `hostile` is the
+ * only one an `until` is legal with — a predicate says when the hostility
+ * ENDS, and when it holds the stance becomes `neutral` (R2) — and that rule,
+ * like the set itself, is graded by the compiler. */
 export const STANCES = ['hostile', 'neutral', 'allied'] as const;
 export type Stance = (typeof STANCES)[number];
 
 /** The players' side. NEVER DECLARED under `factions:` — it is the one
- * faction every dungeon has without saying so, and a file that declares it
- * is refused by name (§2). It IS nameable in a disposition's `between`. */
+ * faction every dungeon has without saying so, and a file that declares it is
+ * refused BY THE COMPILER, by name (§2). It IS nameable in a disposition's
+ * `between`, which is what the panels use this for. */
 export const PARTY = 'party';
 /** Where every monster that names no faction belongs (R4). Hostile to the
  * party, exactly as every dungeon written before factions existed behaved.
@@ -50,10 +54,11 @@ export const MONSTERS = 'monsters';
  *                      the pair's stance folds to that value
  *
  * Each form compiles to an encounter `Trigger`; the set is sealed the way
- * `Trigger` is and grows one form per use case. Two keys in one map is not
- * a predicate this module can represent, so the parser refuses the shape;
- * whether the thing a form names exists is the refusal logic's question
- * (`factionRules.ts`), rendered inline at the field.
+ * `Trigger` is and grows one form per use case. A map this union cannot
+ * represent — two keys, a form the editors have not learned — is HELD WHOLE
+ * by the codec (`dungeonYaml.ts`'s `PredicateHolder`) and graded by the
+ * compiler, never refused at the door. Whether the thing a form names exists
+ * is `factionRules.ts`'s inline question.
  */
 export type PredicateDoc =
   | { round: number }
@@ -72,7 +77,8 @@ export function predicateForm(p: PredicateDoc): PredicateForm {
   return 'stance';
 }
 
-/** The predicate grammar, spelled for a refusal a streamer can act on. */
+/** The predicate grammar, spelled for the hint a panel shows beside a field.
+ * NOT a refusal sentence: the compiler owns those. */
 export const PREDICATE_SHAPE =
   'a predicate is exactly one of { round: N }, { down: <placement id> }, ' +
   '{ fact: <id> }, or { stance: { between: [a, b], is: hostile|neutral|allied } }';

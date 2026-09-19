@@ -32,6 +32,7 @@
 import {
   factionMembers,
   isMonsterRef,
+  isPredicateDoc,
   MONSTERS,
   PARTY,
   PREDICATE_SHAPE,
@@ -39,7 +40,7 @@ import {
   type DispositionDoc,
   type DungeonDoc,
   type PlacementDoc,
-  type PredicateDoc,
+  type PredicateHolder,
 } from './dungeonYaml';
 
 export interface Refusal {
@@ -147,10 +148,16 @@ export function predicatePaths(base: string): string[] {
  * sits in. */
 export function predicateRefusals(
   doc: DungeonDoc,
-  p: PredicateDoc,
+  p: PredicateHolder,
   path: string
 ): Refusal[] {
   const out: Refusal[] = [];
+  // A predicate held whole is one this grammar has not learned, so there is
+  // nothing here to check it against — the ENGINE reads it and grades it
+  // (rpg-project#481 R3). Saying nothing is the honest answer; guessing at a
+  // shape this module does not model would be a second opinion on a value it
+  // cannot read.
+  if (!isPredicateDoc(p)) return out;
   if ('round' in p) {
     if (p.round < 1) {
       out.push({
@@ -211,8 +218,8 @@ export function predicateRefusals(
 
 /** The cost note for a `{ fact }` predicate, or `null` when some record
  * reveals the fact (or the field is blank, which is a refusal instead). */
-export function factNote(doc: DungeonDoc, p: PredicateDoc): string | null {
-  if (!('fact' in p) || p.fact === '') return null;
+export function factNote(doc: DungeonDoc, p: PredicateHolder): string | null {
+  if (!isPredicateDoc(p) || !('fact' in p) || p.fact === '') return null;
   return revealedFacts(doc).includes(p.fact) ? null : NO_RECORD_REVEALS_THIS;
 }
 
@@ -370,7 +377,12 @@ export function factionRefusals(doc: DungeonDoc): Refusal[] {
     }
     if (p.arrives !== undefined) {
       out.push(...predicateRefusals(doc, p.arrives, `${path}.arrives`));
-      if ('down' in p.arrives && p.id && p.arrives.down === p.id) {
+      if (
+        isPredicateDoc(p.arrives) &&
+        'down' in p.arrives &&
+        p.id &&
+        p.arrives.down === p.id
+      ) {
         out.push({
           path: `${path}.arrives.down`,
           message: `${q(p.id)} cannot wait for its own fall — it is not here to fall until it arrives`,
@@ -452,7 +464,9 @@ export function factionRefusals(doc: DungeonDoc): Refusal[] {
     } else {
       seenEndings.set(e.id, i);
     }
-    out.push(...predicateRefusals(doc, e.when, `${path}.when`));
+    if (e.when !== undefined) {
+      out.push(...predicateRefusals(doc, e.when, `${path}.when`));
+    }
   });
 
   return out;

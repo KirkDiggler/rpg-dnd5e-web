@@ -18,22 +18,27 @@
  */
 import { refId } from '@/utils/refs';
 import {
+  isPredicateDoc,
   namedMonsters,
   PARTY,
   PREDICATE_FORMS,
   predicateForm,
+  predicateText,
   revealedFacts,
   STANCES,
   type DungeonDoc,
   type PredicateDoc,
   type PredicateForm,
+  type PredicateHolder,
   type Stance,
 } from './dungeonYaml';
 import { factionChoices, factNote } from './factionRules';
 
 export interface PredicateEditorProps {
   doc: DungeonDoc;
-  value: PredicateDoc | undefined;
+  /** The predicate on the document — one of the four forms, or one this
+   * grammar has not learned, held whole ([PredicateHolder]). */
+  value: PredicateHolder | undefined;
   onChange: (next: PredicateDoc | undefined) => void;
   /** Prefix for every test id inside: `${testId}-form`, `-round`, `-down`,
    * `-fact`, `-stance-a`, `-stance-b`, `-stance-is`, `-refusal`. */
@@ -78,6 +83,34 @@ export function PredicateEditor({
   refusals,
   required = false,
 }: PredicateEditorProps) {
+  // A PREDICATE THIS GRAMMAR HAS NOT LEARNED IS SHOWN, NOT EDITED
+  // (rpg-project#481 R3). The file carries a shape the four forms do not
+  // cover; offering a form select here would silently replace what the
+  // author wrote the moment the select fired. So the line is rendered in the
+  // file's own words and the engine's grade is what says whether it plays.
+  if (value !== undefined && !isPredicateDoc(value)) {
+    return (
+      <div className="flex flex-col gap-1" data-testid={testId}>
+        <code className="dg-input" data-testid={`${testId}-held`}>
+          {predicateText(value)}
+        </code>
+        <div className="text-xs opacity-70">
+          the builder has no editor for this predicate — it travels to the
+          engine as written
+        </div>
+        {refusals.map((message, i) => (
+          <div
+            key={i}
+            className="dg-refusal"
+            data-testid={`${testId}-refusal`}
+            role="status"
+          >
+            {message}
+          </div>
+        ))}
+      </div>
+    );
+  }
   const form = value === undefined ? '' : predicateForm(value);
   const note = value === undefined ? null : factNote(doc, value);
   return (

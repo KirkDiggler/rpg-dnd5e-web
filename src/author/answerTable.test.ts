@@ -64,33 +64,32 @@ function authoredWord(word: AnswerWordSpec): string {
   return `{ ${word.key}: {} }`;
 }
 
-describe('a typo is answered with what the author meant', () => {
-  it('names the trigger a slip was reaching for', () => {
-    expect(() =>
-      parseDungeon(mutated('      intimidated:', '      intimidatedd:'))
-    ).toThrow(
-      /"intimidatedd" is not a trigger this build rolls: they are intimidated, intimidate_failed, persuaded, persuade_failed, time — did you mean "intimidated"\?/
-    );
+describe('a typo is carried to the compiler, not refused at the door', () => {
+  // These four cases used to assert that the BUILDER refused a typo, in a
+  // sentence transcribed from `dungeonspec`. rpg-project#481 R3 moved the
+  // verdict to `PutDungeon{validate_only}`: a slip reaches the compiler in
+  // the bytes and comes back named at its own path, which is the one place
+  // the sentence cannot drift from the thing enforcing it.
+  //
+  // `suggestKey` survives as a PALETTE's courtesy and is asserted below.
+
+  it('opens a file whose trigger key is a slip, and writes the slip back', () => {
+    const text = mutated('      intimidated:', '      intimidatedd:');
+    const bytes = emitDungeon(parseDungeon(text));
+    expect(bytes).toContain('intimidatedd:');
+    expect(bytes).not.toContain('      intimidated:\n');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
-  it('names the word a transposition was reaching for', () => {
-    // Plain Levenshtein scores a transposition 2; this one costs 1, which
-    // is the whole reason the distance is Damerau.
-    expect(() => parseDungeon(entryWith('fact:', 'fcat:'))).toThrow(
-      /unknown key "fcat" — did you mean "fact"\?/
-    );
+  it('opens a file whose entry key is a transposition, and keeps the key', () => {
+    const bytes = emitDungeon(parseDungeon(entryWith('fact:', 'fcat:')));
+    expect(bytes).toContain('fcat: goblin-cowed');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
-  it('says nothing extra when nothing is close', () => {
-    // A suggestion is a courtesy, never a guess: a key nothing resembles
-    // gets the plain refusal.
-    expect(() => parseDungeon(entryWith('fact:', 'wibble:'))).toThrow(
-      /unknown key "wibble"$/
-    );
-  });
-
-  it('still refuses — a suggestion is not an acceptance', () => {
-    expect(() => parseDungeon(entryWith('fact:', 'fcat:'))).toThrow();
+  it('opens a file whose entry key resembles nothing at all', () => {
+    const bytes = emitDungeon(parseDungeon(entryWith('fact:', 'wibble:')));
+    expect(bytes).toContain('wibble: goblin-cowed');
   });
 });
 
@@ -199,36 +198,43 @@ describe('the vocabulary declaration is the single source', () => {
   });
 });
 
-describe('an entry does one thing, and says something', () => {
-  it('refuses two words in one entry', () => {
-    // Two words would make the author guess an ordering the engine does
-    // not promise. Want two things? The engine wants two entries. The
-    // sentence is the engine's own, line number included.
-    expect(() =>
-      parseDungeon(
-        mutated(ENTRY_FACT, ENTRY_FACT.replace(' }', ', flee: {} }'))
-      )
-    ).toThrow(
-      /factions\[0\]\.on\.intimidated\[0\]: an entry does one thing: `fact` and `flee` in the same entry is 2 \(line \d+\)/
-    );
+describe('the entry rules are `answerEntry`’s, and the file still opens', () => {
+  // "An entry does one thing", "an entry with no word must still say
+  // something" and "a weight below 1 can never be rolled" are
+  // `dungeonspec/validate.go`'s rules. They were enforced here as well, in
+  // the engine's own sentences — two copies of one rule, and the copy is
+  // what drifts. Each case now asserts the file opens and the author's own
+  // bytes reach the compiler.
+
+  it('carries two words in one entry, both of them', () => {
+    const text = mutated(ENTRY_FACT, ENTRY_FACT.replace(' }', ', flee: {} }'));
+    const bytes = emitDungeon(parseDungeon(text));
+    expect(bytes).toContain('fact: goblin-cowed, flee: {}');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
-  it('refuses an entry with no word and nothing to say', () => {
-    expect(() =>
+  it('carries an entry with no word and nothing to say', () => {
+    const bytes = emitDungeon(
       parseDungeon(mutated(ENTRY_SAY_ONLY, '{ weight: 5 }'))
-    ).toThrow(/this entry does nothing and says nothing \(line \d+\)/);
+    );
+    expect(bytes).toContain('- { weight: 5 }');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
-  it('refuses a weight below one, because omitted IS one', () => {
-    expect(() => parseDungeon(entryWith('weight: 70', 'weight: 0'))).toThrow(
-      /a weight of 0 can never be rolled: omit it for 1, or give it a share/
+  it('carries a weight below one, because omitted IS one', () => {
+    const bytes = emitDungeon(
+      parseDungeon(entryWith('weight: 70', 'weight: 0'))
     );
+    expect(bytes).toContain('weight: 0');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 
-  it('refuses a fractional weight', () => {
-    expect(() => parseDungeon(entryWith('weight: 70', 'weight: 1.5'))).toThrow(
-      /expected a whole number/
+  it('carries a fractional weight as written', () => {
+    const bytes = emitDungeon(
+      parseDungeon(entryWith('weight: 70', 'weight: 1.5'))
     );
+    expect(bytes).toContain('weight: 1.5');
+    expect(emitDungeon(parseDungeon(bytes))).toBe(bytes);
   });
 });
 
