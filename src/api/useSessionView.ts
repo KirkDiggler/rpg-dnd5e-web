@@ -58,7 +58,7 @@ export function useSessionView(
       const response = await sessionClient.getView({ session, member });
       setSightings(response.sightings);
       setAreas(
-        ((response as unknown as { areas?: SessionSightArea[] }).areas ?? [])
+        (response.areas ?? [])
           .map((area) => ({ ...area, radiusFeet: Number(area.radiusFeet) }))
           .filter(
             (area) => Number.isFinite(area.radiusFeet) && area.radiusFeet > 0
@@ -66,6 +66,7 @@ export function useSessionView(
       );
     } catch (err) {
       setSightings([]);
+      setAreas([]);
       setError(err instanceof Error ? err : new Error('GetView RPC failed'));
     } finally {
       setLoading(false);

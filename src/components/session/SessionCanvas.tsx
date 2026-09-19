@@ -55,6 +55,7 @@ import type {
   DoorInfo,
   Footprint,
   PublicMemberInfo,
+  SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
@@ -85,6 +86,7 @@ import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
+import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
@@ -658,27 +660,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
-      {sightAreas.map(
-        (area) =>
-          area.center && (
-            <group
-              key={`sight-area-${area.id}`}
-              position={[area.center.x, 0.08, area.center.z]}
-            >
-              <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry
-                  args={[area.radiusFeet * ((Math.sqrt(3) * hexSize) / 5), 48]}
-                />
-                <meshBasicMaterial
-                  color="#64748b"
-                  transparent
-                  opacity={0.42}
-                  depthWrite={false}
-                />
-              </mesh>
-            </group>
-          )
-      )}
+      <SightAreaOverlay areas={sightAreas} hexSize={hexSize} />
       {presentationLayer}
       <AreaFootprintPreview
         footprint={areaFootprint}

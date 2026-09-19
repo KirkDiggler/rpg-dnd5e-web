@@ -58,7 +58,7 @@ export function useSessionReact(): UseReactResult {
           member: params.member,
           declarationId: params.declarationId,
           choice: params.choice,
-          option: params.option ?? '',
+          ...(params.option ? { option: params.option } : {}),
         });
       } catch (err) {
         const wrapped =
