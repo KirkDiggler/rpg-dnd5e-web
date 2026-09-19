@@ -1,14 +1,11 @@
-import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  SightArea,
+  Sighting,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { sessionClient } from './client';
 
-export interface SessionSightArea {
-  id: string;
-  name: string;
-  sourceRef?: { module: string; type: string; id: string };
-  center?: { x: number; y: number };
-  radiusFeet: number;
-}
+export type SessionSightArea = SightArea;
 
 export interface UseSessionViewResult {
   sightings: Sighting[];
