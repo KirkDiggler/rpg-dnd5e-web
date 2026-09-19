@@ -1253,6 +1253,9 @@ function apply(validated, providerSource, web, output, resume = false) {
       RPG_GAME_ASSETS_PATH: provider.root,
       RPG_WEB_ROOT: web.worktree,
       ASSETS_SYNC_SKIP_UPDATE: '1',
+      // This tool exists to adopt a verified provider revision, so moving the
+      // committed pin is its explicit purpose rather than an accident.
+      RPG_ASSETS_ALLOW_PROVIDER_BUMP: '1',
     };
     const testEnv = testEnvironment(provider.root);
     npm(web.worktree, ['ci', '--ignore-scripts'], syncEnv);
