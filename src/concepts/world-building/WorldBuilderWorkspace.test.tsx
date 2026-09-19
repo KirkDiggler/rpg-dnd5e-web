@@ -131,12 +131,16 @@ const storage = {
 
 const savePuts = () => rpc.puts.filter((put) => !put.validateOnly);
 
-/** Walk the route's destination nav (web#1152): saving, loading, snapshots and
- * publishing live in the Library; the room document's identity lives on The
- * site; building stays on Rooms; the composer is its own editor. */
-const goTo = (
-  destination: 'Rooms' | 'Prop compositions' | 'The site' | 'Library'
-) => fireEvent.click(screen.getByRole('button', { name: destination }));
+/** Walk the route's destination nav (web#1152, corrected model): `Site` is the
+ * document screen; `Prop compositions` is its own editor. Document admin —
+ * identity, local draft, revision history, arrangements, portable JSON and
+ * publishing — lives behind the Site header's `Identity` control. */
+const goTo = (destination: 'Site' | 'Prop compositions') =>
+  fireEvent.click(screen.getByRole('button', { name: destination }));
+const openIdentity = () => {
+  const button = screen.getByRole('button', { name: 'Identity' });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+};
 
 beforeEach(() => {
   rpc.reset();
@@ -154,11 +158,11 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
-    goTo('The site');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Room name' }), {
+    openIdentity();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Site name' }), {
       target: { value: 'Unexported room work' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(onBack).not.toHaveBeenCalled();
     expect(
       screen.getByText(
@@ -171,12 +175,12 @@ describe('WorldBuilderWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
-      (screen.getByRole('textbox', { name: 'Room name' }) as HTMLInputElement)
+      (screen.getByRole('textbox', { name: 'Site name' }) as HTMLInputElement)
         .value
     ).toBe('Unexported room work');
     expect(onBack).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Leave World Builder' })
     );
@@ -189,24 +193,20 @@ describe('WorldBuilderWorkspace', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: 'Rooms' }).getAttribute('aria-pressed')
+      screen.getByRole('button', { name: 'Site' }).getAttribute('aria-pressed')
     ).toBe('true');
-    expect(screen.getByRole('heading', { name: 'World Builder' })).toBeTruthy();
     expect(
-      screen.getByRole('region', { name: 'Room Authoring Draft' })
+      screen.getByRole('heading', { name: 'Untitled world' })
     ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Site' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Prop compositions' }));
     expect(screen.getByRole('button', { name: 'Switch editor' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel switch' })).toBeTruthy();
-    expect(
-      screen.getByRole('region', { name: 'Room Authoring Draft' })
-    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Site' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel switch' }));
-    expect(
-      screen.getByRole('region', { name: 'Room Authoring Draft' })
-    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Site' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Prop compositions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Switch editor' }));
@@ -214,12 +214,10 @@ describe('WorldBuilderWorkspace', () => {
     expect(
       screen.getByRole('region', { name: 'World Building Concept' })
     ).toBeTruthy();
-    expect(
-      screen.queryByRole('region', { name: 'Room Authoring Draft' })
-    ).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Site' })).toBeNull();
   });
 
-  it('separates building from saving: the room screen carries no save/load, the Library does', () => {
+  it('keeps the Site editor self-contained and puts all document admin behind Identity', () => {
     render(
       <WorldBuilderWorkspace
         compositionSource={source}
@@ -230,15 +228,18 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
-    // Rooms is building: tools, palette, canvas, the selected thing's
-    // declarations, and the actors. No save/load in the chrome.
-    expect(
-      screen.getByRole('region', { name: 'Room Authoring Draft' })
-    ).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Room setup' })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Back to main menu' })
-    ).toBeTruthy();
+    // Site is the document screen: header, the site outline (Rooms plus the
+    // collapsed Props section), the canvas, and the active site nouns.
+    expect(screen.getByRole('region', { name: 'Site' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    expect(screen.getByLabelText('Rooms')).toBeTruthy();
+    expect(screen.getByLabelText('Props')).toBeTruthy();
+    expect(screen.getByLabelText('Monsters')).toBeTruthy();
+    expect(screen.getByLabelText('Doors')).toBeTruthy();
+    expect(screen.getByLabelText('Policies')).toBeTruthy();
+
+    // No document admin in the body: the old Library and The site
+    // destinations are gone.
     for (const name of ['Save room draft', 'Reload room draft', 'New room']) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -246,28 +247,22 @@ describe('WorldBuilderWorkspace', () => {
     expect(screen.queryByText('Arrangement library')).toBeNull();
     expect(screen.queryByLabelText('Portable JSON')).toBeNull();
 
-    // The Library is a place you go: saving, loading, snapshots,
-    // arrangements — and the server publish.
-    goTo('Library');
+    // Identity is the merge of the old The site and Library: nothing from the
+    // Library is dropped.
+    openIdentity();
+    expect(screen.getByRole('textbox', { name: 'Site name' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Save room draft' })
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Reload room draft' })
     ).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Revision history' })
+    ).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Publish room' })).toBeTruthy();
     expect(screen.getByText('Arrangement library')).toBeTruthy();
     expect(screen.getByLabelText('Portable JSON')).toBeTruthy();
-    expect(
-      screen.queryByRole('region', { name: 'Room Authoring Draft' })
-    ).toBeNull();
-
-    // The site is the scope that belongs to no single selection: identity
-    // here, and no select-then-declare panel.
-    goTo('The site');
-    expect(screen.getByRole('region', { name: 'Site identity' })).toBeTruthy();
-    expect(screen.getByLabelText('Room name')).toBeTruthy();
-    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
 
     // The composer keeps its own screen, chrome and libraries: the design
     // leaves it as it already is.
@@ -296,7 +291,7 @@ describe('WorldBuilderWorkspace', () => {
         onPlay={vi.fn()}
       />
     );
-    goTo('Library');
+    openIdentity();
     expect(screen.getByRole('region', { name: 'Publish room' })).toBeTruthy();
     expect(
       (screen.getByRole('button', { name: 'Save & Play' }) as HTMLButtonElement)
@@ -310,7 +305,7 @@ describe('WorldBuilderWorkspace', () => {
     render(
       <WorldBuilderWorkspace compositionSource={source} storage={storage} />
     );
-    goTo('Library');
+    openIdentity();
     expect(screen.queryByRole('region', { name: 'Publish room' })).toBeNull();
   });
 
@@ -327,7 +322,7 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
-    goTo('Library');
+    openIdentity();
     // A debounced preview may finish before the user's save on a busy CI
     // runner. Exercise that ordering rather than relying on fast execution.
     await waitFor(() => expect(rpc.puts).toHaveLength(1));
@@ -342,7 +337,7 @@ describe('WorldBuilderWorkspace', () => {
     await waitFor(() => expect(savePuts()).toHaveLength(1));
 
     // While the transaction mutates server state, navigation is locked.
-    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(
       screen.queryByText(/Leave the World Builder\? Saved rooms/i)
     ).toBeNull();
@@ -355,7 +350,7 @@ describe('WorldBuilderWorkspace', () => {
       ).disabled
     ).toBe(true);
     expect(
-      (screen.getByRole('button', { name: 'Rooms' }) as HTMLButtonElement)
+      (screen.getByRole('button', { name: 'Site' }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
     expect(screen.getByText(/Save & Play is running/i)).toBeTruthy();
@@ -370,12 +365,12 @@ describe('WorldBuilderWorkspace', () => {
       expect(
         (
           screen.getByRole('button', {
-            name: 'Back to main menu',
+            name: 'Back',
           }) as HTMLButtonElement
         ).disabled
       ).toBe(false)
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(
       screen.getByText(/Leave the World Builder\? Saved rooms/i)
     ).toBeTruthy();
@@ -400,7 +395,7 @@ describe('WorldBuilderWorkspace', () => {
       />
     );
 
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
     await waitFor(() => expect(rpc.gets).toHaveLength(1));
     rpc.gets[0]!.deferred.reject(
@@ -413,7 +408,7 @@ describe('WorldBuilderWorkspace', () => {
     // StartEncounter remains pending: navigation must stay locked until its
     // actual response, not merely until a fast chain happens to settle.
     await waitFor(() => expect(rpc.lobby.started).toBe(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(onBack).not.toHaveBeenCalled();
     expect(onPlay).not.toHaveBeenCalled();
     expect(

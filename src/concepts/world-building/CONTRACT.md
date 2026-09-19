@@ -25,26 +25,65 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
-## Destinations — separate by task, not by document (#1152)
+## Destinations — the site is the document (#1152, corrected model)
 
-The World Builder route has four destinations: **Rooms** (building — tools,
-palette, canvas, the selected thing's declarations, and the actors),
-**Prop compositions** (its own screen, unchanged), **The site** (a document
-section for the scope belonging to no single selection — identity today;
-factions, temperament mixes and dispositions next), and **Library** (saving,
-loading, snapshots, arrangements, and the server publish — a place you go).
+The World Builder route has **two** destinations: **Site** and **Prop
+compositions**. The four-destination list was the wrong shape: the design's
+§UI surfaces bullets are _sections_, not peers, and `The site` and `Library`
+were the same thing twice.
 
-`Rooms`, `The site` and `Library` are surfaces of **one** rooms-editor
-instance, so going to the Library and back keeps the live draft and its undo
-history; only `Prop compositions` is a different editor, and switching between
-the two editors still asks first. The room chrome carries no save/load control:
-the room-building header keeps one `role="status"` readout, and only when the
-draft is _not_ being autosaved (a world snapshot is open, or the stored bytes
-could not be read). The concepts mount at `?concept=room-authoring` owns its own
-destination nav, because it has no route to inject one.
+**The site is the document.** Top level of the YAML; one contiguous floor at
+absolute positions; one identity; one revision history. `ROOT_KEYS` is
+`['version', 'key', 'play', 'room']` — `room` singular, which only makes sense
+if the document is the site and a room is a region of it. Rooms are **camera
+targets**, not scopes: a room has no coordinate space of its own. The site's
+nouns persist across rooms.
 
-The placement anchor and the composition-bounds guide are the **composer's**
-vocabulary: while a room is being built, neither the legend, the
+`Site` is `roomMode` and renders:
+
+- **Header** — `Back` · the site name · `Identity`. Nothing else. A `role="status"`
+  line below the header is the only other chrome, and only when the draft is
+  not being autosaved (a world snapshot is open, or stored bytes are
+  unreadable).
+- **Left, two collapsible sections** — `Rooms`, a navigation list (one entry
+  today, because the root has `room` singular; the jump waits on `rooms[]` and
+  the authored-door contract), and `Props`, the asset palette **and** the scene
+  tree in ONE section (adding a prop and finding a placed prop are the same
+  noun). The tree groups items under their group with loose props after, keeps
+  `parentId` (↳) and `supportId` (· attached), removes the checkboxes (a row
+  click selects, Shift/Ctrl/Cmd extends), and is collapsed by default.
+- **Center** — the canvas and its tool strip, unchanged, including
+  `Expand workspace`.
+- **Right, collapsible site nouns** — `Monsters` (placement, party start, the
+  placed-creature list with Move/Remove, and for the selected creature its
+  faction, mind table (`monsterBindings[id].on`) and weapons (`actions`), which
+  are named placeholders until those v4 shapes land), `Doors` (placeholder;
+  `doorBindings` is proposed v4 and needs the Go key) and `Policies`
+  (factions, temperament mixes, dispositions; the read-only inherited-vs-
+  overridden view is design slice 2). An `Edit` collapsible holds Undo/Redo.
+  **Selection declarations stay contextual** — they appear only while props are
+  selected, because they belong to a selection and not to the site.
+
+**The Identity panel** is opened from the header and overlays the canvas. It is
+the merge of the old `The site` and `Library` destinations, and nothing from
+the old Library is dropped: the editable site name, the local draft
+`Save`/`Reload`/`New`, the **revision history** (the world-snapshot save verb
+and the saved snapshot list with open), `Publish & Play`
+(`RoomPublishingPanel`), and the arrangement library and portable JSON. Its
+`Save`/`Reload`/`New` and publish verbs are refused while a publishing
+transaction runs, and the route keeps its `publishingBusy` nav lock.
+
+**Prop compositions** is deferred this wave and unchanged: its own editor, its
+own chrome, its own panel libraries. `worldLibrarySection`,
+`arrangementLibrarySection` and `portableJsonDetails` are not part of the
+Site's build body; the composer keeps its copies.
+
+**Test that it is navigation and not a scope change:** jumping rooms must leave
+the right-hand site nouns unchanged. If a room click changes what policy is
+shown, the tab was rebuilt.
+
+The placement anchor and the composition-bounds guide remain the **composer's**
+vocabulary: while a site is being built, neither the legend, the
 `Show composition bounds` control, nor the meshes are rendered (design
 `ideas/site-authoring/design.md` §UI surfaces, violation 3).
 

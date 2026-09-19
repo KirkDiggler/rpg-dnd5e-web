@@ -2,10 +2,7 @@ import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCallback, useRef, useState } from 'react';
 import type { IdFactory, KeyValueStorage } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
-import {
-  WorldBuildingConcept,
-  type WorldBuilderSurface,
-} from './WorldBuildingConcept';
+import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 interface WorldBuilderWorkspaceProps {
   storage?: KeyValueStorage;
@@ -21,24 +18,22 @@ interface WorldBuilderWorkspaceProps {
   onPlay?: (encounterId: string, characterId: string) => void;
 }
 
-/** The World Builder's destinations, in the design's order
- * (`ideas/site-authoring/design.md` §UI surfaces). */
-type Destination = 'rooms' | 'props' | 'site' | 'library';
+/** The World Builder's destinations (rpg-dnd5e-web#1152, corrected model:
+ * the site is the document, so there are only two screens). */
+type Destination = 'site' | 'props';
 
 const DESTINATIONS: { id: Destination; label: string }[] = [
-  { id: 'rooms', label: 'Rooms' },
+  { id: 'site', label: 'Site' },
   { id: 'props', label: 'Prop compositions' },
-  { id: 'site', label: 'The site' },
-  { id: 'library', label: 'Library' },
 ];
 
-/** Two editors, four destinations. `Prop compositions` is its own screen; the
- * other three are surfaces of ONE rooms-editor instance, keyed `rooms`, so an
- * author can go to the Library and come back without leaving the draft and its
- * undo history behind. A switch between the two EDITORS still asks first,
- * because that one really is a leave: WorldBuildingConcept bootstraps
- * edition-specific state at mount, and the confirm keeps world-origin work
- * from disappearing silently.
+/** Two editors, two destinations. `Prop compositions` is its own screen and is
+ * deferred this wave; `Site` is the document screen that owns the rooms, the
+ * props, the active site nouns and — behind the header's `Identity` control —
+ * the identity, the local draft, the revision history and publishing. The two
+ * destinations are different EDITORS, so a switch asks first:
+ * WorldBuildingConcept bootstraps edition-specific state at mount, and the
+ * confirm keeps world-origin work from disappearing silently.
  *
  * During a publishing Save & Play transaction the workspace blocks Back and
  * every destination change outright (plan §1): a route change mid-transaction
@@ -54,7 +49,7 @@ export function WorldBuilderWorkspace({
   characterId,
   onPlay,
 }: WorldBuilderWorkspaceProps) {
-  const [destination, setDestination] = useState<Destination>('rooms');
+  const [destination, setDestination] = useState<Destination>('site');
   const [pendingDestination, setPendingDestination] =
     useState<Destination | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -70,11 +65,6 @@ export function WorldBuilderWorkspace({
   const requestDestination = (next: Destination) => {
     if (publishingBusyRef.current) return;
     if (next === destination) return;
-    if (isComposer(next) === isComposer(destination)) {
-      // Same editor: a surface hop, not a leave. No confirm.
-      setDestination(next);
-      return;
-    }
     setPendingDestination(next);
   };
   const confirmDestination = () => {
@@ -94,13 +84,9 @@ export function WorldBuilderWorkspace({
   const capability: RoomPublishingCapability | undefined = onPlay
     ? { characterId: characterId ?? null, onPlay }
     : undefined;
-  /** One instance per EDITOR, not per destination — the point of the split. */
-  const editorKey = isComposer(destination) ? 'props' : 'rooms';
-  const surface: WorldBuilderSurface = isComposer(destination)
-    ? 'build'
-    : destination === 'rooms'
-      ? 'build'
-      : destination;
+  /** One instance per EDITOR, not per destination — Site keeps the live draft,
+   * its undo history and its publishing transaction across internal changes. */
+  const editorKey = isComposer(destination) ? 'props' : 'site';
 
   return (
     <section
@@ -165,7 +151,6 @@ export function WorldBuilderWorkspace({
         <WorldBuildingConcept
           key={editorKey}
           roomMode={!isComposer(destination)}
-          surface={surface}
           storage={storage}
           idFactory={idFactory}
           compositionSource={compositionSource}

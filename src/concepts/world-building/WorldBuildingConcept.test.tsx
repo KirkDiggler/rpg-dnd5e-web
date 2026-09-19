@@ -27,11 +27,26 @@ import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
 
-/** Walk the room's destination nav the way an author does (web#1152).
- * Save/load and the libraries live on `Library`; the document's identity lives
- * on `The site`; building stays on `Rooms`. */
-const goTo = (destination: 'Rooms' | 'The site' | 'Library') =>
-  fireEvent.click(screen.getByRole('button', { name: destination }));
+/** The Site editor is the document screen (rpg-dnd5e-web#1152, corrected
+ * model). The old `The site` and `Library` destinations are gone: identity, the
+ * local draft, the revision history, the arrangement library, portable JSON and
+ * publishing all live in the header's `Identity` panel, which overlays the
+ * canvas without unmounting it. */
+const openIdentity = () => {
+  const button = screen.getByRole('button', { name: 'Identity' });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+};
+const closeIdentity = () => {
+  const button = screen.getByRole('button', { name: 'Identity' });
+  if (button.getAttribute('aria-expanded') === 'true') fireEvent.click(button);
+};
+/** `Props` is collapsed by default; opening it reveals the palette and the
+ * scene tree in one section. */
+const openProps = () => {
+  const summary = screen.getByLabelText('Props');
+  const details = summary.closest('details') as HTMLDetailsElement | null;
+  if (details && !details.open) fireEvent.click(summary);
+};
 
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
@@ -481,7 +496,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
     render(<WorldBuildingConcept roomMode storage={storage} />);
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select Wall run wall-run' })
+      screen.getByRole('button', { name: 'Select Wall run wall-run' })
     );
     expect(screen.getByText('Height scale · Mixed')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Height scale percent'), {
@@ -1327,7 +1342,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // The saved-room list and open action are labeled by the authored visible
     // scene name, not the stored room metadata name.
-    goTo('Library');
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Tavern Cellar' })
     );
@@ -1366,7 +1381,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
     const openRemote = async () => {
-      goTo('Library');
+      openIdentity();
       fireEvent.click(
         await screen.findByRole('button', { name: 'Open Remote Cellar' })
       );
@@ -1379,7 +1394,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       );
     };
     const expectLocalAutosave = async () => {
-      goTo('Rooms');
+      closeIdentity();
       fireEvent.click(
         screen.getByRole('button', { name: 'Commit rectangle gesture' })
       );
@@ -1450,7 +1465,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={source}
       />
     );
-    goTo('Library');
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Cellar' })
     );
@@ -1514,7 +1529,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={oldSource}
       />
     );
-    goTo('Library');
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Old Cellar' })
     );
@@ -1695,9 +1710,9 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     await waitFor(() =>
       expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBeTruthy()
     );
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
-    goTo('Rooms');
+    closeIdentity();
     expect(scene()).toEqual(secondRun);
   });
 
@@ -1756,7 +1771,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
 
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1810,7 +1825,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // Only an explicit valid save replaces them, and it writes v3 to the
     // current key alone; legacy bytes are never removed or rewritten.
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1869,7 +1884,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
 
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/);
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
@@ -2196,7 +2211,7 @@ describe('room actor authoring', () => {
 
     // Export → import is a lossless whole-draft transfer: actor identities
     // are the stable join, never reminted.
-    goTo('Library');
+    openIdentity();
     fireEvent.click(
       screen.getByRole('button', { name: 'Export room draft JSON' })
     );
@@ -2207,14 +2222,14 @@ describe('room actor authoring', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Import room draft JSON' })
     );
-    goTo('Rooms');
+    closeIdentity();
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
 
     // Reload restores the autosaved bytes with the same actor identities.
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
-    goTo('Rooms');
+    closeIdentity();
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
   });
@@ -2293,7 +2308,7 @@ describe('WorldBuildingConcept room publishing', () => {
         roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
       />
     );
-    goTo('Library');
+    openIdentity();
     const oldKey = (
       screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement
     ).value;
@@ -2356,7 +2371,7 @@ describe('WorldBuildingConcept room publishing', () => {
       1
     );
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    goTo('Rooms');
+    closeIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(publishedDraft()).toEqual(original);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
@@ -2373,18 +2388,18 @@ describe('WorldBuildingConcept room publishing', () => {
         idFactory={deterministicIds()}
       />
     );
-    goTo('The site');
-    fireEvent.change(screen.getByLabelText('Room name'), {
+    openIdentity();
+    fireEvent.change(screen.getByLabelText('Site name'), {
       target: { value: 'Renamed by author' },
     });
-    fireEvent.blur(screen.getByLabelText('Room name'));
+    fireEvent.blur(screen.getByLabelText('Site name'));
 
     const renamed = publishedDraft();
     expect(renamed.name).toBe('Renamed by author');
     expect(renamed.scene.name).toBe('Renamed by author');
 
     // Exactly one Undo restores BOTH names.
-    goTo('Rooms');
+    closeIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     const restored = publishedDraft();
     expect(restored.name).toBe('Imported room title');
@@ -2426,13 +2441,13 @@ describe('WorldBuildingConcept room publishing', () => {
     // Background validation is already in flight (the derived default key
     // exists) and must NOT freeze editing: the rename below commits while
     // the debounced preview putDungeon is still pending.
-    goTo('The site');
-    fireEvent.change(screen.getByLabelText('Room name'), {
+    openIdentity();
+    fireEvent.change(screen.getByLabelText('Site name'), {
       target: { value: 'Busy test room' },
     });
-    fireEvent.blur(screen.getByLabelText('Room name'));
+    fireEvent.blur(screen.getByLabelText('Site name'));
     expect(publishedDraft().name).toBe('Busy test room');
-    goTo('Library');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
     await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
     publishRpc.gets[0]!.deferred.reject(
@@ -2457,11 +2472,13 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
 
-    // Every source-changing path reachable on this destination is refused.
-    // (The canvas is no longer mounted while the publish surface is up: the
-    // transaction now runs in the Library, so the gesture it used to be
-    // asserted against cannot be produced. `commit`'s guard is unchanged for
-    // the programmatic paths.)
+    // Every source-changing path is refused. The Identity panel overlays the
+    // canvas without unmounting it, so the canvas gesture the old Library
+    // destination could not produce is exercised here too.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
     expect(
       (
         screen.getByRole('button', {
@@ -2491,5 +2508,222 @@ describe('WorldBuildingConcept room publishing', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(publishedDraft().name).toBe('Imported room title');
+  });
+});
+
+describe('WorldBuildingConcept site organization (web#1152, corrected model)', () => {
+  it('collapses Props by default and merges the palette and the checkbox-free tree in one section', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // Rooms is navigation and open; Props is collapsed by default.
+    const rooms = screen.getByLabelText('Rooms');
+    expect((rooms.closest('details') as HTMLDetailsElement).open).toBe(true);
+    const props = screen.getByLabelText('Props');
+    expect((props.closest('details') as HTMLDetailsElement).open).toBe(false);
+
+    // The one room is a camera target marked as current.
+    expect(
+      screen
+        .getByRole('button', { name: /^Focus room / })
+        .getAttribute('aria-current')
+    ).toBe('true');
+
+    dragLabelTo('Drag Books into scene');
+    expect(scene().items).toHaveLength(1);
+    openProps();
+    expect(
+      (screen.getByLabelText('Props').closest('details') as HTMLDetailsElement)
+        .open
+    ).toBe(true);
+
+    // The palette and the scene tree are in the SAME section, and the tree
+    // has NO checkboxes: a row click is a plain select and Shift-click
+    // extends/toggles, mirroring the canvas.
+    expect(screen.getByLabelText('Search assets')).toBeTruthy();
+    expect(screen.getByLabelText('Placed props')).toBeTruthy();
+    expect(
+      screen.queryByRole('checkbox', { name: /Select books/i })
+    ).toBeNull();
+    // A valid drop selects the new prop.
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      scene().items[0]!.id
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Select books/i }));
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      scene().items[0]!.id
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Select books/i }), {
+      shiftKey: true,
+    });
+    expect(screen.getByTestId('viewport-selection').textContent).toBe('');
+  });
+
+  it('groups the site tree under its group with loose props after, nesting parentId and marking supportId', () => {
+    const storage = new MemoryStorage();
+    const draft = createRoomDraft(createEmptyScene('tree-scene'), 'tree-room');
+    draft.scene.groups = [
+      {
+        id: 'g1',
+        kind: 'group',
+        label: 'Dining set',
+        transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      },
+    ];
+    draft.scene.items = [
+      {
+        id: 'loose-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:books',
+        label: 'Loose books',
+        transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      },
+      {
+        id: 'member-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:vase',
+        label: 'Grouped vase',
+        parentId: 'g1',
+        transform: { x: 1, y: 0, z: 0, rotationY: 0 },
+      },
+      {
+        id: 'attached-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:books',
+        label: 'Attached books',
+        supportId: 'member-1',
+        transform: { x: 1, y: 0.5, z: 0, rotationY: 0 },
+      },
+    ];
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openProps();
+
+    const rows = Array.from(
+      screen
+        .getByLabelText('Placed props')
+        .querySelectorAll('button.wb-tree-row')
+    ).map((row) => row.textContent);
+    // Group first, its members nested under it, then the loose props.
+    expect(rows).toEqual([
+      'Dining set',
+      '↳ Grouped vase',
+      'Loose books',
+      'Attached books · attached',
+    ]);
+  });
+
+  it('treats the room entry as pure navigation: it never changes the site nouns', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The right-hand nouns are present whichever room the camera is on.
+    expect(screen.getByLabelText('Monsters')).toBeTruthy();
+    expect(screen.getByLabelText('Doors')).toBeTruthy();
+    expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(
+      screen.getByText(
+        /read-only inherited-vs-overridden view is design slice 2/i
+      )
+    ).toBeTruthy();
+
+    const selectionBefore =
+      screen.getByTestId('viewport-selection').textContent;
+    fireEvent.click(screen.getByRole('button', { name: /^Focus room / }));
+    expect(screen.getByLabelText('Monsters')).toBeTruthy();
+    expect(screen.getByLabelText('Doors')).toBeTruthy();
+    expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      selectionBefore
+    );
+  });
+
+  it("names a selected creature's faction, mind and weapons, and keeps prop declarations contextual", () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // Nothing selected: no selection declarations.
+    expect(
+      screen.queryByRole('region', { name: 'Selection declarations' })
+    ).toBeNull();
+    expect(screen.queryByText('Faction')).toBeNull();
+
+    // A selected creature names the actor's orders shape in one place.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(screen.getByText('Faction')).toBeTruthy();
+    expect(screen.getByText('Mind')).toBeTruthy();
+    expect(screen.getByText('Weapons')).toBeTruthy();
+    expect(screen.getByText(/monsterBindings\[id\]\.on/)).toBeTruthy();
+    // An actor selection is not a prop selection: declarations stay absent.
+    expect(
+      screen.queryByRole('region', { name: 'Selection declarations' })
+    ).toBeNull();
+
+    // Props selected: the declarations panel is present, because it belongs to
+    // the selection rather than to the site.
+    dragLabelTo('Drag Books into scene');
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
+  });
+
+  it('keeps arrangement library and portable JSON out of the Site body and inside Identity', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={{
+          worldId: 'test-world',
+          reader: {
+            listCompositions: vi.fn(async () => []),
+            getComposition: vi.fn(),
+          },
+        }}
+      />
+    );
+
+    // Not in the site's build body.
+    expect(screen.queryByText('Arrangement library')).toBeNull();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+    // In the Identity panel, along with the revision history.
+    openIdentity();
+    expect(screen.getByText('Arrangement library')).toBeTruthy();
+    expect(screen.getByLabelText('Portable JSON')).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Revision history' })
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Site name')).toBeTruthy();
+    // Closing it puts the document admin away again.
+    closeIdentity();
+    expect(screen.queryByText('Arrangement library')).toBeNull();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
   });
 });
