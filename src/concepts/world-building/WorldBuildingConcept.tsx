@@ -80,6 +80,8 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import { CreatureOrders, SitePolicies } from './SitePolicies';
+import type { SiteScope } from './siteScope';
 import type {
   ArrangementLibrary,
   IdFactory,
@@ -133,6 +135,26 @@ interface WorldBuildingConceptProps {
   /** Lifts the publishing transaction boundary: while busy, the route
    * refuses Back and mode switching. */
   onPublishBusyChange?: (busy: boolean) => void;
+}
+
+/** One editor document: the room draft plus the site scope (`factions` /
+ * `dispositions`) that arrived with it (rpg-dnd5e-web#1157, rpg-project#477).
+ *
+ * THE SCOPE IS EDITOR STATE, NOT DRAFT STATE, AND IT IS NOT PERSISTED. The
+ * local draft's storage envelope under `ROOM_DRAFT_STORAGE_KEY` is
+ * `{ kind, version, draft }` — it carries nothing beside the draft — and the
+ * spec forbids inventing a second storage key for this. So the scope is
+ * re-established by the canonical-YAML import that authored it and is lost
+ * when the page reloads; the room bytes round-trip through local storage
+ * exactly as before.
+ *
+ * IT TRAVELS IN THE HISTORY ENTRY so Undo/Redo moves the draft and its
+ * policies together: a bare `SiteScope` beside the history would let one
+ * Undo across two imports publish document A's room with document B's
+ * policies, which is the same silent mismatch this slice exists to remove. */
+interface RoomDocument {
+  draft: RoomDraft;
+  scope: SiteScope;
 }
 
 const DEFAULT_POINT_LIGHT: WorldPointLight = {
@@ -210,10 +232,14 @@ export function WorldBuildingConcept({
     return loadRoomDraft(effectiveStorage, fallback);
   });
   const [roomHistory, setRoomHistory] = useState<{
-    past: RoomDraft[];
-    present: RoomDraft;
-    future: RoomDraft[];
-  }>(() => ({ past: [], present: initialRoom.value, future: [] }));
+    past: RoomDocument[];
+    present: RoomDocument;
+    future: RoomDocument[];
+  }>(() => ({
+    past: [],
+    present: { draft: initialRoom.value, scope: {} },
+    future: [],
+  }));
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<WorldBuildingTool>('select');
@@ -316,7 +342,11 @@ export function WorldBuildingConcept({
   const skippedInitialSceneSave = useRef(false);
   const skippedInitialLibrarySave = useRef(false);
   const workspaceOriginRef = useRef<'local' | 'world'>('local');
-  const roomDraft = roomHistory.present;
+  const roomDraft = roomHistory.present.draft;
+  /** The policies of the open document, read-only in this slice. Hydrated by
+   * the canonical-YAML import that decoded them and emptied by every path
+   * that replaces the document with one that carries none. */
+  const siteScope = roomHistory.present.scope;
   const scene = roomMode ? roomDraft.scene : history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -454,7 +484,12 @@ export function WorldBuildingConcept({
        * name (reconcileRoomDraft retains it), so imported names are never
        * normalized by unrelated edits. */
       nextName?: string,
-      nextId = roomDraft.id
+      nextId = roomDraft.id,
+      /** The site scope to carry into the commit. Undefined PRESERVES the
+       * open document's own scope, which is what every edit wants; New room
+       * is the one caller that passes `{}`, because a fresh document authors
+       * no policies. */
+      nextScope?: SiteScope
     ) => {
       if (refuseWhilePublishing()) return;
       try {
@@ -481,14 +516,20 @@ export function WorldBuildingConcept({
           );
           if (JSON.stringify(nextDraft) === JSON.stringify(roomDraft)) return;
           setRoomHistory((current) => {
-            if (JSON.stringify(nextDraft) === JSON.stringify(current.present))
+            if (
+              JSON.stringify(nextDraft) ===
+              JSON.stringify(current.present.draft)
+            )
               return current;
             return {
               past: [
                 ...current.past.slice(-79),
                 structuredClone(current.present),
               ],
-              present: structuredClone(nextDraft),
+              present: structuredClone({
+                draft: nextDraft,
+                scope: nextScope ?? current.present.scope,
+              }),
               future: [],
             };
           });
@@ -906,7 +947,10 @@ export function WorldBuildingConcept({
       roomMode ? freshRoom.room : roomDraft.room,
       roomMode ? freshRoom.workspace : roomDraft.workspace,
       roomMode ? freshRoom.name : undefined,
-      roomMode ? freshRoom.id : undefined
+      roomMode ? freshRoom.id : undefined,
+      // A fresh document authors no policies: New room empties the scope
+      // rather than carrying the replaced document's factions forward.
+      roomMode ? {} : undefined
     );
     setTool('select');
     setActiveDrag(null);
@@ -977,7 +1021,9 @@ export function WorldBuildingConcept({
         }
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
-          present: imported,
+          // Portable room JSON is room-only: it carries no site scope, so the
+          // scope is emptied rather than inheriting the replaced document's.
+          present: { draft: imported, scope: {} },
           future: [],
         }));
         setSelectedIds([]);
@@ -1017,11 +1063,12 @@ export function WorldBuildingConcept({
   };
 
   /** Canonical single-room YAML import (publishing panel): replaces the
-   * room document exactly like a room-JSON import and reports acceptance
-   * so the panel adopts the file's root key only when the editor truly
-   * took the document. Refused while a publishing transaction runs. */
+   * room document and its site scope exactly like a room-JSON import and
+   * reports acceptance so the panel adopts the file's root key only when the
+   * editor truly took the document. Refused while a publishing transaction
+   * runs. */
   const importCanonicalRoomYaml = useCallback(
-    (imported: RoomDraft): boolean => {
+    (imported: RoomDraft, scope: SiteScope): boolean => {
       if (refuseWhilePublishing()) return false;
       try {
         const saveError = saveRoomDraft(effectiveStorage, imported);
@@ -1032,7 +1079,7 @@ export function WorldBuildingConcept({
         }
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
-          present: imported,
+          present: { draft: imported, scope },
           future: [],
         }));
         setSelectedIds([]);
@@ -1070,7 +1117,13 @@ export function WorldBuildingConcept({
       markAutosaveBlocked(false);
       workspaceOriginRef.current = 'local';
       setWorkspaceOrigin('local');
-      setRoomHistory({ past: [], present: result.value, future: [] });
+      setRoomHistory({
+        past: [],
+        // The local draft's envelope carries only the draft, so a reopen has
+        // no scope to restore: the stored document authors no policies.
+        present: { draft: result.value, scope: {} },
+        future: [],
+      });
       setPreviewScene(null);
       setSelectedIds([]);
       setTool('select');
@@ -1213,7 +1266,9 @@ export function WorldBuildingConcept({
           throw new Error('This snapshot is not a room authoring document.');
         setRoomHistory({
           past: [],
-          present: structuredClone(metadata.draft),
+          // A world snapshot is a room document, not a canonical single-room
+          // file: it carries no site scope.
+          present: { draft: structuredClone(metadata.draft), scope: {} },
           future: [],
         });
       } else {
@@ -1250,6 +1305,15 @@ export function WorldBuildingConcept({
   const selectedProp =
     selectedIds.length === 1
       ? scene.items.find((item) => item.id === selectedIds[0])
+      : undefined;
+  /** The selected actor as a placed creature, or undefined for the party
+   * start / no selection. The actor half of the design's creature split:
+   * identity and placement live here, the orders in its binding. */
+  const selectedMonster =
+    selectedActorId && selectedActorId !== 'start'
+      ? roomDraft.room.monsters.find(
+          (monster) => monster.id === selectedActorId
+        )
       : undefined;
   const updateSelectedLight = (
     update: (current: WorldPointLight) => WorldPointLight
@@ -2339,6 +2403,7 @@ export function WorldBuildingConcept({
                 </p>
                 <RoomPublishingPanel
                   draft={roomDraft}
+                  scope={siteScope}
                   capability={roomPublishing}
                   onImportDraft={importCanonicalRoomYaml}
                   onBusyChange={handlePublishBusy}
@@ -2789,45 +2854,16 @@ export function WorldBuildingConcept({
                   </li>
                 ))}
               </ul>
-              {selectedActorId && selectedActorId !== 'start' && (
-                <div
-                  className="wb-creature-orders"
-                  aria-label="Selected creature"
-                >
-                  {/* The design's creature split: the actor carries identity
-                        and placement, the binding carries the orders. Only the
-                        actor half has landed; faction, mind and weapons are
-                        named here so the shape has a home. */}
-                  <h4>Selected creature</h4>
-                  <p className="wb-help">
-                    {paletteNameForRef(
-                      roomDraft.room.monsters.find(
-                        (monster) => monster.id === selectedActorId
-                      )?.ref ?? ''
-                    )}{' '}
-                    · {selectedActorId}
-                  </p>
-                  <dl className="wb-creature-orders-grid">
-                    <div>
-                      <dt>Faction</dt>
-                      <dd>Unassigned — faction bindings are proposed v4.</dd>
-                    </div>
-                    <div>
-                      <dt>Mind</dt>
-                      <dd>
-                        No orders — the mind table (`monsterBindings[id].on`) is
-                        proposed v4.
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Weapons</dt>
-                      <dd>
-                        Creature default actions (`actions`); authored weapon
-                        bindings are proposed v4.
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
+              {selectedMonster && (
+                // The design's creature split, made legible: the actor carries
+                // identity and placement, the binding carries the orders, and
+                // this view reports what the faction supplies against what the
+                // placement overrides (design slice 2, web#1157).
+                <CreatureOrders
+                  scope={siteScope}
+                  monster={selectedMonster}
+                  binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
+                />
               )}
               {selectedActorId === 'start' && (
                 <p
@@ -2862,13 +2898,10 @@ export function WorldBuildingConcept({
 
             <details className="wb-collapse">
               <summary aria-label="Policies">Policies</summary>
-              <p className="wb-help">
-                Factions, their temperament mixes and their shared answer
-                tables, and the dispositions between them, are the site's
-                policy. Slice 1 built the shape (web#1136); the read-only
-                inherited-vs-overridden view is design slice 2. Policy is a site
-                noun, so it is present in every room.
-              </p>
+              {/* Read-only document facts (design slice 2): the site's
+                  factions and dispositions are a site noun, present in every
+                  room, and this view only reports what the file says. */}
+              <SitePolicies scope={siteScope} />
             </details>
 
             {/* Selection declarations belong to a selection, not to the

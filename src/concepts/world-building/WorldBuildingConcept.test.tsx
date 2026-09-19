@@ -10,9 +10,14 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  decodeWorldBuilderV4Site,
+  WORLD_BUILDER_V4_SITE_YAML,
+} from './fixtures/worldBuilderV4Site';
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
@@ -22,6 +27,10 @@ import {
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
+import {
+  decodeSingleRoomDungeon,
+  encodeSingleRoomDungeon,
+} from './singleRoomDungeon';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -76,7 +85,7 @@ const publishRpc = vi.hoisted(() => {
       deferred: ReturnType<typeof makeDeferred<never>>;
     }>,
     puts: [] as Array<{
-      request: { key: string; validateOnly: boolean };
+      request: { key: string; yaml: string; validateOnly: boolean };
       deferred: ReturnType<typeof makeDeferred<never>>;
     }>,
     lobby: { created: 0, ready: 0, started: 0 },
@@ -96,7 +105,11 @@ vi.mock('@/author/authoringRpc', async (importOriginal) => {
     ...actual,
     defaultAuthoringClient: {
       putDungeon: vi.fn(
-        async (request: { key: string; validateOnly: boolean }) => {
+        async (request: {
+          key: string;
+          yaml: string;
+          validateOnly: boolean;
+        }) => {
           const deferred = publishRpc.makeDeferred<never>();
           publishRpc.puts.push({ request, deferred });
           return deferred.promise as never;
@@ -2297,6 +2310,154 @@ function publishedDraft(): RoomDraft {
 describe('WorldBuildingConcept room publishing', () => {
   afterEach(() => publishRpc.reset());
 
+  it('imports the engine’s own v4 site, shows its policies read-only, and publishes them unchanged', async () => {
+    // The whole slice on one document (rpg-dnd5e-web#1157): the import
+    // hydrates the editor's scope, the Policies and creature views report
+    // document facts without editing them, and the publish transaction emits
+    // the policies back instead of silently dropping them.
+    const fixture = decodeWorldBuilderV4Site();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    openIdentity();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Canonical YAML' }), {
+      target: { value: WORLD_BUILDER_V4_SITE_YAML },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import canonical YAML' })
+    );
+    await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
+
+    // Part 2 — the Policies node renders the site's factions and dispositions
+    // as facts: the mix, the shared table with each entry's weight, say and
+    // one word, and the pair's stance and `until`.
+    const policies = screen.getByTestId('site-policies');
+    expect(within(policies).getByText('goblins')).toBeTruthy();
+    expect(
+      within(policies).getByText('coward ×2 · soldier ×1 · aggressive ×1')
+    ).toBeTruthy();
+    expect(within(policies).getByText('intimidated')).toBeTruthy();
+    expect(
+      within(policies).getByText(
+        /Fine! The cellar door is behind the barrels\./
+      )
+    ).toBeTruthy();
+    expect(within(policies).getByText('goblins ↔ party')).toBeTruthy();
+    expect(within(policies).getByText('hostile')).toBeTruthy();
+    expect(within(policies).getByText('fact goblin-cowed')).toBeTruthy();
+    // Read-only: no input, button or select anywhere in the facts.
+    expect(
+      policies.querySelectorAll('input, textarea, select, button')
+    ).toHaveLength(0);
+
+    // Part 3 — the selected goblin's inheritance against its own orders.
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Move monster .* goblin-1$/ })
+    );
+    const creature = screen.getByLabelText('Selected creature');
+    expect(within(creature).getByText('goblins')).toBeTruthy();
+    // ITS FACTION SUPPLIES the mix and the two-trigger table …
+    expect(
+      within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
+    ).toBeTruthy();
+    expect(within(creature).getAllByText('intimidated').length).toBeGreaterThan(
+      0
+    );
+    // … and ITS OWN BLOCK overrides with one word, one trigger and actions.
+    expect(within(creature).getByText(/^temper coward$/)).toBeTruthy();
+    expect(within(creature).getAllByText(/^time$/).length).toBeGreaterThan(0);
+    expect(
+      within(creature).getByText(
+        /dnd5e:weapons:scimitar, dnd5e:weapons:shortbow/
+      )
+    ).toBeTruthy();
+    expect(
+      within(creature).getByTestId('faction-layer-rule').textContent
+    ).toMatch(/nearest key wins WHOLESALE/);
+    expect(
+      within(creature).getByTestId('temper-asymmetry').textContent
+    ).toMatch(/placement’s is one word/);
+
+    // Part 1 — publishing the imported document keeps its policies.
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    expect(publishRpc.gets[0]!.key).toBe('front-room-site');
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.factions).toEqual(fixture.factions);
+    expect(emitted.dispositions).toEqual(fixture.dispositions);
+  });
+
+  it('moves a document’s policies with it through undo, and empties them on New room', async () => {
+    // The scope travels in the same history entry as the draft: an Undo
+    // across two imports must not pair document A's room with document B's
+    // policies, and New room must author none.
+    const plain = encodeSingleRoomDungeon({
+      key: 'plain-room',
+      draft: createRoomDraft(createEmptyScene('scene-plain'), 'room-plain'),
+    });
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+    const importYaml = (text: string) => {
+      fireEvent.change(
+        screen.getByRole('textbox', { name: 'Canonical YAML' }),
+        { target: { value: text } }
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Import canonical YAML' })
+      );
+    };
+
+    openIdentity();
+    importYaml(WORLD_BUILDER_V4_SITE_YAML);
+    await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
+    expect(screen.getByTestId('site-policies')).toBeTruthy();
+
+    // A policy-free document replaces it: the scope is emptied with the draft.
+    importYaml(plain);
+    await waitFor(() => expect(publishedDraft().id).toBe('room-plain'));
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+
+    // Undo restores the earlier document TOGETHER WITH its policies.
+    closeIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(publishedDraft().id).toBe('room-1');
+    expect(
+      within(screen.getByTestId('site-policies')).getByText('goblins')
+    ).toBeTruthy();
+
+    // New room is a fresh document: it authors no policies.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+  });
+
   it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
     const storage = new MemoryStorage();
     const original = seedImportedRoom(storage);
@@ -2638,11 +2799,9 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
     expect(screen.getByLabelText('Doors')).toBeTruthy();
     expect(screen.getByLabelText('Policies')).toBeTruthy();
-    expect(
-      screen.getByText(
-        /read-only inherited-vs-overridden view is design slice 2/i
-      )
-    ).toBeTruthy();
+    // A local room draft carries no site scope, and the read-only Policies
+    // view says so plainly: absence is the authored state, not an error.
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
 
     const selectionBefore =
       screen.getByTestId('viewport-selection').textContent;
@@ -2650,12 +2809,13 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
     expect(screen.getByLabelText('Doors')).toBeTruthy();
     expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
     expect(screen.getByTestId('viewport-selection').textContent).toBe(
       selectionBefore
     );
   });
 
-  it("names a selected creature's faction, mind and weapons, and keeps prop declarations contextual", () => {
+  it('reads a selected creature as inherited vs overridden, with both asymmetries stated', () => {
     render(
       <WorldBuildingConcept
         roomMode
@@ -2664,7 +2824,7 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       />
     );
 
-    // Nothing selected: no selection declarations.
+    // Nothing selected: no creature facts and no selection declarations.
     expect(
       screen.queryByRole('region', { name: 'Selection declarations' })
     ).toBeNull();
@@ -2677,9 +2837,19 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     );
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
     expect(screen.getByText('Faction')).toBeTruthy();
-    expect(screen.getByText('Mind')).toBeTruthy();
-    expect(screen.getByText('Weapons')).toBeTruthy();
-    expect(screen.getByText(/monsterBindings\[id\]\.on/)).toBeTruthy();
+    expect(screen.getByText('Inherits')).toBeTruthy();
+    expect(screen.getByText('Overrides')).toBeTruthy();
+    // `faction` absent is the kind's default, never a faction named
+    // `monsters` and never an error.
+    expect(screen.getByTestId('creature-inherits-none')).toBeTruthy();
+    expect(screen.getByTestId('creature-overrides-none')).toBeTruthy();
+    // Both asymmetries are stated where an author reads the split.
+    expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
+      /nearest key wins WHOLESALE/
+    );
+    expect(screen.getByTestId('temper-asymmetry').textContent).toMatch(
+      /placement’s is one word/
+    );
     // An actor selection is not a prop selection: declarations stay absent.
     expect(
       screen.queryByRole('region', { name: 'Selection declarations' })
