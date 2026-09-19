@@ -255,7 +255,7 @@ export function WorldBuildingConcept({
     | 'repeat'
     | 'monster'
     | 'start'
-  >('paint');
+  >('select');
   const [repeatAssetRef, setRepeatAssetRef] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
    * a selected actor is a monster id or 'start', never a WorldProp id, and
@@ -702,6 +702,12 @@ export function WorldBuildingConcept({
   };
 
   const moveMonsterTo = (id: string, cell: RoomHexCell) => {
+    // ONE-SHOT, AND THAT IS THE POINT. The move gesture is spent by the click
+    // that performs it. Leaving the tool armed meant every LATER floor click
+    // relocated the creature — so an author who selected a monster to edit its
+    // orders could not then click a prop, or even empty ground, without moving
+    // it (Kirk, 2026-09-19). Moving is armed deliberately from the actor list.
+    setRoomTool('select');
     try {
       const next = moveRoomMonster(roomDraft, id, cell);
       if (next === roomDraft) return;
@@ -2750,7 +2756,7 @@ export function WorldBuildingConcept({
                         ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
                         : roomMode && roomTool === 'start'
                           ? 'Click the floor: place or move the party start'
-                          : roomMode && roomTool === 'select' && selectedActorId
+                          : roomMode && roomTool === 'move' && selectedActorId
                             ? selectedActorId === 'start'
                               ? 'Click the floor: move the party start · Delete: clear it'
                               : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
@@ -2950,9 +2956,15 @@ export function WorldBuildingConcept({
                     <button
                       type="button"
                       aria-label={`Move monster ${paletteNameForRef(monster.ref)} ${monster.id}`}
+                      aria-pressed={
+                        roomTool === 'move' && selectedActorId === monster.id
+                      }
                       onClick={() => {
+                        // ARMS the move; it does not merely select. Selecting an
+                        // actor is what clicking it on the board does, and that
+                        // must never relocate it.
                         setSelectedActorId(monster.id);
-                        setRoomTool('select');
+                        setRoomTool('move');
                         setNotice('');
                       }}
                     >

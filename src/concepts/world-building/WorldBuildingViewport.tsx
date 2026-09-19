@@ -658,10 +658,17 @@ export function WorldSceneContents(
           // Room actor authoring: one click is one whole-room history
           // transaction committed by the editor, on the snapped cell. This
           // is placement selection, not game legality.
+          //
+          // PLACING AND MOVING ARE BOTH ARMED, AND `select` IS NEITHER. An
+          // actor being selected must never mean the next floor click moves it,
+          // or an author cannot select a creature to edit it and then go on to
+          // click a prop — or empty ground — without relocating the creature
+          // (Kirk, 2026-09-19). Moving is armed from the actor list and spends
+          // itself on the click that performs it.
           if (
             roomTool === 'monster' ||
             roomTool === 'start' ||
-            (roomTool === 'select' && actor)
+            roomTool === 'move'
           ) {
             const cube = worldToCube(
               { x: event.point.x, z: event.point.z },
@@ -672,7 +679,7 @@ export function WorldSceneContents(
               props.roomAuthoring?.onPlaceMonster?.(cell);
               return;
             }
-            if (roomTool === 'start' || actor === 'start') {
+            if (roomTool === 'start') {
               props.roomAuthoring?.onStartGesture?.(cell);
               return;
             }
@@ -680,6 +687,13 @@ export function WorldSceneContents(
               props.roomAuthoring?.onMoveMonster?.(actor, cell);
               return;
             }
+          }
+          // A floor click in `select` DROPS the actor selection, then falls
+          // through to the ordinary scenery path below, so one click both
+          // clears the actor and selects whatever is under the cursor — which,
+          // on bare ground, is nothing.
+          if (roomTool === 'select' && actor) {
+            props.roomAuthoring?.onSelectActor?.(null);
           }
           if (roomTool === 'repeat') {
             const descriptor = props.roomAuthoring?.repeat;

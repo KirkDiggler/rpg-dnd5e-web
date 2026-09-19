@@ -997,7 +997,7 @@ describe('room actor markers and snapped setup gestures', () => {
     ).toHaveLength(0);
   });
 
-  it('moves a selected monster from a floor gesture and never through scenery selection', async () => {
+  it('moves a selected monster when the MOVE tool is armed, never through scenery selection', async () => {
     const onMoveMonster = vi.fn();
     const onSelect = vi.fn();
     const onSelectActor = vi.fn();
@@ -1016,7 +1016,7 @@ describe('room actor markers and snapped setup gestures', () => {
         onTransformReject={vi.fn()}
         onAssetState={vi.fn()}
         roomAuthoring={{
-          tool: 'select',
+          tool: 'move',
           workspace: { hexRadius: 6, horizontalLimit: 12 },
           walkableHexes: [],
           propDeclarations: {},
@@ -1048,6 +1048,55 @@ describe('room actor markers and snapped setup gestures', () => {
     await ReactThreeTestRenderer.act?.(async () => undefined);
     const same = renderer;
     void same;
+  });
+
+  it('never moves a selected monster from `select` — a floor click only drops it', async () => {
+    // THE COUPLING THIS GUARDS: `select` plus a selected actor used to mean
+    // every floor click relocated it, so an author could not select a creature
+    // to edit its orders and then click a prop — or empty ground — without
+    // moving the creature (Kirk, 2026-09-19). Selecting is not a move gesture.
+    const onMoveMonster = vi.fn();
+    const onSelectActor = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [ACTOR],
+          selectedActorId: ACTOR.id,
+          onMoveMonster,
+          onSelectActor,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).not.toHaveBeenCalled();
+    // It clears the selection instead, which is what makes "select a creature,
+    // edit it, then click something else" possible.
+    expect(onSelectActor).toHaveBeenCalledWith(null);
   });
 
   it('places or moves the party start from one gesture and keeps it unmistakable', async () => {

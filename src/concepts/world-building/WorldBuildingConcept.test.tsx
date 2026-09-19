@@ -2042,6 +2042,62 @@ describe('room actor authoring', () => {
     );
   }
 
+  it('opens on Select, and selecting an actor arms a move that is spent by one click', () => {
+    // WHAT CHANGED AND WHY (Kirk, 2026-09-19): the room opened on PAINT, so an
+    // accidental first click authored walkable ground; and `select` plus a
+    // selected actor meant the next floor click MOVED it, so an author could
+    // not select a creature to edit its orders and then click a prop — or
+    // empty ground — without relocating the creature. Neither is a way to just
+    // look at what you placed.
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The default is Select: an accidental first click authors nothing.
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      screen.getByRole('button', { name: 'Paint' }).getAttribute('aria-pressed')
+    ).toBe('false');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Left: select/
+    );
+
+    // Placing one, then selecting it from the list, ARMS the move and says so…
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(
+      screen.getByRole('button', { name: 'Move' }).getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Click the floor: move monster/
+    );
+
+    // …and the move is ONE-SHOT: it is spent by the click that performs it, so
+    // the next click is a plain selection again.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Left: select/
+    );
+  });
+
   it('places, moves and removes a monster as one-Undo whole-room transactions with stable ids', () => {
     render(
       <WorldBuildingConcept
