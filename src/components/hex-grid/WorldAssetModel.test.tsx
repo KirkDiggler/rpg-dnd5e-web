@@ -465,6 +465,24 @@ describe('WorldAssetModel named roles', () => {
     expect(east.quaternion.angleTo(rest)).toBeCloseTo(0);
     await renderer.unmount();
   });
+
+  it('opens every declared group when the whole assembly is open', async () => {
+    // `openDoors` names groups; `open` is the coarser form for a caller
+    // holding a placed door's live state — the item IS one door, whatever
+    // opening count its asset declares — and that caller never resolved
+    // those ids.
+    const rest = new THREE.Quaternion();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel assetRef={roleFixtures.ref} position={[0, 0, 0]} open />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    for (const node of ['Gate_Left', 'Gate_Right', 'Leaf_East', 'Leaf_West']) {
+      expect(
+        model.instance.getObjectByName(node)!.quaternion.angleTo(rest)
+      ).toBeCloseTo(Math.PI / 2, 1);
+    }
+    await renderer.unmount();
+  });
 });
 
 describe('authored node names stay data, not code', () => {

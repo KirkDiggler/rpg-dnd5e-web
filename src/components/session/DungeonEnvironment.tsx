@@ -28,6 +28,10 @@ export interface DungeonEnvironmentProps {
   readonly hexSize: number;
   readonly doors?: ReadonlyMap<string, DoorInfo>;
   readonly onDoorClick?: (door: string) => void;
+  /** The dungeon key the canonical presentation was fetched by — the prefix
+   * of every `<key>/<itemId>` door id, so the canonical branch can join live
+   * door state to the item that renders it. */
+  readonly dungeonKey?: string;
   readonly onShellFallbackReason?: (reason: ShellFallbackReason | null) => void;
   readonly onLightingDiagnostics?: (messages: readonly string[]) => void;
   readonly compositionSource?: CompositionSource;
@@ -43,6 +47,7 @@ export function DungeonEnvironment({
   hexSize,
   doors,
   onDoorClick,
+  dungeonKey,
   onShellFallbackReason,
   onLightingDiagnostics,
   compositionSource,
@@ -169,7 +174,15 @@ export function DungeonEnvironment({
     return (
       <>
         <DungeonSceneLights plan={plan} />
-        <RoomSceneEnvironment presentation={canonicalPresentation} />
+        {/* The canonical branch renders the authored room, so it is the one
+            that has to join live door state to the item that draws the door.
+            The legacy branch below takes the same three. */}
+        <RoomSceneEnvironment
+          presentation={canonicalPresentation}
+          dungeonKey={dungeonKey}
+          doors={doors}
+          onDoorClick={onDoorClick}
+        />
       </>
     );
   }

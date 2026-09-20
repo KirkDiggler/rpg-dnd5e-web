@@ -52,6 +52,14 @@ export interface WorldAssetModelProps {
   heightScale?: number;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
+  /** Every declared group is open. The coarser form for a caller holding ONE
+   * door's live state: a placed door item is one door however many openings
+   * its asset declares, and the caller is not the one that resolved them. */
+  open?: boolean;
+  /** Fires when the door was hit. The raycast is the whole assembly, so a
+   * click on the frame, a leaf or the cap above all report the door — the
+   * affordance belongs to the door, not to one of its parts. */
+  onDoorClick?: () => void;
   /** Called once per instance with every declared door group and its leaf pivot. */
   onDoorsResolved?: (doors: readonly WorldAssetDoor[]) => void;
 }
@@ -262,6 +270,8 @@ function LoadedWorldAssetModel({
   onDiagnostic,
   onDoorsResolved,
   openDoors,
+  open,
+  onDoorClick,
   heightScale,
 }: {
   assetRef: string;
@@ -274,6 +284,8 @@ function LoadedWorldAssetModel({
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   onDoorsResolved?: (doors: readonly WorldAssetDoor[]) => void;
   openDoors: readonly string[];
+  open?: boolean;
+  onDoorClick?: () => void;
   heightScale: number;
 }) {
   const { scene } = useGLTF(url);
@@ -310,9 +322,11 @@ function LoadedWorldAssetModel({
   useLayoutEffect(() => {
     if (!resolved) return;
     for (const door of resolved.doors) {
-      applyLeafSwing(door.leaves, openDoors.includes(door.id));
+      // `open` is the whole-assembly form: a placed door is one door, so its
+      // live state applies to every group its asset declares.
+      applyLeafSwing(door.leaves, open === true || openDoors.includes(door.id));
     }
-  }, [openDoors, resolved]);
+  }, [open, openDoors, resolved]);
 
   /**
    * The authored `above` row, plus the clones that tile it upward. Row 0 IS
@@ -464,6 +478,16 @@ function LoadedWorldAssetModel({
         SYNTY_SCALE * (resolved ? 1 : heightScale),
         SYNTY_SCALE,
       ]}
+      onClick={
+        onDoorClick
+          ? (event) => {
+              // The ground plane behind the door handles clicks too; a click
+              // on the door is the door's and must not fall through to it.
+              event.stopPropagation();
+              onDoorClick();
+            }
+          : undefined
+      }
     >
       <primitive object={cloned as THREE.Object3D} />
     </group>
@@ -484,6 +508,8 @@ export function WorldAssetModel({
   onDiagnostic,
   heightScale = 1,
   openDoors = [],
+  open,
+  onDoorClick,
   onDoorsResolved,
 }: WorldAssetModelProps) {
   const safeHeightScale = Number.isFinite(heightScale)
@@ -505,6 +531,8 @@ export function WorldAssetModel({
       onDiagnostic={onDiagnostic}
       onDoorsResolved={onDoorsResolved}
       openDoors={openDoors}
+      open={open}
+      onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
     />
   );
