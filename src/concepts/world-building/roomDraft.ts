@@ -7,6 +7,12 @@ import {
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import { validateSiteScope, type SiteScope } from './siteScope';
+import {
+  PREDICATE_FORMS,
+  PREDICATE_SHAPE,
+  STANCES,
+  type PredicateDoc,
+} from '@/author/factionVocabulary';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { KeyValueStorage, WorldScene } from './types';
 
@@ -101,10 +107,57 @@ export interface RoomMonsterPlacement {
  * `dnd5e:weapons:<id>` refs, monsters only, "CARRIED, NOT INTERPRETED", and
  * THE ORDER IS THE POINT — both drivers take the first action whose target is
  * in reach. */
-export interface RoomMonsterBinding {
+/** One check row a creature carries — `{ ability, dc, tool? }`, the authored
+ * route for `intimidate:`/`persuade:` (dungeonspec's own `CheckSpec` shape).
+ * `ability` is an opaque rulebook ref (`str`, `deception`, …) and `dc` the
+ * number that route must beat. CARRIED, NEVER INTERPRETED — whether a ref
+ * resolves and what an absent DC derives is the engine's judgement. */
+export interface RoomCheckApproach {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
+/** A creature's interaction facts (rpg-dnd5e-web#1176). All are CARRIED, NOT
+ * GRADED — the engine judges them at `PutDungeon` with a path and a sentence,
+ * exactly as it judges `doorBindings` (rpg-project#481/#483,
+ * rpg-dnd5e-web#1171). The web writes them out, reads them back, and never
+ * decides what they mean.
+ *
+ * These are the per-creature declaration a faction never supplies, so nothing
+ * is inherited and nothing is overridable — the whole authored fact block,
+ * mirroring how a prop's `propDeclarations[itemId]` is the whole authored
+ * fact block for a placed thing (site design Decision 4). */
+export interface RoomMonsterInteraction {
+  /** The priced checks the party must beat to frighten this creature, in the
+   * author's order, each a route (`CheckSpec`). Absent means the rulebook
+   * derives the DC from the stat block's passive Insight. */
+  intimidate?: RoomCheckApproach[];
+  /** The checks the party must beat to talk this creature round. Absent
+   * means derived, never ungated. */
+  persuade?: RoomCheckApproach[];
+  /** The intel records this creature carries, by record id (`PlaceSpec.Holds`).
+   * Absent means it carries none. These are the AUTHORED record ids; the
+   * engine keys them into the composition at compile, not this module. */
+  holds?: string[];
+}
+
+/** One creature's ORDERS plus its interaction facts (rpg-dnd5e-web#1176).
+ * `on`, `temper` and `actions` are what the faction would otherwise supply
+ * (nearest layer wins wholesale); `intimidate`/`persuade`/`arrives`/`holds`
+ * are per-creature declarations a faction never supplies, so they live beside
+ * them as this creature's own authored fact block. `arrives` is the predicate
+ * that holds this creature in RESERVE until it holds — the same
+ * `round | down | fact | stance` shape the shared `PredicateEditor` already
+ * authors for a disposition's `until` (v2 `PlaceSpec.Arrives`). */
+export interface RoomMonsterBinding extends RoomMonsterInteraction {
   on?: AnswerTableShape;
   temper?: string;
   actions?: string[];
+  /** The predicate that brings this creature into the run: it is held out of
+   * every fight until this holds. Absent means the creature stands there from
+   * the first frame. */
+  arrives?: PredicateDoc;
 }
 export interface RoomGameplayData {
   implicitRegionId: string;
@@ -539,7 +592,15 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * must not live in two places. */
 export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
 const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
-const BINDING_KEYS = ['on', 'temper', 'actions'] as const;
+const BINDING_KEYS = [
+  'on',
+  'temper',
+  'actions',
+  'intimidate',
+  'persuade',
+  'arrives',
+  'holds',
+] as const;
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -614,6 +675,91 @@ function validateBindingTemper(value: unknown, path: string): string {
   );
 }
 
+/** One creature's `intimidate:`/`persuade:` route list (`CheckSpec`), CARRIED
+ * verbatim. Only the SHAPE is kept here — `ability` an opaque string and `dc`
+ * a whole number of at least 1 — because what a route resolves to and what an
+ * absent DC derives is the engine's judgement at `PutDungeon`. */
+function validateCheckApproaches(
+  value: unknown,
+  path: string
+): RoomCheckApproach[] {
+  if (!Array.isArray(value))
+    throw new Error(`${path} must be a list.`);
+  if (value.length === 0)
+    throw new Error(`${path} is empty; omit the key instead.`);
+  return value.map((row, index) => {
+    const rowPath = `${path} ${index}`;
+    const source = objectShape(row, rowPath);
+    rejectUnknownKeys(
+      source,
+      ['ability', 'dc', 'tool'],
+      rowPath
+    );
+    if (typeof source.ability !== 'string' || !source.ability)
+      throw new Error(`${rowPath} ability must name an ability or skill.`);
+    if (
+      typeof source.dc !== 'number' ||
+      !Number.isInteger(source.dc) ||
+      source.dc < 1
+    )
+      throw new Error(`${rowPath} dc must be a whole number of at least 1.`);
+    const approach: RoomCheckApproach = {
+      ability: source.ability,
+      dc: source.dc,
+    };
+    if (source.tool !== undefined && source.tool !== null) {
+      if (typeof source.tool !== 'string' || !source.tool)
+        throw new Error(`${rowPath} tool must name an item.`);
+      approach.tool = source.tool;
+    }
+    return approach;
+  });
+}
+
+/** A creature's `arrives` predicate, CARRIED in the one shared shape the
+ * builder already authors on a disposition's `until`. EXACTLY ONE of the four
+ * forms, so the bytes round-trip; whether the thing a form names exists is the
+ * engine's question, not this decoder's. */
+function validateCarriedPredicate(value: unknown, path: string): PredicateDoc {
+  const source = objectShape(value, path);
+  const keys = Object.keys(source);
+  if (!(PREDICATE_FORMS as readonly string[]).some((f) => keys.includes(f)))
+    throw new Error(`${path} ${PREDICATE_SHAPE}`);
+  if (keys.length !== 1) throw new Error(`${path} ${PREDICATE_SHAPE}`);
+  const form = keys[0] as (typeof PREDICATE_FORMS)[number];
+  if (form === 'round') {
+    const round = source.round;
+    if (typeof round !== 'number' || !Number.isInteger(round) || round < 1)
+      throw new Error(`${path}.round must be a whole number of at least 1.`);
+    return { round };
+  }
+  if (form === 'down' || form === 'fact') {
+    const id = source[form];
+    if (typeof id !== 'string' || !id)
+      throw new Error(`${path}.${form} must name an id.`);
+    return { [form]: id } as PredicateDoc;
+  }
+  const stance = source.stance;
+  const stanceRaw = objectShape(stance, `${path}.stance`);
+  if (
+    !Array.isArray(stanceRaw.between) ||
+    stanceRaw.between.length !== 2 ||
+    !stanceRaw.between.every((id) => typeof id === 'string' && id)
+  )
+    throw new Error(`${path}.stance.between expected [faction, faction].`);
+  if (
+    typeof stanceRaw.is !== 'string' ||
+    !(STANCES as readonly string[]).includes(stanceRaw.is)
+  )
+    throw new Error(`${path}.stance.is must be one of ${STANCES.join(', ')}.`);
+  return {
+    stance: {
+      between: [stanceRaw.between[0] as string, stanceRaw.between[1] as string],
+      is: stanceRaw.is as 'hostile' | 'neutral' | 'allied',
+    },
+  };
+}
+
 /** The orders blocks, keyed by the creature's stable id. A binding whose
  * creature is gone is REFUSED, not silently dropped — the same discipline
  * `propDeclarations` already keeps ("Declaration owner does not exist"). */
@@ -653,12 +799,53 @@ function validateMonsterBindings(
         return action;
       });
     }
+    // Interaction + reserve facts are CARRIED, NOT GRADED (rpg-dnd5e-web#1176):
+    // the web keeps the SHAPE so the file round-trips, and the engine judges
+    // what a check ref resolves to, what an absent DC derives, and what an
+    // `arrives` or `holds` name at PutDungeon — with its own path and sentence.
+    const checkPath = (key: 'intimidate' | 'persuade') =>
+      `Monster binding for ${id} ${key}`;
+    if (Object.hasOwn(block, 'intimidate'))
+      parsed.intimidate = validateCheckApproaches(
+        block.intimidate,
+        checkPath('intimidate')
+      );
+    if (Object.hasOwn(block, 'persuade'))
+      parsed.persuade = validateCheckApproaches(
+        block.persuade,
+        checkPath('persuade')
+      );
+    if (Object.hasOwn(block, 'arrives'))
+      parsed.arrives = validateCarriedPredicate(
+        block.arrives,
+        `Monster binding for ${id} arrives`
+      );
+    if (Object.hasOwn(block, 'holds')) {
+      const holds = block.holds;
+      if (!Array.isArray(holds))
+        throw new Error(`Monster binding for ${id} holds must be a list.`);
+      if (holds.length === 0)
+        throw new Error(
+          `Monster binding for ${id} holds is empty; omit the key instead.`
+        );
+      parsed.holds = holds.map((record, index) => {
+        if (typeof record !== 'string' || !record)
+          throw new Error(
+            `Monster binding for ${id} holds ${index} must name an intel record.`
+          );
+        return record;
+      });
+    }
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
     if (
       parsed.on === undefined &&
       parsed.temper === undefined &&
-      parsed.actions === undefined
+      parsed.actions === undefined &&
+      parsed.intimidate === undefined &&
+      parsed.persuade === undefined &&
+      parsed.arrives === undefined &&
+      parsed.holds === undefined
     )
       throw new Error(
         `Monster binding for ${id} declares no orders; omit the binding instead.`

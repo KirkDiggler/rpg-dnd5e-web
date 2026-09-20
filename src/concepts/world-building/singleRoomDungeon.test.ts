@@ -359,6 +359,114 @@ ${ROOM_BLOCK}
     expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
   });
 
+  it('round trips the front room: intel records, priced checks and a creature in reserve (web#1176)', () => {
+    // The driving case: a failed persuasion teaches a fact, and a thug held in
+    // reserve by that fact is called in. Every field here is CARRIED — the web
+    // keeps the shape and the engine grades it at PutDungeon.
+    const source = `version: 4
+key: front-room
+${PLAY_BLOCK}
+factions:
+  - {id: goblins}
+  - {id: bandits}
+dispositions:
+  - {between: [goblins, party], stance: neutral}
+  - {between: [bandits, party], stance: hostile}
+intel:
+  - {id: vault-map, reveals: {door: vault}}
+  - {id: cellar-lie, reveals: {fact: cellar-is-clear}}
+${ROOM_BLOCK}
+    monsterBindings:
+      goblin-1:
+        intimidate: [{ability: intimidation, dc: 12}]
+        persuade: [{ability: persuasion, dc: 10}]
+        holds: [cellar-lie]
+        on:
+          persuade_failed:
+            - {weight: 100, say: "Cellar's empty, friend.", fact: cellar-is-clear}
+`;
+
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.intel).toEqual([
+      { id: 'vault-map', reveals: { door: 'vault' } },
+      { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
+    ]);
+    expect(decoded.draft.room.monsterBindings).toEqual({
+      'goblin-1': {
+        intimidate: [{ ability: 'intimidation', dc: 12 }],
+        persuade: [{ ability: 'persuasion', dc: 10 }],
+        holds: ['cellar-lie'],
+        on: {
+          persuade_failed: [
+            {
+              weight: 100,
+              say: "Cellar's empty, friend.",
+              fact: 'cellar-is-clear',
+            },
+          ],
+        },
+      },
+    });
+
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+      factions: decoded.factions,
+      dispositions: decoded.dispositions,
+      intel: decoded.intel,
+    });
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('intel:');
+    expect(emitted).toContain('reveals:');
+    expect(emitted).toContain('intimidate:');
+    expect(emitted).toContain('dc: 12');
+    expect(emitted).toContain('holds:');
+    // Parse -> emit -> parse is idempotent.
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+  });
+
+  it('carries a reserve predicate on a creature, in all four forms', () => {
+    const withArrives = (predicate: string) =>
+      decodeSingleRoomDungeon(
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        arrives: ${predicate}\n`
+      );
+    expect(
+      withArrives('{fact: cellar-is-clear}').draft.room.monsterBindings?.[
+        'goblin-1'
+      ].arrives
+    ).toEqual({ fact: 'cellar-is-clear' });
+    expect(
+      withArrives('{round: 6}').draft.room.monsterBindings?.['goblin-1'].arrives
+    ).toEqual({ round: 6 });
+    expect(
+      withArrives('{down: chief}').draft.room.monsterBindings?.['goblin-1']
+        .arrives
+    ).toEqual({ down: 'chief' });
+    expect(
+      withArrives('{stance: {between: [raiders, party], is: neutral}}').draft
+        .room.monsterBindings?.['goblin-1'].arrives
+    ).toEqual({ stance: { between: ['raiders', 'party'], is: 'neutral' } });
+    // Exactly one form, in the predicate's own sentence.
+    expect(() => withArrives('{fact: a, round: 2}')).toThrow(/exactly one/);
+  });
+
+  it('refuses a malformed intel record and an empty reveals, without inventing a target', () => {
+    const withIntel = (records: string) =>
+      decodeSingleRoomDungeon(
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\nintel:\n${records}\n${ROOM_BLOCK}\n`
+      );
+    expect(() => withIntel('  - {id: vault-map}')).toThrow(/reveals/);
+    expect(() => withIntel('  - {id: vault-map, reveals: {}}')).toThrow(
+      /exactly one target/
+    );
+    expect(() =>
+      withIntel('  - {id: vault-map, reveals: {door: a, fact: b}}')
+    ).toThrow(/exactly one target/);
+    expect(() =>
+      withIntel('  - {id: vault-map, reveals: {door: vault}}\n  - {id: vault-map, reveals: {fact: x}}')
+    ).toThrow(/duplicate intel id/);
+  });
+
   it('refuses an orphan binding and an unknown binding key inside the document', () => {
     // A binding naming a creature that is gone is REFUSED, not silently
     // dropped — the discipline `propDeclarations` already keeps.
@@ -376,14 +484,20 @@ ${ROOM_BLOCK}
     expect(withTemper.draft.room.monsterBindings?.['goblin-1'].temper).toBe(
       'coward'
     );
-    // `intimidate` is a `PlaceSpec` field this dialect's binding does not
-    // carry, and is refused as the unknown key it is.
+    // `intimidate` IS carried since web#1176, so it decodes rather than being
+    // refused — and an actually-unknown key is still refused by name.
+    const withCheck = decodeSingleRoomDungeon(
+      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
+    );
+    expect(
+      withCheck.draft.room.monsterBindings?.['goblin-1'].intimidate
+    ).toEqual([{ ability: 'intimidation', dc: 12 }]);
     expect(() =>
       decodeSingleRoomDungeon(
-        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: {dc: 12}\n`
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
       )
     ).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidate/
+      /Monster binding for goblin-1 has an unsupported field: intimidating/
     );
   });
 

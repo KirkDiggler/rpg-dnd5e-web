@@ -72,10 +72,29 @@ export interface SiteDisposition {
 export interface SiteScope {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
+}
+
+/** One intel record's `reveals` — the shape `{ door: <id> }` or
+ * `{ fact: <id> }` the engine's `RevealsSpec` carries. CARRIED, NOT GRADED: a
+ * record is declared structure like a door, and what resolving the target means
+ * is the encounter's, read at transfer (v2 `IntelRecord`, web#933). Exactly one
+ * target, because a record that claims to reveal two things is an author who
+ * has not decided. */
+export type SiteIntelReveals = { door: string } | { fact: string };
+
+/** One intel record at the site root — the authored knowledge an author places
+ * in a creature or prop (`holds`), beside `factions`/`dispositions`. Declared
+ * HERE and held BY creatures; the record itself never lives where it is held. */
+export interface SiteIntelRecord {
+  id: string;
+  reveals: SiteIntelReveals;
 }
 
 const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
+const INTEL_KEYS = ['id', 'reveals'] as const;
+const REVEALS_KEYS = ['door', 'fact'] as const;
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -197,7 +216,44 @@ function isStance(word: string): word is Stance {
   return (STANCES as readonly string[]).includes(word);
 }
 
-const SCOPE_KEYS = ['factions', 'dispositions'] as const;
+const SCOPE_KEYS = ['factions', 'dispositions', 'intel'] as const;
+
+/** The site's `intel:` records, in authored order. An id is unique and follows
+ * the same lower-case-dash grammar as a faction id; `reveals` is REQUIRED and
+ * EXACTLY ONE target (`door` or `fact`), the engine's own `RevealsSpec`. What a
+ * door or fact id resolves to is the engine's judgement at `PutDungeon` — the
+ * web keeps the shape and never resolves it. */
+export function validateIntel(value: unknown): SiteIntelRecord[] {
+  if (!Array.isArray(value)) fail('Site intel', 'must be a list');
+  const records: SiteIntelRecord[] = [];
+  const ids = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const path = `Site intel at index ${index}`;
+    const raw = objectShape(entry, path);
+    rejectUnknownKeys(raw, INTEL_KEYS, path);
+    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
+      fail(path, 'needs an id such as vault-map');
+    if (ids.has(raw.id)) fail(path, `duplicate intel id: ${raw.id}`);
+    ids.add(raw.id);
+    const reveals = objectShape(raw.reveals, `${path} reveals`);
+    rejectUnknownKeys(reveals, REVEALS_KEYS, `${path} reveals`);
+    const revealKeys = Object.keys(reveals);
+    if (revealKeys.length !== 1)
+      fail(
+        `${path} reveals`,
+        'must reveal exactly one target (a door or a fact)'
+      );
+    const target = revealKeys[0] as 'door' | 'fact';
+    const id = reveals[target];
+    if (typeof id !== 'string' || !id)
+      fail(`${path} reveals.${target}`, 'must name an id');
+    records.push({
+      id: raw.id,
+      reveals: target === 'door' ? { door: id } : { fact: id },
+    });
+  }
+  return records;
+}
 
 /** The whole site scope, validated and NORMALIZED: each key is kept only when
  * it carries at least one entry, because absence is the authored state "none"
@@ -218,6 +274,10 @@ export function validateSiteScope(value: unknown): SiteScope {
   if (Object.hasOwn(raw, 'dispositions')) {
     const dispositions = validateSiteDispositions(raw.dispositions);
     if (dispositions.length > 0) scope.dispositions = dispositions;
+  }
+  if (Object.hasOwn(raw, 'intel')) {
+    const intel = validateIntel(raw.intel);
+    if (intel.length > 0) scope.intel = intel;
   }
   return scope;
 }
