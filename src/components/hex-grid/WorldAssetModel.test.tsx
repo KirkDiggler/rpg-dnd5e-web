@@ -322,7 +322,7 @@ describe('WorldAssetModel named roles', () => {
     await renderer.unmount();
   });
 
-  it('grows only the above part and reports the grown bounds', async () => {
+  it('grows only the above part, by whole courses, and reports the grown bounds', async () => {
     const onBoundsMeasured = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(
       <WorldAssetModel
@@ -334,21 +334,68 @@ describe('WorldAssetModel named roles', () => {
     );
     const model = renderer.scene.findByProps({ name: 'world-asset-model' });
     expect(model.instance.scale.y).toBeCloseTo(SYNTY_SCALE);
-    expect(
-      model.instance.getObjectByName('Masonry_Above')!.scale.y
-    ).toBeCloseTo(2);
     expect(model.instance.getObjectByName('Frame_Part')!.scale.y).toBeCloseTo(
       1
     );
     expect(model.instance.getObjectByName('Leaf_East')!.scale.y).toBeCloseTo(1);
+    // The assembly reaches its authored height times the scale — the same
+    // rule a wall follows — and the courses past the opening keep their
+    // authored thickness to within half a course.
+    const row = 0.5 * SYNTY_SCALE;
+    const opening = 4 - row;
+    const above = 4 * 2 - opening;
+    const courses = Math.round(above / row);
+    expect(
+      model.instance.getObjectByName('Masonry_Above')!.scale.y
+    ).toBeCloseTo(above / (courses * row));
     expect(onBoundsMeasured).toHaveBeenCalledWith({
       minY: 0,
-      maxY: 4 + 0.5 * SYNTY_SCALE,
+      maxY: 8,
       width: 4,
-      height: 4 + 0.5 * SYNTY_SCALE,
+      height: 8,
       depth: 0.4,
     });
     await renderer.unmount();
+  });
+
+  it('tiles the above part and leaves the rest pose untouched at 100%', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel assetRef={roleFixtures.ref} position={[0, 0, 0]} />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    const above = model.instance.getObjectByName('Masonry_Above')!;
+    expect(above.scale.y).toBeCloseTo(1);
+    expect(above.position.y).toBeCloseTo(3.25);
+    // Every course past the authored one stays hidden, so a door at its rest
+    // height is the GLB's own geometry and nothing else.
+    const courses: THREE.Object3D[] = [];
+    model.instance.traverse((object) => {
+      if (object.name === 'Masonry_Above') courses.push(object);
+    });
+    expect(courses.filter((course) => course.visible)).toHaveLength(1);
+
+    const grown = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.ref}
+        position={[0, 0, 0]}
+        heightScale={2}
+      />
+    );
+    const grownModel = grown.scene.findByProps({ name: 'world-asset-model' });
+    const stacked: THREE.Object3D[] = [];
+    grownModel.instance.traverse((object) => {
+      if (object.name === 'Masonry_Above') stacked.push(object);
+    });
+    const visible = stacked.filter((course) => course.visible);
+    expect(visible.length).toBeGreaterThan(1);
+    // Stacked, not stretched: each course sits one course above the last at
+    // its own scaled thickness, so the column is continuous.
+    const stride = 0.5 * visible[0]!.scale.y;
+    visible.forEach((course, index) => {
+      expect(course.position.y).toBeCloseTo(3.25 + index * stride);
+    });
+    await renderer.unmount();
+    await grown.unmount();
   });
 
   it('leaves the bounds unchanged when roles have no above part', async () => {
