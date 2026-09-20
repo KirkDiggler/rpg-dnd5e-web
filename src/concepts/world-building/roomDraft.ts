@@ -121,6 +121,28 @@ export interface RoomGameplayData {
   /** Stable monster id -> its authored orders. ABSENT when nothing has any,
    * so a room with no orders emits the bytes it always did. */
   monsterBindings?: Record<string, RoomMonsterBinding>;
+  /** Stable item id -> its door's resting state. CARRIED, NOT GRADED: the
+   * keys are the engine's and the engine judges them at `PutDungeon`, which
+   * returns the path and the sentence. The web writes this out and reads it
+   * back, and never mirrors the grammar — one grammar, one owner
+   * (rpg-project#481/#483, rpg-dnd5e-web#1171).
+   *
+   * ABSENT when nothing has any, so a room with no doors emits the bytes it
+   * always did. */
+  doorBindings?: Record<string, RoomDoorBinding>;
+}
+
+/** One door's authored resting state, keyed by the placed item's id.
+ *
+ * The shape is DECLARED so the builder can read and write it, and it is NOT
+ * validated here. These are the engine's own `DoorSpec` keys with `at`
+ * removed — its `CheckSpec`, its nil-vs-empty law, its sentences — so a typo
+ * this module refused would be a second grammar. A typo the engine refuses
+ * arrives with the engine's own path and sentence, which is what the builder
+ * shows. */
+export interface RoomDoorBinding {
+  closed?: boolean;
+  locked?: { ability: string; dc: number; tool?: string };
 }
 export interface RoomDraft {
   version: 3;
@@ -667,6 +689,7 @@ function validateDraft(value: unknown): RoomDraft {
       'partyStart',
       'monsters',
       'monsterBindings',
+      'doorBindings',
     ],
     'Room gameplay data'
   );
@@ -730,6 +753,15 @@ function validateDraft(value: unknown): RoomDraft {
   const monsterBindings = Object.hasOwn(room, 'monsterBindings')
     ? validateMonsterBindings(room.monsterBindings, monsters)
     : undefined;
+  // CARRIED, NOT GRADED. The engine judges `doorBindings` at `PutDungeon` and
+  // answers with a path and a sentence; the web's whole job is to not lose it.
+  // Only the SHAPE is checked here — a door's state grammar has one owner.
+  const doorBindings = Object.hasOwn(room, 'doorBindings')
+    ? (objectShape(room.doorBindings, 'Door bindings') as Record<
+        string,
+        RoomDoorBinding
+      >)
+    : undefined;
   const draft: RoomDraft = {
     ...input,
     version: 3,
@@ -757,6 +789,11 @@ function validateDraft(value: unknown): RoomDraft {
       // emitted before `monsterBindings` existed.
       ...(monsterBindings && Object.keys(monsterBindings).length > 0
         ? { monsterBindings }
+        : {}),
+      // ABSENT, NOT EMPTY, for the same reason: a room with no doors emits
+      // the bytes it always did.
+      ...(doorBindings && Object.keys(doorBindings).length > 0
+        ? { doorBindings }
         : {}),
     },
   } as RoomDraft;
