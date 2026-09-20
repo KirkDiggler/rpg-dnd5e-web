@@ -177,6 +177,10 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // humanoid statblock, not a warband, so per-entity variety would be wrong the
   // same way it is for the goblin boss.
   thug: ['thug.glb'],
+  // rpg-game-assets#257: the first appearance promoted by scripts/promote_npc.py
+  // rather than by hand — an older Pirate-pack rig (48 joints, 1024 atlas) for
+  // the single SRD bandit statblock. One look, with a real `-downed.glb` sibling.
+  bandit: ['bandit.glb'],
 };
 
 /**
@@ -231,6 +235,9 @@ const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   // goblin boss there is no separate boss ref to reach through the v1alpha2
   // signal, so the enum fallback is the only harness-injected path.
   [MonsterType.THUG]: 'thug',
+  // MonsterType.BANDIT sits beside THUG in the sealed humanoid band, so the
+  // enum fallback covers the harness-injected shape as well as the ref-id one.
+  [MonsterType.BANDIT]: 'bandit',
 };
 
 /**
