@@ -295,8 +295,12 @@ function validateFactionPair(value: unknown, path: string): [string, string] {
 
 /** One predicate — EXACTLY ONE of the four forms, in the form names the
  * vocabulary seals. Whether the thing a form names exists is `factionRules`'
- * question, not this decoder's. */
-function validatePredicate(value: unknown, path: string): PredicateDoc {
+ * question, not this decoder's.
+ *
+ * EXPORTED since rpg-dnd5e-web#1176: a creature's `arrives` carries the SAME
+ * `PredicateSpec` a disposition's `until` does, so it is validated by this one
+ * function rather than by a second transcription of the grammar. */
+export function validatePredicate(value: unknown, path: string): PredicateDoc {
   if (!isMapping(value) || Object.keys(value).length !== 1)
     fail(path, PREDICATE_SHAPE);
   const form = Object.keys(value)[0];

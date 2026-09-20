@@ -1,4 +1,5 @@
 import { ANSWER_TEMPER, unknownTemperRefusal } from '@/author/answerVocabulary';
+import type { PredicateDoc } from '@/author/factionVocabulary';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -6,13 +7,11 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
-import { validateSiteScope, type SiteScope } from './siteScope';
 import {
-  PREDICATE_FORMS,
-  PREDICATE_SHAPE,
-  STANCES,
-  type PredicateDoc,
-} from '@/author/factionVocabulary';
+  validatePredicate,
+  validateSiteScope,
+  type SiteScope,
+} from './siteScope';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { KeyValueStorage, WorldScene } from './types';
 
@@ -683,18 +682,13 @@ function validateCheckApproaches(
   value: unknown,
   path: string
 ): RoomCheckApproach[] {
-  if (!Array.isArray(value))
-    throw new Error(`${path} must be a list.`);
+  if (!Array.isArray(value)) throw new Error(`${path} must be a list.`);
   if (value.length === 0)
     throw new Error(`${path} is empty; omit the key instead.`);
   return value.map((row, index) => {
     const rowPath = `${path} ${index}`;
     const source = objectShape(row, rowPath);
-    rejectUnknownKeys(
-      source,
-      ['ability', 'dc', 'tool'],
-      rowPath
-    );
+    rejectUnknownKeys(source, ['ability', 'dc', 'tool'], rowPath);
     if (typeof source.ability !== 'string' || !source.ability)
       throw new Error(`${rowPath} ability must name an ability or skill.`);
     if (
@@ -714,50 +708,6 @@ function validateCheckApproaches(
     }
     return approach;
   });
-}
-
-/** A creature's `arrives` predicate, CARRIED in the one shared shape the
- * builder already authors on a disposition's `until`. EXACTLY ONE of the four
- * forms, so the bytes round-trip; whether the thing a form names exists is the
- * engine's question, not this decoder's. */
-function validateCarriedPredicate(value: unknown, path: string): PredicateDoc {
-  const source = objectShape(value, path);
-  const keys = Object.keys(source);
-  if (!(PREDICATE_FORMS as readonly string[]).some((f) => keys.includes(f)))
-    throw new Error(`${path} ${PREDICATE_SHAPE}`);
-  if (keys.length !== 1) throw new Error(`${path} ${PREDICATE_SHAPE}`);
-  const form = keys[0] as (typeof PREDICATE_FORMS)[number];
-  if (form === 'round') {
-    const round = source.round;
-    if (typeof round !== 'number' || !Number.isInteger(round) || round < 1)
-      throw new Error(`${path}.round must be a whole number of at least 1.`);
-    return { round };
-  }
-  if (form === 'down' || form === 'fact') {
-    const id = source[form];
-    if (typeof id !== 'string' || !id)
-      throw new Error(`${path}.${form} must name an id.`);
-    return { [form]: id } as PredicateDoc;
-  }
-  const stance = source.stance;
-  const stanceRaw = objectShape(stance, `${path}.stance`);
-  if (
-    !Array.isArray(stanceRaw.between) ||
-    stanceRaw.between.length !== 2 ||
-    !stanceRaw.between.every((id) => typeof id === 'string' && id)
-  )
-    throw new Error(`${path}.stance.between expected [faction, faction].`);
-  if (
-    typeof stanceRaw.is !== 'string' ||
-    !(STANCES as readonly string[]).includes(stanceRaw.is)
-  )
-    throw new Error(`${path}.stance.is must be one of ${STANCES.join(', ')}.`);
-  return {
-    stance: {
-      between: [stanceRaw.between[0] as string, stanceRaw.between[1] as string],
-      is: stanceRaw.is as 'hostile' | 'neutral' | 'allied',
-    },
-  };
 }
 
 /** The orders blocks, keyed by the creature's stable id. A binding whose
@@ -816,7 +766,10 @@ function validateMonsterBindings(
         checkPath('persuade')
       );
     if (Object.hasOwn(block, 'arrives'))
-      parsed.arrives = validateCarriedPredicate(
+      // The SAME predicate grammar a disposition's `until` uses, validated by
+      // the one function that owns it (`siteScope.ts`) rather than by a second
+      // transcription (rpg-dnd5e-web#1176).
+      parsed.arrives = validatePredicate(
         block.arrives,
         `Monster binding for ${id} arrives`
       );
