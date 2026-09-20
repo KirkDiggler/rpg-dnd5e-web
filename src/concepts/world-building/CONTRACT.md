@@ -46,8 +46,8 @@ nouns persist across rooms.
   not being autosaved (a world snapshot is open, or stored bytes are
   unreadable).
 - **Left, two collapsible sections** — `Rooms`, a navigation list (one entry
-  today, because the root has `room` singular; the jump waits on `rooms[]` and
-  the authored-door contract), and `Props`, the asset palette **and** the scene
+  today, because the root has `room` singular; the jump waits on `rooms[]`), and
+  `Props`, the asset palette **and** the scene
   tree in ONE section (adding a prop and finding a placed prop are the same
   noun). The tree groups items under their group with loose props after, keeps
   `parentId` (↳) and `supportId` (· attached), removes the checkboxes (a row
@@ -57,8 +57,9 @@ nouns persist across rooms.
 - **Right, collapsible site nouns** — `Monsters` (placement, party start, the
   placed-creature list with Move/Remove, and for the selected creature its
   faction, mind table (`monsterBindings[id].on`) and weapons (`actions`), which
-  are named placeholders until those v4 shapes land), `Doors` (placeholder;
-  `doorBindings` is proposed v4 and needs the Go key) and `Policies`
+  are named placeholders until those v4 shapes land), `Doors` (`doorBindings`
+  editable per placed item, whose own state decides what it blocks — see the
+  doors section below) and `Policies`
   (editable factions — add/remove; `id`, `mind`, and `temper` as absent, one
   word, or a word→share mix — editable dispositions — add/remove; `between`,
   `stance`, `until` — and each faction's shared `on:` table, per trigger, with
@@ -104,6 +105,46 @@ The placement anchor and the composition-bounds guide remain the **composer's**
 vocabulary: while a site is being built, neither the legend, the
 `Show composition bounds` control, nor the meshes are rendered (design
 `ideas/site-authoring/design.md` §UI surfaces, violation 3).
+
+## Doors — a prop plus a state (rpg-project#485)
+
+**A door is a prop plus a state, not a position on a wall.** This dialect has no
+walls to put one on — walls are props that block, and a door authored "in" one
+would no longer mean anything — so instead the door's SHAPE is its ordinary
+`propDeclarations` entry, lowered by the same path every table and barrel takes,
+and its STATE is `doorBindings[<item id>]`. What the footprint blocks follows
+the state rather than the declaration's two flags.
+
+The panel offers one item at a time, in the engine's own four authored states —
+no binding (`not a door`), `{}` (`open doorway`), `{closed: true}`, and
+`{locked: [...]}`. A lock carries one row per APPROACH, each an ability, an
+optional tool and a DC; any one of them beats it, so the rows keep the author's
+order. Removing the last row removes the lock, never the door.
+
+Three consequences are load-bearing and each is stated where it lives:
+
+- **`closed` beside `locked` is dropped**, because the engine ignores it there —
+  a locked door is shut by definition. Un-locking therefore lands on `open`,
+  which is what the document actually claimed.
+- **Making an item a door gives it a footprint**, measured from its own mesh
+  with both blocking flags false. A door's shape _is_ that declaration and the
+  engine refuses one without it; setting either flag true on a door item is
+  refused by name, because nothing consults door state to clear an authored
+  flag and it would build a wall that never opens.
+- **Deleting the item deletes its binding**, exactly as removing a creature
+  removes its orders. An orphan here is worse than stale: it refuses the whole
+  document at publish.
+
+**State is carried, not graded.** The builder writes the keys and reads them
+back; it does not decide whether an ability ref resolves or whether a DC is
+beatable. The engine judges the state at `PutDungeon` and answers with the path
+and the sentence, which is what the publish panel shows
+(rpg-project#481/#483). `concealed` is refused by the engine in this dialect and
+has no control here. The item list is the web's own question and only because
+the engine cannot answer it: a placed prop is a door CANDIDATE when its asset
+declares a `leaf` — the renderer's own signal that something swings — and an
+item that already carries a binding stays listed whatever its asset says, so an
+authored door can never be edited or removed only by luck.
 
 ## Boundary and promoted mount
 

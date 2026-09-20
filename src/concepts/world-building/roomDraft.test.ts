@@ -847,6 +847,94 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(json).not.toContain('"faction"');
   });
 
+  it('round trips a door, its resting state and its lock approaches verbatim', () => {
+    const scene = createEmptyScene('scene-doors');
+    scene.items.push({
+      id: 'cellar-door',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Cellar door',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    scene.items.push({
+      id: 'gate',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Gate',
+      transform: { x: 2, y: 0, z: 0, rotationY: 0 },
+    });
+    const draft = createRoomDraft(scene, 'room-doors');
+    // A door's shape IS its prop declaration, and the engine refuses a door
+    // without one ("a door needs a footprint").
+    draft.room.propDeclarations['cellar-door'] = {
+      blocksMovement: false,
+      blocksLineOfSight: false,
+      footprint: { width: 2, depth: 0.5, offsetX: 0, offsetZ: 0 },
+    };
+    draft.room.doorBindings = {
+      'cellar-door': {
+        closed: true,
+        locked: [
+          { ability: 'str', dc: 20 },
+          { ability: 'dex', dc: 15, tool: 'dnd5e:item:thieves-tools' },
+        ],
+      },
+      // An EMPTY binding is a door at rest open — the authored state, not a
+      // missing one — so it has to survive the round trip as `{}`.
+      gate: {},
+    };
+
+    const json = stringifyRoomDraft(draft);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(draft);
+    expect(roundTrip.room.doorBindings?.gate).toEqual({});
+    // The order of the approaches is the author's, so it is not sorted; any
+    // ONE of them beats the lock.
+    expect(roundTrip.room.doorBindings?.['cellar-door'].locked).toEqual([
+      { ability: 'str', dc: 20 },
+      { ability: 'dex', dc: 15, tool: 'dnd5e:item:thieves-tools' },
+    ]);
+  });
+
+  it('writes no doorBindings when no door was authored', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-no-doors'), 'room-0');
+    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const json = stringifyRoomDraft(draft);
+    expect(json).not.toContain('doorBindings');
+  });
+
+  it('drops the door binding when its item is removed, leaving no orphan', () => {
+    // A binding can no more outlive its item than a creature's orders can
+    // outlive the creature — and here the orphan does not merely go stale:
+    // the engine refuses a door whose item declares no footprint, so it would
+    // refuse the whole document.
+    const scene = createEmptyScene('scene-door-drop');
+    scene.items.push({
+      id: 'cellar-door',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Cellar door',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    const draft = createRoomDraft(scene, 'room-door-drop');
+    draft.room.propDeclarations['cellar-door'] = {
+      blocksMovement: false,
+      blocksLineOfSight: false,
+      footprint: { width: 2, depth: 0.5, offsetX: 0, offsetZ: 0 },
+    };
+    draft.room.doorBindings = { 'cellar-door': { closed: true } };
+
+    const removed = reconcileRoomDraft(draft, { ...scene, items: [] });
+    // The now-empty map goes with it, so the key never survives as `{}`.
+    expect('doorBindings' in removed.room).toBe(false);
+    expect(() => stringifyRoomDraft(removed)).not.toThrow();
+
+    // And the live item keeps its door.
+    expect(reconcileRoomDraft(draft, scene).room.doorBindings).toEqual({
+      'cellar-door': { closed: true },
+    });
+  });
+
   it('refuses a faction id that is not a faction id', () => {
     const draft = createRoomDraft(
       createEmptyScene('scene-bad-faction'),

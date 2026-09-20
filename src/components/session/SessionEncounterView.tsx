@@ -1848,6 +1848,7 @@ function SessionEncounterScope({
                     offHandPresentation={offHandResolution.presentation}
                     roster={roster}
                     doors={doors}
+                    dungeonKey={atlas?.dungeonKey}
                     onDoorClick={
                       runEnded === null ? handleDoorClick : undefined
                     }
