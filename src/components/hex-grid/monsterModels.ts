@@ -171,6 +171,12 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // gives the orders". One candidate on purpose. A boss is a named creature in
   // the room, not a crowd, so per-entity variety would be actively wrong here.
   'goblin-boss': ['goblin-king-01.glb'],
+  // rpg-game-assets#255: the Fantasy Kingdom Headsman mesh retextured with the
+  // Texture_03 atlas in the asset texture lab and named "thug", promoted with
+  // a real `-downed.glb` sibling. One look on purpose — a thug is a single SRD
+  // humanoid statblock, not a warband, so per-entity variety would be wrong the
+  // same way it is for the goblin boss.
+  thug: ['thug.glb'],
 };
 
 /**
@@ -221,6 +227,10 @@ const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   // position `animated-armor` is in, for the same reason: the enum stopped
   // growing before the ref existed.
   [MonsterType.GOBLIN]: 'goblin',
+  // MonsterType.THUG (23) sits in the same sealed humanoid band. Unlike the
+  // goblin boss there is no separate boss ref to reach through the v1alpha2
+  // signal, so the enum fallback is the only harness-injected path.
+  [MonsterType.THUG]: 'thug',
 };
 
 /**
