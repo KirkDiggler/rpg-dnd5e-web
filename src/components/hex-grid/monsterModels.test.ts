@@ -202,7 +202,7 @@ describe('zombie renders one look (gaunt) for every entity', () => {
     }
   });
 
-  it('every mapped ref now ignores entityId entirely -- skeleton, skeleton-captain and zombie alike', () => {
+  it('the single-candidate refs ignore entityId entirely -- skeleton, skeleton-captain and zombie alike', () => {
     for (const id of SAMPLE_ENTITY_IDS) {
       expect(resolveMonsterModelUrl('skeleton', undefined, false, id)).toBe(
         '/models/synty/npcs/skeleton-soldier-01.glb'
@@ -213,6 +213,141 @@ describe('zombie renders one look (gaunt) for every entity', () => {
       expect(resolveMonsterModelUrl('zombie', undefined, false, id)).toBe(
         '/models/synty/npcs/zombie-peasant-female.glb'
       );
+    }
+  });
+});
+
+describe('the goblins — the first ref in service with several looks', () => {
+  const WAR_CAMP = [
+    '/models/synty/npcs/goblin-warrior-male-01.glb',
+    '/models/synty/npcs/goblin-archer-male-01.glb',
+    '/models/synty/npcs/goblin-archer-female-01.glb',
+  ];
+
+  // A spread of plausible server-issued and harness-style ids, not hand-picked
+  // to land on particular hash buckets.
+  const SAMPLE_ENTITY_IDS = [
+    'goblin-1',
+    'goblin-2',
+    'goblin-3',
+    'goblin-4',
+    'goblin-5',
+    'goblin-6',
+    'monster-encounter-7-slot-0',
+    'monster-encounter-7-slot-1',
+    'c1d2e3f4-5a6b-7c8d-9e0f-a1b2c3d4e5f6',
+  ];
+
+  it('resolves every sampled goblin to one of the three promoted war-camp looks', () => {
+    for (const id of SAMPLE_ENTITY_IDS) {
+      expect(WAR_CAMP).toContain(
+        resolveMonsterModelUrl('goblin', undefined, false, id)
+      );
+    }
+  });
+
+  it('actually uses all three looks across the sample — a mob is many creatures', () => {
+    // The property Kirk's zombie ruling deliberately removed for zombies and
+    // this ref exists to restore. A single-candidate mapping would still pass
+    // every other test in this block; only this one fails.
+    const urls = new Set(
+      SAMPLE_ENTITY_IDS.map((id) =>
+        resolveMonsterModelUrl('goblin', undefined, false, id)
+      )
+    );
+    expect(urls.size).toBe(3);
+  });
+
+  it('gives one goblin the same look on every call — no per-render flicker', () => {
+    for (const id of SAMPLE_ENTITY_IDS) {
+      const first = resolveMonsterModelUrl('goblin', undefined, false, id);
+      for (let i = 0; i < 20; i++) {
+        expect(resolveMonsterModelUrl('goblin', undefined, false, id)).toBe(
+          first
+        );
+      }
+    }
+  });
+
+  it('downs a goblin into the SAME look it was standing in', () => {
+    for (const id of SAMPLE_ENTITY_IDS) {
+      const standing = resolveMonsterModelUrl('goblin', undefined, false, id);
+      const downed = resolveMonsterModelUrl('goblin', undefined, true, id);
+      expect(standing).toBeDefined();
+      // Exactly the standing url's sibling, which proves ONE index drove both
+      // resolutions rather than two picks that happened to agree.
+      expect(downed).toBe(standing!.replace(/\.glb$/, '-downed.glb'));
+    }
+  });
+
+  it('never hides a goblin when it drops — every war-camp look ships a downed sibling', () => {
+    expect(monsterHidesWhenDowned('goblin', undefined)).toBe(false);
+    expect(monsterHidesWhenDowned('goblin-boss', undefined)).toBe(false);
+  });
+
+  it('resolves the boss to the war-camp King, standing and downed', () => {
+    expect(
+      resolveMonsterModelUrl('goblin-boss', undefined, false, 'boss-1')
+    ).toBe('/models/synty/npcs/goblin-king-01.glb');
+    expect(
+      resolveMonsterModelUrl('goblin-boss', undefined, true, 'boss-1')
+    ).toBe('/models/synty/npcs/goblin-king-01-downed.glb');
+  });
+
+  it('gives the boss ONE look regardless of entity id — a boss is a creature, not a crowd', () => {
+    const urls = new Set(
+      SAMPLE_ENTITY_IDS.map((id) =>
+        resolveMonsterModelUrl('goblin-boss', undefined, false, id)
+      )
+    );
+    expect(urls).toEqual(new Set(['/models/synty/npcs/goblin-king-01.glb']));
+  });
+
+  it('never resolves a boss look for a plain goblin, or a mook look for the boss', () => {
+    // The two refs share a source pack and a naming prefix, which is exactly
+    // how a one-character table typo would go unnoticed.
+    for (const id of SAMPLE_ENTITY_IDS) {
+      expect(resolveMonsterModelUrl('goblin', undefined, false, id)).not.toBe(
+        '/models/synty/npcs/goblin-king-01.glb'
+      );
+      expect(WAR_CAMP).not.toContain(
+        resolveMonsterModelUrl('goblin-boss', undefined, false, id)
+      );
+    }
+  });
+
+  it('reaches the goblin through the v1alpha1 MonsterType.GOBLIN fallback identically', () => {
+    for (const id of SAMPLE_ENTITY_IDS) {
+      expect(
+        resolveMonsterModelUrl(undefined, MonsterType.GOBLIN, false, id)
+      ).toBe(resolveMonsterModelUrl('goblin', undefined, false, id));
+    }
+  });
+
+  it('has no MonsterType value for the boss — the ref-id path is the only way in', () => {
+    // The sealed v1alpha1 enum stops at MONSTER_TYPE_GOBLIN (24); no
+    // GOBLIN_BOSS value exists, so an enum-only caller can never select the
+    // King. Same position animated-armor is in, documented so the absence
+    // does not read as an oversight.
+    const viaEnumOnly = Object.values(MonsterType)
+      .filter((v): v is MonsterType => typeof v === 'number')
+      .map((t) => resolveMonsterModelUrl(undefined, t, false, 'boss-1'));
+    expect(viaEnumOnly).not.toContain('/models/synty/npcs/goblin-king-01.glb');
+  });
+
+  it('leaves the appearance-only war-camp roster unmapped', () => {
+    // Promoted with downed siblings, every one of them, and every one
+    // published with `rulesRef: null`. Art is not a rules identity.
+    for (const ref of [
+      'goblin-shaman',
+      'goblin-wizard',
+      'goblin-cook',
+      'goblin-knight',
+      'goblin-ranger',
+      'goblin-beast-tamer',
+      'goblin-prisoner',
+    ]) {
+      expect(resolveMonsterModelUrl(ref, undefined, false)).toBeUndefined();
     }
   });
 });

@@ -154,15 +154,15 @@ export interface PaletteMonster {
    * itself doesn't gate `boss:` to a specific ref value — it only requires
    * exactly one boss per boss-archetype room (`dungeonYaml.ts`'s
    * `isMonster` check is ref-PREFIX-general: `p.ref.startsWith(
-   * 'dnd5e:monsters:')`, true for any monster). Scoped to
-   * skeleton-captain only THIS round: it's the one ref whose rules
-   * identity is boss-shaped (rpg-project#110 Slice 3 / rpg-toolkit#816 —
-   * "NOT a wight, NOT a juvenile variant of a bigger monster," the boss's
-   * OWN identity), and showcase.yaml's existing boss room already uses
-   * it. Offering skeleton/zombie as boss options too is a real,
-   * independent design question (should a boss room be able to feature a
-   * mook-tier ref?) this task's brief didn't ask to answer — narrower,
-   * honest scope beats inventing that UX unasked. */
+   * 'dnd5e:monsters:')`, true for any monster). Set on the refs whose RULES
+   * identity is boss-shaped, and only those: `skeleton-captain`
+   * (rpg-project#110 Slice 3 / rpg-toolkit#816 — "NOT a wight, NOT a
+   * juvenile variant of a bigger monster," the boss's OWN identity) and
+   * `goblin-boss` (rpg-toolkit#1847, the SRD warband leader whose stat block
+   * is the reason Multiattack exists in this engine). Offering skeleton,
+   * zombie or plain goblin as boss options too is a real, independent design
+   * question (should a boss room be able to feature a mook-tier ref?) still
+   * unanswered — narrower, honest scope beats inventing that UX unasked. */
   bossable?: boolean;
 }
 
@@ -184,8 +184,8 @@ export interface PaletteMonster {
  *   reason — GLB without a ref is equally unauthorable; the palette can't
  *   place a reference that doesn't exist.
  *
- * `animated-armor` passes the ref-AND-GLB test as of 2026-09-11 and is the
- * first CONSTRUCT here — everything else is undead. It spent time in the
+ * `animated-armor` passes the ref-AND-GLB test as of 2026-09-11 and was the
+ * first non-undead entry here, a CONSTRUCT. It spent time in the
  * GLB-without-a-ref bucket above (rpg-game-assets#172 published the
  * appearance with `rulesRef: null`, leaving the gameplay association to the
  * game team) until rpg-toolkit#1663 added the ref and constructor. It is
@@ -211,6 +211,19 @@ export interface PaletteMonster {
  * current dungeonspec: a `place:` line carries a ref and nothing else. If
  * per-placement appearance is ever wanted, it is a dungeonspec question first
  * and a palette question second, not another array entry.
+ *
+ * `goblin` and `goblin-boss` (rpg-toolkit#1847) are the first HUMANOIDS here,
+ * and the first entries whose art came from a pack promoted for them rather
+ * than borrowed from the crypt roster. They arrive together on purpose: a boss
+ * with nothing to lead is a worse scene than either alone, and the boss's whole
+ * reason to exist in the engine — a Multiattack whose second swing is at
+ * disadvantage — only reads at the table with mooks around it.
+ *
+ * `goblin` is also the first palette entry whose ONE ref renders as several
+ * looks: three war-camp variants picked per entity. The author still places
+ * one ref; the board is what shows three faces. That is the shape Kirk's
+ * 2026-09-11 zombie ruling rejected FOR ZOMBIES, and it is right here for the
+ * opposite reason — a warband is a crowd, a zombie is a thing.
  */
 export const PALETTE_MONSTERS: PaletteMonster[] = (
   [
@@ -242,6 +255,21 @@ export const PALETTE_MONSTERS: PaletteMonster[] = (
       short: 'Aa',
       label: 'animated-armor',
       sub: 'flags forced off, same as every monster place: entry · vanishes when it drops — no downed model exists',
+    },
+    {
+      ref: 'dnd5e:monsters:goblin',
+      refId: 'goblin',
+      short: 'Go',
+      label: 'goblin',
+      sub: 'flags forced off, same as every monster place: entry · renders as one of three war-camp looks, picked from the entity id',
+    },
+    {
+      ref: 'dnd5e:monsters:goblin-boss',
+      refId: 'goblin-boss',
+      short: 'Gb',
+      label: 'goblin-boss',
+      sub: 'flags forced off, same as every monster place: entry · two scimitar swings a turn, the second at disadvantage',
+      bossable: true,
     },
   ] satisfies PaletteMonster[]
 ).filter(
