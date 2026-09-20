@@ -92,14 +92,38 @@ describe('categoryForProp — Lighting category (8 keys, shared manifest)', () =
 });
 
 describe('PALETTE_MONSTERS (2026-08-07 palette content sync — ref-AND-GLB test)', () => {
-  it('includes skeleton, skeleton-captain, zombie and animated-armor — every ref with a promoted GLB', () => {
+  it('includes every ref with both a toolkit identity and a promoted GLB', () => {
     const refIds = PALETTE_MONSTERS.map((m) => m.refId).sort();
     expect(refIds).toEqual([
       'animated-armor',
+      'goblin',
+      'goblin-boss',
       'skeleton',
       'skeleton-captain',
       'zombie',
     ]);
+  });
+
+  it('offers the goblin boss and its mooks together — a boss with nobody to lead is half a scene', () => {
+    const refIds = new Set(PALETTE_MONSTERS.map((m) => m.refId));
+    expect(refIds.has('goblin')).toBe(true);
+    expect(refIds.has('goblin-boss')).toBe(true);
+  });
+
+  it('gives goblin ONE palette entry even though the ref renders three looks', () => {
+    // The author places a ref; the board is what shows three faces. If this
+    // ever grew to three entries the palette would be lying about what
+    // dungeonspec can express — a `place:` line carries a ref and nothing
+    // else.
+    expect(PALETTE_MONSTERS.filter((m) => m.refId === 'goblin')).toHaveLength(
+      1
+    );
+  });
+
+  it('goblin-boss discloses its multiattack in `sub` — the reason to place one', () => {
+    const boss = PALETTE_MONSTERS.find((m) => m.refId === 'goblin-boss');
+    expect(boss).toBeDefined();
+    expect(boss!.sub).toMatch(/second at disadvantage/);
   });
 
   it('excludes ghoul and skeleton-archer — real toolkit refs, no promoted GLB', () => {
@@ -137,11 +161,23 @@ describe('PALETTE_MONSTERS (2026-08-07 palette content sync — ref-AND-GLB test
     expect(armor!.sub).toMatch(/vanishes when it drops/);
   });
 
-  it('only skeleton-captain is marked bossable — narrower scope, not extended to skeleton/zombie this round', () => {
+  it('marks bossable only where the RULES identity is boss-shaped, not every monster', () => {
     const bossable = PALETTE_MONSTERS.filter((m) => m.bossable).map(
       (m) => m.refId
     );
-    expect(bossable).toEqual(['skeleton-captain']);
+    expect(bossable).toEqual(['skeleton-captain', 'goblin-boss']);
+  });
+
+  it('does not let a mook-tier ref be pinned as a boss — goblin included', () => {
+    // Whether a boss room may feature a mook is a real design question that
+    // nobody has answered. Until somebody does, the plain goblin cannot be
+    // pinned, exactly as skeleton and zombie cannot.
+    const notBossable = ['skeleton', 'zombie', 'animated-armor', 'goblin'];
+    for (const refId of notBossable) {
+      expect(
+        PALETTE_MONSTERS.find((m) => m.refId === refId)?.bossable
+      ).toBeUndefined();
+    }
   });
 
   it('has no duplicate refs', () => {

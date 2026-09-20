@@ -1,11 +1,12 @@
 /**
  * Monster-ref-keyed NPC model lookup (rpg-dnd5e-web#559 client half),
  * mirroring classCharacterModels.ts's resolveClassCharacterModelUrl for the
- * monster side of HexEntity. rpg-game-assets promotes converted POLYGON
- * Dungeon undead as harness/models/synty/npcs/<asset-name>.glb (+
- * -downed.glb), synced here to public/models/synty/npcs/, hardcoded here
- * rather than fetched at runtime (see that file's doc comment for the
- * established reasoning).
+ * monster side of HexEntity. rpg-game-assets promotes converted Synty
+ * characters as harness/models/synty/npcs/<asset-name>.glb (+ -downed.glb),
+ * synced here to public/models/synty/npcs/, hardcoded here rather than
+ * fetched at runtime (see that file's doc comment for the established
+ * reasoning). POLYGON Dungeon undead were the first pack through; the
+ * POLYGON Goblin War Camp roster is the second.
  *
  * Filenames are ASSET-source-named (e.g. "skeleton-soldier-01.glb"), NOT
  * ref-id-named — a deliberate call (director sync, rpg-dnd5e-web#559,
@@ -21,12 +22,14 @@
  * Phase 1 had one deterministic candidate per mapped reference: Soldier01
  * for skeleton, Knight for skeleton-captain. rpg-dnd5e-web#673 added a
  * second shape — `zombie` mapping to TWO candidates picked per-entity — and
- * on 2026-09-11 that was narrowed back to one look (gaunt), so every mapped
- * reference has exactly one candidate again. The list-valued table and
- * `pickStableCandidateIndex` below remain, because the SHAPE is still right:
- * one ref may legitimately have several looks. Every mapped reference's standing
- * asset exports `Idle_Relaxed` or a same-shaped idle clip plus an in-place
- * `Walk_Forward`; only mapped assets are runtime-selectable here.
+ * on 2026-09-11 that was narrowed back to one look (gaunt). The list-valued
+ * table and `pickStableCandidateIndex` below were kept anyway, because the
+ * SHAPE was still right: one ref may legitimately have several looks. `goblin`
+ * is the ref that collects on that — three promoted war-camp looks picked per
+ * entity, the first multi-candidate mapping actually in service. Every mapped
+ * reference's standing asset exports `Idle_Relaxed` or a same-shaped idle clip
+ * plus an in-place `Walk_Forward`; only mapped assets are runtime-selectable
+ * here.
  *
  * This hardcoded table is a stopgap for this slice, not the intended end
  * state. propManifest.ts / rpg-game-assets' prop-role-map.json is the
@@ -55,10 +58,12 @@
  *    @kirkdiggler/rpg-api-protos' enums_pb.ts) — the harness/dev-injected
  *    shape (HexGrid's `monsters` prop) and any older caller that hasn't
  *    wired the v1alpha2 meta through yet. Only mapped for the MonsterType
- *    values that actually have a promoted GLB (SKELETON, SKELETON_CAPTAIN,
- *    ZOMBIE as of rpg-dnd5e-web#673) — every other value (GHOUL,
- *    SKELETON_ARCHER, and every non-undead monster) resolves to undefined
- *    here on purpose, same as an unmapped classRefId.
+ *    values that actually have a promoted GLB — SKELETON, SKELETON_CAPTAIN,
+ *    ZOMBIE, and now GOBLIN, the first non-undead value to earn a mapping.
+ *    Every other value (GHOUL, SKELETON_ARCHER, and every remaining monster)
+ *    resolves to undefined here on purpose, same as an unmapped classRefId.
+ *    There is no GOBLIN_BOSS value in the sealed enum, so the boss is
+ *    reachable through the ref-id signal only.
  *
  * Both signals resolve into the SAME ref-id key space before the single
  * table lookup below, so "resolved model" only ever needs one table.
@@ -70,14 +75,15 @@
  * monster, and #673 let `pickStableCandidateIndex` choose between them per
  * entity. Kirk narrowed that to ONE look (gaunt): a zombie should read as one
  * creature on the board, not two. `MONSTER_REF_MODELS.zombie` therefore holds
- * a single candidate again, like every other ref here.
+ * a single candidate. That call was about what a zombie IS, not a retreat from
+ * the multi-candidate shape — see `goblin` below, where the same mechanism is
+ * right for the opposite reason.
  *
- * `pickStableCandidateIndex` is still called on every resolve and still
- * documents the multi-candidate contract — it is not dead code, it simply has
- * no multi-candidate ref to exercise today (`x % 1` is always `0`). It is kept
- * rather than inlined because `MONSTER_REF_MODELS` is genuinely a
+ * `pickStableCandidateIndex` is called on every resolve, and as of `goblin`
+ * it has a ref that exercises it again. It was kept through the zombie
+ * narrowing rather than inlined because `MONSTER_REF_MODELS` is genuinely a
  * ref→candidate-LIST table and the next multi-look ref would need exactly this
- * behavior back, unchanged.
+ * behavior back, unchanged. That is what happened, verbatim.
  *
  * Deliberately NOT mapped (rpg-dnd5e-web#559 issue thread):
  * - "ghost" / "specter": Character_Ghost_01/02 and Character_Tormented_Soul
@@ -88,6 +94,13 @@
  *   the moment the toolkit grows those refs, not a client gap now.
  * - "ghoul" / "skeleton-archer": refs exist in the toolkit but neither has
  *   a promoted GLB in this issue's asset list.
+ * - the rest of the goblin war-camp roster: beast-tamer, cook, knight,
+ *   prisoner 01/02/03, ranger, shaman and wizard are all promoted with
+ *   downed siblings, and every one of them carries `rulesRef: null` in
+ *   npcs/manifest.json — the provider published them as appearance only and
+ *   said so. They are not unmapped for want of art; they are unmapped
+ *   because no toolkit ref claims them, and a goblin cook is not a goblin
+ *   statblock just because it is a goblin.
  */
 
 import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -129,6 +142,35 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // no `-downed.glb` sibling exists and none was requested — see
   // MONSTER_REFS_HIDDEN_WHEN_DOWNED below.
   'animated-armor': ['animated-armor-open-helm.glb'],
+  // The first ref to keep more than one candidate in service, and the reason
+  // the list-valued shape survived the zombie narrowing. A goblin mob is many
+  // creatures, not one creature repeated — three goblins in a doorway should
+  // read as three goblins. That is the opposite of Kirk's 2026-09-11 zombie
+  // call, deliberately: a zombie is one thing on the board, a warband is not.
+  //
+  // Three looks, all polygon-goblin-war-camp-v2, all promoted with a
+  // `-downed.glb` sibling and the standard `Idle_Relaxed`/`Walk_Forward` pair.
+  // They are the three the SRD goblin's own kit justifies — it carries a
+  // scimitar AND a shortbow, so one melee look and two archers are the same
+  // statblock wearing different clothes, not three different monsters.
+  //
+  // Narrowing this to one look is a one-element edit if Kirk wants goblins to
+  // read uniform the way zombies do. Widening it is the bigger question: ten
+  // more goblin looks are promoted and unmapped (see this module's comment),
+  // and deciding which of them ARE a goblin is a rules call, not a client one.
+  goblin: [
+    'goblin-warrior-male-01.glb',
+    'goblin-archer-male-01.glb',
+    'goblin-archer-female-01.glb',
+  ],
+  // rpg-toolkit#1847's goblin boss: CR 1, chain shirt and shield, and the
+  // first monster in this engine that actually runs a Multiattack. The war
+  // camp's King is the roster's warband leader, which is what a goblin boss
+  // is — the same reasoning that gave skeleton-captain the Knight visual, and
+  // the same shape of decision: the boss gets the look that reads as "this one
+  // gives the orders". One candidate on purpose. A boss is a named creature in
+  // the room, not a crowd, so per-entity variety would be actively wrong here.
+  'goblin-boss': ['goblin-king-01.glb'],
 };
 
 /**
@@ -164,13 +206,21 @@ const MONSTER_REFS_HIDDEN_WHEN_DOWNED: ReadonlySet<string> = new Set([
 ]);
 
 /** The MonsterType enum values with a promoted GLB, mapped into the same
- * ref-id key space MONSTER_REF_MODELS is keyed by. Every other enum value
- * (including every non-undead monster) is intentionally absent -- see this
- * module's doc comment. */
+ * ref-id key space MONSTER_REF_MODELS is keyed by. Every other enum value is
+ * intentionally absent -- see this module's doc comment. */
 const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   [MonsterType.SKELETON]: 'skeleton',
   [MonsterType.SKELETON_CAPTAIN]: 'skeleton-captain',
   [MonsterType.ZOMBIE]: 'zombie',
+  // MONSTER_TYPE_GOBLIN (24) has sat in the sealed enum's humanoid band since
+  // before any goblin art was promoted; it becomes selectable now rather than
+  // being added now. It is the first non-undead entry in this table.
+  //
+  // The enum has no GOBLIN_BOSS value and is not going to grow one, so the
+  // boss is reachable through the v1alpha2 ref-id signal only — the same
+  // position `animated-armor` is in, for the same reason: the enum stopped
+  // growing before the ref existed.
+  [MonsterType.GOBLIN]: 'goblin',
 };
 
 /**
@@ -219,10 +269,11 @@ function fnv1aHash(input: string): number {
  * encounter can show different styles at once with neither one flickering
  * between them on a rerender.
  *
- * No ref maps to more than one candidate today (the zombie pair was narrowed
- * to gaunt-only on 2026-09-11), so in practice this returns 0 for every call
- * the app makes. Kept because the table it indexes is still a candidate LIST,
- * and this is the behavior a future multi-look ref needs back verbatim.
+ * `goblin` is the ref that uses it: three promoted war-camp looks, one per
+ * entity id. Between the 2026-09-11 zombie narrowing and that mapping no ref
+ * had more than one candidate and this returned 0 for every call the app made;
+ * it was kept because the table it indexes is still a candidate LIST, and this
+ * was the behavior the next multi-look ref would need back verbatim.
  *
  * `count <= 1` always returns `0` without even looking at `entityId` — every
  * existing single-candidate ref (skeleton, skeleton-captain) is provably
@@ -236,9 +287,9 @@ function fnv1aHash(input: string): number {
  *
  * @example
  * ```typescript
- * pickStableCandidateIndex('goblin-1', 1); // 0 -- single-candidate ref
- * pickStableCandidateIndex('zombie-1', 2); // stable 0 or 1, same every call
- * pickStableCandidateIndex(undefined, 2); // 0 -- no id to key off of
+ * pickStableCandidateIndex('boss-1', 1);   // 0 -- single-candidate ref
+ * pickStableCandidateIndex('goblin-1', 3); // stable 0, 1 or 2, same every call
+ * pickStableCandidateIndex(undefined, 3); // 0 -- no id to key off of
  * ```
  */
 export function pickStableCandidateIndex(
@@ -276,8 +327,9 @@ function withDownedSuffix(file: string): string {
  * (rpg-dnd5e-web#479 boundary lineage, same as resolveClassCharacterModelUrl).
  *
  * `entityId` (rpg-dnd5e-web#673) selects WHICH candidate a multi-candidate
- * ref renders — see `pickStableCandidateIndex`. No ref has more than one
- * candidate today, so it currently changes nothing for any real call.
+ * ref renders — see `pickStableCandidateIndex`. `goblin` is the one ref where
+ * this decides anything today: it has three looks, and the id is what makes a
+ * given goblin the same goblin on every render and on every other client.
  * Single-candidate refs ignore it entirely (`x % 1 === 0` always), so every
  * pre-#673 caller/behavior is unchanged whether or not it passes one.
  *
@@ -290,7 +342,10 @@ function withDownedSuffix(file: string): string {
  * resolveMonsterModelUrl('zombie', undefined, false, 'zombie-1');
  * // '/models/synty/npcs/zombie-peasant-female.glb' -- one look for every zombie
  * resolveMonsterModelUrl('goblin', undefined, false, 'goblin-1');
- * // undefined — no crypt-roster GLB mapped for goblin
+ * // '/models/synty/npcs/goblin-archer-male-01.glb' -- one of three looks,
+ * // chosen by this entity's id and stable for its lifetime
+ * resolveMonsterModelUrl('goblin-boss', undefined, false, 'boss-1');
+ * // '/models/synty/npcs/goblin-king-01.glb' -- the boss has one look
  * ```
  */
 export function resolveMonsterModelUrl(
