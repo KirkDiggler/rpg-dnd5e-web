@@ -373,7 +373,6 @@ dispositions:
   - {between: [goblins, party], stance: neutral}
   - {between: [bandits, party], stance: hostile}
 intel:
-  - {id: vault-map, reveals: {door: vault}}
   - {id: cellar-lie, reveals: {fact: cellar-is-clear}}
 ${ROOM_BLOCK}
     monsterBindings:
@@ -388,7 +387,6 @@ ${ROOM_BLOCK}
 
     const decoded = decodeSingleRoomDungeon(source);
     expect(decoded.intel).toEqual([
-      { id: 'vault-map', reveals: { door: 'vault' } },
       { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
     ]);
     expect(decoded.draft.room.monsterBindings).toEqual({
@@ -450,21 +448,88 @@ ${ROOM_BLOCK}
     expect(() => withArrives('{fact: a, round: 2}')).toThrow(/exactly one/);
   });
 
-  it('refuses a malformed intel record and an empty reveals, without inventing a target', () => {
+  it('carries propBindings verbatim, and a prop-only room claims v4', () => {
+    // The FOURTH declaration kind (rpg-project#488 R1, rpg-toolkit#1855). The
+    // engine DECODES it and REFUSES it at compile until rpg-toolkit#1854, so
+    // the web carries it rather than refusing the key: the author must be able
+    // to write the block to receive the engine's sentence about it.
+    const source = `version: 4
+key: tomb-heirloom
+${PLAY_BLOCK}
+${ROOM_BLOCK}
+    propBindings:
+      heirloom: {holdable: true}
+      letter: {holdable: true, holds: [wisemans-letter], arrives: {round: 6}}
+`;
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.draft.room.propBindings).toEqual({
+      heirloom: { holdable: true },
+      letter: {
+        holdable: true,
+        holds: ['wisemans-letter'],
+        arrives: { round: 6 },
+      },
+    });
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+    });
+    expect(emitted).toContain('propBindings:');
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+  });
+
+  it('a room whose only v4 fact is a door still claims v4', () => {
+    // The version is a statement about what a file MAY contain. `doorBindings`
+    // was missed when the door wave landed, so this emitted `version: 3` while
+    // carrying a key v3 has no place for.
+    const withDoor = createRoomDraft(
+      createEmptyScene('scene-door'),
+      'room-door'
+    );
+    withDoor.scene.items.push({
+      id: 'vault-door',
+      kind: 'prop',
+      assetRef: 'dnd5e:props:books',
+      label: 'door',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      heightScale: 1,
+    });
+    withDoor.room.propDeclarations['vault-door'] = {
+      blocksMovement: true,
+      blocksLineOfSight: true,
+      footprint: { width: 1, depth: 0.2, offsetX: 0, offsetZ: 0 },
+    };
+    withDoor.room.doorBindings = { 'vault-door': { closed: true } };
+    const emitted = encodeSingleRoomDungeon({
+      key: 'door-only',
+      draft: withDoor,
+    });
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('doorBindings:');
+  });
+
+  it('refuses a malformed intel record and a door reveal, without inventing a target', () => {
     const withIntel = (records: string) =>
       decodeSingleRoomDungeon(
         `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\nintel:\n${records}\n${ROOM_BLOCK}\n`
       );
     expect(() => withIntel('  - {id: vault-map}')).toThrow(/reveals/);
     expect(() => withIntel('  - {id: vault-map, reveals: {}}')).toThrow(
-      /exactly one target/
+      /reveals nothing/
     );
+    // `door` is REFUSED outright in this dialect (rpg-project#488 R3, corrected
+    // by rpg-toolkit#1855): the word means something, it needs a crossing to
+    // mean it. A record naming a door AND a fact gets the door sentence, because
+    // the forbidden word is the thing worth saying.
+    expect(() =>
+      withIntel('  - {id: vault-map, reveals: {door: vault}}')
+    ).toThrow(/concealed door on a crossing/);
     expect(() =>
       withIntel('  - {id: vault-map, reveals: {door: a, fact: b}}')
-    ).toThrow(/exactly one target/);
+    ).toThrow(/concealed door on a crossing/);
     expect(() =>
       withIntel(
-        '  - {id: vault-map, reveals: {door: vault}}\n  - {id: vault-map, reveals: {fact: x}}'
+        '  - {id: vault-map, reveals: {fact: a}}\n  - {id: vault-map, reveals: {fact: b}}'
       )
     ).toThrow(/duplicate intel id/);
   });

@@ -1240,11 +1240,16 @@ export interface CreatureOrdersProps {
   onOrdersChange?: (next: RoomMonsterBinding | undefined) => void;
 }
 
-/** The creature's `arrives:` predicate — the SAME four forms as a
- * disposition's `until`, because it is the same `PredicateSpec` the engine
- * carries for both. `(none)` means the creature stands there from the first
- * frame; a form holds it in reserve until it holds. */
-function ArrivesEditor({
+/** The `arrives:` predicate — the SAME four forms as a disposition's `until`,
+ * because it is the same `PredicateSpec` the engine carries for all three
+ * consumers: a disposition's `until`, a creature's `arrives`, and a placed
+ * prop's `arrives` (rpg-project#488 R1). `(none)` means the thing stands there
+ * from the first frame; a form holds it out of the run until it holds.
+ *
+ * EXPORTED since rpg-toolkit#1855 so the Props panel authors a prop's arrival
+ * with THIS editor rather than a second one — the same reason there is one
+ * predicate grammar. */
+export function ArrivesEditor({
   scope,
   room,
   arrives,

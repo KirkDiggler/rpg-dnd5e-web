@@ -4,7 +4,7 @@
  *
  * THE BUILDER IS A FORM BUILDER, AND THESE ARE ITS MECHANICS, NOT ITS
  * OPINIONS. Every function here moves bytes the toolkit already accepts: it
- * never resolves a `door` or `fact` target, never decides who may hold a
+ * never resolves a `fact` target, never decides who may hold a
  * record, and never protects the author from a name it cannot resolve.
  * Renaming a record id changes the declaration and nothing else — if a
  * creature's `holds` still names the old id, the ENGINE refuses that by name,
@@ -43,9 +43,10 @@ function withRecords(scope: SiteScope, records: SiteIntelRecord[]): SiteScope {
   return { ...scope, intel: records };
 }
 
-/** A NEW record: a fresh id, revealing the first target the caller offers (a
- * door when the site has one, else a fact). There is no target to invent — the
- * author writes it — so the id starts empty and the form shows that. */
+/** A NEW record: a fresh id revealing the target the caller gives it. There is
+ * no target to invent — the author writes the fact id — so the form starts it
+ * empty and shows that. `fact` is the only target this dialect takes; a `door`
+ * reveal is refused by the validator (rpg-project#488 R3). */
 export function addIntelRecord(
   scope: SiteScope,
   reveals: SiteIntelReveals

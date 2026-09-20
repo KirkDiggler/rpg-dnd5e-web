@@ -76,11 +76,16 @@ export interface SiteScope {
 }
 
 /** One intel record's `reveals` — the shape `{ door: <id> }` or
- * `{ fact: <id> }` the engine's `RevealsSpec` carries. CARRIED, NOT GRADED: a
- * record is declared structure like a door, and what resolving the target means
- * is the encounter's, read at transfer (v2 `IntelRecord`, web#933). Exactly one
- * target, because a record that claims to reveal two things is an author who
- * has not decided. */
+ * `{ fact: <id> }` the engine's `RevealsSpec` carries.
+ *
+ * `fact` IS THE ONLY TARGET THIS DIALECT ACCEPTS (rpg-project#488 R3, corrected
+ * by rpg-toolkit#1855). `door` is REFUSED BY NAME at `intel[<i>].reveals.door`:
+ * revealing the way to a door needs a CONCEALED door on a crossing, and a
+ * single room has no crossing to hide one on. The design first said a door
+ * reveal was "accepted and inert"; the engine made it a sentence instead, so
+ * the builder fails closed with it rather than writing bytes nothing can read.
+ * `door` stays on the type so the refusal can be a sentence at the author's own
+ * path rather than "not a key this build reads". */
 export type SiteIntelReveals = { door: string } | { fact: string };
 
 /** One intel record at the site root — the authored knowledge an author places
@@ -95,6 +100,16 @@ const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
 const INTEL_KEYS = ['id', 'reveals'] as const;
 const REVEALS_KEYS = ['door', 'fact'] as const;
+
+/** The engine's own sentence for `reveals: { door }` in this dialect
+ * (`dungeonspec.single_room_gameplay.go`), transcribed so the builder shows the
+ * words the author would read from the server. The word means something — it
+ * simply needs a crossing to mean it. */
+export const INTEL_REVEALS_DOOR_REFUSAL =
+  'a door is not something a single room can reveal yet: revealing the way to ' +
+  'one needs a concealed door on a crossing, and this dialect’s doors are ' +
+  'footprints standing in the open; write `fact: <id>`, or wait for the sites ' +
+  'layer';
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -220,9 +235,13 @@ const SCOPE_KEYS = ['factions', 'dispositions', 'intel'] as const;
 
 /** The site's `intel:` records, in authored order. An id is unique and follows
  * the same lower-case-dash grammar as a faction id; `reveals` is REQUIRED and
- * EXACTLY ONE target (`door` or `fact`), the engine's own `RevealsSpec`. What a
- * door or fact id resolves to is the engine's judgement at `PutDungeon` — the
- * web keeps the shape and never resolves it. */
+ * EXACTLY ONE target, and in this dialect that target is `fact`: `door` is
+ * REFUSED BY NAME (rpg-project#488 R3, rpg-toolkit#1855). The refusal comes
+ * FIRST and is the whole answer for a record naming a door — a record with both
+ * keys is an author who wrote a forbidden word beside a legal one, and telling
+ * them the word is not built is the sentence that helps. What a fact id
+ * resolves to is the engine's judgement; the web keeps the shape and never
+ * resolves it. */
 export function validateIntel(value: unknown): SiteIntelRecord[] {
   if (!Array.isArray(value)) fail('Site intel', 'must be a list');
   const records: SiteIntelRecord[] = [];
@@ -237,20 +256,18 @@ export function validateIntel(value: unknown): SiteIntelRecord[] {
     ids.add(raw.id);
     const reveals = objectShape(raw.reveals, `${path} reveals`);
     rejectUnknownKeys(reveals, REVEALS_KEYS, `${path} reveals`);
+    if (typeof reveals.door === 'string' && reveals.door !== '')
+      fail(`${path} reveals.door`, INTEL_REVEALS_DOOR_REFUSAL);
     const revealKeys = Object.keys(reveals);
     if (revealKeys.length !== 1)
       fail(
         `${path} reveals`,
-        'must reveal exactly one target (a door or a fact)'
+        `intel "${raw.id}" reveals nothing — a record says exactly one thing it reveals`
       );
-    const target = revealKeys[0] as 'door' | 'fact';
-    const id = reveals[target];
+    const id = reveals.fact;
     if (typeof id !== 'string' || !id)
-      fail(`${path} reveals.${target}`, 'must name an id');
-    records.push({
-      id: raw.id,
-      reveals: target === 'door' ? { door: id } : { fact: id },
-    });
+      fail(`${path} reveals.fact`, 'must name a fact');
+    records.push({ id: raw.id, reveals: { fact: id } });
   }
   return records;
 }

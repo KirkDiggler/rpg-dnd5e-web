@@ -36,7 +36,7 @@ function roomWithThug() {
 }
 
 describe('IntelPanel — the site’s knowledge records, editable', () => {
-  it('shows each record’s id and the fact it reveals, and carries a door reveal read-only', () => {
+  it('shows each record’s id and the fact it reveals, and REFUSES a door reveal', () => {
     render(
       <IntelPanel
         scope={frontRoomScope()}
@@ -45,11 +45,11 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
       />
     );
     const idBox = screen.getByLabelText(
-      'Intel id for vault-map'
+      'Intel id for cellar-lie'
     ) as HTMLInputElement;
-    expect(idBox.value).toBe('vault-map');
+    expect(idBox.value).toBe('cellar-lie');
 
-    // The fact record is the driving case and is the one AUTHORABLE kind.
+    // The fact record is the driving case and the one target this dialect takes.
     expect(
       (
         screen.getByLabelText(
@@ -58,11 +58,11 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
       ).value
     ).toBe('cellar-is-clear');
 
-    // A door reveal is CARRIED, not authored — the concealed-door coupling is
-    // deferred, so it is a readout and its fact box is disabled rather than
-    // silently dropped on re-save.
+    // A door reveal is REFUSED, in the engine's own words, at the record's own
+    // row — not merely unauthored and not silently carried (rpg-project#488 R3,
+    // rpg-toolkit#1855).
     expect(screen.getByTestId('intel-door-vault-map').textContent).toMatch(
-      /Reveals door “vault”/
+      /concealed door on a crossing/
     );
     expect(
       (

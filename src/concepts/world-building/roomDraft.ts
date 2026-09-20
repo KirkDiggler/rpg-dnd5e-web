@@ -79,9 +79,35 @@ export interface RoomMonsterPlacement {
   cell: RoomHexCell;
   faction?: string;
 }
+/** One placed prop's ORDERS — the FOURTH declaration kind, after
+ * `propDeclarations`, `monsterBindings` and `doorBindings`, keyed by the same
+ * law: the id of the placed item it is about (rpg-project#488 R1,
+ * rpg-toolkit#1855).
+ *
+ * DEFINITION, STATE, ORDERS, and which is which: `propDeclarations` is the
+ * item's definition (footprint, blocking), `doorBindings` is a door's state,
+ * and this is what a PLACED PROP DOES.
+ *
+ * CARRIED, NOT GRADED, and the engine's current answer is a REFUSAL at compile
+ * (rpg-toolkit#1854): a v4 item compiles to a footprint, which cannot be held
+ * and cannot arrive, so `CompileSingleRoom` refuses this block by name rather
+ * than carrying it inert. The engine still DECODES it — deliberately, so the
+ * author can write the block, round-trip it and read the refusal — which is
+ * exactly why the web carries it too rather than refusing the key. A key the
+ * builder drops is the one thing worse than a key the engine refuses. */
+export interface RoomPropBinding {
+  /** Whether a member can pick this prop up. A PLAIN BOOL, unlike v2's pointer:
+   * a thing nobody declared holdable stays scenery. */
+  holdable?: boolean;
+  /** The intel records this prop carries, by record id. */
+  holds?: string[];
+  /** The predicate that brings this prop into the run. */
+  arrives?: PredicateDoc;
+}
+
 /** The orders block for one creature, under its stable id — the THIRD
  * declaration kind on a placed thing, after `propDeclarations` and the
- * proposed `doorBindings` (rpg-project#477 Decision 4).
+ * `doorBindings` (rpg-project#477 Decision 4, rpg-project#485).
  *
  * It carries the authored facts the FACTION would otherwise supply, because
  * being supplied by the faction is exactly what makes them overridable:
@@ -182,6 +208,15 @@ export interface RoomGameplayData {
    * ABSENT when nothing has any, so a room with no doors emits the bytes it
    * always did. */
   doorBindings?: Record<string, RoomDoorBinding>;
+  /** Stable item id -> what a placed prop DOES: whether it can be taken, what
+   * it carries, whether it arrives later. CARRIED, NOT GRADED, like
+   * `doorBindings` — and here the engine's verdict today is a refusal at
+   * compile (rpg-toolkit#1854), which the author needs to be able to write the
+   * block to receive.
+   *
+   * ABSENT, NOT EMPTY: a room that binds no prop emits exactly the bytes it
+   * wrote before this key existed. */
+  propBindings?: Record<string, RoomPropBinding>;
 }
 
 /** ONE way through a locked door: the check it names and the number it beats.
@@ -475,6 +510,17 @@ export function reconcileRoomDraft(
   if (doorBindings && Object.keys(doorBindings).length > 0)
     room.doorBindings = doorBindings;
   else delete room.doorBindings;
+  // A prop binding whose item is gone is an orphan for the same reason a door
+  // binding is: its refusals all begin "this names no placed prop", so leaving
+  // it would refuse the whole document rather than rotting quietly.
+  const propBindings = draft.room.propBindings
+    ? Object.fromEntries(
+        Object.entries(draft.room.propBindings).filter(([id]) => ids.has(id))
+      )
+    : undefined;
+  if (propBindings && Object.keys(propBindings).length > 0)
+    room.propBindings = propBindings;
+  else delete room.propBindings;
   return { ...draft, scene, room };
 }
 
@@ -867,6 +913,7 @@ function validateDraft(value: unknown): RoomDraft {
       'monsters',
       'monsterBindings',
       'doorBindings',
+      'propBindings',
     ],
     'Room gameplay data'
   );
@@ -939,6 +986,16 @@ function validateDraft(value: unknown): RoomDraft {
         RoomDoorBinding
       >)
     : undefined;
+  // CARRIED, NOT GRADED, for `doorBindings`' reason: this block's refusals
+  // (an id no `propDeclarations` owns, an id that is also a door, an
+  // arrangement template, and the compile refusal rpg-toolkit#1854) are the
+  // engine's, each at its own path. Only the SHAPE is checked here.
+  const propBindings = Object.hasOwn(room, 'propBindings')
+    ? (objectShape(room.propBindings, 'Prop bindings') as Record<
+        string,
+        RoomPropBinding
+      >)
+    : undefined;
   const draft: RoomDraft = {
     ...input,
     version: 3,
@@ -971,6 +1028,11 @@ function validateDraft(value: unknown): RoomDraft {
       // the bytes it always did.
       ...(doorBindings && Object.keys(doorBindings).length > 0
         ? { doorBindings }
+        : {}),
+      // ABSENT, NOT EMPTY, for the same reason: a room that binds no prop
+      // emits the bytes it always did.
+      ...(propBindings && Object.keys(propBindings).length > 0
+        ? { propBindings }
         : {}),
     },
   } as RoomDraft;

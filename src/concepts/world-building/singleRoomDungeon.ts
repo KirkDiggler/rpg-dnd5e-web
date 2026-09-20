@@ -104,6 +104,20 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
     Object.keys(draft.room.monsterBindings).length > 0
   )
     return true;
+  // `doorBindings` and `propBindings` are v4-only keys too. Doors were missed
+  // when the door wave landed, so a room whose ONLY v4 fact was a door emitted
+  // `version: 3` while carrying a key v3 has no place for — the version is a
+  // statement about what a file MAY contain, and that statement was false.
+  if (
+    draft.room.doorBindings &&
+    Object.keys(draft.room.doorBindings).length > 0
+  )
+    return true;
+  if (
+    draft.room.propBindings &&
+    Object.keys(draft.room.propBindings).length > 0
+  )
+    return true;
   return draft.room.monsters.some((monster) => monster.faction !== undefined);
 }
 

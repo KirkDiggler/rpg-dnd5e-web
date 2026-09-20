@@ -10,7 +10,7 @@
  * shared table).
  *
  * THE BUILDER IS A FORM BUILDER. It writes `{ id, reveals }` and nothing else:
- * it never resolves a door or fact target, never decides who may hold a record,
+ * it never resolves a fact target, never decides who may hold a record,
  * and never pre-judges whether a `holds` id still resolves. Those are the
  * engine's sentences at `PutDungeon`, and a rename here deliberately does not
  * rewrite a creature's `holds` — the server names the dangling reference.
@@ -23,24 +23,31 @@ import {
   setIntelReveals,
 } from './intelEdits';
 import type { RoomGameplayData } from './roomDraft';
-import type { SiteIntelReveals, SiteScope } from './siteScope';
+import {
+  INTEL_REVEALS_DOOR_REFUSAL,
+  type SiteIntelReveals,
+  type SiteScope,
+} from './siteScope';
 
-/** The ONE target kind this panel AUTHORS: `fact`, the thing a failed
- * persuasion teaches and an `arrives` reads — the driving case.
+/** The ONE target this panel authors, and the only one this dialect accepts:
+ * `fact` — the thing a failed persuasion teaches and an `arrives` reads.
  *
- * `reveals: { door: … }` is deliberately NOT authorable here. The
- * concealed-door coupling is the edge Kirk deferred (2026-09-20), so the form
- * does not open it. A file that already carries a door reveal is still CARRIED
- * and shown — dropping it on re-save would be the silent data loss this whole
- * slice exists to prevent — but it is a readout, not a picker. */
-type RevealKind = 'door' | 'fact';
-
-function revealKind(reveals: SiteIntelReveals): RevealKind {
-  return 'door' in reveals ? 'door' : 'fact';
-}
-
+ * `reveals: { door: … }` is REFUSED, not merely unauthored (rpg-project#488 R3,
+ * rpg-toolkit#1855): revealing the way to a door needs a concealed door on a
+ * crossing, and a single room has none. The design first said a door reveal was
+ * "accepted and inert" and this panel first carried one read-only; the engine
+ * made it a sentence, so the form refuses it with the engine's own words and
+ * the validator will not store one. The refusal is reported HERE, beside the
+ * control that would write it, rather than only at publish time. */
 function revealTarget(reveals: SiteIntelReveals): string {
   return 'door' in reveals ? reveals.door : reveals.fact;
+}
+
+/** Whether a record names a door — the state this dialect refuses. A record in
+ * the document cannot be one (the validator refuses it), so this exists for the
+ * author's own words and for a document that arrived from another dialect. */
+function revealsDoor(reveals: SiteIntelReveals): boolean {
+  return 'door' in reveals;
 }
 
 export interface IntelPanelProps {
@@ -65,7 +72,6 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
       ) : (
         <ul className="wb-policy-factions" aria-label="Intel records">
           {records.map((record) => {
-            const kind = revealKind(record.reveals);
             const holders = intelHolders(room.monsterBindings, record.id);
             return (
               <li
@@ -89,9 +95,13 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                   <span>Reveals a fact</span>
                   <input
                     aria-label={`Intel reveals fact for ${record.id}`}
-                    value={kind === 'fact' ? revealTarget(record.reveals) : ''}
+                    value={
+                      revealsDoor(record.reveals)
+                        ? ''
+                        : revealTarget(record.reveals)
+                    }
                     placeholder="cellar-is-clear"
-                    disabled={kind === 'door'}
+                    disabled={revealsDoor(record.reveals)}
                     onChange={(event) =>
                       onChange(
                         setIntelReveals(scope, record.id, {
@@ -101,17 +111,17 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                     }
                   />
                 </label>
-                {kind === 'door' && (
-                  // CARRIED, NOT AUTHORED: a door reveal came from a file that
-                  // already had one, and re-saving must not lose it. Editing it
-                  // is the concealed-door coupling this slice defers, so it is a
-                  // readout and the fact box above is disabled while it stands.
+                {revealsDoor(record.reveals) && (
+                  // REFUSED, NOT CARRIED: this dialect will not run a record
+                  // that reveals a door, so the form says so in the engine's own
+                  // words at the record's own row instead of preserving bytes
+                  // the server rejects (rpg-project#488 R3, rpg-toolkit#1855).
                   <p
                     className="wb-help"
                     data-testid={`intel-door-${record.id}`}
+                    role="alert"
                   >
-                    Reveals door “{revealTarget(record.reveals)}”. Door reveals
-                    are carried as written — authoring them is a later slice.
+                    {INTEL_REVEALS_DOOR_REFUSAL}
                   </p>
                 )}
                 <p

@@ -2714,6 +2714,83 @@ describe('WorldBuildingConcept room publishing', () => {
     ]);
   });
 
+  it('authors a placed prop’s orders — holdable and a carried record — and publishes the block (rpg-project#488 R1)', async () => {
+    // The fourth declaration kind, authored through the form. The engine
+    // decodes this block and REFUSES it at compile until rpg-toolkit#1854, so
+    // what this test claims is the DOCUMENT half: the block the author wrote
+    // reaches the published YAML intact rather than being dropped by the
+    // builder — the failure mode this whole wave is about.
+    const storage = new MemoryStorage();
+    const seed = seedImportedRoom(storage);
+    // The prop needs a declaration to be a candidate at all: that is where its
+    // footprint comes from, and the engine refuses a binding without one.
+    seed.room.propDeclarations = {
+      'prop-1': {
+        blocksMovement: false,
+        blocksLineOfSight: false,
+        footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 },
+      },
+    };
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(seed));
+
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    // A record to carry first, so the picker has something to offer.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    fireEvent.change(screen.getByLabelText('Intel reveals fact for intel-1'), {
+      target: { value: 'saved-wiseman' },
+    });
+
+    const panel = screen.getByTestId('prop-orders-prop-1');
+    fireEvent.click(within(panel).getByLabelText('Holdable for prop-1'));
+    fireEvent.change(
+      within(panel).getByLabelText('Give prop-1 an intel record'),
+      {
+        target: { value: 'intel-1' },
+      }
+    );
+
+    // The local envelope carries it …
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as { draft?: { room?: { propBindings?: Record<string, unknown> } } };
+      expect(stored.draft?.room?.propBindings).toEqual({
+        'prop-1': { holdable: true, holds: ['intel-1'] },
+      });
+    });
+
+    // … and it is what the ENGINE is handed.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml).toContain('propBindings:');
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.draft.room.propBindings).toEqual({
+      'prop-1': { holdable: true, holds: ['intel-1'] },
+    });
+  });
+
   it('authors intel, priced checks and a creature in reserve with no YAML, and publishes all four (web#1176)', async () => {
     // The Front Room's driving case, end to end: a record is declared in the
     // Intel node, a creature prices its checks and is held in reserve until the
