@@ -23,10 +23,9 @@ describe('editing the site’s intel records (web#1176)', () => {
   });
 
   it('never hands out an id that is taken', () => {
-    const two = addIntelRecord(
-      addIntelRecord(empty(), { fact: 'a' }),
-      { fact: 'b' }
-    );
+    const two = addIntelRecord(addIntelRecord(empty(), { fact: 'a' }), {
+      fact: 'b',
+    });
     expect(intelRecordIds(two)).toEqual(['intel-1', 'intel-2']);
     // Rename the second out of the way and the next id is still unique.
     const renamed = renameIntelRecord(two, 'intel-1', 'vault-map');

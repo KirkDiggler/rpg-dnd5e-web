@@ -1300,7 +1300,9 @@ function ArrivesEditor({
             step={1}
             aria-label="Arrives round"
             value={String(shown?.round ?? 1)}
-            onChange={(event) => onCommit({ round: Number(event.target.value) })}
+            onChange={(event) =>
+              onCommit({ round: Number(event.target.value) })
+            }
           />
         </label>
       )}
@@ -1725,9 +1727,13 @@ export function CreatureOrders({
               label="Intimidate"
               testId="creature-intimidate"
               rows={binding?.intimidate ?? []}
-              onAdd={(row) => onOrdersChange(addMonsterCheck(binding, 'intimidate', row))}
+              onAdd={(row) =>
+                onOrdersChange(addMonsterCheck(binding, 'intimidate', row))
+              }
               onPatch={(index, row) =>
-                onOrdersChange(patchMonsterCheck(binding, 'intimidate', index, row))
+                onOrdersChange(
+                  patchMonsterCheck(binding, 'intimidate', index, row)
+                )
               }
               onRemove={(index) =>
                 onOrdersChange(removeMonsterCheck(binding, 'intimidate', index))
@@ -1737,9 +1743,13 @@ export function CreatureOrders({
               label="Persuade"
               testId="creature-persuade"
               rows={binding?.persuade ?? []}
-              onAdd={(row) => onOrdersChange(addMonsterCheck(binding, 'persuade', row))}
+              onAdd={(row) =>
+                onOrdersChange(addMonsterCheck(binding, 'persuade', row))
+              }
               onPatch={(index, row) =>
-                onOrdersChange(patchMonsterCheck(binding, 'persuade', index, row))
+                onOrdersChange(
+                  patchMonsterCheck(binding, 'persuade', index, row)
+                )
               }
               onRemove={(index) =>
                 onOrdersChange(removeMonsterCheck(binding, 'persuade', index))
@@ -1755,7 +1765,9 @@ export function CreatureOrders({
               scope={scope}
               room={room}
               arrives={binding?.arrives}
-              onCommit={(next) => onOrdersChange(setMonsterArrives(binding, next))}
+              onCommit={(next) =>
+                onOrdersChange(setMonsterArrives(binding, next))
+              }
             />
           </>
         ) : (

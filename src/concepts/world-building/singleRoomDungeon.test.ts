@@ -463,7 +463,9 @@ ${ROOM_BLOCK}
       withIntel('  - {id: vault-map, reveals: {door: a, fact: b}}')
     ).toThrow(/exactly one target/);
     expect(() =>
-      withIntel('  - {id: vault-map, reveals: {door: vault}}\n  - {id: vault-map, reveals: {fact: x}}')
+      withIntel(
+        '  - {id: vault-map, reveals: {door: vault}}\n  - {id: vault-map, reveals: {fact: x}}'
+      )
     ).toThrow(/duplicate intel id/);
   });
 

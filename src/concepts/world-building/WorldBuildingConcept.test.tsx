@@ -2737,12 +2737,17 @@ describe('WorldBuildingConcept room publishing', () => {
 
     // 1. An intel record naming the fact the lie teaches.
     fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
-    const idBox = screen.getByLabelText('Intel id for intel-1') as HTMLInputElement;
+    const idBox = screen.getByLabelText(
+      'Intel id for intel-1'
+    ) as HTMLInputElement;
     fireEvent.change(idBox, { target: { value: 'cellar-lie' } });
     fireEvent.blur(idBox);
-    fireEvent.change(screen.getByLabelText('Intel reveals fact for cellar-lie'), {
-      target: { value: 'cellar-is-clear' },
-    });
+    fireEvent.change(
+      screen.getByLabelText('Intel reveals fact for cellar-lie'),
+      {
+        target: { value: 'cellar-is-clear' },
+      }
+    );
 
     // 2. A creature, with a priced persuade and the record in its hands.
     fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));

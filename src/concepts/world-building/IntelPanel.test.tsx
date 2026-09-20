@@ -126,9 +126,12 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
         onChange={onChange}
       />
     );
-    fireEvent.change(screen.getByLabelText('Intel reveals fact for cellar-lie'), {
-      target: { value: 'cellar-is-flooded' },
-    });
+    fireEvent.change(
+      screen.getByLabelText('Intel reveals fact for cellar-lie'),
+      {
+        target: { value: 'cellar-is-flooded' },
+      }
+    );
     expect(onChange.mock.calls[0][0].intel[1].reveals).toEqual({
       fact: 'cellar-is-flooded',
     });

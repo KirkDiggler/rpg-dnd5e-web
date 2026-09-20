@@ -22,6 +22,7 @@ import {
 } from './declarationFootprint';
 import { withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
+import { IntelPanel } from './IntelPanel';
 import { withBinding } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { addRepeatedProps } from './repeatPlacement';
@@ -86,7 +87,6 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
-import { IntelPanel } from './IntelPanel';
 import { CreatureOrders, SitePolicies } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import type {

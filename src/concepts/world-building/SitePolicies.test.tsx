@@ -263,8 +263,11 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
     );
     const intimidate = screen.getByTestId('creature-intimidate');
     expect(
-      (within(intimidate).getByLabelText('Intimidate ability 0') as HTMLInputElement)
-        .value
+      (
+        within(intimidate).getByLabelText(
+          'Intimidate ability 0'
+        ) as HTMLInputElement
+      ).value
     ).toBe('intimidation');
     expect(
       (within(intimidate).getByLabelText('Intimidate dc 0') as HTMLInputElement)
@@ -291,7 +294,10 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
     const onOrdersChange = vi.fn();
     render(
       <CreatureOrders
-        scope={{ ...siteScope, intel: [{ id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } }] }}
+        scope={{
+          ...siteScope,
+          intel: [{ id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } }],
+        }}
         monster={goblin}
         room={fixture.draft.room}
         binding={{ actions: ['dnd5e:weapons:scimitar'] }}
@@ -348,9 +354,9 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
         onOrdersChange={onOrdersChange}
       />
     );
-    expect(screen.getAllByTestId('creature-arrives-note')[1].textContent).toMatch(
-      /Held in reserve until fact cellar-is-clear/
-    );
+    expect(
+      screen.getAllByTestId('creature-arrives-note')[1].textContent
+    ).toMatch(/Held in reserve until fact cellar-is-clear/);
   });
 
   it('reports the interaction facts read-only when no editor is given', () => {
@@ -361,14 +367,18 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
         room={fixture.draft.room}
         binding={{
           intimidate: [{ ability: 'intimidation', dc: 12 }],
-          persuade: [{ ability: 'persuasion', dc: 10, tool: 'dnd5e:items:lute' }],
+          persuade: [
+            { ability: 'persuasion', dc: 10, tool: 'dnd5e:items:lute' },
+          ],
           holds: ['cellar-lie'],
           arrives: { fact: 'cellar-is-clear' },
         }}
       />
     );
     const creature = screen.getByLabelText('Selected creature');
-    expect(within(creature).getByText('intimidate dc 12 intimidation')).toBeTruthy();
+    expect(
+      within(creature).getByText('intimidate dc 12 intimidation')
+    ).toBeTruthy();
     expect(
       within(creature).getByText(
         'persuade dc 10 persuasion via dnd5e:items:lute'

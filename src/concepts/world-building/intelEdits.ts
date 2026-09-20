@@ -32,12 +32,12 @@ export function nextIntelId(scope: SiteScope): string {
 
 /** Put a record list back on the scope, dropping the key when it empties.
  * ONE place the absence law lives, so no mutator can write `intel: []`. */
-function withRecords(
-  scope: SiteScope,
-  records: SiteIntelRecord[]
-): SiteScope {
+function withRecords(scope: SiteScope, records: SiteIntelRecord[]): SiteScope {
   if (records.length === 0) {
-    const { intel: _dropped, ...rest } = scope;
+    // Delete the key rather than writing an empty list, so a site with no
+    // records emits exactly the bytes it emitted before intel existed.
+    const rest: SiteScope = { ...scope };
+    delete rest.intel;
     return rest;
   }
   return { ...scope, intel: records };
@@ -46,7 +46,10 @@ function withRecords(
 /** A NEW record: a fresh id, revealing the first target the caller offers (a
  * door when the site has one, else a fact). There is no target to invent — the
  * author writes it — so the id starts empty and the form shows that. */
-export function addIntelRecord(scope: SiteScope, reveals: SiteIntelReveals): SiteScope {
+export function addIntelRecord(
+  scope: SiteScope,
+  reveals: SiteIntelReveals
+): SiteScope {
   return withRecords(scope, [
     ...(scope.intel ?? []),
     { id: nextIntelId(scope), reveals },

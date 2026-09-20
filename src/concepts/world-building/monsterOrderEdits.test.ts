@@ -275,9 +275,9 @@ describe('a creature’s interaction and reserve facts (web#1176)', () => {
     expect(binding?.intimidate).toBeUndefined();
     expect(binding?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
     // An out-of-range patch/remove never empties the creature.
-    expect(patchMonsterCheck(binding, 'persuade', 5, { ability: 'x', dc: 1 })).toBe(
-      binding
-    );
+    expect(
+      patchMonsterCheck(binding, 'persuade', 5, { ability: 'x', dc: 1 })
+    ).toBe(binding);
   });
 
   it('adds and removes held records without duplicating one', () => {
@@ -296,9 +296,12 @@ describe('a creature’s interaction and reserve facts (web#1176)', () => {
   });
 
   it('sets and clears the reserve predicate that holds a creature out of the run', () => {
-    let binding: RoomMonsterBinding | undefined = setMonsterArrives(undefined, {
-      fact: 'cellar-is-clear',
-    });
+    const binding: RoomMonsterBinding | undefined = setMonsterArrives(
+      undefined,
+      {
+        fact: 'cellar-is-clear',
+      }
+    );
     expect(binding?.arrives).toEqual({ fact: 'cellar-is-clear' });
     // Clearing it returns the creature to the first frame — and with nothing
     // else authored, that is the authored state "none", not an empty block.
@@ -326,7 +329,11 @@ describe('a creature’s interaction and reserve facts (web#1176)', () => {
     binding = removeMonsterCheck(binding, 'persuade', 0);
     binding = removeMonsterHold(binding, 'cellar-lie');
     binding = setMonsterArrives(binding, undefined);
-    const emptied = withBinding(draft.room.monsterBindings, 'goblin-1', binding);
+    const emptied = withBinding(
+      draft.room.monsterBindings,
+      'goblin-1',
+      binding
+    );
     expect(emptied).toBeUndefined();
     if (emptied === undefined) delete draft.room.monsterBindings;
     else draft.room.monsterBindings = emptied;

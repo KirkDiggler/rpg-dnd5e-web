@@ -106,12 +106,18 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                   // already had one, and re-saving must not lose it. Editing it
                   // is the concealed-door coupling this slice defers, so it is a
                   // readout and the fact box above is disabled while it stands.
-                  <p className="wb-help" data-testid={`intel-door-${record.id}`}>
+                  <p
+                    className="wb-help"
+                    data-testid={`intel-door-${record.id}`}
+                  >
                     Reveals door “{revealTarget(record.reveals)}”. Door reveals
                     are carried as written — authoring them is a later slice.
                   </p>
                 )}
-                <p className="wb-help" data-testid={`intel-held-by-${record.id}`}>
+                <p
+                  className="wb-help"
+                  data-testid={`intel-held-by-${record.id}`}
+                >
                   {holders.length === 0
                     ? 'Held by nobody yet — give it to a creature or prop.'
                     : `Held by ${holders.join(', ')}.`}
