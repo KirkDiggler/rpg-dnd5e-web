@@ -86,6 +86,7 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
+import { IntelPanel } from './IntelPanel';
 import { CreatureOrders, SitePolicies } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import type {
@@ -3037,6 +3038,7 @@ export function WorldBuildingConcept({
                 <CreatureOrders
                   scope={siteScope}
                   monster={selectedMonster}
+                  room={roomDraft.room}
                   binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
                   onFactionChange={(faction) =>
                     setMonsterFaction(selectedMonster.id, faction)
@@ -3096,6 +3098,21 @@ export function WorldBuildingConcept({
                 room={roomDraft.room}
                 onChange={commitPolicies}
                 onNotice={setNotice}
+              />
+            </details>
+
+            <details className="wb-collapse">
+              <summary aria-label="Intel">Intel</summary>
+              {/* The site's knowledge records (web#1176, v2's web#933). A
+                  record is a SITE noun held by many creatures, so it lives
+                  here and never inside one creature's panel — editing it from
+                  a creature would make one placement write another's
+                  knowledge. What a record REVEALS is read by the engine when
+                  it changes hands; the form never resolves it. */}
+              <IntelPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={commitPolicies}
               />
             </details>
 

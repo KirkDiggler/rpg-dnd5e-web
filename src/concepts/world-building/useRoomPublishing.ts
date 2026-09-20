@@ -281,6 +281,7 @@ export function useRoomPublishing({
           draft,
           factions: scope.factions,
           dispositions: scope.dispositions,
+          intel: scope.intel,
         }),
         error: null,
       };
@@ -391,6 +392,7 @@ export function useRoomPublishing({
           draft: current,
           factions: currentScope.factions,
           dispositions: currentScope.dispositions,
+          intel: currentScope.intel,
         });
       } catch (err) {
         setError(
@@ -543,6 +545,7 @@ export function useRoomPublishing({
     const accepted = onImportDraftRef.current(decoded.draft, {
       ...(decoded.factions ? { factions: decoded.factions } : {}),
       ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
+      ...(decoded.intel ? { intel: decoded.intel } : {}),
     });
     if (!accepted) return false;
     // The imported file's root key becomes the publication key for the

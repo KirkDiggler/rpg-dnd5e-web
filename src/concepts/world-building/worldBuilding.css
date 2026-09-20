@@ -1167,3 +1167,44 @@ button.wb-tree-row[aria-pressed='true'] {
 .wb-yaml-exchange summary {
   cursor: pointer;
 }
+
+/* The site's intel records and a creature's interaction facts
+ * (rpg-dnd5e-web#1176). They borrow the policy block's chrome so a record and
+ * a check row read like the facts around them rather than as a separate
+ * widget: the container is a hook for spacing, and each editor's own heading
+ * is one step below the block's `h5` because it sits INSIDE one. */
+.wb-intel-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wb-creature-checks,
+.wb-creature-holds,
+.wb-creature-arrives {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.wb-creature-checks h6,
+.wb-creature-holds h6 {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wb-creature-checks .wb-policy-entry,
+.wb-creature-arrives label {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: end;
+  gap: 0.3rem;
+}
+
+.wb-creature-arrives label {
+  grid-template-columns: 1fr;
+}

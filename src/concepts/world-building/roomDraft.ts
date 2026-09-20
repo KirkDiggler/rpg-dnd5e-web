@@ -1035,7 +1035,8 @@ export function stringifyRoomDraft(
   const validatedScope = validateSiteScope(scope ?? {});
   const carriesScope =
     (validatedScope.factions?.length ?? 0) > 0 ||
-    (validatedScope.dispositions?.length ?? 0) > 0;
+    (validatedScope.dispositions?.length ?? 0) > 0 ||
+    (validatedScope.intel?.length ?? 0) > 0;
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
@@ -1148,7 +1149,8 @@ export function parseRoomDraftJson(json: string): RoomDraft {
   const document = parseRoomDocumentJson(json);
   if (
     (document.scope.factions?.length ?? 0) > 0 ||
-    (document.scope.dispositions?.length ?? 0) > 0
+    (document.scope.dispositions?.length ?? 0) > 0 ||
+    (document.scope.intel?.length ?? 0) > 0
   )
     throw new Error(
       'This room authoring draft carries a site scope; read it with parseRoomDocumentJson.'

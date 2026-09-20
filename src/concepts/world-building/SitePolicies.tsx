@@ -52,13 +52,20 @@ import type {
 import {
   addMonsterAction,
   addMonsterAnswerEntry,
+  addMonsterCheck,
+  addMonsterHold,
   moveMonsterAction,
   patchMonsterAnswerEntry,
+  patchMonsterCheck,
   removeMonsterAction,
   removeMonsterAnswerEntry,
+  removeMonsterCheck,
+  removeMonsterHold,
+  setMonsterArrives,
   setMonsterTemper,
 } from './monsterOrderEdits';
 import type {
+  RoomCheckApproach,
   RoomGameplayData,
   RoomMonsterBinding,
   RoomMonsterPlacement,
@@ -141,6 +148,19 @@ function predicateText(predicate: PredicateDoc): string {
     predicate as { stance: { between: [string, string]; is: string } }
   ).stance;
   return `stance ${stance.between[0]} ↔ ${stance.between[1]} is ${stance.is}`;
+}
+
+/** A check route list as one line of text — the read-only form of
+ * `intimidate:`/`persuade:` (`dc 12 intimidation`, `dc 15 strength via
+ * dnd5e:items:crowbar`). */
+function checkText(rows: RoomCheckApproach[]): string {
+  return rows
+    .map((row) =>
+      row.tool === undefined
+        ? `dc ${row.dc} ${row.ability}`
+        : `dc ${row.dc} ${row.ability} via ${row.tool}`
+    )
+    .join(', ');
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -1203,6 +1223,9 @@ function CreatureTableEditor({
 export interface CreatureOrdersProps {
   scope: SiteScope;
   monster: RoomMonsterPlacement;
+  /** The room's gameplay data — what an `arrives`/`down` predicate picks a
+   * placement from. Same data `Policies` already receives. */
+  room: RoomGameplayData;
   binding?: RoomMonsterBinding;
   /** When given, the creature's `faction` is editable — the ACTOR carries
    * identity and placement (Decision 4), and the shared table stays the
@@ -1215,6 +1238,327 @@ export interface CreatureOrdersProps {
    * `monsterOrderEdits.withBinding` — which is where an emptied creature
    * becomes a deleted entry rather than an empty block the encoder refuses. */
   onOrdersChange?: (next: RoomMonsterBinding | undefined) => void;
+}
+
+/** The creature's `arrives:` predicate — the SAME four forms as a
+ * disposition's `until`, because it is the same `PredicateSpec` the engine
+ * carries for both. `(none)` means the creature stands there from the first
+ * frame; a form holds it in reserve until it holds. */
+function ArrivesEditor({
+  scope,
+  room,
+  arrives,
+  onCommit,
+}: {
+  scope: SiteScope;
+  room: RoomGameplayData;
+  arrives: PredicateDoc | undefined;
+  onCommit: (next: PredicateDoc | undefined) => void;
+}) {
+  const form = arrives === undefined ? 'none' : predicateForm(arrives);
+  const shown = arrives as unknown as Record<string, unknown> | undefined;
+  const stance = shown?.stance as
+    | { between: [string, string]; is: Stance }
+    | undefined;
+  return (
+    <div className="wb-creature-arrives" data-testid="creature-arrives">
+      <label>
+        <span>In reserve until</span>
+        <select
+          aria-label="Arrives form"
+          value={form}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === 'none') onCommit(undefined);
+            else if (next === 'round') onCommit({ round: 1 });
+            else if (next === 'down')
+              onCommit({ down: room.monsters[0]?.id ?? '' });
+            else if (next === 'fact')
+              onCommit({ fact: (shown?.fact as string) ?? '' });
+            else
+              onCommit({
+                stance: {
+                  between: stance?.between ?? [PARTY, PARTY],
+                  is: stance?.is ?? 'hostile',
+                },
+              });
+          }}
+        >
+          <option value="none">Standing here from the first frame</option>
+          {PREDICATE_FORMS.map((candidate) => (
+            <option key={candidate} value={candidate}>
+              {candidate}
+            </option>
+          ))}
+        </select>
+      </label>
+      {form === 'round' && (
+        <label>
+          <span>Round</span>
+          <input
+            type="number"
+            step={1}
+            aria-label="Arrives round"
+            value={String(shown?.round ?? 1)}
+            onChange={(event) => onCommit({ round: Number(event.target.value) })}
+          />
+        </label>
+      )}
+      {form === 'down' && (
+        <label>
+          <span>Placement</span>
+          <select
+            aria-label="Arrives placement"
+            value={(shown?.down as string) ?? ''}
+            onChange={(event) => onCommit({ down: event.target.value })}
+          >
+            <option value="">(choose a placement)</option>
+            {room.monsters.map((monster) => (
+              <option key={monster.id} value={monster.id}>
+                {monster.id} · {paletteNameForRef(monster.ref)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {form === 'fact' && (
+        <label>
+          <span>Fact</span>
+          <input
+            aria-label="Arrives fact"
+            value={(shown?.fact as string) ?? ''}
+            onChange={(event) => onCommit({ fact: event.target.value })}
+          />
+        </label>
+      )}
+      {form === 'stance' && (
+        <div className="wb-policy-until-stance">
+          <FactionNameSelect
+            label="Arrives stance first faction"
+            value={stance?.between[0] ?? PARTY}
+            options={factionNameOptions(
+              scope,
+              stance?.between[0],
+              stance?.between[1]
+            )}
+            onChange={(next) =>
+              onCommit({
+                stance: {
+                  between: [next, stance?.between[1] ?? PARTY],
+                  is: stance?.is ?? 'hostile',
+                },
+              })
+            }
+          />
+          <FactionNameSelect
+            label="Arrives stance second faction"
+            value={stance?.between[1] ?? PARTY}
+            options={factionNameOptions(
+              scope,
+              stance?.between[0],
+              stance?.between[1]
+            )}
+            onChange={(next) =>
+              onCommit({
+                stance: {
+                  between: [stance?.between[0] ?? PARTY, next],
+                  is: stance?.is ?? 'hostile',
+                },
+              })
+            }
+          />
+          <label>
+            <span>Is</span>
+            <select
+              aria-label="Arrives stance is"
+              value={stance?.is ?? 'hostile'}
+              onChange={(event) =>
+                onCommit({
+                  stance: {
+                    between: stance?.between ?? [PARTY, PARTY],
+                    is: event.target.value as Stance,
+                  },
+                })
+              }
+            >
+              {STANCES.map((word) => (
+                <option key={word} value={word}>
+                  {word}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <p className="wb-help" data-testid="creature-arrives-note">
+        {arrives === undefined
+          ? 'This creature is in the run from the first frame.'
+          : `Held in reserve until ${predicateText(arrives)}.`}
+      </p>
+    </div>
+  );
+}
+
+/** The check rows a creature carries under `intimidate:`/`persuade:`. Each row
+ * is one authored route (`{ ability, dc, tool? }`), CARRIED verbatim: whether
+ * an ability ref resolves and what an absent DC derives is the engine's
+ * judgement, so the form never validates either. An empty list is refused by
+ * the encoder, which is why the last row's removal goes through
+ * `removeMonsterCheck` and deletes the key. */
+function CreatureCheckEditor({
+  label,
+  testId,
+  rows,
+  onAdd,
+  onPatch,
+  onRemove,
+}: {
+  label: string;
+  testId: string;
+  rows: RoomCheckApproach[];
+  onAdd: (row: RoomCheckApproach) => void;
+  onPatch: (index: number, row: RoomCheckApproach) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="wb-creature-checks" data-testid={testId}>
+      <h6>{label}</h6>
+      {rows.length === 0 ? (
+        <p className="wb-help" data-testid={`${testId}-none`}>
+          Nothing authored — the rulebook derives the DC from the stat block.
+        </p>
+      ) : (
+        <ul className="wb-policy-entries">
+          {rows.map((row, index) => (
+            <li key={index} className="wb-policy-entry">
+              <label>
+                <span>Ability</span>
+                <input
+                  aria-label={`${label} ability ${index}`}
+                  value={row.ability}
+                  onChange={(event) =>
+                    onPatch(index, { ...row, ability: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                <span>DC</span>
+                <input
+                  type="number"
+                  step={1}
+                  aria-label={`${label} dc ${index}`}
+                  value={String(row.dc)}
+                  onChange={(event) =>
+                    onPatch(index, { ...row, dc: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                <span>Tool</span>
+                <input
+                  aria-label={`${label} tool ${index}`}
+                  value={row.tool ?? ''}
+                  placeholder="(none)"
+                  onChange={(event) => {
+                    const next: RoomCheckApproach = {
+                      ability: row.ability,
+                      dc: row.dc,
+                    };
+                    // ABSENT WHEN UNAUTHORED: an empty box removes the key
+                    // rather than writing `tool: ''`.
+                    if (event.target.value !== '')
+                      next.tool = event.target.value;
+                    onPatch(index, next);
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                aria-label={`Remove ${label} row ${index}`}
+                onClick={() => onRemove(index)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        aria-label={`Add ${label} row`}
+        onClick={() => onAdd({ ability: '', dc: 1 })}
+      >
+        Add route
+      </button>
+    </div>
+  );
+}
+
+/** The intel records this creature CARRIES (`holds`). The record itself is a
+ * site noun edited in the Intel panel — this is only which of them this
+ * creature holds, so the picker offers what the site declares and never
+ * invents one. */
+function CreatureHoldsEditor({
+  scope,
+  holds,
+  onAdd,
+  onRemove,
+}: {
+  scope: SiteScope;
+  holds: string[];
+  onAdd: (recordId: string) => void;
+  onRemove: (recordId: string) => void;
+}) {
+  const available = (scope.intel ?? []).filter(
+    (record) => !holds.includes(record.id)
+  );
+  return (
+    <div className="wb-creature-holds" data-testid="creature-holds">
+      <h6>Carries (intel)</h6>
+      {holds.length === 0 ? (
+        <p className="wb-help" data-testid="creature-holds-none">
+          This creature carries no intel records.
+        </p>
+      ) : (
+        <ul className="wb-actor-list" aria-label="Held intel records">
+          {holds.map((id) => (
+            <li key={id} className="wb-actor-row">
+              <span>{id}</span>
+              <button
+                type="button"
+                aria-label={`Stop holding ${id}`}
+                onClick={() => onRemove(id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label>
+        <span>Give a record</span>
+        <select
+          aria-label="Give intel record"
+          value=""
+          onChange={(event) => {
+            if (event.target.value !== '') onAdd(event.target.value);
+          }}
+        >
+          <option value="">(choose a record)</option>
+          {available.map((record) => (
+            <option key={record.id} value={record.id}>
+              {record.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {(scope.intel ?? []).length === 0 && (
+        <p className="wb-help" data-testid="creature-holds-no-records">
+          This site declares no intel records yet — add one in Intel.
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** One selected creature, read as document facts: the faction it belongs to,
@@ -1234,6 +1578,7 @@ export interface CreatureOrdersProps {
 export function CreatureOrders({
   scope,
   monster,
+  room,
   binding,
   onFactionChange,
   onOrdersChange,
@@ -1349,7 +1694,75 @@ export function CreatureOrders({
             {binding.actions !== undefined && (
               <p className="wb-help">actions {binding.actions.join(', ')}</p>
             )}
+            {binding.intimidate !== undefined && (
+              <p className="wb-help">
+                intimidate {checkText(binding.intimidate)}
+              </p>
+            )}
+            {binding.persuade !== undefined && (
+              <p className="wb-help">persuade {checkText(binding.persuade)}</p>
+            )}
+            {binding.holds !== undefined && (
+              <p className="wb-help">holds {binding.holds.join(', ')}</p>
+            )}
+            {binding.arrives !== undefined && (
+              <p className="wb-help">
+                held in reserve until {predicateText(binding.arrives)}
+              </p>
+            )}
           </>
+        )}
+      </div>
+
+      {/* The creature's interaction and reserve facts (web#1176). They are
+          neither inherited nor overridden — a faction never supplies them — so
+          they are their own block rather than a row in Overrides. */}
+      <div className="wb-policy-block">
+        <h5>Interaction</h5>
+        {onOrdersChange !== undefined ? (
+          <>
+            <CreatureCheckEditor
+              label="Intimidate"
+              testId="creature-intimidate"
+              rows={binding?.intimidate ?? []}
+              onAdd={(row) => onOrdersChange(addMonsterCheck(binding, 'intimidate', row))}
+              onPatch={(index, row) =>
+                onOrdersChange(patchMonsterCheck(binding, 'intimidate', index, row))
+              }
+              onRemove={(index) =>
+                onOrdersChange(removeMonsterCheck(binding, 'intimidate', index))
+              }
+            />
+            <CreatureCheckEditor
+              label="Persuade"
+              testId="creature-persuade"
+              rows={binding?.persuade ?? []}
+              onAdd={(row) => onOrdersChange(addMonsterCheck(binding, 'persuade', row))}
+              onPatch={(index, row) =>
+                onOrdersChange(patchMonsterCheck(binding, 'persuade', index, row))
+              }
+              onRemove={(index) =>
+                onOrdersChange(removeMonsterCheck(binding, 'persuade', index))
+              }
+            />
+            <CreatureHoldsEditor
+              scope={scope}
+              holds={binding?.holds ?? []}
+              onAdd={(id) => onOrdersChange(addMonsterHold(binding, id))}
+              onRemove={(id) => onOrdersChange(removeMonsterHold(binding, id))}
+            />
+            <ArrivesEditor
+              scope={scope}
+              room={room}
+              arrives={binding?.arrives}
+              onCommit={(next) => onOrdersChange(setMonsterArrives(binding, next))}
+            />
+          </>
+        ) : (
+          <p className="wb-help" data-testid="creature-interaction-readonly">
+            Checks, intel and the reserve predicate are authored through the
+            creature’s own panel.
+          </p>
         )}
       </div>
 
