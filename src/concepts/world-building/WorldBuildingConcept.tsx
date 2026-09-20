@@ -20,6 +20,8 @@ import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
+import { withDoorBinding } from './doorBindingEdits';
+import { DoorStates } from './DoorStates';
 import { withBinding } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { addRepeatedProps } from './repeatPlacement';
@@ -42,6 +44,7 @@ import {
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
+  type RoomDoorBinding,
   type RoomDraft,
   type RoomGameplayData,
   type RoomHexCell,
@@ -816,6 +819,52 @@ export function WorldBuildingConcept({
       commit(scene, selectedIds, room, roomDraft.workspace);
     },
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
+  );
+
+  /** One placed item's door state (rpg-project#485). The MAP is normalized
+   * here rather than in the panel, for `setMonsterOrders`' reason: the panel
+   * edits one door and knows nothing about the room it lives in. ONE
+   * difference, and it is the whole asymmetry between the two declaration
+   * kinds — an unauthored monster override is a DELETED binding, but an
+   * unlocked door is an EMPTY one, because `{}` is how the engine says "a
+   * door, open". Only the author choosing "not a door" deletes.
+   *
+   * MAKING AN ITEM A DOOR ALSO GIVES IT A FOOTPRINT, and that is not this
+   * callback reaching outside its noun: a door's SHAPE *is* its
+   * `propDeclarations` entry, the engine refuses a door without one ("a door
+   * needs a footprint"), and this is the layer holding the measured mesh.
+   * Seeding is the same per-item measurement every other declaration gets,
+   * and its two flags are false — which is exactly what the engine asks of a
+   * door, since the door's state is what decides.
+   *
+   * An item that ALREADY has a declaration keeps it untouched, flags and box
+   * both: the author tuned it, and silently re-measuring it here would undo
+   * that on every state change. */
+  const setDoorBinding = useCallback(
+    (id: string, next: RoomDoorBinding | undefined) => {
+      const bindings = withDoorBinding(roomDraft.room.doorBindings, id, next);
+      const room: RoomGameplayData = { ...roomDraft.room };
+      if (bindings === undefined) delete room.doorBindings;
+      else room.doorBindings = bindings;
+      if (next !== undefined && room.propDeclarations[id] === undefined) {
+        room.propDeclarations = {
+          ...room.propDeclarations,
+          ...seedDeclarations(
+            [id],
+            (itemId) => measuredBounds.get(itemId)?.bounds
+          ),
+        };
+      }
+      commit(scene, selectedIds, room, roomDraft.workspace);
+    },
+    [
+      commit,
+      measuredBounds,
+      roomDraft.room,
+      roomDraft.workspace,
+      scene,
+      selectedIds,
+    ]
   );
 
   const armMonsterPlacement = (ref: string) => {
@@ -3021,11 +3070,18 @@ export function WorldBuildingConcept({
 
             <details className="wb-collapse">
               <summary aria-label="Doors">Doors</summary>
-              <p className="wb-help">
-                No doors yet. `doorBindings` is proposed v4 and needs the Go
-                key; this is where it lands. Rooms stay camera targets until the
-                authored-door contract (rpg-project#468) arrives.
-              </p>
+              {/* A door is a prop PLUS a state (rpg-project#485). The panel
+                  authors the state; the asset's own `leaf` role is what makes
+                  a placed prop a candidate, because until `doorBindings` says
+                  so nothing in the document calls it a door. */}
+              <DoorStates
+                items={scene.items}
+                bindings={roomDraft.room.doorBindings}
+                declaredIds={
+                  new Set(Object.keys(roomDraft.room.propDeclarations))
+                }
+                onChange={setDoorBinding}
+              />
             </details>
 
             <details className="wb-collapse">

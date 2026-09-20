@@ -132,17 +132,43 @@ export interface RoomGameplayData {
   doorBindings?: Record<string, RoomDoorBinding>;
 }
 
+/** ONE way through a locked door: the check it names and the number it beats.
+ *
+ * These are the engine's own `ApproachSpec` fields, CARRIED AND NEVER
+ * INTERPRETED. `ability` is an opaque rulebook ref ("str", "dex",
+ * "perception"), `tool` names an item ref or nothing ("a lock the reference
+ * tomb's lock does not"), and `dc` is what this route must beat. Whether a ref
+ * RESOLVES is the server's judgement, not this module's. */
+export interface RoomDoorApproach {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
 /** One door's authored resting state, keyed by the placed item's id.
  *
  * The shape is DECLARED so the builder can read and write it, and it is NOT
- * validated here. These are the engine's own `DoorSpec` keys with `at`
- * removed — its `CheckSpec`, its nil-vs-empty law, its sentences — so a typo
- * this module refused would be a second grammar. A typo the engine refuses
- * arrives with the engine's own path and sentence, which is what the builder
- * shows. */
+ * validated here. These are the engine's own `RoomDoorBinding` keys with
+ * `concealed` left off — this dialect refuses that one by name — so a refusal
+ * this module invented would be a second grammar. A document the engine
+ * refuses arrives with the engine's own path and sentence, which is what the
+ * builder shows.
+ *
+ * THE ABSENCE RULES ARE THE ENGINE'S, AND THEY ARE NOT SYMMETRIC. That is why
+ * this is a shape with three authored states rather than a boolean:
+ *
+ *   binding absent        the item is not a door at all
+ *   `{}`                  a door, resting OPEN — absence is an open doorway
+ *   `{ closed: true }`    a door, resting shut
+ *   `{ locked: [...] }`   a door, locked, and SHUT whatever `closed` says
+ *
+ * `locked` is a LIST of approaches (the engine's `CheckSpec`): ANY one of them
+ * beats the lock, which is why the builder never sorts or dedupes the rows.
+ * `locked: []` is an authored lock that forgot how it is beaten and the engine
+ * refuses it, so no helper here ever writes one. */
 export interface RoomDoorBinding {
   closed?: boolean;
-  locked?: { ability: string; dc: number; tool?: string };
+  locked?: RoomDoorApproach[];
 }
 export interface RoomDraft {
   version: 3;
@@ -375,18 +401,29 @@ export function reconcileRoomDraft(
   scene: WorldScene
 ): RoomDraft {
   const ids = new Set(scene.items.map((item) => item.id));
-  return {
-    ...draft,
-    scene,
-    room: {
-      ...draft.room,
-      propDeclarations: Object.fromEntries(
-        Object.entries(draft.room.propDeclarations).filter(([id]) =>
-          ids.has(id)
-        )
-      ),
-    },
+  // BOTH DECLARATION KINDS FOLLOW THE ITEM THEY NAME. A door binding can no
+  // more outlive its item than a creature's orders can outlive the creature
+  // (`removeRoomMonster`), and here the cost of leaving one behind is higher
+  // than staleness: the engine refuses a door whose item declares no footprint
+  // ("a door needs a footprint"), so an orphan does not merely rot in the
+  // file, it refuses the whole document at publish.
+  const doorBindings = draft.room.doorBindings
+    ? Object.fromEntries(
+        Object.entries(draft.room.doorBindings).filter(([id]) => ids.has(id))
+      )
+    : undefined;
+  const room: RoomGameplayData = {
+    ...draft.room,
+    propDeclarations: Object.fromEntries(
+      Object.entries(draft.room.propDeclarations).filter(([id]) => ids.has(id))
+    ),
   };
+  // ABSENT, NOT EMPTY, for the same reason as everywhere else: a room that has
+  // lost its last door must emit the bytes it emitted before doors existed.
+  if (doorBindings && Object.keys(doorBindings).length > 0)
+    room.doorBindings = doorBindings;
+  else delete room.doorBindings;
+  return { ...draft, scene, room };
 }
 
 export function remapRoomDeclarations(

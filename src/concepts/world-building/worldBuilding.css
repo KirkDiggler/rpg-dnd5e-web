@@ -432,6 +432,25 @@ button.wb-tree-row[aria-pressed='true'] {
   margin: 0.4rem 0 0;
 }
 
+/* One lock approach: ability, tool, DC, and the row's own remove. The DC is
+ * the only field with a knowable width, so it is the only one that gets one —
+ * the other two share what is left. */
+.wb-approach-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: flex-end;
+  margin-top: 0.3rem;
+}
+
+.wb-approach-row > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-approach-row > .wb-approach-dc {
+  flex: 0 0 4.2rem;
+}
+
 .wb-creature-orders-grid div {
   display: grid;
   gap: 0.1rem;
