@@ -352,6 +352,68 @@ describe('the goblins — the first ref in service with several looks', () => {
   });
 });
 
+describe('the thug — one promoted Fantasy Kingdom look, with a real downed sibling', () => {
+  it('resolves the promoted thug GLB for the "thug" ref id, standing and downed', () => {
+    expect(resolveMonsterModelUrl('thug', undefined, false, 'thug-1')).toBe(
+      '/models/synty/npcs/thug.glb'
+    );
+    expect(resolveMonsterModelUrl('thug', undefined, true, 'thug-1')).toBe(
+      '/models/synty/npcs/thug-downed.glb'
+    );
+  });
+
+  it('gives every thug the same look — one SRD statblock, not a warband', () => {
+    const urls = new Set(
+      ['thug-1', 'thug-2', 'thug-3', 'thug-4'].map((id) =>
+        resolveMonsterModelUrl('thug', undefined, false, id)
+      )
+    );
+    expect(urls).toEqual(new Set(['/models/synty/npcs/thug.glb']));
+  });
+
+  it('reaches the thug through the v1alpha1 MonsterType.THUG fallback identically', () => {
+    expect(
+      resolveMonsterModelUrl(undefined, MonsterType.THUG, false, 'thug-1')
+    ).toBe('/models/synty/npcs/thug.glb');
+  });
+
+  it('never hides a downed thug — it ships a downed sibling', () => {
+    expect(monsterHidesWhenDowned('thug', undefined)).toBe(false);
+    expect(monsterHidesWhenDowned(undefined, MonsterType.THUG)).toBe(false);
+  });
+});
+
+describe('the bandit — the first promote_npc.py appearance, with a downed sibling', () => {
+  it('resolves the promoted bandit GLB for the "bandit" ref id, standing and downed', () => {
+    expect(resolveMonsterModelUrl('bandit', undefined, false, 'bandit-1')).toBe(
+      '/models/synty/npcs/bandit.glb'
+    );
+    expect(resolveMonsterModelUrl('bandit', undefined, true, 'bandit-1')).toBe(
+      '/models/synty/npcs/bandit-downed.glb'
+    );
+  });
+
+  it('gives every bandit the same look — one SRD statblock', () => {
+    const urls = new Set(
+      ['bandit-1', 'bandit-2', 'bandit-3', 'bandit-4'].map((id) =>
+        resolveMonsterModelUrl('bandit', undefined, false, id)
+      )
+    );
+    expect(urls).toEqual(new Set(['/models/synty/npcs/bandit.glb']));
+  });
+
+  it('reaches the bandit through the v1alpha1 MonsterType.BANDIT fallback identically', () => {
+    expect(
+      resolveMonsterModelUrl(undefined, MonsterType.BANDIT, false, 'bandit-1')
+    ).toBe('/models/synty/npcs/bandit.glb');
+  });
+
+  it('never hides a downed bandit — it ships a downed sibling', () => {
+    expect(monsterHidesWhenDowned('bandit', undefined)).toBe(false);
+    expect(monsterHidesWhenDowned(undefined, MonsterType.BANDIT)).toBe(false);
+  });
+});
+
 describe('pickStableCandidateIndex', () => {
   it('always returns 0 for a single-candidate list, regardless of id', () => {
     expect(pickStableCandidateIndex('any-id', 1)).toBe(0);

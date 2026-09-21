@@ -171,6 +171,16 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // gives the orders". One candidate on purpose. A boss is a named creature in
   // the room, not a crowd, so per-entity variety would be actively wrong here.
   'goblin-boss': ['goblin-king-01.glb'],
+  // rpg-game-assets#255: the Fantasy Kingdom Headsman mesh retextured with the
+  // Texture_03 atlas in the asset texture lab and named "thug", promoted with
+  // a real `-downed.glb` sibling. One look on purpose — a thug is a single SRD
+  // humanoid statblock, not a warband, so per-entity variety would be wrong the
+  // same way it is for the goblin boss.
+  thug: ['thug.glb'],
+  // rpg-game-assets#257: the first appearance promoted by scripts/promote_npc.py
+  // rather than by hand — an older Pirate-pack rig (48 joints, 1024 atlas) for
+  // the single SRD bandit statblock. One look, with a real `-downed.glb` sibling.
+  bandit: ['bandit.glb'],
 };
 
 /**
@@ -221,6 +231,13 @@ const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   // position `animated-armor` is in, for the same reason: the enum stopped
   // growing before the ref existed.
   [MonsterType.GOBLIN]: 'goblin',
+  // MonsterType.THUG (23) sits in the same sealed humanoid band. Unlike the
+  // goblin boss there is no separate boss ref to reach through the v1alpha2
+  // signal, so the enum fallback is the only harness-injected path.
+  [MonsterType.THUG]: 'thug',
+  // MonsterType.BANDIT sits beside THUG in the sealed humanoid band, so the
+  // enum fallback covers the harness-injected shape as well as the ref-id one.
+  [MonsterType.BANDIT]: 'bandit',
 };
 
 /**
