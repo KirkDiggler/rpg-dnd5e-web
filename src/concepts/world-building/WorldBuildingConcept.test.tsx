@@ -424,8 +424,17 @@ function displayedScene(): WorldScene {
   );
 }
 
-function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
+function dragLabelTo(
+  label: string,
+  targetTestId = 'canvas-ground',
+  searchFor?: string
+) {
   const transfer = new TransferStub();
+  if (searchFor !== undefined) {
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: searchFor },
+    });
+  }
   const source = screen.getByLabelText(label);
   fireEvent.dragStart(source, { dataTransfer: transfer });
   fireEvent.dragOver(screen.getByTestId(targetTestId), {
@@ -2748,6 +2757,9 @@ describe('WorldBuildingConcept room publishing', () => {
       target: { value: 'saved-wiseman' },
     });
 
+    // A prop's options belong to the SELECTION now (web#1178), so the prop is
+    // chosen first — that selection is what the panel is about.
+    fireEvent.click(screen.getByLabelText('Select Books prop-1'));
     const panel = screen.getByTestId('prop-orders-prop-1');
     fireEvent.click(within(panel).getByLabelText('Holdable for prop-1'));
     fireEvent.change(
@@ -3260,10 +3272,15 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       />
     );
 
-    // The right-hand nouns are present whichever room the camera is on.
+    // The right-hand nouns are present whichever room the camera is on. These
+    // are the SITE's nouns — shared things, keyed to the document. A prop's own
+    // options are NOT among them (web#1178): they belong to a selection, so
+    // nothing here lists every door or every prop any more.
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Doors')).toBeTruthy();
     expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+    expect(screen.queryByLabelText('Prop orders')).toBeNull();
     // A local room draft carries no site scope, and the read-only Policies
     // view says so plainly: absence is the authored state, not an error.
     expect(screen.getByTestId('policies-none')).toBeTruthy();
@@ -3272,8 +3289,8 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       screen.getByTestId('viewport-selection').textContent;
     fireEvent.click(screen.getByRole('button', { name: /^Focus room / }));
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Doors')).toBeTruthy();
     expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
     expect(screen.getByTestId('policies-none')).toBeTruthy();
     expect(screen.getByTestId('viewport-selection').textContent).toBe(
       selectionBefore
@@ -3301,6 +3318,13 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       screen.getByRole('button', { name: 'Commit monster gesture' })
     );
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    // ONE RULE FOR EVERY NOUN (web#1178): a creature is a selection, so its
+    // facts open the SAME scope the props use — not a section inside the
+    // Monsters roster. Selecting it is what shows them.
+    expect(screen.getByTestId('selected-creature')).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
     expect(screen.getByText('Faction')).toBeTruthy();
     expect(screen.getByText('Inherits')).toBeTruthy();
     expect(screen.getByText('Overrides')).toBeTruthy();
@@ -3323,13 +3347,15 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     expect(screen.getByTestId('temper-asymmetry').textContent).toMatch(
       /placement’s is one word/
     );
-    // An actor selection is not a prop selection: declarations stay absent.
-    expect(
-      screen.queryByRole('region', { name: 'Selection declarations' })
-    ).toBeNull();
+    // A creature is a SELECTION like any other (web#1178), so the scope that
+    // holds its facts is the same one a prop opens. What a creature does NOT
+    // get is the prop half of that scope — a transform and a footprint are not
+    // properties of a placed actor.
+    expect(screen.getByTestId('selected-creature')).toBeTruthy();
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    expect(screen.queryByLabelText('Movement & sight declaration')).toBeNull();
 
-    // Props selected: the declarations panel is present, because it belongs to
-    // the selection rather than to the site.
+    // Props selected: the same scope, now carrying the prop's own sections.
     dragLabelTo('Drag Books into scene');
     expect(
       screen.getByRole('region', { name: 'Selection declarations' })
@@ -3368,5 +3394,90 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     closeIdentity();
     expect(screen.queryByText('Arrangement library')).toBeNull();
     expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+  });
+});
+
+describe('per-prop options belong to the selection (web#1178)', () => {
+  /** The one asset the catalog declares leaves for. Dropping a prop SELECTS it
+   * (`dropIntoScene`), which is why these tests land on the panel directly. */
+  const DOOR_LABEL = 'Drag Double Door into scene';
+
+  function mount() {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+  }
+
+  /** The id the scene gave the prop just dropped. */
+  function firstPropId(): string {
+    return publishedDraft().scene.items[0]!.id;
+  }
+
+  it('offers orders for a selected, declared, non-door prop', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    // A plain prop has no door state — it is not a door.
+    expect(screen.queryByTestId('selected-door-state')).toBeNull();
+    // An UNDECLARED prop gets the declaration button rather than orders:
+    // holdable hangs off the declaration the engine requires, so offering it
+    // here would invite a refusal the author could not explain.
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add authored footprint' })
+    );
+    expect(screen.getByTestId('selected-prop-orders')).toBeTruthy();
+  });
+
+  it('offers door state for a selected door, and never orders beside it', () => {
+    mount();
+    // Find the door the way an author would — the palette is long, so the
+    // search box is the way to it.
+    dragLabelTo(DOOR_LABEL, 'canvas-ground', 'door');
+    expect(screen.getByTestId('selected-door-state')).toBeTruthy();
+    // A door may not also carry orders — the engine's refusal, mirrored here so
+    // the panel cannot offer the combination.
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    // And the door is the SELECTED prop, so nothing listed every door.
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+  });
+
+  it('hides both per-prop sections for a multi-selection, and says why', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    dragLabelTo('Drag Candles into scene');
+    const [books, candles] = publishedDraft().scene.items;
+    fireEvent.click(
+      screen.getByLabelText(`Select ${books!.label} ${books!.id}`)
+    );
+    fireEvent.click(
+      screen.getByLabelText(`Select ${candles!.label} ${candles!.id}`),
+      { shiftKey: true }
+    );
+    expect(screen.queryByTestId('selected-door-state')).toBeNull();
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    // One control cannot mean two props' values, so the panel states that
+    // rather than leaving an unexplained gap.
+    expect(screen.getByTestId('option-sections-multi').textContent).toMatch(
+      /belong to one prop/
+    );
+    // What DOES generalise is still offered.
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
+  });
+
+  it('a single selection offers no multi-select explanation', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    // The drop SELECTS the prop, which is what makes its options appear at all
+    // — and with one prop there is no multi-selection to explain.
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      firstPropId()
+    );
+    expect(screen.queryByTestId('option-sections-multi')).toBeNull();
   });
 });

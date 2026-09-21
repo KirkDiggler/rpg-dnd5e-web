@@ -235,8 +235,12 @@ describe('WorldBuilderWorkspace', () => {
     expect(screen.getByLabelText('Rooms')).toBeTruthy();
     expect(screen.getByLabelText('Props')).toBeTruthy();
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Doors')).toBeTruthy();
     expect(screen.getByLabelText('Policies')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
+    // A prop's own options are NOT a site noun (web#1178): they belong to a
+    // selection, so no node lists every door or every prop.
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+    expect(screen.queryByLabelText('Prop orders')).toBeNull();
 
     // No document admin in the body: the old Library and The site
     // destinations are gone.
