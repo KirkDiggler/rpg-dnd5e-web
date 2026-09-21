@@ -88,13 +88,12 @@ export interface RoomMonsterPlacement {
  * item's definition (footprint, blocking), `doorBindings` is a door's state,
  * and this is what a PLACED PROP DOES.
  *
- * CARRIED, NOT GRADED, and the engine's current answer is a REFUSAL at compile
- * (rpg-toolkit#1854): a v4 item compiles to a footprint, which cannot be held
- * and cannot arrive, so `CompileSingleRoom` refuses this block by name rather
- * than carrying it inert. The engine still DECODES it — deliberately, so the
- * author can write the block, round-trip it and read the refusal — which is
- * exactly why the web carries it too rather than refusing the key. A key the
- * builder drops is the one thing worse than a key the engine refuses. */
+ * CARRIED, NOT GRADED, like `doorBindings`: the engine judges it at
+ * `PutDungeon` and answers with a path and a sentence. It COMPILES since
+ * rpg-toolkit#1854 — `PlacedPropInput` gained `Holdable`/`Holds`/`Arrives`, so
+ * a placed footprint can be taken and can arrive — and the three ownership
+ * refusals (no owning `propDeclarations` entry, an id also in `doorBindings`,
+ * an arrangement member) are unchanged. */
 export interface RoomPropBinding {
   /** Whether a member can pick this prop up. A PLAIN BOOL, unlike v2's pointer:
    * a thing nobody declared holdable stays scenery. */
@@ -210,9 +209,8 @@ export interface RoomGameplayData {
   doorBindings?: Record<string, RoomDoorBinding>;
   /** Stable item id -> what a placed prop DOES: whether it can be taken, what
    * it carries, whether it arrives later. CARRIED, NOT GRADED, like
-   * `doorBindings` — and here the engine's verdict today is a refusal at
-   * compile (rpg-toolkit#1854), which the author needs to be able to write the
-   * block to receive.
+   * `doorBindings`: the engine judges it at `PutDungeon` and answers with a
+   * path and a sentence.
    *
    * ABSENT, NOT EMPTY: a room that binds no prop emits exactly the bytes it
    * wrote before this key existed. */
@@ -988,8 +986,8 @@ function validateDraft(value: unknown): RoomDraft {
     : undefined;
   // CARRIED, NOT GRADED, for `doorBindings`' reason: this block's refusals
   // (an id no `propDeclarations` owns, an id that is also a door, an
-  // arrangement template, and the compile refusal rpg-toolkit#1854) are the
-  // engine's, each at its own path. Only the SHAPE is checked here.
+  // arrangement template) are the engine's, each at its own path. Only the
+  // SHAPE is checked here.
   const propBindings = Object.hasOwn(room, 'propBindings')
     ? (objectShape(room.propBindings, 'Prop bindings') as Record<
         string,

@@ -109,11 +109,14 @@ describe('PropOrders — a placed prop’s orders, editable', () => {
     expect(onChange.mock.calls[0][1]).toEqual({ holdable: true });
   });
 
-  it('states the engine’s compile refusal rather than hiding it', () => {
+  it('states what taking and reserving a prop now do, since the primitive landed', () => {
     mount({ bindings: { heirloom: { holdable: true } } });
     const note = screen.getByTestId('prop-orders-note-heirloom');
-    expect(note.textContent).toMatch(/rpg-toolkit#1854/);
-    expect(note.textContent).toMatch(/refuses it at compile/);
+    // rpg-toolkit#1854 gave the dialect the primitive, so this is no longer a
+    // refusal the author is writing toward — it says what the engine does.
+    expect(note.textContent).toMatch(/compile since rpg-toolkit#1854/);
+    expect(note.textContent).toMatch(/every cell its footprint covers/);
+    expect(note.textContent).not.toMatch(/refuses it at compile/);
   });
 
   it('keeps an already-bound item listed however the document changed', () => {

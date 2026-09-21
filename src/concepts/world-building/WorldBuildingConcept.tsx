@@ -3116,9 +3116,10 @@ export function WorldBuildingConcept({
               {/* What a PLACED PROP does — holdable, what it carries, whether
                   it arrives (rpg-project#488 R1, rpg-toolkit#1855). The fourth
                   declaration kind, beside `propDeclarations` (the definition)
-                  and `doorBindings` (a door's state). The engine decodes it and
-                  refuses it at compile until rpg-toolkit#1854, so the author
-                  writes it here and reads that sentence at publish. */}
+                  and `doorBindings` (a door's state). It compiles since
+                  rpg-toolkit#1854 — a placed footprint can be taken and can
+                  arrive — and the engine grades it at publish like every other
+                  carried key. */}
               <PropOrders
                 items={scene.items}
                 bindings={roomDraft.room.propBindings}

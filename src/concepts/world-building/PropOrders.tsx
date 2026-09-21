@@ -9,14 +9,15 @@
  * `arrives`. Whether a ref resolves is the server's judgement, reported at its
  * own path in the publish panel.
  *
- * THE ENGINE REFUSES THIS BLOCK AT COMPILE TODAY, AND THAT IS WHY IT IS HERE.
- * A v4 item compiles to a footprint, which cannot be held and cannot arrive, so
- * `CompileSingleRoom` refuses `propBindings` by name until rpg-toolkit#1854
- * gives the dialect that primitive. The engine still DECODES the block so an
- * author can write it, round-trip it and read the sentence about it — which
- * only works if the builder can author it. Carrying it inert in the UI would
- * produce exactly the world the engine refuses to produce: one where nothing
- * can be picked up and nothing says so.
+ * THE ENGINE COMPILES THIS BLOCK, AND IT ONLY RECENTLY COULD. `propBindings`
+ * first decoded and was refused at compile, because a v4 item compiled to a
+ * footprint that could not be held and could not arrive. rpg-toolkit#1854 gave
+ * the dialect that primitive (`PlacedPropInput` gained `Holdable`/`Holds`/
+ * `Arrives`, reach derived from every cell the footprint covers) and the
+ * refusal is gone. So this panel authors a key the engine now runs — and its
+ * own three ownership refusals, which STAY, are the ones to keep in mind when
+ * choosing what may be offered: an id that declares no prop, an id that is also
+ * a door, and an arrangement template.
  *
  * WHICH ITEMS IT OFFERS IS THE WEB'S QUESTION, AND ONLY BECAUSE THE ENGINE'S
  * IS STRICTER. A binding needs the item to own a `propDeclarations` entry (that
@@ -159,10 +160,9 @@ export function PropOrders({
               onCommit={(next) => onChange(id, setPropArrives(binding, next))}
             />
             <p className="wb-help" data-testid={`prop-orders-note-${id}`}>
-              Held and arriving props need a primitive this dialect does not
-              have yet (rpg-toolkit#1854), so the engine reads this block and
-              refuses it at compile by name. It is authored here and graded
-              there.
+              Held and arriving props compile since rpg-toolkit#1854: taking a
+              placement reaches every cell its footprint covers, and a reserved
+              one is on no atlas and blocks no step until its predicate holds.
             </p>
           </div>
         );

@@ -4,8 +4,9 @@
  *
  * THE BUILDER IS A FORM BUILDER, AND THESE ARE ITS MECHANICS. Every function
  * moves bytes the toolkit accepts: it never resolves a record id, never decides
- * whether a predicate resolves, and never pre-judges the engine's compile
- * refusal (rpg-toolkit#1854). Nothing here rewrites a reference.
+ * whether a predicate resolves, and never pre-judges the engine's three
+ * ownership refusals (an id that declares no prop, an id that is also a door,
+ * an arrangement template). Nothing here rewrites a reference.
  *
  * THE SAME NORMALIZATION LAW AS `monsterOrderEdits`, and it is the encoder's:
  * an empty `holds` list is refused ("holds is empty; omit the key instead"),
