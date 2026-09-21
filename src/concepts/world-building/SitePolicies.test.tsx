@@ -147,6 +147,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
       <CreatureOrders
         scope={siteScope}
         monster={goblin}
+        room={fixture.draft.room}
         binding={fixture.draft.room.monsterBindings?.['goblin-1']}
       />
     );
@@ -176,6 +177,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
       <CreatureOrders
         scope={siteScope}
         monster={goblin}
+        room={fixture.draft.room}
         binding={fixture.draft.room.monsterBindings?.['goblin-1']}
       />
     );
@@ -201,6 +203,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
       <CreatureOrders
         scope={siteScope}
         monster={skeleton}
+        room={fixture.draft.room}
         binding={fixture.draft.room.monsterBindings?.['skeleton-a']}
       />
     );
@@ -221,6 +224,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
           ref: 'dnd5e:monsters:zombie',
           cell: { q: 0, r: 0 },
         }}
+        room={fixture.draft.room}
       />
     );
     expect(screen.getByTestId('creature-inherits-none')).toBeTruthy();
@@ -236,10 +240,154 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
           cell: { q: 0, r: 0 },
           faction: 'ghosts',
         }}
+        room={fixture.draft.room}
       />
     );
     expect(screen.getByTestId('creature-inherits-unknown').textContent).toMatch(
       /declares no faction with the id “ghosts”/
     );
+  });
+});
+
+describe('CreatureOrders — the creature’s checks, intel and reserve (web#1176)', () => {
+  it('edits the priced checks, handing the parent a next binding each time', () => {
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{ intimidate: [{ ability: 'intimidation', dc: 12 }] }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    const intimidate = screen.getByTestId('creature-intimidate');
+    expect(
+      (
+        within(intimidate).getByLabelText(
+          'Intimidate ability 0'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('intimidation');
+    expect(
+      (within(intimidate).getByLabelText('Intimidate dc 0') as HTMLInputElement)
+        .value
+    ).toBe('12');
+
+    // A new row starts blank with a legal DC — the form never invents an
+    // ability word, because it keeps no rules catalog.
+    fireEvent.click(within(intimidate).getByLabelText('Add Intimidate row'));
+    expect(onOrdersChange.mock.calls[0][0].intimidate).toEqual([
+      { ability: 'intimidation', dc: 12 },
+      { ability: '', dc: 1 },
+    ]);
+
+    // Persuade with nothing authored says the rulebook derives the DC.
+    expect(
+      within(screen.getByTestId('creature-persuade')).getByTestId(
+        'creature-persuade-none'
+      )
+    ).toBeTruthy();
+  });
+
+  it('gives and takes away a held record from the site’s declared ones', () => {
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={{
+          ...siteScope,
+          intel: [{ id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } }],
+        }}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{ actions: ['dnd5e:weapons:scimitar'] }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    expect(screen.getByTestId('creature-holds-none')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Give intel record'), {
+      target: { value: 'cellar-lie' },
+    });
+    expect(onOrdersChange.mock.calls[0][0].holds).toEqual(['cellar-lie']);
+  });
+
+  it('says when the site has no records to give, rather than showing an empty picker', () => {
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{ actions: ['dnd5e:weapons:scimitar'] }}
+        onOrdersChange={() => {}}
+      />
+    );
+    expect(screen.getByTestId('creature-holds-no-records')).toBeTruthy();
+  });
+
+  it('authors the reserve predicate in the same four forms as an `until`', () => {
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    // Nothing authored: the creature is in the run from the first frame.
+    expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
+      /in the run from the first frame/
+    );
+    fireEvent.change(screen.getByLabelText('Arrives form'), {
+      target: { value: 'fact' },
+    });
+    expect(onOrdersChange.mock.calls[0][0].arrives).toEqual({ fact: '' });
+
+    // And a fact form writes what the author types.
+    onOrdersChange.mockClear();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{ arrives: { fact: 'cellar-is-clear' } }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    expect(
+      screen.getAllByTestId('creature-arrives-note')[1].textContent
+    ).toMatch(/Held in reserve until fact cellar-is-clear/);
+  });
+
+  it('reports the interaction facts read-only when no editor is given', () => {
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          intimidate: [{ ability: 'intimidation', dc: 12 }],
+          persuade: [
+            { ability: 'persuasion', dc: 10, tool: 'dnd5e:items:lute' },
+          ],
+          holds: ['cellar-lie'],
+          arrives: { fact: 'cellar-is-clear' },
+        }}
+      />
+    );
+    const creature = screen.getByLabelText('Selected creature');
+    expect(
+      within(creature).getByText('intimidate dc 12 intimidation')
+    ).toBeTruthy();
+    expect(
+      within(creature).getByText(
+        'persuade dc 10 persuasion via dnd5e:items:lute'
+      )
+    ).toBeTruthy();
+    expect(within(creature).getByText('holds cellar-lie')).toBeTruthy();
+    expect(
+      within(creature).getByText(/held in reserve until fact cellar-is-clear/)
+    ).toBeTruthy();
+    expect(screen.getByTestId('creature-interaction-readonly')).toBeTruthy();
   });
 });

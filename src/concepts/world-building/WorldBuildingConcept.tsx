@@ -22,8 +22,11 @@ import {
 } from './declarationFootprint';
 import { withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
+import { IntelPanel } from './IntelPanel';
 import { withBinding } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
+import { withPropBinding } from './propBindingEdits';
+import { PropOrders } from './PropOrders';
 import { addRepeatedProps } from './repeatPlacement';
 import {
   clearRoomPartyStart,
@@ -50,6 +53,7 @@ import {
   type RoomHexCell,
   type RoomMonsterBinding,
   type RoomMonsterPlacement,
+  type RoomPropBinding,
   type RoomPropDeclaration,
   type RoomWorkspace,
 } from './roomDraft';
@@ -784,6 +788,28 @@ export function WorldBuildingConcept({
       scene,
       selectedIds,
     ]
+  );
+
+  /** A placed prop's orders — holdable, what it carries, whether it arrives
+   * (rpg-project#488 R1, rpg-toolkit#1855). The MAP is normalized by
+   * `withPropBinding`, so an emptied block becomes a deleted entry rather than
+   * an empty one the encoder refuses, exactly as `setDoorBinding` and
+   * `setMonsterOrders` do.
+   *
+   * Unlike a door, this does NOT seed a declaration: the panel only offers
+   * items that already have one, because the engine requires it ("a prop
+   * binding needs a declaration — that is where the footprint comes from") and
+   * inventing a footprint here would be the builder answering a geometry
+   * question the author has not. */
+  const setPropBinding = useCallback(
+    (id: string, next: RoomPropBinding | undefined) => {
+      const bindings = withPropBinding(roomDraft.room.propBindings, id, next);
+      const room: RoomGameplayData = { ...roomDraft.room };
+      if (bindings === undefined) delete room.propBindings;
+      else room.propBindings = bindings;
+      commit(scene, selectedIds, room, roomDraft.workspace);
+    },
+    [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
 
   /** The ACTOR carries its faction (design Decision 4): assigning one is the
@@ -3037,6 +3063,7 @@ export function WorldBuildingConcept({
                 <CreatureOrders
                   scope={siteScope}
                   monster={selectedMonster}
+                  room={roomDraft.room}
                   binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
                   onFactionChange={(faction) =>
                     setMonsterFaction(selectedMonster.id, faction)
@@ -3085,6 +3112,31 @@ export function WorldBuildingConcept({
             </details>
 
             <details className="wb-collapse">
+              <summary aria-label="Prop orders">Prop orders</summary>
+              {/* What a PLACED PROP does — holdable, what it carries, whether
+                  it arrives (rpg-project#488 R1, rpg-toolkit#1855). The fourth
+                  declaration kind, beside `propDeclarations` (the definition)
+                  and `doorBindings` (a door's state). It compiles since
+                  rpg-toolkit#1854 — a placed footprint can be taken and can
+                  arrive — and the engine grades it at publish like every other
+                  carried key. */}
+              <PropOrders
+                items={scene.items}
+                bindings={roomDraft.room.propBindings}
+                declaredIds={
+                  new Set(Object.keys(roomDraft.room.propDeclarations))
+                }
+                doorIds={
+                  new Set(Object.keys(roomDraft.room.doorBindings ?? {}))
+                }
+                recordIds={(siteScope.intel ?? []).map((record) => record.id)}
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={setPropBinding}
+              />
+            </details>
+
+            <details className="wb-collapse">
               <summary aria-label="Policies">Policies</summary>
               {/* Editable document facts (design slices 3/4, #1160): the
                   site's factions, their temperaments and shared tables, and
@@ -3096,6 +3148,21 @@ export function WorldBuildingConcept({
                 room={roomDraft.room}
                 onChange={commitPolicies}
                 onNotice={setNotice}
+              />
+            </details>
+
+            <details className="wb-collapse">
+              <summary aria-label="Intel">Intel</summary>
+              {/* The site's knowledge records (web#1176, v2's web#933). A
+                  record is a SITE noun held by many creatures, so it lives
+                  here and never inside one creature's panel — editing it from
+                  a creature would make one placement write another's
+                  knowledge. What a record REVEALS is read by the engine when
+                  it changes hands; the form never resolves it. */}
+              <IntelPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={commitPolicies}
               />
             </details>
 

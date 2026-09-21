@@ -72,10 +72,44 @@ export interface SiteDisposition {
 export interface SiteScope {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
+}
+
+/** One intel record's `reveals` — the shape `{ door: <id> }` or
+ * `{ fact: <id> }` the engine's `RevealsSpec` carries.
+ *
+ * `fact` IS THE ONLY TARGET THIS DIALECT ACCEPTS (rpg-project#488 R3, corrected
+ * by rpg-toolkit#1855). `door` is REFUSED BY NAME at `intel[<i>].reveals.door`:
+ * revealing the way to a door needs a CONCEALED door on a crossing, and a
+ * single room has no crossing to hide one on. The design first said a door
+ * reveal was "accepted and inert"; the engine made it a sentence instead, so
+ * the builder fails closed with it rather than writing bytes nothing can read.
+ * `door` stays on the type so the refusal can be a sentence at the author's own
+ * path rather than "not a key this build reads". */
+export type SiteIntelReveals = { door: string } | { fact: string };
+
+/** One intel record at the site root — the authored knowledge an author places
+ * in a creature or prop (`holds`), beside `factions`/`dispositions`. Declared
+ * HERE and held BY creatures; the record itself never lives where it is held. */
+export interface SiteIntelRecord {
+  id: string;
+  reveals: SiteIntelReveals;
 }
 
 const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
+const INTEL_KEYS = ['id', 'reveals'] as const;
+const REVEALS_KEYS = ['door', 'fact'] as const;
+
+/** The engine's own sentence for `reveals: { door }` in this dialect
+ * (`dungeonspec.single_room_gameplay.go`), transcribed so the builder shows the
+ * words the author would read from the server. The word means something — it
+ * simply needs a crossing to mean it. */
+export const INTEL_REVEALS_DOOR_REFUSAL =
+  'a door is not something a single room can reveal yet: revealing the way to ' +
+  'one needs a concealed door on a crossing, and this dialect’s doors are ' +
+  'footprints standing in the open; write `fact: <id>`, or wait for the sites ' +
+  'layer';
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -197,7 +231,46 @@ function isStance(word: string): word is Stance {
   return (STANCES as readonly string[]).includes(word);
 }
 
-const SCOPE_KEYS = ['factions', 'dispositions'] as const;
+const SCOPE_KEYS = ['factions', 'dispositions', 'intel'] as const;
+
+/** The site's `intel:` records, in authored order. An id is unique and follows
+ * the same lower-case-dash grammar as a faction id; `reveals` is REQUIRED and
+ * EXACTLY ONE target, and in this dialect that target is `fact`: `door` is
+ * REFUSED BY NAME (rpg-project#488 R3, rpg-toolkit#1855). The refusal comes
+ * FIRST and is the whole answer for a record naming a door — a record with both
+ * keys is an author who wrote a forbidden word beside a legal one, and telling
+ * them the word is not built is the sentence that helps. What a fact id
+ * resolves to is the engine's judgement; the web keeps the shape and never
+ * resolves it. */
+export function validateIntel(value: unknown): SiteIntelRecord[] {
+  if (!Array.isArray(value)) fail('Site intel', 'must be a list');
+  const records: SiteIntelRecord[] = [];
+  const ids = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const path = `Site intel at index ${index}`;
+    const raw = objectShape(entry, path);
+    rejectUnknownKeys(raw, INTEL_KEYS, path);
+    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
+      fail(path, 'needs an id such as vault-map');
+    if (ids.has(raw.id)) fail(path, `duplicate intel id: ${raw.id}`);
+    ids.add(raw.id);
+    const reveals = objectShape(raw.reveals, `${path} reveals`);
+    rejectUnknownKeys(reveals, REVEALS_KEYS, `${path} reveals`);
+    if (typeof reveals.door === 'string' && reveals.door !== '')
+      fail(`${path} reveals.door`, INTEL_REVEALS_DOOR_REFUSAL);
+    const revealKeys = Object.keys(reveals);
+    if (revealKeys.length !== 1)
+      fail(
+        `${path} reveals`,
+        `intel "${raw.id}" reveals nothing — a record says exactly one thing it reveals`
+      );
+    const id = reveals.fact;
+    if (typeof id !== 'string' || !id)
+      fail(`${path} reveals.fact`, 'must name a fact');
+    records.push({ id: raw.id, reveals: { fact: id } });
+  }
+  return records;
+}
 
 /** The whole site scope, validated and NORMALIZED: each key is kept only when
  * it carries at least one entry, because absence is the authored state "none"
@@ -219,6 +292,10 @@ export function validateSiteScope(value: unknown): SiteScope {
     const dispositions = validateSiteDispositions(raw.dispositions);
     if (dispositions.length > 0) scope.dispositions = dispositions;
   }
+  if (Object.hasOwn(raw, 'intel')) {
+    const intel = validateIntel(raw.intel);
+    if (intel.length > 0) scope.intel = intel;
+  }
   return scope;
 }
 
@@ -235,8 +312,12 @@ function validateFactionPair(value: unknown, path: string): [string, string] {
 
 /** One predicate — EXACTLY ONE of the four forms, in the form names the
  * vocabulary seals. Whether the thing a form names exists is `factionRules`'
- * question, not this decoder's. */
-function validatePredicate(value: unknown, path: string): PredicateDoc {
+ * question, not this decoder's.
+ *
+ * EXPORTED since rpg-dnd5e-web#1176: a creature's `arrives` carries the SAME
+ * `PredicateSpec` a disposition's `until` does, so it is validated by this one
+ * function rather than by a second transcription of the grammar. */
+export function validatePredicate(value: unknown, path: string): PredicateDoc {
   if (!isMapping(value) || Object.keys(value).length !== 1)
     fail(path, PREDICATE_SHAPE);
   const form = Object.keys(value)[0];

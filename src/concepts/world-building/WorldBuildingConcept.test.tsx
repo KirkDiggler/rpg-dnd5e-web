@@ -2714,6 +2714,215 @@ describe('WorldBuildingConcept room publishing', () => {
     ]);
   });
 
+  it('authors a placed prop’s orders — holdable and a carried record — and publishes the block (rpg-project#488 R1)', async () => {
+    // The fourth declaration kind, authored through the form. The engine
+    // decodes this block and REFUSES it at compile until rpg-toolkit#1854, so
+    // what this test claims is the DOCUMENT half: the block the author wrote
+    // reaches the published YAML intact rather than being dropped by the
+    // builder — the failure mode this whole wave is about.
+    const storage = new MemoryStorage();
+    const seed = seedImportedRoom(storage);
+    // The prop needs a declaration to be a candidate at all: that is where its
+    // footprint comes from, and the engine refuses a binding without one.
+    seed.room.propDeclarations = {
+      'prop-1': {
+        blocksMovement: false,
+        blocksLineOfSight: false,
+        footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 },
+      },
+    };
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(seed));
+
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    // A record to carry first, so the picker has something to offer.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    fireEvent.change(screen.getByLabelText('Intel reveals fact for intel-1'), {
+      target: { value: 'saved-wiseman' },
+    });
+
+    const panel = screen.getByTestId('prop-orders-prop-1');
+    fireEvent.click(within(panel).getByLabelText('Holdable for prop-1'));
+    fireEvent.change(
+      within(panel).getByLabelText('Give prop-1 an intel record'),
+      {
+        target: { value: 'intel-1' },
+      }
+    );
+
+    // The local envelope carries it …
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as { draft?: { room?: { propBindings?: Record<string, unknown> } } };
+      expect(stored.draft?.room?.propBindings).toEqual({
+        'prop-1': { holdable: true, holds: ['intel-1'] },
+      });
+    });
+
+    // … and it is what the ENGINE is handed.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml).toContain('propBindings:');
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.draft.room.propBindings).toEqual({
+      'prop-1': { holdable: true, holds: ['intel-1'] },
+    });
+  });
+
+  it('authors intel, priced checks and a creature in reserve with no YAML, and publishes all four (web#1176)', async () => {
+    // The Front Room's driving case, end to end: a record is declared in the
+    // Intel node, a creature prices its checks and is held in reserve until the
+    // fact the failed persuasion teaches. Nothing here is YAML — and the point
+    // of the test is that NOTHING IS DROPPED between the forms and the bytes
+    // the engine is handed. The three drop bugs this slice had to fix (the two
+    // encode calls and the storage envelope each enumerated only
+    // factions/dispositions) would leave this test green on intel and red on
+    // the published document, which is exactly what it is here to catch.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+
+    // 1. An intel record naming the fact the lie teaches.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    const idBox = screen.getByLabelText(
+      'Intel id for intel-1'
+    ) as HTMLInputElement;
+    fireEvent.change(idBox, { target: { value: 'cellar-lie' } });
+    fireEvent.blur(idBox);
+    fireEvent.change(
+      screen.getByLabelText('Intel reveals fact for cellar-lie'),
+      {
+        target: { value: 'cellar-is-clear' },
+      }
+    );
+
+    // 2. A creature, with a priced persuade and the record in its hands.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+
+    fireEvent.click(screen.getByLabelText('Add Persuade row'));
+    fireEvent.change(screen.getByLabelText('Persuade ability 0'), {
+      target: { value: 'persuasion' },
+    });
+    fireEvent.change(screen.getByLabelText('Persuade dc 0'), {
+      target: { value: '10' },
+    });
+    fireEvent.change(screen.getByLabelText('Give intel record'), {
+      target: { value: 'cellar-lie' },
+    });
+
+    // 3. Held in reserve until that fact lands.
+    fireEvent.change(screen.getByLabelText('Arrives form'), {
+      target: { value: 'fact' },
+    });
+    fireEvent.change(screen.getByLabelText('Arrives fact'), {
+      target: { value: 'cellar-is-clear' },
+    });
+
+    // The local envelope carries all of it beside the draft.
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as {
+        scope?: SiteScope;
+        draft?: {
+          room?: {
+            monsterBindings?: Record<
+              string,
+              {
+                persuade?: Array<{ ability: string; dc: number }>;
+                holds?: string[];
+                arrives?: { fact?: string };
+              }
+            >;
+          };
+        };
+      };
+      expect(stored.scope?.intel).toEqual([
+        { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
+      ]);
+      const bindings = stored.draft?.room?.monsterBindings ?? {};
+      const only = Object.values(bindings)[0];
+      expect(only?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
+      expect(only?.holds).toEqual(['cellar-lie']);
+      expect(only?.arrives).toEqual({ fact: 'cellar-is-clear' });
+    });
+    first.unmount();
+
+    // It survives a reload with no import …
+    render(mount());
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(
+      (screen.getByLabelText('Persuade dc 0') as HTMLInputElement).value
+    ).toBe('10');
+    expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
+      /Held in reserve until fact cellar-is-clear/
+    );
+
+    // … and it is what the ENGINE is handed.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.intel).toEqual([
+      { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
+    ]);
+    const emittedBindings = emitted.draft.room.monsterBindings ?? {};
+    const emittedCreature = Object.values(emittedBindings)[0];
+    expect(emittedCreature?.persuade).toEqual([
+      { ability: 'persuasion', dc: 10 },
+    ]);
+    expect(emittedCreature?.holds).toEqual(['cellar-lie']);
+    expect(emittedCreature?.arrives).toEqual({ fact: 'cellar-is-clear' });
+  });
+
   it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
     const storage = new MemoryStorage();
     const original = seedImportedRoom(storage);

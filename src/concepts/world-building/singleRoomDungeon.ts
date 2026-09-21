@@ -5,10 +5,12 @@ import {
   type RoomDraft,
 } from './roomDraft';
 import {
+  validateIntel,
   validateSiteDispositions,
   validateSiteFactions,
   type SiteDisposition,
   type SiteFaction,
+  type SiteIntelRecord,
   type SiteScope,
 } from './siteScope';
 
@@ -19,8 +21,11 @@ export interface EncodeSingleRoomDungeonInput {
    * that belong to the place rather than to a selection. Omitted means the
    * document does not carry it, which is what keeps a room with no scope
    * emitting v3 exactly as it always did. */
+  /* Carried, never interpreted: the site's intel records (web#933's section
+   * ported to the site root). Omitted means the document does not carry them. */
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
 }
 export interface DecodeSingleRoomDungeonResult {
   key: string;
@@ -29,6 +34,7 @@ export interface DecodeSingleRoomDungeonResult {
    * state "no factions", never an empty list. */
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
 }
 
 /** The fixed play contract of this first playable slice. Keys and values are
@@ -51,6 +57,7 @@ const ROOT_KEYS = [
   'room',
   'factions',
   'dispositions',
+  'intel',
 ] as const;
 
 /**
@@ -91,9 +98,24 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
+  if ((scope.intel?.length ?? 0) > 0) return true;
   if (
     draft.room.monsterBindings &&
     Object.keys(draft.room.monsterBindings).length > 0
+  )
+    return true;
+  // `doorBindings` and `propBindings` are v4-only keys too. Doors were missed
+  // when the door wave landed, so a room whose ONLY v4 fact was a door emitted
+  // `version: 3` while carrying a key v3 has no place for — the version is a
+  // statement about what a file MAY contain, and that statement was false.
+  if (
+    draft.room.doorBindings &&
+    Object.keys(draft.room.doorBindings).length > 0
+  )
+    return true;
+  if (
+    draft.room.propBindings &&
+    Object.keys(draft.room.propBindings).length > 0
   )
     return true;
   return draft.room.monsters.some((monster) => monster.faction !== undefined);
@@ -115,9 +137,11 @@ export function encodeSingleRoomDungeon(
   const dispositions = input.dispositions
     ? validateSiteDispositions(input.dispositions)
     : undefined;
+  const intel = input.intel ? validateIntel(input.intel) : undefined;
   const scope: SiteScope = {
     ...(factions && factions.length > 0 ? { factions } : {}),
     ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
+    ...(intel && intel.length > 0 ? { intel } : {}),
   };
   return stringify({
     version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
@@ -128,6 +152,7 @@ export function encodeSingleRoomDungeon(
     // room when they are absent, which is what makes the bytes identical.
     ...(scope.factions ? { factions: scope.factions } : {}),
     ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
+    ...(scope.intel ? { intel: scope.intel } : {}),
     room: draft.draft,
   });
 }
@@ -221,6 +246,7 @@ function decodeSingleRoomRoot(
   const dispositions = Object.hasOwn(root, 'dispositions')
     ? validateSiteDispositions(root.dispositions)
     : [];
+  const intel = Object.hasOwn(root, 'intel') ? validateIntel(root.intel) : [];
   if (!isPlainObject(root.room))
     throw new Error('Single-room source is missing a room.');
   // The embedded room draft keeps ITS OWN version, and it is passed through
@@ -238,5 +264,6 @@ function decodeSingleRoomRoot(
     draft: parseRoomDraftJson(draftJson),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
+    ...(intel.length > 0 ? { intel } : {}),
   };
 }

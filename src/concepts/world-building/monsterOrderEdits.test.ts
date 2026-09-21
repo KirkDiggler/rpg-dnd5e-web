@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   addMonsterAction,
   addMonsterAnswerEntry,
+  addMonsterCheck,
+  addMonsterHold,
   moveMonsterAction,
   normalizeBinding,
   patchMonsterAnswerEntry,
+  patchMonsterCheck,
   removeMonsterAction,
   removeMonsterAnswerEntry,
+  removeMonsterCheck,
+  removeMonsterHold,
+  setMonsterArrives,
   setMonsterTemper,
   withBinding,
 } from './monsterOrderEdits';
@@ -223,6 +229,106 @@ describe('what the panel produces, the encoder accepts', () => {
 
     // Remove the only weapon: nothing is authored for this creature any more.
     binding = removeMonsterAction(binding, 0);
+    const emptied = withBinding(
+      draft.room.monsterBindings,
+      'goblin-1',
+      binding
+    );
+    expect(emptied).toBeUndefined();
+    if (emptied === undefined) delete draft.room.monsterBindings;
+    else draft.room.monsterBindings = emptied;
+
+    const json = stringifyRoomDraft(draft);
+    expect(json).not.toContain('monsterBindings');
+    expect(() => parseRoomDraftJson(json)).not.toThrow();
+  });
+});
+
+describe('a creature’s interaction and reserve facts (web#1176)', () => {
+  it('adds, patches and removes check routes, and drops the key when the last goes', () => {
+    let binding: RoomMonsterBinding | undefined = addMonsterCheck(
+      undefined,
+      'intimidate',
+      { ability: 'intimidation', dc: 12 }
+    );
+    binding = addMonsterCheck(binding, 'persuade', {
+      ability: 'persuasion',
+      dc: 10,
+    });
+    expect(binding).toEqual({
+      intimidate: [{ ability: 'intimidation', dc: 12 }],
+      persuade: [{ ability: 'persuasion', dc: 10 }],
+    });
+
+    // A route carries an optional tool; patching replaces the row whole.
+    binding = patchMonsterCheck(binding, 'intimidate', 0, {
+      ability: 'strength',
+      dc: 15,
+      tool: 'dnd5e:items:crowbar',
+    });
+    expect(binding?.intimidate).toEqual([
+      { ability: 'strength', dc: 15, tool: 'dnd5e:items:crowbar' },
+    ]);
+
+    // Removing the last intimidate row DELETES the key rather than writing [].
+    binding = removeMonsterCheck(binding, 'intimidate', 0);
+    expect(binding?.intimidate).toBeUndefined();
+    expect(binding?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
+    // An out-of-range patch/remove never empties the creature.
+    expect(
+      patchMonsterCheck(binding, 'persuade', 5, { ability: 'x', dc: 1 })
+    ).toBe(binding);
+  });
+
+  it('adds and removes held records without duplicating one', () => {
+    let binding: RoomMonsterBinding | undefined = addMonsterHold(
+      undefined,
+      'cellar-lie'
+    );
+    binding = addMonsterHold(binding, 'vault-map');
+    expect(binding?.holds).toEqual(['cellar-lie', 'vault-map']);
+    // Holding the same record twice means nothing the second time.
+    expect(addMonsterHold(binding, 'cellar-lie')).toBe(binding);
+    binding = removeMonsterHold(binding, 'cellar-lie');
+    expect(binding?.holds).toEqual(['vault-map']);
+    // The last one goes: the key is deleted, not written as an empty list.
+    expect(removeMonsterHold(binding, 'vault-map')).toBeUndefined();
+  });
+
+  it('sets and clears the reserve predicate that holds a creature out of the run', () => {
+    const binding: RoomMonsterBinding | undefined = setMonsterArrives(
+      undefined,
+      {
+        fact: 'cellar-is-clear',
+      }
+    );
+    expect(binding?.arrives).toEqual({ fact: 'cellar-is-clear' });
+    // Clearing it returns the creature to the first frame — and with nothing
+    // else authored, that is the authored state "none", not an empty block.
+    expect(setMonsterArrives(binding, undefined)).toBeUndefined();
+    // A reserve on a creature that already has orders keeps them.
+    const withOrders = addMonsterAction(undefined, SHORTBOW);
+    expect(setMonsterArrives(withOrders, { round: 6 })).toEqual({
+      actions: [SHORTBOW],
+      arrives: { round: 6 },
+    });
+  });
+
+  it('a creature emptied back to nothing still publishes, with the new fields too', () => {
+    const draft = roomWithTwoGoblins();
+    let binding: RoomMonsterBinding | undefined = addMonsterCheck(
+      undefined,
+      'persuade',
+      { ability: 'persuasion', dc: 10 }
+    );
+    binding = addMonsterHold(binding, 'cellar-lie');
+    binding = setMonsterArrives(binding, { fact: 'cellar-is-clear' });
+    draft.room.monsterBindings = withBinding(undefined, 'goblin-1', binding);
+
+    // Remove every authored fact, one at a time.
+    binding = removeMonsterCheck(binding, 'persuade', 0);
+    binding = removeMonsterHold(binding, 'cellar-lie');
+    binding = setMonsterArrives(binding, undefined);
     const emptied = withBinding(
       draft.room.monsterBindings,
       'goblin-1',

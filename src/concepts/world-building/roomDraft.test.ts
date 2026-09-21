@@ -802,8 +802,11 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
-    expect(rejection({ 'goblin-1': { intimidate: {} } })).toThrow(
-      /Monster binding for goblin-1 has an unsupported field: intimidate/
+    // A key this dialect's binding does not carry is still refused as the
+    // unknown key it is. `intimidate` IS carried since web#1176, so the
+    // boundary moved and the probe moves with it.
+    expect(rejection({ 'goblin-1': { intimidating: {} } })).toThrow(
+      /Monster binding for goblin-1 has an unsupported field: intimidating/
     );
     expect(rejection({ 'goblin-1': {} })).toThrow(
       /Monster binding for goblin-1 declares no orders/
