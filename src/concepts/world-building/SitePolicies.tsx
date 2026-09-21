@@ -932,18 +932,18 @@ export interface SitePoliciesProps {
   onNotice?: (message: string) => void;
 }
 
-/** The editable `Policies` body: the site's factions, their temperaments and
- * shared tables, and the dispositions between the sides. */
-export function SitePolicies({
+/** The site's FACTIONS: who fights as one side, each with its temperament
+ * and its shared answer table. Its own top-level node — a faction is a
+ * thing, and "Policies" was a wrapper that named nothing the rows did not
+ * already name (rpg-dnd5e-web#1178 follow-up). */
+export function FactionsPanel({
   scope,
-  room,
   onChange,
   onNotice,
-}: SitePoliciesProps) {
+}: Omit<SitePoliciesProps, 'room'>) {
   const factions = scope.factions ?? [];
-  const dispositions = scope.dispositions ?? [];
   return (
-    <div data-testid="site-policies">
+    <div data-testid="site-factions">
       <h4>Factions</h4>
       <div className="wb-actions">
         <button type="button" onClick={() => onChange(addSiteFaction(scope))}>
@@ -951,9 +951,10 @@ export function SitePolicies({
         </button>
       </div>
       {factions.length === 0 ? (
-        <p className="wb-help">
-          No factions are authored. Every monster is on the reserved `monsters`
-          side.
+        <p className="wb-help" data-testid="policies-none">
+          No factions are authored on this site. Every monster is on the
+          reserved `monsters` side, and no disposition can be declared until a
+          faction exists.
         </p>
       ) : (
         <ul className="wb-policy-list">
@@ -968,6 +969,23 @@ export function SitePolicies({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** The site's DISPOSITIONS: how two sides stand to each other, and the
+ * predicate that ends the hostility. Its own top-level node, beside
+ * Factions — the pair a disposition is *about* is what it reads, and it is
+ * a different noun from a faction. */
+export function DispositionsPanel({
+  scope,
+  room,
+  onChange,
+}: Omit<SitePoliciesProps, 'onNotice'>) {
+  const factions = scope.factions ?? [];
+  const dispositions = scope.dispositions ?? [];
+  return (
+    <div data-testid="site-dispositions">
       <h4>Dispositions</h4>
       <div className="wb-actions">
         <button
@@ -997,11 +1015,6 @@ export function SitePolicies({
             />
           ))}
         </ul>
-      )}
-      {factions.length === 0 && dispositions.length === 0 && (
-        <p className="wb-help" data-testid="policies-none">
-          No factions and no dispositions are authored on this site.
-        </p>
       )}
     </div>
   );

@@ -14,7 +14,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
-import { CreatureOrders, SitePolicies } from './SitePolicies';
+import {
+  CreatureOrders,
+  DispositionsPanel,
+  FactionsPanel,
+} from './SitePolicies';
 import type { SiteScope } from './siteScope';
 
 const fixture = decodeWorldBuilderV4Site();
@@ -30,17 +34,38 @@ const goblin = fixture.draft.room.monsters.find(
   (monster) => monster.id === 'goblin-1'
 )!;
 
+/** The site's two noun panels, together. They are separate NODES now
+ * (rpg-dnd5e-web#1178 follow-up) but they read one scope, so a test of the
+ * site's facts renders both. */
+function SiteFacts(props: {
+  scope: SiteScope;
+  room?: Parameters<typeof DispositionsPanel>[0]['room'];
+  onChange?: (next: SiteScope) => void;
+  onNotice?: (message: string) => void;
+}) {
+  return (
+    <>
+      <FactionsPanel
+        scope={props.scope}
+        onChange={props.onChange ?? (() => {})}
+        onNotice={props.onNotice}
+      />
+      <DispositionsPanel
+        scope={props.scope}
+        room={props.room ?? fixture.draft.room}
+        onChange={props.onChange ?? (() => {})}
+      />
+    </>
+  );
+}
+
 describe('SitePolicies — the site’s own facts, editable', () => {
   it('shows a faction’s id, mix and shared table, and the dispositions between sides', () => {
-    render(
-      <SitePolicies
-        scope={siteScope}
-        room={fixture.draft.room}
-        onChange={() => {}}
-      />
-    );
+    render(<SiteFacts scope={siteScope} onChange={() => {}} />);
 
-    const panel = screen.getByTestId('site-policies');
+    // Factions and dispositions are peers now, so the faction facts are read
+    // from the Factions node and the pair from the Dispositions node.
+    const panel = screen.getByTestId('site-factions');
     // The id is a control holding the document's value.
     const idInput = within(panel).getByLabelText(
       'Faction id for goblins'
@@ -67,25 +92,30 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       within(panel).getByText('weight 1 · when enemy reach · attack enemy')
     ).toBeTruthy();
 
-    // A disposition is the pair, its stance, and the `until` that ends it.
+    // A disposition is the pair, its stance, and the `until` that ends it —
+    // read from the DISPOSITIONS node, which is its own top-level node now.
+    const dispositionsNode = screen.getByTestId('site-dispositions');
     expect(
       (
-        within(panel).getByLabelText(
+        within(dispositionsNode).getByLabelText(
           'Between first faction'
         ) as HTMLSelectElement
       ).value
     ).toBe('goblins');
     expect(
       (
-        within(panel).getByLabelText(
+        within(dispositionsNode).getByLabelText(
           'Between second faction'
         ) as HTMLSelectElement
       ).value
     ).toBe('party');
     expect(
-      (within(panel).getByLabelText('Stance') as HTMLSelectElement).value
+      (within(dispositionsNode).getByLabelText('Stance') as HTMLSelectElement)
+        .value
     ).toBe('hostile');
-    expect(within(panel).getByText('fact goblin-cowed')).toBeTruthy();
+    expect(
+      within(dispositionsNode).getByText('fact goblin-cowed')
+    ).toBeTruthy();
 
     // It IS editable: the facts are controls now.
     expect(
@@ -95,9 +125,7 @@ describe('SitePolicies — the site’s own facts, editable', () => {
 
   it('hands the parent a next scope when a faction or a disposition is added', () => {
     const onChange = vi.fn();
-    render(
-      <SitePolicies scope={{}} room={fixture.draft.room} onChange={onChange} />
-    );
+    render(<SiteFacts scope={{}} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
     expect(onChange).toHaveBeenCalled();
@@ -107,11 +135,9 @@ describe('SitePolicies — the site’s own facts, editable', () => {
   });
 
   it('says when nothing is authored, and offers the add verb', () => {
-    render(
-      <SitePolicies scope={{}} room={fixture.draft.room} onChange={() => {}} />
-    );
+    render(<SiteFacts scope={{}} onChange={() => {}} />);
     expect(screen.getByTestId('policies-none').textContent).toMatch(
-      /No factions and no dispositions are authored on this site\./
+      /No factions are authored on this site\./
     );
     expect(screen.getByRole('button', { name: 'Add faction' })).toBeTruthy();
     // No faction exists, so there is nothing to declare a stance about.
@@ -127,9 +153,8 @@ describe('SitePolicies — the site’s own facts, editable', () => {
   it('adds a disposition once a faction exists', () => {
     const onChange = vi.fn();
     render(
-      <SitePolicies
+      <SiteFacts
         scope={{ factions: [{ id: 'goblins' }] }}
-        room={fixture.draft.room}
         onChange={onChange}
       />
     );

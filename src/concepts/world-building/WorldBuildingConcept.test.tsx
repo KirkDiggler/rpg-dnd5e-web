@@ -2404,7 +2404,7 @@ describe('WorldBuildingConcept room publishing', () => {
     // as EDITABLE facts (rpg-dnd5e-web#1160): the id, the mix, the shared table
     // with each entry's weight, say and one word, and the pair's stance and
     // `until`.
-    const policies = screen.getByTestId('site-policies');
+    const policies = screen.getByTestId('site-factions');
     expect(
       (
         within(policies).getByLabelText(
@@ -2421,17 +2421,20 @@ describe('WorldBuildingConcept room publishing', () => {
         /Fine! The cellar door is behind the barrels\./
       )
     ).toBeTruthy();
+    // The pair and its stance are the DISPOSITIONS node's, which is a peer of
+    // Factions now rather than a section inside one wrapper.
+    const pair = screen.getByTestId('site-dispositions');
     expect(
       (
-        within(policies).getByLabelText(
+        within(pair).getByLabelText(
           'Between first faction'
         ) as HTMLSelectElement
       ).value
     ).toBe('goblins');
     expect(
-      (within(policies).getByLabelText('Stance') as HTMLSelectElement).value
+      (within(pair).getByLabelText('Stance') as HTMLSelectElement).value
     ).toBe('hostile');
-    expect(within(policies).getByText('fact goblin-cowed')).toBeTruthy();
+    expect(within(pair).getByText('fact goblin-cowed')).toBeTruthy();
     // Editable: the facts are controls now, not a readout.
     expect(
       policies.querySelectorAll('input, select, button').length
@@ -2527,7 +2530,8 @@ describe('WorldBuildingConcept room publishing', () => {
     openIdentity();
     importYaml(WORLD_BUILDER_V4_SITE_YAML);
     await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
-    expect(screen.getByTestId('site-policies')).toBeTruthy();
+    expect(screen.getByTestId('site-factions')).toBeTruthy();
+    expect(screen.getByTestId('site-dispositions')).toBeTruthy();
 
     // A policy-free document replaces it: the scope is emptied with the draft.
     importYaml(plain);
@@ -2539,7 +2543,7 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(publishedDraft().id).toBe('room-1');
     expect(
-      within(screen.getByTestId('site-policies')).getByLabelText(
+      within(screen.getByTestId('site-factions')).getByLabelText(
         'Faction id for goblins'
       )
     ).toBeTruthy();
@@ -3277,7 +3281,10 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     // options are NOT among them (web#1178): they belong to a selection, so
     // nothing here lists every door or every prop any more.
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Policies')).toBeTruthy();
+    // The site's nouns are peers, each its own collapsible node: "Policies"
+    // was a wrapper over exactly two of them (rpg-dnd5e-web#1178 follow-up).
+    expect(screen.getByLabelText('Factions')).toBeTruthy();
+    expect(screen.getByLabelText('Dispositions')).toBeTruthy();
     expect(screen.getByLabelText('Intel')).toBeTruthy();
     expect(screen.queryByLabelText('Doors')).toBeNull();
     expect(screen.queryByLabelText('Prop orders')).toBeNull();
@@ -3289,7 +3296,10 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       screen.getByTestId('viewport-selection').textContent;
     fireEvent.click(screen.getByRole('button', { name: /^Focus room / }));
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Policies')).toBeTruthy();
+    // The site's nouns are peers, each its own collapsible node: "Policies"
+    // was a wrapper over exactly two of them (rpg-dnd5e-web#1178 follow-up).
+    expect(screen.getByLabelText('Factions')).toBeTruthy();
+    expect(screen.getByLabelText('Dispositions')).toBeTruthy();
     expect(screen.getByLabelText('Intel')).toBeTruthy();
     expect(screen.getByTestId('policies-none')).toBeTruthy();
     expect(screen.getByTestId('viewport-selection').textContent).toBe(

@@ -94,7 +94,11 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
-import { CreatureOrders, SitePolicies } from './SitePolicies';
+import {
+  CreatureOrders,
+  DispositionsPanel,
+  FactionsPanel,
+} from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import type {
   ArrangementLibrary,
@@ -3091,18 +3095,30 @@ export function WorldBuildingConcept({
               )}
             </details>
 
+            {/* THE SITE'S NOUNS, each its own node (rpg-dnd5e-web#1178
+                follow-up). "Policies" was a wrapper over exactly two things —
+                factions and dispositions — and a wrapper that names nothing
+                its children do not name is a level of nesting that buys
+                nothing. It also made Intel's home ambiguous, which is the
+                evidence that decided it. Three peers now, collapsed by
+                default like Props: the top level is the nouns themselves.
+                The form writes the document and the SERVER judges it through
+                the publish panel's validation (design slices 3/4, #1160). */}
             <details className="wb-collapse">
-              <summary aria-label="Policies">Policies</summary>
-              {/* Editable document facts (design slices 3/4, #1160): the
-                  site's factions, their temperaments and shared tables, and
-                  the dispositions between sides. The form writes the document
-                  and the SERVER judges it through the publish panel's
-                  validation. */}
-              <SitePolicies
+              <summary aria-label="Factions">Factions</summary>
+              <FactionsPanel
+                scope={siteScope}
+                onChange={commitPolicies}
+                onNotice={setNotice}
+              />
+            </details>
+
+            <details className="wb-collapse">
+              <summary aria-label="Dispositions">Dispositions</summary>
+              <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
                 onChange={commitPolicies}
-                onNotice={setNotice}
               />
             </details>
 
