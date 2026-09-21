@@ -184,6 +184,18 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
 };
 
 /**
+ * Every monster ref this module maps to a promoted appearance, in table order.
+ *
+ * The dungeon builder's palette (`src/author/paletteData.ts`) derives its
+ * monster vocabulary from THIS list rather than keeping a second
+ * hand-maintained one, so mapping a new monster here makes it authorable with
+ * no other edit — the same discipline `propManifest.ts`'s `PROP_KEYS` already
+ * established on the prop side. Order is the table's own insertion order.
+ */
+export const MONSTER_REF_IDS: readonly string[] =
+  Object.keys(MONSTER_REF_MODELS);
+
+/**
  * Refs whose model VANISHES when the entity drops, instead of swapping to a
  * `-downed.glb`.
  *

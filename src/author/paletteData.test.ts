@@ -1,5 +1,8 @@
 // @vitest-environment node
-import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
+import {
+  MONSTER_REF_IDS,
+  resolveMonsterModelUrl,
+} from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS } from '@/components/hex-grid/propManifest';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -92,16 +95,17 @@ describe('categoryForProp — Lighting category (8 keys, shared manifest)', () =
 });
 
 describe('PALETTE_MONSTERS (2026-08-07 palette content sync — ref-AND-GLB test)', () => {
-  it('includes every ref with both a toolkit identity and a promoted GLB', () => {
+  it('covers every ref monsterModels.ts maps — the list is derived, not hand-maintained', () => {
+    // Thug and bandit are the proof this stays automatic: mapping them in
+    // monsterModels.ts put them here with no palette edit.
     const refIds = PALETTE_MONSTERS.map((m) => m.refId).sort();
-    expect(refIds).toEqual([
-      'animated-armor',
-      'goblin',
-      'goblin-boss',
-      'skeleton',
-      'skeleton-captain',
-      'zombie',
-    ]);
+    expect(refIds).toEqual([...MONSTER_REF_IDS].sort());
+  });
+
+  it('includes the recently promoted thug and bandit looks', () => {
+    const refIds = new Set(PALETTE_MONSTERS.map((m) => m.refId));
+    expect(refIds.has('thug')).toBe(true);
+    expect(refIds.has('bandit')).toBe(true);
   });
 
   it('offers the goblin boss and its mooks together — a boss with nobody to lead is half a scene', () => {
