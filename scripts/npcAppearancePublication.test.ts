@@ -97,7 +97,7 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 describe('approved NPC appearance publication', () => {
   it('exports exactly the 13 approved unique identities and no provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: '85fdf94bf55ac3cd40db0d79fa65dbfac4f98563',
+      commit: '273dc89fdf73160b71a45afc4550e9a9ca8b512b',
       releases: ['goblin-war-camp-v1'],
     });
     expect(NPC_APPEARANCE_CATALOG).toHaveLength(13);
