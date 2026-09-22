@@ -25,6 +25,7 @@ import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.j
 import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
   buildScene3D,
+  hiddenPlacedPropIds,
   positionToCube,
   propWorldPosition,
   worldPositionOf,
@@ -525,5 +526,49 @@ describe('buildScene3D authored room scene', () => {
     expect(() => buildScene3D(atlas(), 2, 'pointy', presentation)).toThrow(
       /refusing to guess a conversion for requested hex size 2/
     );
+  });
+
+  it('carries the hidden placed ids through to the render gate', () => {
+    const hidden = new Set(['table']);
+    const scene = buildScene3D(atlas(), 1, 'pointy', presentation, hidden);
+    expect(scene.hiddenPlacedIds).toBe(hidden);
+    // Absent means hide nothing (the author preview's case).
+    expect(
+      buildScene3D(atlas(), 1, 'pointy', presentation).hiddenPlacedIds
+    ).toBeUndefined();
+  });
+});
+
+describe('hiddenPlacedPropIds — the placement universe minus what the atlas lists', () => {
+  it("is the authored placements absent from the viewer's atlas", () => {
+    expect(
+      hiddenPlacedPropIds(new Set(['table', 'reliquary']), [
+        { id: 'reliquary' },
+      ])
+    ).toEqual(new Set(['table']));
+  });
+
+  it('is every authored placement when the atlas says nothing is present', () => {
+    expect(hiddenPlacedPropIds(new Set(['table', 'reliquary']), [])).toEqual(
+      new Set(['table', 'reliquary'])
+    );
+  });
+
+  it('is empty when every authored placement is present', () => {
+    expect(
+      hiddenPlacedPropIds(new Set(['table']), [
+        { id: 'table' },
+        { id: 'reliquary' },
+      ])
+    ).toEqual(new Set());
+  });
+
+  it('fails closed on a producer older than the field: absent `placed` hides every placement', () => {
+    // `placed ?? []` — a producer older than the field hands back a message
+    // with `placed` ABSENT, not empty, and every authored placement then
+    // reads as absent (fail-closed) until that producer adopts the field.
+    expect(
+      hiddenPlacedPropIds(new Set(['table', 'reliquary']), undefined)
+    ).toEqual(new Set(['table', 'reliquary']));
   });
 });

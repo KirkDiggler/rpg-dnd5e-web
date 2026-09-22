@@ -78,6 +78,7 @@ import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
+  hiddenPlacedPropIds,
   positionToCube,
   resolveSceneLayout,
 } from './atlasToScene3D';
@@ -205,6 +206,7 @@ function SessionEncounterScope({
   // route draws exactly what it drew before.
   const {
     presentation: roomScene,
+    placedPropIds,
     loading: roomSceneLoading,
     error: roomSceneError,
   } = useDungeonScene(atlas?.dungeonKey ?? '');
@@ -340,6 +342,16 @@ function SessionEncounterScope({
   // refused, so a scene this view could not build can never refresh
   // `lastGoodSceneRef` below — the cached prior scene is never
   // re-drawn as if it were the current one.
+  // PLACED PROPS ABSENT FROM THIS VIEWER'S ATLAS (rpg-dnd5e-web#1182): the
+  // authored placement-id universe minus what the atlas says is present. A
+  // scene item whose id is here is a placement this viewer cannot see — in
+  // reserve, held by somebody, or concealed from them — and the renderer
+  // suppresses it. Names only, never state: the universe is the authored
+  // `place[].id`, the present set is `atlas.placed[].id`.
+  const hiddenPlacedIds = useMemo(
+    () => hiddenPlacedPropIds(placedPropIds, atlas?.placed),
+    [atlas, placedPropIds]
+  );
   const sceneBuild = useMemo(() => {
     if (!atlas || !layoutOutcome?.ok) return null;
     // A dungeon whose room is still being read is not yet a scene.
@@ -355,7 +367,8 @@ function SessionEncounterScope({
           atlas,
           HEX_SIZE,
           layoutOutcome.layout,
-          roomScene ?? undefined
+          roomScene ?? undefined,
+          hiddenPlacedIds
         ),
       };
     } catch (error) {
@@ -364,7 +377,7 @@ function SessionEncounterScope({
         message: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [atlas, layoutOutcome, roomScene, roomSceneLoading]);
+  }, [atlas, layoutOutcome, roomScene, roomSceneLoading, hiddenPlacedIds]);
   const scene = sceneBuild?.ok ? sceneBuild.scene : null;
   // An unreadable room is an integrity error, not a transient load: it
   // surfaces as a visible scene-error outcome until a later read or
@@ -1176,7 +1189,12 @@ function SessionEncounterScope({
       if (event.body.case === 'dropped') {
         const beat = event.body.value;
         applyAtlasReveal((current) =>
-          applyDropped(current, beat, heldPropsRef.current.get(beat.prop))
+          applyDropped(
+            current,
+            beat,
+            heldPropsRef.current.get(beat.prop),
+            placedPropIds.has(beat.prop)
+          )
         );
       }
       // Remembered BEFORE the ending arrives, because the ending beat does
@@ -1207,6 +1225,7 @@ function SessionEncounterScope({
       applyAtlasReveal,
       invalidateAuthority,
       member,
+      placedPropIds,
       refreshKeysForEvent,
       scheduleRefresh,
     ]

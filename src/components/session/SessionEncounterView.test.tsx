@@ -86,6 +86,7 @@ const hoisted = vi.hoisted(() => ({
   },
   dungeonSceneResult: {
     presentation: null as unknown,
+    placedPropIds: new Set<string>() as ReadonlySet<string>,
     loading: false,
     error: null as string | null,
   },
@@ -576,6 +577,7 @@ beforeEach(() => {
   hoisted.atlasResult.refetch.mockReset();
   Object.assign(hoisted.dungeonSceneResult, {
     presentation: null,
+    placedPropIds: new Set<string>(),
     loading: false,
     error: null,
   });
@@ -5496,6 +5498,41 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a placed footprint on the hold beats (rpg-dnd5e-web#1182)', () => {
+  it('a DROPPED beat does not mint a bare cell prop when the viewer never saw the pick-up', async () => {
+    // A member who joined after the pick-up (or remounted) has no
+    // `heldPropsRef` memory; the only thing that says "placed, not cell" is
+    // the authored universe `placedPropIds`. The patch must leave the atlas
+    // alone — no bare cell prop under the footprint's id — and let the
+    // scheduled refetch restore it (rpg-api-protos#356).
+    hoisted.dungeonSceneResult.placedPropIds = new Set(['reliquary']);
+    const beats = deferredStream([
+      event(EventKind.DROPPED, {
+        case: 'dropped',
+        value: { member: 'char-1', prop: 'reliquary', at: { x: 5, y: 7 } },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    hoisted.atlasResult.applyReveal.mockClear();
+    renderView();
+    await screen.findByTestId('session-canvas');
+    beats.release();
+    await waitFor(() =>
+      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled()
+    );
+
+    const patch = hoisted.atlasResult.applyReveal.mock
+      .calls[0][0] as (current: { props: unknown[]; placed: unknown[] }) => {
+      props: unknown[];
+      placed: unknown[];
+    };
+    const after = patch({ props: [], placed: [{ id: 'reliquary' }] });
+    expect(after.props).toHaveLength(0);
+    expect(after.placed).toHaveLength(1);
   });
 });
 

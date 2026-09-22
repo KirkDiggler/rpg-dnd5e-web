@@ -182,6 +182,7 @@ export function DungeonEnvironment({
           dungeonKey={dungeonKey}
           doors={doors}
           onDoorClick={onDoorClick}
+          hiddenPlacedIds={scene.hiddenPlacedIds}
         />
       </>
     );
