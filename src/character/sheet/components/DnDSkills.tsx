@@ -50,6 +50,9 @@ export function DnDSkills({ character }: DnDSkillsProps) {
 
   // Get skill proficiencies from API
   const skillProficiencies = character.proficiencies?.skills || [];
+  const expertiseSkills = character.proficiencies?.expertiseSkills || [];
+  const proficiencyMultiplier = (skill: Skill) =>
+    expertiseSkills.includes(skill) ? 2 : 1;
 
   const getAbilityModifier = (ability: string): number => {
     switch (ability) {
@@ -97,7 +100,8 @@ export function DnDSkills({ character }: DnDSkillsProps) {
             const isProficient = true; // Always true since we're filtering
             const totalModifier =
               proficiencyBonus !== undefined
-                ? abilityModifier + proficiencyBonus
+                ? abilityModifier +
+                  proficiencyBonus * proficiencyMultiplier(skill.enumValue)
                 : undefined;
 
             return (
@@ -126,6 +130,9 @@ export function DnDSkills({ character }: DnDSkillsProps) {
                   style={{ color: 'var(--text-primary)' }}
                 >
                   {skill.name}
+                  {expertiseSkills.includes(skill.enumValue)
+                    ? ' (double proficiency)'
+                    : ''}
                 </div>
               </div>
             );
@@ -156,7 +163,10 @@ export function DnDSkills({ character }: DnDSkillsProps) {
               return (
                 10 +
                 getAbilityModifier('wis') +
-                (isProficient ? (proficiencyBonus as number) : 0)
+                (isProficient
+                  ? (proficiencyBonus as number) *
+                    proficiencyMultiplier(Skill.PERCEPTION)
+                  : 0)
               );
             })()}
           </span>
