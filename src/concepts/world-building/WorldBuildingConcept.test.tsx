@@ -10,9 +10,14 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  decodeWorldBuilderV4Site,
+  WORLD_BUILDER_V4_SITE_YAML,
+} from './fixtures/worldBuilderV4Site';
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
@@ -22,10 +27,36 @@ import {
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
+import {
+  decodeSingleRoomDungeon,
+  encodeSingleRoomDungeon,
+} from './singleRoomDungeon';
+import type { SiteScope } from './siteScope';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
+
+/** The Site editor is the document screen (rpg-dnd5e-web#1152, corrected
+ * model). The old `The site` and `Library` destinations are gone: identity, the
+ * local draft, the revision history, the arrangement library, portable JSON and
+ * publishing all live in the header's `Identity` panel, which overlays the
+ * canvas without unmounting it. */
+const openIdentity = () => {
+  const button = screen.getByRole('button', { name: 'Identity' });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+};
+const closeIdentity = () => {
+  const button = screen.getByRole('button', { name: 'Identity' });
+  if (button.getAttribute('aria-expanded') === 'true') fireEvent.click(button);
+};
+/** `Props` is collapsed by default; opening it reveals the palette and the
+ * scene tree in one section. */
+const openProps = () => {
+  const summary = screen.getByLabelText('Props');
+  const details = summary.closest('details') as HTMLDetailsElement | null;
+  if (details && !details.open) fireEvent.click(summary);
+};
 
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
@@ -55,7 +86,7 @@ const publishRpc = vi.hoisted(() => {
       deferred: ReturnType<typeof makeDeferred<never>>;
     }>,
     puts: [] as Array<{
-      request: { key: string; validateOnly: boolean };
+      request: { key: string; yaml: string; validateOnly: boolean };
       deferred: ReturnType<typeof makeDeferred<never>>;
     }>,
     lobby: { created: 0, ready: 0, started: 0 },
@@ -75,7 +106,11 @@ vi.mock('@/author/authoringRpc', async (importOriginal) => {
     ...actual,
     defaultAuthoringClient: {
       putDungeon: vi.fn(
-        async (request: { key: string; validateOnly: boolean }) => {
+        async (request: {
+          key: string;
+          yaml: string;
+          validateOnly: boolean;
+        }) => {
           const deferred = publishRpc.makeDeferred<never>();
           publishRpc.puts.push({ request, deferred });
           return deferred.promise as never;
@@ -389,8 +424,17 @@ function displayedScene(): WorldScene {
   );
 }
 
-function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
+function dragLabelTo(
+  label: string,
+  targetTestId = 'canvas-ground',
+  searchFor?: string
+) {
   const transfer = new TransferStub();
+  if (searchFor !== undefined) {
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: searchFor },
+    });
+  }
   const source = screen.getByLabelText(label);
   fireEvent.dragStart(source, { dataTransfer: transfer });
   fireEvent.dragOver(screen.getByTestId(targetTestId), {
@@ -475,7 +519,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
     render(<WorldBuildingConcept roomMode storage={storage} />);
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select Wall run wall-run' })
+      screen.getByRole('button', { name: 'Select Wall run wall-run' })
     );
     expect(screen.getByText('Height scale · Mixed')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Height scale percent'), {
@@ -1321,6 +1365,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // The saved-room list and open action are labeled by the authored visible
     // scene name, not the stored room metadata name.
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Tavern Cellar' })
     );
@@ -1359,6 +1404,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
     const openRemote = async () => {
+      openIdentity();
       fireEvent.click(
         await screen.findByRole('button', { name: 'Open Remote Cellar' })
       );
@@ -1371,6 +1417,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       );
     };
     const expectLocalAutosave = async () => {
+      closeIdentity();
       fireEvent.click(
         screen.getByRole('button', { name: 'Commit rectangle gesture' })
       );
@@ -1441,6 +1488,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={source}
       />
     );
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Remote Cellar' })
     );
@@ -1504,6 +1552,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={oldSource}
       />
     );
+    openIdentity();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Open Old Cellar' })
     );
@@ -1684,7 +1733,9 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     await waitFor(() =>
       expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBeTruthy()
     );
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    closeIdentity();
     expect(scene()).toEqual(secondRun);
   });
 
@@ -1743,6 +1794,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
 
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1796,6 +1848,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     // Only an explicit valid save replaces them, and it writes v3 to the
     // current key alone; legacy bytes are never removed or rewritten.
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
     expect(
@@ -1854,6 +1907,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       />
     );
 
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/);
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(corrupt);
@@ -1996,6 +2050,62 @@ describe('room actor authoring', () => {
       screen.getByTestId('viewport-actors').textContent ?? '{}'
     );
   }
+
+  it('opens on Select, and selecting an actor arms a move that is spent by one click', () => {
+    // WHAT CHANGED AND WHY (Kirk, 2026-09-19): the room opened on PAINT, so an
+    // accidental first click authored walkable ground; and `select` plus a
+    // selected actor meant the next floor click MOVED it, so an author could
+    // not select a creature to edit its orders and then click a prop — or
+    // empty ground — without relocating the creature. Neither is a way to just
+    // look at what you placed.
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The default is Select: an accidental first click authors nothing.
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      screen.getByRole('button', { name: 'Paint' }).getAttribute('aria-pressed')
+    ).toBe('false');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Left: select/
+    );
+
+    // Placing one, then selecting it from the list, ARMS the move and says so…
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(
+      screen.getByRole('button', { name: 'Move' }).getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Click the floor: move monster/
+    );
+
+    // …and the move is ONE-SHOT: it is spent by the click that performs it, so
+    // the next click is a plain selection again.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster move gesture' })
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByTestId('interaction-status').textContent).toMatch(
+      /Left: select/
+    );
+  });
 
   it('places, moves and removes a monster as one-Undo whole-room transactions with stable ids', () => {
     render(
@@ -2180,6 +2290,7 @@ describe('room actor authoring', () => {
 
     // Export → import is a lossless whole-draft transfer: actor identities
     // are the stable join, never reminted.
+    openIdentity();
     fireEvent.click(
       screen.getByRole('button', { name: 'Export room draft JSON' })
     );
@@ -2190,11 +2301,14 @@ describe('room actor authoring', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Import room draft JSON' })
     );
+    closeIdentity();
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
 
     // Reload restores the autosaved bytes with the same actor identities.
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    closeIdentity();
     expect(actors().monsters).toEqual([placed]);
     expect(actors().partyStart).toEqual({ q: 0, r: 0 });
   });
@@ -2262,6 +2376,569 @@ function publishedDraft(): RoomDraft {
 describe('WorldBuildingConcept room publishing', () => {
   afterEach(() => publishRpc.reset());
 
+  it('imports the engine’s own v4 site, shows its policies, and publishes them unchanged', async () => {
+    // The whole slice on one document (rpg-dnd5e-web#1157): the import
+    // hydrates the editor's scope, the Policies and creature views report
+    // document facts without editing them, and the publish transaction emits
+    // the policies back instead of silently dropping them.
+    const fixture = decodeWorldBuilderV4Site();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    openIdentity();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Canonical YAML' }), {
+      target: { value: WORLD_BUILDER_V4_SITE_YAML },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import canonical YAML' })
+    );
+    await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
+
+    // Part 2 — the Policies node renders the site's factions and dispositions
+    // as EDITABLE facts (rpg-dnd5e-web#1160): the id, the mix, the shared table
+    // with each entry's weight, say and one word, and the pair's stance and
+    // `until`.
+    const policies = screen.getByTestId('site-factions');
+    expect(
+      (
+        within(policies).getByLabelText(
+          'Faction id for goblins'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('goblins');
+    expect(
+      within(policies).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
+    ).toBeTruthy();
+    expect(within(policies).getByText('intimidated')).toBeTruthy();
+    expect(
+      within(policies).getByText(
+        /Fine! The cellar door is behind the barrels\./
+      )
+    ).toBeTruthy();
+    // The pair and its stance are the DISPOSITIONS node's, which is a peer of
+    // Factions now rather than a section inside one wrapper.
+    const pair = screen.getByTestId('site-dispositions');
+    expect(
+      (
+        within(pair).getByLabelText(
+          'Between first faction'
+        ) as HTMLSelectElement
+      ).value
+    ).toBe('goblins');
+    expect(
+      (within(pair).getByLabelText('Stance') as HTMLSelectElement).value
+    ).toBe('hostile');
+    expect(within(pair).getByText('fact goblin-cowed')).toBeTruthy();
+    // Editable: the facts are controls now, not a readout.
+    expect(
+      policies.querySelectorAll('input, select, button').length
+    ).toBeGreaterThan(0);
+
+    // Part 3 — the selected goblin's inheritance against its own orders.
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Move monster .* goblin-1$/ })
+    );
+    const creature = screen.getByLabelText('Selected creature');
+    expect(
+      (within(creature).getByLabelText('Creature faction') as HTMLInputElement)
+        .value
+    ).toBe('goblins');
+    // ITS FACTION SUPPLIES the mix and the two-trigger table …
+    expect(
+      within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
+    ).toBeTruthy();
+    expect(within(creature).getAllByText('intimidated').length).toBeGreaterThan(
+      0
+    );
+    // … and ITS OWN ORDERS override it: one word, one trigger, and a weapon
+    // list read AS A LIST — the order is the point, so it is asserted in order
+    // rather than as a joined string.
+    expect(
+      (within(creature).getByLabelText('Creature temper') as HTMLSelectElement)
+        .value
+    ).toBe('coward');
+    expect(within(creature).getAllByText(/^time$/).length).toBeGreaterThan(0);
+    expect(
+      [
+        ...within(creature)
+          .getByTestId('creature-weapons')
+          .querySelectorAll('ol li code'),
+      ].map((weapon) => weapon.textContent)
+    ).toEqual(['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']);
+    expect(
+      within(creature).getByTestId('faction-layer-rule').textContent
+    ).toMatch(/nearest key wins WHOLESALE/);
+    expect(
+      within(creature).getByTestId('temper-asymmetry').textContent
+    ).toMatch(/placement’s is one word/);
+
+    // Part 1 — publishing the imported document keeps its policies.
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    expect(publishRpc.gets[0]!.key).toBe('front-room-site');
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.factions).toEqual(fixture.factions);
+    expect(emitted.dispositions).toEqual(fixture.dispositions);
+  });
+
+  it('moves a document’s policies with it through undo, and empties them on New room', async () => {
+    // The scope travels in the same history entry as the draft: an Undo
+    // across two imports must not pair document A's room with document B's
+    // policies, and New room must author none.
+    const plain = encodeSingleRoomDungeon({
+      key: 'plain-room',
+      draft: createRoomDraft(createEmptyScene('scene-plain'), 'room-plain'),
+    });
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+    const importYaml = (text: string) => {
+      fireEvent.change(
+        screen.getByRole('textbox', { name: 'Canonical YAML' }),
+        { target: { value: text } }
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Import canonical YAML' })
+      );
+    };
+
+    openIdentity();
+    importYaml(WORLD_BUILDER_V4_SITE_YAML);
+    await waitFor(() => expect(publishedDraft().id).toBe('room-1'));
+    expect(screen.getByTestId('site-factions')).toBeTruthy();
+    expect(screen.getByTestId('site-dispositions')).toBeTruthy();
+
+    // A policy-free document replaces it: the scope is emptied with the draft.
+    importYaml(plain);
+    await waitFor(() => expect(publishedDraft().id).toBe('room-plain'));
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+
+    // Undo restores the earlier document TOGETHER WITH its policies.
+    closeIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(publishedDraft().id).toBe('room-1');
+    expect(
+      within(screen.getByTestId('site-factions')).getByLabelText(
+        'Faction id for goblins'
+      )
+    ).toBeTruthy();
+
+    // New room is a fresh document: it authors no policies.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'New room' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm new room' }));
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+  });
+
+  it('authors policies with no YAML, keeps them across a reload, and publishes them', async () => {
+    // The whole loop this slice exists for (rpg-dnd5e-web#1160): an author
+    // creates a faction and a disposition in the Policies node with no YAML,
+    // the local envelope carries them, a RELOAD brings them back, and the
+    // reloaded room publishes the document it was saved as instead of one the
+    // engine refuses for an undeclared faction.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+    // A faction, then its id renamed to what a placement would name.
+    fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+    const idInput = screen.getByLabelText(
+      'Faction id for faction-1'
+    ) as HTMLInputElement;
+    fireEvent.change(idInput, { target: { value: 'goblins' } });
+    fireEvent.blur(idInput);
+    // A disposition between the new faction and the party.
+    fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
+    expect(screen.getByLabelText('Faction id for goblins')).toBeTruthy();
+
+    // The local envelope carries the scope beside the draft.
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as { version: number; scope?: SiteScope };
+      expect(stored.version).toBe(4);
+      expect(stored.scope?.factions?.[0]?.id).toBe('goblins');
+    });
+    first.unmount();
+
+    // Reload from the same storage: the policies are back, with no import.
+    render(mount());
+    expect(screen.getByLabelText('Faction id for goblins')).toBeTruthy();
+
+    // Publish, and the emitted document carries what was saved.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.factions?.map((faction) => faction.id)).toEqual(['goblins']);
+    expect(emitted.dispositions?.[0]?.between).toEqual(['goblins', 'party']);
+  });
+
+  it("authors a creature's weapon list in order with no YAML, and publishes that order", async () => {
+    // The loop this slice exists for (rpg-dnd5e-web#1164): an author selects a
+    // placed creature and gives it weapons in a deliberate order, with no YAML.
+    // ORDER IS THE POINT — the driver reaches for the FIRST action in reach —
+    // so the REORDER is the assertion that matters. Two refs surviving would
+    // pass even if the list were sorted, which is exactly the bug this test is
+    // here to catch.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+
+    // The bow, then the blade, then the blade moved FIRST — the author's order
+    // is deliberately not the order they were typed in.
+    fireEvent.change(screen.getByLabelText('New weapon reference'), {
+      target: { value: 'dnd5e:weapons:shortbow' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add weapon' }));
+    fireEvent.change(screen.getByLabelText('New weapon reference'), {
+      target: { value: 'dnd5e:weapons:scimitar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add weapon' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Move dnd5e:weapons:scimitar earlier',
+      })
+    );
+
+    const shownWeapons = () =>
+      [
+        ...screen
+          .getByTestId('creature-weapons')
+          .querySelectorAll('ol li code'),
+      ].map((weapon) => weapon.textContent);
+    expect(shownWeapons()).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+
+    // The order is what the local envelope carries …
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as {
+        draft?: {
+          room?: { monsterBindings?: Record<string, { actions?: string[] }> };
+        };
+      };
+      const bindings = stored.draft?.room?.monsterBindings ?? {};
+      const ids = Object.keys(bindings);
+      expect(ids).toHaveLength(1);
+      expect(bindings[ids[0]!]?.actions).toEqual([
+        'dnd5e:weapons:scimitar',
+        'dnd5e:weapons:shortbow',
+      ]);
+    });
+    first.unmount();
+
+    // … it survives a reload with no import …
+    render(mount());
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(shownWeapons()).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+
+    // … and it is what the ENGINE is handed. Orders alone are a v4 key, so the
+    // document must claim 4 even with no site scope authored.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    const bindings = emitted.draft.room.monsterBindings ?? {};
+    const ids = Object.keys(bindings);
+    expect(ids).toHaveLength(1);
+    expect(bindings[ids[0]!]?.actions).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+  });
+
+  it('authors a placed prop’s orders — holdable and a carried record — and publishes the block (rpg-project#488 R1)', async () => {
+    // The fourth declaration kind, authored through the form. The engine
+    // decodes this block and REFUSES it at compile until rpg-toolkit#1854, so
+    // what this test claims is the DOCUMENT half: the block the author wrote
+    // reaches the published YAML intact rather than being dropped by the
+    // builder — the failure mode this whole wave is about.
+    const storage = new MemoryStorage();
+    const seed = seedImportedRoom(storage);
+    // The prop needs a declaration to be a candidate at all: that is where its
+    // footprint comes from, and the engine refuses a binding without one.
+    seed.room.propDeclarations = {
+      'prop-1': {
+        blocksMovement: false,
+        blocksLineOfSight: false,
+        footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 },
+      },
+    };
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(seed));
+
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    // A record to carry first, so the picker has something to offer.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    fireEvent.change(screen.getByLabelText('Intel reveals fact for intel-1'), {
+      target: { value: 'saved-wiseman' },
+    });
+
+    // A prop's options belong to the SELECTION now (web#1178), so the prop is
+    // chosen first — that selection is what the panel is about.
+    fireEvent.click(screen.getByLabelText('Select Books prop-1'));
+    const panel = screen.getByTestId('prop-orders-prop-1');
+    fireEvent.click(within(panel).getByLabelText('Holdable for prop-1'));
+    fireEvent.change(
+      within(panel).getByLabelText('Give prop-1 an intel record'),
+      {
+        target: { value: 'intel-1' },
+      }
+    );
+
+    // The local envelope carries it …
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as { draft?: { room?: { propBindings?: Record<string, unknown> } } };
+      expect(stored.draft?.room?.propBindings).toEqual({
+        'prop-1': { holdable: true, holds: ['intel-1'] },
+      });
+    });
+
+    // … and it is what the ENGINE is handed.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml).toContain('propBindings:');
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.draft.room.propBindings).toEqual({
+      'prop-1': { holdable: true, holds: ['intel-1'] },
+    });
+  });
+
+  it('authors intel, priced checks and a creature in reserve with no YAML, and publishes all four (web#1176)', async () => {
+    // The Front Room's driving case, end to end: a record is declared in the
+    // Intel node, a creature prices its checks and is held in reserve until the
+    // fact the failed persuasion teaches. Nothing here is YAML — and the point
+    // of the test is that NOTHING IS DROPPED between the forms and the bytes
+    // the engine is handed. The three drop bugs this slice had to fix (the two
+    // encode calls and the storage envelope each enumerated only
+    // factions/dispositions) would leave this test green on intel and red on
+    // the published document, which is exactly what it is here to catch.
+    const storage = new MemoryStorage();
+    const mount = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
+      />
+    );
+
+    const first = render(mount());
+
+    // 1. An intel record naming the fact the lie teaches.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    const idBox = screen.getByLabelText(
+      'Intel id for intel-1'
+    ) as HTMLInputElement;
+    fireEvent.change(idBox, { target: { value: 'cellar-lie' } });
+    fireEvent.blur(idBox);
+    fireEvent.change(
+      screen.getByLabelText('Intel reveals fact for cellar-lie'),
+      {
+        target: { value: 'cellar-is-clear' },
+      }
+    );
+
+    // 2. A creature, with a priced persuade and the record in its hands.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+
+    fireEvent.click(screen.getByLabelText('Add Persuade row'));
+    fireEvent.change(screen.getByLabelText('Persuade ability 0'), {
+      target: { value: 'persuasion' },
+    });
+    fireEvent.change(screen.getByLabelText('Persuade dc 0'), {
+      target: { value: '10' },
+    });
+    fireEvent.change(screen.getByLabelText('Give intel record'), {
+      target: { value: 'cellar-lie' },
+    });
+
+    // 3. Held in reserve until that fact lands.
+    fireEvent.change(screen.getByLabelText('Arrives form'), {
+      target: { value: 'fact' },
+    });
+    fireEvent.change(screen.getByLabelText('Arrives fact'), {
+      target: { value: 'cellar-is-clear' },
+    });
+
+    // The local envelope carries all of it beside the draft.
+    await waitFor(() => {
+      const stored = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      ) as {
+        scope?: SiteScope;
+        draft?: {
+          room?: {
+            monsterBindings?: Record<
+              string,
+              {
+                persuade?: Array<{ ability: string; dc: number }>;
+                holds?: string[];
+                arrives?: { fact?: string };
+              }
+            >;
+          };
+        };
+      };
+      expect(stored.scope?.intel).toEqual([
+        { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
+      ]);
+      const bindings = stored.draft?.room?.monsterBindings ?? {};
+      const only = Object.values(bindings)[0];
+      expect(only?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
+      expect(only?.holds).toEqual(['cellar-lie']);
+      expect(only?.arrives).toEqual({ fact: 'cellar-is-clear' });
+    });
+    first.unmount();
+
+    // It survives a reload with no import …
+    render(mount());
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    expect(
+      (screen.getByLabelText('Persuade dc 0') as HTMLInputElement).value
+    ).toBe('10');
+    expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
+      /Held in reserve until fact cellar-is-clear/
+    );
+
+    // … and it is what the ENGINE is handed.
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    await act(async () =>
+      publishRpc.gets[0]!.deferred.reject(
+        new ConnectError('new key', Code.NotFound)
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+    const emittedYaml = publishRpc.puts.find(
+      (put) => !put.request.validateOnly
+    )!.request.yaml;
+    expect(emittedYaml.startsWith('version: 4\n')).toBe(true);
+    const emitted = decodeSingleRoomDungeon(emittedYaml);
+    expect(emitted.intel).toEqual([
+      { id: 'cellar-lie', reveals: { fact: 'cellar-is-clear' } },
+    ]);
+    const emittedBindings = emitted.draft.room.monsterBindings ?? {};
+    const emittedCreature = Object.values(emittedBindings)[0];
+    expect(emittedCreature?.persuade).toEqual([
+      { ability: 'persuasion', dc: 10 },
+    ]);
+    expect(emittedCreature?.holds).toEqual(['cellar-lie']);
+    expect(emittedCreature?.arrives).toEqual({ fact: 'cellar-is-clear' });
+  });
+
   it('New room adopts a fresh undoable identity and cannot reuse the old publication shortcut', async () => {
     const storage = new MemoryStorage();
     const original = seedImportedRoom(storage);
@@ -2273,6 +2950,7 @@ describe('WorldBuildingConcept room publishing', () => {
         roomPublishing={{ characterId: 'char-1', onPlay: vi.fn() }}
       />
     );
+    openIdentity();
     const oldKey = (
       screen.getByRole('textbox', { name: 'Dungeon key' }) as HTMLInputElement
     ).value;
@@ -2335,6 +3013,7 @@ describe('WorldBuildingConcept room publishing', () => {
       1
     );
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    closeIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(publishedDraft()).toEqual(original);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
@@ -2351,16 +3030,18 @@ describe('WorldBuildingConcept room publishing', () => {
         idFactory={deterministicIds()}
       />
     );
-    fireEvent.change(screen.getByLabelText('Scene name'), {
+    openIdentity();
+    fireEvent.change(screen.getByLabelText('Site name'), {
       target: { value: 'Renamed by author' },
     });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
+    fireEvent.blur(screen.getByLabelText('Site name'));
 
     const renamed = publishedDraft();
     expect(renamed.name).toBe('Renamed by author');
     expect(renamed.scene.name).toBe('Renamed by author');
 
     // Exactly one Undo restores BOTH names.
+    closeIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     const restored = publishedDraft();
     expect(restored.name).toBe('Imported room title');
@@ -2402,11 +3083,13 @@ describe('WorldBuildingConcept room publishing', () => {
     // Background validation is already in flight (the derived default key
     // exists) and must NOT freeze editing: the rename below commits while
     // the debounced preview putDungeon is still pending.
-    fireEvent.change(screen.getByLabelText('Scene name'), {
+    openIdentity();
+    fireEvent.change(screen.getByLabelText('Site name'), {
       target: { value: 'Busy test room' },
     });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
+    fireEvent.blur(screen.getByLabelText('Site name'));
     expect(publishedDraft().name).toBe('Busy test room');
+    openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
     await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
     publishRpc.gets[0]!.deferred.reject(
@@ -2431,17 +3114,27 @@ describe('WorldBuildingConcept room publishing', () => {
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
 
-    // A canvas gesture is refused.
+    // Every source-changing path is refused. The Identity panel overlays the
+    // canvas without unmounting it, so the canvas gesture the old Library
+    // destination could not produce is exercised here too.
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit rectangle gesture' })
     );
     expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
-
-    // A name edit is refused too.
-    fireEvent.change(screen.getByLabelText('Scene name'), {
-      target: { value: 'Should not apply' },
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Reload room draft',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.change(screen.getByLabelText('Portable JSON'), {
+      target: { value: '{"kind":"rpg-room-authoring-draft","version":3}' },
     });
-    fireEvent.blur(screen.getByLabelText('Scene name'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import room draft JSON' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
     expect(publishedDraft().name).toBe('Busy test room');
     expect(screen.getByRole('alert').textContent).toMatch(
       /Save & Play is running/
@@ -2457,5 +3150,344 @@ describe('WorldBuildingConcept room publishing', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(publishedDraft().name).toBe('Imported room title');
+  });
+});
+
+describe('WorldBuildingConcept site organization (web#1152, corrected model)', () => {
+  it('collapses Props by default and merges the palette and the checkbox-free tree in one section', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // Rooms is navigation and open; Props is collapsed by default.
+    const rooms = screen.getByLabelText('Rooms');
+    expect((rooms.closest('details') as HTMLDetailsElement).open).toBe(true);
+    const props = screen.getByLabelText('Props');
+    expect((props.closest('details') as HTMLDetailsElement).open).toBe(false);
+
+    // The one room is a camera target marked as current.
+    expect(
+      screen
+        .getByRole('button', { name: /^Focus room / })
+        .getAttribute('aria-current')
+    ).toBe('true');
+
+    dragLabelTo('Drag Books into scene');
+    expect(scene().items).toHaveLength(1);
+    openProps();
+    expect(
+      (screen.getByLabelText('Props').closest('details') as HTMLDetailsElement)
+        .open
+    ).toBe(true);
+
+    // The palette and the scene tree are in the SAME section, and the tree
+    // has NO checkboxes: a row click is a plain select and Shift-click
+    // extends/toggles, mirroring the canvas.
+    expect(screen.getByLabelText('Search assets')).toBeTruthy();
+    expect(screen.getByLabelText('Placed props')).toBeTruthy();
+    expect(
+      screen.queryByRole('checkbox', { name: /Select books/i })
+    ).toBeNull();
+    // A valid drop selects the new prop.
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      scene().items[0]!.id
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Select books/i }));
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      scene().items[0]!.id
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Select books/i }), {
+      shiftKey: true,
+    });
+    expect(screen.getByTestId('viewport-selection').textContent).toBe('');
+  });
+
+  it('groups the site tree under its group with loose props after, nesting parentId and marking supportId', () => {
+    const storage = new MemoryStorage();
+    const draft = createRoomDraft(createEmptyScene('tree-scene'), 'tree-room');
+    draft.scene.groups = [
+      {
+        id: 'g1',
+        kind: 'group',
+        label: 'Dining set',
+        transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      },
+    ];
+    draft.scene.items = [
+      {
+        id: 'loose-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:books',
+        label: 'Loose books',
+        transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+      },
+      {
+        id: 'member-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:vase',
+        label: 'Grouped vase',
+        parentId: 'g1',
+        transform: { x: 1, y: 0, z: 0, rotationY: 0 },
+      },
+      {
+        id: 'attached-1',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:books',
+        label: 'Attached books',
+        supportId: 'member-1',
+        transform: { x: 1, y: 0.5, z: 0, rotationY: 0 },
+      },
+    ];
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openProps();
+
+    const rows = Array.from(
+      screen
+        .getByLabelText('Placed props')
+        .querySelectorAll('button.wb-tree-row')
+    ).map((row) => row.textContent);
+    // Group first, its members nested under it, then the loose props.
+    expect(rows).toEqual([
+      'Dining set',
+      '↳ Grouped vase',
+      'Loose books',
+      'Attached books · attached',
+    ]);
+  });
+
+  it('treats the room entry as pure navigation: it never changes the site nouns', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // The right-hand nouns are present whichever room the camera is on. These
+    // are the SITE's nouns — shared things, keyed to the document. A prop's own
+    // options are NOT among them (web#1178): they belong to a selection, so
+    // nothing here lists every door or every prop any more.
+    expect(screen.getByLabelText('Monsters')).toBeTruthy();
+    // The site's nouns are peers, each its own collapsible node: "Policies"
+    // was a wrapper over exactly two of them (rpg-dnd5e-web#1178 follow-up).
+    expect(screen.getByLabelText('Factions')).toBeTruthy();
+    expect(screen.getByLabelText('Dispositions')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+    expect(screen.queryByLabelText('Prop orders')).toBeNull();
+    // A local room draft carries no site scope, and the read-only Policies
+    // view says so plainly: absence is the authored state, not an error.
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+
+    const selectionBefore =
+      screen.getByTestId('viewport-selection').textContent;
+    fireEvent.click(screen.getByRole('button', { name: /^Focus room / }));
+    expect(screen.getByLabelText('Monsters')).toBeTruthy();
+    // The site's nouns are peers, each its own collapsible node: "Policies"
+    // was a wrapper over exactly two of them (rpg-dnd5e-web#1178 follow-up).
+    expect(screen.getByLabelText('Factions')).toBeTruthy();
+    expect(screen.getByLabelText('Dispositions')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
+    expect(screen.getByTestId('policies-none')).toBeTruthy();
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      selectionBefore
+    );
+  });
+
+  it('reads a selected creature as inherited vs overridden, with both asymmetries stated', () => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+
+    // Nothing selected: no creature facts and no selection declarations.
+    expect(
+      screen.queryByRole('region', { name: 'Selection declarations' })
+    ).toBeNull();
+    expect(screen.queryByText('Faction')).toBeNull();
+
+    // A selected creature names the actor's orders shape in one place.
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    // ONE RULE FOR EVERY NOUN (web#1178): a creature is a selection, so its
+    // facts open the SAME scope the props use — not a section inside the
+    // Monsters roster. Selecting it is what shows them.
+    expect(screen.getByTestId('selected-creature')).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
+    expect(screen.getByText('Faction')).toBeTruthy();
+    expect(screen.getByText('Inherits')).toBeTruthy();
+    expect(screen.getByText('Overrides')).toBeTruthy();
+    // `faction` absent is the kind's default, never a faction named
+    // `monsters` and never an error.
+    expect(screen.getByTestId('creature-inherits-none')).toBeTruthy();
+    // The OVERRIDES half is an EDITOR on the authoring surface, so its empty
+    // state is stated per section and each statement is actionable. The
+    // read-only single line survives only where no editor is wired
+    // (`SitePolicies.test.tsx` covers that path).
+    expect(screen.getByTestId('creature-weapons-none')).toBeTruthy();
+    expect(screen.getByTestId('creature-table-none')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Creature temper') as HTMLSelectElement).value
+    ).toBe('');
+    // Both asymmetries are stated where an author reads the split.
+    expect(screen.getByTestId('faction-layer-rule').textContent).toMatch(
+      /nearest key wins WHOLESALE/
+    );
+    expect(screen.getByTestId('temper-asymmetry').textContent).toMatch(
+      /placement’s is one word/
+    );
+    // A creature is a SELECTION like any other (web#1178), so the scope that
+    // holds its facts is the same one a prop opens. What a creature does NOT
+    // get is the prop half of that scope — a transform and a footprint are not
+    // properties of a placed actor.
+    expect(screen.getByTestId('selected-creature')).toBeTruthy();
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    expect(screen.queryByLabelText('Movement & sight declaration')).toBeNull();
+
+    // Props selected: the same scope, now carrying the prop's own sections.
+    dragLabelTo('Drag Books into scene');
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
+  });
+
+  it('keeps arrangement library and portable JSON out of the Site body and inside Identity', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={{
+          worldId: 'test-world',
+          reader: {
+            listCompositions: vi.fn(async () => []),
+            getComposition: vi.fn(),
+          },
+        }}
+      />
+    );
+
+    // Not in the site's build body.
+    expect(screen.queryByText('Arrangement library')).toBeNull();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+    // In the Identity panel, along with the revision history.
+    openIdentity();
+    expect(screen.getByText('Arrangement library')).toBeTruthy();
+    expect(screen.getByLabelText('Portable JSON')).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Revision history' })
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Site name')).toBeTruthy();
+    // Closing it puts the document admin away again.
+    closeIdentity();
+    expect(screen.queryByText('Arrangement library')).toBeNull();
+    expect(screen.queryByLabelText('Portable JSON')).toBeNull();
+  });
+});
+
+describe('per-prop options belong to the selection (web#1178)', () => {
+  /** The one asset the catalog declares leaves for. Dropping a prop SELECTS it
+   * (`dropIntoScene`), which is why these tests land on the panel directly. */
+  const DOOR_LABEL = 'Drag Double Door into scene';
+
+  function mount() {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+  }
+
+  /** The id the scene gave the prop just dropped. */
+  function firstPropId(): string {
+    return publishedDraft().scene.items[0]!.id;
+  }
+
+  it('offers orders for a selected, declared, non-door prop', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    // A plain prop has no door state — it is not a door.
+    expect(screen.queryByTestId('selected-door-state')).toBeNull();
+    // An UNDECLARED prop gets the declaration button rather than orders:
+    // holdable hangs off the declaration the engine requires, so offering it
+    // here would invite a refusal the author could not explain.
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add authored footprint' })
+    );
+    expect(screen.getByTestId('selected-prop-orders')).toBeTruthy();
+  });
+
+  it('offers door state for a selected door, and never orders beside it', () => {
+    mount();
+    // Find the door the way an author would — the palette is long, so the
+    // search box is the way to it.
+    dragLabelTo(DOOR_LABEL, 'canvas-ground', 'door');
+    expect(screen.getByTestId('selected-door-state')).toBeTruthy();
+    // A door may not also carry orders — the engine's refusal, mirrored here so
+    // the panel cannot offer the combination.
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    // And the door is the SELECTED prop, so nothing listed every door.
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+  });
+
+  it('hides both per-prop sections for a multi-selection, and says why', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    dragLabelTo('Drag Candles into scene');
+    const [books, candles] = publishedDraft().scene.items;
+    fireEvent.click(
+      screen.getByLabelText(`Select ${books!.label} ${books!.id}`)
+    );
+    fireEvent.click(
+      screen.getByLabelText(`Select ${candles!.label} ${candles!.id}`),
+      { shiftKey: true }
+    );
+    expect(screen.queryByTestId('selected-door-state')).toBeNull();
+    expect(screen.queryByTestId('selected-prop-orders')).toBeNull();
+    // One control cannot mean two props' values, so the panel states that
+    // rather than leaving an unexplained gap.
+    expect(screen.getByTestId('option-sections-multi').textContent).toMatch(
+      /belong to one prop/
+    );
+    // What DOES generalise is still offered.
+    expect(
+      screen.getByRole('region', { name: 'Selection declarations' })
+    ).toBeTruthy();
+  });
+
+  it('a single selection offers no multi-select explanation', () => {
+    mount();
+    dragLabelTo('Drag Books into scene');
+    // The drop SELECTS the prop, which is what makes its options appear at all
+    // — and with one prop there is no multi-selection to explain.
+    expect(screen.getByTestId('viewport-selection').textContent).toBe(
+      firstPropId()
+    );
+    expect(screen.queryByTestId('option-sections-multi')).toBeNull();
   });
 });

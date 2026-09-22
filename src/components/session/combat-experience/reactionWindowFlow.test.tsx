@@ -158,4 +158,66 @@ describe('answering a reaction window on the mover’s turn', () => {
     expect(screen.getByText(/Skeleton Guard’s turn/)).toBeTruthy();
     expect(hoisted.reactFn).not.toHaveBeenCalled();
   });
+  it.each(['lightning', 'thunder'])(
+    'sends the authored %s option through the live dock and controller',
+    async (option) => {
+      const declaration = create(DeclarationSchema, {
+        id: 'wrath-window',
+        verb: Verb.REACT,
+        slot: Slot.REACTION,
+        available: true,
+        targetKind: TargetKind.NONE,
+        reaction: {
+          ref: 'dnd5e:features:wrath_of_the_storm',
+          name: 'Wrath of the Storm',
+        },
+        options: [
+          { id: 'lightning', label: 'Lightning' },
+          { id: 'thunder', label: 'Thunder' },
+        ],
+      });
+      render(<Harness declarations={[declaration]} />);
+      expect(screen.getByTestId('reaction-window').textContent).toContain(
+        'Choose your reaction'
+      );
+      expect(screen.getByTestId('reaction-hold').textContent).toContain(
+        'Decline'
+      );
+      fireEvent.click(screen.getByTestId(`reaction-option-${option}`));
+      await waitFor(() =>
+        expect(hoisted.reactFn).toHaveBeenCalledExactlyOnceWith({
+          session: 'crypt-run',
+          member: 'fighter-1',
+          declarationId: 'wrath-window',
+          choice: ReactChoice.STRIKE,
+          option,
+        })
+      );
+    }
+  );
+
+  it('declines a damage-choice reaction without sending an option', async () => {
+    const declaration = create(DeclarationSchema, {
+      id: 'wrath-window',
+      verb: Verb.REACT,
+      slot: Slot.REACTION,
+      available: true,
+      targetKind: TargetKind.NONE,
+      reaction: {
+        ref: 'dnd5e:features:wrath_of_the_storm',
+        name: 'Wrath of the Storm',
+      },
+      options: [{ id: 'thunder', label: 'Thunder' }],
+    });
+    render(<Harness declarations={[declaration]} />);
+    fireEvent.click(screen.getByTestId('reaction-hold'));
+    await waitFor(() =>
+      expect(hoisted.reactFn).toHaveBeenCalledExactlyOnceWith({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        declarationId: 'wrath-window',
+        choice: ReactChoice.HOLD,
+      })
+    );
+  });
 });

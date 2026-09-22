@@ -40,5 +40,12 @@
     "lesson": "Stabilization changes the public participant life state and death-save progress even while the active turn is unchanged. Refreshing only CharacterData and Afford can leave stale initiative pips.",
     "fix": "Refresh Turn for activation_result.stabilized and render Stable from provider life state in both initiative and owner status. Keep the full progress graph in event identity, including present zero counters and false flags; already-stable results remain valid.",
     "context": "Two-player Spare the Dying browser acceptance verified zero HP, two casts, reconnect and skipped stable turns with no death saves."
+  },
+  {
+    "id": "two-goblin-art-sets-only-one-is-wired",
+    "date": "2026-09-20",
+    "lesson": "public/models/synty/ holds two unrelated goblin rosters and only one of them is reachable from MONSTER_REF_MODELS. The loose PascalCase files at the tree root (Character_Goblin_WarChief.glb, Character_Goblin_Warrior_Male[_B/_C].glb, with downed/<Name>_Downed.glb siblings) come from POLYGON Dungeon and exist for the SyntyShowcase playtest page. The promoted contract tree under npcs/ holds a second, larger roster from POLYGON Goblin War Camp v2 (goblin-warrior-male-01.glb, goblin-king-01.glb, and eleven more), kebab-named, each with a -downed.glb sibling and an npcs/manifest.json entry.",
+    "fix": "Map monster refs to the npcs/ roster only. MONSTER_MODEL_BASE is hardcoded to '/models/synty/npcs/' and withDownedSuffix derives '<name>-downed.glb', so a root-level PascalCase file would need both a base change and a special-cased downed derivation. Re-derive the table against npcs/manifest.json, which is the canonical rules seam: a rulesRef of null there means the provider published the look as appearance only, which is why eleven of the thirteen war-camp goblins stay unmapped.",
+    "context": "Adding goblin and goblin-boss for rpg-toolkit#1847. The brief named the root-level WarChief files; the npcs/ tree was the correct source and the one the palette's ref-AND-GLB gate reads."
   }
 ]

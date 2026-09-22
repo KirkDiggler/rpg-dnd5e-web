@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Web-based D&D 5e game interface for Discord Activities",
   "type": "module",
+  "engines": {
+    "node": "^22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -22,10 +25,12 @@
     "check:crypt-lighting": "node scripts/check-crypt-lighting.mjs",
     "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
     "assets:sync": "sh scripts/sync-game-assets.sh",
+    "assets:sync:pinned": "sh scripts/sync-game-assets.sh --pinned-runtime",
+    "assets:sync:bump": "sh scripts/sync-game-assets.sh --allow-provider-bump",
     "assets:expose-provider-appearances": "node scripts/expose-provider-character-appearances.mjs",
     "world-assets:sync": "bash scripts/sync-game-assets.sh --world-assets",
     "world-assets:check": "bash scripts/sync-game-assets.sh --world-assets --check",
-    "props:sync": "npm run assets:sync && node scripts/generate-prop-catalog.mjs",
+    "props:sync": "npm run assets:sync:bump && node scripts/generate-prop-catalog.mjs",
     "props:check": "node scripts/generate-prop-catalog.mjs --check",
     "attack-die:build": "npm run build -- --mode development",
     "attack-die:hash-build": "node scripts/attack-die/hash-build.mjs",
@@ -43,7 +48,7 @@
     "@connectrpc/connect-web": "^2.0.2",
     "@dimforge/rapier3d-compat": "^0.19.2",
     "@discord/embedded-app-sdk": "^2.1.0",
-    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#v0.1.202",
+    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#v0.1.205",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.12",

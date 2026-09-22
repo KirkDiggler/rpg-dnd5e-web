@@ -13,6 +13,14 @@ export interface WorldPropModelProps {
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
+  /** A door item's live state: TRUE swings every declared group open. Absent
+   * for a prop that is not a door, and for a door whose state the caller does
+   * not hold — both render the asset's authored rest pose. */
+  open?: boolean;
+  /** Fires when a door item is clicked. The caller owns the affordance,
+   * because it is the caller that knows who acts and what the door's state
+   * is; this leaf only reports that the door was hit. */
+  onDoorClick?: () => void;
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onGeneratedDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
 }
@@ -26,15 +34,22 @@ export function WorldPropModel({
   position,
   rotationY,
   heightScale = 1,
+  open,
+  onDoorClick,
   onBoundsMeasured,
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
+  // `open`/`onDoorClick` reach the generated branch only: a door is a
+  // promoted exact asset carrying `roles`, so a legacy variant has no named
+  // leaf to swing and no door-ness to be clicked.
   return entry.source === 'generated' ? (
     <WorldAssetModel
       assetRef={entry.ref}
       position={position}
       rotationY={rotationY}
       heightScale={heightScale}
+      open={open}
+      onDoorClick={onDoorClick}
       onDiagnostic={onGeneratedDiagnostic}
       onBoundsMeasured={onBoundsMeasured}
     />

@@ -55,6 +55,7 @@ import type {
   DoorInfo,
   Footprint,
   PublicMemberInfo,
+  SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
@@ -85,6 +86,7 @@ import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
+import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
@@ -238,6 +240,10 @@ export interface SessionCanvasProps {
   /** Fires with the clicked door's id — the open/unlock affordance lives
    * in the caller, which knows who acts and what the door's state is. */
   onDoorClick?: (door: string) => void;
+  /** The dungeon key this room was fetched by. A door's live id is
+   * `<key>/<itemId>`, so the canonical branch needs the prefix to join the
+   * `doors` map above to the item that draws the door. */
+  dungeonKey?: string;
   /** Fires when a click lands on a MEMBER_KIND_WORLD member's cell (a
    * placed world NPC, e.g. a vendor) — routed separately from
    * `onEntityClick`, which is gated on `attackableTargets` and a world NPC
@@ -274,6 +280,7 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -321,12 +328,14 @@ export function SessionScene({
   roster,
   doors,
   onDoorClick,
+  dungeonKey,
   onInteractClick,
   attackableTargets,
   reactionMover,
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -638,6 +647,7 @@ export function SessionScene({
         hexSize={hexSize}
         doors={doors}
         onDoorClick={onDoorClick}
+        dungeonKey={dungeonKey}
         compositionSource={compositionSource}
       />
       {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:
@@ -656,6 +666,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
+      <SightAreaOverlay areas={sightAreas} hexSize={hexSize} />
       {presentationLayer}
       <AreaFootprintPreview
         footprint={areaFootprint}

@@ -1,0 +1,96 @@
+# SAMPLE 3 — two sides, and the line that makes a town work.
+#
+# What it exercises: `dispositions:` with BOTH shapes — a neutral pair and a
+# hostile pair carrying the predicate that ends it — plus a faction `mind`.
+#
+# THE RULE THIS EXISTS TO MAKE VISIBLE: NEUTRALITY IS AUTHORED, NOT FREE.
+# `DefaultStance` returns hostile whenever either side is `party`, so a declared
+# faction is at war with the party until a disposition says otherwise. The
+# goblins are only peaceful here because this file SAYS SO:
+#
+#     - {between: [goblins, party], stance: neutral}
+#
+# Delete that line and the goblins attack on frame one. That is the difference
+# between a front room and a fight, and no test asserts it for you.
+#
+# The bandits are hostile from the start, and `until` names the fact that ends
+# it — the only flip the engine authors. (`until` is legal only on a hostile
+# pair; a non-hostile pair has nothing to stop doing.)
+#
+# `mind` is the placement a faction knows through: "the faction knows what its
+# mind knows." It must name a monster placement IN THIS FACTION.
+version: 4
+key: sample-sides
+play: { void: transparent, lighting: bright, standing: centre-covered }
+factions:
+  - id: goblins
+    mind: goblin-1
+    on:
+      intimidated:
+        - { weight: 100, say: 'Fine, take the cellar.', fact: cellar-is-clear }
+  - { id: bandits }
+dispositions:
+  # The whole front room, in one line.
+  - { between: [goblins, party], stance: neutral }
+  # Hostile, and it stops being hostile once the party learns the goblin caved.
+  - {
+      between: [bandits, party],
+      stance: hostile,
+      until: { fact: cellar-is-clear },
+    }
+room:
+  version: 3
+  id: room-1
+  name: Sides
+  coordinateFrame:
+    {
+      horizontalPlane: world-xz,
+      verticalAxis: world-y-up,
+      distanceUnit: world-scene-unit,
+      hexRadius: 1,
+      footprintFrame: owner-local-xz,
+    }
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: Sides
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes:
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+        { q: 3, r: 0 },
+        { q: 0, r: 1 },
+        { q: -1, r: 1 },
+        { q: -1, r: 0 },
+        { q: 0, r: -1 },
+        { q: 1, r: -1 },
+      ]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: 0, r: 0 }
+    monsters:
+      - {
+          id: goblin-1,
+          ref: 'dnd5e:monsters:goblin',
+          cell: { q: 2, r: 0 },
+          faction: goblins,
+        }
+      - {
+          id: bandit-1,
+          ref: 'dnd5e:monsters:bandit',
+          cell: { q: 3, r: 0 },
+          faction: bandits,
+        }
+      # No `faction`: this one is the kind's default side, which is NOT a
+      # faction named `monsters` and is never written out.
+      - {
+          id: skeleton-a,
+          ref: 'dnd5e:monsters:skeleton',
+          cell: { q: 1, r: -1 },
+        }

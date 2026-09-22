@@ -4,14 +4,37 @@ import {
   stringifyRoomDraft,
   type RoomDraft,
 } from './roomDraft';
+import {
+  validateIntel,
+  validateSiteDispositions,
+  validateSiteFactions,
+  type SiteDisposition,
+  type SiteFaction,
+  type SiteIntelRecord,
+  type SiteScope,
+} from './siteScope';
 
 export interface EncodeSingleRoomDungeonInput {
   key: string;
   draft: RoomDraft;
+  /** The site scope (rpg-dnd5e-web#1136, rpg-project#477): identity and policy
+   * that belong to the place rather than to a selection. Omitted means the
+   * document does not carry it, which is what keeps a room with no scope
+   * emitting v3 exactly as it always did. */
+  /* Carried, never interpreted: the site's intel records (web#933's section
+   * ported to the site root). Omitted means the document does not carry them. */
+  factions?: SiteFaction[];
+  dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
 }
 export interface DecodeSingleRoomDungeonResult {
   key: string;
   draft: RoomDraft;
+  /** Present only when the file carried at least one; absence is the authored
+   * state "no factions", never an empty list. */
+  factions?: SiteFaction[];
+  dispositions?: SiteDisposition[];
+  intel?: SiteIntelRecord[];
 }
 
 /** The fixed play contract of this first playable slice. Keys and values are
@@ -23,16 +46,30 @@ const PLAY_CONTRACT = {
   standing: 'centre-covered',
 } as const;
 const PLAY_KEYS = Object.keys(PLAY_CONTRACT);
-const ROOT_KEYS = ['version', 'key', 'play', 'room'] as const;
+/** Every root key this build reads. `factions` and `dispositions` are the site
+ * scope (rpg-project#477); there is deliberately no `sites` layer, no `kind`
+ * and no root `name` in this slice — `rooms[]` stays flat and the room's own
+ * name lives in the embedded draft. */
+const ROOT_KEYS = [
+  'version',
+  'key',
+  'play',
+  'room',
+  'factions',
+  'dispositions',
+  'intel',
+] as const;
 
 /**
- * The versions this decoder accepts. **4 is the seam, landed before its keys.**
+ * The versions this decoder accepts. **4 is the seam, and this slice lands its
+ * first keys inside it.**
  *
  * Two waves want v4 — the authored-door contract (rpg-project#468, consumer
  * rpg-dnd5e-web#1117) and the site scope plus `monsterBindings`
- * (rpg-project#477, this slice). Landing the bump once, ahead of either key,
- * is what stops them both bumping: a key then arrives *inside* a version
- * rather than behind a second one.
+ * (rpg-project#477, this slice). The bump landed once, ahead of either key
+ * (rpg-dnd5e-web#1140), so each key then arrives *inside* a version rather
+ * than behind a second one. A `doorBindings` wave adds a key here, not a
+ * version.
  *
  * v3 is not deprecated and nothing about it changes. The ENCODER emits the
  * LOWEST version that carries the document (see `encodeSingleRoomDungeon`),
@@ -50,6 +87,40 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !Array.isArray(value) &&
   !(value instanceof Date);
 
+/** Whether the document carries any key v3 has no place for: a site scope
+ * entry, a creature's `faction`, or an orders block. A version is a statement
+ * about what a file MAY contain, so this is exactly the set of authored facts
+ * that need one.
+ *
+ * The embedded ROOM draft's own version is a separate artifact and stays 3:
+ * root 4 with room 3 is the only combination this build produces, and the Go
+ * decoder's half of the seam says the same (`acceptedRootVersions`). */
+function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
+  if ((scope.factions?.length ?? 0) > 0) return true;
+  if ((scope.dispositions?.length ?? 0) > 0) return true;
+  if ((scope.intel?.length ?? 0) > 0) return true;
+  if (
+    draft.room.monsterBindings &&
+    Object.keys(draft.room.monsterBindings).length > 0
+  )
+    return true;
+  // `doorBindings` and `propBindings` are v4-only keys too. Doors were missed
+  // when the door wave landed, so a room whose ONLY v4 fact was a door emitted
+  // `version: 3` while carrying a key v3 has no place for — the version is a
+  // statement about what a file MAY contain, and that statement was false.
+  if (
+    draft.room.doorBindings &&
+    Object.keys(draft.room.doorBindings).length > 0
+  )
+    return true;
+  if (
+    draft.room.propBindings &&
+    Object.keys(draft.room.propBindings).length > 0
+  )
+    return true;
+  return draft.room.monsters.some((monster) => monster.faction !== undefined);
+}
+
 export function encodeSingleRoomDungeon(
   input: EncodeSingleRoomDungeonInput
 ): string {
@@ -58,17 +129,68 @@ export function encodeSingleRoomDungeon(
   const draft = JSON.parse(stringifyRoomDraft(input.draft)) as {
     draft: RoomDraft;
   };
+  // The scope is validated on the way OUT as the draft is, so an encoder can
+  // never write a site block the strict decoder would refuse to read back.
+  const factions = input.factions
+    ? validateSiteFactions(input.factions)
+    : undefined;
+  const dispositions = input.dispositions
+    ? validateSiteDispositions(input.dispositions)
+    : undefined;
+  const intel = input.intel ? validateIntel(input.intel) : undefined;
+  const scope: SiteScope = {
+    ...(factions && factions.length > 0 ? { factions } : {}),
+    ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
+    ...(intel && intel.length > 0 ? { intel } : {}),
+  };
   return stringify({
-    version: 3,
+    version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
     key: input.key,
     play: { ...PLAY_CONTRACT },
+    // ABSENT, NOT EMPTY: a document with no site scope emits the bytes it
+    // emitted before these keys existed. Key order stays version, key, play,
+    // room when they are absent, which is what makes the bytes identical.
+    ...(scope.factions ? { factions: scope.factions } : {}),
+    ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
+    ...(scope.intel ? { intel: scope.intel } : {}),
     room: draft.draft,
   });
 }
 
-export function decodeSingleRoomDungeon(
-  source: string
-): DecodeSingleRoomDungeonResult {
+/**
+ * Which authored dialect a file speaks, read from its root `version`
+ * alone — the one tag the two dialects share.
+ *
+ * **Below the first single-room version is the OTHER dialect** (the
+ * dungeonspec document: regions, walls, doors, arrivals), which this
+ * codec does not read and does not judge. It is not ours; a caller
+ * draws whatever it drew before and no refusal is raised.
+ *
+ * **At or above it, the file claims to be a single room**, and this
+ * build either reads it whole or names why it cannot. A version this
+ * build has not heard of is a gap, not another dialect.
+ *
+ * A root that is not YAML, is not a mapping, or carries no numeric
+ * version is neither answer: it is named too, because "we cannot tell
+ * what this file is" must never be delivered as "this dungeon has no
+ * authored room."
+ */
+export type SingleRoomDungeonRead =
+  | ({ dialect: 'single-room' } & DecodeSingleRoomDungeonResult)
+  | { dialect: 'other'; version: number };
+
+const FIRST_SINGLE_ROOM_VERSION = SUPPORTED_VERSIONS[0];
+
+export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
+  const root = parseSingleRoomSource(source);
+  const version = root.version;
+  if (typeof version !== 'number' || !Number.isFinite(version))
+    throw new Error('Authored dungeon source is missing a numeric version.');
+  if (version < FIRST_SINGLE_ROOM_VERSION) return { dialect: 'other', version };
+  return { dialect: 'single-room', ...decodeSingleRoomRoot(root) };
+}
+
+function parseSingleRoomSource(source: string): Record<string, unknown> {
   let value: unknown;
   try {
     value = parse(source);
@@ -79,7 +201,18 @@ export function decodeSingleRoomDungeon(
   }
   if (!isPlainObject(value))
     throw new Error('Single-room source must be an object.');
-  const root = value;
+  return value;
+}
+
+export function decodeSingleRoomDungeon(
+  source: string
+): DecodeSingleRoomDungeonResult {
+  return decodeSingleRoomRoot(parseSingleRoomSource(source));
+}
+
+function decodeSingleRoomRoot(
+  root: Record<string, unknown>
+): DecodeSingleRoomDungeonResult {
   for (const key of Object.keys(root)) {
     if (!ROOT_KEYS.includes(key as (typeof ROOT_KEYS)[number]))
       throw new Error(`Unsupported single-room field: ${key}.`);
@@ -105,6 +238,15 @@ export function decodeSingleRoomDungeon(
         `Unsupported single-room play contract: ${field} must be ${expected}.`
       );
   }
+  // The site scope is validated BEFORE the room, so a typo in a faction is
+  // reported as the typo it is rather than as a room problem.
+  const factions = Object.hasOwn(root, 'factions')
+    ? validateSiteFactions(root.factions)
+    : [];
+  const dispositions = Object.hasOwn(root, 'dispositions')
+    ? validateSiteDispositions(root.dispositions)
+    : [];
+  const intel = Object.hasOwn(root, 'intel') ? validateIntel(root.intel) : [];
   if (!isPlainObject(root.room))
     throw new Error('Single-room source is missing a room.');
   // The embedded room draft keeps ITS OWN version, and it is passed through
@@ -117,5 +259,11 @@ export function decodeSingleRoomDungeon(
     version: roomVersion ?? 3,
     draft: root.room,
   });
-  return { key: root.key, draft: parseRoomDraftJson(draftJson) };
+  return {
+    key: root.key,
+    draft: parseRoomDraftJson(draftJson),
+    ...(factions.length > 0 ? { factions } : {}),
+    ...(dispositions.length > 0 ? { dispositions } : {}),
+    ...(intel.length > 0 ? { intel } : {}),
+  };
 }

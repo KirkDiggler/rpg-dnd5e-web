@@ -57,10 +57,6 @@
   overflow: hidden;
 }
 
-.wb-mode-pane-hidden {
-  display: none;
-}
-
 .wb-workspace-route .wb-shell--world {
   height: 100%;
   min-height: 0;
@@ -95,11 +91,28 @@
 
 .wb-shell button,
 .wb-shell input,
+.wb-shell select,
 .wb-shell textarea,
 .wb-palette-entry,
 .wb-library article[draggable='true'] {
   border: 1px solid var(--wb-border);
   border-radius: 5px;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+}
+
+/* THE POPUP IS NOT THE CONTROL. Styling the closed `<select>` leaves the native
+ * option list painted by the OS, so every dropdown in this panel opened WHITE
+ * beside a dark control — and `select` was missing from the palette rule above
+ * entirely (Kirk, 2026-09-19). `color-scheme` is what tells the browser to
+ * paint its own form-control chrome dark; the explicit `option` rule is the
+ * belt to that braces, because some platforms ignore `color-scheme` for popups
+ * and would otherwise keep the light list. */
+.wb-shell select {
+  color-scheme: dark;
+}
+
+.wb-shell select option {
   background: var(--wb-raised);
   color: var(--wb-text);
 }
@@ -175,6 +188,25 @@
   font-size: 0.68rem;
 }
 
+/* The Site editor's header is exactly Back · site name · Identity
+ * (rpg-dnd5e-web#1152, corrected model). */
+.wb-header--site {
+  justify-content: space-between;
+}
+
+.wb-site-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wb-site-heading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wb-alert {
   display: flex;
   align-items: center;
@@ -203,6 +235,350 @@
     );
 }
 
+/* Collapsible nodes (Rooms / Props / Edit / Monsters / Doors / Policies).
+ * Each summary carries a stable aria-label; the details element owns the
+ * open/closed state. */
+.wb-collapse {
+  display: block;
+}
+
+.wb-collapse + .wb-collapse {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-collapse > summary {
+  cursor: pointer;
+  color: #b6f4eb;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.wb-collapse > summary:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: 2px;
+}
+
+.wb-collapse > summary::marker {
+  color: #f9d989;
+}
+
+.wb-collapse > *:not(summary) {
+  margin-top: 0.5rem;
+}
+
+.wb-room-nav {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-room-nav button {
+  width: 100%;
+  text-align: left;
+}
+
+.wb-room-nav button[aria-current='true'] {
+  border-color: var(--wb-accent);
+  background: #17413d;
+  color: #ccfbf1;
+}
+
+.wb-tree-heading {
+  margin: 0.75rem 0 0.35rem;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-tree-group + .wb-tree-group,
+.wb-tree-group + button.wb-tree-row {
+  margin-top: 0.15rem;
+}
+
+/* Site tree rows are buttons now: click selects, Shift/Ctrl/Cmd extends.
+ * No checkboxes. */
+button.wb-tree-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--wb-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+button.wb-tree-row[aria-pressed='true'] {
+  background: #17413d;
+  color: #ccfbf1;
+}
+
+/* The Identity panel overlays the canvas without unmounting it
+ * (rpg-dnd5e-web#1152). It is the merge of the old `The site` and `Library`
+ * destinations: identity, local draft, revision history, arrangements,
+ * portable JSON and publishing. */
+.wb-identity {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--wb-bg);
+  scrollbar-color: #416561 transparent;
+  scrollbar-width: thin;
+}
+
+.wb-identity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.wb-identity-heading h3 {
+  margin: 0;
+  color: var(--wb-accent);
+  font-size: 0.95rem;
+}
+
+.wb-identity-columns {
+  display: grid;
+  align-items: start;
+  gap: 0.9rem;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr);
+}
+
+.wb-identity-column {
+  min-width: 0;
+  padding: 0.65rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  background: var(--wb-panel);
+}
+
+.wb-identity-column h4 {
+  margin: 0 0 0.4rem;
+  color: #b6f4eb;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+.wb-identity-column section + section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-document-facts {
+  display: grid;
+  gap: 0.25rem 0.75rem;
+  margin: 0.6rem 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.wb-document-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid #283c3a;
+  padding-bottom: 0.2rem;
+}
+
+.wb-document-facts dt {
+  color: var(--wb-muted);
+  font-size: 0.68rem;
+}
+
+.wb-document-facts dd {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+/* The one status that must not be lost from the screen: a world snapshot open
+ * here is not locally autosaved, and autosave pauses when the stored bytes
+ * cannot be read. It sits below the header, which is Back · site name ·
+ * Identity and nothing else. */
+.wb-save-alert {
+  margin: 0;
+  padding: 0.35rem 0.9rem;
+  border-bottom: 1px solid #b45309;
+  background: #32170d;
+  color: #f9d989;
+  font-size: 0.68rem;
+}
+
+/* The selected creature's orders shape, named where the actor lives. */
+.wb-creature-orders {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-creature-orders h4 {
+  margin: 0 0 0.3rem;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-creature-orders-grid {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0;
+}
+
+/* One lock approach: ability, tool, DC, and the row's own remove. The DC is
+ * the only field with a knowable width, so it is the only one that gets one —
+ * the other two share what is left. */
+.wb-approach-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: flex-end;
+  margin-top: 0.3rem;
+}
+
+.wb-approach-row > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-approach-row > .wb-approach-dc {
+  flex: 0 0 4.2rem;
+}
+
+.wb-creature-orders-grid div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.wb-creature-orders-grid dt {
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+}
+
+.wb-creature-orders-grid dd {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+/* The site policies (rpg-dnd5e-web#1157) and one creature's ORDERS
+ * (rpg-dnd5e-web#1164): a faction's temperament and shared answer table, the
+ * dispositions between factions, and what one creature overrides. The INHERITS
+ * half is FACTS, NEVER CONTROLS and stays that way. The OVERRIDES half became
+ * controls in #1164 — which is why there are now inputs here, and why the old
+ * "nothing here is editable yet" note was removed rather than left to mislead. */
+.wb-policy-block + .wb-policy-block {
+  margin-top: 0.5rem;
+}
+
+.wb-policy-block h5 {
+  margin: 0 0 0.2rem;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wb-policy-list,
+.wb-policy-table {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.wb-policy-name {
+  margin: 0;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-policy-trigger {
+  color: var(--wb-muted);
+}
+
+/* The EDITABLE policies (rpg-dnd5e-web#1160): the same facts, now controls.
+ * Compact rows, because a whole camp shares one scroll. */
+.wb-policy-faction,
+.wb-policy-disposition {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #283c3a;
+  border-radius: 4px;
+  list-style: none;
+}
+
+.wb-policy-faction label,
+.wb-policy-disposition label,
+.wb-policy-entry label,
+.wb-policy-temper label,
+.wb-policy-until label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.25rem 0;
+  color: var(--wb-muted);
+  font-size: 0.62rem;
+}
+
+.wb-policy-faction input,
+.wb-policy-faction select,
+.wb-policy-disposition input,
+.wb-policy-disposition select,
+.wb-policy-entry input,
+.wb-policy-entry select,
+.wb-policy-temper input,
+.wb-policy-temper select,
+.wb-policy-until input,
+.wb-policy-until select {
+  width: 100%;
+  padding: 0.28rem;
+  font-size: 0.7rem;
+}
+
+.wb-policy-entries {
+  margin: 0.3rem 0 0;
+  padding-left: 0.6rem;
+  list-style: none;
+}
+
+.wb-policy-entry {
+  margin: 0.3rem 0;
+  padding: 0.3rem 0.4rem;
+  border-left: 2px solid #35564f;
+}
+
+.wb-policy-trigger-block {
+  margin-top: 0.4rem;
+}
+
+.wb-policy-trigger-block code {
+  color: #f9d989;
+}
+
+.wb-policy-mix,
+.wb-policy-pair,
+.wb-policy-until-stance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+  gap: 0.3rem;
+}
+
+.wb-policy-cell {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.wb-policy-table-editor {
+  margin-top: 0.4rem;
+}
+
 .wb-panel {
   min-width: 0;
   overflow: auto;
@@ -220,6 +596,24 @@
   border-left: 1px solid var(--wb-border);
 }
 
+/* The real asset palette is long, and the search box is the only way to find
+ * anything in it — so it stays put while the cards scroll under it.
+ *
+ * `position: sticky` needs an OPAQUE background or the cards show through it,
+ * and the negative inline margin bleeds it across the panel's own padding so
+ * nothing peeks through the seam at the sides. `display: block` is required
+ * because a `<label>` is inline by default and an inline box does not stick
+ * reliably (rpg-dnd5e-web#1152). */
+.wb-palette-search {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-inline: -0.65rem;
+  padding-inline: 0.65rem;
+  background: var(--wb-panel);
+}
+
 .wb-panel h3 {
   margin: 0 0 0.45rem;
   color: #b6f4eb;
@@ -234,6 +628,14 @@
   border-top: 1px solid #283c3a;
 }
 
+/* The first collapsible in a panel is the panel's own heading, not a
+ * separated block below one. */
+.wb-panel > .wb-collapse:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .wb-library-heading {
   display: flex;
   align-items: center;
@@ -242,7 +644,7 @@
 }
 
 .wb-library-heading h3 {
-  margin: 0;
+  margin: 0 auto 0 0;
 }
 
 .wb-library-error {
@@ -371,6 +773,13 @@
 .wb-tool-strip > span {
   color: #f9d989;
   font-size: 0.64rem;
+}
+
+/* Canvas extent is a canvas control, so it sits with the tools rather than
+ * in the room chrome (rpg-dnd5e-web#1152). */
+.wb-workspace-size {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .wb-stage-bar {
@@ -622,6 +1031,10 @@
   .wb-workspace-route .wb-shell--world .wb-workspace {
     grid-template-rows: minmax(260px, 1fr) minmax(0, 40%);
   }
+
+  .wb-identity-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .wb-repeat-action {
@@ -753,4 +1166,80 @@
 
 .wb-yaml-exchange summary {
   cursor: pointer;
+}
+
+/* The site's intel records and a creature's interaction facts
+ * (rpg-dnd5e-web#1176). They borrow the policy block's chrome so a record and
+ * a check row read like the facts around them rather than as a separate
+ * widget: the container is a hook for spacing, and each editor's own heading
+ * is one step below the block's `h5` because it sits INSIDE one. */
+.wb-intel-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wb-creature-checks,
+.wb-creature-holds,
+.wb-creature-arrives {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.wb-creature-checks h6,
+.wb-creature-holds h6 {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wb-creature-checks .wb-policy-entry,
+.wb-creature-arrives label {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: end;
+  gap: 0.3rem;
+}
+
+.wb-creature-arrives label {
+  grid-template-columns: 1fr;
+}
+
+/* One entry in a site node, collapsed to its own line (rpg-dnd5e-web#1178
+ * follow-up). The rule for every list: A DISPOSITION READS AS ITS PAIR, A
+ * FACTION AND AN INTEL RECORD AS THEIR ID — and the form is one expansion
+ * behind it. So a node can be scanned without opening a single entry, which is
+ * the whole reason the entries are collapsible. */
+.wb-policy-row {
+  cursor: pointer;
+}
+
+.wb-policy-row > summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.1rem 0;
+}
+
+.wb-policy-row > summary::marker {
+  color: var(--wb-muted);
+}
+
+.wb-policy-summary-note {
+  color: var(--wb-muted);
+}
+
+/* The form behind the line. Indented so an open entry reads as belonging to
+ * its own summary rather than to the next one. */
+.wb-policy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0 0.1rem 0.75rem;
+  border-left: 1px solid #283c3a;
+  margin-top: 0.3rem;
 }

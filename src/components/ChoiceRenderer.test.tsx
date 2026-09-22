@@ -3,6 +3,7 @@ import {
   ChoiceCategory,
   ChoiceSchema,
   ExpertiseOptionsSchema,
+  SpellOptionsSchema,
   ToolOptionsSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
@@ -284,3 +285,67 @@ describe('ChoiceRenderer - TOOLS by count', () => {
 function toolName(tool: Tool): string {
   return getToolInfo(tool).name;
 }
+
+describe('automatic spell grants', () => {
+  it.each([
+    [ChoiceCategory.SPELLS, 'bless', 'Bless', 'Life Domain', 4],
+    [ChoiceCategory.SPELLS, 'cure-wounds', 'Cure Wounds', 'Life Domain', 4],
+    [ChoiceCategory.CANTRIPS, 'light', 'Light', 'Light Domain', 3],
+  ] as const)(
+    'locks %s grant %s without consuming choices',
+    (category, id, name, source, count) => {
+      const onSelectionChange = vi.fn();
+      const choice = create(ChoiceSchema, {
+        id: 'spell-choice',
+        description: 'Choose spells',
+        chooseCount: count,
+        choiceType: category,
+        options: {
+          case: 'spellOptions',
+          value: create(SpellOptionsSchema, {
+            availableRefs: ['dnd5e:spells:guidance'],
+            grants: [{ spellRef: `dnd5e:spells:${id}`, sourceName: source }],
+          }),
+        },
+      });
+      const { rerender } = render(
+        <ChoiceRenderer
+          choice={choice}
+          currentSelections={[]}
+          onSelectionChange={onSelectionChange}
+        />
+      );
+      const granted = screen.getByRole('button', {
+        name: `${name} Granted by ${source}`,
+      });
+      expect((granted as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(granted);
+      expect(onSelectionChange).not.toHaveBeenCalled();
+      expect(screen.getByText(`(0/${count} selected)`)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Guidance' }));
+      expect(onSelectionChange).toHaveBeenCalledWith('spell-choice', [
+        'dnd5e:spells:guidance',
+      ]);
+      const ungranted = create(ChoiceSchema, {
+        ...choice,
+        options: {
+          case: 'spellOptions',
+          value: create(SpellOptionsSchema, {
+            availableRefs: [`dnd5e:spells:${id}`],
+          }),
+        },
+      });
+      rerender(
+        <ChoiceRenderer
+          choice={ungranted}
+          currentSelections={[]}
+          onSelectionChange={onSelectionChange}
+        />
+      );
+      expect(screen.queryByText(`Granted by ${source}`)).toBeNull();
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
+      ).toBe(false);
+    }
+  );
+});
