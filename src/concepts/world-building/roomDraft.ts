@@ -1,10 +1,24 @@
+import { ANSWER_TEMPER, unknownTemperRefusal } from '@/author/answerVocabulary';
+import type { PredicateDoc } from '@/author/factionVocabulary';
 import {
   cubeToWorld,
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
+import {
+  validatePredicate,
+  validateSiteScope,
+  type SiteScope,
+} from './siteScope';
+import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { KeyValueStorage, WorldScene } from './types';
+
+// Re-exported so every sibling strict decoder keeps importing them from here
+// (rpg-dnd5e-web#1136 moved the definitions to `strictShape.ts` so the
+// answer-table adapter is not an import cycle; the words are unchanged).
+export { objectShape, rejectUnknownKeys } from './strictShape';
 
 export const ROOM_DRAFT_STORAGE_KEY =
   'rpg.concepts.world-building.room-draft.v3';
@@ -49,11 +63,125 @@ export interface RoomPropDeclaration {
 }
 /** One authored monster actor. `ref` uses the existing monster reference
  * grammar; an unknown-but-syntactically-valid monster id stays editable and
- * is reported as an unavailable model, never dropped or substituted. */
+ * is reported as an unavailable model, never dropped or substituted.
+ *
+ * `faction` is the site-scope membership and is OPTIONAL, ABSENT WHEN
+ * UNAUTHORED (rpg-project#477 Decision 4). It is never written out as
+ * `faction: monsters`: `factionOf` (`encounter/field.go`) stores it "as given,
+ * never resolved here, so a member in the default faction persists
+ * byte-identically to one from before factions existed" and resolves the
+ * kind's default on every read. Membership sits on the ACTOR because it is
+ * what SELECTS the defaults, while everything a faction supplies (`on`,
+ * `actions`) is overridable and therefore lives in the orders block below. */
 export interface RoomMonsterPlacement {
   id: string;
   ref: string;
   cell: RoomHexCell;
+  faction?: string;
+}
+/** One placed prop's ORDERS — the FOURTH declaration kind, after
+ * `propDeclarations`, `monsterBindings` and `doorBindings`, keyed by the same
+ * law: the id of the placed item it is about (rpg-project#488 R1,
+ * rpg-toolkit#1855).
+ *
+ * DEFINITION, STATE, ORDERS, and which is which: `propDeclarations` is the
+ * item's definition (footprint, blocking), `doorBindings` is a door's state,
+ * and this is what a PLACED PROP DOES.
+ *
+ * CARRIED, NOT GRADED, like `doorBindings`: the engine judges it at
+ * `PutDungeon` and answers with a path and a sentence. It COMPILES since
+ * rpg-toolkit#1854 — `PlacedPropInput` gained `Holdable`/`Holds`/`Arrives`, so
+ * a placed footprint can be taken and can arrive — and the three ownership
+ * refusals (no owning `propDeclarations` entry, an id also in `doorBindings`,
+ * an arrangement member) are unchanged. */
+export interface RoomPropBinding {
+  /** Whether a member can pick this prop up. A PLAIN BOOL, unlike v2's pointer:
+   * a thing nobody declared holdable stays scenery. */
+  holdable?: boolean;
+  /** The intel records this prop carries, by record id. */
+  holds?: string[];
+  /** The predicate that brings this prop into the run. */
+  arrives?: PredicateDoc;
+}
+
+/** The orders block for one creature, under its stable id — the THIRD
+ * declaration kind on a placed thing, after `propDeclarations` and the
+ * `doorBindings` (rpg-project#477 Decision 4, rpg-project#485).
+ *
+ * It carries the authored facts the FACTION would otherwise supply, because
+ * being supplied by the faction is exactly what makes them overridable:
+ * `FactionSpec.On` is "LAYERED, NEAREST KEY WINS WHOLESALE" and `TemperSpec`
+ * says "A PLACEMENT'S OWN WORD WINS". `faction` is deliberately NOT here —
+ * nothing overrides it.
+ *
+ * `on`, `temper` and `actions` are all here, because the engine carries all
+ * three on a binding (`RoomMonsterBinding`, `dungeonspec/single_room.go`).
+ * `intimidate`, `persuade` and `arrives` are its own `PlaceSpec` fields and
+ * have a home here when a use case brings them. NOTHING READS ANY OF THEM YET
+ * (slice 1, shape only).
+ *
+ * `temper` is ONE WORD here and a word or a MIX on a faction, and that
+ * asymmetry is the engine's rather than a preference: `RoomMonsterBinding.Temper`
+ * is a plain `string` where `FactionSpec.Temper` is a `TemperSpec` — "ONE WORD,
+ * and it WINS over its faction's word or mix". A placement names one creature,
+ * so dealing a spread for it would be an author rolling for a goblin they have
+ * already described.
+ *
+ * `actions` mirrors `dungeonspec.RoomMonsterBinding.Actions`: full
+ * `dnd5e:weapons:<id>` refs, monsters only, "CARRIED, NOT INTERPRETED", and
+ * THE ORDER IS THE POINT — both drivers take the first action whose target is
+ * in reach. */
+/** One check row a creature carries — `{ ability, dc, tool? }`, the authored
+ * route for `intimidate:`/`persuade:` (dungeonspec's own `CheckSpec` shape).
+ * `ability` is an opaque rulebook ref (`str`, `deception`, …) and `dc` the
+ * number that route must beat. CARRIED, NEVER INTERPRETED — whether a ref
+ * resolves and what an absent DC derives is the engine's judgement. */
+export interface RoomCheckApproach {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
+/** A creature's interaction facts (rpg-dnd5e-web#1176). All are CARRIED, NOT
+ * GRADED — the engine judges them at `PutDungeon` with a path and a sentence,
+ * exactly as it judges `doorBindings` (rpg-project#481/#483,
+ * rpg-dnd5e-web#1171). The web writes them out, reads them back, and never
+ * decides what they mean.
+ *
+ * These are the per-creature declaration a faction never supplies, so nothing
+ * is inherited and nothing is overridable — the whole authored fact block,
+ * mirroring how a prop's `propDeclarations[itemId]` is the whole authored
+ * fact block for a placed thing (site design Decision 4). */
+export interface RoomMonsterInteraction {
+  /** The priced checks the party must beat to frighten this creature, in the
+   * author's order, each a route (`CheckSpec`). Absent means the rulebook
+   * derives the DC from the stat block's passive Insight. */
+  intimidate?: RoomCheckApproach[];
+  /** The checks the party must beat to talk this creature round. Absent
+   * means derived, never ungated. */
+  persuade?: RoomCheckApproach[];
+  /** The intel records this creature carries, by record id (`PlaceSpec.Holds`).
+   * Absent means it carries none. These are the AUTHORED record ids; the
+   * engine keys them into the composition at compile, not this module. */
+  holds?: string[];
+}
+
+/** One creature's ORDERS plus its interaction facts (rpg-dnd5e-web#1176).
+ * `on`, `temper` and `actions` are what the faction would otherwise supply
+ * (nearest layer wins wholesale); `intimidate`/`persuade`/`arrives`/`holds`
+ * are per-creature declarations a faction never supplies, so they live beside
+ * them as this creature's own authored fact block. `arrives` is the predicate
+ * that holds this creature in RESERVE until it holds — the same
+ * `round | down | fact | stance` shape the shared `PredicateEditor` already
+ * authors for a disposition's `until` (v2 `PlaceSpec.Arrives`). */
+export interface RoomMonsterBinding extends RoomMonsterInteraction {
+  on?: AnswerTableShape;
+  temper?: string;
+  actions?: string[];
+  /** The predicate that brings this creature into the run: it is held out of
+   * every fight until this holds. Absent means the creature stands there from
+   * the first frame. */
+  arrives?: PredicateDoc;
 }
 export interface RoomGameplayData {
   implicitRegionId: string;
@@ -67,6 +195,65 @@ export interface RoomGameplayData {
   partyStart?: RoomHexCell;
   /** Authoring actor markers only; the encounter owns legality at Play. */
   monsters: RoomMonsterPlacement[];
+  /** Stable monster id -> its authored orders. ABSENT when nothing has any,
+   * so a room with no orders emits the bytes it always did. */
+  monsterBindings?: Record<string, RoomMonsterBinding>;
+  /** Stable item id -> its door's resting state. CARRIED, NOT GRADED: the
+   * keys are the engine's and the engine judges them at `PutDungeon`, which
+   * returns the path and the sentence. The web writes this out and reads it
+   * back, and never mirrors the grammar — one grammar, one owner
+   * (rpg-project#481/#483, rpg-dnd5e-web#1171).
+   *
+   * ABSENT when nothing has any, so a room with no doors emits the bytes it
+   * always did. */
+  doorBindings?: Record<string, RoomDoorBinding>;
+  /** Stable item id -> what a placed prop DOES: whether it can be taken, what
+   * it carries, whether it arrives later. CARRIED, NOT GRADED, like
+   * `doorBindings`: the engine judges it at `PutDungeon` and answers with a
+   * path and a sentence.
+   *
+   * ABSENT, NOT EMPTY: a room that binds no prop emits exactly the bytes it
+   * wrote before this key existed. */
+  propBindings?: Record<string, RoomPropBinding>;
+}
+
+/** ONE way through a locked door: the check it names and the number it beats.
+ *
+ * These are the engine's own `ApproachSpec` fields, CARRIED AND NEVER
+ * INTERPRETED. `ability` is an opaque rulebook ref ("str", "dex",
+ * "perception"), `tool` names an item ref or nothing ("a lock the reference
+ * tomb's lock does not"), and `dc` is what this route must beat. Whether a ref
+ * RESOLVES is the server's judgement, not this module's. */
+export interface RoomDoorApproach {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
+/** One door's authored resting state, keyed by the placed item's id.
+ *
+ * The shape is DECLARED so the builder can read and write it, and it is NOT
+ * validated here. These are the engine's own `RoomDoorBinding` keys with
+ * `concealed` left off — this dialect refuses that one by name — so a refusal
+ * this module invented would be a second grammar. A document the engine
+ * refuses arrives with the engine's own path and sentence, which is what the
+ * builder shows.
+ *
+ * THE ABSENCE RULES ARE THE ENGINE'S, AND THEY ARE NOT SYMMETRIC. That is why
+ * this is a shape with three authored states rather than a boolean:
+ *
+ *   binding absent        the item is not a door at all
+ *   `{}`                  a door, resting OPEN — absence is an open doorway
+ *   `{ closed: true }`    a door, resting shut
+ *   `{ locked: [...] }`   a door, locked, and SHUT whatever `closed` says
+ *
+ * `locked` is a LIST of approaches (the engine's `CheckSpec`): ANY one of them
+ * beats the lock, which is why the builder never sorts or dedupes the rows.
+ * `locked: []` is an authored lock that forgot how it is beaten and the engine
+ * refuses it, so no helper here ever writes one. */
+export interface RoomDoorBinding {
+  closed?: boolean;
+  locked?: RoomDoorApproach[];
 }
 export interface RoomDraft {
   version: 3;
@@ -83,10 +270,34 @@ export interface RoomDraft {
   scene: WorldScene;
   room: RoomGameplayData;
 }
+/**
+ * What a renderer needs to draw an authored room, and nothing else: the
+ * frame its transforms are expressed in, the workspace extent that sizes
+ * the floor, and the scene graph itself.
+ *
+ * It is a `Pick` of `RoomDraft` deliberately — ONE type, never a second
+ * copy of the shape. Both producers hand over a `RoomDraft`: the editor
+ * its live draft, and the play view the draft `decodeSingleRoomDungeon`
+ * read out of the authored file the session was launched from. A field
+ * that moves here moves for both of them or for neither, so the picture
+ * the author places and the picture the player sees cannot drift apart
+ * through a hand-maintained mirror.
+ */
+export type RoomScenePresentation = Pick<
+  RoomDraft,
+  'coordinateFrame' | 'workspace' | 'scene'
+>;
+
+/** The local-storage envelope. `version` is the ENVELOPE version, separate
+ * from the draft's own `version: 3`: v3 carries only the draft (the bytes
+ * every document wrote before policies could be authored), and v4 carries the
+ * site scope beside it (rpg-dnd5e-web#1160). A document with no scope keeps
+ * emitting v3 byte-identically. */
 interface RoomDraftEnvelope {
   kind: typeof ROOM_DRAFT_KIND;
-  version: 3;
+  version: 3 | 4;
   draft: RoomDraft;
+  scope?: SiteScope;
 }
 
 const cellKey = (cell: RoomHexCell) => `${cell.q},${cell.r}`;
@@ -229,10 +440,21 @@ export function moveRoomMonster(
   return { ...draft, room: { ...draft.room, monsters } };
 }
 
+/** Removing the creature removes its orders. A binding can never outlive the
+ * creature it names (rpg-project#477, "a declaration can never outlive the
+ * creature it names") — the decoder refuses an orphan, and this helper must
+ * not be the thing that creates one. */
 export function removeRoomMonster(draft: RoomDraft, id: string): RoomDraft {
   const monsters = draft.room.monsters.filter((monster) => monster.id !== id);
   if (monsters.length === draft.room.monsters.length) return draft;
-  return { ...draft, room: { ...draft.room, monsters } };
+  const room: RoomGameplayData = { ...draft.room, monsters };
+  if (room.monsterBindings?.[id]) {
+    const bindings = { ...room.monsterBindings };
+    delete bindings[id];
+    if (Object.keys(bindings).length === 0) delete room.monsterBindings;
+    else room.monsterBindings = bindings;
+  }
+  return { ...draft, room };
 }
 
 export function setRoomPartyStart(
@@ -264,18 +486,40 @@ export function reconcileRoomDraft(
   scene: WorldScene
 ): RoomDraft {
   const ids = new Set(scene.items.map((item) => item.id));
-  return {
-    ...draft,
-    scene,
-    room: {
-      ...draft.room,
-      propDeclarations: Object.fromEntries(
-        Object.entries(draft.room.propDeclarations).filter(([id]) =>
-          ids.has(id)
-        )
-      ),
-    },
+  // BOTH DECLARATION KINDS FOLLOW THE ITEM THEY NAME. A door binding can no
+  // more outlive its item than a creature's orders can outlive the creature
+  // (`removeRoomMonster`), and here the cost of leaving one behind is higher
+  // than staleness: the engine refuses a door whose item declares no footprint
+  // ("a door needs a footprint"), so an orphan does not merely rot in the
+  // file, it refuses the whole document at publish.
+  const doorBindings = draft.room.doorBindings
+    ? Object.fromEntries(
+        Object.entries(draft.room.doorBindings).filter(([id]) => ids.has(id))
+      )
+    : undefined;
+  const room: RoomGameplayData = {
+    ...draft.room,
+    propDeclarations: Object.fromEntries(
+      Object.entries(draft.room.propDeclarations).filter(([id]) => ids.has(id))
+    ),
   };
+  // ABSENT, NOT EMPTY, for the same reason as everywhere else: a room that has
+  // lost its last door must emit the bytes it emitted before doors existed.
+  if (doorBindings && Object.keys(doorBindings).length > 0)
+    room.doorBindings = doorBindings;
+  else delete room.doorBindings;
+  // A prop binding whose item is gone is an orphan for the same reason a door
+  // binding is: its refusals all begin "this names no placed prop", so leaving
+  // it would refuse the whole document rather than rotting quietly.
+  const propBindings = draft.room.propBindings
+    ? Object.fromEntries(
+        Object.entries(draft.room.propBindings).filter(([id]) => ids.has(id))
+      )
+    : undefined;
+  if (propBindings && Object.keys(propBindings).length > 0)
+    room.propBindings = propBindings;
+  else delete room.propBindings;
+  return { ...draft, scene, room };
 }
 
 export function remapRoomDeclarations(
@@ -312,30 +556,8 @@ function validateCell(cell: unknown, field: string): RoomHexCell {
   return { q: (cell as RoomHexCell).q, r: (cell as RoomHexCell).r };
 }
 
-/** Structurally exact records only: unknown-invalid fields are refused, not
- * dropped or reinterpreted as valid data. Arrays are never mapping shapes.
- * Exported so sibling strict decoders (e.g. the atlas's room scene
- * presentation) refuse unknown fields by the same words, not a second
- * dialect. */
-export function rejectUnknownKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  label: string
-): void {
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key))
-      throw new Error(`${label} has an unsupported field: ${key}.`);
-  }
-}
-
-export const objectShape = (
-  value: unknown,
-  label: string
-): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error(`${label} must be an object.`);
-  return value as Record<string, unknown>;
-};
+// `rejectUnknownKeys` / `objectShape` live in `strictShape.ts` and are
+// re-exported at the top of this module — one home, the same words.
 
 const FOOTPRINT_KEYS = ['width', 'depth', 'offsetX', 'offsetZ'] as const;
 
@@ -396,7 +618,32 @@ function validateDeclarationMap(
 }
 
 const MONSTER_REF_RE = /^[-a-z0-9]+:monsters:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'cell'] as const;
+/** A faction id has the same grammar as the room key: lower-case, digits,
+ * dashes. Membership itself is the engine's to confirm against the declared
+ * factions — the room draft is decoded before the site root's `factions` are
+ * known, and guessing here would refuse a file the server reads. */
+const FACTION_ID_RE = /^[-a-z0-9]+$/;
+/** `PlaceSpec.Actions` is "FULL REFS, like every other ref in this file:
+ * `dnd5e:weapons:shortbow`, never `shortbow`." Weapons are the only action
+ * type the engine accepts today, and refusing the rest here is what makes a
+ * typo'd `dnd5e:weapon:shortbow` a field error rather than a boot surprise.
+ *
+ * EXPORTED so the creature's weapon editor (`monsterOrderEdits.ts`'s control)
+ * checks the SAME grammar the encoder does. There is no weapons catalog on the
+ * wire — the engine carries these refs and never interprets them — so this
+ * shape check is the whole of what the builder may say about a weapon, and it
+ * must not live in two places. */
+export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
+const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
+const BINDING_KEYS = [
+  'on',
+  'temper',
+  'actions',
+  'intimidate',
+  'persuade',
+  'arrives',
+  'holds',
+] as const;
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -422,13 +669,187 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id ?? ''} ref must be a monster reference such as dnd5e:monsters:skeleton.`
       );
     ids.add(source.id);
-    monsters.push({
+    const monster: RoomMonsterPlacement = {
       id: source.id,
       ref: source.ref,
       cell: validateCell(source.cell, `Monster ${source.id} cell`),
-    });
+    };
+    // ABSENT WHEN UNAUTHORED: the key is added only when the file wrote one,
+    // so an unauthored creature stays byte-identical to one from before
+    // factions existed.
+    if (source.faction !== undefined && source.faction !== null) {
+      if (
+        typeof source.faction !== 'string' ||
+        !FACTION_ID_RE.test(source.faction)
+      )
+        throw new Error(
+          `Monster ${source.id} faction must be a faction id such as goblins.`
+        );
+      monster.faction = source.faction;
+    }
+    monsters.push(monster);
   }
   return monsters;
+}
+
+/** A binding's `temper:` — ONE SEALED WORD, never a mix.
+ *
+ * The declaration already carries both shapes (`ANSWER_TEMPER.placementShape`
+ * is `'word'` and `.factionShape` is `'word-or-mix'`), so this asks the one
+ * grammar instead of keeping a second copy of the rule. The sentence for a mix
+ * matches `dungeonYaml.ts`'s v2 placement refusal, because it is the same
+ * mistake in the same place. */
+function validateBindingTemper(value: unknown, path: string): string {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    // A NON-STRING SCALAR reaches the engine as a scalar node, so it is read
+    // as a word and refused BY NAME — `temper: 5` reports `"5" is not a
+    // temperament this build ships`. Same value, same sentence.
+    const word = String(value);
+    if (!ANSWER_TEMPER.words.includes(word))
+      throw new Error(`${path} ${unknownTemperRefusal(word)}`);
+    return word;
+  }
+  throw new Error(
+    `${path} is a placement, and a placement names one creature — a temper mix belongs on the faction`
+  );
+}
+
+/** One creature's `intimidate:`/`persuade:` route list (`CheckSpec`), CARRIED
+ * verbatim. Only the SHAPE is kept here — `ability` an opaque string and `dc`
+ * a whole number of at least 1 — because what a route resolves to and what an
+ * absent DC derives is the engine's judgement at `PutDungeon`. */
+function validateCheckApproaches(
+  value: unknown,
+  path: string
+): RoomCheckApproach[] {
+  if (!Array.isArray(value)) throw new Error(`${path} must be a list.`);
+  if (value.length === 0)
+    throw new Error(`${path} is empty; omit the key instead.`);
+  return value.map((row, index) => {
+    const rowPath = `${path} ${index}`;
+    const source = objectShape(row, rowPath);
+    rejectUnknownKeys(source, ['ability', 'dc', 'tool'], rowPath);
+    if (typeof source.ability !== 'string' || !source.ability)
+      throw new Error(`${rowPath} ability must name an ability or skill.`);
+    if (
+      typeof source.dc !== 'number' ||
+      !Number.isInteger(source.dc) ||
+      source.dc < 1
+    )
+      throw new Error(`${rowPath} dc must be a whole number of at least 1.`);
+    const approach: RoomCheckApproach = {
+      ability: source.ability,
+      dc: source.dc,
+    };
+    if (source.tool !== undefined && source.tool !== null) {
+      if (typeof source.tool !== 'string' || !source.tool)
+        throw new Error(`${rowPath} tool must name an item.`);
+      approach.tool = source.tool;
+    }
+    return approach;
+  });
+}
+
+/** The orders blocks, keyed by the creature's stable id. A binding whose
+ * creature is gone is REFUSED, not silently dropped — the same discipline
+ * `propDeclarations` already keeps ("Declaration owner does not exist"). */
+function validateMonsterBindings(
+  value: unknown,
+  monsters: readonly RoomMonsterPlacement[]
+): Record<string, RoomMonsterBinding> {
+  const source = objectShape(value, 'Monster bindings');
+  const ids = new Set(monsters.map((monster) => monster.id));
+  const bindings: Record<string, RoomMonsterBinding> = {};
+  for (const [id, binding] of Object.entries(source)) {
+    if (!ids.has(id))
+      throw new Error(`Monster binding owner does not exist: ${id}`);
+    const block = objectShape(binding, `Monster binding for ${id}`);
+    rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
+    const parsed: RoomMonsterBinding = {};
+    if (Object.hasOwn(block, 'on'))
+      parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
+    if (Object.hasOwn(block, 'temper'))
+      parsed.temper = validateBindingTemper(
+        block.temper,
+        `Monster binding for ${id} temper`
+      );
+    if (Object.hasOwn(block, 'actions')) {
+      const actions = block.actions;
+      if (!Array.isArray(actions))
+        throw new Error(`Monster binding for ${id} actions must be a list.`);
+      if (actions.length === 0)
+        throw new Error(
+          `Monster binding for ${id} actions is empty; omit the key instead.`
+        );
+      parsed.actions = actions.map((action, index) => {
+        if (typeof action !== 'string' || !WEAPON_REF_RE.test(action))
+          throw new Error(
+            `Monster binding for ${id} action ${index} must be a weapon reference such as dnd5e:weapons:shortbow.`
+          );
+        return action;
+      });
+    }
+    // Interaction + reserve facts are CARRIED, NOT GRADED (rpg-dnd5e-web#1176):
+    // the web keeps the SHAPE so the file round-trips, and the engine judges
+    // what a check ref resolves to, what an absent DC derives, and what an
+    // `arrives` or `holds` name at PutDungeon — with its own path and sentence.
+    const checkPath = (key: 'intimidate' | 'persuade') =>
+      `Monster binding for ${id} ${key}`;
+    if (Object.hasOwn(block, 'intimidate'))
+      parsed.intimidate = validateCheckApproaches(
+        block.intimidate,
+        checkPath('intimidate')
+      );
+    if (Object.hasOwn(block, 'persuade'))
+      parsed.persuade = validateCheckApproaches(
+        block.persuade,
+        checkPath('persuade')
+      );
+    if (Object.hasOwn(block, 'arrives'))
+      // The SAME predicate grammar a disposition's `until` uses, validated by
+      // the one function that owns it (`siteScope.ts`) rather than by a second
+      // transcription (rpg-dnd5e-web#1176).
+      parsed.arrives = validatePredicate(
+        block.arrives,
+        `Monster binding for ${id} arrives`
+      );
+    if (Object.hasOwn(block, 'holds')) {
+      const holds = block.holds;
+      if (!Array.isArray(holds))
+        throw new Error(`Monster binding for ${id} holds must be a list.`);
+      if (holds.length === 0)
+        throw new Error(
+          `Monster binding for ${id} holds is empty; omit the key instead.`
+        );
+      parsed.holds = holds.map((record, index) => {
+        if (typeof record !== 'string' || !record)
+          throw new Error(
+            `Monster binding for ${id} holds ${index} must name an intel record.`
+          );
+        return record;
+      });
+    }
+    // A block that says nothing is a key the file did not need: absence is
+    // the authored state, exactly as it is for the faction it overrides.
+    if (
+      parsed.on === undefined &&
+      parsed.temper === undefined &&
+      parsed.actions === undefined &&
+      parsed.intimidate === undefined &&
+      parsed.persuade === undefined &&
+      parsed.arrives === undefined &&
+      parsed.holds === undefined
+    )
+      throw new Error(
+        `Monster binding for ${id} declares no orders; omit the binding instead.`
+      );
+    bindings[id] = parsed;
+  }
+  return bindings;
 }
 
 function validateDraft(value: unknown): RoomDraft {
@@ -488,6 +909,9 @@ function validateDraft(value: unknown): RoomDraft {
       'arrangementDeclarations',
       'partyStart',
       'monsters',
+      'monsterBindings',
+      'doorBindings',
+      'propBindings',
     ],
     'Room gameplay data'
   );
@@ -546,6 +970,30 @@ function validateDraft(value: unknown): RoomDraft {
         `Monster ${monster.id} cell is outside the authoring floor.`
       );
   }
+  // The bindings are validated AFTER the monsters, because a binding names a
+  // creature: an orphan can only be detected once the roster is known.
+  const monsterBindings = Object.hasOwn(room, 'monsterBindings')
+    ? validateMonsterBindings(room.monsterBindings, monsters)
+    : undefined;
+  // CARRIED, NOT GRADED. The engine judges `doorBindings` at `PutDungeon` and
+  // answers with a path and a sentence; the web's whole job is to not lose it.
+  // Only the SHAPE is checked here — a door's state grammar has one owner.
+  const doorBindings = Object.hasOwn(room, 'doorBindings')
+    ? (objectShape(room.doorBindings, 'Door bindings') as Record<
+        string,
+        RoomDoorBinding
+      >)
+    : undefined;
+  // CARRIED, NOT GRADED, for `doorBindings`' reason: this block's refusals
+  // (an id no `propDeclarations` owns, an id that is also a door, an
+  // arrangement template) are the engine's, each at its own path. Only the
+  // SHAPE is checked here.
+  const propBindings = Object.hasOwn(room, 'propBindings')
+    ? (objectShape(room.propBindings, 'Prop bindings') as Record<
+        string,
+        RoomPropBinding
+      >)
+    : undefined;
   const draft: RoomDraft = {
     ...input,
     version: 3,
@@ -569,17 +1017,49 @@ function validateDraft(value: unknown): RoomDraft {
       arrangementDeclarations,
       monsters,
       ...(partyStart ? { partyStart } : {}),
+      // ABSENT, NOT EMPTY: a room with no orders must emit the bytes it
+      // emitted before `monsterBindings` existed.
+      ...(monsterBindings && Object.keys(monsterBindings).length > 0
+        ? { monsterBindings }
+        : {}),
+      // ABSENT, NOT EMPTY, for the same reason: a room with no doors emits
+      // the bytes it always did.
+      ...(doorBindings && Object.keys(doorBindings).length > 0
+        ? { doorBindings }
+        : {}),
+      // ABSENT, NOT EMPTY, for the same reason: a room that binds no prop
+      // emits the bytes it always did.
+      ...(propBindings && Object.keys(propBindings).length > 0
+        ? { propBindings }
+        : {}),
     },
   } as RoomDraft;
   return draft;
 }
 
-export function stringifyRoomDraft(draft: RoomDraft): string {
+export function stringifyRoomDraft(
+  draft: RoomDraft,
+  scope?: SiteScope
+): string {
+  // THE SCOPE IS VALIDATED ON THE WAY OUT, exactly as the draft is: an
+  // oversize or invalid scope is refused before any caller can store it, so
+  // the editor can never persist a document its own reader would refuse
+  // (rpg-dnd5e-web#1160). An empty scope normalizes to no scope at all.
+  const validatedScope = validateSiteScope(scope ?? {});
+  const carriesScope =
+    (validatedScope.factions?.length ?? 0) > 0 ||
+    (validatedScope.dispositions?.length ?? 0) > 0 ||
+    (validatedScope.intel?.length ?? 0) > 0;
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
-      version: 3,
+      // ABSENT, NOT EMPTY: a document with no site scope keeps the v3 envelope
+      // bytes it always wrote. The envelope version is what decides whether a
+      // scope is read, exactly as the v1/v2 legacy paths decide whether
+      // `monsters`/`workspace` are synthesized.
+      version: carriesScope ? 4 : 3,
       draft: validateDraft(draft),
+      ...(carriesScope ? { scope: validatedScope } : {}),
     } satisfies RoomDraftEnvelope,
     null,
     2
@@ -592,7 +1072,25 @@ export function stringifyRoomDraft(draft: RoomDraft): string {
     );
   return json;
 }
-export function parseRoomDraftJson(json: string): RoomDraft {
+
+/**
+ * The storage envelope's full contents: the room draft AND the site scope that
+ * was saved beside it. The scope is absent from the returned object when the
+ * envelope carried none, which is the same authored state the decoder keeps.
+ */
+export interface RoomDraftDocument {
+  draft: RoomDraft;
+  scope: SiteScope;
+}
+
+/**
+ * Read the envelope, scope and all. The envelope VERSION decides whether a
+ * scope is read (rpg-dnd5e-web#1160): v4 carries one, v3 and the legacy v1/v2
+ * paths never do, and a scope key under a version that cannot mean it is
+ * refused rather than silently dropped — losing authored policies on reload is
+ * the trap this half of the slice exists to remove.
+ */
+export function parseRoomDocumentJson(json: string): RoomDraftDocument {
   if (json.length > MAX_JSON_LENGTH)
     throw new Error(
       `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
@@ -601,6 +1099,7 @@ export function parseRoomDraftJson(json: string): RoomDraft {
     kind?: unknown;
     version?: unknown;
     draft?: Record<string, unknown>;
+    scope?: unknown;
   };
   if (envelope.kind !== ROOM_DRAFT_KIND)
     throw new Error('Expected a room authoring draft.');
@@ -609,34 +1108,75 @@ export function parseRoomDraftJson(json: string): RoomDraft {
       throw new Error(
         'Expected a version 1 room authoring draft in the legacy envelope.'
       );
-    return validateDraft({
-      ...envelope.draft,
-      version: 3,
-      workspace: { ...ROOM_WORKSPACE_STEPS[0] },
-      room: { ...(envelope.draft.room as object), monsters: [] },
-    });
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 1 room authoring draft carries no site scope.'
+      );
+    return {
+      draft: validateDraft({
+        ...envelope.draft,
+        version: 3,
+        workspace: { ...ROOM_WORKSPACE_STEPS[0] },
+        room: { ...(envelope.draft.room as object), monsters: [] },
+      }),
+      scope: {},
+    };
   }
   if (envelope.version === 2) {
     if (envelope.draft?.version !== 2)
       throw new Error(
         'Expected a version 2 room authoring draft in the legacy envelope.'
       );
-    return validateDraft({
-      ...envelope.draft,
-      version: 3,
-      room: { ...(envelope.draft.room as object), monsters: [] },
-    });
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 2 room authoring draft carries no site scope.'
+      );
+    return {
+      draft: validateDraft({
+        ...envelope.draft,
+        version: 3,
+        room: { ...(envelope.draft.room as object), monsters: [] },
+      }),
+      scope: {},
+    };
   }
-  if (envelope.version !== 3)
-    throw new Error('Expected a version 1, 2 or 3 room authoring draft.');
-  return validateDraft(envelope.draft);
+  if (envelope.version !== 3 && envelope.version !== 4)
+    throw new Error('Expected a version 1, 2, 3 or 4 room authoring draft.');
+  if (envelope.version === 3) {
+    if (Object.hasOwn(envelope, 'scope'))
+      throw new Error(
+        'A version 3 room authoring draft carries no site scope; a scope is a version 4 envelope.'
+      );
+    return { draft: validateDraft(envelope.draft), scope: {} };
+  }
+  return {
+    draft: validateDraft(envelope.draft),
+    scope: validateSiteScope(envelope.scope ?? {}),
+  };
+}
+
+/** The room draft alone. A DRAFT-ONLY reader deliberately refuses an envelope
+ * that carries a scope rather than dropping the author's policies on the
+ * floor: callers that must keep the scope read `parseRoomDocumentJson`. */
+export function parseRoomDraftJson(json: string): RoomDraft {
+  const document = parseRoomDocumentJson(json);
+  if (
+    (document.scope.factions?.length ?? 0) > 0 ||
+    (document.scope.dispositions?.length ?? 0) > 0 ||
+    (document.scope.intel?.length ?? 0) > 0
+  )
+    throw new Error(
+      'This room authoring draft carries a site scope; read it with parseRoomDocumentJson.'
+    );
+  return document.draft;
 }
 export function saveRoomDraft(
   storage: KeyValueStorage,
-  draft: RoomDraft
+  draft: RoomDraft,
+  scope?: SiteScope
 ): string | null {
   try {
-    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft, scope));
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -645,21 +1185,31 @@ export function saveRoomDraft(
 export function loadRoomDraft(
   storage: KeyValueStorage,
   fallback: RoomDraft
-): { value: RoomDraft; error?: string } {
+): { value: RoomDraft; scope: SiteScope; error?: string } {
   try {
     const current = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     // A present-but-empty or malformed current draft is never "absent": it
     // must not recover older keys and must not be silently overwritten by
     // autosave. Recovery requires an explicit valid save/import action.
-    if (current !== null) return { value: parseRoomDraftJson(current) };
+    if (current !== null) {
+      const document = parseRoomDocumentJson(current);
+      return { value: document.draft, scope: document.scope };
+    }
     const legacyV2 = storage.getItem(LEGACY_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV2 !== null) return { value: parseRoomDraftJson(legacyV2) };
+    if (legacyV2 !== null) {
+      const document = parseRoomDocumentJson(legacyV2);
+      return { value: document.draft, scope: document.scope };
+    }
     const legacyV1 = storage.getItem(LEGACY_V1_ROOM_DRAFT_STORAGE_KEY);
-    if (legacyV1 !== null) return { value: parseRoomDraftJson(legacyV1) };
-    return { value: fallback };
+    if (legacyV1 !== null) {
+      const document = parseRoomDocumentJson(legacyV1);
+      return { value: document.draft, scope: document.scope };
+    }
+    return { value: fallback, scope: {} };
   } catch (error) {
     return {
       value: fallback,
+      scope: {},
       error: `Room draft load failed; prior data was kept. ${
         error instanceof Error ? error.message : String(error)
       }`,

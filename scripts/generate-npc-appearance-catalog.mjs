@@ -440,7 +440,7 @@ export function generateNpcAppearanceCatalog({
       fail(`generated catalog is missing: ${outputPath}`);
     }
     if (current !== source) {
-      fail('generated catalog is stale; run assets:sync');
+      fail('generated catalog is stale; run assets:sync:bump');
     }
   } else {
     mkdirSync(dirname(outputPath), { recursive: true });

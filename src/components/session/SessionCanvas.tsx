@@ -240,6 +240,10 @@ export interface SessionCanvasProps {
   /** Fires with the clicked door's id — the open/unlock affordance lives
    * in the caller, which knows who acts and what the door's state is. */
   onDoorClick?: (door: string) => void;
+  /** The dungeon key this room was fetched by. A door's live id is
+   * `<key>/<itemId>`, so the canonical branch needs the prefix to join the
+   * `doors` map above to the item that draws the door. */
+  dungeonKey?: string;
   /** Fires when a click lands on a MEMBER_KIND_WORLD member's cell (a
    * placed world NPC, e.g. a vendor) — routed separately from
    * `onEntityClick`, which is gated on `attackableTargets` and a world NPC
@@ -324,6 +328,7 @@ export function SessionScene({
   roster,
   doors,
   onDoorClick,
+  dungeonKey,
   onInteractClick,
   attackableTargets,
   reactionMover,
@@ -642,6 +647,7 @@ export function SessionScene({
         hexSize={hexSize}
         doors={doors}
         onDoorClick={onDoorClick}
+        dungeonKey={dungeonKey}
         compositionSource={compositionSource}
       />
       {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:

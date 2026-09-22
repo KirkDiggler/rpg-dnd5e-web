@@ -66,6 +66,7 @@ import {
   layoutFromWire,
   type HexLayout,
 } from '../../concepts/session-tomb/atlas';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
   buildDungeonLightingFacts,
   type DungeonLightingFacts,
@@ -78,10 +79,6 @@ import {
   type DoorGapPiece,
 } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
-import {
-  decodeRoomSceneJSON,
-  type RoomScenePresentation,
-} from './roomSceneJson';
 
 export { positionToCube, worldPositionOf };
 
@@ -172,13 +169,17 @@ export interface Scene3D {
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
   /**
-   * The decoded canonical room presentation (`GetAtlasResponse
-   * .room_scene_json`), decoded exactly once at this build boundary.
-   * Undefined means absent/legacy: the atlas carries only its own cell
-   * scene, and every consumer keeps that route exactly as it was. A
-   * present, nonempty payload is ALWAYS a fully valid presentation — an
-   * invalid one throws out of `buildScene3D` by name instead of arriving
-   * here half-decoded, so no caller can ever draw it as if valid.
+   * The authored room this dungeon looks like, handed in by the caller
+   * — never read off the atlas (rpg-project#479: presentation is
+   * content, served by key from the registry, and the engine carries no
+   * document it does not read). The play view gets it from
+   * `useDungeonScene`; the author preview hands over its live draft.
+   *
+   * Undefined means this dungeon has no authored room, and every
+   * consumer keeps the legacy atlas route exactly as it was. It is
+   * never how a FAILED read is reported: a caller that could not read
+   * the room it was told to draw refuses visibly instead of handing
+   * over nothing.
    *
    * Presentation only: the mechanical cells, boundaries and prop channels
    * above remain the movement/sight truth regardless of this field.
@@ -286,39 +287,28 @@ export function buildScene3D(
     GetAtlasResponse,
     'cells' | 'props' | 'segments' | 'doorways' | 'regions'
   > &
-    Partial<Pick<GetAtlasResponse, 'exits' | 'roomSceneJson'>>,
+    Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
-  layout: HexLayout
+  layout: HexLayout,
+  roomScene?: RoomScenePresentation
 ): Scene3D {
   if (layout !== 'pointy') {
     throw new Error(
       `buildScene3D: hexMath.ts places pointy-top hexes only; got "${layout}" (rpg-dnd5e-web#763)`
     );
   }
-  // THE CANONICAL ROOM PRESENTATION, DECODED EXACTLY ONCE. This is the
-  // one JSON boundary on the atlas scene path: callers memoize whole
-  // builds by atlas identity, so nothing here parses per prop or per
-  // frame. Absent (undefined/'') keeps the legacy route; a PRESENT
-  // nonempty payload must fully decode or the refusal throws out of this
-  // call by name — an invalid presentation never becomes a scene.
-  // Rendering itself stays in game units: the frame declares hexRadius 1,
-  // the same unit hexMath places at, so any other requested hex size is
-  // refused rather than guessed into a scaling conversion.
-  let roomScene: RoomScenePresentation | undefined;
-  const roomSceneJson = atlas.roomSceneJson;
-  if (roomSceneJson !== undefined && roomSceneJson !== '') {
-    const presentation = decodeRoomSceneJSON(roomSceneJson);
-    if (!presentation) {
-      throw new Error(
-        'buildScene3D: a present nonempty room scene presentation must decode; got absent.'
-      );
-    }
-    if (hexSize !== presentation.coordinateFrame.hexRadius) {
-      throw new Error(
-        `buildScene3D: canonical room scene is authored at hexRadius ${presentation.coordinateFrame.hexRadius} world-scene units; refusing to guess a conversion for requested hex size ${hexSize}.`
-      );
-    }
-    roomScene = presentation;
+  // THE AUTHORED ROOM ARRIVES ALREADY READ. Its bytes are the registry's
+  // file, fetched by dungeon key and decoded by the world-building codec
+  // that owns them — this function no longer parses a document off the
+  // atlas, because the atlas no longer carries one. What stays here is
+  // the one thing a SCENE BUILDER must still judge: units. Rendering is
+  // in game units, the frame declares hexRadius 1, and hexMath places at
+  // that same unit, so any other requested hex size is refused rather
+  // than guessed into a scaling conversion.
+  if (roomScene && hexSize !== roomScene.coordinateFrame.hexRadius) {
+    throw new Error(
+      `buildScene3D: authored room scene is placed at hexRadius ${roomScene.coordinateFrame.hexRadius} world-scene units; refusing to guess a conversion for requested hex size ${hexSize}.`
+    );
   }
   const archetypes = Object.freeze(
     atlas.regions.map((region) => region.archetype)

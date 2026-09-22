@@ -8,6 +8,7 @@ import {
   LEGACY_V1_ROOM_DRAFT_STORAGE_KEY,
   loadRoomDraft,
   moveRoomMonster,
+  parseRoomDocumentJson,
   parseRoomDraftJson,
   placeRoomMonster,
   reconcileRoomDraft,
@@ -29,6 +30,7 @@ import {
   stampArrangement,
 } from './sceneState';
 import { validateScene } from './serialization';
+import type { SiteScope } from './siteScope';
 import type { KeyValueStorage } from './types';
 
 describe('room authoring draft', () => {
@@ -695,6 +697,265 @@ describe('room draft v3 migration and structural exactness', () => {
     );
   });
 
+  it('round trips monster orders, and an unauthored faction stays absent', () => {
+    const base = createRoomDraft(
+      createEmptyScene('scene-orders'),
+      'room-orders'
+    );
+    const withActors = placeRoomMonster(
+      placeRoomMonster(base, {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        cell: { q: 1, r: 0 },
+        faction: 'goblins',
+      }),
+      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } }
+    );
+    withActors.room.monsterBindings = {
+      'goblin-1': {
+        on: {
+          intimidated: [
+            { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
+            { weight: 30, flee: {} },
+          ],
+          time: [
+            { when: { enemy: 'reach' }, attack: 'enemy' },
+            { toward: { at: [3, 4] } },
+          ],
+        },
+        temper: 'coward',
+        actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
+      },
+    };
+
+    const json = stringifyRoomDraft(withActors);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(withActors);
+    // The authored faction is written; the unauthored one is not written out
+    // as `faction: monsters` (rpg-project#477 Decision 4).
+    expect(json).toContain('"faction": "goblins"');
+    expect(json.match(/"faction"/g)).toHaveLength(1);
+    // The order of actions IS the point, so it survives verbatim.
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].actions).toEqual([
+      'dnd5e:weapons:scimitar',
+      'dnd5e:weapons:shortbow',
+    ]);
+    // One word, and it is the placement's own — it beats the faction's mix.
+    expect(roundTrip.room.monsterBindings?.['goblin-1'].temper).toBe('coward');
+    expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
+  });
+
+  it("a binding's temper is ONE word — the faction's mix is refused there", () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-temper'),
+      'room-temper'
+    );
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const rejection = (value: unknown) => {
+      (draft.room as unknown as Record<string, unknown>).monsterBindings = {
+        'goblin-1': value,
+      };
+      return () => stringifyRoomDraft(structuredClone(draft));
+    };
+
+    // One sealed word is the shape. `RoomMonsterBinding.Temper` is a plain
+    // `string` where `FactionSpec.Temper` is a `TemperSpec`
+    // (`dungeonspec/single_room.go`), so this is the engine's asymmetry.
+    expect(rejection({ temper: 'coward' })).not.toThrow();
+
+    // A MIX is the faction's shape, and it is refused here by name.
+    expect(rejection({ temper: { coward: 2, soldier: 1 } })).toThrow(
+      /a temper mix belongs on the faction/
+    );
+
+    // A word outside the sealed three is refused by name, as the engine does.
+    expect(rejection({ temper: 'cowardly' })).toThrow(
+      /temper "cowardly" is not a temperament this build ships/
+    );
+
+    // A non-string scalar reaches the engine as a scalar node and is read as a
+    // word, so it is refused BY NAME rather than with the shape sentence.
+    expect(rejection({ temper: 5 })).toThrow(
+      /temper "5" is not a temperament this build ships/
+    );
+
+    // `temper` ALONE is a complete binding: it is an override, not an absence.
+    expect(rejection({ temper: 'aggressive' })).not.toThrow();
+  });
+
+  it('refuses an orphan binding, an unknown binding key and an empty block', () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-orphan'),
+      'room-orphan'
+    );
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const rejection = (value: unknown) => {
+      (draft.room as unknown as Record<string, unknown>).monsterBindings =
+        value;
+      return () => stringifyRoomDraft(structuredClone(draft));
+    };
+
+    expect(
+      rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
+    ).toThrow(/Monster binding owner does not exist: gone/);
+    // A key this dialect's binding does not carry is still refused as the
+    // unknown key it is. `intimidate` IS carried since web#1176, so the
+    // boundary moved and the probe moves with it.
+    expect(rejection({ 'goblin-1': { intimidating: {} } })).toThrow(
+      /Monster binding for goblin-1 has an unsupported field: intimidating/
+    );
+    expect(rejection({ 'goblin-1': {} })).toThrow(
+      /Monster binding for goblin-1 declares no orders/
+    );
+    expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
+      /Monster binding for goblin-1 actions is empty/
+    );
+    expect(rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })).toThrow(
+      /must be a weapon reference/
+    );
+  });
+
+  it('drops the orders when their creature is removed, leaving no orphan', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-drop'), 'room-drop');
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } },
+    ];
+    draft.room.monsterBindings = {
+      'goblin-1': { actions: ['dnd5e:weapons:scimitar'] },
+      'goblin-2': { actions: ['dnd5e:weapons:shortbow'] },
+    };
+    const removed = removeRoomMonster(draft, 'goblin-1');
+    expect(removed.room.monsterBindings).toEqual({
+      'goblin-2': { actions: ['dnd5e:weapons:shortbow'] },
+    });
+    // The last removal takes the now-empty map with it, so the key never
+    // survives as an empty placeholder.
+    const emptied = removeRoomMonster(removed, 'goblin-2');
+    expect('monsterBindings' in emptied.room).toBe(false);
+    expect(() => stringifyRoomDraft(emptied)).not.toThrow();
+  });
+
+  it('writes no monsterBindings and no faction when nothing authored them', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-none'), 'room-none');
+    draft.room.monsters = [
+      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+    ];
+    const json = stringifyRoomDraft(draft);
+    expect(json).not.toContain('monsterBindings');
+    expect(json).not.toContain('"faction"');
+  });
+
+  it('round trips a door, its resting state and its lock approaches verbatim', () => {
+    const scene = createEmptyScene('scene-doors');
+    scene.items.push({
+      id: 'cellar-door',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Cellar door',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    scene.items.push({
+      id: 'gate',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Gate',
+      transform: { x: 2, y: 0, z: 0, rotationY: 0 },
+    });
+    const draft = createRoomDraft(scene, 'room-doors');
+    // A door's shape IS its prop declaration, and the engine refuses a door
+    // without one ("a door needs a footprint").
+    draft.room.propDeclarations['cellar-door'] = {
+      blocksMovement: false,
+      blocksLineOfSight: false,
+      footprint: { width: 2, depth: 0.5, offsetX: 0, offsetZ: 0 },
+    };
+    draft.room.doorBindings = {
+      'cellar-door': {
+        closed: true,
+        locked: [
+          { ability: 'str', dc: 20 },
+          { ability: 'dex', dc: 15, tool: 'dnd5e:item:thieves-tools' },
+        ],
+      },
+      // An EMPTY binding is a door at rest open — the authored state, not a
+      // missing one — so it has to survive the round trip as `{}`.
+      gate: {},
+    };
+
+    const json = stringifyRoomDraft(draft);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(draft);
+    expect(roundTrip.room.doorBindings?.gate).toEqual({});
+    // The order of the approaches is the author's, so it is not sorted; any
+    // ONE of them beats the lock.
+    expect(roundTrip.room.doorBindings?.['cellar-door'].locked).toEqual([
+      { ability: 'str', dc: 20 },
+      { ability: 'dex', dc: 15, tool: 'dnd5e:item:thieves-tools' },
+    ]);
+  });
+
+  it('writes no doorBindings when no door was authored', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-no-doors'), 'room-0');
+    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const json = stringifyRoomDraft(draft);
+    expect(json).not.toContain('doorBindings');
+  });
+
+  it('drops the door binding when its item is removed, leaving no orphan', () => {
+    // A binding can no more outlive its item than a creature's orders can
+    // outlive the creature — and here the orphan does not merely go stale:
+    // the engine refuses a door whose item declares no footprint, so it would
+    // refuse the whole document.
+    const scene = createEmptyScene('scene-door-drop');
+    scene.items.push({
+      id: 'cellar-door',
+      kind: 'prop',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+      label: 'Cellar door',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    const draft = createRoomDraft(scene, 'room-door-drop');
+    draft.room.propDeclarations['cellar-door'] = {
+      blocksMovement: false,
+      blocksLineOfSight: false,
+      footprint: { width: 2, depth: 0.5, offsetX: 0, offsetZ: 0 },
+    };
+    draft.room.doorBindings = { 'cellar-door': { closed: true } };
+
+    const removed = reconcileRoomDraft(draft, { ...scene, items: [] });
+    // The now-empty map goes with it, so the key never survives as `{}`.
+    expect('doorBindings' in removed.room).toBe(false);
+    expect(() => stringifyRoomDraft(removed)).not.toThrow();
+
+    // And the live item keeps its door.
+    expect(reconcileRoomDraft(draft, scene).room.doorBindings).toEqual({
+      'cellar-door': { closed: true },
+    });
+  });
+
+  it('refuses a faction id that is not a faction id', () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-bad-faction'),
+      'room-bad-faction'
+    );
+    (draft.room as unknown as Record<string, unknown>).monsters = [
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        cell: { q: 1, r: 0 },
+        faction: 'The Goblins',
+      },
+    ];
+    expect(() => stringifyRoomDraft(draft)).toThrow(
+      /faction must be a faction id such as goblins/
+    );
+  });
+
   it('retains structurally valid actor arrangements that are merely game-illegal', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     draft.room.walkableHexes = [{ q: 0, r: 0 }];
@@ -775,5 +1036,95 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(isCellWithinWorkspace({ q: 7, r: -3 }, 6)).toBe(false);
     expect(isCellWithinWorkspace({ q: 0.5, r: 0 }, 6)).toBe(false);
     expect(isCellWithinWorkspace({ q: NaN, r: 0 }, 6)).toBe(false);
+  });
+});
+
+describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => {
+  const scope: SiteScope = {
+    factions: [
+      { id: 'goblins', temper: { coward: 2, soldier: 1 } },
+      {
+        id: 'bandits',
+        mind: 'bandit-1',
+        on: { time: [{ when: { enemy: 'reach' }, attack: 'enemy' }] },
+      },
+    ],
+    dispositions: [{ between: ['goblins', 'party'], stance: 'hostile' }],
+  };
+
+  it('keeps a document with no scope emitting the byte-identical v3 envelope', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const bare = stringifyRoomDraft(draft);
+    // No scope, or an explicitly empty one, is the same document.
+    expect(stringifyRoomDraft(draft, {})).toBe(bare);
+    expect(stringifyRoomDraft(draft, { factions: [], dispositions: [] })).toBe(
+      bare
+    );
+    const envelope = JSON.parse(bare) as { version: number; scope?: unknown };
+    expect(envelope.version).toBe(3);
+    expect('scope' in envelope).toBe(false);
+  });
+
+  it('writes a v4 envelope carrying the scope and reads it back', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    const json = stringifyRoomDraft(draft, scope);
+    const envelope = JSON.parse(json) as {
+      version: number;
+      scope: typeof scope;
+    };
+    expect(envelope.version).toBe(4);
+    expect(envelope.scope).toEqual(scope);
+    expect(parseRoomDocumentJson(json)).toEqual({ draft, scope });
+  });
+
+  it('loads the stored scope beside the stored draft', () => {
+    const storage = new RecordingStorage();
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(saveRoomDraft(storage, draft, scope)).toBeNull();
+    const loaded = loadRoomDraft(storage, draft);
+    expect(loaded.error).toBeUndefined();
+    expect(loaded.value.id).toBe('room-1');
+    expect(loaded.scope).toEqual(scope);
+    // A document saved with no scope reloads as one that authors none.
+    expect(saveRoomDraft(storage, draft)).toBeNull();
+    expect(loadRoomDraft(storage, draft).scope).toEqual({});
+  });
+
+  it('refuses a scope-carrying envelope to the draft-only reader instead of dropping it', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(() => parseRoomDraftJson(stringifyRoomDraft(draft, scope))).toThrow(
+      /carries a site scope/
+    );
+    // A scope under a version that cannot mean it is refused, not ignored.
+    const v3WithScope = JSON.stringify({
+      kind: 'rpg-room-authoring-draft',
+      version: 3,
+      draft: JSON.parse(stringifyRoomDraft(draft)).draft,
+      scope,
+    });
+    expect(() => parseRoomDocumentJson(v3WithScope)).toThrow(
+      /version 3 room authoring draft carries no site scope/
+    );
+  });
+
+  it('refuses an invalid scope on the way out and keeps the prior stored bytes', () => {
+    const storage = new RecordingStorage();
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    expect(saveRoomDraft(storage, draft, scope)).toBeNull();
+    const prior = storage.values.get(ROOM_DRAFT_STORAGE_KEY);
+
+    // A share below the minimum can never be dealt — the strict decoder's own
+    // sentence, refused before the bytes are replaced.
+    const error = saveRoomDraft(storage, draft, {
+      factions: [{ id: 'goblins', temper: { coward: 0 } }],
+    });
+    expect(error).toMatch(/can never be dealt/);
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(prior);
+
+    expect(() =>
+      stringifyRoomDraft(draft, {
+        factions: [{ id: 'party' }],
+      })
+    ).toThrow(/players' side/);
   });
 });

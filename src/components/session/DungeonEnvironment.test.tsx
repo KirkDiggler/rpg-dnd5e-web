@@ -1,6 +1,7 @@
 import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
 import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import { stringifyScene } from '@/concepts/world-building/serialization';
 import type { WorldScene } from '@/concepts/world-building/types';
 import { create } from '@bufbuild/protobuf';
@@ -16,7 +17,6 @@ import {
 } from '../../rendering/dungeonLighting';
 import type { DungeonFloorLighting } from '../hex-grid/syntyHexFloorHelpers';
 import type { Scene3D, SceneProp3D } from './atlasToScene3D';
-import type { RoomScenePresentation } from './roomSceneJson';
 
 vi.mock('./DungeonShell', () => ({
   DungeonShell: ({
@@ -125,7 +125,6 @@ function sceneWith(
  * a raised grouped item, a supported lit decor, and a generated visual —
  * the exact graph the plan's rich-source scenario names. */
 const roomPresentation: RoomScenePresentation = {
-  version: 1,
   coordinateFrame: {
     horizontalPlane: 'world-xz',
     verticalAxis: 'world-y-up',

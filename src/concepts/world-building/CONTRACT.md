@@ -25,6 +25,127 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Destinations — the site is the document (#1152, corrected model)
+
+The World Builder route has **two** destinations: **Site** and **Prop
+compositions**. The four-destination list was the wrong shape: the design's
+§UI surfaces bullets are _sections_, not peers, and `The site` and `Library`
+were the same thing twice.
+
+**The site is the document.** Top level of the YAML; one contiguous floor at
+absolute positions; one identity; one revision history. `ROOT_KEYS` is
+`['version', 'key', 'play', 'room']` — `room` singular, which only makes sense
+if the document is the site and a room is a region of it. Rooms are **camera
+targets**, not scopes: a room has no coordinate space of its own. The site's
+nouns persist across rooms.
+
+`Site` is `roomMode` and renders:
+
+- **Header** — `Back` · the site name · `Identity`. Nothing else. A `role="status"`
+  line below the header is the only other chrome, and only when the draft is
+  not being autosaved (a world snapshot is open, or stored bytes are
+  unreadable).
+- **Left, two collapsible sections** — `Rooms`, a navigation list (one entry
+  today, because the root has `room` singular; the jump waits on `rooms[]`), and
+  `Props`, the asset palette **and** the scene
+  tree in ONE section (adding a prop and finding a placed prop are the same
+  noun). The tree groups items under their group with loose props after, keeps
+  `parentId` (↳) and `supportId` (· attached), removes the checkboxes (a row
+  click selects, Shift/Ctrl/Cmd extends), and is collapsed by default.
+- **Center** — the canvas and its tool strip, unchanged, including
+  `Expand workspace`.
+- **Right, collapsible site nouns** — `Monsters` (placement, party start, the
+  placed-creature list with Move/Remove, and for the selected creature its
+  faction, mind table (`monsterBindings[id].on`) and weapons (`actions`), which
+  are named placeholders until those v4 shapes land), `Doors` (`doorBindings`
+  editable per placed item, whose own state decides what it blocks — see the
+  doors section below) and `Policies`
+  (editable factions — add/remove; `id`, `mind`, and `temper` as absent, one
+  word, or a word→share mix — editable dispositions — add/remove; `between`,
+  `stance`, `until` — and each faction's shared `on:` table, per trigger, with
+  weighted `say`/one-word entries; the inherited-vs-overridden readout for a
+  selected creature is design slice 2). An `Edit` collapsible holds Undo/Redo.
+  **Selection declarations stay contextual** — they appear only while props are
+  selected, because they belong to a selection and not to the site.
+
+**The Identity panel** is opened from the header and overlays the canvas. It is
+the merge of the old `The site` and `Library` destinations, and nothing from
+the old Library is dropped: the editable site name, the local draft
+`Save`/`Reload`/`New`, the **revision history** (the world-snapshot save verb
+and the saved snapshot list with open), `Publish & Play`
+(`RoomPublishingPanel`), and the arrangement library and portable JSON. Its
+`Save`/`Reload`/`New` and publish verbs are refused while a publishing
+transaction runs, and the route keeps its `publishingBusy` nav lock.
+
+**The site scope persists with the draft** (#1160). `factions`/`dispositions`
+are editor state carried in the room document's history entry, and the local
+draft's storage envelope — under the same `ROOM_DRAFT_STORAGE_KEY` — carries
+them beside the `draft` in a **v4** envelope, emitted only when a scope is
+authored; a document that authors none keeps the byte-identical **v3** bytes
+and reads back unchanged. Authoring is therefore not lost on reload, and a
+reloaded room publishes the document it was saved as. **Semantic checks are the
+SERVER's**: the `Publish & Play` `validate_only` preview (with a deliberate
+`Validate with server` verb) surfaces the engine's path-addressed refusals
+verbatim. The client's strict-shape layer refuses only what it cannot
+represent — an unknown trigger or word, a share below 1, a `until` on a
+non-hostile pair, a `party` declaration — and it runs on the way OUT, so a
+renamed or removed faction may leave a reference the engine names rather than
+the form pre-judging it.
+
+**Prop compositions** is deferred this wave and unchanged: its own editor, its
+own chrome, its own panel libraries. `worldLibrarySection`,
+`arrangementLibrarySection` and `portableJsonDetails` are not part of the
+Site's build body; the composer keeps its copies.
+
+**Test that it is navigation and not a scope change:** jumping rooms must leave
+the right-hand site nouns unchanged. If a room click changes what policy is
+shown, the tab was rebuilt.
+
+The placement anchor and the composition-bounds guide remain the **composer's**
+vocabulary: while a site is being built, neither the legend, the
+`Show composition bounds` control, nor the meshes are rendered (design
+`ideas/site-authoring/design.md` §UI surfaces, violation 3).
+
+## Doors — a prop plus a state (rpg-project#485)
+
+**A door is a prop plus a state, not a position on a wall.** This dialect has no
+walls to put one on — walls are props that block, and a door authored "in" one
+would no longer mean anything — so instead the door's SHAPE is its ordinary
+`propDeclarations` entry, lowered by the same path every table and barrel takes,
+and its STATE is `doorBindings[<item id>]`. What the footprint blocks follows
+the state rather than the declaration's two flags.
+
+The panel offers one item at a time, in the engine's own four authored states —
+no binding (`not a door`), `{}` (`open doorway`), `{closed: true}`, and
+`{locked: [...]}`. A lock carries one row per APPROACH, each an ability, an
+optional tool and a DC; any one of them beats it, so the rows keep the author's
+order. Removing the last row removes the lock, never the door.
+
+Three consequences are load-bearing and each is stated where it lives:
+
+- **`closed` beside `locked` is dropped**, because the engine ignores it there —
+  a locked door is shut by definition. Un-locking therefore lands on `open`,
+  which is what the document actually claimed.
+- **Making an item a door gives it a footprint**, measured from its own mesh
+  with both blocking flags false. A door's shape _is_ that declaration and the
+  engine refuses one without it; setting either flag true on a door item is
+  refused by name, because nothing consults door state to clear an authored
+  flag and it would build a wall that never opens.
+- **Deleting the item deletes its binding**, exactly as removing a creature
+  removes its orders. An orphan here is worse than stale: it refuses the whole
+  document at publish.
+
+**State is carried, not graded.** The builder writes the keys and reads them
+back; it does not decide whether an ability ref resolves or whether a DC is
+beatable. The engine judges the state at `PutDungeon` and answers with the path
+and the sentence, which is what the publish panel shows
+(rpg-project#481/#483). `concealed` is refused by the engine in this dialect and
+has no control here. The item list is the web's own question and only because
+the engine cannot answer it: a placed prop is a door CANDIDATE when its asset
+declares a `leaf` — the renderer's own signal that something swings — and an
+item that already carries a binding stays listed whatever its asset says, so an
+authored door can never be edited or removed only by luck.
+
 ## Boundary and promoted mount
 
 The same editor implementation has two mounts:
@@ -43,10 +164,11 @@ or gameplay behavior.
 
 The first-run scene is blank and the author-created arrangement library is
 empty. Hex lines use the shared hex math and are visible only as scale/planning
-references. They are not placement slots. The highlighted X0/Z0 hex marks the
-composition placement anchor, while a separate orange box encloses the loaded
-props' measured visual bounds. Both are non-interactive visual guides; the box
-is not a mechanical footprint and neither guide changes authored transforms.
+references. They are not placement slots. In the **composer**, the highlighted
+X0/Z0 hex marks the composition placement anchor, while a separate orange box
+encloses the loaded props' measured visual bounds. Both are non-interactive
+visual guides; the box is not a mechanical footprint and neither guide changes
+authored transforms. Room mode renders neither guide (see Destinations).
 
 ## Proved behavior
 

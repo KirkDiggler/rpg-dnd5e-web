@@ -2,10 +2,18 @@
 
 The NPC appearance catalog is a generated, exact-identity presentation catalog. It is deliberately separate from `WORLD_BUILDING_CATALOG`, which contains placeable props.
 
-Normal private-asset sync validates both standing and downed bytes and regenerates the catalog:
+The committed catalog records the provider commit it was generated from. A
+serving sync reproduces exactly that revision and never rewrites the catalog:
 
 ```bash
-RPG_GAME_ASSETS_PATH=/path/to/rpg-game-assets npm run assets:sync
+npm run assets:sync:pinned
+```
+
+Adopting a newer provider revision moves the pin, so it is an explicit,
+reviewed change that regenerates the catalog in the same step:
+
+```bash
+RPG_GAME_ASSETS_PATH=/path/to/rpg-game-assets npm run assets:sync:bump
 ```
 
 ## Enumerate and resolve metadata

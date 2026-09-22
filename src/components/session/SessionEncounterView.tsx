@@ -128,6 +128,7 @@ import {
   type SessionRefreshKey,
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
+import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
 import {
   type SessionEventDeliveryMetadata,
@@ -196,6 +197,17 @@ function SessionEncounterScope({
     refetch: refetchAtlas,
     applyReveal: applyAtlasReveal,
   } = useSessionAtlas(sessionId, member);
+  // WHAT THIS ROOM LOOKS LIKE, FETCHED BY KEY. The atlas names the
+  // dungeon the session was launched from; the authored file under that
+  // key is the room's appearance, and the World Building codec is the
+  // only thing that reads it (rpg-project#479). An empty key, or a
+  // dungeonspec dungeon, answers with no room and the legacy atlas
+  // route draws exactly what it drew before.
+  const {
+    presentation: roomScene,
+    loading: roomSceneLoading,
+    error: roomSceneError,
+  } = useDungeonScene(atlas?.dungeonKey ?? '');
   const {
     position: wherePosition,
     loading: whereLoading,
@@ -322,19 +334,29 @@ function SessionEncounterScope({
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
   );
-  // The ONE scene build, memoized by atlas identity exactly as before —
-  // now also the boundary where a refused canonical room presentation is
-  // caught. A build either succeeds whole or reports a named refusal;
+  // The ONE scene build, memoized by the atlas and the room it was
+  // handed. A build either succeeds whole or reports a named refusal;
   // it never half-constructs. `scene` stays null whenever the build
-  // refused, so an invalid current presentation can never refresh
+  // refused, so a scene this view could not build can never refresh
   // `lastGoodSceneRef` below — the cached prior scene is never
-  // re-drawn as if the invalid one were valid.
+  // re-drawn as if it were the current one.
   const sceneBuild = useMemo(() => {
     if (!atlas || !layoutOutcome?.ok) return null;
+    // A dungeon whose room is still being read is not yet a scene.
+    // Building one now would draw the atlas's own legacy props for a
+    // frame and then replace them with the authored room — the wrong
+    // room, briefly, which reads as a rendering fault. The ordinary
+    // loading state covers the gap instead.
+    if (roomSceneLoading) return null;
     try {
       return {
         ok: true as const,
-        scene: buildScene3D(atlas, HEX_SIZE, layoutOutcome.layout),
+        scene: buildScene3D(
+          atlas,
+          HEX_SIZE,
+          layoutOutcome.layout,
+          roomScene ?? undefined
+        ),
       };
     } catch (error) {
       return {
@@ -342,14 +364,19 @@ function SessionEncounterScope({
         message: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [atlas, layoutOutcome]);
+  }, [atlas, layoutOutcome, roomScene, roomSceneLoading]);
   const scene = sceneBuild?.ok ? sceneBuild.scene : null;
-  // A PRESENT nonempty presentation that refuses to decode is an
-  // integrity error, not a transient load: it surfaces as a visible
-  // scene-error outcome until a later build succeeds. Valid legacy and
-  // valid canonical builds keep the ordinary refresh behavior below.
+  // An unreadable room is an integrity error, not a transient load: it
+  // surfaces as a visible scene-error outcome until a later read or
+  // build succeeds. A room this view could not read is the SAME kind of
+  // failure as a scene it could not build — named and visible, never a
+  // quietly legacy-looking room. "This dungeon has no authored room" is
+  // a different answer and never arrives here (`useDungeonScene`), so
+  // every dungeon without one keeps the ordinary refresh behavior
+  // below.
   const scenePresentationError =
-    sceneBuild && !sceneBuild.ok ? sceneBuild.message : null;
+    roomSceneError ??
+    (sceneBuild && !sceneBuild.ok ? sceneBuild.message : null);
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -1599,7 +1626,7 @@ function SessionEncounterScope({
       ),
     [ownedItems, visibleCharacterData?.equipped]
   );
-  const loading = atlasLoading || whereLoading;
+  const loading = atlasLoading || whereLoading || roomSceneLoading;
   const blockingError = atlasError ?? whereError;
   const privateStatus = characterData
     ? characterDataError
@@ -1825,6 +1852,7 @@ function SessionEncounterScope({
                     offHandPresentation={offHandResolution.presentation}
                     roster={roster}
                     doors={doors}
+                    dungeonKey={atlas?.dungeonKey}
                     onDoorClick={
                       runEnded === null ? handleDoorClick : undefined
                     }

@@ -46,6 +46,13 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
+import type { SiteScope } from './siteScope';
+
+/** The stable "nothing authored" scope. A caller that passes no scope must
+ * not re-create an object on every render, or the `yaml` memo below would
+ * re-encode the whole document each time (no invalidation changes, because
+ * the emitted bytes compare by value — but the work is pure waste). */
+const NO_SCOPE: SiteScope = Object.freeze({});
 
 /** The grammar a room ID must satisfy to DERIVE a default dungeon key
  * (plan §2: `room-${draft.id}` for `[a-z0-9-]+` IDs). A manually entered
@@ -69,11 +76,20 @@ export type RoomPublishPhase = 'checking-key' | 'saving' | 'launching';
 
 export interface UseRoomPublishingInput {
   draft: RoomDraft;
+  /** The site scope (rpg-dnd5e-web#1157, rpg-project#477): the root
+   * `factions`/`dispositions` that belong to the document rather than to a
+   * selection. It is EDITOR state, not a draft field — the local draft's
+   * envelope carries only `{ kind, version, draft }` — and it is part of the
+   * publication request identity because the emitted YAML is a function of
+   * it: `encodeSingleRoomDungeon` writes `version: 4` for a scope this
+   * document would otherwise silently drop. */
+  scope?: SiteScope;
   capability: RoomPublishingCapability;
   client?: AuthoringClient;
-  /** Replaces the editor document with a decoded canonical YAML draft.
-   * Returns false when refused (the key must then not be adopted). */
-  onImportDraft: (draft: RoomDraft) => boolean;
+  /** Replaces the editor document with a decoded canonical YAML draft and the
+   * scope that arrived in the same file. Returns false when refused (the key
+   * must then not be adopted). */
+  onImportDraft: (draft: RoomDraft, scope: SiteScope) => boolean;
   /** Reports the mutating-transaction boundary upward: while busy, the
    * editor must refuse Back, mode switches and document changes. */
   onBusyChange?: (busy: boolean) => void;
@@ -85,6 +101,13 @@ export interface UseRoomPublishingResult {
   /** The canonical YAML of the current (key, draft) pair; null while no
    * key is entered. This exact text is what a save submits. */
   yaml: string | null;
+  /** The strict-SHAPE layer's refusal when the current scope cannot be
+   * encoded (rpg-dnd5e-web#1160). Null while the document encodes. */
+  encodeError: string | null;
+  /** Ask the server to validate the current bytes again, without waiting for
+   * the next edit. The live preview already validates on every change; this is
+   * the deliberate verb. */
+  validate: () => void;
   /** Live server validation of the current source (never blocks editing). */
   preview: PreviewState;
   /** True while a save/launch transaction mutates server state. */
@@ -124,9 +147,9 @@ export interface UseRoomPublishingResult {
    * source/identity. */
   confirmOverwrite: () => Promise<boolean>;
   cancelOverwrite: () => void;
-  /** Canonical YAML import: decodes, replaces the editor document and
-   * adopts the file's root key. Returns false on refusal/refusal-worth
-   * decode errors (message in `error`). */
+  /** Canonical YAML import: decodes, replaces the editor document and its
+   * scope, and adopts the file's root key. Returns false on refusal/refusal-
+   * worth decode errors (message in `error`). */
   importYaml: (text: string) => boolean;
 }
 
@@ -143,6 +166,7 @@ interface PublishOwner {
 
 export function useRoomPublishing({
   draft,
+  scope = NO_SCOPE,
   capability,
   client = defaultAuthoringClient,
   onImportDraft,
@@ -187,6 +211,12 @@ export function useRoomPublishing({
   const savedRef = useRef<{ key: string; roomId: string } | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  /** The scope is part of the request identity through the emitted YAML: a
+   * transaction captures the exact `yaml` a scope produced, and a scope
+   * change produces different bytes. This mirror keeps the transactional
+   * encode — which runs outside render — reading the live scope. */
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const keyRef = useRef(keyState.value);
   keyRef.current = keyState.value;
   /** Live mirrors of the request identity; a late continuation compares
@@ -231,23 +261,54 @@ export function useRoomPublishing({
 
   /** The canonical YAML of the current source — captured by transactions,
    * shown for export. Encoding is the adapter's; an empty key yields no
-   * YAML and no preview traffic. */
+   * YAML and no preview traffic.
+   *
+   * THE SCOPE IS A DEPENDENCY, AND THAT IS THE WHOLE FENCING CHANGE: the
+   * emitted text is the request identity the invalidation effect already
+   * compares (`owner.yaml !== yaml`), so a scope change retires an in-flight
+   * transaction through the mechanism that exists. No second invalidation
+   * path is added. */
   const trimmedKey = keyState.value.trim();
-  const yaml = useMemo(() => {
-    if (!trimmedKey) return null;
+  /** Bumping this re-runs the server's validation of the SAME bytes, so the
+   * author can ask the engine deliberately (rpg-dnd5e-web#1160). */
+  const [validateNonce, setValidateNonce] = useState(0);
+  const encoded = useMemo(() => {
+    if (!trimmedKey) return { yaml: null, error: null };
     try {
-      return encodeSingleRoomDungeon({ key: trimmedKey, draft });
-    } catch {
-      return null;
+      return {
+        yaml: encodeSingleRoomDungeon({
+          key: trimmedKey,
+          draft,
+          factions: scope.factions,
+          dispositions: scope.dispositions,
+          intel: scope.intel,
+        }),
+        error: null,
+      };
+    } catch (error) {
+      // The strict-SHAPE layer's own sentence, surfaced verbatim rather than
+      // swallowed: a document the decoder cannot represent is NAMED instead of
+      // leaving the panel inert. Semantic refusals are the server's and come
+      // back through `preview` below.
+      return {
+        yaml: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-  }, [trimmedKey, draft]);
+  }, [trimmedKey, draft, scope]);
+  const yaml = encoded.yaml;
+  const encodeError = encoded.error;
   const yamlRef = useRef(yaml);
   yamlRef.current = yaml;
 
   const preview = usePutDungeonPreview(trimmedKey, yaml ?? '', {
     client,
     enabled: yaml !== null,
+    nonce: validateNonce,
   });
+  const validate = useCallback(() => {
+    setValidateNonce((current) => current + 1);
+  }, []);
 
   /** A different room identity (new room, imported document) resets the
    * key to that room's derived default. Retirement of any in-flight
@@ -316,6 +377,7 @@ export function useRoomPublishing({
     }): Promise<boolean> => {
       if (ownerRef.current) return false;
       const current = draftRef.current;
+      const currentScope = scopeRef.current;
       const trimmed = keyRef.current.trim();
       const characterAtStart = characterRef.current;
       const clientAtStart = clientRef.current;
@@ -325,7 +387,13 @@ export function useRoomPublishing({
       }
       let yamlText: string;
       try {
-        yamlText = encodeSingleRoomDungeon({ key: trimmed, draft: current });
+        yamlText = encodeSingleRoomDungeon({
+          key: trimmed,
+          draft: current,
+          factions: currentScope.factions,
+          dispositions: currentScope.dispositions,
+          intel: currentScope.intel,
+        });
       } catch (err) {
         setError(
           `Could not prepare the canonical YAML: ${
@@ -474,7 +542,11 @@ export function useRoomPublishing({
       );
       return false;
     }
-    const accepted = onImportDraftRef.current(decoded.draft);
+    const accepted = onImportDraftRef.current(decoded.draft, {
+      ...(decoded.factions ? { factions: decoded.factions } : {}),
+      ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
+      ...(decoded.intel ? { intel: decoded.intel } : {}),
+    });
     if (!accepted) return false;
     // The imported file's root key becomes the publication key for the
     // imported room identity; pending confirmations and the "saved
@@ -490,6 +562,8 @@ export function useRoomPublishing({
     key: keyState.value,
     setKey,
     yaml,
+    encodeError,
+    validate,
     preview,
     busy,
     phase,

@@ -13,6 +13,10 @@
  * While a save/launch transaction mutates server state the panel reports
  * busy upward (Back, mode switching, document changes are refused there)
  * and disables its own controls.
+ *
+ * The site `scope` (root `factions`/`dispositions`) is forwarded verbatim to
+ * the transaction: it is the editor document's own state and the emitted
+ * YAML — the request identity — is a function of it (rpg-dnd5e-web#1157).
  */
 import { useEffect, useRef, useState } from 'react';
 import type {
@@ -43,6 +47,7 @@ function previewLine(status: string): string | null {
 
 export function RoomPublishingPanel({
   draft,
+  scope,
   capability,
   client,
   onImportDraft,
@@ -50,6 +55,7 @@ export function RoomPublishingPanel({
 }: RoomPublishingPanelProps) {
   const publishing = useRoomPublishing({
     draft,
+    scope,
     capability,
     client,
     onImportDraft,
@@ -59,6 +65,8 @@ export function RoomPublishingPanel({
     key,
     setKey,
     yaml,
+    encodeError,
+    validate,
     preview,
     busy,
     phase,
@@ -120,6 +128,15 @@ export function RoomPublishingPanel({
         <p className="wb-help" data-testid="key-request">
           This room ID cannot form a default key — enter an explicit dungeon key
           to publish.
+        </p>
+      )}
+
+      {/* The strict-SHAPE layer's own refusal, verbatim: a document the
+          decoder cannot represent is named here instead of leaving the server
+          preview silently inert (rpg-dnd5e-web#1160). */}
+      {encodeError && (
+        <p className="wb-alert" role="alert" data-testid="encode-refusal">
+          This document cannot be encoded yet: {encodeError}
         </p>
       )}
 
@@ -212,6 +229,14 @@ export function RoomPublishingPanel({
       )}
 
       <div className="wb-actions">
+        <button
+          type="button"
+          disabled={busy || !yaml}
+          title={yaml ? undefined : 'Fix the document before validating it'}
+          onClick={validate}
+        >
+          Validate with server
+        </button>
         <button type="button" disabled={busy} onClick={() => void save()}>
           {busy && phase === 'checking-key'
             ? 'Checking key…'

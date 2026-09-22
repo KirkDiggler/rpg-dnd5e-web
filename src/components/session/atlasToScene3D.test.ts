@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 import { cellBoundingBox } from '../../author/hexGeometry';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
   buildScene3D,
   positionToCube,
@@ -457,14 +458,13 @@ describe('propWorldPosition', () => {
 });
 
 /**
- * The canonical room presentation rides the SAME atlas build boundary:
- * decoded exactly once per build, attached typed to Scene3D, absent for
- * every legacy atlas, and refused by name when a present nonempty
- * payload is not a fully valid presentation.
+ * The authored room is HANDED IN, never read off the atlas: the builder
+ * attaches what its caller already read, leaves every mechanical channel
+ * alone, and still refuses the one thing a scene builder must judge —
+ * the unit the room is placed at.
  */
-describe('buildScene3D room scene presentation', () => {
-  const validPresentation = {
-    version: 1,
+describe('buildScene3D authored room scene', () => {
+  const presentation: RoomScenePresentation = {
     coordinateFrame: {
       horizontalPlane: 'world-xz',
       verticalAxis: 'world-y-up',
@@ -499,7 +499,7 @@ describe('buildScene3D room scene presentation', () => {
     },
   };
 
-  const atlas = (roomSceneJson?: string) =>
+  const atlas = () =>
     ({
       cells: [pos(0, 0)],
       props: [],
@@ -507,39 +507,22 @@ describe('buildScene3D room scene presentation', () => {
       doorways: [],
       regions: [],
       exits: [],
-      ...(roomSceneJson === undefined ? {} : { roomSceneJson }),
     }) as never;
 
-  it('attaches the decoded presentation once and keeps mechanical channels intact', () => {
-    const json = JSON.stringify(validPresentation);
-    const scene = buildScene3D(atlas(json), 1, 'pointy');
-    expect(scene.roomScene).toEqual(validPresentation);
-    // The atlas's own scene channels are untouched by the presentation.
+  it('attaches the room it was handed and keeps mechanical channels intact', () => {
+    const scene = buildScene3D(atlas(), 1, 'pointy', presentation);
+    expect(scene.roomScene).toBe(presentation);
+    // The atlas's own scene channels are untouched by the room.
     expect(scene.floorTiles.size).toBe(1);
     expect(scene.exits).toEqual([]);
   });
 
-  it('keeps the legacy route for absent payloads (missing field and empty string)', () => {
+  it('needs no scene at all — an atlas alone still builds', () => {
     expect(buildScene3D(atlas(), 1, 'pointy').roomScene).toBeUndefined();
-    expect(buildScene3D(atlas(''), 1, 'pointy').roomScene).toBeUndefined();
-  });
-
-  it('refuses an invalid nonempty payload by name instead of building a scene', () => {
-    expect(() => buildScene3D(atlas('not-json'), 1, 'pointy')).toThrow(
-      /could not be parsed/
-    );
-    expect(() =>
-      buildScene3D(
-        atlas(JSON.stringify({ ...validPresentation, version: 2 })),
-        1,
-        'pointy'
-      )
-    ).toThrow(/version must be 1/);
   });
 
   it('refuses a nonstandard hex size instead of guessing a scaling conversion', () => {
-    const json = JSON.stringify(validPresentation);
-    expect(() => buildScene3D(atlas(json), 2, 'pointy')).toThrow(
+    expect(() => buildScene3D(atlas(), 2, 'pointy', presentation)).toThrow(
       /refusing to guess a conversion for requested hex size 2/
     );
   });

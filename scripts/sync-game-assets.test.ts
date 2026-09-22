@@ -205,6 +205,12 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     'generated',
     'npcAppearanceCatalog.ts'
   );
+  const generatedWorldCatalog = join(
+    webRoot,
+    'src',
+    'generated',
+    'worldAssetCatalog.ts'
+  );
 
   return {
     assetsRoot,
@@ -216,6 +222,7 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     fakeGenerator,
     generatedCatalog,
     generatedNpcCatalog,
+    generatedWorldCatalog,
     npcSelection,
     npcStandingBytes,
     npcStandingSource,
@@ -224,15 +231,16 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
   };
 }
 
-async function runSync(
+async function runSyncWithFlags(
   assetsRoot: string,
   webRoot: string,
+  flags: string[],
   generator: string,
   npcGenerator = generator,
   npcSelection = generator,
   npcRunner = join(repoRoot, 'node_modules', '.bin', 'tsx')
 ) {
-  return execFileAsync('sh', [syncScript], {
+  return execFileAsync('sh', [syncScript, ...flags], {
     cwd: repoRoot,
     env: {
       ...gitEnvironment,
@@ -248,9 +256,91 @@ async function runSync(
       RPG_NPC_APPEARANCE_CATALOG_GENERATOR: npcGenerator,
       RPG_NPC_APPEARANCE_CATALOG_RUNNER: npcRunner,
       RPG_NPC_APPEARANCE_RELEASE_SELECTION: npcSelection,
+      RPG_ASSETS_ALLOW_PROVIDER_BUMP: '0',
       ASSETS_SYNC_SKIP_UPDATE: '1',
     },
   });
+}
+
+async function runSync(
+  assetsRoot: string,
+  webRoot: string,
+  generator: string,
+  npcGenerator = generator,
+  npcSelection = generator,
+  npcRunner = join(repoRoot, 'node_modules', '.bin', 'tsx')
+) {
+  return runSyncWithFlags(
+    assetsRoot,
+    webRoot,
+    [],
+    generator,
+    npcGenerator,
+    npcSelection,
+    npcRunner
+  );
+}
+
+async function runSyncBump(
+  assetsRoot: string,
+  webRoot: string,
+  generator: string,
+  npcGenerator = generator,
+  npcSelection = generator,
+  npcRunner = join(repoRoot, 'node_modules', '.bin', 'tsx')
+) {
+  return runSyncWithFlags(
+    assetsRoot,
+    webRoot,
+    ['--allow-provider-bump'],
+    generator,
+    npcGenerator,
+    npcSelection,
+    npcRunner
+  );
+}
+
+async function runPinnedRuntimeSync(assetsRoot: string, webRoot: string) {
+  return execFileAsync('sh', [syncScript, '--pinned-runtime'], {
+    cwd: repoRoot,
+    env: {
+      ...gitEnvironment,
+      RPG_GAME_ASSETS_PATH: assetsRoot,
+      RPG_WEB_ROOT: webRoot,
+      RPG_ASSETS_ALLOW_PROVIDER_BUMP: '0',
+      ASSETS_SYNC_SKIP_UPDATE: '1',
+    },
+  });
+}
+
+// A committed catalog in the shape the real generators emit, so the sync can
+// read its exact provider pin back. Each catalog owns its own subtree.
+async function putPinnedCatalogs(
+  fixture: {
+    generatedCatalog: string;
+    generatedNpcCatalog: string;
+    generatedWorldCatalog: string;
+  },
+  pins: { character?: string; npc?: string; world?: string }
+) {
+  if (pins.character) {
+    await put(
+      fixture.generatedCatalog,
+      `export const CHARACTER_CUSTOMIZATION_PROVIDER = Object.freeze({\n  providerCommit: '${pins.character}',\n});\n`
+    );
+  }
+  if (pins.npc) {
+    await put(
+      fixture.generatedNpcCatalog,
+      `export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({\n  commit: '${pins.npc}',\n});\n`
+    );
+  }
+  if (pins.world) {
+    await put(
+      fixture.generatedWorldCatalog,
+      `export const GENERATED_WORLD_ASSET_PROVIDER = Object.freeze({\n  commit: '${pins.world}',\n});\n`
+    );
+  }
 }
 
 async function runRuntimeSync(assetsRoot: string, webRoot: string) {
@@ -260,6 +350,7 @@ async function runRuntimeSync(assetsRoot: string, webRoot: string) {
       ...gitEnvironment,
       RPG_GAME_ASSETS_PATH: assetsRoot,
       RPG_WEB_ROOT: webRoot,
+      RPG_ASSETS_ALLOW_PROVIDER_BUMP: '0',
       ASSETS_SYNC_SKIP_UPDATE: '1',
     },
   });
@@ -694,6 +785,193 @@ describe('private game asset sync boundary', () => {
     );
     expect(await exists(fixture.generatedCatalog)).toBe(false);
     expect(await exists(fixture.generatedNpcCatalog)).toBe(false);
+  });
+
+  it('refuses to move a committed provider pin without an explicit bump', async () => {
+    const fixture = await makeFixture();
+    await putPinnedCatalogs(fixture, {
+      character: fixture.providerHead,
+      npc: fixture.providerHead,
+    });
+    const pinnedCatalog = await readFile(fixture.generatedCatalog, 'utf8');
+    const pinnedNpcCatalog = await readFile(
+      fixture.generatedNpcCatalog,
+      'utf8'
+    );
+    await put(join(fixture.syntySource, 'next.glb'), 'next-runtime');
+    await commitFixture(fixture.assetsRoot, 'advance provider');
+    const { stdout: advancedHead } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      { cwd: fixture.assetsRoot, env: gitEnvironment }
+    );
+
+    const failure = await runSync(
+      fixture.assetsRoot,
+      fixture.webRoot,
+      fixture.fakeGenerator
+    ).then(
+      () => undefined,
+      (reason: { code?: number; stderr?: string }) => reason
+    );
+
+    expect(failure?.code).toBeGreaterThan(0);
+    expect(failure?.stderr).toContain(advancedHead.trim());
+    expect(failure?.stderr).toContain(fixture.providerHead);
+    expect(failure?.stderr).toContain('assets:sync:bump');
+    await expect(readFile(fixture.generatedCatalog, 'utf8')).resolves.toBe(
+      pinnedCatalog
+    );
+    await expect(readFile(fixture.generatedNpcCatalog, 'utf8')).resolves.toBe(
+      pinnedNpcCatalog
+    );
+  });
+
+  it('adopts a newer provider revision only when the bump is explicit', async () => {
+    const fixture = await makeFixture();
+    await putPinnedCatalogs(fixture, {
+      character: fixture.providerHead,
+      npc: fixture.providerHead,
+    });
+    await put(join(fixture.syntySource, 'next.glb'), 'next-runtime');
+    await commitFixture(fixture.assetsRoot, 'advance provider');
+    const { stdout: advancedHead } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      { cwd: fixture.assetsRoot, env: gitEnvironment }
+    );
+
+    await runSyncBump(
+      fixture.assetsRoot,
+      fixture.webRoot,
+      fixture.fakeGenerator
+    );
+
+    const bumped = JSON.parse(await readFile(fixture.generatedCatalog, 'utf8'));
+    expect(bumped.head).toBe(advancedHead.trim());
+    expect(bumped.head).not.toBe(fixture.providerHead);
+  });
+
+  it('mirrors each catalog subtree from its own pin without touching the provider or the catalogs', async () => {
+    const fixture = await makeFixture();
+    // A world revision...
+    await put(
+      join(fixture.syntySource, 'world-assets', 'probe.glb'),
+      'world-v1'
+    );
+    await commitFixture(fixture.assetsRoot, 'world revision');
+    const { stdout: worldPin } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      {
+        cwd: fixture.assetsRoot,
+        env: gitEnvironment,
+      }
+    );
+    // ...then a later revision that moves the character and world subtrees and
+    // rewrites the NPC subtree.
+    await put(join(fixture.syntySource, 'characters', 'probe.glb'), 'char-v3');
+    await put(fixture.npcStandingSource, 'npc-v2');
+    await put(
+      join(fixture.syntySource, 'world-assets', 'probe.glb'),
+      'world-v2'
+    );
+    await commitFixture(fixture.assetsRoot, 'later revision');
+    const { stdout: laterPin } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      {
+        cwd: fixture.assetsRoot,
+        env: gitEnvironment,
+      }
+    );
+
+    await putPinnedCatalogs(fixture, {
+      character: laterPin.trim(),
+      npc: fixture.providerHead,
+      world: worldPin.trim(),
+    });
+    const pinnedNpcCatalog = await readFile(
+      fixture.generatedNpcCatalog,
+      'utf8'
+    );
+    const pinnedWorldCatalog = await readFile(
+      fixture.generatedWorldCatalog,
+      'utf8'
+    );
+
+    await runPinnedRuntimeSync(fixture.assetsRoot, fixture.webRoot);
+
+    // Each pinned subtree serves its own revision, not the newest one.
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'characters', 'probe.glb'),
+        'utf8'
+      )
+    ).resolves.toBe('char-v3');
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'world-assets', 'probe.glb'),
+        'utf8'
+      )
+    ).resolves.toBe('world-v1');
+    await expect(
+      readFile(fixture.npcStandingDestination, 'utf8')
+    ).resolves.toBe('fixture-standing-model');
+    // A serving mirror never rewrites the tracked catalogs.
+    await expect(readFile(fixture.generatedNpcCatalog, 'utf8')).resolves.toBe(
+      pinnedNpcCatalog
+    );
+    await expect(readFile(fixture.generatedWorldCatalog, 'utf8')).resolves.toBe(
+      pinnedWorldCatalog
+    );
+    // Assembling the union leaves the provider worktree clean at its own HEAD.
+    const { stdout: headAfter } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      {
+        cwd: fixture.assetsRoot,
+        env: gitEnvironment,
+      }
+    );
+    expect(headAfter.trim()).toBe(laterPin.trim());
+    const { stdout: providerStatus } = await execFileAsync(
+      'git',
+      ['status', '--porcelain=v1', '--untracked-files=all'],
+      { cwd: fixture.assetsRoot, env: gitEnvironment }
+    );
+    expect(providerStatus).toBe('');
+  });
+
+  it('fails a pinned mirror when no committed catalog carries a provider pin', async () => {
+    const fixture = await makeFixture();
+
+    await expect(
+      runPinnedRuntimeSync(fixture.assetsRoot, fixture.webRoot)
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining('assets:sync:bump'),
+    });
+  });
+
+  it('rejects the bump flag on a mirror-only mode', async () => {
+    const fixture = await makeFixture();
+
+    await expect(
+      execFileAsync(
+        'sh',
+        [syncScript, '--runtime-assets', '--allow-provider-bump'],
+        {
+          cwd: repoRoot,
+          env: {
+            ...gitEnvironment,
+            RPG_GAME_ASSETS_PATH: fixture.assetsRoot,
+            RPG_WEB_ROOT: fixture.webRoot,
+            ASSETS_SYNC_SKIP_UPDATE: '1',
+          },
+        }
+      )
+    ).rejects.toMatchObject({ code: 2 });
   });
 
   it('gitignores both private public runtime roots', async () => {
