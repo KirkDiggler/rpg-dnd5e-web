@@ -31,6 +31,14 @@
  * altar as readily as on the reliquary. Two independent facts, asked
  * separately.
  *
+ * The SAME law runs on the other kind of thing. `AtlasPlacedProp.holdable`
+ * is the author's flag on a placed FOOTPRINT (a rectangle, not a cell prop),
+ * and every placement carries an id — so the "never guess from the id" rule
+ * matters MORE there: inferring the verb from a name would put a take button
+ * on every wall a door stands in. A placed footprint offers Hold when any of
+ * the engine-traced `cells` it stands on is adjacent (never re-derived from
+ * `placement` — `AtlasPlacedProp.cells` is the engine's own trace).
+ *
  * It is safe to ask because holding is structure on the truth grain — a
  * holdable thing LOOKS holdable, and every member who can see the cell
  * sees the same thing. Nothing is concealed by it, and a prop inside space
@@ -129,6 +137,26 @@ export function holdTargets(
     if (!prop.id || !prop.at) continue;
     if (hexDistance(positionToCube(prop.at), at) > ADJACENT) continue;
     targets.push({ id: prop.id, ref: prop.ref });
+  }
+  // PLACED FOOTPRINTS (rpg-dnd5e-web#1182) — the same offer, from the other
+  // list. A placed prop is a rectangle the World Builder drew, offered when
+  // its author said holdable. Adjacency is "ANY cell the engine says it
+  // stands on", read off `cells` and never re-derived from `placement`
+  // (`AtlasPlacedProp.cells`'s own doc). No `ref` rides the wire here —
+  // `AtlasPlacedProp` names only its id (rpg-api-protos#356 adds the ref),
+  // so the button labels from the id via `propLabel`'s fallback.
+  for (const placed of atlas.placed ?? []) {
+    if (!placed.holdable) continue;
+    // `id` is required on `AtlasPlacedProp` (the author's name, verbatim), so
+    // an id-less entry is a producer defect — skipped rather than sent as an
+    // empty `HoldRequest.target`, the same guard the cell-prop loop above
+    // keeps.
+    if (!placed.id) continue;
+    const withinReach = (placed.cells ?? []).some(
+      (cell) => hexDistance(positionToCube(cell), at) <= ADJACENT
+    );
+    if (!withinReach) continue;
+    targets.push({ id: placed.id, ref: '' });
   }
   return targets;
 }

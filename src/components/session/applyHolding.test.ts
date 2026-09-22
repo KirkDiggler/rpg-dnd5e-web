@@ -157,3 +157,60 @@ describe('applyDropped — it lands where the carrier stood (R9)', () => {
     expect(before.props).toHaveLength(0);
   });
 });
+
+/** One placed FOOTPRINT on the floor — a rectangle, not a cell prop, with
+ * its own id namespace shared with `props` (`AtlasPlacedProp.id`'s doc). */
+function atlasWithPlacedFootprint(): GetAtlasResponse {
+  return create(GetAtlasResponseSchema, {
+    cells: [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ],
+    placed: [
+      {
+        id: 'reliquary',
+        holdable: true,
+        blocksMovement: true,
+        blocksLineOfSight: false,
+        cells: [{ x: 1, y: 0 }],
+      },
+    ],
+  });
+}
+
+describe('applyHeld — a placed footprint leaves the floor by the same id', () => {
+  it('removes the placement with that id, and no cell prop moves', () => {
+    const before = atlasWithPlacedFootprint();
+    const after = applyHeld(before, create(HeldSchema, { prop: 'reliquary' }));
+    expect(after.placed).toHaveLength(0);
+    expect(after.props).toHaveLength(0);
+    expect(after.cells).toEqual(before.cells);
+  });
+
+  it('removes nothing for an id this atlas never held as a placement', () => {
+    const before = atlasWithPlacedFootprint();
+    const after = applyHeld(before, create(HeldSchema, { prop: 'crown' }));
+    expect(after.placed).toHaveLength(1);
+  });
+});
+
+describe('applyDropped — a placed footprint is NOT restored from the beat', () => {
+  it('leaves the atlas alone, rather than invent a bare cell prop', () => {
+    // `Dropped` carries no placement geometry or re-traced cells
+    // (rpg-api-protos#356), so a placed footprint cannot be put back locally.
+    // The scheduled atlas refetch restores it; the patch must not mint a bare
+    // cell prop under a placement id in the meantime.
+    const taken = applyHeld(
+      atlasWithPlacedFootprint(),
+      create(HeldSchema, { prop: 'reliquary' })
+    );
+    const after = applyDropped(
+      taken,
+      create(DroppedSchema, { prop: 'reliquary', at: { x: 5, y: 7 } }),
+      undefined,
+      true
+    );
+    expect(after.placed).toHaveLength(0);
+    expect(after.props).toHaveLength(0);
+  });
+});

@@ -62,6 +62,12 @@ export function applyHeld(
   if (!event.prop) return atlas;
   const next = clone(GetAtlasResponseSchema, atlas);
   next.props = next.props.filter((p) => p.id !== event.prop);
+  // A placed footprint leaves the floor by the SAME id — the two lists share
+  // one namespace (`AtlasPlacedProp.id`'s doc: the compiler refuses a
+  // placement whose name a cell prop already took), so the one removal runs
+  // on both. `?? []` for the standing reason: a producer older than the
+  // field hands back a message with `placed` absent, not empty.
+  next.placed = (next.placed ?? []).filter((p) => p.id !== event.prop);
   return next;
 }
 
@@ -85,14 +91,31 @@ export function heldProp(
  * presentation, moved to the new cell. Without it the entry carries the
  * id and the cell alone, which is everything `Dropped` actually says.
  *
+ * `placed` says the dropped id names a placed FOOTPRINT, not a cell prop —
+ * the caller answers it from the authored placement-id universe, so a member
+ * who never saw the pick-up (or remounted mid-session) still does not
+ * mistake a footprint for a cell prop. When true the atlas is returned
+ * unchanged: `Dropped` carries no placement geometry or re-traced `cells`
+ * (rpg-api-protos#356 — the client is told not to run a second geometry
+ * beside the engine's), so the scheduled refetch is the only faithful
+ * restore.
+ *
  * IDEMPOTENT ON THE ID: a prop with this id already standing is replaced
  * rather than duplicated, so a beat delivered twice draws one reliquary.
  */
 export function applyDropped(
   atlas: GetAtlasResponse,
   event: Dropped,
-  remembered?: AtlasProp
+  remembered?: AtlasProp,
+  placed = false
 ): GetAtlasResponse {
+  // A placed footprint cannot be restored from this beat: `Dropped` carries
+  // the id and the drop cell, never the placement geometry or the engine's
+  // re-traced `cells` (rpg-api-protos#356 — the client is told not to run a
+  // second geometry beside the engine's). Leave it absent and let the
+  // scheduled atlas refetch put it back correctly; the patch buys the frame
+  // and the server keeps the truth.
+  if (placed) return atlas;
   // A drop with no cell is a beat this client cannot place. Putting the
   // prop at the origin would be a guess about where it lies, and the
   // refetch answers correctly a moment later — so nothing moves here.

@@ -201,6 +201,119 @@ describe('holdTargets — where the wire says holdable, never guessed', () => {
   });
 });
 
+describe('holdTargets — placed footprints offered by any engine-traced cell', () => {
+  const viewer = at(0, 0);
+
+  const withPlaced = (placed: GetAtlasResponse['placed']) =>
+    create(GetAtlasResponseSchema, { placed } as never);
+
+  it('offers a holdable placed footprint when ANY cell is adjacent', () => {
+    const targets = holdTargets(
+      withPlaced([
+        {
+          id: 'reliquary',
+          holdable: true,
+          // Two cells: one out of reach, one beside the viewer. The offer
+          // keys off ANY, because a footprint's reach is its whole area.
+          cells: [
+            { x: 3, y: 0 },
+            { x: 1, y: 0 },
+          ],
+        },
+      ] as never),
+      viewer
+    );
+    expect(targets).toEqual([{ id: 'reliquary', ref: '' }]);
+  });
+
+  it('offers when the viewer stands ON one of its cells (distance zero)', () => {
+    const targets = holdTargets(
+      withPlaced([
+        { id: 'reliquary', holdable: true, cells: [{ x: 0, y: 0 }] },
+      ] as never),
+      viewer
+    );
+    expect(targets).toEqual([{ id: 'reliquary', ref: '' }]);
+  });
+
+  it('NEVER guesses the verb from an id — a placement nobody declared is scenery', () => {
+    // `AtlasPlacedProp.holdable`'s own law: every placement carries an id, so
+    // inferring the verb would put a take button on every wall a door stands
+    // in. FALSE is the default and the truth.
+    expect(
+      holdTargets(
+        withPlaced([
+          { id: 'wall-door', holdable: false, cells: [{ x: 1, y: 0 }] },
+        ] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
+  it('skips a holdable placed footprint with no id — there is no name to send', () => {
+    // `id` is required on `AtlasPlacedProp`, so this is a producer defect; an
+    // empty target would be a `HoldRequest.target: ''` that cannot succeed.
+    expect(
+      holdTargets(
+        withPlaced([{ holdable: true, cells: [{ x: 1, y: 0 }] }] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
+  it('leaves out a placement whose every cell is more than one away', () => {
+    expect(
+      holdTargets(
+        withPlaced([
+          { id: 'far', holdable: true, cells: [{ x: 3, y: 0 }] },
+        ] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
+  it('a placement with no cells is not offered (a stale producer says nothing)', () => {
+    expect(
+      holdTargets(
+        withPlaced([{ id: 'nowhere', holdable: true }] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
+  it('labels a placed footprint by its id, since no ref rides the wire', () => {
+    // `AtlasPlacedProp` has no `ref` (rpg-api-protos#356 adds it); the button
+    // falls back to the id via `propLabel`.
+    const [target] = holdTargets(
+      withPlaced([
+        { id: 'vault-key', holdable: true, cells: [{ x: 1, y: 0 }] },
+      ] as never),
+      viewer
+    );
+    expect(propLabel(target)).toBe('vault key');
+  });
+
+  it('offers a cell prop and a placed footprint side by side', () => {
+    const both = create(GetAtlasResponseSchema, {
+      props: [
+        {
+          id: 'heirloom',
+          ref: 'dnd5e:props:reliquary',
+          at: { x: 0, y: 1 },
+          holdable: true,
+        },
+      ],
+      placed: [
+        { id: 'reliquary-footprint', holdable: true, cells: [{ x: 1, y: 0 }] },
+      ],
+    } as never);
+    expect(holdTargets(both, viewer)).toEqual([
+      { id: 'heirloom', ref: 'dnd5e:props:reliquary' },
+      { id: 'reliquary-footprint', ref: '' },
+    ]);
+  });
+});
+
 describe('exitAt — which way out the member is standing on', () => {
   const withExits = (exits: unknown[]) =>
     create(GetAtlasResponseSchema, { exits } as never);

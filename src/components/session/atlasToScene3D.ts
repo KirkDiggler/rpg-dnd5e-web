@@ -185,6 +185,15 @@ export interface Scene3D {
    * above remain the movement/sight truth regardless of this field.
    */
   roomScene?: RoomScenePresentation;
+  /**
+   * Placed props this viewer's atlas does NOT list — the authored
+   * placement-id universe minus `atlas.placed` (rpg-dnd5e-web#1182). The
+   * canonical room renderer suppresses a scene item whose id is here: a
+   * placement in reserve, held by somebody, or concealed from this viewer.
+   * Names only, never state. Absent means "hide nothing", which is also the
+   * author preview's truth — the author sees every placement.
+   */
+  hiddenPlacedIds?: ReadonlySet<string>;
 }
 
 export type SceneLayoutOutcome =
@@ -282,6 +291,31 @@ export function sceneExits(
   return exits;
 }
 
+/**
+ * Which authored placements are ABSENT from this viewer's atlas — the
+ * placement-id universe minus `placed`, names only, never state
+ * (rpg-dnd5e-web#1182). A placement is absent in reserve, held by somebody,
+ * or concealed from this viewer; all three collapse to "not drawn". The
+ * universe is the authored `place[].id` (surfaced by `useDungeonScene`), the
+ * present set is `atlas.placed[].id`.
+ *
+ * Pure so the render gate's one piece of arithmetic is testable without a
+ * WebGL canvas, the same split every other selector on this route keeps.
+ *
+ * `placed ?? []` for the standing reason, and here the failure is NAMED: a
+ * producer older than the field hands back a message with `placed` absent,
+ * not empty — and then every authored placement reads as absent, so the
+ * renderer hides all of them (fail-closed) until that producer adopts the
+ * field and the scheduled refetch self-heals.
+ */
+export function hiddenPlacedPropIds(
+  placedPropIds: ReadonlySet<string>,
+  placed: readonly { id: string }[] | undefined
+): ReadonlySet<string> {
+  const present = new Set((placed ?? []).map((p) => p.id));
+  return new Set([...placedPropIds].filter((id) => !present.has(id)));
+}
+
 export function buildScene3D(
   atlas: Pick<
     GetAtlasResponse,
@@ -290,7 +324,8 @@ export function buildScene3D(
     Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
   layout: HexLayout,
-  roomScene?: RoomScenePresentation
+  roomScene?: RoomScenePresentation,
+  hiddenPlacedIds?: ReadonlySet<string>
 ): Scene3D {
   if (layout !== 'pointy') {
     throw new Error(
@@ -386,6 +421,7 @@ export function buildScene3D(
     wallRuns,
     doorGaps,
     roomScene,
+    hiddenPlacedIds,
     // The floor this member knows is what was just built above, so an
     // exit in a room they have not opened is skipped rather than floated
     // over void.
