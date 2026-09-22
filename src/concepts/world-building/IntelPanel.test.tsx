@@ -155,3 +155,22 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
     );
   });
 });
+
+describe('an intel record collapses to its id and what it reveals', () => {
+  it('reads as the id plus the fact, so a node scans without opening entries', () => {
+    render(
+      <IntelPanel
+        scope={frontRoomScope()}
+        room={roomWithThug()}
+        onChange={() => {}}
+      />
+    );
+    const summary = screen.getByLabelText('Intel cellar-lie');
+    expect(summary.textContent).toMatch(/cellar-lie/);
+    expect(summary.textContent).toMatch(/fact cellar-is-clear/);
+    // And the entry really is a collapsed details, not a styled div.
+    const row = screen.getByTestId('intel-row-cellar-lie');
+    expect(row.tagName.toLowerCase()).toBe('details');
+    expect((row as HTMLDetailsElement).open).toBe(false);
+  });
+});
