@@ -103,6 +103,29 @@ export interface SightedMember {
    * witnessed.
    */
   equipment: { mainHand: string; offHand: string } | undefined;
+  /**
+   * `Sighting.stance`, verbatim — WHAT THIS VIEWER BELIEVES this subject's
+   * stance toward the party to be (rpg-project#458, rpg-api-protos#340).
+   *
+   * PER OBSERVER, NEVER THE ROSTER'S TRUTH, and that is the whole reason it
+   * rides here rather than being looked up beside the faction colour. The
+   * proto's own doc on sightings says the server must not state a fact a
+   * viewer's stale view could be wrong about, "because the fact is exactly
+   * what an illusion has to be able to lie about" — and a stance is such a
+   * fact. Today, with no deception in play, every viewer's word equals the
+   * derived stance and the ring looks exactly as it did.
+   *
+   * EMPTY MEANS THIS OBSERVER HAS NO WORD, which is the wire's own reading and
+   * not a gap to fill: the seam leaves it empty when the run cannot answer — a
+   * subject who is not a member, or one in NO FACTION at all, which a world NPC
+   * is — and the caller falls back to the roster's faction colour, which is
+   * what the ring has always been. See `stanceRingColor`.
+   *
+   * The vocabulary is the dungeon file's own closed set — `hostile`,
+   * `neutral`, `allied` — carried as the author's word rather than an enum,
+   * the same way `StanceChanged.stance` is.
+   */
+  stance: string;
 }
 
 /** Strips a subject id's trailing `-<ordinal>` (e.g. "skeleton-1" ->
@@ -146,6 +169,11 @@ export function sightingsToEntities(
             offHand: sighting.seen.equipment.offHand,
           }
         : undefined,
+      // Verbatim, empty included. An empty word is the wire saying this
+      // observer holds no belief about this creature's side, which is a
+      // different claim from "neutral" and must not be resolved into one
+      // here.
+      stance: sighting.stance,
     });
   }
   return entities;

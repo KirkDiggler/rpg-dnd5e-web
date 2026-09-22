@@ -13,6 +13,7 @@ import {
 } from '@/components/session/atlasToScene3D';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
 import { isMonsterRef } from '../dungeonYaml';
 import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
@@ -158,5 +159,62 @@ describe('previewScene', () => {
     if (gate.ok) return;
     expect(preview.message).toBe(gate.message);
     expect(preview.message).toMatch(/#763/);
+  });
+
+  /** A room the author could be holding in the editor — the same
+   * `RoomScenePresentation` the play view reads out of the authored
+   * file. Handed to the preview DIRECTLY; nothing round-trips it
+   * through the atlas any more (rpg-project#479). */
+  const authoredRoom: RoomScenePresentation = {
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
+  };
+
+  it('draws the authored room the caller hands it, on the shared scene path', () => {
+    const preview = previewScene(atlas, authoredRoom);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.scene.roomScene).toBe(authoredRoom);
+    // The legacy atlas scene channels are untouched.
+    expect(preview.scene.props).toEqual(
+      buildScene3D(atlas, HEX_SIZE, 'pointy').props
+    );
+  });
+
+  it('draws the atlas alone when there is no authored room', () => {
+    const preview = previewScene(atlas);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.scene.roomScene).toBeUndefined();
   });
 });

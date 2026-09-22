@@ -9,6 +9,7 @@ import type {
   CombatExperienceMapRenderProps,
   CombatExperiencePhase,
 } from './types';
+import { promptsForMember } from './verbRegistry';
 
 export interface TargetSurfaceProps {
   phase: CombatExperiencePhase;
@@ -20,6 +21,7 @@ export interface TargetSurfaceProps {
   changedOptionNotice?: string | null;
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
+  navigationControls?: React.ReactNode;
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
   onConfirmTargets?: () => void;
@@ -37,6 +39,7 @@ export function TargetSurface({
   changedOptionNotice,
   memberNames,
   location,
+  navigationControls,
   renderMap,
   onTargetClick,
   onConfirmTargets,
@@ -53,11 +56,19 @@ export function TargetSurface({
   // A CAST JOINS ON THE SAME LINE. Afford rules who a cantrip may be pointed
   // at — in range, in sight, on the right side — and a cast that names a
   // creature is a MEMBER-targeted declaration like any other.
+  //
+  // AND SO DOES A THREAT (rpg-project#454). Afford rules who may be
+  // threatened too — everyone who can see the actor, with no reach gate —
+  // and left out of this line the one goblin the server named would be the
+  // one goblin nobody could click, which is the failure this comment already
+  // records once for the armed activation.
+  //
+  // ASKED OF THE ONE REGISTRY (rpg-dnd5e-web#1104). This used to be the fifth
+  // of six hand-written verb lists, and a verb left out of it meant the one
+  // creature the server named was the one creature nobody could click.
   const isMemberTargeted =
-    (declaration?.verb === Verb.ATTACK ||
-      declaration?.verb === Verb.ACTIVATE ||
-      declaration?.verb === Verb.CAST) &&
-    declaration.targetKind === TargetKind.MEMBER;
+    promptsForMember(declaration?.verb) &&
+    declaration?.targetKind === TargetKind.MEMBER;
   // A CAST THE CASTER AIMS PROMPTS TOO, and prompts for a place. It names no
   // candidates, so none of the member machinery below applies to it — no
   // highlighted ring, no list, no cardinality. What it needs is the one
@@ -73,12 +84,20 @@ export function TargetSurface({
       : [];
   // The server authors the label for both verbs; there is no ref-to-name
   // table here, and "Attack" is only the last resort for an attack.
+  // A THREAT NAMES ITSELF, and is the one armed row with no server-authored
+  // label to prefer: it compiles no action definition, so there is no
+  // AttackRef and no AbilityRef to read and nothing here to go stale against
+  // content.
   const armedName =
     declaration?.verb === Verb.ACTIVATE
       ? declaration.ability?.name || 'Ability'
       : declaration?.verb === Verb.CAST
         ? castLabel(declaration)
-        : declaration?.attack?.name || 'Attack';
+        : declaration?.verb === Verb.INTIMIDATE
+          ? 'Intimidate'
+          : declaration?.verb === Verb.PERSUADE
+            ? 'Persuade'
+            : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;
@@ -94,9 +113,16 @@ export function TargetSurface({
     <>
       {renderMap({ attackableTargets: availableTargets, onTargetClick })}
       <div className={styles.mapVignette} aria-hidden="true" />
-      <div className={styles.roomLabel}>
-        <span>{location.name}</span>
-        <small>{location.area}</small>
+      <div
+        className={`${styles.roomLabel} ${navigationControls ? styles.roomLabelWithNavigation : ''}`}
+      >
+        {navigationControls && (
+          <nav aria-label="Session navigation">{navigationControls}</nav>
+        )}
+        <div className={styles.locationText}>
+          <span title={location.name}>{location.name}</span>
+          <small>{location.area}</small>
+        </div>
       </div>
       {pacingNotice && (
         <div className={styles.contextPrompt} data-phase="pacing">

@@ -1,12 +1,15 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  AnsweredSchema,
   ArrivedSchema,
   CastSchema,
+  ConcealmentRevealedSchema,
   ConcentrationEndedSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
   MovedSchema,
+  PersuadedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
   SightedSchema,
@@ -257,5 +260,95 @@ describe('the sighting row (perception stream, slice 1)', () => {
     expect(keys).not.toContain('afford');
     expect(keys).not.toContain('turn');
     expect(keys).not.toContain('roster');
+  });
+});
+
+// The front room goblin (rpg-project#458). The two social checks are scoped
+// to the ACTOR; the creature's ANSWER is not, and the difference is the whole
+// reason they are separate rows.
+describe('the social beats and the creature’s answer', () => {
+  function persuaded(actor: string): SessionEvent {
+    return create(EventSchema, {
+      kind: EventKind.PERSUADED,
+      body: {
+        case: 'persuaded',
+        value: create(PersuadedSchema, {
+          actor,
+          target: 'front-goblin',
+          dc: 10,
+          total: 13,
+          beaten: true,
+        }),
+      },
+    });
+  }
+
+  it('my own appeal re-reads my card and what I may still declare', () => {
+    const keys = refreshKeysFor(persuaded(VIEWER), VIEWER);
+    expect(keys).toContain('characterData');
+    expect(keys).toContain('afford');
+  });
+
+  it("somebody else's appeal costs me nothing to re-read", () => {
+    // Scoped to the actor, the way `moved` is. Their action was spent, not
+    // mine, and nothing about my own card or offers moved.
+    expect(refreshKeysFor(persuaded('someone-else'), VIEWER)).toEqual([]);
+  });
+
+  it('an appeal does not re-read the view — nobody stepped', () => {
+    // A social verb reaches exactly the people who could already see the
+    // actor, which is what made them the audience.
+    expect(refreshKeysFor(persuaded(VIEWER), VIEWER)).not.toContain('view');
+  });
+
+  it('the creature’s answer re-reads the view and offers for EVERYBODY', () => {
+    // NOT SCOPED TO THE ACTOR, and that is the point. An answer can move the
+    // creature — `flee` routes it away — and can teach a fact that flips a
+    // stance, and either changes what every player may do next and who they
+    // may do it to. A client that skipped `view` here would go on drawing a
+    // goblin that walked out of the room.
+    const answered = create(EventSchema, {
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: create(AnsweredSchema, {
+          creature: 'front-goblin',
+          beaten: false,
+          roll: 3,
+          of: 4,
+          entry: 1,
+          say: 'Boss! BOSS!',
+        }),
+      },
+    });
+
+    const mine = refreshKeysFor(answered, VIEWER);
+    expect(mine).toContain('view');
+    expect(mine).toContain('afford');
+    // The creature spent its own nothing; no player's sheet moved.
+    expect(mine).not.toContain('characterData');
+    // And it is the same answer for a bystander, because it is not about
+    // whose turn it was.
+    expect(refreshKeysFor(answered, 'someone-else')).toEqual(mine);
+  });
+
+  describe('concealment_revealed (rpg-api-protos#352, landed in the v0.1.207 bump)', () => {
+    it('re-reads the doors and the atlas — one secret, both patch surfaces', () => {
+      // CONCEALMENT_REVEALED supersedes BOTH doorRevealed and regionRevealed:
+      // one beat carries the hidden floor cells and props (an atlas patch) plus
+      // the member doors and their doorways (a doors-list patch). So this row
+      // is the reveal union, by the same deliberate re-verify path the two
+      // reveals above use rather than splicing the beat's own payload.
+      const revealed = create(EventSchema, {
+        kind: EventKind.CONCEALMENT_REVEALED,
+        body: {
+          case: 'concealmentRevealed',
+          value: create(ConcealmentRevealedSchema, {
+            concealment: 'vault',
+          }),
+        },
+      });
+      expect(refreshKeysFor(revealed, VIEWER)).toEqual(['doors', 'atlas']);
+    });
   });
 });

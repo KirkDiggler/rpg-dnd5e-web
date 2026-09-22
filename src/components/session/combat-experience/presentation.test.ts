@@ -1017,3 +1017,53 @@ describe('combat presentation settlement policy', () => {
     expect(selectVisibleStory(revealed)).toHaveLength(1);
   });
 });
+
+describe('stream-delivered spell attacks', () => {
+  it.each([true, false])(
+    'settles a local Guiding Bolt without an AttackResponse (hit=%s)',
+    (hit) => {
+      const fixture = createAttackAuthorityFixture({
+        hit,
+        attackRef: 'dnd5e:spells:guiding-bolt',
+        attackName: 'Guiding Bolt',
+      });
+      const state = reduceCombatPresentation(
+        emptyPresentation(config),
+        fixture.streamFact()
+      );
+      expect(state.pendingLocalKeys).toEqual([]);
+      expect(state.presentations[0]?.settlement).toBe('auto');
+      expect(state.presentations[0]?.locallyArmedResponse).toBe(false);
+      expect(requestCount(state)).toBe(1);
+      expect(releaseCount(state)).toBe(1);
+      expect(selectVisibleStory(state)).toHaveLength(1);
+      expect(JSON.stringify(selectVisibleStory(state))).toContain(
+        'Guiding Bolt'
+      );
+      const replay = reduceCombatPresentation(
+        state,
+        fixture.streamFact('catchup')
+      );
+      expect(replay.presentations).toHaveLength(1);
+      expect(selectVisibleStory(replay)).toEqual(selectVisibleStory(state));
+    }
+  );
+  it('settles after late roster authority without arming an unreachable release', () => {
+    const fixture = createAttackAuthorityFixture({
+      attackRef: 'dnd5e:spells:guiding-bolt',
+      attackName: 'Guiding Bolt',
+    });
+    const unresolved = reduceCombatPresentation(
+      emptyPresentation({ ...config, rollerRoles: {} }),
+      fixture.streamFact()
+    );
+    expect(unresolved.presentations[0]?.settlement).toBe('unresolved');
+    const resolved = reduceCombatPresentation(unresolved, {
+      type: 'configure',
+      ...config,
+    });
+    expect(resolved.pendingLocalKeys).toEqual([]);
+    expect(resolved.presentations[0]?.settlement).toBe('auto');
+    expect(selectVisibleStory(resolved)).toHaveLength(1);
+  });
+});

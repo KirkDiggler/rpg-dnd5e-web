@@ -26,6 +26,35 @@ export function OrganizedHudConcept() {
     ORGANIZED_HUD_PROFILES[0];
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
   const [crowdedInitiative, setCrowdedInitiative] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const [fullscreen, setFullscreen] = useState(
+    Boolean(document.fullscreenElement)
+  );
+  const [fullscreenError, setFullscreenError] = useState('');
+  const fullscreenSupported =
+    typeof document.documentElement.requestFullscreen === 'function';
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'RPG — HUD Preview';
+    const updateFullscreen = () =>
+      setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => {
+      document.title = previousTitle;
+      document.removeEventListener('fullscreenchange', updateFullscreen);
+    };
+  }, []);
+  const toggleFullscreen = async () => {
+    setFullscreenError('');
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      setFullscreenError(
+        'Full screen could not start or exit. You can keep using the preview in Chrome.'
+      );
+    }
+  };
   const [state, setState] = useState<CombatExperiencePresentationState>(EMPTY);
   const [intent, setIntent] = useState(
     'No intent sent — fixture-only walkthrough.'
@@ -177,7 +206,18 @@ export function OrganizedHudConcept() {
             >
               Crowded initiative
             </button>
+            <button
+              type="button"
+              disabled={!fullscreenSupported}
+              onClick={toggleFullscreen}
+            >
+              {fullscreen ? 'Exit full screen' : 'Full screen'}
+            </button>
           </div>
+          {!fullscreenSupported && (
+            <small>Full screen is not available in this browser.</small>
+          )}
+          {fullscreenError && <p role="alert">{fullscreenError}</p>}
           {!preview && (
             <a
               className="organizedHudPreviewLink"
@@ -202,10 +242,8 @@ export function OrganizedHudConcept() {
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,
-            quickDeclarationIds:
-              frame === 'phone'
-                ? profile.phoneQuickDeclarationIds
-                : profile.presentation.quickDeclarationIds,
+            // The same offers feed every frame; measured space owns overflow.
+            quickDeclarationIds: profile.presentation.quickDeclarationIds,
           }}
           viewerMember={fixture.viewerMember}
           viewerName={fixture.viewerName}
@@ -238,7 +276,10 @@ export function OrganizedHudConcept() {
             <SessionCombatMap
               attackableTargets={attackableTargets}
               onTargetClick={onTargetClick}
-              interactionEnabled={!state.armedDeclarationId}
+              touchPanEnabled
+              touchPinchEnabled
+              touchRotateEnabled
+              focusRequest={focusRequest}
             />
           )}
           onSelectDeclaration={selectDeclaration}
@@ -270,6 +311,7 @@ export function OrganizedHudConcept() {
             )
           }
           onLogModeChange={() => {}}
+          onCenterView={() => setFocusRequest((request) => request + 1)}
           onOpenEquipment={() =>
             setIntent(
               'Fixture-only equipment surface requested; no inventory action exists in this fixture.'

@@ -133,6 +133,8 @@ function compositionMarkerColor(
       return ERROR_STROKE;
     case 'error':
       return '#ea580c';
+    case 'not-placeable':
+      return '#c2410c';
     case 'missing-source':
       return '#64748b';
   }
@@ -146,6 +148,8 @@ function placementTooltip(
   switch (composition.status) {
     case 'ready':
       return composition.name;
+    case 'not-placeable':
+      return `Room snapshot · ${composition.name} · not placeable as a prop`;
     case 'loading':
       return `Loading composition · ${composition.id}`;
     case 'missing':

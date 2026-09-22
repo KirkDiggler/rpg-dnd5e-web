@@ -1,6 +1,7 @@
 import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
 import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import { stringifyScene } from '@/concepts/world-building/serialization';
 import type { WorldScene } from '@/concepts/world-building/types';
 import { create } from '@bufbuild/protobuf';
@@ -40,6 +41,42 @@ vi.mock('./AtlasPropModel', () => ({
     />
   ),
 }));
+// The canonical branch reaches the REAL shared World Building leaves;
+// these stubs keep the render tests WebGL-free while proving exact
+// poses through `WorldPropModel`'s own dispatch. userData carries the
+// props so assertions read the mounted nodes, not volatile call logs.
+vi.mock('@/components/hex-grid/PropModel', () => ({
+  PropModel: (props: Record<string, unknown>) => (
+    <group name="stub-legacy-prop" userData={props} />
+  ),
+}));
+vi.mock('@/components/hex-grid/WorldAssetModel', () => ({
+  WorldAssetModel: (props: Record<string, unknown>) => (
+    <group name="stub-world-asset" userData={props} />
+  ),
+}));
+vi.mock('@/components/session/useDungeonShellCatalog', () => ({
+  useDungeonShellCatalog: () => ({
+    status: 'ready',
+    catalog: {
+      profiles: {
+        crypt: {
+          floor: {
+            diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
+            sha256:
+              'ec84f155a32297c64e86b8c678955e25d8f8180023327e42c840dd086916b841',
+            worldUnitsPerRepeat: 6,
+          },
+        },
+      },
+    },
+  }),
+}));
+vi.mock('@/concepts/world-building/WorkspaceFloorUnderlay', () => ({
+  WorkspaceFloorSurface: (props: Record<string, unknown>) => (
+    <group name="stub-workspace-floor" userData={props} />
+  ),
+}));
 
 import { DungeonEnvironment } from './DungeonEnvironment';
 
@@ -69,7 +106,8 @@ function factsWithSources(sourceCount: number): DungeonLightingFacts {
 
 function sceneWith(
   lighting: DungeonLightingFacts,
-  props: SceneProp3D[] = []
+  props: SceneProp3D[] = [],
+  roomScene?: RoomScenePresentation
 ): Scene3D {
   return {
     exits: [],
@@ -79,8 +117,70 @@ function sceneWith(
     lighting,
     wallRuns: [],
     doorGaps: [],
+    ...(roomScene ? { roomScene } : {}),
   };
 }
+
+/** The one canonical room presentation the canonical-branch tests share:
+ * a raised grouped item, a supported lit decor, and a generated visual —
+ * the exact graph the plan's rich-source scenario names. */
+const roomPresentation: RoomScenePresentation = {
+  coordinateFrame: {
+    horizontalPlane: 'world-xz',
+    verticalAxis: 'world-y-up',
+    distanceUnit: 'world-scene-unit',
+    hexRadius: 1,
+    footprintFrame: 'owner-local-xz',
+  },
+  workspace: { hexRadius: 6, horizontalLimit: 12 },
+  scene: {
+    version: 1,
+    id: 'scene-1',
+    name: 'Workshop',
+    items: [
+      {
+        id: 'table',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:torture-table',
+        label: 'Table',
+        transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+        heightScale: 1.5,
+        parentId: 'furniture',
+      },
+      {
+        id: 'candles',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:candles',
+        label: 'Candles',
+        transform: { x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37 },
+        parentId: 'furniture',
+        supportId: 'table',
+        pointLight: {
+          enabled: true,
+          offset: { x: 0, y: 0.5, z: 0 },
+          color: '#ff9d52',
+          intensity: 1.1,
+          range: 2.6,
+        },
+      },
+      {
+        id: 'fort-wall',
+        kind: 'prop',
+        assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+        label: 'Fort wall',
+        transform: { x: 1.5, y: 0, z: -0.75, rotationY: -0.4 },
+      },
+    ],
+    groups: [
+      {
+        id: 'furniture',
+        kind: 'group',
+        label: 'Furniture',
+        transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+      },
+    ],
+  },
+};
 
 function pointLights(
   renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
@@ -406,5 +506,151 @@ describe('DungeonEnvironment', () => {
       />
     );
     expect(onLightingDiagnostics).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the canonical presentation once through the shared leaves and suppresses duplicated legacy sources', async () => {
+    const getComposition = vi.fn(async (worldId: string, id: string) =>
+      create(CompositionSchema, {
+        worldId,
+        id,
+        json: stringifyScene({
+          version: 1,
+          id: 'lit',
+          name: 'Lit',
+          groups: [],
+          items: [
+            {
+              id: 'part',
+              kind: 'prop',
+              assetRef: 'dnd5e:props:candles',
+              label: 'Candles',
+              transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+              pointLight: {
+                enabled: true,
+                offset: { x: 0, y: 1, z: 0 },
+                color: '#ffffff',
+                intensity: 1,
+                range: 3,
+              },
+            },
+          ],
+        }),
+      })
+    );
+    // The SAME room also arrives through the legacy atlas channel (the
+    // duplicated cell props). If the canonical branch resolved those
+    // sources too, the light count and this call record would both grow.
+    const duplicatedLegacyProp: SceneProp3D = {
+      ref: 'composition:props:lit',
+      id: 'placement-a',
+      position: { x: 0, y: 0, z: 0 },
+      facing: '',
+      offset: { x: 0, y: 0, z: 0 },
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment
+        scene={sceneWith(
+          factsWithSources(1),
+          [duplicatedLegacyProp],
+          roomPresentation
+        )}
+        focus={{ x: 0, z: 0 }}
+        hexSize={1}
+        compositionSource={{
+          worldId: 'world-current',
+          reader: {
+            getComposition,
+            listCompositions: vi.fn(),
+          } as unknown as CompositionReader,
+        }}
+      />
+    );
+
+    // NO legacy proxy leaves at all in the canonical branch: no shell
+    // floor/walls/perimeter, no duplicated atlas prop placements — even
+    // though the atlas itself still carries them.
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'environment-shell'
+      )
+    ).toHaveLength(0);
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'environment-prop'
+      )
+    ).toHaveLength(0);
+    expect(getComposition).not.toHaveBeenCalled();
+
+    // Every canonical item reaches its shared leaf exactly once, at the
+    // exact already-world-posed source pose — the supported lit decor
+    // rides its OWN transform, not the group's or support's pose again.
+    const legacyLeaves = renderer.scene
+      .findAll((node) => node.instance?.name === 'stub-legacy-prop')
+      .map(
+        (node) =>
+          (node.instance as unknown as { userData: Record<string, unknown> })
+            .userData
+      );
+    expect(legacyLeaves).toHaveLength(2);
+    expect(legacyLeaves[0]).toMatchObject({
+      position: [-2.25, 0, 1.3],
+      rotationY: 0.37,
+      heightScale: 1.5,
+    });
+    expect(legacyLeaves[1]).toMatchObject({
+      position: [-2.1, 1.2, 1.25],
+      rotationY: 0.37,
+      heightScale: 1,
+    });
+    const generatedLeaves = renderer.scene.findAll(
+      (node) => node.instance?.name === 'stub-world-asset'
+    );
+    expect(generatedLeaves).toHaveLength(1);
+    expect(
+      (
+        generatedLeaves[0]!.instance as unknown as {
+          userData: Record<string, unknown>;
+        }
+      ).userData
+    ).toMatchObject({
+      assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+      position: [1.5, 0, -0.75],
+      rotationY: -0.4,
+    });
+
+    // The full workspace Crypt floor, at the authoring radius
+    // (horizontalLimit + 1) and the exact profile the editor presents.
+    const floor = renderer.scene.find(
+      (node) => node.instance?.name === 'stub-workspace-floor'
+    );
+    expect(
+      (floor.instance as unknown as { userData: Record<string, unknown> })
+        .userData
+    ).toEqual({
+      radius: 13,
+      profile: {
+        diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
+        sha256:
+          'ec84f155a32297c64e86b8c678955e25d8f8180023327e42c840dd086916b841',
+        worldUnitsPerRepeat: 6,
+      },
+    });
+
+    // Canonical lights project exactly ONCE: item-local offset rotated by
+    // the item's own yaw, surface lift once, identity outer placement —
+    // [-2.1, 1.2 + 0.2 + 0.5, 1.25]. Same crypt ambient/directional and
+    // budget behavior as always.
+    const lights = pointLights(renderer);
+    expect(lights).toHaveLength(1);
+    const position = (
+      lights[0]!.instance as unknown as {
+        position: { toArray: () => number[] };
+      }
+    ).position.toArray();
+    expect(position[0]).toBeCloseTo(-2.1, 9);
+    expect(position[1]).toBeCloseTo(1.9, 9);
+    expect(position[2]).toBeCloseTo(1.25, 9);
+    expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.8);
+    expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.4);
   });
 });

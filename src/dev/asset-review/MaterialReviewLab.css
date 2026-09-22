@@ -1,0 +1,97 @@
+.material-review {
+  min-height: 100vh;
+  padding: 1.25rem;
+  background: #111827;
+  color: #e5e7eb;
+}
+.material-review header,
+.material-review footer {
+  max-width: 90rem;
+  margin: auto;
+}
+.material-review-notice {
+  border-left: 4px solid #eab308;
+  padding: 0.7rem;
+  background: #292615;
+}
+.material-review-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  max-width: 90rem;
+  margin: 1rem auto;
+}
+.material-review nav {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  max-height: 75vh;
+  overflow: auto;
+}
+.material-review button,
+.material-review select {
+  padding: 0.55rem;
+  border: 1px solid #4b5563;
+  border-radius: 0.3rem;
+  background: #1f2937;
+  color: inherit;
+  cursor: pointer;
+  max-width: 100%;
+}
+.material-review nav button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.material-review nav button[aria-pressed='true'] {
+  border-color: #38bdf8;
+  background: #16435b;
+}
+.material-review small {
+  display: block;
+  opacity: 0.75;
+}
+.material-review label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.6rem 0;
+}
+.material-review p,
+.material-review li {
+  overflow-wrap: anywhere;
+}
+.material-review details {
+  margin: 0.75rem 0;
+}
+.material-source-exceptions {
+  max-width: 90rem;
+  margin: 1rem auto;
+  padding: 0.8rem;
+  border: 1px solid #a16207;
+  overflow-wrap: anywhere;
+}
+.material-source-exceptions article {
+  border-top: 1px solid #4b5563;
+  margin-top: 0.8rem;
+}
+.material-review select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.material-review-canvas {
+  height: 30rem;
+  border: 1px solid #374151;
+}
+.material-review [role='alert'] {
+  color: #fca5a5;
+}
+@media (max-width: 720px) {
+  .material-review-layout {
+    grid-template-columns: 1fr;
+  }
+  .material-review nav {
+    max-height: 12rem;
+  }
+  .material-review-canvas {
+    height: 22rem;
+  }
+}

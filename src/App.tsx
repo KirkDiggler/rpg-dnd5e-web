@@ -12,6 +12,7 @@ import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
+import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
@@ -19,7 +20,7 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
-import { WorldBuildingConcept } from './concepts/world-building/WorldBuildingConcept';
+import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -327,12 +328,45 @@ function AppContent() {
     setCurrentView('character-sheet');
   };
 
+  // The level-up screen is its own view rather than a modal on the sheet: it
+  // holds its own state for one atomic call and depends on no draft, so it has
+  // nothing to share with the sheet but the character id.
+  const handleLevelUp = () => {
+    setCurrentView('level-up');
+  };
+
+  // Returning from a taken level remounts the sheet, so GetCharacter runs
+  // again and the sheet shows the levelled character rather than the cached
+  // one it was entered from.
+  const handleLeaveLevelUp = () => {
+    setCurrentView('character-sheet');
+  };
+
   const handleBackToHome = () => {
     setCurrentCharacterId(null);
     setLobbyCharacterId(null);
     setResumeEncounterId(null);
     setResumeLobbyId(null);
     setCurrentView('home');
+  };
+
+  /** Leaving the LIVE game/lobby for Home. Resume-after-refresh (#444)
+   * routes straight into the running encounter without ever touching
+   * Home's selection, so this is the only Back path that carries the
+   * authoritative seat character forward. It adopts that seat ONLY when
+   * Home has no explicit selection at all: an already selected character
+   * or draft is a real author/player choice and is never replaced. Other
+   * Back handlers keep clearing (a stale active-lobby seat must not leak
+   * into arbitrary returns). */
+  const handleLeaveGameToHome = () => {
+    if (!selectedId) {
+      const seatedCharacterId = resumedLobbyCharacter.characterId;
+      if (seatedCharacterId) {
+        setSelectedType('character');
+        setSelectedId(seatedCharacterId);
+      }
+    }
+    handleBackToHome();
   };
 
   const handleOpenAuthor = () => {
@@ -483,19 +517,25 @@ function AppContent() {
           <GameView
             characterId={lobbyCharacterId ?? resumedLobbyCharacter.characterId}
             playerId={playerId || 'test-player'}
-            onBack={handleBackToHome}
+            onBack={handleLeaveGameToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
             compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
-          <ConceptsView onBack={handleBackToHome} />
+          <ConceptsView
+            key={compositionIdentity}
+            onBack={handleBackToHome}
+            compositionSource={compositionSource}
+          />
         ) : currentView === 'world-builder' && compositionSource ? (
-          <WorldBuildingConcept
+          <WorldBuilderWorkspace
             key={compositionIdentity}
             onBack={handleBackToHome}
             compositionSource={compositionSource}
             onCompositionDeleted={invalidateCompositionResolutions}
+            characterId={selectedType === 'character' ? selectedId : null}
+            onPlay={handlePlayAuthored}
           />
         ) : currentView === 'author' ? (
           <AuthorView
@@ -550,6 +590,13 @@ function AppContent() {
           <CharacterSheet
             characterId={currentCharacterId}
             onBack={handleBackToHome}
+            onLevelUp={handleLevelUp}
+          />
+        ) : currentView === 'level-up' && currentCharacterId ? (
+          <LevelUpView
+            characterId={currentCharacterId}
+            onCancel={handleLeaveLevelUp}
+            onComplete={handleLeaveLevelUp}
           />
         ) : draft.loading ? (
           <div className="flex items-center justify-center h-screen">

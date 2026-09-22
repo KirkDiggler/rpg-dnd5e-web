@@ -1,0 +1,109 @@
+# SAMPLE 2 — inheritance, and the ONE thing that surprises people.
+#
+# What it exercises: a faction's shared `on:` table inherited by its members,
+# and a placement overriding ONE TRIGGER of it.
+#
+# THE RULE THIS EXISTS TO MAKE VISIBLE: `on:` is LAYERED, NEAREST KEY WINS
+# WHOLESALE. `goblin-2` writes its own `time` key, so the faction's ENTIRE
+# `time` list is REPLACED — it is not merged, and the faction's entries do not
+# survive underneath. `intimidated` is untouched on that creature, so it still
+# inherits the faction's two entries there.
+#
+# The cost of that rule is the point: overriding one key is visible in the file,
+# and an author never has to reason about what was added to what.
+#
+# `temper` is the other asymmetry: the faction has a MIX (dealt once per member
+# as it enters the world), and `goblin-2` names ONE WORD that wins outright —
+# the mix is not dealt for it.
+version: 4
+key: sample-inheritance
+play: { void: transparent, lighting: bright, standing: centre-covered }
+factions:
+  - id: goblins
+    # REQUIRED, and only because this faction is more than one creature AND the
+    # disposition below waits on a fact. A faction of many that must learn
+    # something has to say WHO learns it — "the faction knows what its mind
+    # knows". Without this the engine refuses:
+    #   dispositions[0].until: this until waits for a fact, and faction
+    #   "goblins" has 2 monsters and no mind … name a mind, or the faction
+    #   cannot learn
+    # A faction of ONE would not need it: its single member is its mind.
+    mind: goblin-1
+    temper: { coward: 2, soldier: 1, aggressive: 1 }
+    on:
+      intimidated:
+        - {
+            weight: 70,
+            say: 'Fine! The cellar door is behind the barrels.',
+            fact: goblin-cowed,
+          }
+        - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+      time:
+        - { when: { enemy: reach }, attack: enemy }
+        - { when: { enemy: seen }, toward: enemy }
+dispositions:
+  - {
+      between: [goblins, party],
+      stance: hostile,
+      until: { fact: goblin-cowed },
+    }
+room:
+  version: 3
+  id: room-1
+  name: Inheritance
+  coordinateFrame:
+    {
+      horizontalPlane: world-xz,
+      verticalAxis: world-y-up,
+      distanceUnit: world-scene-unit,
+      hexRadius: 1,
+      footprintFrame: owner-local-xz,
+    }
+  workspace: { hexRadius: 6, horizontalLimit: 12 }
+  scene:
+    version: 1
+    id: scene-1
+    name: Inheritance
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes:
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+        { q: 0, r: 1 },
+        { q: -1, r: 1 },
+        { q: -1, r: 0 },
+        { q: 0, r: -1 },
+        { q: 1, r: -1 },
+      ]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: 0, r: 0 }
+    monsters:
+      - {
+          id: goblin-1,
+          ref: 'dnd5e:monsters:goblin',
+          cell: { q: 2, r: 0 },
+          faction: goblins,
+        }
+      - {
+          id: goblin-2,
+          ref: 'dnd5e:monsters:goblin',
+          cell: { q: 1, r: -1 },
+          faction: goblins,
+        }
+    monsterBindings:
+      # Inherits BOTH of the faction's triggers AND its mix: no overrides at all.
+      goblin-1:
+        actions: ['dnd5e:weapons:scimitar']
+      # Overrides `time` WHOLESALE (the faction's two entries are gone) and names
+      # its own one-word temper (the faction's mix is not dealt for it).
+      # `intimidated` is still inherited untouched.
+      goblin-2:
+        on:
+          time:
+            - { when: { enemy: reach }, hold: {} }
+        temper: soldier

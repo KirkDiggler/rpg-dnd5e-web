@@ -82,6 +82,7 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { liveActionPresentation } from './combat-experience/liveActionPresentation';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import {
   reactionWindowDeclaration,
@@ -127,6 +128,7 @@ import {
   type SessionRefreshKey,
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
+import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
 import {
   type SessionEventDeliveryMetadata,
@@ -195,13 +197,28 @@ function SessionEncounterScope({
     refetch: refetchAtlas,
     applyReveal: applyAtlasReveal,
   } = useSessionAtlas(sessionId, member);
+  // WHAT THIS ROOM LOOKS LIKE, FETCHED BY KEY. The atlas names the
+  // dungeon the session was launched from; the authored file under that
+  // key is the room's appearance, and the World Building codec is the
+  // only thing that reads it (rpg-project#479). An empty key, or a
+  // dungeonspec dungeon, answers with no room and the legacy atlas
+  // route draws exactly what it drew before.
+  const {
+    presentation: roomScene,
+    loading: roomSceneLoading,
+    error: roomSceneError,
+  } = useDungeonScene(atlas?.dungeonKey ?? '');
   const {
     position: wherePosition,
     loading: whereLoading,
     error: whereError,
     refetch: refetchWhere,
   } = useSessionWhere(sessionId, member);
-  const { sightings, refetch: refetchView } = useSessionView(sessionId, member);
+  const {
+    sightings,
+    areas: sightAreas,
+    refetch: refetchView,
+  } = useSessionView(sessionId, member);
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
   const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
   const { search, loading: searching } = useSessionSearch();
@@ -238,6 +255,7 @@ function SessionEncounterScope({
   const { trade, loading: tradeLoading } = useSessionTrade();
   const { unpack, loading: unpacking } = useSessionUnpack();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -316,13 +334,49 @@ function SessionEncounterScope({
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
   );
-  const scene = useMemo(
-    () =>
-      atlas && layoutOutcome?.ok
-        ? buildScene3D(atlas, HEX_SIZE, layoutOutcome.layout)
-        : null,
-    [atlas, layoutOutcome]
-  );
+  // The ONE scene build, memoized by the atlas and the room it was
+  // handed. A build either succeeds whole or reports a named refusal;
+  // it never half-constructs. `scene` stays null whenever the build
+  // refused, so a scene this view could not build can never refresh
+  // `lastGoodSceneRef` below — the cached prior scene is never
+  // re-drawn as if it were the current one.
+  const sceneBuild = useMemo(() => {
+    if (!atlas || !layoutOutcome?.ok) return null;
+    // A dungeon whose room is still being read is not yet a scene.
+    // Building one now would draw the atlas's own legacy props for a
+    // frame and then replace them with the authored room — the wrong
+    // room, briefly, which reads as a rendering fault. The ordinary
+    // loading state covers the gap instead.
+    if (roomSceneLoading) return null;
+    try {
+      return {
+        ok: true as const,
+        scene: buildScene3D(
+          atlas,
+          HEX_SIZE,
+          layoutOutcome.layout,
+          roomScene ?? undefined
+        ),
+      };
+    } catch (error) {
+      return {
+        ok: false as const,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [atlas, layoutOutcome, roomScene, roomSceneLoading]);
+  const scene = sceneBuild?.ok ? sceneBuild.scene : null;
+  // An unreadable room is an integrity error, not a transient load: it
+  // surfaces as a visible scene-error outcome until a later read or
+  // build succeeds. A room this view could not read is the SAME kind of
+  // failure as a scene it could not build — named and visible, never a
+  // quietly legacy-looking room. "This dungeon has no authored room" is
+  // a different answer and never arrives here (`useDungeonScene`), so
+  // every dungeon without one keeps the ordinary refresh behavior
+  // below.
+  const scenePresentationError =
+    roomSceneError ??
+    (sceneBuild && !sceneBuild.ok ? sceneBuild.message : null);
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -475,8 +529,10 @@ function SessionEncounterScope({
   }, [roster]);
   const experienceClock =
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
-  const coherentDeclarations =
-    experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
+  const coherentDeclarations = useMemo(
+    () => (experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations),
+    [experienceClock, affordDeclarations]
+  );
   // WHO THE CANVAS RINGS WHILE THE FIGHT IS FROZEN. Read from the viewer's
   // OWN declarations and nowhere else: a member who was not offered the
   // window has nothing to answer and sees no ring, which is the same rule
@@ -1570,7 +1626,7 @@ function SessionEncounterScope({
       ),
     [ownedItems, visibleCharacterData?.equipped]
   );
-  const loading = atlasLoading || whereLoading;
+  const loading = atlasLoading || whereLoading || roomSceneLoading;
   const blockingError = atlasError ?? whereError;
   const privateStatus = characterData
     ? characterDataError
@@ -1627,6 +1683,22 @@ function SessionEncounterScope({
       />
     ) : null;
 
+  const actionPresentation = useMemo(
+    () =>
+      liveActionPresentation({
+        declarations: coherentDeclarations,
+        knownCantrips: ownerCharacter?.knownCantrips,
+        knownSpells: ownerCharacter?.knownSpells,
+        features: visibleCharacterData?.features,
+      }),
+    [
+      coherentDeclarations,
+      ownerCharacter?.knownCantrips,
+      ownerCharacter?.knownSpells,
+      visibleCharacterData?.features,
+    ]
+  );
+
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -1646,10 +1718,36 @@ function SessionEncounterScope({
         <div
           ref={encounterContentRef}
           data-testid="session-encounter-content"
-          style={{ position: 'absolute', inset: 0 }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            container: 'organized-hud / size',
+          }}
         >
           <CombatExperience
             layout="fill-parent"
+            actionPresentation={actionPresentation}
+            navigationControls={
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                Back
+              </Button>
+            }
+            sceneNotice={
+              <>
+                {walking && <span>Walking…</span>}
+                {moveError && !walking && (
+                  <span style={{ color: 'var(--color-error, #f87171)' }}>
+                    {moveError}
+                  </span>
+                )}
+                {doorNotice && <span>{doorNotice}</span>}
+                {searchNotice && <span>{searchNotice}</span>}
+                {holdingNotice && <span>{holdingNotice}</span>}
+                {vendorNotice && <span>{vendorNotice}</span>}
+                {unpackNotice && <span>{unpackNotice}</span>}
+              </>
+            }
+            onCenterView={() => setFocusRequest((value) => value + 1)}
             viewerMember={member}
             viewerName={characterName}
             viewerClassRefId={classRefId}
@@ -1689,69 +1787,117 @@ function SessionEncounterScope({
             localWorldDieSettledPresentationId={
               localWorldDieSettledPresentationId
             }
-            location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+            location={{
+              name:
+                snapshotScene?.roomScene?.scene.name ?? 'The Reference Tomb',
+              area: snapshotScene?.roomScene
+                ? 'Authored room'
+                : 'Current chamber',
+            }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
                     nothing until a declared faction is on the roster. */}
                 <FactionLegend roster={roster} />
-                <SessionCanvas
-                  // The dungeon's own starting facing, read from the ATLAS
-                  // and nowhere else (rpg-project#374: rpg-api reads it from
-                  // the atlas mirror only, and there is no second source
-                  // here either). Absent when the author stated none, and
-                  // absent entirely for a dungeon with no start — the wire
-                  // omits `start` in that case, because a zero-valued one
-                  // would claim the party arrives at the origin looking
-                  // nowhere.
-                  startFacing={atlas?.start?.facing || undefined}
-                  scene={lastGoodSceneRef.current!}
-                  hexSize={HEX_SIZE}
-                  compositionSource={compositionSource}
-                  characterId={member}
-                  characterName={characterName}
-                  classRefId={classRefId}
-                  raceRefId={raceRefId}
-                  localCustomization={ownerCharacter?.appearance}
-                  localIsDowned={localIsDowned}
-                  mainHandPresentation={mainHandResolution.presentation}
-                  offHandPresentation={offHandResolution.presentation}
-                  roster={roster}
-                  doors={doors}
-                  onDoorClick={runEnded === null ? handleDoorClick : undefined}
-                  onInteractClick={
-                    runEnded === null ? handleVendorInteract : undefined
-                  }
-                  myPosition={displayPosition ?? lastGoodPositionRef.current!}
-                  movements={moves.movements}
-                  onHexClick={runEnded === null ? handleGroundClick : undefined}
-                  onCancelSelection={combat.onCancelSelection}
-                  onEntityClick={runEnded === null ? onTargetClick : undefined}
-                  cellAimEnabled={
-                    runEnded === null ? combat.cellCastArmed : false
-                  }
-                  onMovementPainted={
-                    runEnded === null ? handleMovementPainted : undefined
-                  }
-                  otherMembers={revealedMembers}
-                  attackableTargets={
-                    runEnded === null ? [...attackableTargets] : []
-                  }
-                  reactionMover={runEnded === null ? reactionMover : undefined}
-                  pathIndex={lastGoodPathIndexRef.current}
-                  movementPreviewEnabled={
-                    experienceClock === ClockKind.WORLD ||
-                    (experienceClock === ClockKind.TURN &&
-                      combat.movementEnabled)
-                  }
-                  areaFootprint={
-                    runEnded === null ? combat.cellCastFootprint : undefined
-                  }
-                  turnLocked={turnLocked}
-                  movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
-                  presentationLayer={localWorldDieLayer}
-                />
+                {scenePresentationError ? (
+                  // THE REFUSED CANONICAL PRESENTATION IS AN INTEGRITY
+                  // ERROR, not a transient load. The map area says so by
+                  // name, and the cached prior scene is never drawn as if
+                  // the invalid current one were valid. Only unusable
+                  // scene interaction is disabled (the map and its
+                  // handlers are simply not mounted); game-rule
+                  // eligibility elsewhere is untouched.
+                  <div
+                    data-testid="scene-presentation-error"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 16,
+                    }}
+                  >
+                    <ErrorDisplay
+                      title="Can't draw this room"
+                      message={scenePresentationError}
+                    />
+                  </div>
+                ) : (
+                  <SessionCanvas
+                    touchPanEnabled
+                    touchPinchEnabled
+                    touchRotateEnabled
+                    focusRequest={focusRequest}
+                    // The dungeon's own starting facing, read from the ATLAS
+                    // and nowhere else (rpg-project#374: rpg-api reads it from
+                    // the atlas mirror only, and there is no second source
+                    // here either). Absent when the author stated none, and
+                    // absent entirely for a dungeon with no start — the wire
+                    // omits `start` in that case, because a zero-valued one
+                    // would claim the party arrives at the origin looking
+                    // nowhere.
+                    startFacing={atlas?.start?.facing || undefined}
+                    scene={lastGoodSceneRef.current!}
+                    hexSize={HEX_SIZE}
+                    compositionSource={compositionSource}
+                    characterId={member}
+                    characterName={characterName}
+                    classRefId={classRefId}
+                    raceRefId={raceRefId}
+                    localCustomization={ownerCharacter?.appearance}
+                    localIsDowned={localIsDowned}
+                    mainHandPresentation={mainHandResolution.presentation}
+                    offHandPresentation={offHandResolution.presentation}
+                    roster={roster}
+                    doors={doors}
+                    dungeonKey={atlas?.dungeonKey}
+                    onDoorClick={
+                      runEnded === null ? handleDoorClick : undefined
+                    }
+                    onInteractClick={
+                      runEnded === null ? handleVendorInteract : undefined
+                    }
+                    myPosition={displayPosition ?? lastGoodPositionRef.current!}
+                    movements={moves.movements}
+                    onHexClick={
+                      runEnded === null ? handleGroundClick : undefined
+                    }
+                    onCancelSelection={combat.onCancelSelection}
+                    onEntityClick={
+                      runEnded === null ? onTargetClick : undefined
+                    }
+                    cellAimEnabled={
+                      runEnded === null ? combat.cellCastArmed : false
+                    }
+                    onMovementPainted={
+                      runEnded === null ? handleMovementPainted : undefined
+                    }
+                    otherMembers={revealedMembers}
+                    attackableTargets={
+                      runEnded === null ? [...attackableTargets] : []
+                    }
+                    reactionMover={
+                      runEnded === null ? reactionMover : undefined
+                    }
+                    pathIndex={lastGoodPathIndexRef.current}
+                    movementPreviewEnabled={
+                      experienceClock === ClockKind.WORLD ||
+                      (experienceClock === ClockKind.TURN &&
+                        combat.movementEnabled)
+                    }
+                    areaFootprint={
+                      runEnded === null ? combat.cellCastFootprint : undefined
+                    }
+                    sightAreas={sightAreas}
+                    turnLocked={turnLocked}
+                    movementBudgetFeet={movementBudgetFeet(
+                      coherentDeclarations
+                    )}
+                    presentationLayer={localWorldDieLayer}
+                  />
+                )}
               </>
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
@@ -1797,33 +1943,6 @@ function SessionEncounterScope({
                 }
               : { diceWitnessRole: 'spectator' as const })}
           />
-
-          <div
-            style={{
-              position: 'absolute',
-              zIndex: 20,
-              top: 12,
-              left: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              Back
-            </Button>
-            {walking && <span>Walking…</span>}
-            {moveError && !walking && (
-              <span style={{ color: 'var(--color-error, #f87171)' }}>
-                {moveError}
-              </span>
-            )}
-            {doorNotice && <span>{doorNotice}</span>}
-            {searchNotice && <span>{searchNotice}</span>}
-            {holdingNotice && <span>{holdingNotice}</span>}
-            {vendorNotice && <span>{vendorNotice}</span>}
-            {unpackNotice && <span>{unpackNotice}</span>}
-          </div>
 
           <div
             style={{
@@ -1891,6 +2010,22 @@ function SessionEncounterScope({
           />
         )}
       </div>
+    );
+  } else if (scenePresentationError) {
+    // FIRST-LOAD REFUSAL: the atlas arrived with an invalid nonempty
+    // presentation and no prior scene was ever drawn. The refusal gets
+    // the same visible named treatment as a layout refusal — never a
+    // silent "nothing to draw" and never a legacy fallback.
+    content = (
+      <CenteredCard>
+        <ErrorDisplay
+          title="Can't draw this room"
+          message={scenePresentationError}
+        />
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          Back
+        </Button>
+      </CenteredCard>
     );
   } else if (loading) {
     content = <LoadingOverlay visible text="Loading the tomb…" />;

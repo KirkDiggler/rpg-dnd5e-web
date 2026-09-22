@@ -8,15 +8,18 @@ import {
   generateBatchId,
   mergeCatalogWithReview,
   parseAssetReviewCatalog,
+  performanceAdvisories,
   recordPreviewLoad,
   selectPaletteAppearance,
   serializeReadyProviderBatch,
   serializeReviewProgress,
   setBatchId,
+  stableSourceKey,
   transitionDecision,
   updateProviderFields,
   validateReady,
   visualRef,
+  type AssetReviewAuthoredSource,
   type AssetReviewBatch,
   type AssetReviewCandidate,
   type AssetReviewCatalog,
@@ -166,7 +169,7 @@ describe('parseAssetReviewCatalog', () => {
             source: {
               ...validCandidate.source,
               extra: 'no',
-            } as AssetReviewCandidate['source'],
+            } as unknown as AssetReviewCandidate['source'],
           }),
         ])
       )
@@ -571,7 +574,6 @@ describe('validateReady', () => {
       { calibration: { fineOffsetMeters: [0, 0.11, 0] } },
     ],
     ['dimensionsMeters', { dimensionsMeters: [0, 2, 1] }],
-    ['dimensionsMeters', { dimensionsMeters: [1, 27, 1] }],
     ['loadedSuccessfully', { loadedSuccessfully: false }],
     [
       'supportsDecoration',
@@ -584,7 +586,7 @@ describe('validateReady', () => {
     }
   );
 
-  it('applies the shared 0.75 scale at the 20-metre bounds limit', () => {
+  it('reports the provisional 20-metre target without blocking Ready', () => {
     expect(
       validateReady(
         entry({
@@ -600,7 +602,17 @@ describe('validateReady', () => {
           dimensionsMeters: [20 / 0.75 + 0.01, 1, 1],
         })
       )
-    ).toHaveProperty('dimensionsMeters');
+    ).toEqual({});
+    expect(
+      performanceAdvisories(
+        entry({ loadedSuccessfully: true, dimensionsMeters: [40, 3, 2] })
+      )
+    ).toHaveLength(1);
+    expect(
+      performanceAdvisories(
+        entry({ loadedSuccessfully: true, dimensionsMeters: [20 / 0.75, 1, 1] })
+      )
+    ).toEqual([]);
   });
 });
 
@@ -638,8 +650,19 @@ describe('catalog merge', () => {
     });
   });
 
-  it('returns changed hashes as Undecided and reports the old source as stale', () => {
+  it('carries human metadata to changed hashes without load/Ready authority and reports the old source as stale', () => {
+    // Design (authored-glb intake, section 3): changed bytes keep useful human
+    // metadata but never reuse successful-load/Ready authority.
     const first = mergeCatalogWithReview(catalog()).batch;
+    const reviewed = transitionDecision(
+      {
+        ...updateProviderFields(first.entries[0]!, {
+          notes: 'Approved silhouette',
+        }),
+        loadedSuccessfully: true,
+      },
+      'ready'
+    );
     const changedHash = 'b'.repeat(64);
     const changed = candidate({
       source: { glbSha256: changedHash },
@@ -648,15 +671,20 @@ describe('catalog merge', () => {
 
     const result = mergeCatalogWithReview(catalog([changed]), {
       ...first,
-      entries: [transitionDecision(first.entries[0]!, 'skip')],
+      entries: [reviewed],
     });
 
-    expect(result.batch.entries[0]?.decision).toBe('undecided');
     expect(result.staleSourceKeys).toHaveLength(1);
     expect(result.staleSourceKeys[0]).toContain(SOURCE_HASH);
     expect(result.staleSourceKeys[0]).toContain(
       'SourceFiles/DarkFortress/FBX/SM_Prop_Brazier_01.fbx'
     );
+    expect(result.batch.entries[0]).toMatchObject({
+      decision: 'keep',
+      loadedSuccessfully: false,
+      notes: 'Approved silhouette',
+      displayName: 'Brazier 01',
+    });
   });
 
   it('reports removed imported entries without silently inserting them', () => {
@@ -1372,5 +1400,381 @@ describe('palette-aware schema v2', () => {
     ).toBe(
       'dark-fortress-world-assets-20260910-123e4567-e89b-12d3-a456-426614174000'
     );
+  });
+});
+
+describe('schema-v3 authored GLB contract', () => {
+  const FLOOR_HASH = 'f'.repeat(64);
+  const DOOR_HASH = 'd'.repeat(64);
+
+  function authoredCandidate(
+    overrides: CandidateOverrides & {
+      glbSha256?: string;
+      sourcePath?: string;
+      captureSha256?: string;
+    } = {}
+  ): AssetReviewCandidate {
+    const {
+      glbSha256 = FLOOR_HASH,
+      sourcePath = 'floor-tile.glb',
+      captureSha256 = 'c'.repeat(64),
+      ...rest
+    } = overrides;
+    const name = sourcePath.split('/').at(-1)!.slice(0, -4);
+    return {
+      url: `/models/synty/asset-review/${glbSha256.slice(0, 12)}-${name}.glb`,
+      sourceFamily: 'floor',
+      suggestedCategory: 'env',
+      suggestedDisplayName: 'Floor Tile',
+      browsingFamily: 'floor',
+      referencePack: 'authored-trial',
+      refSuffix: 'floor_tile',
+      readyEligible: true,
+      reviewStatus: 'authored' as const,
+      reasons: [],
+      ...rest,
+      source: {
+        kind: 'authored-glb',
+        packSlug: 'authored-trial',
+        packVersion: 'v1',
+        sourcePath,
+        glbSha256,
+        capture: {
+          path: `captures/${sourcePath.slice(0, -4)}.receipt.json`,
+          sha256: captureSha256,
+        },
+      },
+      dimensionsMeters: [...(rest.dimensionsMeters ?? [2, 0.25, 2])] as [
+        number,
+        number,
+        number,
+      ],
+    };
+  }
+
+  function authoredCatalog(
+    candidates: AssetReviewCandidate[] = [authoredCandidate()]
+  ): AssetReviewCatalog {
+    return { schemaVersion: 3, candidates };
+  }
+
+  function doorCandidate(): AssetReviewCandidate {
+    return authoredCandidate({
+      glbSha256: DOOR_HASH,
+      sourcePath: 'doors/double-door.glb',
+      suggestedDisplayName: 'Double Door',
+      refSuffix: 'double_door',
+      browsingFamily: 'door',
+      sourceFamily: 'door',
+    });
+  }
+
+  it('parses exact schema-v3 authored source keys and keeps capture identity', () => {
+    const value = authoredCatalog();
+    expect(parseAssetReviewCatalog(value)).toEqual(value);
+    expect(stableSourceKey(value.candidates[0]!.source)).toBe(
+      `authored-glb:authored-trial@v1:floor-tile.glb#${FLOOR_HASH}`
+    );
+  });
+
+  it('accepts the namespaced model URLs emitted by authored preparation', () => {
+    const value = authoredCatalog([
+      authoredCandidate({
+        url: `/models/synty/asset-review/authored-trial/${FLOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+      }),
+    ]);
+    expect(parseAssetReviewCatalog(value)).toEqual(value);
+  });
+
+  it.each([
+    '../',
+    '%2e%2e/',
+    'authored-trial%2f/',
+    'authored-trial//',
+    'authored-trial/./',
+  ])('rejects unsafe authored model namespace %s', (namespace) => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          authoredCandidate({
+            url: `/models/synty/asset-review/${namespace}${FLOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/safe content-addressed/i);
+  });
+
+  it('rejects a namespaced URL whose hash differs from the authored source', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          authoredCandidate({
+            url: `/models/synty/asset-review/authored-trial/${DOOR_HASH.slice(0, 12)}-floor-tile.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/matching its source hash/i);
+  });
+
+  it('keeps the legacy catalogue model URL boundary unchanged', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        catalog([
+          candidate({
+            url: `/models/synty/asset-review/authored-trial/${SOURCE_HASH.slice(0, 12)}-SM_Prop_Brazier_01.glb`,
+          }),
+        ])
+      )
+    ).toThrow(/safe content-addressed/i);
+  });
+
+  it('rejects v3 sources that impersonate the converter contract or drop fields', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          {
+            ...authoredCandidate(),
+            source: {
+              ...authoredCandidate().source,
+              sourcePath: 'SourceFiles/DarkFortress/FBX/Fake.fbx',
+            },
+          } as unknown as AssetReviewCandidate,
+        ])
+      )
+    ).toThrow(/sourcePath must be a normalized relative POSIX \.glb path/i);
+    const missingCapture = withoutKey(
+      authoredCandidate().source as unknown as Record<string, unknown>,
+      'capture'
+    );
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          {
+            ...authoredCandidate(),
+            source: missingCapture,
+          } as unknown as AssetReviewCandidate,
+        ])
+      )
+    ).toThrow(/candidate\[0\]\.source.*keys must be exactly/i);
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          {
+            ...authoredCandidate(),
+            source: {
+              ...authoredCandidate().source,
+              kind: 'converted-fbx',
+            } as unknown as AssetReviewCandidate['source'],
+          },
+        ])
+      )
+    ).toThrow(/kind must be "authored-glb"/i);
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          {
+            ...authoredCandidate(),
+            source: {
+              packSlug: 'authored-trial',
+              packVersion: 'v1',
+              sourcePath: 'floor-tile.glb',
+              glbSha256: FLOOR_HASH,
+            } as unknown as AssetReviewCandidate['source'],
+          },
+        ])
+      )
+    ).toThrow(/keys must be exactly/i);
+  });
+
+  it('rejects v3 candidates that are not authored status and enforces reason invariants', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          {
+            ...authoredCandidate(),
+            reviewStatus: 'trusted',
+          } as AssetReviewCandidate,
+        ])
+      )
+    ).toThrow(
+      /candidate\[0\]\.reviewStatus must be a supported review status/i
+    );
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          { ...authoredCandidate(), readyEligible: true, reasons: ['broken'] },
+        ])
+      )
+    ).toThrow(/eligible candidates must not include blocking reasons/i);
+    expect(() =>
+      parseAssetReviewCatalog(
+        authoredCatalog([
+          { ...authoredCandidate(), readyEligible: false, reasons: [] },
+        ])
+      )
+    ).toThrow(/ineligible candidates must include a blocking reason/i);
+  });
+
+  it('rejects authored sources inside schema-v1 catalogues and converted sources inside v3', () => {
+    expect(() =>
+      parseAssetReviewCatalog({
+        schemaVersion: 1,
+        candidates: [{ ...authoredCandidate() }],
+      } as unknown as AssetReviewCatalog)
+    ).toThrow(/source.*keys must be exactly/i);
+    expect(() =>
+      parseAssetReviewCatalog({
+        schemaVersion: 3,
+        candidates: [candidate()],
+      } as unknown as AssetReviewCatalog)
+    ).toThrow(/source.*keys must be exactly/i);
+  });
+
+  it('gates authored Ready on eligibility, load success, and the usual provider checks', () => {
+    const blocked = authoredCandidate({
+      readyEligible: false,
+      reasons: ['capture receipt hash mismatch'],
+    });
+    const blockedEntry = mergeCatalogWithReview(authoredCatalog([blocked]))
+      .batch.entries[0]!;
+    expect(blockedEntry.reviewStatus).toBe('authored');
+    expect(validateReady(blockedEntry).readyEligible).toBe(
+      'Source is not eligible for Ready'
+    );
+    expect(() => transitionDecision(blockedEntry, 'ready')).toThrow(
+      /Cannot mark Ready/i
+    );
+
+    const entry = mergeCatalogWithReview(authoredCatalog()).batch.entries[0]!;
+    expect(validateReady(entry).loadedSuccessfully).toBe(
+      'A successful model load is required'
+    );
+    const loaded = transitionDecision(
+      { ...entry, loadedSuccessfully: true },
+      'ready'
+    );
+    expect(loaded.decision).toBe('ready');
+  });
+
+  it('round-trips schema-v3 progress and Ready exports without URLs or palette fields', () => {
+    const batch = setBatchId(
+      mergeCatalogWithReview(
+        authoredCatalog([authoredCandidate(), doorCandidate()])
+      ).batch,
+      'authored-trial-1'
+    );
+    const readyDoor = transitionDecision(
+      {
+        ...batch.entries.find(
+          (entry) => entry.source.sourcePath === 'doors/double-door.glb'
+        )!,
+        loadedSuccessfully: true,
+        tags: ['door'],
+      },
+      'ready'
+    );
+    const withReady = {
+      ...batch,
+      entries: batch.entries.map((entry) =>
+        entry.source.sourcePath === 'doors/double-door.glb' ? readyDoor : entry
+      ),
+    };
+
+    const progressText = serializeReviewProgress(withReady);
+    const progress = JSON.parse(progressText);
+    expect(progress.schemaVersion).toBe(3);
+    expect(JSON.stringify(progress)).not.toMatch(
+      /"url"|paletteSelection|paletteAlternatives/
+    );
+    expect(
+      progress.entries.find(
+        (entry: { source: { sourcePath: string } }) =>
+          entry.source.sourcePath === 'doors/double-door.glb'
+      ).source.capture
+    ).toEqual({
+      path: 'captures/doors/double-door.receipt.json',
+      sha256: 'c'.repeat(64),
+    });
+
+    const merged = mergeCatalogWithReview(
+      authoredCatalog([authoredCandidate(), doorCandidate()]),
+      progress
+    );
+    const mergedDoor = merged.batch.entries.find(
+      (entry) => entry.source.sourcePath === 'doors/double-door.glb'
+    )!;
+    const mergedFloor = merged.batch.entries.find(
+      (entry) => entry.source.sourcePath === 'floor-tile.glb'
+    )!;
+    expect(mergedDoor).toMatchObject({
+      decision: 'ready',
+      loadedSuccessfully: true,
+      tags: ['door'],
+    });
+    expect(mergedFloor.decision).toBe('undecided');
+
+    const providerText = serializeReadyProviderBatch(merged.batch);
+    const provider = JSON.parse(providerText);
+    expect(provider.schemaVersion).toBe(3);
+    expect(provider.entries).toHaveLength(1);
+    expect(provider.entries[0].source).toMatchObject({
+      kind: 'authored-glb',
+      packSlug: 'authored-trial',
+      packVersion: 'v1',
+      sourcePath: 'doors/double-door.glb',
+      glbSha256: DOOR_HASH,
+      capture: {
+        path: 'captures/doors/double-door.receipt.json',
+        sha256: 'c'.repeat(64),
+      },
+    });
+    expect(providerText).not.toMatch(/"url"|paletteSelection|localhost|blob:/i);
+    expect(provider.entries[0]).not.toHaveProperty('decision');
+  });
+
+  it('keeps v1 drafts from cross-kind imports stale instead of copying them into v3', () => {
+    const legacy = mergeCatalogWithReview(catalog()).batch;
+    const result = mergeCatalogWithReview(
+      authoredCatalog([authoredCandidate(), doorCandidate()]),
+      legacy
+    );
+    expect(
+      result.batch.entries.every((entry) => entry.decision === 'undecided')
+    ).toBe(true);
+    expect(result.staleSourceKeys).toHaveLength(1);
+    expect(result.staleSourceKeys[0]).toMatch(/^converted-fbx:/);
+  });
+
+  it('carries human metadata across a changed authored GLB hash without Ready authority', () => {
+    const first = mergeCatalogWithReview(authoredCatalog()).batch;
+    const reviewed = transitionDecision(
+      {
+        ...updateProviderFields(first.entries[0]!, {
+          notes: 'Tile reviewed earlier',
+        }),
+        loadedSuccessfully: true,
+      },
+      'ready'
+    );
+    const changed = authoredCandidate({
+      glbSha256: 'e'.repeat(64),
+      captureSha256: '9'.repeat(64),
+    });
+    const result = mergeCatalogWithReview(authoredCatalog([changed]), {
+      ...first,
+      entries: [reviewed],
+    });
+    expect(result.batch.entries[0]).toMatchObject({
+      decision: 'keep',
+      loadedSuccessfully: false,
+      displayName: 'Floor Tile',
+    });
+    expect(result.batch.entries[0]!.source.glbSha256).toBe('e'.repeat(64));
+    expect(
+      (result.batch.entries[0]!.source as AssetReviewAuthoredSource).capture
+        .sha256
+    ).toBe('9'.repeat(64));
+    expect(result.staleSourceKeys).toHaveLength(1);
+    expect(result.staleSourceKeys[0]).toContain(FLOOR_HASH);
   });
 });

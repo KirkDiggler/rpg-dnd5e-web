@@ -1,3 +1,4 @@
+import type { RoomScenePresentation } from '@/concepts/world-building/roomDraft';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
@@ -49,7 +50,10 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { CharacterDataSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  CharacterDataSchema,
+  FeatureViewSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -80,6 +84,11 @@ const hoisted = vi.hoisted(() => ({
     refetch: vi.fn(),
     applyReveal: vi.fn(),
   },
+  dungeonSceneResult: {
+    presentation: null as unknown,
+    loading: false,
+    error: null as string | null,
+  },
   whereResult: {
     position: null as unknown,
     loading: true,
@@ -90,7 +99,11 @@ const hoisted = vi.hoisted(() => ({
   getCharacterFn: vi.fn(),
   getCharacterHookFn: vi.fn(),
   characterResult: {
-    data: null as { appearance?: { hair?: HairCustomization } } | null,
+    data: null as {
+      appearance?: { hair?: HairCustomization };
+      knownCantrips?: string[];
+      knownSpells?: string[];
+    } | null,
     loading: false,
     error: null as Error | null,
     refetch: vi.fn(),
@@ -130,6 +143,10 @@ vi.mock('./SessionCanvas', () => ({
 
 vi.mock('../../api/useSessionAtlas', () => ({
   useSessionAtlas: () => hoisted.atlasResult,
+}));
+
+vi.mock('./useDungeonScene', () => ({
+  useDungeonScene: () => hoisted.dungeonSceneResult,
 }));
 
 vi.mock('../../api/useSessionWhere', () => ({
@@ -195,6 +212,60 @@ function pointyAtlas(overrides: Record<string, unknown> = {}) {
     props: [],
     regions: [],
     ...overrides,
+  };
+}
+
+/** The authored room `useDungeonScene` reads out of the file the
+ * session's dungeon key names. */
+function authoredRoom(): RoomScenePresentation {
+  return {
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+        {
+          id: 'candles',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:candles',
+          label: 'Candles',
+          transform: { x: -2.1, y: 1.2, z: 1.25, rotationY: 0.37 },
+          supportId: 'table',
+          pointLight: {
+            enabled: true,
+            offset: { x: 0, y: 0.5, z: 0 },
+            color: '#ff9d52',
+            intensity: 1.1,
+            range: 2.6,
+          },
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
   };
 }
 
@@ -503,6 +574,11 @@ beforeEach(() => {
     error: null,
   });
   hoisted.atlasResult.refetch.mockReset();
+  Object.assign(hoisted.dungeonSceneResult, {
+    presentation: null,
+    loading: false,
+    error: null,
+  });
   Object.assign(hoisted.whereResult, {
     position: null,
     loading: true,
@@ -648,6 +724,179 @@ describe('SessionEncounterView production combat integration', () => {
   it('keeps loading only until the public atlas and position land', () => {
     renderView();
     screen.getByText(/loading the tomb/i);
+  });
+
+  it('keeps overflow measurement attached across unrelated parent renders', async () => {
+    readyTurn();
+    const view = renderView();
+    await screen.findByRole('group', { name: 'Quick actions' });
+    await screen.findByRole('button', { name: 'Equipment' });
+    const listen = vi.spyOn(window, 'addEventListener');
+    try {
+      for (let i = 0; i < 2; i++) {
+        view.rerender(
+          <SessionEncounterView
+            sessionId="enc-1"
+            characterId="char-1"
+            playerId="player-1"
+            onBack={() => {}}
+          />
+        );
+      }
+      expect(
+        listen.mock.calls.filter(([event]) => event === 'resize')
+      ).toHaveLength(0);
+    } finally {
+      listen.mockRestore();
+    }
+  });
+
+  it('organizes live declarations without turning fixture spell hints into rules', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: [],
+      knownSpells: ['dnd5e:spells:thunderwave', 'cantrip-looking-ref'],
+    };
+    const spell = cellCastDeclaration('opaque.cast.1');
+    const otherSpell = create(DeclarationSchema, {
+      ...cellCastDeclaration('opaque.cast.2'),
+      spell: create(SpellRefSchema, {
+        ref: 'cantrip-looking-ref',
+        name: 'Free-looking spell',
+      }),
+    });
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      spell,
+      otherSpell,
+      endTurnDeclaration(),
+    ]);
+    renderView();
+    const quick = await screen.findByRole('group', { name: 'Quick actions' });
+    expect(
+      within(quick).getByRole('button', { name: /longsword/i })
+    ).toBeTruthy();
+    expect(within(quick).getByRole('button', { name: /move/i })).toBeTruthy();
+    expect(
+      within(quick).queryByRole('button', { name: /thunderwave|free-looking/i })
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Spells 2/ }));
+    const spells = screen.getByRole('group', { name: 'Spells offers' });
+    fireEvent.click(
+      within(spells).getByRole('button', { name: /thunderwave/i })
+    );
+    expect(screen.getByText('Pick a cell to aim toward')).toBeTruthy();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    await act(async () =>
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 })
+    );
+    expect(hoisted.castFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        declarationId: 'opaque.cast.1',
+        cell: { x: 1, y: 0 },
+      })
+    );
+  });
+
+  it('keeps owned cantrips and features visible when their current offers are unavailable', async () => {
+    hoisted.characterResult.data = {
+      knownCantrips: ['dnd5e:spells:vicious-mockery'],
+      knownSpells: [],
+    };
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        features: [
+          create(FeatureViewSchema, {
+            name: 'Bardic Inspiration',
+            ref: {
+              module: 'dnd5e',
+              type: 'features',
+              id: 'bardic_inspiration',
+            },
+          }),
+        ],
+      }),
+    });
+    readyTurn([
+      attackDeclaration(),
+      moveDeclaration(),
+      endTurnDeclaration(),
+      create(DeclarationSchema, {
+        id: 'cantrip',
+        verb: Verb.CAST,
+        spell: { ref: 'dnd5e:spells:vicious-mockery', name: 'Vicious Mockery' },
+        available: false,
+        why: { text: 'no target in reach' },
+      }),
+      create(DeclarationSchema, {
+        id: 'inspiration',
+        verb: Verb.ACTIVATE,
+        ability: {
+          ref: 'dnd5e:features:bardic_inspiration',
+          name: 'Bardic Inspiration',
+        },
+        available: false,
+        why: { text: 'no ally within reach' },
+      }),
+    ]);
+    renderView();
+    const quick = await screen.findByRole('group', { name: 'Quick actions' });
+    expect(
+      within(quick)
+        .getByRole('button', { name: /Vicious Mockery/ })
+        .hasAttribute('disabled')
+    ).toBe(true);
+    const inspiration = within(quick).getByRole('button', {
+      name: /Bardic Inspiration/,
+    });
+    expect(inspiration.hasAttribute('disabled')).toBe(true);
+    expect(inspiration.getAttribute('aria-label')).toContain(
+      'no ally within reach'
+    );
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('enables the accepted touch camera and centers without losing a live armed attack', async () => {
+    readyTurn();
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    const before = hoisted.lastCanvasProps.current?.focusRequest ?? 0;
+    fireEvent.click(screen.getByRole('button', { name: 'Center on me' }));
+    expect(hoisted.lastCanvasProps.current).toMatchObject({
+      touchPanEnabled: true,
+      touchPinchEnabled: true,
+      touchRotateEnabled: true,
+      focusRequest: before + 1,
+      attackableTargets: ['skeleton-1'],
+    });
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    await act(async () =>
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1')
+    );
+    expect(hoisted.attackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        declarationId: 'v1.attack.longsword',
+        target: 'skeleton-1',
+      })
+    );
+  });
+
+  it('keeps navigation in the HUD and opens the real equipment surface', async () => {
+    readyTurn();
+    const onBack = vi.fn();
+    renderView({ onBack });
+    const navigation = await screen.findByRole('navigation', {
+      name: 'Session navigation',
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /^Equipment$/ }));
+    const equipment = await screen.findByRole('region', {
+      name: /^Equipment —/,
+    });
+    expect(within(equipment).getByText(/1d8 slashing/)).toBeTruthy();
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Back' }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(hoisted.equipItemFn).not.toHaveBeenCalled();
   });
 
   it('explicitly opts the production portal into the fill-parent combat layout', async () => {
@@ -1044,6 +1293,131 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
+  /** THE ROOM ARRIVES BY KEY (rpg-project#479). The atlas names the
+   * dungeon; `useDungeonScene` reads the authored file and hands back
+   * the room, no room, or a named refusal. The view draws the room on
+   * the shared scene path, waits rather than flashing the legacy one,
+   * and never turns a refusal into a quietly legacy-looking room. */
+  describe('the authored room at the caller boundary', () => {
+    const rerenderView = (rerender: (ui: React.ReactNode) => void) =>
+      rerender(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={() => {}}
+        />
+      );
+
+    it('draws the room the key named, and names the place after it', async () => {
+      const room = authoredRoom();
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.presentation = room;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const first = hoisted.lastCanvasProps.current?.scene;
+      expect(screen.getByText('Workshop', { exact: true })).toBeTruthy();
+      expect(
+        screen.queryByText('The Reference Tomb', { exact: true })
+      ).toBeNull();
+      expect(first?.roomScene).toBe(room);
+
+      // ONE build per atlas/room identity: an unrelated re-render keeps
+      // the same memoized scene object.
+      rerenderView(rerender);
+      expect(hoisted.lastCanvasProps.current?.scene).toBe(first);
+    });
+
+    it('draws the legacy atlas room when the dungeon has no authored room', async () => {
+      readyScene();
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(hoisted.lastCanvasProps.current?.scene?.roomScene).toBeUndefined();
+      expect(
+        screen.getByText('The Reference Tomb', { exact: true })
+      ).toBeTruthy();
+    });
+
+    it('waits for the room rather than drawing the legacy one first', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.loading = true;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      const { rerender } = renderView();
+      // No canvas yet: the atlas alone would have drawn the duplicated
+      // legacy props for a frame, which is the wrong room.
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+
+      hoisted.dungeonSceneResult.loading = false;
+      hoisted.dungeonSceneResult.presentation = authoredRoom();
+      rerenderView(rerender);
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(
+        hoisted.lastCanvasProps.current?.scene?.roomScene
+      ).not.toBeUndefined();
+    });
+
+    it('refuses a room it could not read instead of redrawing the cached scene', async () => {
+      readyScene();
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const propsBefore = hoisted.lastCanvasProps.current;
+
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.dungeonSceneResult.error =
+        'Could not read the room authored under “room-workshop”: Unsupported single-room field: walls.';
+      rerenderView(rerender);
+
+      // The refusal is a visible, named scene-error outcome in the map
+      // area — while the run's dock stays mounted (game-rule eligibility
+      // untouched, only unusable scene interaction gone).
+      expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
+      expect(screen.getByText("Can't draw this room")).toBeTruthy();
+      expect(screen.getByText(/Unsupported single-room field/i)).toBeTruthy();
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+      // The cached prior scene was never re-drawn as if the unreadable
+      // room were the one on screen.
+      expect(hoisted.lastCanvasProps.current).toBe(propsBefore);
+    });
+
+    it('refuses an unreadable room on first load, never falling back to legacy', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
+      hoisted.atlasResult.loading = false;
+      hoisted.dungeonSceneResult.error =
+        'Could not load the dungeon “room-workshop” this session is playing: Unavailable';
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      renderView();
+
+      expect(await screen.findByText("Can't draw this room")).toBeTruthy();
+      expect(screen.queryByTestId('session-canvas')).toBeNull();
+      expect(screen.getByRole('button', { name: /back/i })).toBeTruthy();
+    });
+
+    it('keeps ordinary refresh behavior when a later read answers with a room', async () => {
+      readyScene();
+      const { rerender } = renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      hoisted.dungeonSceneResult.error = 'Could not read the room.';
+      rerenderView(rerender);
+      expect(screen.getByTestId('scene-presentation-error')).toBeTruthy();
+
+      hoisted.dungeonSceneResult.error = null;
+      hoisted.dungeonSceneResult.presentation = authoredRoom();
+      rerenderView(rerender);
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(screen.queryByTestId('scene-presentation-error')).toBeNull();
+      expect(
+        hoisted.lastCanvasProps.current?.scene?.roomScene
+      ).not.toBeUndefined();
+    });
+  });
+
   it('echoes the empty selector only when Turn and Afford coherently report world clock', async () => {
     readyScene();
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
@@ -1117,9 +1491,7 @@ describe('SessionEncounterView production combat integration', () => {
     const move = await screen.findByRole('button', { name: /move/i });
 
     fireEvent.click(move);
-    fireEvent.click(
-      screen.getByRole('button', { name: /cancel selected action/i })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^cancel action$/i }));
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
@@ -1188,9 +1560,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
     expect(hoisted.moveFn).not.toHaveBeenCalled();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /cancel selected action/i })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^cancel action$/i }));
     expect(move.getAttribute('aria-pressed')).toBe('false');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
@@ -1284,7 +1654,10 @@ describe('SessionEncounterView production combat integration', () => {
         clock: ClockKind.TURN,
         declarations: [
           attackDeclaration(),
-          moveDeclaration('v2.move'),
+          create(DeclarationSchema, {
+            ...moveDeclaration('v2.move'),
+            remaining: 25,
+          }),
           endTurnDeclaration(),
         ],
       });
@@ -1308,7 +1681,9 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBe('true')
     );
     const refreshedMove = screen.getByRole('button', { name: /move/i });
-    expect(refreshedMove.getAttribute('aria-describedby')).toContain('v2.move');
+    // The organizer exposes the refreshed budget directly, not a legacy
+    // tooltip DOM id. The still-pressed state above also pins selection remapping.
+    expect(refreshedMove.textContent).toContain('25 ft');
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
     expect(
       hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route

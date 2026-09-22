@@ -66,6 +66,7 @@ import {
   layoutFromWire,
   type HexLayout,
 } from '../../concepts/session-tomb/atlas';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
   buildDungeonLightingFacts,
   type DungeonLightingFacts,
@@ -167,6 +168,23 @@ export interface Scene3D {
   lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
+  /**
+   * The authored room this dungeon looks like, handed in by the caller
+   * — never read off the atlas (rpg-project#479: presentation is
+   * content, served by key from the registry, and the engine carries no
+   * document it does not read). The play view gets it from
+   * `useDungeonScene`; the author preview hands over its live draft.
+   *
+   * Undefined means this dungeon has no authored room, and every
+   * consumer keeps the legacy atlas route exactly as it was. It is
+   * never how a FAILED read is reported: a caller that could not read
+   * the room it was told to draw refuses visibly instead of handing
+   * over nothing.
+   *
+   * Presentation only: the mechanical cells, boundaries and prop channels
+   * above remain the movement/sight truth regardless of this field.
+   */
+  roomScene?: RoomScenePresentation;
 }
 
 export type SceneLayoutOutcome =
@@ -271,11 +289,25 @@ export function buildScene3D(
   > &
     Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
-  layout: HexLayout
+  layout: HexLayout,
+  roomScene?: RoomScenePresentation
 ): Scene3D {
   if (layout !== 'pointy') {
     throw new Error(
       `buildScene3D: hexMath.ts places pointy-top hexes only; got "${layout}" (rpg-dnd5e-web#763)`
+    );
+  }
+  // THE AUTHORED ROOM ARRIVES ALREADY READ. Its bytes are the registry's
+  // file, fetched by dungeon key and decoded by the world-building codec
+  // that owns them — this function no longer parses a document off the
+  // atlas, because the atlas no longer carries one. What stays here is
+  // the one thing a SCENE BUILDER must still judge: units. Rendering is
+  // in game units, the frame declares hexRadius 1, and hexMath places at
+  // that same unit, so any other requested hex size is refused rather
+  // than guessed into a scaling conversion.
+  if (roomScene && hexSize !== roomScene.coordinateFrame.hexRadius) {
+    throw new Error(
+      `buildScene3D: authored room scene is placed at hexRadius ${roomScene.coordinateFrame.hexRadius} world-scene units; refusing to guess a conversion for requested hex size ${hexSize}.`
     );
   }
   const archetypes = Object.freeze(
@@ -353,6 +385,7 @@ export function buildScene3D(
     lighting,
     wallRuns,
     doorGaps,
+    roomScene,
     // The floor this member knows is what was just built above, so an
     // exit in a room they have not opened is skipped rather than floated
     // over void.

@@ -1,6 +1,9 @@
 // @vitest-environment node
 import {
+  AnswerKey,
   EventKind,
+  KeepRule,
+  Temper,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -136,13 +139,43 @@ describe('formatDebugLine', () => {
               multiplier: 0,
             },
           ],
-          advantageSources: [
-            {
-              sourceRef: 'dnd5e:conditions:hidden',
-              sourceId: 'helper-1',
-            },
-          ],
-          disadvantageSources: [],
+          // THE ATTRIBUTION MOVED ONTO THE POOL IT DECIDED
+          // (rpg-project#462). This used to be advantageSources /
+          // disadvantageSources beside the beat — refs and ids, no rule name,
+          // and no way to say two rules cancelled. Those fields are deprecated
+          // on the wire and never filled; the keep record on the d20's own
+          // trace replaced them, and it carries the rule BY NAME.
+          calculation: {
+            total: 20,
+            components: [
+              {
+                source: {
+                  ref: 'dnd5e:weapons:longsword',
+                  name: 'Longsword',
+                  sourceId: 'char-1',
+                },
+                dice: {
+                  notation: '2d20',
+                  dieSize: 20,
+                  originalRolls: [11, 17],
+                  finalRolls: [11, 17],
+                  keptIndices: [1],
+                  subtotal: 17,
+                  keep: {
+                    rule: KeepRule.ADVANTAGE,
+                    granted: [
+                      {
+                        ref: 'dnd5e:conditions:hidden',
+                        name: 'Hidden',
+                        sourceId: 'helper-1',
+                      },
+                    ],
+                    imposed: [],
+                  },
+                },
+              },
+            ],
+          },
         },
       },
     });
@@ -156,7 +189,11 @@ describe('formatDebugLine', () => {
         'components=[{source="weapon" legacy.ref="dnd5e:weapons:longsword" legacy.dice="1d8" legacy.final_rolls=[4] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="ability" legacy.ref="dnd5e:abilities:strength" legacy.dice="" legacy.final_rolls=[] legacy.flat=3 type=SLASHING multiplier.present=false multiplier=unset roll=unset}, ' +
         '{source="monster_trait" legacy.ref="dnd5e:monster_traits:immunity" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll=unset}] ' +
-        'advantage=[{ref=dnd5e:conditions:hidden source=Helper}]'
+        'calculation={components=[{source={ref="dnd5e:weapons:longsword" name="Longsword" label=undefined} ' +
+        'dice={notation="2d20" die_size=20 original_rolls=[11,17] rerolls=[] final_rolls=[11,17] ' +
+        'kept_indices=[1] subtotal=17 keep={rule=ADVANTAGE ' +
+        'granted=[{ref="dnd5e:conditions:hidden" name="Hidden" label=undefined}] imposed=[]}} ' +
+        'modifier.present=false modifier=unset}] total=20}'
     );
   });
 
@@ -256,7 +293,7 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
 
     expect(line.text).toBe(
-      String.raw`seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton roll=15 total=20 against=13 damage=12 crit=false attack.ref=provider:weapon:greatsword attack.name="Greatsword" type=SLASHING components=[{source="weapon" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:weapon:greatsword" name="Great \"Sword\"\nline\\tail" label=""} dice={notation="2d6" die_size=6 original_rolls=[1,5] rerolls=[{index=0 before=1 after=4 source={ref="provider:condition:gwf" name="Great Weapon Fighting" label="GWF \"reroll\"\nline\\tail"}}] final_rolls=[4,5] kept_indices=[0,1] subtotal=9} modifier.present=false modifier=unset}}, {source="ability" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:ability:strength" name="Strength" label="Strength modifier"} dice=unset modifier.present=true modifier=0}}, {source="monster_trait" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll={source={ref="provider:trait:immunity" name="Immunity" label=""} dice=unset modifier.present=false modifier=unset}}]`
+      String.raw`seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton roll=15 total=20 against=13 damage=12 crit=false attack.ref=provider:weapon:greatsword attack.name="Greatsword" type=SLASHING components=[{source="weapon" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:weapon:greatsword" name="Great \"Sword\"\nline\\tail" label=""} dice={notation="2d6" die_size=6 original_rolls=[1,5] rerolls=[{index=0 before=1 after=4 source={ref="provider:condition:gwf" name="Great Weapon Fighting" label="GWF \"reroll\"\nline\\tail"}}] final_rolls=[4,5] kept_indices=[0,1] subtotal=9 keep=unset} modifier.present=false modifier=unset}}, {source="ability" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=false multiplier=unset roll={source={ref="provider:ability:strength" name="Strength" label="Strength modifier"} dice=unset modifier.present=true modifier=0}}, {source="monster_trait" legacy.ref="" legacy.dice="" legacy.final_rolls=[] legacy.flat=0 type=SLASHING multiplier.present=true multiplier=0 roll={source={ref="provider:trait:immunity" name="Immunity" label=""} dice=unset modifier.present=false modifier=unset}}]`
     );
     expect(line.text).not.toContain('\n');
   });
@@ -582,7 +619,7 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
 
     expect(line.text).toBe(
-      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 roll=0 modifier=0 hp.before=8 hp.after=10 source.ref=provider:feature:wind source.name="Second Wind" calculation={components=[{source={ref="provider:feature:wind" name="Second \"Wind\"\nline\\tail" label=""} dice={notation="1d10" die_size=10 original_rolls=[6] rerolls=[] final_rolls=[6] kept_indices=[] subtotal=6} modifier.present=false modifier=unset}, {source={ref="provider:class:fighter" name="Fighter" label="Fighter \"level\"\nline\\tail"} dice=unset modifier.present=true modifier=0}] total=7}`
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 roll=0 modifier=0 hp.before=8 hp.after=10 source.ref=provider:feature:wind source.name="Second Wind" calculation={components=[{source={ref="provider:feature:wind" name="Second \"Wind\"\nline\\tail" label=""} dice={notation="1d10" die_size=10 original_rolls=[6] rerolls=[] final_rolls=[6] kept_indices=[] subtotal=6 keep=unset} modifier.present=false modifier=unset}, {source={ref="provider:class:fighter" name="Fighter" label="Fighter \"level\"\nline\\tail"} dice=unset modifier.present=true modifier=0}] total=7}`
     );
     expect(line.text).not.toContain('\n');
   });
@@ -752,6 +789,23 @@ describe('formatDebugLine', () => {
     expect(line.text).toBe('seq=7 clock=42 kind=SCENE_OPENED body=null');
   });
 
+  it('a TICK renders by name through the bodyless branch, and gets no line of its own', () => {
+    // A WORLD ROUND ADVANCED, and since the creature's table that is when
+    // every standing creature was given time (rpg-project#465 §5). It matters
+    // to somebody reading a walk, which is why this is pinned rather than
+    // left to chance — the beat is already named here.
+    //
+    // NO DEDICATED ARM, DELIBERATELY. EVENT_KIND_TICK carries no typed body on
+    // the wire at all, so there is not one field for an arm to print that this
+    // branch does not already print: a `tick` line could only say `tick`,
+    // which is `kind=TICK` with a shorter spelling. The reading itself lives
+    // in `Event.at`, which every line here carries as `clock=`.
+    const event = baseEvent({ kind: EventKind.TICK });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual([]);
+    expect(line.text).toBe('seq=7 clock=42 kind=TICK body=null');
+  });
+
   it('an UNKNOWN-kind event renders honestly, never decoding payload (a genuine wire signal since v0.1.135, not a catch-up artifact)', () => {
     const event = baseEvent({
       kind: EventKind.UNKNOWN,
@@ -768,5 +822,475 @@ describe('formatDebugLine', () => {
     });
     const line = formatDebugLine(event, names);
     expect(line.text).toBe('seq=7 clock=42 downed member=unrostered-42');
+  });
+
+  // R1 (Kirk, rpg-project#457): "everything visible in the log now, probably
+  // not story but the debug log for sure." The story log shows the outcome and
+  // the creature's line; THIS is where the die lives, and a typed line rather
+  // than the default branch's raw JSON is what makes it readable.
+  it('a persuaded beat renders the whole check', () => {
+    const event = baseEvent({
+      kind: EventKind.PERSUADED,
+      body: {
+        case: 'persuaded',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 10,
+          total: 13,
+          beaten: true,
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1', 'skeleton-1']);
+    expect(line.text).toContain('persuaded');
+    expect(line.text).toContain('dc=10 total=13 beaten=true');
+  });
+
+  it('an answered beat renders the die, the weights, the entry, the word and the fact', () => {
+    // EVERY FIELD R1 NAMES. `of` is the die SIZE and not the entry count, and
+    // since the creature's table it is in HUNDREDTHS of a weight — 70 and 30
+    // rolls against 10000 — so nothing on this line is a percentage. `entry`
+    // indexes the AUTHOR's own list, so a builder can find the line in the
+    // file they are looking at.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.PERSUADE_FAILED,
+          verb: 9,
+          beaten: true,
+          roll: 8300,
+          of: 10000,
+          entry: 1,
+          word: 2,
+          say: 'Boss! BOSS!',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [
+            { entry: 0, weight: 70, percent: 100, loaded: 7000 },
+            { entry: 1, weight: 30, percent: 100, loaded: 3000 },
+          ],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('answered');
+    expect(line.text).toContain('verb=PERSUADE');
+    expect(line.text).toContain('roll=8300 of=10000 entry=1');
+    expect(line.text).toContain('word=FLEE');
+    // The fact never rides this beat at all — see the scene below.
+    expect(line.text).not.toContain('fact=');
+  });
+
+  it('never prints a fact — the server leaves it unset by ruling', () => {
+    // A fact is per-observer knowledge and this beat is broadcast, so
+    // `Answered.fact` is deliberately empty on the wire (rpg-project#458). The
+    // body here carries one anyway, which is the point: if a future server
+    // started filling it, this log must still not print it, because the reason
+    // is about WHO may know a fact and not about whether the field exists.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.INTIMIDATED,
+          verb: 8,
+          beaten: true,
+          roll: 4200,
+          of: 10000,
+          entry: 0,
+          word: 1,
+          say: 'Fine! FINE.',
+          fact: 'goblin-cowed',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 70, percent: 100, loaded: 7000 }],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('verb=INTIMIDATE');
+    expect(line.text).toContain('word=FACT');
+    expect(line.text).not.toContain('fact=');
+    expect(line.text).not.toContain('goblin-cowed');
+  });
+
+  it('a TIME pick prints its key, its temperament and the loaded table, and no verb', () => {
+    // THE CREATURE TOOK ITS TURN (rpg-project#465). Nothing spoke and nothing
+    // was beaten, so `verb` and `beaten` are unset on the wire and must be
+    // absent from the line: `verb=UNSPECIFIED beaten=false` would read as a
+    // threat that failed, which is a sentence about an event that never
+    // happened.
+    //
+    // AND THE WHOLE ARITHMETIC IS HERE, line by line. `percent` is the
+    // temperament's multiplier, so a coward's trebled `away` reads ×300 —
+    // which is why the same table under two temperaments produces two
+    // different creatures, and why this log has to show it rather than the
+    // total alone.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 900,
+          of: 1600,
+          entry: 3,
+          word: 6,
+          say: '',
+          fact: '',
+          temper: Temper.COWARD,
+          candidates: [
+            { entry: 0, weight: 3, percent: 300, loaded: 900 },
+            { entry: 3, weight: 1, percent: 700, loaded: 700 },
+          ],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('key=TIME');
+    expect(line.text).toContain('temper=COWARD');
+    expect(line.text).toContain('word=AWAY');
+    expect(line.text).toContain('candidates=[0:3×300=900 3:1×700=700]');
+    expect(line.text).not.toContain('verb=');
+    expect(line.text).not.toContain('beaten=');
+  });
+
+  it('a social pick still prints the deprecated verb and beaten beside the key', () => {
+    // THE COMPATIBILITY HALF. The pair is deprecated by `key` and still filled
+    // on all four social keys, so a reader built against the shipped shape
+    // goes on working — and this line shows both, because the debug log's
+    // whole job is every field on the wire.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.INTIMIDATED,
+          verb: 8,
+          beaten: true,
+          roll: 4200,
+          of: 10000,
+          entry: 0,
+          word: 1,
+          say: 'Fine! FINE.',
+          fact: '',
+          temper: Temper.AGGRESSIVE,
+          candidates: [
+            { entry: 0, weight: 70, percent: 100, loaded: 7000 },
+            { entry: 1, weight: 30, percent: 25, loaded: 750 },
+          ],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('key=INTIMIDATED');
+    expect(line.text).toContain('verb=INTIMIDATE');
+    expect(line.text).toContain('beaten=true');
+    expect(line.text).toContain('temper=AGGRESSIVE');
+    // The quartered `flee` line is the temperament doing its work, visible as
+    // arithmetic rather than as a word: 30 authored, ×25, 750 on the die.
+    expect(line.text).toContain('candidates=[0:70×100=7000 1:30×25=750]');
+  });
+
+  it('an untempered creature prints NONE, never UNSPECIFIED and never SOLDIER', () => {
+    // NONE IS A VALUE, NOT THE ZERO. Having no temperament is a real answer
+    // about a creature; UNSPECIFIED means the producer failed. And SOLDIER is
+    // a different claim again — somebody NAMED that word — even though the two
+    // multiply identically.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 100,
+          of: 100,
+          entry: 0,
+          word: 3,
+          say: '',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 1, percent: 100, loaded: 100 }],
+        },
+      },
+    });
+    expect(formatDebugLine(event, names).text).toContain('temper=NONE');
+  });
+
+  it('a silent table prints an empty candidate list rather than dropping the field', () => {
+    // FAIL CLOSED LOUDLY. A TIME roll where no entry's `when` held put nothing
+    // on the die: the creature was asked and stood there, and the beat says so
+    // with no candidates, a die of zero and an entry of -1. "Nothing was
+    // eligible" is a different fact from "this line forgot a field", so the
+    // empty list is printed.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.TIME,
+          verb: 0,
+          beaten: false,
+          roll: 0,
+          of: 0,
+          entry: -1,
+          word: 3,
+          say: '',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [],
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('candidates=[]');
+    expect(line.text).toContain('word=HOLD');
+    expect(line.text).toContain('entry=-1 ');
+  });
+
+  it("a stayed beat prints the cause and the route's own sentence", () => {
+    // A ROUTED WALK THAT MOVED NOBODY (rpg-project#465, from Kirk's walk). The
+    // world clock charges a round per driven creature whether or not anybody
+    // moves, and this beat is the whole account of one that spent it standing
+    // still.
+    //
+    // THE CAUSE IS A REF AND IS PRINTED RAW. `encounter:table:away` says the
+    // creature was walking under its own orders; a spell's ref says something
+    // else. This log neither parses nor prettifies it.
+    const event = baseEvent({
+      kind: EventKind.STAYED,
+      body: {
+        case: 'stayed',
+        value: {
+          member: 'skeleton-1',
+          cause: 'encounter:table:away',
+          why: 'is blocked by dnd5e:props:pillar',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('stayed member=Skeleton');
+    expect(line.text).toContain('cause=encounter:table:away');
+    expect(line.text).toContain('why="is blocked by dnd5e:props:pillar"');
+  });
+
+  it('a stayed beat with no reason prints an empty why rather than dropping it', () => {
+    // EMPTY IS THE COMMONEST CASE, NOT THE EDGE: the route had nowhere
+    // strictly nearer to offer — a creature already standing where it was
+    // sent, or one with no cell closer than the one it is on. That is a reason
+    // rather than a blocker it could name.
+    //
+    // SO THE FIELD STAYS ON THE LINE. Omitting it when empty would hide the
+    // difference between "nowhere better to go" and "blocked by a pillar", and
+    // inventing a phrase would be this client narrating.
+    const event = baseEvent({
+      kind: EventKind.STAYED,
+      body: {
+        case: 'stayed',
+        value: {
+          member: 'skeleton-1',
+          cause: 'encounter:table:toward',
+          why: '',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('cause=encounter:table:toward');
+    expect(line.text).toContain('why=""');
+  });
+
+  it('a tempered beat prints the deal, and names the faction that threw it', () => {
+    // WHICH GOBLIN CAME OUT THE COWARD (rpg-project#465 §3). The mix belongs
+    // to the FACTION, so the faction threw the die and the member is who the
+    // word landed on — two separate fields, and this line must not fill one
+    // from the other.
+    //
+    // THE FACTION IS NOT IN `ids`. It is a faction id rather than a member id,
+    // nothing resolves it to a display name, and offering it on hover would be
+    // an id lookup that cannot answer.
+    const event = baseEvent({
+      kind: EventKind.TEMPERED,
+      body: {
+        case: 'tempered',
+        value: {
+          member: 'skeleton-1',
+          temper: Temper.COWARD,
+          roll: 2,
+          of: 4,
+          faction: 'goblins',
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toContain('tempered member=Skeleton');
+    expect(line.text).toContain('temper=COWARD');
+    expect(line.text).toContain('roll=2 of=4');
+    expect(line.text).toContain('faction=goblins');
+  });
+
+  it("keeps the creature's LINE out of the debug log — it is prose, and it is in the story", () => {
+    // The debug log is numbers a builder scans. A sentence in the middle of
+    // it buries the fields this line exists to show.
+    const event = baseEvent({
+      kind: EventKind.ANSWERED,
+      body: {
+        case: 'answered',
+        value: {
+          creature: 'skeleton-1',
+          key: AnswerKey.PERSUADE_FAILED,
+          verb: 9,
+          beaten: false,
+          roll: 100,
+          of: 100,
+          entry: 0,
+          word: 0,
+          say: 'Big talk, for someone standing in my doorway.',
+          fact: '',
+          temper: Temper.NONE,
+          candidates: [{ entry: 0, weight: 1, percent: 100, loaded: 100 }],
+        },
+      },
+    });
+    expect(formatDebugLine(event, names).text).not.toContain('Big talk');
+  });
+
+  // THE DEBUG HALF OF THE DONE-WHEN (rpg-project#462). The design asks for two
+  // faces, the kept one and the word "Untrained" in the story AND debug logs.
+  // The story half is story.ts; this is the other half, and it was missing for
+  // exactly the three verbs the slice is about while looking finished — the
+  // paused window is covered only by ACCIDENT, because it has no typed case
+  // here and its raw JSON dump carries the calculation along with everything
+  // else.
+  function untrainedCheck() {
+    return {
+      total: 6,
+      components: [
+        {
+          source: {
+            ref: 'dnd5e:skills:intimidation',
+            name: 'Intimidation',
+            sourceId: 'char-1',
+          },
+          dice: {
+            notation: '2d20',
+            dieSize: 20,
+            originalRolls: [6, 14],
+            finalRolls: [6, 14],
+            keptIndices: [0],
+            subtotal: 6,
+            keep: {
+              rule: KeepRule.DISADVANTAGE,
+              granted: [],
+              imposed: [
+                {
+                  ref: 'dnd5e:rules:untrained',
+                  name: 'Untrained',
+                  sourceId: 'helper-1',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  it('an untrained intimidate prints both faces, the kept one and the rule', () => {
+    const event = baseEvent({
+      kind: EventKind.INTIMIDATED,
+      body: {
+        case: 'intimidated',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 13,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('dc=13 total=6 beaten=false');
+    expect(line.text).toContain('final_rolls=[6,14]');
+    expect(line.text).toContain('kept_indices=[0]');
+    expect(line.text).toContain('Untrained');
+    // The entity behind the rule is hoverable, the way struck's already is.
+    expect(line.ids).toContain('helper-1');
+  });
+
+  it('an untrained persuade prints the same, on the shared case', () => {
+    const event = baseEvent({
+      kind: EventKind.PERSUADED,
+      body: {
+        case: 'persuaded',
+        value: {
+          actor: 'char-1',
+          target: 'skeleton-1',
+          dc: 10,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('persuaded');
+    expect(line.text).toContain('final_rolls=[6,14]');
+    expect(line.text).toContain('Untrained');
+  });
+
+  it('a forced lock prints the roll behind the door', () => {
+    const event = baseEvent({
+      kind: EventKind.DOOR,
+      body: {
+        case: 'door',
+        value: {
+          door: 'tomb-door',
+          state: 1,
+          actor: 'char-1',
+          dc: 12,
+          total: 6,
+          beaten: false,
+          calculation: untrainedCheck(),
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).toContain('dc=12 total=6 beaten=false');
+    expect(line.text).toContain('final_rolls=[6,14]');
+  });
+
+  it('a door nobody rolled for prints no calculation at all', () => {
+    // ABSENT MEANS ABSENT. Opening an unlocked door faces no DC, and an empty
+    // `calculation=` would be a puzzle rather than a fact — the same presence
+    // law the api keeps on the wire.
+    const event = baseEvent({
+      kind: EventKind.DOOR,
+      body: {
+        case: 'door',
+        value: { door: 'tomb-door', state: 1 },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.text).not.toContain('calculation=');
+    expect(line.text).not.toContain('dc=');
   });
 });

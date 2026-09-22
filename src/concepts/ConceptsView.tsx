@@ -1,3 +1,4 @@
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
@@ -35,7 +36,8 @@ type ConceptPage =
   | 'organized-hud'
   | 'dungeon-builder'
   | 'asset-anchor-lab'
-  | 'world-building';
+  | 'world-building'
+  | 'room-authoring';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
@@ -55,13 +57,15 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
   { id: 'world-building', label: 'World Building' },
+  { id: 'room-authoring', label: 'New room · Authoring draft' },
 ];
 
 interface ConceptsViewProps {
   onBack: () => void;
+  compositionSource?: CompositionSource;
 }
 
-export function ConceptsView({ onBack }: ConceptsViewProps) {
+export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
   // Dev-only deep link: ?concept=<id> opens straight to a concept so visual
   // evidence is reproducible from a URL. Unknown values fall back silently.
   const requested =
@@ -159,6 +163,12 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
         {activePage === 'world-building' && <WorldBuildingConcept />}
+        {activePage === 'room-authoring' && (
+          <WorldBuildingConcept
+            roomMode
+            compositionSource={compositionSource}
+          />
+        )}
       </motion.div>
     </div>
   );

@@ -4,9 +4,11 @@ import {
   type Footprint,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
+import { cubeToWorld } from '../hex-grid/hexMath';
 import {
   areaFootprintProjection,
   FEET_PER_HEX,
+  FOOTPRINT_ORIGIN_POINT,
 } from './areaFootprintProjection';
 
 function footprint(
@@ -96,4 +98,19 @@ describe('areaFootprintProjection', () => {
       })
     ).toBeNull();
   });
+});
+
+it('centers a point-origin radius on the aimed cell', () => {
+  const projection = areaFootprintProjection({
+    footprint: {
+      shape: FootprintShape.RADIUS,
+      sizeFeet: 20,
+      origin: FOOTPRINT_ORIGIN_POINT,
+    } as Footprint,
+    caster: { x: 0, y: 0, z: 0 },
+    aimed: { x: 2, y: -2, z: 0 },
+    hexSize: 1,
+  });
+  expect(projection?.kind).toBe('radius');
+  expect(projection?.center).toEqual(cubeToWorld({ x: 2, y: -2, z: 0 }, 1));
 });

@@ -72,6 +72,13 @@ interface MutableSceneEnvelope {
 }
 
 describe('world-building serialization validation', () => {
+  it('round-trips authored visual height and defaults legacy props to normal at render time', () => {
+    const scene = validScene();
+    scene.items[0]!.heightScale = 1.75;
+    const parsed = parseSceneJson(stringifyScene(scene));
+    expect(parsed.items[0]!.heightScale).toBe(1.75);
+    expect(parsed.items[1]!.heightScale).toBeUndefined();
+  });
   it('round trips a bounded catalog-backed scene with continuous transforms and support links', () => {
     const scene = validScene();
     expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);

@@ -424,8 +424,10 @@ function renderSession(scene3D = scene()) {
 function CameraProbe({
   onReady,
   onWheelListener,
+  onCanvas,
 }: {
   onReady: (camera: THREE.Camera) => void;
+  onCanvas?: (canvas: HTMLCanvasElement) => void;
   onWheelListener?: (listener: EventListener) => void;
 }) {
   const { camera, gl } = useThree();
@@ -449,7 +451,8 @@ function CameraProbe({
   }, [gl, onWheelListener]);
   useEffect(() => {
     onReady(camera);
-  }, [camera, onReady]);
+    onCanvas?.(gl.domElement);
+  }, [camera, gl, onReady, onCanvas]);
   return null;
 }
 
@@ -548,6 +551,51 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('wires opt-in touch pan to the real session camera', async () => {
+    let camera: THREE.Camera | undefined;
+    let canvas: HTMLCanvasElement | undefined;
+    const renderer = await ReactThreeTestRenderer.create(
+      <>
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Touch preview"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          touchPanEnabled
+        />
+        <CameraProbe
+          onReady={(value) => {
+            camera = value;
+          }}
+          onCanvas={(value) => {
+            canvas = value;
+          }}
+        />
+      </>,
+      { orthographic: true }
+    );
+    if (!camera || !canvas) throw new Error('missing camera/canvas');
+    const before = camera.position.clone();
+    const emit = (type: string, x: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: x,
+        clientY: 20,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: 'touch' },
+      });
+      (type === 'pointerdown' ? canvas! : window).dispatchEvent(event);
+    };
+    emit('pointerdown', 20);
+    emit('pointermove', 60);
+    emit('pointerup', 60);
+    expect(camera.position.distanceTo(before)).toBeGreaterThan(0.01);
+    await renderer.unmount();
+  });
   it('mounts one shared environment and keeps doors in the game scene contract', () => {
     const source = readFileSync(
       'src/components/session/SessionCanvas.tsx',
@@ -1583,6 +1631,7 @@ describe('SessionScene', () => {
       position: { x: 1, y: -1, z: 0 },
       remembered: false,
       standing: Standing.UP,
+      stance: '',
       equipment: undefined,
     };
 
@@ -2104,6 +2153,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2166,6 +2216,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2196,6 +2247,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2222,6 +2274,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2248,6 +2301,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2290,6 +2344,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2462,6 +2517,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2636,6 +2692,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2683,6 +2740,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2717,6 +2775,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2745,6 +2804,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2778,6 +2838,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2827,6 +2888,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -2901,6 +2963,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        stance: '',
         equipment: undefined,
       },
     ];
@@ -3103,6 +3166,7 @@ describe('SessionScene', () => {
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
+        stance: '',
         equipment: undefined,
       },
     ];
@@ -3284,6 +3348,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}
@@ -3317,6 +3382,7 @@ describe('SessionScene', () => {
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
+              stance: '',
               equipment: undefined,
             },
           ]}

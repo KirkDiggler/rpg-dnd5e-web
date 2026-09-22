@@ -770,6 +770,8 @@ function CompositionPlacementStatus({
     switch (metadata.status) {
       case 'ready':
         return `Composition · ${metadata.name}`;
+      case 'not-placeable':
+        return `Room snapshot · ${metadata.name} · not placeable as a prop: ${metadata.message}`;
       case 'loading':
         return `Loading composition · ${metadata.id}`;
       case 'missing':

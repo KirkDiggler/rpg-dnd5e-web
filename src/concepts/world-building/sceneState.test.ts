@@ -13,7 +13,9 @@ import {
   redoHistory,
   rotateSelection,
   saveArrangement,
+  selectionPropIds,
   setPropPointLight,
+  setSelectionHeight,
   stampArrangement,
   undoHistory,
   updateHistory,
@@ -25,6 +27,51 @@ const ids = (...values: string[]) => {
 };
 
 describe('world-building continuous scene math', () => {
+  it('changes only visual height for selected props and excludes support decorations', () => {
+    let scene = createEmptyScene('height');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 2, y: 0, z: 3, rotationY: 0 },
+      'wall'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candle',
+      { x: 2, y: 1, z: 3, rotationY: 0 },
+      'banner',
+      { supportId: 'wall' }
+    );
+    const next = setSelectionHeight(scene, ['wall'], 2);
+    expect(next.items[0]).toMatchObject({
+      heightScale: 2,
+      transform: scene.items[0]!.transform,
+    });
+    expect(next.items[1]).not.toHaveProperty('heightScale');
+  });
+  it('reports concrete group members for height and rejects invalid edits', () => {
+    let scene = createEmptyScene('group-height');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'wall'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candle',
+      { x: 1, y: 0, z: 0, rotationY: 0 },
+      'banner'
+    );
+    scene = groupSelection(scene, ['wall', 'banner'], 'run', 'Run');
+    scene.items[0]!.heightScale = 1.5;
+    scene.items[1]!.heightScale = 2;
+    expect(selectionPropIds(scene, ['run'])).toEqual(
+      new Set(['wall', 'banner'])
+    );
+    expect(setSelectionHeight(scene, ['run'], Number.NaN)).toEqual(scene);
+  });
+
   it('keeps free sub-hex X/Z placement and intentional overlap', () => {
     let scene = createEmptyScene('scene-1');
     scene = addProp(

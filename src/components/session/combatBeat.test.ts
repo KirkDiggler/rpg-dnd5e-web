@@ -286,3 +286,162 @@ describe('the hold-out beats on the beat line (rpg-project#375 §5)', () => {
     );
   });
 });
+
+// The first shenanigan (rpg-project#454). The `intimidated` beat is the ONLY
+// account of this roll — `IntimidateResponse` carries no beaten, total or dc
+// — so the person who threw the die reads it off this line like everyone
+// else, and both outcomes get one.
+describe('formatBeat — intimidated', () => {
+  function threat(
+    actor: string,
+    target: string,
+    total: number,
+    dc: number,
+    beaten: boolean
+  ): SessionEvent {
+    return event({
+      case: 'intimidated',
+      value: { actor, target, dc, total, beaten } as never,
+    });
+  }
+
+  it("the local player's own beaten threat reads in second person", () => {
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 14, 9, true), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 14 vs DC 9. Cowed.');
+  });
+
+  it('a missed threat is narrated too — the miss is as much fiction as the hit', () => {
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 4, 9, false), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 4 vs DC 9. Unmoved.');
+  });
+
+  it("someone else's threat uses third person and lowercase for the target", () => {
+    expect(
+      formatBeat(threat('skeleton-1', 'char-1', 16, 12, true), 'char-1', names)
+    ).toBe('skeleton-1 intimidates you — 16 vs DC 12. Cowed.');
+  });
+
+  it('the reading is COPIED, never derived from total against dc', () => {
+    // A server that says a 20 did not beat a DC 9 is telling this client
+    // something it must not argue with: the day a rule changes what beating
+    // a DC means, a line that compared the two would be wrong at once. This
+    // is the same law `Saved.succeeded` keeps.
+    expect(
+      formatBeat(threat('char-1', 'skeleton-1', 20, 9, false), 'char-1', names)
+    ).toBe('You intimidate skeleton-1 — 20 vs DC 9. Unmoved.');
+  });
+
+  it('says nothing about what the creature does next', () => {
+    // A cowed monster may run, may charge, or may hold the deed and ignore
+    // it — its mind decides, and that reaches the log as its next turn. A
+    // clause here promising flight would make the outcome the verb's instead
+    // of the mind's, which is the first cut the design broke.
+    const line = formatBeat(
+      threat('char-1', 'skeleton-1', 14, 9, true),
+      'char-1',
+      names
+    );
+    expect(line).not.toMatch(/flee|flees|runs|charge|charges|frightened/i);
+  });
+});
+
+// The front room goblin (rpg-project#458). Two beats per attempt: the check,
+// which is the actor's only account of their own roll, and the ANSWER, which
+// is the world's roll on the author's table and the only place the creature's
+// line exists.
+describe('formatBeat — persuaded and answered', () => {
+  function appeal(
+    actor: string,
+    target: string,
+    total: number,
+    dc: number,
+    beaten: boolean
+  ): SessionEvent {
+    return event({
+      case: 'persuaded',
+      value: { actor, target, dc, total, beaten } as never,
+    });
+  }
+
+  function answered(fields: Record<string, unknown>): SessionEvent {
+    return event({
+      case: 'answered',
+      value: {
+        creature: 'skeleton-1',
+        verb: 9,
+        beaten: true,
+        roll: 42,
+        of: 100,
+        entry: 0,
+        word: 0,
+        say: '',
+        fact: '',
+        ...fields,
+      } as never,
+    });
+  }
+
+  it("the local player's own landed appeal reads in second person", () => {
+    expect(
+      formatBeat(appeal('char-1', 'skeleton-1', 13, 10, true), 'char-1', names)
+    ).toBe('You persuade skeleton-1 — 13 vs DC 10. Won round.');
+  });
+
+  it('a failed appeal is narrated too — it is where bad directions come from', () => {
+    expect(
+      formatBeat(appeal('char-1', 'skeleton-1', 4, 10, false), 'char-1', names)
+    ).toBe('You persuade skeleton-1 — 4 vs DC 10. Unconvinced.');
+  });
+
+  it('the reading is COPIED, never derived from total against dc', () => {
+    expect(
+      formatBeat(appeal('char-1', 'skeleton-1', 20, 10, false), 'char-1', names)
+    ).toBe('You persuade skeleton-1 — 20 vs DC 10. Unconvinced.');
+  });
+
+  it("the answer quotes the author's line verbatim and adds one clause for FACT", () => {
+    expect(
+      formatBeat(
+        answered({ word: 1, say: 'Fine! FINE.', fact: 'goblin-cowed' }),
+        'char-1',
+        names
+      )
+    ).toBe('skeleton-1: “Fine! FINE.” …and the party learned something.');
+  });
+
+  it('adds the other clause for FLEE', () => {
+    expect(
+      formatBeat(answered({ word: 2, say: 'Boss! BOSS!' }), 'char-1', names)
+    ).toBe('skeleton-1: “Boss! BOSS!” …and bolts.');
+  });
+
+  it('adds NO clause for an entry that only speaks', () => {
+    // An empty word is an answer, not a gap. Appending an outcome would
+    // narrate a thing that did not happen.
+    expect(
+      formatBeat(answered({ word: 0, say: 'Big talk.' }), 'char-1', names)
+    ).toBe('skeleton-1: “Big talk.”');
+  });
+
+  it('still names the creature when the author wrote it no line', () => {
+    // `say` is legitimately empty and the beat still fired: somebody has to
+    // be the subject of the sentence.
+    expect(formatBeat(answered({ word: 2, say: '' }), 'char-1', names)).toBe(
+      'skeleton-1 answers …and bolts.'
+    );
+  });
+
+  it('keeps the die out of the line (R1)', () => {
+    // The roll, the summed weights and the entry index are on the beat and
+    // rendered in the debug log; this line is the fiction.
+    const line = formatBeat(
+      answered({ word: 2, say: 'Boss!', roll: 83, of: 100, entry: 1 }),
+      'char-1',
+      names
+    );
+    expect(line).not.toContain('83');
+    expect(line).not.toContain('100');
+  });
+});

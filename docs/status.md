@@ -12,6 +12,28 @@ let it rot.
 
 ## Active work
 
+- **Sanctuary web adoption** — SDK `v0.1.201`, paired with merged API #1007 and
+  released Toolkit providers. Warded attacks and casts render their aggressor-owned
+  failed save in live/recovered Story and Debug; warded responses cannot invent an
+  attack roll. The user confirmed recipient immunity and unavailable repeat targets
+  on the development stack. Manual timer expiry remains unverified.
+  See [test setup and acceptance](how-to/sanctuary-testing.md).
+
+- **World Builder single-room Play (#1112 / PR #1116)** — candidate supports
+  lossless v3 room authoring, snapped monster/start markers, existing server
+  validation/save and character/lobby launch, and complete canonical scene
+  rendering from the member atlas. Legacy v2 gameplay remains separate. A real
+  browser walk created a character and launched the existing saved18-prop room,
+  verified movement/default monster reaction/declared blocking and sight,
+  author-edit isolation, and API/browser reload. User environments stayed pinned;
+  final CI/review/merge state belongs to the PR. See
+  [verification and limits](how-to/world-builder-play-verification.md).
+- **Visible domain grants (draft)** — Character creation renders server-authored
+  spell/cantrip grants as disabled options labeled with their source. Life's
+  Bless/Cure Wounds and Light's bonus cantrip remain visible outside selectable
+  counts. The web does not infer grants from missing options or domain names.
+  Requires the API grant projection from rpg-api#1012 and protos#348.
+
 - **Spare the Dying** — SDK `v0.1.190` exposes typed stabilization in live and
   recovered Story and Debug, including full progress identity with zero/false
   values. Stabilization refreshes owner data, turn, actions and view. Stable

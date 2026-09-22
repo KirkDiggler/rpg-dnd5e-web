@@ -68,12 +68,21 @@ function finiteNumber(
   return value;
 }
 
-function transform(value: unknown, field: string): WorldTransform {
+interface SceneValidationOptions {
+  /** Room-editor X/Z capacity; standalone composer defaults remain WORLD_LIMIT. */
+  horizontalLimit?: number;
+}
+
+function transform(
+  value: unknown,
+  field: string,
+  horizontalLimit = WORLD_LIMIT
+): WorldTransform {
   const input = object(value);
   return {
-    x: finiteNumber(input.x, `${field}.x`, -WORLD_LIMIT, WORLD_LIMIT),
+    x: finiteNumber(input.x, `${field}.x`, -horizontalLimit, horizontalLimit),
     y: finiteNumber(input.y, `${field}.y`, 0, 8),
-    z: finiteNumber(input.z, `${field}.z`, -WORLD_LIMIT, WORLD_LIMIT),
+    z: finiteNumber(input.z, `${field}.z`, -horizontalLimit, horizontalLimit),
     rotationY: finiteNumber(
       input.rotationY,
       `${field}.rotationY`,
@@ -108,7 +117,11 @@ function pointLight(value: unknown, field: string): WorldPointLight {
   };
 }
 
-function prop(value: unknown, field: string): WorldProp {
+function prop(
+  value: unknown,
+  field: string,
+  horizontalLimit = WORLD_LIMIT
+): WorldProp {
   const input = object(value);
   if (input.kind !== 'prop') throw new Error(`${field}.kind must be prop.`);
   const assetRef = string(input.assetRef, `${field}.assetRef`, 160);
@@ -120,7 +133,21 @@ function prop(value: unknown, field: string): WorldProp {
     kind: 'prop',
     assetRef,
     label: string(input.label, `${field}.label`, 120),
-    transform: transform(input.transform, `${field}.transform`),
+    transform: transform(
+      input.transform,
+      `${field}.transform`,
+      horizontalLimit
+    ),
+    ...(input.heightScale === undefined
+      ? {}
+      : {
+          heightScale: finiteNumber(
+            input.heightScale,
+            `${field}.heightScale`,
+            0.25,
+            4
+          ),
+        }),
     parentId: optionalId(input.parentId, `${field}.parentId`),
     supportId: optionalId(input.supportId, `${field}.supportId`),
     pointLight:
@@ -130,21 +157,30 @@ function prop(value: unknown, field: string): WorldProp {
   };
 }
 
-function group(value: unknown, field: string): WorldGroup {
+function group(
+  value: unknown,
+  field: string,
+  horizontalLimit = WORLD_LIMIT
+): WorldGroup {
   const input = object(value);
   if (input.kind !== 'group') throw new Error(`${field}.kind must be group.`);
   return {
     id: string(input.id, `${field}.id`, 120),
     kind: 'group',
     label: string(input.label, `${field}.label`, 120),
-    transform: transform(input.transform, `${field}.transform`),
+    transform: transform(
+      input.transform,
+      `${field}.transform`,
+      horizontalLimit
+    ),
     parentId: optionalId(input.parentId, `${field}.parentId`),
   };
 }
 
 function entityArrays(
   input: Record<string, unknown>,
-  field: string
+  field: string,
+  horizontalLimit = WORLD_LIMIT
 ): { items: WorldProp[]; groups: WorldGroup[] } {
   if (!Array.isArray(input.items) || input.items.length > MAX_ITEMS) {
     throw new Error(`${field}.items must contain at most ${MAX_ITEMS} props.`);
@@ -155,10 +191,10 @@ function entityArrays(
     );
   }
   const items = input.items.map((value, index) =>
-    prop(value, `${field}.items[${index}]`)
+    prop(value, `${field}.items[${index}]`, horizontalLimit)
   );
   const groups = input.groups.map((value, index) =>
-    group(value, `${field}.groups[${index}]`)
+    group(value, `${field}.groups[${index}]`, horizontalLimit)
   );
   validateRelationships(items, groups, field);
   return { items, groups };
@@ -212,10 +248,17 @@ function validateRelationships(
   allIds.forEach(visit);
 }
 
-export function validateScene(value: unknown): WorldScene {
+export function validateScene(
+  value: unknown,
+  options: SceneValidationOptions = {}
+): WorldScene {
   const input = object(value);
   if (input.version !== 1) throw new Error('Scene version must be 1.');
-  const entities = entityArrays(input, 'scene');
+  const horizontalLimit = options.horizontalLimit ?? WORLD_LIMIT;
+  if (!Number.isFinite(horizontalLimit) || horizontalLimit < WORLD_LIMIT) {
+    throw new Error(`Scene horizontal limit must be at least ${WORLD_LIMIT}.`);
+  }
+  const entities = entityArrays(input, 'scene', horizontalLimit);
   return {
     version: 1,
     id: string(input.id, 'scene.id', 120),

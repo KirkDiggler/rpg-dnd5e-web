@@ -20,6 +20,7 @@ import {
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
+  Temper,
   type DamageComponent,
   type Event,
   type RollCalculation,
@@ -797,7 +798,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toBe(
-        'Second Wind rolled 2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label + 3 Modifier label = 12; ' +
+        'Second Wind rolled 2d6 [1 → 4, 5] + 0 Provider label + 3 Modifier label = 12; ' +
           '2 applied (8 → 10 HP).'
       );
       expect(result.current.diceEvents).toEqual([]);
@@ -823,7 +824,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toContain(
-        '2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label × 0 Multiplier label = 12 slashing damage'
+        '2d6 [1 → 4, 5] + 0 Provider label × 0 Multiplier label = 12 slashing damage'
       );
       expect(result.current.diceEvents).toHaveLength(2);
       expect(
@@ -931,6 +932,145 @@ describe('useCombatPresentation', () => {
         (identity) => identity.category === 'other' && !identity.conflicted
       )
     ).toBe(true);
+  });
+
+  it('accepts a tempered and a stayed beat in silence, without crying kind/body mismatch', () => {
+    // FOUND ON KIRK'S WALK (rpg-project#465): the debug feed printed
+    // "typed event kind/body mismatch ignored" after every well-formed
+    // `tempered` row. The presentation layer answers `undefined` both for a
+    // genuine mismatch and for a beat it deliberately does not narrate, and
+    // the caller could not tell the two apart.
+    //
+    // THE COST OF THE LIE IS THE DIAGNOSTIC ITSELF. A feed that cries defect
+    // on a correct beat teaches a reader to skim past it, which is paid back
+    // the one time it is right — so "no story row" must be silent and only a
+    // real mismatch may speak.
+    //
+    // BOTH HALVES ARE THE CLAIM: no story entry, because neither is story,
+    // AND no diagnostic, because neither is wrong.
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    const silent = [
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 40n,
+        kind: EventKind.TEMPERED,
+        body: {
+          case: 'tempered',
+          value: {
+            member: 'skeleton-guard',
+            temper: Temper.COWARD,
+            roll: 2,
+            of: 4,
+            faction: 'goblins',
+          },
+        },
+      }),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 41n,
+        kind: EventKind.STAYED,
+        body: {
+          case: 'stayed',
+          value: {
+            member: 'skeleton-guard',
+            cause: 'encounter:table:toward',
+            why: '',
+          },
+        },
+      }),
+    ];
+
+    for (const event of silent) {
+      act(() => result.current.acceptStreamEvent(event, { source: 'live' }));
+    }
+
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.diagnostics).toEqual([]);
+    // AND THE RAW FEED STILL HAS BOTH. Silent here means "not narrated and not
+    // accused", never "dropped": the debug log is where a reader follows what
+    // the world did, and these two beats are the whole account of a dealt
+    // temperament and a spent round.
+    expect(result.current.debug).toHaveLength(2);
+  });
+
+  it('still cries kind/body mismatch when a kind and its body genuinely disagree', () => {
+    // THE CONTROL FOR THE TEST ABOVE, and the reason silencing had to be by
+    // NAME rather than by making the diagnostic quieter. A beat whose kind and
+    // body really do disagree is a defect somebody has to see.
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq: 42n,
+          // A MOVED body under a TEMPERED kind: nothing in the world produces
+          // this, so if it arrives the producer or the pin is wrong.
+          kind: EventKind.TEMPERED,
+          body: {
+            case: 'moved',
+            value: { member: 'skeleton-guard', to: { x: 1, y: 1 } },
+          },
+        }),
+        { source: 'live' }
+      )
+    );
+
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
+  });
+
+  it('cries mismatch for a silenced BODY arriving under the wrong kind', () => {
+    // THE HOLE SILENCING BY BODY CASE ALONE WOULD HAVE OPENED. `tempered` is a
+    // body this layer does not narrate, but only when it arrives under
+    // EVENT_KIND_TEMPERED; under any other kind it is a malformed beat and
+    // still somebody's bug. Not narrating is a decision about a CORRECT beat.
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq: 43n,
+          kind: EventKind.MOVED,
+          body: {
+            case: 'tempered',
+            value: {
+              member: 'skeleton-guard',
+              temper: Temper.COWARD,
+              roll: 2,
+              of: 4,
+              faction: 'goblins',
+            },
+          },
+        }),
+        { source: 'live' }
+      )
+    );
+
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
   });
 
   it('rejects activation kind/body mismatches and conflicts on differing same-key typed result facts', () => {

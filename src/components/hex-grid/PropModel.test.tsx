@@ -162,6 +162,37 @@ describe('PropModel shared placement', () => {
     });
   });
 
+  it('grounds height-only scaling and reports scaled geometry without changing X/Z scale', async () => {
+    const onBoundsMeasured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel
+        variant={BASE_VARIANT}
+        position={[2, 0, 3]}
+        anchor="bounds-floor-center"
+        heightScale={1.5}
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+    const outer = groups.find(
+      (group) => group.position.x === 2 && group.position.z === 3
+    )!;
+    expect(outer.scale.toArray()).toEqual([
+      SYNTY_SCALE,
+      SYNTY_SCALE * 1.5,
+      SYNTY_SCALE,
+    ]);
+    expect(onBoundsMeasured).toHaveBeenCalledWith({
+      minY: 0,
+      maxY: SYNTY_SCALE * 1.5,
+      width: SYNTY_SCALE,
+      height: SYNTY_SCALE * 1.5,
+      depth: SYNTY_SCALE,
+    });
+  });
+
   it('renders every prop at the shared SYNTY_SCALE', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <PropModel variant={BASE_VARIANT} position={[0, 0, 9]} />

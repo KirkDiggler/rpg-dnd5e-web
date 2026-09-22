@@ -130,6 +130,52 @@ function mapTransforms(
   };
 }
 
+/** The props a selection RESOLVES TO: the selected props themselves, plus the
+ * members of any selected group. Support-linked decorations are deliberately
+ * not traversed — a candle resting on a table is not what the author selected.
+ *
+ * Named for the selection rather than for one consumer of it. Visual height
+ * and authored movement/sight declarations both need exactly this answer, and
+ * a second helper that filtered the same selection its own way is how two
+ * features end up disagreeing about what "selected" means. */
+export function selectionPropIds(
+  scene: WorldScene,
+  selectedIds: readonly string[]
+): Set<string> {
+  const included = new Set<string>();
+  const visitGroup = (id: string) => {
+    scene.items.forEach((item) => {
+      if (item.parentId === id) included.add(item.id);
+    });
+    scene.groups
+      .filter((group) => group.parentId === id)
+      .forEach((group) => visitGroup(group.id));
+  };
+  selectedIds.forEach((id) => {
+    const entity = entityById(scene, id);
+    if (!entity) return;
+    if (entity.kind === 'prop') included.add(id);
+    else visitGroup(id);
+  });
+  return included;
+}
+
+export function setSelectionHeight(
+  scene: WorldScene,
+  selectedIds: readonly string[],
+  heightScale: number
+): WorldScene {
+  if (!Number.isFinite(heightScale)) return scene;
+  const bounded = Math.min(4, Math.max(0.25, heightScale));
+  const included = selectionPropIds(scene, selectedIds);
+  return {
+    ...scene,
+    items: scene.items.map((item) =>
+      included.has(item.id) ? { ...item, heightScale: bounded } : item
+    ),
+  };
+}
+
 export function moveSelection(
   scene: WorldScene,
   selectedIds: readonly string[],
@@ -361,7 +407,7 @@ export function duplicateSelection(
   scene: WorldScene,
   selectedIds: readonly string[],
   idFactory: IdFactory = defaultId
-): { scene: WorldScene; createdIds: string[] } {
+): { scene: WorldScene; createdIds: string[]; idMap: Map<string, string> } {
   const included = selectionClosure(scene, selectedIds);
   const copied = copyEntities(scene, included, idFactory, false);
   const shiftedItems = copied.items.map((item) => ({
@@ -387,6 +433,7 @@ export function duplicateSelection(
       groups: [...scene.groups, ...shiftedGroups],
     },
     createdIds: copied.createdIds,
+    idMap: copied.idMap,
   };
 }
 
@@ -455,7 +502,7 @@ export function stampArrangement(
   arrangement: Arrangement,
   point: WorldPoint,
   idFactory: IdFactory = defaultId
-): { scene: WorldScene; createdIds: string[] } {
+): { scene: WorldScene; createdIds: string[]; idMap: Map<string, string> } {
   const templateScene: WorldScene = {
     version: 1,
     id: arrangement.id,
@@ -486,6 +533,7 @@ export function stampArrangement(
       groups: [...scene.groups, ...copied.groups.map(atPoint)],
     },
     createdIds: copied.createdIds,
+    idMap: copied.idMap,
   };
 }
 

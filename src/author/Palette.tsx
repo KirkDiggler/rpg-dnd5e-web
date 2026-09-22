@@ -8,6 +8,8 @@ import {
   useCompositionList,
   type CompositionSource,
 } from '@/compositions/compositionSource';
+import { isRoomDocument } from '@/compositions/roomDocument';
+import { useMemo } from 'react';
 import { CompositionThumbnailTiles } from './CompositionThumbnailTiles';
 import type { DungeonDoc } from './dungeonYaml';
 import { regionColor } from './markerStyle';
@@ -89,6 +91,13 @@ export function Palette({
   compositionSource,
 }: PaletteProps) {
   const compositionList = useCompositionList(compositionSource);
+  const placeableCompositions = useMemo(
+    () =>
+      compositionList.compositions.filter(
+        (composition) => !isRoomDocument(composition)
+      ),
+    [compositionList.compositions]
+  );
   return (
     <div className="flex flex-col gap-4 text-sm" data-testid="palette">
       <section>
@@ -157,15 +166,15 @@ export function Palette({
           </div>
         )}
         {compositionList.status === 'ready' &&
-          compositionList.compositions.length === 0 && (
+          placeableCompositions.length === 0 && (
             <div className="text-xs opacity-70">
               No compositions in {compositionSource?.worldId}.
             </div>
           )}
-        {compositionList.compositions.length > 0 && compositionSource && (
+        {placeableCompositions.length > 0 && compositionSource && (
           <CompositionThumbnailTiles
             sourceWorldId={compositionSource.worldId}
-            compositions={compositionList.compositions}
+            compositions={placeableCompositions}
             tool={tool}
             armed={armed}
             onArm={onArm}

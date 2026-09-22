@@ -55,6 +55,7 @@ import type {
   DoorInfo,
   Footprint,
   PublicMemberInfo,
+  SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
@@ -85,7 +86,9 @@ import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
 import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
+import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -185,6 +188,13 @@ export interface SessionCanvasProps {
   /** Presentation callers may temporarily yield pointer hit-testing to an
    * overlaid target/option surface without changing scene/camera behavior. */
   interactionEnabled?: boolean;
+  /** Opt-in touch gesture preview; default camera input is unchanged. */
+  touchPanEnabled?: boolean;
+  /** Smooth orthographic pinch within the opted-in touch camera. */
+  touchPinchEnabled?: boolean;
+  touchRotateEnabled?: boolean;
+  /** Changed request counter invokes camera focus without altering zoom/heading. */
+  focusRequest?: number;
   /** Local map-selection cancel invoked only by a quick right click. The
    * camera owns click-vs-drag classification so right-drag remains pan. */
   onCancelSelection?: () => void;
@@ -230,6 +240,10 @@ export interface SessionCanvasProps {
   /** Fires with the clicked door's id — the open/unlock affordance lives
    * in the caller, which knows who acts and what the door's state is. */
   onDoorClick?: (door: string) => void;
+  /** The dungeon key this room was fetched by. A door's live id is
+   * `<key>/<itemId>`, so the canonical branch needs the prefix to join the
+   * `doors` map above to the item that draws the door. */
+  dungeonKey?: string;
   /** Fires when a click lands on a MEMBER_KIND_WORLD member's cell (a
    * placed world NPC, e.g. a vendor) — routed separately from
    * `onEntityClick`, which is gated on `attackableTargets` and a world NPC
@@ -266,6 +280,7 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
@@ -286,6 +301,10 @@ export interface SessionCanvasProps {
  * itself. */
 export function SessionScene({
   hexSize,
+  touchPanEnabled = false,
+  touchPinchEnabled = false,
+  touchRotateEnabled = false,
+  focusRequest,
   scene,
   characterId,
   characterName,
@@ -309,12 +328,14 @@ export function SessionScene({
   roster,
   doors,
   onDoorClick,
+  dungeonKey,
   onInteractClick,
   attackableTargets,
   reactionMover,
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
@@ -396,6 +417,10 @@ export function SessionScene({
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
     onQuickRightClick: onCancelSelection,
+    touchPanEnabled,
+    touchPinchEnabled,
+    touchRotateEnabled,
+    focusRequest,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a
@@ -622,6 +647,7 @@ export function SessionScene({
         hexSize={hexSize}
         doors={doors}
         onDoorClick={onDoorClick}
+        dungeonKey={dungeonKey}
         compositionSource={compositionSource}
       />
       {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:
@@ -640,6 +666,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <LocalWorldDieWarmup />
+      <SightAreaOverlay areas={sightAreas} hexSize={hexSize} />
       {presentationLayer}
       <AreaFootprintPreview
         footprint={areaFootprint}
@@ -751,9 +778,28 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
-          factionColor={factionPalette.get(
-            roster?.get(member.subject)?.faction ?? ''
-          )}
+          // THE RING IS WHAT THIS PLAYER BELIEVES, falling back to what the
+          // roster knows (rpg-project#458). The sighting's own stance is
+          // per-observer testimony and wins when it has a word; an empty one
+          // means this observer holds no belief, which is a different claim
+          // from "neutral" and resolves to the faction colour the ring has
+          // always been.
+          //
+          // BOTH BRANCHES RUN. A creature in a faction answers hostile,
+          // neutral or allied and gets a stance colour; one the run cannot
+          // place — in NO FACTION at all, which a world NPC is — answers empty
+          // and takes the roster fallback. Empty is the wire's own "no word for
+          // it" and is NOT a synonym for neutral: resolving it into one would
+          // draw a confident ring around a creature whose side is unknown.
+          //
+          // EVERY VIEWER STILL SEES THE SAME COLOURS, and will until `pretend`
+          // lands: with no deception in play a believed stance equals the
+          // derived one. It is read per viewer anyway, because a stance taken
+          // live off the graph could only ever be true.
+          factionColor={
+            stanceRingColor(member.stance) ??
+            factionPalette.get(roster?.get(member.subject)?.faction ?? '')
+          }
           knowledgeState={member.remembered ? 'remembered' : undefined}
           // Observed hands, not the peer's sheet — this component never
           // fetches another player's sheet, and could not honestly draw from
@@ -828,6 +874,9 @@ export function SessionCanvas(props: SessionCanvasProps) {
         width: '100%',
         height: '100%',
         pointerEvents: props.interactionEnabled === false ? 'none' : 'auto',
+        // Keep renderer/Html layers beneath sibling HUD panels without disabling
+        // the canvas: touch camera gestures must still work while aiming.
+        zIndex: props.touchPanEnabled ? 0 : undefined,
       }}
     >
       <SessionScene {...props} />

@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 import { cellBoundingBox } from '../../author/hexGeometry';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
+import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
   buildScene3D,
   positionToCube,
@@ -453,5 +454,76 @@ describe('propWorldPosition', () => {
       hexSize
     );
     expect(world.y).toBe(2.4 * hexSize);
+  });
+});
+
+/**
+ * The authored room is HANDED IN, never read off the atlas: the builder
+ * attaches what its caller already read, leaves every mechanical channel
+ * alone, and still refuses the one thing a scene builder must judge —
+ * the unit the room is placed at.
+ */
+describe('buildScene3D authored room scene', () => {
+  const presentation: RoomScenePresentation = {
+    coordinateFrame: {
+      horizontalPlane: 'world-xz',
+      verticalAxis: 'world-y-up',
+      distanceUnit: 'world-scene-unit',
+      hexRadius: 1,
+      footprintFrame: 'owner-local-xz',
+    },
+    workspace: { hexRadius: 6, horizontalLimit: 12 },
+    scene: {
+      version: 1,
+      id: 'scene-1',
+      name: 'Workshop',
+      items: [
+        {
+          id: 'table',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:torture-table',
+          label: 'Table',
+          transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
+          heightScale: 1.5,
+          parentId: 'furniture',
+        },
+      ],
+      groups: [
+        {
+          id: 'furniture',
+          kind: 'group',
+          label: 'Furniture',
+          transform: { x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37 },
+        },
+      ],
+    },
+  };
+
+  const atlas = () =>
+    ({
+      cells: [pos(0, 0)],
+      props: [],
+      segments: [],
+      doorways: [],
+      regions: [],
+      exits: [],
+    }) as never;
+
+  it('attaches the room it was handed and keeps mechanical channels intact', () => {
+    const scene = buildScene3D(atlas(), 1, 'pointy', presentation);
+    expect(scene.roomScene).toBe(presentation);
+    // The atlas's own scene channels are untouched by the room.
+    expect(scene.floorTiles.size).toBe(1);
+    expect(scene.exits).toEqual([]);
+  });
+
+  it('needs no scene at all — an atlas alone still builds', () => {
+    expect(buildScene3D(atlas(), 1, 'pointy').roomScene).toBeUndefined();
+  });
+
+  it('refuses a nonstandard hex size instead of guessing a scaling conversion', () => {
+    expect(() => buildScene3D(atlas(), 2, 'pointy', presentation)).toThrow(
+      /refusing to guess a conversion for requested hex size 2/
+    );
   });
 });

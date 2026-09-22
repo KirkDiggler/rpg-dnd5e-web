@@ -38,6 +38,9 @@ export function refreshKeysFor(
       return event.body.value.member === member
         ? ['where', 'afford', 'turn']
         : ['view'];
+    case 'warded':
+    case 'castWarded':
+      return ['characterData', 'afford', 'turn', 'view'];
     case 'struck':
     case 'missed':
       return ['characterData', 'afford', 'view'];
@@ -75,6 +78,15 @@ export function refreshKeysFor(
       return ['doors', 'atlas'];
     case 'regionRevealed':
       return ['atlas'];
+    // CONCEALMENT_REVEALED IS THE ONE BEAT THAT SUPERSEDES BOTH reveals above
+    // (rpg-api-protos#352): one secret, one beat, carrying the floor cells,
+    // props, member doors AND their doorways it was withholding. So it pops
+    // the same two cached views a hidden thing can touch — the atlas (floor +
+    // props) and the doors list (member doors + their doorways) — for the same
+    // reason and by the same deliberate re-verify path the two reveals above
+    // use: these are rare beats, not a hot path.
+    case 'concealmentRevealed':
+      return ['doors', 'atlas'];
     // THIS VIEWER'S OWN PERCEPTION CHANGED: somebody came into their view,
     // or left it. `view` and nothing else — sightings are the only thing it
     // touches. Nobody moved, nothing was spent, no card changed, so
@@ -160,6 +172,71 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
+    // A THREAT LANDED, OR MISSED (rpg-project#454). SCOPED TO THE ACTOR, the
+    // way `moved` is and unlike every flat row here, because the only thing
+    // this beat changes is the threatener's own turn: it costs them the
+    // standard action, so their card and what they may still declare both
+    // moved, and nobody else at the table spent anything.
+    //
+    // `view` IS NOT HERE FOR ANYBODY. Nobody stepped and nobody's sight
+    // changed — a threat reaches exactly the people who could already see
+    // the actor, which is what made them the audience.
+    //
+    // NOR IS THERE A ROW FOR THE CONSEQUENCE, and that is the design rather
+    // than an omission. A beaten threat lands a deed on the witnesses, and
+    // what it is worth is the threatened creature's mind's to decide; that
+    // arrives as its next turn, on that turn's own beats. There is nothing
+    // to re-read here because nothing has been decided yet.
+    //
+    // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
+    // shares this row, with ONE correction the threat's comment above did not
+    // have to make: on the WORLD clock a social verb costs nothing at all (R3),
+    // so `characterData` re-reads a sheet that did not change. It stays anyway,
+    // because the clock is not on this beat and guessing it from an absent
+    // field is exactly the kind of local decision that goes wrong the first
+    // time a rule moves. One wasted read is cheaper than a stale action bar.
+    case 'intimidated':
+    // eslint-disable-next-line no-fallthrough
+    case 'persuaded':
+      return event.body.value.actor === member
+        ? ['characterData', 'afford']
+        : [];
+    // THE CREATURE ANSWERED (rpg-project#458). `afford` FOR EVERYBODY, and
+    // this is the one social beat that is not scoped to the actor: an answer
+    // can move the creature (`flee` routes it away) and can teach a fact that
+    // flips a stance, and either changes what every player at the table may do
+    // next and who they may do it to.
+    //
+    // `view` TOO, and it is the reason this row exists at all. A goblin that
+    // bolts leaves somebody's sight and enters somebody else's, and a client
+    // that did not re-read its view would go on drawing a creature that walked
+    // out of the room.
+    //
+    // `characterData` IS NOT HERE. The creature spent its own nothing; no
+    // player's sheet moved.
+    case 'answered':
+      return ['afford', 'view'];
+    // A TEMPERAMENT WAS DEALT (rpg-project#465 §3) AND NOTHING CACHED MOVED.
+    // A faction's mix is thrown once per member at the door, before anybody
+    // has perceived anything: nobody stepped, nobody spent, no stance folded,
+    // and a creature's temperament is on no projection this client reads —
+    // not the roster, not the view, not afford or turn. It reaches the reader
+    // on the beat itself and on every later `answered`, which carries the word
+    // that loaded that pick.
+    //
+    // EMPTY IS THE ROW, not a missing one. This switch is exhaustive on
+    // purpose, so a new body has to be a decision somebody wrote down rather
+    // than a beat that silently refetches nothing.
+    case 'tempered':
+      return [];
+    // NOBODY MOVED, SO NOTHING CACHED MOVED EITHER (rpg-project#465). A
+    // routed walk that found no path spent its round on the cell it started
+    // on: no position changed, no action was spent, no stance folded, and no
+    // sight was gained or lost. `view` is the tempting one and is deliberately
+    // absent — refetching the scene because a creature did NOT move would be
+    // work for the one beat that guarantees the scene is unchanged.
+    case 'stayed':
+      return [];
     case 'looted':
     case 'activated':
     case 'exited':

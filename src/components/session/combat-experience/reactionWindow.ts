@@ -33,7 +33,7 @@ import {
  * `roll` — your own d20 is on the table and you hold something spendable on
  * it; the answer is whether to spend it.
  */
-export type ReactionWindowKind = 'movement' | 'roll';
+export type ReactionWindowKind = 'movement' | 'roll' | 'choice';
 
 /** The viewer's open reaction window, or undefined when none is posed. */
 export function reactionWindowDeclaration(
@@ -60,6 +60,7 @@ export function reactionWindowDeclaration(
 export function reactionWindowKind(
   declaration: Declaration
 ): ReactionWindowKind {
+  if (declaration.options.length > 0) return 'choice';
   return declaration.targetKind === TargetKind.MEMBER ? 'movement' : 'roll';
 }
 
@@ -103,6 +104,8 @@ export interface ReactionWindowAnswers {
 export function reactionWindowAnswers(
   kind: ReactionWindowKind
 ): ReactionWindowAnswers {
+  if (kind === 'choice')
+    return { take: 'Use', decline: 'Decline', declineIcon: '✋' };
   return kind === 'movement'
     ? { take: 'Strike', decline: 'Hold', declineIcon: '✋' }
     : { take: 'Spend', decline: 'Keep', declineIcon: '✋' };

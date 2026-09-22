@@ -320,6 +320,41 @@
   color: var(--sc-ink);
 }
 
+.roomLabelWithNavigation {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.locationText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.roomLabelWithNavigation .locationText > span,
+.roomLabelWithNavigation .locationText > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneNotice {
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--organized-header-height, 80px) + 8px);
+  left: 12px;
+  display: flex;
+  max-width: 45%;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--sc-ink);
+  font-size: 12px;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+
 .roomLabel span {
   font:
     700 13px Cinzel,
@@ -1874,7 +1909,7 @@ button.diceDrawerCue:focus-visible {
 .organizedOffer,
 .organizedCollection {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
@@ -1884,7 +1919,7 @@ button.diceDrawerCue:focus-visible {
   color: var(--sc-ink);
   background: rgba(31, 45, 49, 0.96);
   font: inherit;
-  font-size: 10px;
+  font-size: 12px;
   text-align: left;
 }
 .organizedOffer > span {
@@ -1892,7 +1927,7 @@ button.diceDrawerCue:focus-visible {
   font-size: 14px;
 }
 .organizedOffer strong {
-  max-width: 96px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1900,7 +1935,7 @@ button.diceDrawerCue:focus-visible {
 .organizedOffer small,
 .organizedOffer em {
   color: var(--sc-muted);
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -1909,10 +1944,10 @@ button.diceDrawerCue:focus-visible {
   cursor: not-allowed;
 }
 .organizedCollection {
-  min-height: 30px;
+  min-height: 34px;
   color: var(--sc-muted);
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 .organizedCollection span {
@@ -1965,36 +2000,22 @@ button.diceDrawerCue:focus-visible {
 .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
   height: min(800px, 100dvh);
 }
-.combatExperience[data-action-presentation='organized-hud'] .map {
-  bottom: 148px;
-}
-.combatExperience[data-action-presentation='organized-hud'] .dock {
-  min-height: 148px;
-}
 .combatExperience[data-action-presentation='organized-hud'] .identityRow {
   padding: 6px 10px;
 }
 .combatExperience[data-action-presentation='organized-hud'] .effects {
   overflow: hidden;
 }
-.combatExperience[data-action-presentation='organized-hud'] .storyLog {
-  bottom: 160px;
-}
 @container organized-hud (max-width: 800px) or (max-height: 500px) {
   .combatExperience[data-action-presentation='organized-hud'] {
-    --organized-turn-button-top: 52px;
+    --organized-header-height: 52px;
+    --organized-log-width: 280px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
     height: 100dvh;
     border-radius: 0;
     border-left: 0;
     border-right: 0;
-  }
-  .combatExperience[data-action-presentation='organized-hud'] .map {
-    bottom: 120px;
-  }
-  .combatExperience[data-action-presentation='organized-hud'] .dock {
-    min-height: 120px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .viewerPortrait,
   .combatExperience[data-action-presentation='organized-hud']
@@ -2013,9 +2034,6 @@ button.diceDrawerCue:focus-visible {
     flex-basis: 96px;
   }
   .combatExperience[data-action-presentation='organized-hud'] .storyLog {
-    top: 52px;
-    right: 8px;
-    bottom: 128px;
     width: min(280px, calc(100% - 16px));
   }
   .combatExperience[data-action-presentation='organized-hud'] .initiative {
@@ -2045,20 +2063,46 @@ button.diceDrawerCue:focus-visible {
   .organizedOffer {
     min-height: 34px;
     padding: 5px 7px;
+    font-size: 10px;
+  }
+  .organizedOffer strong {
+    max-width: 96px;
+  }
+  .organizedOffer small,
+  .organizedOffer em {
+    font-size: 8px;
+  }
+  .organizedCollection {
+    font-size: 9px;
   }
   .organizedCollections {
     overflow-x: auto;
   }
 }
 
+.organizedMeasure {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.organizedInspectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .organizedOfferSlot {
+  user-select: none;
+  -webkit-touch-callout: none;
   position: relative;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 2px;
 }
-.organizedInspectButton,
 .organizedCancel {
   min-height: 30px;
   padding: 5px 6px;
@@ -2067,13 +2111,15 @@ button.diceDrawerCue:focus-visible {
   color: var(--sc-muted);
   background: rgba(0, 0, 0, 0.18);
   font: inherit;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
 }
-.organizedInspectButton[aria-expanded='true'] {
-  border-color: var(--sc-gold);
-  color: var(--sc-gold-bright);
+/* A temporary card can cover the open menu without taking its pointer and
+   triggering a leave/re-enter loop on the underlying offer. */
+.organizedHoverInspection {
+  pointer-events: none;
 }
+
 .organizedInspection {
   position: absolute;
   z-index: 10;
@@ -2110,10 +2156,9 @@ button.diceDrawerCue:focus-visible {
   color: #e9a39f;
 }
 .organizedCancel {
-  position: absolute;
-  z-index: 2;
-  top: 5px;
-  right: 5px;
+  position: static;
+  flex: 0 0 auto;
+  min-height: 40px;
   border-color: rgba(232, 183, 95, 0.5);
   color: var(--sc-gold-bright);
 }
@@ -2125,9 +2170,9 @@ button.diceDrawerCue:focus-visible {
   .organizedOfferSlot {
     gap: 1px;
   }
-  .organizedInspectButton {
-    min-height: 28px;
-    padding: 4px;
+  .organizedCancel {
+    min-height: 34px;
+    font-size: 9px;
   }
   .organizedTray {
     position: fixed;
@@ -2149,22 +2194,19 @@ button.diceDrawerCue:focus-visible {
 
 /* Floating-group experiment: the map owns the frame; only the cards catch
    pointer events. No full-width background or reserved dock height. */
+/* Let the log share layout with the actual action-row height. The map
+   still fills the frame behind both, with no reserved opaque bottom band. */
+.combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+  display: grid;
+  grid-template-rows: var(--organized-header-height, 80px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 64px auto;
+  gap: 8px;
+}
 .combatExperience[data-action-presentation='organized-hud'] .map {
   bottom: 0;
 }
 .combatExperience[data-action-presentation='organized-hud'] .dock {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: auto;
-  max-width: none;
-  height: auto;
-  min-height: 0;
-  gap: 8px;
-  border: 0;
-  background: none;
-  box-shadow: none;
+  display: contents;
   pointer-events: none;
 }
 /* Anchor to the full-frame HUD, never to the browser around a phone preview. */
@@ -2241,12 +2283,22 @@ button.diceDrawerCue:focus-visible {
 }
 .combatExperience[data-action-presentation='organized-hud']
   .storyLog:not(.storyLogCollapsed) {
-  top: 116px;
-  bottom: 12px;
+  position: relative;
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-self: end;
+  align-self: stretch;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  min-height: 0;
+  margin-right: 12px;
 }
 .combatExperience[data-action-presentation='organized-hud'] .actionRow {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  z-index: 6;
+  grid-row: 3;
+  grid-column: 1;
   display: grid;
   grid-template-columns: minmax(0, max-content);
   align-content: end;
@@ -2275,14 +2327,21 @@ button.diceDrawerCue:focus-visible {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: auto;
 }
-.organizedActions .organizedQuick,
 .organizedActions .organizedCollections {
   flex-wrap: wrap;
   overflow: visible;
 }
+.organizedActions .organizedQuick {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
 .organizedActions .organizedOffer {
   background: rgba(31, 45, 49, 0.28);
   border-color: rgba(232, 183, 95, 0.2);
+}
+.organizedActions .organizedOffer[aria-pressed='true'] {
+  border-color: var(--sc-gold-bright);
+  background: rgba(232, 183, 95, 0.18);
 }
 .organizedActions .organizedTray,
 .organizedActions .organizedInspection {
@@ -2303,14 +2362,7 @@ button.diceDrawerCue:focus-visible {
   pointer-events: auto;
 }
 .combatExperience[data-action-presentation='organized-hud'] .endTurn {
-  position: absolute;
-  z-index: 2;
-  top: var(--organized-turn-button-top, 80px);
-  right: calc(12px + min(240px, 21cqw));
-  bottom: auto;
-  left: auto;
   width: max-content;
-  transform: translateX(50%);
   min-height: 44px;
   height: auto;
   margin: 0;
@@ -2318,7 +2370,14 @@ button.diceDrawerCue:focus-visible {
 }
 .organizedEndTurnSlot {
   display: inline-flex;
-  align-self: center;
+  justify-content: flex-end;
+  min-height: 56px;
+  grid-row: 3;
+  grid-column: 3;
+  align-self: end;
+  padding: 0 12px 12px 0;
+  z-index: 6;
+  pointer-events: auto;
 }
 .combatExperience[data-action-presentation='organized-hud']
   .organizedEndTurnSlot
@@ -2330,6 +2389,14 @@ button.diceDrawerCue:focus-visible {
 }
 .organizedEquipmentShortcut {
   margin-left: auto;
+}
+.organizedSecondary {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  pointer-events: auto;
 }
 .organizedExplore {
   position: relative;
@@ -2378,14 +2445,92 @@ button.diceDrawerCue:focus-visible {
   height: 100%;
 }
 
-/* Collapsing must also override the organized layout's more-specific
-   desktop/phone bottom and width rules, not leave an empty full-height panel. */
+/* Reading the log gets a reserved control cell beside End Turn, never over
+   Equipment. Keep the open panel translucent without dimming the text. */
+.combatExperience[data-action-presentation='organized-hud'] .storyLog {
+  background: rgba(10, 17, 20, 0.55);
+  backdrop-filter: none;
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+/* On a split-width frame, the OPEN log owns its right-hand column down to
+   the turn controls. Reserve that width so actions cannot cover its footer. */
+.combatExperience[data-action-presentation='organized-hud']
+  .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
+  grid-template-columns:
+    minmax(0, 1fr) calc(var(--organized-log-width, 318px) - 148px)
+    140px;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .gameFrame:has(.storyLogWide:not(.storyLogCollapsed)) {
+  --organized-log-width: min(640px, calc(100cqw - 24px));
+}
+/* The frame clips the backdrop; only the final button-height band is kept
+   clear inside the reading area, rather than reserving the whole action bar. */
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed) {
+  grid-row: 2 / 4;
+  width: min(var(--organized-log-width, 318px), calc(100cqw - 24px));
+  padding-bottom: 64px;
+  overflow: visible;
+  background: transparent;
+  border-color: transparent;
+}
+.combatExperience[data-action-presentation='organized-hud']
+  .storyLog:not(.storyLogCollapsed)::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -1px -1px auto;
+  height: 100dvh;
+  border: 1px solid var(--sc-line);
+  border-radius: 10px 10px 0 0;
+  background: rgba(10, 17, 20, 0.55);
+  pointer-events: none;
+}
 .combatExperience[data-action-presentation='organized-hud']
   .storyLog.storyLogCollapsed {
+  position: relative;
+  grid-row: 3;
+  grid-column: 2;
+  justify-self: end;
+  align-self: end;
   top: auto;
-  right: 12px;
-  bottom: 12px;
+  right: auto;
+  bottom: auto;
+  margin-bottom: 12px;
   width: auto;
+}
+.combatExperience[data-action-presentation='organized-hud'] .logTab {
+  min-height: 44px;
+}
+
+/* Portrait keeps the full action width. Its reserved Log/End Turn cells
+   move below the actions instead of squeezing them or covering Equipment. */
+@container organized-hud (max-width: 600px) {
+  .combatExperience[data-action-presentation='organized-hud'] .gameFrame {
+    grid-template-rows:
+      var(--organized-header-height, 80px) minmax(0, 1fr)
+      auto auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud'] .actionRow {
+    grid-column: 1 / -1;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
+    grid-template-columns: minmax(0, 1fr) 64px auto;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .storyLog:not(.storyLogCollapsed) {
+    grid-row: 2;
+    padding-bottom: 0;
+  }
+  .combatExperience[data-action-presentation='organized-hud']
+    .organizedEndTurnSlot,
+  .combatExperience[data-action-presentation='organized-hud']
+    .storyLog.storyLogCollapsed {
+    grid-row: 4;
+  }
 }
 
 /* The opt-in tray is a deliberate overlay; do not let the legacy narrow-row
@@ -2394,24 +2539,13 @@ button.diceDrawerCue:focus-visible {
   overflow: visible;
 }
 
-/* Targeting owns the compact concept surface until it is cancelled. */
-.combatExperience[data-action-presentation='organized-hud']:has(
-    [data-phase='targeting']
-  )
-  .map {
-  z-index: 7;
-}
+/* Target panels sit above the canvas, not the entire map above every HUD
+   control. Camera gestures and log/menu input remain available while aiming. */
 .combatExperience[data-action-presentation='organized-hud']:has(
     [data-phase='targeting']
   )
   .contextPrompt[data-phase='targeting'] {
   z-index: 8;
-}
-.combatExperience[data-action-presentation='organized-hud']:has(
-    [data-phase='targeting']
-  )
-  .dock {
-  pointer-events: none;
 }
 
 @container organized-hud (max-width: 800px) or (max-height: 500px) {

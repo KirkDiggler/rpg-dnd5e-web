@@ -47,6 +47,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(8, 5),
       remembered: false,
       standing: Standing.UP,
+      stance: '',
       equipment: undefined,
     },
     {
@@ -57,6 +58,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(10, 4),
       remembered: false,
       standing: Standing.UP,
+      stance: '',
       equipment: undefined,
     },
     {
@@ -67,6 +69,7 @@ export const SESSION_COMBAT_MAP_FIXTURE = Object.freeze({
       position: at(13, 3),
       remembered: false,
       standing: Standing.UP,
+      stance: '',
       equipment: undefined,
     },
   ]),

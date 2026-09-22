@@ -1,6 +1,7 @@
 import { getConditionDisplay } from '@/utils/conditionIcons';
 import { refId } from '@/utils/refs';
 import {
+  AnswerWord,
   EventKind,
   type AttackModifierSource,
   type Event,
@@ -17,6 +18,7 @@ import {
 import { damageTypeWord } from '../combatBeat';
 import { dissolveSentence, formatFactionBeat } from '../factionBeat';
 import { formatHoldingBeat } from '../holdingBeat';
+import { formatWardBeat } from '../wardBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
   CombatExperienceAttackModifierSource,
@@ -238,9 +240,18 @@ function buildActivationResultStory(
     }
     case 'conditionApplied': {
       const condition = event.body.value.result.value;
+      const target = memberName(condition.target, context);
+      if (condition.ref === 'dnd5e:conditions:in_fog') {
+        return Object.freeze({
+          ...base,
+          headline: `${target} enters Fog Cloud`,
+          detail: 'Entered the fog.',
+          tone: 'success',
+        });
+      }
       return Object.freeze({
         ...base,
-        headline: `${memberName(condition.target, context)} begins ${condition.name}`,
+        headline: `${target} begins ${condition.name}`,
         detail: `Applied by ${actor}.`,
         tone: 'success',
       });
@@ -254,6 +265,17 @@ function buildActivationResultStory(
       // Raging and nonsense for a spell. Only a condition sharing its name
       // with a spell this run watched somebody cast takes the other wording,
       // so a class feature's removal reads exactly as it did before.
+      if (condition.ref === 'dnd5e:conditions:in_fog') {
+        const ended = condition.reason === 'area ended';
+        return Object.freeze({
+          ...base,
+          headline: ended
+            ? `${target} is no longer in Fog Cloud`
+            : `${target} leaves Fog Cloud`,
+          detail: ended ? 'The cloud ended.' : 'Moved out of the fog.',
+          tone: 'neutral',
+        });
+      }
       if (condition.name && context.castSpells?.names.has(condition.name)) {
         return Object.freeze({
           ...base,
@@ -592,16 +614,141 @@ function buildOtherStory(
         detail: event.body.value.ending,
         tone: 'turn',
       });
+    case 'intimidated': {
+      // The first shenanigan (rpg-project#454), narrated like the door's own
+      // check one case down: the numbers, and the SERVER'S reading of them.
+      // `beaten` is copied rather than derived from total against dc.
+      //
+      // ONE ENTRY WHETHER IT LANDED OR NOT. Every witness sees the die,
+      // including the actor, because `IntimidateResponse` carries no verdict
+      // for them to read anywhere else.
+      //
+      // The tone is the CHECK's, not the consequence's: a cowed goblin may
+      // or may not run, because that is its mind's decision and it shows up
+      // as its next turn, never as a clause here.
+      //
+      // THE WHOLE ROLL WHEN THERE IS ONE (rpg-project#462). The beat used to
+      // publish one settled number, which is how the untrained rule shipped
+      // applied and INVISIBLE: a character who threw two dice and kept the
+      // lower read a plain total and never learned why. When the calculation
+      // is present the line shows both faces, the kept one and the rule's own
+      // name; when it is absent — an older beat — it falls back to the total
+      // it always printed, rather than going blank.
+      const threat = event.body.value;
+      const actor = memberName(threat.actor, context);
+      const target = memberName(threat.target, context);
+      const arithmetic = threat.calculation
+        ? formatRollCalculation(threat.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Threat',
+        headline: `${actor} leans on ${target}`,
+        detail: `${arithmetic ?? threat.total} against DC ${threat.dc} · ${
+          threat.beaten ? 'Cowed' : 'Unmoved'
+        }`,
+        tone: threat.beaten ? 'success' : 'neutral',
+      });
+    }
+    case 'persuaded': {
+      // THE APPEAL (rpg-project#458), narrated as the threat's twin one case
+      // up and built from the same fields under the same laws: the numbers,
+      // and the SERVER'S reading of them. `beaten` is copied rather than
+      // derived from total against dc.
+      //
+      // ONE ENTRY WHETHER IT LANDED OR NOT, because `PersuadeResponse`
+      // carries no verdict and this is the actor's only account of their own
+      // die. A failed appeal especially: it is the entry the goblin's bad
+      // directions follow from.
+      //
+      // NOTHING ABOUT WHAT THE CREATURE DOES. That is the `answered` beat
+      // below — the world's roll on the author's table — and putting a word
+      // of it here would make this one beat claim two things.
+      //
+      // AND THE WHOLE ROLL, the threat's twin here too (rpg-project#462).
+      const appeal = event.body.value;
+      const actor = memberName(appeal.actor, context);
+      const target = memberName(appeal.target, context);
+      const arithmetic = appeal.calculation
+        ? formatRollCalculation(appeal.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Appeal',
+        headline: `${actor} talks to ${target}`,
+        detail: `${arithmetic ?? appeal.total} against DC ${appeal.dc} · ${
+          appeal.beaten ? 'Won round' : 'Unconvinced'
+        }`,
+        tone: appeal.beaten ? 'success' : 'neutral',
+      });
+    }
+    case 'answered': {
+      // WHAT THE CREATURE DID ABOUT IT (rpg-project#458) — the second roll,
+      // the author's table read by the world.
+      //
+      // THE AUTHOR'S LINE IS THE ENTRY, verbatim and quoted, attributed to
+      // the creature. The engine never composes speech and neither does this:
+      // what is written here is exactly what the author typed into `say:`,
+      // and the one sentence this client adds is about the WORD, not the
+      // line.
+      //
+      // R1 KEEPS THE DIE OUT OF THIS. The roll, the summed weights, the entry
+      // index and the fact id are on the beat and rendered in the DEBUG log;
+      // the story shows the outcome and the line, which is what Kirk ruled.
+      //
+      // AN ENTRY THAT ONLY SPEAKS GETS NO OUTCOME CLAUSE. An empty word is an
+      // answer — the author wrote a line and no consequence — and appending
+      // one would be this client inventing a thing that did not happen.
+      const answer = event.body.value;
+      const creature = memberName(answer.creature, context);
+      const spoken = answer.say ? `${creature}: “${answer.say}”` : null;
+      const outcome =
+        answer.word === AnswerWord.FACT
+          ? 'and the party learned something'
+          : answer.word === AnswerWord.FLEE
+            ? 'and bolts'
+            : null;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Answer',
+        // The creature is the subject even when it says nothing: somebody
+        // needs to be named, and the beat exists because an entry fired.
+        headline: spoken ?? `${creature} answers`,
+        detail: outcome ? `…${outcome}.` : '',
+        // A creature that runs is not a success for anybody, and a fact it
+        // taught is not either — what the party learned may be a lie. Neutral
+        // for every word: the tone of a CONSEQUENCE is not this beat's to
+        // claim, and the check beat above already carried the verdict.
+        tone: 'neutral',
+      });
+    }
     case 'door': {
+      // UNLOCK IS A CHECK BEAT AND CARRIES THE ROLL (rpg-project#462, R4).
+      // "Any future check beat" includes the one that already existed, so a
+      // forced lock shows both faces and the rule the same way a threat does.
+      //
+      // ONLY ON AN ATTEMPT. A door that merely reports a state change — opened
+      // by hand, revealed, shut behind somebody — rolled nothing, and its
+      // calculation is absent rather than empty. The `dc` test that already
+      // chose between the two readings still chooses.
       const door = event.body.value;
       const actor = door.actor ? memberName(door.actor, context) : 'The door';
       const state = DoorState[door.state] ?? String(door.state);
+      const arithmetic = door.calculation
+        ? formatRollCalculation(door.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
       return Object.freeze({
         ...base,
         eyebrow: 'Door',
         headline: `${actor} changes ${door.door}`,
         detail: door.dc
-          ? `${door.total} against DC ${door.dc} · ${door.beaten ? 'Succeeded' : 'Failed'}`
+          ? `${arithmetic ?? door.total} against DC ${door.dc} · ${door.beaten ? 'Succeeded' : 'Failed'}`
           : state.toLowerCase(),
         tone: door.beaten ? 'success' : 'neutral',
       });
@@ -647,6 +794,22 @@ function buildOtherStory(
               : `Story sequence ${event.seq}.`,
         tone: 'neutral',
       });
+    }
+    case 'warded':
+    case 'castWarded': {
+      const ward = formatWardBeat(event, (id) => memberName(id, context));
+      return ward
+        ? Object.freeze({
+            ...base,
+            eyebrow: event.body.case === 'castWarded' ? 'Spell' : 'Ward',
+            attack:
+              event.body.case === 'warded'
+                ? attackSnapshot(event.body.value.attack)
+                : undefined,
+            ...ward,
+            tone: 'neutral' as const,
+          })
+        : undefined;
     }
     case 'castMissed': {
       if (event.kind !== EventKind.CAST_MISSED) return undefined;

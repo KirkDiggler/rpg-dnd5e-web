@@ -9,6 +9,7 @@ import {
   isDicePresentationIdentifier,
 } from '@/components/ui/dice/dicePresentationRelease';
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
+import { parseRef } from '@/utils/refs';
 import { clone } from '@bufbuild/protobuf';
 import {
   EventKind,
@@ -470,8 +471,31 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   // `against` CARRIES THE DC. It is the number the total was measured
   // against, which is what that field means for an attack too; `succeeded` is
   // the rulebook's own reading and no receiver recomputes it.
-  if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
-    const saved = event.body.value;
+  if (
+    (event.body.case === 'saved' && event.kind === EventKind.SAVED) ||
+    (event.body.case === 'warded' && event.kind === EventKind.WARDED) ||
+    (event.body.case === 'castWarded' && event.kind === EventKind.CAST_WARDED)
+  ) {
+    // Continue the existing Sanctuary work: the aggressor rolls a saving
+    // throw, not an attack. Both ward event kinds mean that save failed.
+    const body = event.body.value;
+    const saved =
+      event.body.case === 'saved'
+        ? event.body.value
+        : {
+            saver:
+              'attacker' in body
+                ? body.attacker
+                : 'actor' in body
+                  ? body.actor
+                  : '',
+            ability: body.ability,
+            roll: body.roll,
+            total: body.total,
+            dc: body.dc,
+            succeeded: false,
+            source: { ref: '', name: 'Ward' },
+          };
     // Saved carries no provider-issued presentation token. Keep its animation
     // recipient-local until the provider contract deliberately grows one; a
     // session/seq identity must never be mistaken for cross-recipient truth.
@@ -602,6 +626,8 @@ function attackEventFacts(event: Event): string | undefined {
     event.body.case !== 'missed' &&
     event.body.case !== 'deathSaveRolled' &&
     event.body.case !== 'saved' &&
+    event.body.case !== 'warded' &&
+    event.body.case !== 'castWarded' &&
     event.body.case !== 'rollWindowOpened'
   ) {
     return undefined;
@@ -876,6 +902,16 @@ function markConflicted(
   return diagnose(conflicted, message);
 }
 
+// The provider catalog type identifies spell presentation; no spell rules or
+// individual spell IDs are reconstructed here.
+function isStreamDeliveredRoll(authority: AuthoritySnapshot): boolean {
+  return (
+    authority.kind === 'save' ||
+    (authority.kind === 'attack' &&
+      parseRef(authority.attack?.ref ?? '')?.type === 'spells')
+  );
+}
+
 function initialRecord(
   state: CombatPresentationState,
   authority: AuthoritySnapshot,
@@ -890,21 +926,10 @@ function initialRecord(
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
   const historical =
     options.event !== undefined && options.source === 'catchup';
-  // NOBODY ARMS A SAVE, INCLUDING THE SAVER'S OWN CLIENT. Every other roll
-  // attributed to the local player is one they START: an attack arms the tray
-  // from the dock and lands as an `attack-response`, and a death save has its
-  // own dock affordance and its own `death-save-response`. A save has neither.
-  // `kind: 'save'` is minted in exactly one place — the SAVED beat, already
-  // rolled by the server — and no response fact of that shape exists, so a
-  // save marked pending waits on a release that can never arrive: it sits
-  // `armed`, stays invisible, and holds `pendingLocalKeys` open forever.
-  //
-  // Kirk's walk is what this costs when it is wrong. A skeleton hit the bard,
-  // the bard rolled a CON check to hold True Strike, and the story showed the
-  // strike and then the break with NO CHECK BETWEEN — the one card that says
-  // why the spell ended. The saver is a witness to their own save, like every
-  // other recipient, so it settles the way every witnessed roll does.
-  const pending = localPlayer && !historical && authority.kind !== 'save';
+  // Saves and spell attacks arrive fully resolved on the stream. CastResponse
+  // carries no attack result, so there is no dock response to release their dice.
+  const pending =
+    localPlayer && !historical && !isStreamDeliveredRoll(authority);
   const settlement = historical
     ? ('auto' as const)
     : !roleKnown
@@ -1044,6 +1069,8 @@ function acceptResponse(
   }
   let authority: AuthoritySnapshot;
   try {
+    // A warded response has no attack roll. Its typed event owns the save.
+    if (fact.type === 'attack-response' && fact.response.warded) return state;
     authority =
       fact.type === 'attack-response'
         ? authorityFromResponse(fact)
@@ -1223,6 +1250,12 @@ const EXPECTED_OTHER_KIND = {
   door: EventKind.DOOR,
   doorRevealed: EventKind.DOOR_REVEALED,
   regionRevealed: EventKind.REGION_REVEALED,
+  // CONCEALMENT_REVEALED SUPERSEDES BOTH doorRevealed AND regionRevealed
+  // (rpg-api-protos#352): one secret, one beat, carrying the floor, props,
+  // doors and doorways it was hiding. It is carried and not narrated here for
+  // the same reason its two predecessors are — a reveal is perception, not
+  // story, and the canvas/atlas already re-renders from the refetch.
+  concealmentRevealed: EventKind.CONCEALMENT_REVEALED,
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
   looted: EventKind.LOOTED,
@@ -1242,6 +1275,32 @@ const EXPECTED_OTHER_KIND = {
   // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
   // exact gap `saved` fell into in slice two.
   concentrationEnded: EventKind.CONCENTRATION_ENDED,
+  // THE FIRST SHENANIGAN (rpg-project#454), and it has to be here for
+  // `concentrationEnded`'s reason directly above: a body with no row is
+  // discarded as a typed kind/body mismatch, and this beat is the ONLY
+  // account of the roll — the response carries no beaten, total or dc — so
+  // dropping it would lose the die for the whole table, actor included.
+  intimidated: EventKind.INTIMIDATED,
+  // THE FRONT ROOM GOBLIN (rpg-project#458), and both arms are here for
+  // `intimidated`'s reason one line up. `persuaded` is the only account of its
+  // own roll, exactly as the threat's is. `answered` is the only account of
+  // ANYTHING the creature did: the line it spoke, the fact it taught and
+  // whether it bolted all ride that one body, so dropping it as a typed
+  // kind/body mismatch would leave a goblin running out of the room with
+  // nothing anywhere saying why.
+  persuaded: EventKind.PERSUADED,
+  answered: EventKind.ANSWERED,
+  // The creature's table's own two (rpg-project#465). LISTED, so the
+  // kind/body pairing is checked and the beat is accepted, and given no story
+  // row below — narrating them is rpg-dnd5e-web#1122. They are quiet rather
+  // than accused because [SILENT_OTHER_BODIES] names them; see it for why the
+  // diagnostic could not tell a decision from a defect.
+  //
+  // THE WARD BEATS ARE NOT HERE, and that is the ward slice's own answer
+  // rather than an omission: `warded` and `castWarded` carry a die, so they
+  // become AUTHORITY above and never reach this table at all.
+  tempered: EventKind.TEMPERED,
+  stayed: EventKind.STAYED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1271,14 +1330,79 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
   EventKind.CAST_MISSED,
+  EventKind.WARDED,
+  EventKind.CAST_WARDED,
+  EventKind.TEMPERED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
+  EventKind.INTIMIDATED,
+  EventKind.PERSUADED,
+  EventKind.ANSWERED,
   // Typed, so a SIGHTED arriving with no body is dropped rather than
   // falling through as a bodyless 'none' row. The server only publishes one
   // when it names somebody, so a bodyless one is a beat that should not
   // exist — and it is not story either way (see relevantOtherEvent).
   EventKind.SIGHTED,
 ]);
+
+// Body cases this layer deliberately gives NO STORY ROW, so that
+// `acceptStreamEvent` can drop them in silence rather than diagnosing them.
+//
+// THE DIAGNOSTIC WAS LYING ABOUT THEM (found on Kirk's walk, rpg-project#465).
+// `relevantOtherEvent` answers `undefined` for two unrelated reasons — a
+// genuine kind/body MISMATCH, which is a defect worth saying out loud, and a
+// decision that this beat is not story — and the caller could not tell them
+// apart, so it printed "typed event kind/body mismatch ignored" after every
+// well-formed `tempered`. A debug feed that cries defect on a correct beat
+// teaches a reader to ignore it, which costs the one time it is right.
+//
+// BOTH MEMBERS ARE NOT STORY: a mix dealt at the door, before the party has
+// met anybody, and a round in which nothing moved. The debug line carries each
+// in full, and narrating them is rpg-dnd5e-web#1122.
+// THE WARD BEATS NEEDED NOTHING HERE. `warded` and `castWarded` carry a die,
+// so the ward slice makes them AUTHORITY; they never reach the diagnostic and
+// were never accused.
+//
+// WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed`,
+// `regionRevealed` and `concealmentRevealed` have the identical shape and
+// produce the identical false warning on `dev` today, unchanged by this
+// branch — `sighted` at the early return below, the reveals in the switch's
+// last arm. They are pre-existing (concealmentRevealed makes this list after
+// the v0.1.207 proto bump, which added it as the successor to the door/region
+// reveals) and not this pin's to move; adding them would be a fix nobody asked
+// for riding in on a pin bump. One line each when somebody wants it.
+const SILENT_OTHER_BODIES = [
+  'tempered',
+  'stayed',
+] as const satisfies readonly (keyof typeof EXPECTED_OTHER_KIND)[];
+
+type SilentOtherBody = (typeof SILENT_OTHER_BODIES)[number];
+
+/** Narrows a body case to one this layer deliberately does not narrate, so the
+ * kind lookup below is an indexed read rather than a cast. Listing a body here
+ * that EXPECTED_OTHER_KIND does not know is a type error, which is what keeps
+ * the two lists from drifting apart. */
+function isSilentBody(bodyCase: string): bodyCase is SilentOtherBody {
+  return (SILENT_OTHER_BODIES as readonly string[]).includes(bodyCase);
+}
+
+// isSilentOtherEvent is a WELL-FORMED beat this layer chose not to narrate:
+// its body is one of [SILENT_OTHER_BODIES] and its kind is the one that body
+// is supposed to arrive under.
+//
+// THE PAIRING IS CHECKED HERE TOO, and that is the whole reason this is a
+// function rather than a set lookup at the call site. Silencing on the body
+// case alone would also swallow a `tempered` body arriving under some other
+// kind — a genuine mismatch, and exactly the defect the diagnostic exists to
+// catch. Not narrating a beat is a decision about a CORRECT beat; a malformed
+// one is still somebody's bug and still says so.
+function isSilentOtherEvent(event: Event): boolean {
+  const bodyCase = event.body.case;
+  if (bodyCase === undefined || !isSilentBody(bodyCase)) {
+    return false;
+  }
+  return event.kind === EXPECTED_OTHER_KIND[bodyCase];
+}
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   const bodyCase = event.body.case;
@@ -1288,7 +1412,13 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   }
   // The bodies that become authority instead: they carry a die, so they are
   // presentation records rather than other-story rows.
-  if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
+  if (
+    bodyCase === 'struck' ||
+    bodyCase === 'missed' ||
+    bodyCase === 'saved' ||
+    bodyCase === 'warded' ||
+    bodyCase === 'castWarded'
+  ) {
     return undefined;
   }
   // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
@@ -1474,6 +1604,46 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             })
           : null,
       });
+    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#454). Actor and target
+    // alone would hash two threats in one fight the same, and the second
+    // would be recorded as a conflicting duplicate of the first — a fighter
+    // may lean on the same goblin twice across two turns, and the numbers
+    // are what differ.
+    case 'intimidated':
+    // The appeal takes the threat's identity whole, for the threat's reason:
+    // actor and target alone would hash two attempts on one creature the
+    // same, and the second would be recorded as a conflicting duplicate of
+    // the first. A party face may work on the same goblin twice.
+    // eslint-disable-next-line no-fallthrough
+    case 'persuaded':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        actor: event.body.value.actor,
+        target: event.body.value.target,
+        dc: event.body.value.dc,
+        total: event.body.value.total,
+        beaten: event.body.value.beaten,
+      });
+    // THE WORLD'S ROLL IS THE IDENTITY (rpg-project#458). The creature and the
+    // verb alone would hash two answers to two attempts on one goblin the
+    // same, and the author's whole point is that the SECOND attempt can roll
+    // a different entry off the same table — so the die, the entry and the
+    // line are what tell them apart.
+    case 'answered':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        creature: event.body.value.creature,
+        verb: event.body.value.verb,
+        beaten: event.body.value.beaten,
+        roll: event.body.value.roll,
+        of: event.body.value.of,
+        entry: event.body.value.entry,
+        word: event.body.value.word,
+        say: event.body.value.say,
+        fact: event.body.value.fact,
+      });
     case 'door':
       return Object.freeze({
         kind: event.kind,
@@ -1629,8 +1799,14 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
         reason: event.body.value.reason,
       });
+    // The reveals, plus the creature's table's own two — every body this file
+    // accepts and does not narrate. See their entries in EXPECTED_OTHER_KIND
+    // above for why each is here and why the answer stops at acceptance.
     case 'doorRevealed':
     case 'regionRevealed':
+    case 'concealmentRevealed':
+    case 'tempered':
+    case 'stayed':
       return undefined;
   }
 }
@@ -1705,6 +1881,14 @@ function acceptStreamEvent(
     );
   }
   if (authority) return acceptAttackEvent(state, fact, authority);
+
+  // A BEAT WE CHOSE NOT TO NARRATE IS NOT A DEFECT, and must not be reported
+  // as one (found on Kirk's walk, rpg-project#465). The raw feed already holds
+  // it — appendRawDebug ran at the top of this function — so dropping it here
+  // loses nothing and keeps the diagnostic meaning what it says.
+  if (isSilentOtherEvent(fact.event)) {
+    return state;
+  }
 
   const relevantFacts = relevantOtherEvent(fact.event);
   if (!relevantFacts) {
@@ -1902,7 +2086,7 @@ function configurePresentation(
     if (record.settlement === 'unresolved') {
       if (!roleKnown) return record;
       const request = createRequest(configured, record.authority);
-      if (newlyLocal) {
+      if (newlyLocal && !isStreamDeliveredRoll(record.authority)) {
         pendingLocalKeys.push(record.key);
         return Object.freeze({
           ...record,

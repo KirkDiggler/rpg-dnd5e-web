@@ -19,6 +19,8 @@ import './dnd-sheet.css';
 interface CharacterSheetProps {
   characterId: string;
   onBack: () => void;
+  /** Enter the level-up screen for this character. */
+  onLevelUp?: () => void;
 }
 
 // Helper components for the character sheet sections
@@ -160,7 +162,11 @@ function AttacksSection({ character }: { character: Character }) {
   );
 }
 
-export function CharacterSheet({ characterId, onBack }: CharacterSheetProps) {
+export function CharacterSheet({
+  characterId,
+  onBack,
+  onLevelUp,
+}: CharacterSheetProps) {
   const {
     data: character,
     loading,
@@ -249,7 +255,7 @@ export function CharacterSheet({ characterId, onBack }: CharacterSheetProps) {
           }}
         >
           {/* Character Header */}
-          <CharacterHeader character={character} />
+          <CharacterHeader character={character} onLevelUp={onLevelUp} />
 
           {/* Top Row - Inspiration and Proficiency Bonus */}
           <div className="grid grid-cols-2 gap-4 mb-6">
