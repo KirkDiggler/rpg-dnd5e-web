@@ -367,7 +367,11 @@ describe('automatic spell grants', () => {
       );
       expect(screen.queryByText(`Granted by ${source}`)).toBeNull();
       expect(
-        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
+        (
+          screen.getByRole('button', {
+            name: id === 'light' ? 'Light (Not yet implemented)' : name,
+          }) as HTMLButtonElement
+        ).disabled
       ).toBe(false);
     }
   );
@@ -377,7 +381,7 @@ it('keeps NYI spells selectable and domain grants locked with an honest label', 
   const onSelectionChange = vi.fn();
   const choice = create(ChoiceSchema, {
     id: 'spell-choice',
-    chooseCount: 1,
+    chooseCount: 3,
     choiceType: ChoiceCategory.SPELLS,
     options: {
       case: 'spellOptions',
@@ -399,8 +403,10 @@ it('keeps NYI spells selectable and domain grants locked with an honest label', 
       onSelectionChange={onSelectionChange}
     />
   );
-  expect(screen.getAllByText('Not yet implemented')).toHaveLength(2);
-  fireEvent.click(screen.getByText('Light'));
+  expect(screen.getAllByText(/Not yet implemented/)).toHaveLength(2);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Light (Not yet implemented)' })
+  );
   expect(onSelectionChange).toHaveBeenCalledWith('spell-choice', [
     'dnd5e:spells:light',
   ]);

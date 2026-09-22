@@ -197,10 +197,7 @@ export function ChoiceRenderer({
           available={choice.options.value.availableRefs}
           currentSelections={currentSelections}
           getDisplayInfo={(ref: string) => ({
-            name: spellCatalog.get(ref)?.name || spellRefLabel(ref),
-            description: spellCatalog.get(ref)?.notYetImplemented
-              ? 'Not yet implemented'
-              : undefined,
+            name: `${spellCatalog.get(ref)?.name || spellRefLabel(ref)}${spellCatalog.get(ref)?.notYetImplemented ? ' (Not yet implemented)' : ''}`,
           })}
           onSelectionChange={onSelectionChange}
         />
