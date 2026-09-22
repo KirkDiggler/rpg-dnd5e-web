@@ -1250,6 +1250,12 @@ const EXPECTED_OTHER_KIND = {
   door: EventKind.DOOR,
   doorRevealed: EventKind.DOOR_REVEALED,
   regionRevealed: EventKind.REGION_REVEALED,
+  // CONCEALMENT_REVEALED SUPERSEDES BOTH doorRevealed AND regionRevealed
+  // (rpg-api-protos#352): one secret, one beat, carrying the floor, props,
+  // doors and doorways it was hiding. It is carried and not narrated here for
+  // the same reason its two predecessors are — a reveal is perception, not
+  // story, and the canvas/atlas already re-renders from the refetch.
+  concealmentRevealed: EventKind.CONCEALMENT_REVEALED,
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
   looted: EventKind.LOOTED,
@@ -1357,12 +1363,14 @@ const TYPED_EVENT_KINDS = new Set<number>([
 // so the ward slice makes them AUTHORITY; they never reach the diagnostic and
 // were never accused.
 //
-// WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed` and
-// `regionRevealed` have the identical shape and produce the identical false
-// warning on `dev` today, unchanged by this branch — `sighted` at the early
-// return below, the reveals in the switch's last arm. They are pre-existing
-// and not this PR's to move; adding them would be a fix nobody asked for
-// riding in on a pin bump. One line each when somebody wants it.
+// WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed`,
+// `regionRevealed` and `concealmentRevealed` have the identical shape and
+// produce the identical false warning on `dev` today, unchanged by this
+// branch — `sighted` at the early return below, the reveals in the switch's
+// last arm. They are pre-existing (concealmentRevealed makes this list after
+// the v0.1.207 proto bump, which added it as the successor to the door/region
+// reveals) and not this pin's to move; adding them would be a fix nobody asked
+// for riding in on a pin bump. One line each when somebody wants it.
 const SILENT_OTHER_BODIES = [
   'tempered',
   'stayed',
@@ -1796,6 +1804,7 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // above for why each is here and why the answer stops at acceptance.
     case 'doorRevealed':
     case 'regionRevealed':
+    case 'concealmentRevealed':
     case 'tempered':
     case 'stayed':
       return undefined;
