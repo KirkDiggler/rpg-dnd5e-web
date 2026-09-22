@@ -40,7 +40,9 @@ import {
  * the validator will not store one. The refusal is reported HERE, beside the
  * control that would write it, rather than only at publish time. */
 function revealTarget(reveals: SiteIntelReveals): string {
-  return 'door' in reveals ? reveals.door : reveals.fact;
+  if ('door' in reveals) return reveals.door;
+  if ('concealment' in reveals) return reveals.concealment;
+  return reveals.fact;
 }
 
 /** Whether a record names a door — the state this dialect refuses. A record in
@@ -48,6 +50,14 @@ function revealTarget(reveals: SiteIntelReveals): string {
  * author's own words and for a document that arrived from another dialect. */
 function revealsDoor(reveals: SiteIntelReveals): boolean {
   return 'door' in reveals;
+}
+
+/** Whether a record names a CONCEALMENT — carried, not authored (the form only
+ * authors `fact`). A hand-written record that reveals a secret is shown
+ * read-only, exactly as a `door` one is, so it is never silently edited into a
+ * fact on re-save. The engine grades the target at `PutDungeon`. */
+function revealsConcealment(reveals: SiteIntelReveals): boolean {
+  return 'concealment' in reveals;
 }
 
 export interface IntelPanelProps {
@@ -92,7 +102,11 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                     {!revealsDoor(record.reveals) && (
                       <span className="wb-policy-summary-note">
                         {' '}
-                        · fact {revealTarget(record.reveals)}
+                        ·{' '}
+                        {revealsConcealment(record.reveals)
+                          ? 'secret'
+                          : 'fact'}{' '}
+                        {revealTarget(record.reveals)}
                       </span>
                     )}
                   </summary>
@@ -114,16 +128,21 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                       />
                     </label>
                     <label>
-                      <span>Reveals a fact</span>
+                      <span>
+                        {revealsConcealment(record.reveals)
+                          ? 'Reveals a secret'
+                          : 'Reveals a fact'}
+                      </span>
                       <input
-                        aria-label={`Intel reveals fact for ${record.id}`}
-                        value={
-                          revealsDoor(record.reveals)
-                            ? ''
-                            : revealTarget(record.reveals)
-                        }
+                        aria-label={`Intel reveals ${
+                          revealsConcealment(record.reveals) ? 'secret' : 'fact'
+                        } for ${record.id}`}
+                        value={revealTarget(record.reveals)}
                         placeholder="cellar-is-clear"
-                        disabled={revealsDoor(record.reveals)}
+                        disabled={
+                          revealsDoor(record.reveals) ||
+                          revealsConcealment(record.reveals)
+                        }
                         onChange={(event) =>
                           onChange(
                             setIntelReveals(scope, record.id, {
@@ -144,6 +163,21 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                         role="alert"
                       >
                         {INTEL_REVEALS_DOOR_REFUSAL}
+                      </p>
+                    )}
+                    {revealsConcealment(record.reveals) && (
+                      // CARRIED, NOT EDITED: the form authors only `fact`
+                      // today; a hand-written record that reveals a CONCEALMENT
+                      // is preserved read-only rather than degraded into a fact
+                      // on re-save. The engine grades the target at `PutDungeon`
+                      // (rpg-project#490).
+                      <p
+                        className="wb-help"
+                        data-testid={`intel-concealment-${record.id}`}
+                      >
+                        Carried read-only — this record reveals a secret (a root
+                        concealments entry). Editing it to a fact is a later
+                        slice of the form.
                       </p>
                     )}
                     <p

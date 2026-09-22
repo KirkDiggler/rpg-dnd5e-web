@@ -73,20 +73,36 @@ export interface SiteScope {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
+  /** The way out(s) of this room — `{ id, cell }`, carried verbatim
+   * (rpg-project#488 R2). No form yet; the carry is so a hand-written v4
+   * document round-trips and the engine grades it. */
+  exits?: SiteExit[];
+  /** The ways this room's run can end — `{ id, when }`, carried verbatim. */
+  endings?: SiteEnding[];
+  /** The scenario bindings — `{ scenarioId: { field: id } }`, carried
+   * verbatim (the engine validates the references only). */
+  scenarios?: SiteScenarios;
+  /** The secrets this room hides — `{ id: { cells, props, checks, ... } }`,
+   * carried verbatim (rpg-project#490). */
+  concealments?: SiteConcealments;
 }
 
-/** One intel record's `reveals` — the shape `{ door: <id> }` or
- * `{ fact: <id> }` the engine's `RevealsSpec` carries.
+/** One intel record's `reveals` — the shape `{ door: <id> }`, `{ fact: <id> }`
+ * or `{ concealment: <id> }` the engine's `RevealsSpec` carries.
  *
- * `fact` IS THE ONLY TARGET THIS DIALECT ACCEPTS (rpg-project#488 R3, corrected
- * by rpg-toolkit#1855). `door` is REFUSED BY NAME at `intel[<i>].reveals.door`:
- * revealing the way to a door needs a CONCEALED door on a crossing, and a
- * single room has no crossing to hide one on. The design first said a door
- * reveal was "accepted and inert"; the engine made it a sentence instead, so
- * the builder fails closed with it rather than writing bytes nothing can read.
- * `door` stays on the type so the refusal can be a sentence at the author's own
- * path rather than "not a key this build reads". */
-export type SiteIntelReveals = { door: string } | { fact: string };
+ * `fact` was the ONLY target this dialect accepted at first (rpg-project#488
+ * R3, corrected by rpg-toolkit#1855). rpg-project#490 R7 retargeted the record:
+ * a record reveals the VAULT, `reveals.concealment`, named directly under the
+ * root's `concealments:` — and `door` is REFUSED BY NAME at
+ * `intel[<i>].reveals.door`: revealing the way to a door needs a CONCEALED
+ * door, and a door is now hidden by being listed in a concealment's `props`
+ * rather than by any `doorBindings.<id>.concealed`. `door` stays on the type
+ * so the refusal can be a sentence at the author's own path rather than "not
+ * a key this build reads". */
+export type SiteIntelReveals =
+  | { door: string }
+  | { fact: string }
+  | { concealment: string };
 
 /** One intel record at the site root — the authored knowledge an author places
  * in a creature or prop (`holds`), beside `factions`/`dispositions`. Declared
@@ -96,10 +112,69 @@ export interface SiteIntelRecord {
   reveals: SiteIntelReveals;
 }
 
+/** One axial cell in this dialect's frame — the same `{ q, r }` shape
+ * `partyStart`, a monster's `cell`, and a concealment's `cells` use. */
+export interface SiteRoomCell {
+  q: number;
+  r: number;
+}
+
+/** One authored way out — `{ id, cell }` (rpg-project#488 R2). `id` is what a
+ * scenario binding names; `cell` is where somebody stands to leave. Carried,
+ * never interpreted: whether the id is unique or the cell standable is the
+ * engine's judgement at `PutDungeon`. */
+export interface SiteExit {
+  id: string;
+  cell: SiteRoomCell;
+}
+
+/** One authored ending — `{ id, when }`. `when` is the SAME `PredicateSpec` a
+ * disposition's `until` and a binding's `arrives` carry, judged by the one
+ * grammar. Carried, not interpreted. */
+export interface SiteEnding {
+  id: string;
+  when: PredicateDoc;
+}
+
+/** The scenario bindings — a map from scenario id to `{ fieldKey: id }`
+ * ([Spec.Scenarios] verbatim). The engine validates ONLY the references (that
+ * each value names a monster / declared prop / exit / faction); what the keys
+ * mean is the scenarios package's own refusal. Carried whole. */
+export type SiteScenarios = Record<string, Record<string, string>>;
+
+/** The check forms a concealment prices (Search checks, and the passive
+ * `notice` tell). `CheckSpec`'s shape, declared here (not imported from
+ * `roomDraft`'s `RoomCheckApproach`) so `siteScope` — which `roomDraft`
+ * imports — does not create an import cycle. */
+export interface SiteConcealmentCheck {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
+/** One secret this room hides (rpg-project#490). Everything hidden belongs to
+ * it: the cells it hides, the placed things it hides (doors are just placed
+ * ids here), and the checks that find it. `notice` is the passive tell,
+ * CARRIED AND UNREAD in this engine slice. Carried here, never graded. */
+export interface SiteConcealmentSpec {
+  notice?: SiteConcealmentCheck[];
+  checks: SiteConcealmentCheck[];
+  cells?: SiteRoomCell[];
+  props?: string[];
+}
+
+/** The root `concealments:` map, keyed by id — the secret-vault shape. */
+export type SiteConcealments = Record<string, SiteConcealmentSpec>;
+
 const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
 const INTEL_KEYS = ['id', 'reveals'] as const;
-const REVEALS_KEYS = ['door', 'fact'] as const;
+const REVEALS_KEYS = ['door', 'fact', 'concealment'] as const;
+const EXIT_KEYS = ['id', 'cell'] as const;
+const ENDING_KEYS = ['id', 'when'] as const;
+const CELL_KEYS = ['q', 'r'] as const;
+const CONCEALMENT_KEYS = ['notice', 'checks', 'cells', 'props'] as const;
+const CHECK_KEYS = ['ability', 'dc', 'tool'] as const;
 
 /** The engine's own sentence for `reveals: { door }` in this dialect
  * (`dungeonspec.single_room_gameplay.go`), transcribed so the builder shows the
@@ -231,7 +306,15 @@ function isStance(word: string): word is Stance {
   return (STANCES as readonly string[]).includes(word);
 }
 
-const SCOPE_KEYS = ['factions', 'dispositions', 'intel'] as const;
+const SCOPE_KEYS = [
+  'factions',
+  'dispositions',
+  'intel',
+  'exits',
+  'endings',
+  'scenarios',
+  'concealments',
+] as const;
 
 /** The site's `intel:` records, in authored order. An id is unique and follows
  * the same lower-case-dash grammar as a faction id; `reveals` is REQUIRED and
@@ -264,12 +347,182 @@ export function validateIntel(value: unknown): SiteIntelRecord[] {
         `${path} reveals`,
         `intel "${raw.id}" reveals nothing — a record says exactly one thing it reveals`
       );
-    const id = reveals.fact;
-    if (typeof id !== 'string' || !id)
-      fail(`${path} reveals.fact`, 'must name a fact');
-    records.push({ id: raw.id, reveals: { fact: id } });
+    // TWO TARGETS IN THIS DIALECT: `fact` (the thing a failed persuasion
+    // teaches and an `arrives` reads) and `concealment` (the secret a record
+    // gives away, named directly under the root `concealments:`). `door` was
+    // refused above. The id's length is checked only — whether the named fact
+    // or concealment resolves is the engine's judgement at `PutDungeon`.
+    if (typeof reveals.fact === 'string') {
+      if (!reveals.fact) fail(`${path} reveals.fact`, 'must name a fact');
+      records.push({ id: raw.id, reveals: { fact: reveals.fact } });
+    } else {
+      const concealment = reveals.concealment;
+      if (typeof concealment !== 'string' || !concealment)
+        fail(`${path} reveals.concealment`, 'must name a concealment');
+      records.push({
+        id: raw.id,
+        reveals: { concealment },
+      });
+    }
   }
   return records;
+}
+
+/** The site's `exits:`, in authored order. An id is required and unique; a cell
+ * is required and every field matters. Whether the cell is standable is the
+ * engine's question at `PutDungeon` — this refuses only shapes it cannot
+ * represent. */
+export function validateSiteExits(value: unknown): SiteExit[] {
+  if (!Array.isArray(value)) fail('Site exits', 'must be a list');
+  const exits: SiteExit[] = [];
+  const ids = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const path = `Site exit at index ${index}`;
+    const raw = objectShape(entry, path);
+    rejectUnknownKeys(raw, EXIT_KEYS, path);
+    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
+      fail(path, 'needs an id such as entrance');
+    if (ids.has(raw.id)) fail(path, `duplicate exit id: ${raw.id}`);
+    ids.add(raw.id);
+    if (!isMapping(raw.cell))
+      fail(`${path} cell`, 'must name an axial cell { q, r }');
+    const cell = validateSiteCell(raw.cell, `${path} cell`);
+    exits.push({ id: raw.id, cell });
+  }
+  return exits;
+}
+
+/** The site's `endings:`, in authored order. An id is required and unique; a
+ * `when` is REQUIRED and is the SAME `PredicateSpec` a disposition's `until`
+ * and a binding's `arrives` carry — validated by the one shared
+ * `validatePredicate` rather than by a second transcription of the grammar. */
+export function validateSiteEndings(value: unknown): SiteEnding[] {
+  if (!Array.isArray(value)) fail('Site endings', 'must be a list');
+  const endings: SiteEnding[] = [];
+  const ids = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    const path = `Site ending at index ${index}`;
+    const raw = objectShape(entry, path);
+    rejectUnknownKeys(raw, ENDING_KEYS, path);
+    if (typeof raw.id !== 'string' || !FACTION_ID_RE.test(raw.id))
+      fail(path, 'needs an id such as held-out');
+    if (ids.has(raw.id)) fail(path, `duplicate ending id: ${raw.id}`);
+    ids.add(raw.id);
+    if (raw.when === undefined)
+      fail(`${path} when`, 'an ending needs a predicate that fires it');
+    const when = validatePredicate(raw.when, `${path} when`);
+    endings.push({ id: raw.id, when });
+  }
+  return endings;
+}
+
+/** The site's `scenarios:` — a map of scenario id to its `{ field: id }`
+ * bindings, carried whole. The engine validates ONLY the references (that each
+ * value names a monster / declared prop / exit / faction); what the keys mean
+ * is the scenarios package's own refusal. This refuses only a shape it cannot
+ * represent: a non-mapping scenarios, or a binding value that is not an id. */
+export function validateSiteScenarios(value: unknown): SiteScenarios {
+  if (!isMapping(value)) fail('Site scenarios', 'must be a map');
+  const scenarios: SiteScenarios = {};
+  for (const [scenarioId, body] of Object.entries(value)) {
+    const path = `Site scenario ${scenarioId}`;
+    if (!FACTION_ID_RE.test(scenarioId))
+      fail(path, 'scenario id needs an id such as hold-out');
+    if (!isMapping(body)) fail(path, 'must be a map of field to id');
+    const fields: Record<string, string> = {};
+    for (const [field, referred] of Object.entries(body)) {
+      if (typeof referred !== 'string' || !referred)
+        fail(`${path}.${field}`, 'must name an id in this document');
+      fields[field] = referred;
+    }
+    scenarios[scenarioId] = fields;
+  }
+  return scenarios;
+}
+
+/** The site's `concealments:` — a map of secret id to what it hides.
+ * `checks` is REQUIRED non-empty (a secret nobody can find is one the author
+ * started and did not finish), `notice`/`cells`/`props` are optional. Every id
+ * everywhere follows the lower-case-dash grammar. Carried, never graded: what
+ * resolves — cells that are standable, props that are declared — is the
+ * engine's question at `PutDungeon`. */
+export function validateSiteConcealments(value: unknown): SiteConcealments {
+  if (!isMapping(value)) fail('Site concealments', 'must be a map');
+  const concealments: SiteConcealments = {};
+  for (const [id, body] of Object.entries(value)) {
+    const path = `Site concealment ${id}`;
+    if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as vault');
+    const raw = objectShape(body, path);
+    rejectUnknownKeys(raw, CONCEALMENT_KEYS, path);
+    const spec: SiteConcealmentSpec = {
+      checks: validateConcealmentChecks(raw.checks, `${path} checks`),
+    };
+    if (Object.hasOwn(raw, 'notice'))
+      spec.notice = validateConcealmentChecks(raw.notice, `${path} notice`);
+    if (Object.hasOwn(raw, 'cells')) {
+      const cellsVal = raw.cells;
+      if (!Array.isArray(cellsVal)) fail(`${path} cells`, 'must be a list');
+      spec.cells = cellsVal.map((cell, i) =>
+        validateSiteCell(cell, `${path} cells[${i}]`)
+      );
+    }
+    if (Object.hasOwn(raw, 'props')) {
+      const propsVal = raw.props;
+      if (!Array.isArray(propsVal)) fail(`${path} props`, 'must be a list');
+      spec.props = propsVal.map((prop, i) => {
+        if (typeof prop !== 'string' || !prop)
+          fail(`${path} props[${i}]`, 'must name a placed prop id');
+        return prop;
+      });
+    }
+    concealments[id] = spec;
+  }
+  return concealments;
+}
+
+/** A `CheckSpec` — a LIST of approach routes, beaten by any listed one
+ * (`type CheckSpec []ApproachSpec`): the search price of a secret. Non-empty:
+ * a secret nobody can find is one the author started and did not finish. */
+function validateConcealmentChecks(
+  value: unknown,
+  path: string
+): SiteConcealmentCheck[] {
+  if (!Array.isArray(value)) fail(path, 'must be a list of checks');
+  const checks = value.map((check, i) =>
+    validateConcealmentCheck(check, `${path}[${i}]`)
+  );
+  if (checks.length === 0)
+    fail(path, 'a secret nobody can find is an author who started and stopped');
+  return checks;
+}
+
+/** One approach route — `{ ability, dc, tool? }`, `ApproachSpec`'s shape. `dc`
+ * is a whole number and `tool` is optional. Whether `ability`/`tool` resolve is
+ * the engine's judgement. */
+function validateConcealmentCheck(
+  value: unknown,
+  path: string
+): SiteConcealmentCheck {
+  const raw = objectShape(value, path);
+  rejectUnknownKeys(raw, CHECK_KEYS, path);
+  if (typeof raw.ability !== 'string' || !raw.ability)
+    fail(`${path} ability`, 'must name an ability');
+  if (typeof raw.dc !== 'number' || !Number.isInteger(raw.dc) || raw.dc < 1)
+    fail(`${path} dc`, 'must be a whole number of at least 1');
+  const check: SiteConcealmentCheck = { ability: raw.ability, dc: raw.dc };
+  if (typeof raw.tool === 'string' && raw.tool !== '') check.tool = raw.tool;
+  return check;
+}
+
+/** One axial cell — `{ q, r }`. Both are required integers. */
+function validateSiteCell(value: unknown, path: string): SiteRoomCell {
+  const raw = objectShape(value, path);
+  rejectUnknownKeys(raw, CELL_KEYS, path);
+  if (typeof raw.q !== 'number' || !Number.isInteger(raw.q))
+    fail(`${path} q`, 'must be a whole number');
+  if (typeof raw.r !== 'number' || !Number.isInteger(raw.r))
+    fail(`${path} r`, 'must be a whole number');
+  return { q: raw.q, r: raw.r };
 }
 
 /** The whole site scope, validated and NORMALIZED: each key is kept only when
@@ -295,6 +548,22 @@ export function validateSiteScope(value: unknown): SiteScope {
   if (Object.hasOwn(raw, 'intel')) {
     const intel = validateIntel(raw.intel);
     if (intel.length > 0) scope.intel = intel;
+  }
+  if (Object.hasOwn(raw, 'exits')) {
+    const exits = validateSiteExits(raw.exits);
+    if (exits.length > 0) scope.exits = exits;
+  }
+  if (Object.hasOwn(raw, 'endings')) {
+    const endings = validateSiteEndings(raw.endings);
+    if (endings.length > 0) scope.endings = endings;
+  }
+  if (Object.hasOwn(raw, 'scenarios')) {
+    const scenarios = validateSiteScenarios(raw.scenarios);
+    if (Object.keys(scenarios).length > 0) scope.scenarios = scenarios;
+  }
+  if (Object.hasOwn(raw, 'concealments')) {
+    const concealments = validateSiteConcealments(raw.concealments);
+    if (Object.keys(concealments).length > 0) scope.concealments = concealments;
   }
   return scope;
 }

@@ -6,11 +6,19 @@ import {
 } from './roomDraft';
 import {
   validateIntel,
+  validateSiteConcealments,
   validateSiteDispositions,
+  validateSiteEndings,
+  validateSiteExits,
   validateSiteFactions,
+  validateSiteScenarios,
+  type SiteConcealments,
   type SiteDisposition,
+  type SiteEnding,
+  type SiteExit,
   type SiteFaction,
   type SiteIntelRecord,
+  type SiteScenarios,
   type SiteScope,
 } from './siteScope';
 
@@ -26,6 +34,14 @@ export interface EncodeSingleRoomDungeonInput {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
+  /** The way out(s) of this room, the ways it ends, its scenario bindings and
+   * its secrets — carried verbatim (rpg-project#488 R2, rpg-project#490). All
+   * four belong to the ROOT beside `intel`/`factions`, because none of them is
+   * a thing standing on the floor. Absence is the authored state "none". */
+  exits?: SiteExit[];
+  endings?: SiteEnding[];
+  scenarios?: SiteScenarios;
+  concealments?: SiteConcealments;
 }
 export interface DecodeSingleRoomDungeonResult {
   key: string;
@@ -35,6 +51,10 @@ export interface DecodeSingleRoomDungeonResult {
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
+  exits?: SiteExit[];
+  endings?: SiteEnding[];
+  scenarios?: SiteScenarios;
+  concealments?: SiteConcealments;
 }
 
 /** The fixed play contract of this first playable slice. Keys and values are
@@ -58,6 +78,10 @@ const ROOT_KEYS = [
   'factions',
   'dispositions',
   'intel',
+  'exits',
+  'endings',
+  'scenarios',
+  'concealments',
 ] as const;
 
 /**
@@ -99,6 +123,15 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
   if ((scope.intel?.length ?? 0) > 0) return true;
+  // The four root keys the engine added after intel (rpg-project#488 R1 rule 3,
+  // rpg-project#490) — a room whose ONLY v4 fact is an exit, an ending, a
+  // scenario binding or a concealment must still claim v4, the same argument a
+  // `doorBindings`-only room makes below.
+  if ((scope.exits?.length ?? 0) > 0) return true;
+  if ((scope.endings?.length ?? 0) > 0) return true;
+  if (scope.scenarios && Object.keys(scope.scenarios).length > 0) return true;
+  if (scope.concealments && Object.keys(scope.concealments).length > 0)
+    return true;
   if (
     draft.room.monsterBindings &&
     Object.keys(draft.room.monsterBindings).length > 0
@@ -138,10 +171,26 @@ export function encodeSingleRoomDungeon(
     ? validateSiteDispositions(input.dispositions)
     : undefined;
   const intel = input.intel ? validateIntel(input.intel) : undefined;
+  const exits = input.exits ? validateSiteExits(input.exits) : undefined;
+  const endings = input.endings
+    ? validateSiteEndings(input.endings)
+    : undefined;
+  const scenarios = input.scenarios
+    ? validateSiteScenarios(input.scenarios)
+    : undefined;
+  const concealments = input.concealments
+    ? validateSiteConcealments(input.concealments)
+    : undefined;
   const scope: SiteScope = {
     ...(factions && factions.length > 0 ? { factions } : {}),
     ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
     ...(intel && intel.length > 0 ? { intel } : {}),
+    ...(exits && exits.length > 0 ? { exits } : {}),
+    ...(endings && endings.length > 0 ? { endings } : {}),
+    ...(scenarios && Object.keys(scenarios).length > 0 ? { scenarios } : {}),
+    ...(concealments && Object.keys(concealments).length > 0
+      ? { concealments }
+      : {}),
   };
   return stringify({
     version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
@@ -153,6 +202,10 @@ export function encodeSingleRoomDungeon(
     ...(scope.factions ? { factions: scope.factions } : {}),
     ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
     ...(scope.intel ? { intel: scope.intel } : {}),
+    ...(scope.exits ? { exits: scope.exits } : {}),
+    ...(scope.endings ? { endings: scope.endings } : {}),
+    ...(scope.scenarios ? { scenarios: scope.scenarios } : {}),
+    ...(scope.concealments ? { concealments: scope.concealments } : {}),
     room: draft.draft,
   });
 }
@@ -247,6 +300,18 @@ function decodeSingleRoomRoot(
     ? validateSiteDispositions(root.dispositions)
     : [];
   const intel = Object.hasOwn(root, 'intel') ? validateIntel(root.intel) : [];
+  const exits = Object.hasOwn(root, 'exits')
+    ? validateSiteExits(root.exits)
+    : [];
+  const endings = Object.hasOwn(root, 'endings')
+    ? validateSiteEndings(root.endings)
+    : [];
+  const scenarios = Object.hasOwn(root, 'scenarios')
+    ? validateSiteScenarios(root.scenarios)
+    : {};
+  const concealments = Object.hasOwn(root, 'concealments')
+    ? validateSiteConcealments(root.concealments)
+    : {};
   if (!isPlainObject(root.room))
     throw new Error('Single-room source is missing a room.');
   // The embedded room draft keeps ITS OWN version, and it is passed through
@@ -265,5 +330,9 @@ function decodeSingleRoomRoot(
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
     ...(intel.length > 0 ? { intel } : {}),
+    ...(exits.length > 0 ? { exits } : {}),
+    ...(endings.length > 0 ? { endings } : {}),
+    ...(Object.keys(scenarios).length > 0 ? { scenarios } : {}),
+    ...(Object.keys(concealments).length > 0 ? { concealments } : {}),
   };
 }
