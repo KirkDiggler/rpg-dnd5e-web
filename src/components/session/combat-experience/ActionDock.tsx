@@ -298,7 +298,11 @@ export interface ActionDockProps {
   rollWindowReady?: boolean;
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
-  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
+  onSelectDeclaration: (
+    declaration: Declaration,
+    choice?: ReactChoice,
+    option?: string
+  ) => void;
   /**
    * The selector of the cast whose option menu is open, or undefined when none
    * is. Held as an id rather than a declaration for the same reason
@@ -726,20 +730,24 @@ export function ActionDock({
     // posed against; the post-roll window names the viewer's own d20, and
     // there is nobody else in it.
     const headline =
-      windowKind === 'movement'
-        ? `${moverName} is leaving your reach`
-        : rollWindowHeadline(
-            // MATCHED TO THE OFFER, never taken on trust. The beat and the
-            // declaration are two arrivals; one window's numbers drawn under
-            // another's question would be a lie the player acts on.
-            rollWindow && rollWindow.offerRef === reactionWindow.reaction?.ref
-              ? rollWindow
-              : null
-          );
+      windowKind === 'choice'
+        ? 'Choose your reaction'
+        : windowKind === 'movement'
+          ? `${moverName} is leaving your reach`
+          : rollWindowHeadline(
+              // MATCHED TO THE OFFER, never taken on trust. The beat and the
+              // declaration are two arrivals; one window's numbers drawn under
+              // another's question would be a lie the player acts on.
+              rollWindow && rollWindow.offerRef === reactionWindow.reaction?.ref
+                ? rollWindow
+                : null
+            );
     const prompt =
-      windowKind === 'movement'
-        ? 'Strike now, or hold your reaction. The fight waits on you.'
-        : 'Spend it, or keep it. The fight waits on you.';
+      windowKind === 'choice'
+        ? 'Choose an effect, or decline. The fight waits on you.'
+        : windowKind === 'movement'
+          ? 'Strike now, or hold your reaction. The fight waits on you.'
+          : 'Spend it, or keep it. The fight waits on you.';
     return (
       <div className={styles.actionRow}>
         <div
@@ -757,23 +765,46 @@ export function ActionDock({
         </div>
         <div className={styles.actionGroup} data-testid="reaction-choices">
           <span className={styles.groupLabel}>Reaction</span>
-          <span className={styles.actionOfferSlot}>
-            <button
-              type="button"
-              className={styles.actionOffer}
-              data-testid="reaction-strike"
-              disabled={!authorityFresh}
-              onClick={() =>
-                onSelectDeclaration(reactionWindow, ReactChoice.STRIKE)
-              }
-            >
-              <span className={styles.actionIcon} aria-hidden="true">
-                {declarationIcon(reactionWindow)}
+          {reactionWindow.options.length > 0 ? (
+            reactionWindow.options.map((option) => (
+              <span className={styles.actionOfferSlot} key={option.id}>
+                <button
+                  type="button"
+                  className={styles.actionOffer}
+                  data-testid={`reaction-option-${option.id}`}
+                  disabled={!authorityFresh}
+                  onClick={() =>
+                    onSelectDeclaration(
+                      reactionWindow,
+                      ReactChoice.STRIKE,
+                      option.id
+                    )
+                  }
+                >
+                  <span className={styles.actionLabel}>{option.label}</span>
+                  <CostBadge slot={reactionWindow.slot} />
+                </button>
               </span>
-              <span className={styles.actionLabel}>{answers.take}</span>
-              <CostBadge slot={reactionWindow.slot} />
-            </button>
-          </span>
+            ))
+          ) : (
+            <span className={styles.actionOfferSlot}>
+              <button
+                type="button"
+                className={styles.actionOffer}
+                data-testid="reaction-strike"
+                disabled={!authorityFresh}
+                onClick={() =>
+                  onSelectDeclaration(reactionWindow, ReactChoice.STRIKE)
+                }
+              >
+                <span className={styles.actionIcon} aria-hidden="true">
+                  {declarationIcon(reactionWindow)}
+                </span>
+                <span className={styles.actionLabel}>{answers.take}</span>
+                <CostBadge slot={reactionWindow.slot} />
+              </button>
+            </span>
+          )}
           <span className={styles.actionOfferSlot}>
             <button
               type="button"

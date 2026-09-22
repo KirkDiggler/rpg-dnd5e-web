@@ -248,6 +248,83 @@ describe('Cleric cast outcomes in live and replay presentation', () => {
     }
   );
 
+  it('narrates Fog Cloud membership entry and exit, including concentration ending', () => {
+    const fogApplied = create(EventSchema, {
+      session: context.session,
+      seq: 4n,
+      recipient: 'cleric',
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'cleric',
+          result: {
+            case: 'conditionApplied',
+            value: create(ConditionAppliedSchema, {
+              target: 'ally',
+              ref: 'dnd5e:conditions:in_fog',
+              name: 'In Fog',
+              sourceId: 'fog-source',
+            }),
+          },
+        }),
+      },
+    });
+    const fogLeft = create(EventSchema, {
+      session: context.session,
+      seq: 5n,
+      recipient: 'cleric',
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'cleric',
+          result: {
+            case: 'conditionRemoved',
+            value: create(ConditionRemovedSchema, {
+              target: 'ally',
+              ref: 'dnd5e:conditions:in_fog',
+              name: 'In Fog',
+              sourceId: 'fog-source',
+              reason: 'left fog cloud',
+            }),
+          },
+        }),
+      },
+    });
+    const fogEnded = create(EventSchema, {
+      session: context.session,
+      seq: 6n,
+      recipient: 'cleric',
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'cleric',
+          result: {
+            case: 'conditionRemoved',
+            value: create(ConditionRemovedSchema, {
+              target: 'ally',
+              ref: 'dnd5e:conditions:in_fog',
+              name: 'In Fog',
+              sourceId: 'fog-source',
+              reason: 'area ended',
+            }),
+          },
+        }),
+      },
+    });
+    expect(
+      selectVisibleStory(feed([fogApplied, fogLeft, fogEnded])).map(
+        (entry) => entry.headline
+      )
+    ).toEqual([
+      'Ally enters Fog Cloud',
+      'Ally leaves Fog Cloud',
+      'Ally is no longer in Fog Cloud',
+    ]);
+  });
+
   it('refreshes authoritative snapshots after a paid miss without applying an effect locally', () => {
     expect(refreshKeysFor(missed(), 'cleric')).toEqual([
       'characterData',

@@ -214,7 +214,11 @@ function SessionEncounterScope({
     error: whereError,
     refetch: refetchWhere,
   } = useSessionWhere(sessionId, member);
-  const { sightings, refetch: refetchView } = useSessionView(sessionId, member);
+  const {
+    sightings,
+    areas: sightAreas,
+    refetch: refetchView,
+  } = useSessionView(sessionId, member);
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
   const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
   const { search, loading: searching } = useSessionSearch();
@@ -1886,6 +1890,7 @@ function SessionEncounterScope({
                     areaFootprint={
                       runEnded === null ? combat.cellCastFootprint : undefined
                     }
+                    sightAreas={sightAreas}
                     turnLocked={turnLocked}
                     movementBudgetFeet={movementBudgetFeet(
                       coherentDeclarations

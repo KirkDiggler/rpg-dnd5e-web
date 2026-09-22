@@ -18,6 +18,8 @@ export interface ReactParams {
   declarationId: string;
   /** Take the reaction, or let the mover pass. */
   choice: ReactChoice;
+  /** Provider-authored reaction option; empty when holding or no menu. */
+  option?: string;
 }
 
 export interface UseReactResult {
@@ -56,6 +58,7 @@ export function useSessionReact(): UseReactResult {
           member: params.member,
           declarationId: params.declarationId,
           choice: params.choice,
+          ...(params.option ? { option: params.option } : {}),
         });
       } catch (err) {
         const wrapped =

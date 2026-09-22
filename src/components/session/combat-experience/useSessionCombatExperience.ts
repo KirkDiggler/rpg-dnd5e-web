@@ -715,7 +715,7 @@ export function useSessionCombatExperience({
   );
 
   const onSelectDeclaration = useCallback(
-    (candidate: Declaration, choice?: ReactChoice) => {
+    (candidate: Declaration, choice?: ReactChoice, option?: string) => {
       // THE ONE VERB THAT IS NOT DECLARED ON ITS OWNER'S TURN. Every other
       // offer here is gated on the initiative standing with this member,
       // which is exactly the state a reaction window is NOT in: the mover
@@ -768,6 +768,12 @@ export function useSessionCombatExperience({
           candidate.targetKind
         );
         if (!current || reactInFlightRef.current) return;
+        if (
+          choice === ReactChoice.STRIKE &&
+          current.options.length > 0 &&
+          !current.options.some((entry) => entry.id === option)
+        )
+          return;
         reactInFlightRef.current = true;
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
@@ -778,6 +784,7 @@ export function useSessionCombatExperience({
               member,
               declarationId: current.id,
               choice,
+              option: choice === ReactChoice.STRIKE ? option : undefined,
             });
             if (!mountedRef.current) return;
             // The window is answered and its numbers are spent with it. The
