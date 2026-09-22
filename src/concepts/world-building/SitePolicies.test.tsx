@@ -416,3 +416,33 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
     expect(screen.getByTestId('creature-interaction-readonly')).toBeTruthy();
   });
 });
+
+describe('every entry in a site node collapses to its own line (web#1178 follow-up)', () => {
+  it('a disposition reads as its pair, with the stance beside it', () => {
+    render(<SiteFacts scope={siteScope} />);
+    const summary = screen.getByLabelText(
+      'Disposition between goblins and party'
+    );
+    // THE LINE IS THE PAIR — the form (stance, until) is one expansion behind.
+    expect(summary.textContent).toMatch(/between goblins and party/);
+    expect(summary.textContent).toMatch(/hostile/);
+  });
+
+  it('a faction reads as its id', () => {
+    render(<SiteFacts scope={siteScope} />);
+    const summary = screen.getByLabelText('Faction goblins');
+    expect(summary.textContent?.trim()).toBe('goblins');
+    // The shared table is behind the line, not on it: a node can be scanned
+    // without opening a single entry.
+    expect(summary.textContent).not.toMatch(/intimidated/);
+  });
+
+  it('every entry is a details, so the line and the form are the same entry', () => {
+    render(<SiteFacts scope={siteScope} />);
+    const row = screen.getByTestId('faction-goblins');
+    expect(row.tagName.toLowerCase()).toBe('details');
+    expect(row.querySelector('summary')).toBeTruthy();
+    // Closed by default: the nodes collapse AND each entry inside them does.
+    expect((row as HTMLDetailsElement).open).toBe(false);
+  });
+});

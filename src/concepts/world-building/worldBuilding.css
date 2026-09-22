@@ -1208,3 +1208,38 @@ button.wb-tree-row[aria-pressed='true'] {
 .wb-creature-arrives label {
   grid-template-columns: 1fr;
 }
+
+/* One entry in a site node, collapsed to its own line (rpg-dnd5e-web#1178
+ * follow-up). The rule for every list: A DISPOSITION READS AS ITS PAIR, A
+ * FACTION AND AN INTEL RECORD AS THEIR ID — and the form is one expansion
+ * behind it. So a node can be scanned without opening a single entry, which is
+ * the whole reason the entries are collapsible. */
+.wb-policy-row {
+  cursor: pointer;
+}
+
+.wb-policy-row > summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.1rem 0;
+}
+
+.wb-policy-row > summary::marker {
+  color: var(--wb-muted);
+}
+
+.wb-policy-summary-note {
+  color: var(--wb-muted);
+}
+
+/* The form behind the line. Indented so an open entry reads as belonging to
+ * its own summary rather than to the next one. */
+.wb-policy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0 0.1rem 0.75rem;
+  border-left: 1px solid #283c3a;
+  margin-top: 0.3rem;
+}
