@@ -240,9 +240,18 @@ function buildActivationResultStory(
     }
     case 'conditionApplied': {
       const condition = event.body.value.result.value;
+      const target = memberName(condition.target, context);
+      if (condition.ref === 'dnd5e:conditions:in_fog') {
+        return Object.freeze({
+          ...base,
+          headline: `${target} enters Fog Cloud`,
+          detail: 'Entered the fog.',
+          tone: 'success',
+        });
+      }
       return Object.freeze({
         ...base,
-        headline: `${memberName(condition.target, context)} begins ${condition.name}`,
+        headline: `${target} begins ${condition.name}`,
         detail: `Applied by ${actor}.`,
         tone: 'success',
       });
@@ -256,6 +265,17 @@ function buildActivationResultStory(
       // Raging and nonsense for a spell. Only a condition sharing its name
       // with a spell this run watched somebody cast takes the other wording,
       // so a class feature's removal reads exactly as it did before.
+      if (condition.ref === 'dnd5e:conditions:in_fog') {
+        const ended = condition.reason === 'area ended';
+        return Object.freeze({
+          ...base,
+          headline: ended
+            ? `${target} is no longer in Fog Cloud`
+            : `${target} leaves Fog Cloud`,
+          detail: ended ? 'The cloud ended.' : 'Moved out of the fog.',
+          tone: 'neutral',
+        });
+      }
       if (condition.name && context.castSpells?.names.has(condition.name)) {
         return Object.freeze({
           ...base,
