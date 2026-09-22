@@ -147,6 +147,11 @@ export function holdTargets(
   // so the button labels from the id via `propLabel`'s fallback.
   for (const placed of atlas.placed ?? []) {
     if (!placed.holdable) continue;
+    // `id` is required on `AtlasPlacedProp` (the author's name, verbatim), so
+    // an id-less entry is a producer defect — skipped rather than sent as an
+    // empty `HoldRequest.target`, the same guard the cell-prop loop above
+    // keeps.
+    if (!placed.id) continue;
     const withinReach = (placed.cells ?? []).some(
       (cell) => hexDistance(positionToCube(cell), at) <= ADJACENT
     );

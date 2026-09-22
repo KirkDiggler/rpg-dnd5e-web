@@ -42,7 +42,6 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AtlasPropSchema,
-  type AtlasPlacedProp,
   type AtlasProp,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
@@ -83,19 +82,6 @@ export function heldProp(
   return atlas.props.find((p) => p.id === event.prop);
 }
 
-/** What `applyHeld` would remove from `placed` — for the caller to know the
- * held thing was a placed FOOTPRINT, not a cell prop. `applyDropped` needs
- * that distinction: a cell prop it restores from the beat, a placed prop it
- * cannot (see there). Undefined when this atlas never held it as a
- * placement. */
-export function heldPlacedProp(
-  atlas: GetAtlasResponse,
-  event: Held
-): AtlasPlacedProp | undefined {
-  if (!event.prop) return undefined;
-  return (atlas.placed ?? []).find((p) => p.id === event.prop);
-}
-
 /**
  * The atlas after a holding landed back on the floor: the prop stands at
  * the drop cell.
@@ -104,6 +90,15 @@ export function heldPlacedProp(
  * if it saw that happen — its ref, its blocking answers and its authored
  * presentation, moved to the new cell. Without it the entry carries the
  * id and the cell alone, which is everything `Dropped` actually says.
+ *
+ * `placed` says the dropped id names a placed FOOTPRINT, not a cell prop —
+ * the caller answers it from the authored placement-id universe, so a member
+ * who never saw the pick-up (or remounted mid-session) still does not
+ * mistake a footprint for a cell prop. When true the atlas is returned
+ * unchanged: `Dropped` carries no placement geometry or re-traced `cells`
+ * (rpg-api-protos#356 — the client is told not to run a second geometry
+ * beside the engine's), so the scheduled refetch is the only faithful
+ * restore.
  *
  * IDEMPOTENT ON THE ID: a prop with this id already standing is replaced
  * rather than duplicated, so a beat delivered twice draws one reliquary.

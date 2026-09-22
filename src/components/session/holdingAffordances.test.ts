@@ -250,6 +250,17 @@ describe('holdTargets — placed footprints offered by any engine-traced cell', 
     ).toEqual([]);
   });
 
+  it('skips a holdable placed footprint with no id — there is no name to send', () => {
+    // `id` is required on `AtlasPlacedProp`, so this is a producer defect; an
+    // empty target would be a `HoldRequest.target: ''` that cannot succeed.
+    expect(
+      holdTargets(
+        withPlaced([{ holdable: true, cells: [{ x: 1, y: 0 }] }] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
   it('leaves out a placement whose every cell is more than one away', () => {
     expect(
       holdTargets(

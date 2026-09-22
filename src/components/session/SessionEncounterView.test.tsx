@@ -5501,6 +5501,41 @@ describe('SessionEncounterView production combat integration', () => {
   });
 });
 
+describe('a placed footprint on the hold beats (rpg-dnd5e-web#1182)', () => {
+  it('a DROPPED beat does not mint a bare cell prop when the viewer never saw the pick-up', async () => {
+    // A member who joined after the pick-up (or remounted) has no
+    // `heldPropsRef` memory; the only thing that says "placed, not cell" is
+    // the authored universe `placedPropIds`. The patch must leave the atlas
+    // alone — no bare cell prop under the footprint's id — and let the
+    // scheduled refetch restore it (rpg-api-protos#356).
+    hoisted.dungeonSceneResult.placedPropIds = new Set(['reliquary']);
+    const beats = deferredStream([
+      event(EventKind.DROPPED, {
+        case: 'dropped',
+        value: { member: 'char-1', prop: 'reliquary', at: { x: 5, y: 7 } },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    hoisted.atlasResult.applyReveal.mockClear();
+    renderView();
+    await screen.findByTestId('session-canvas');
+    beats.release();
+    await waitFor(() =>
+      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled()
+    );
+
+    const patch = hoisted.atlasResult.applyReveal.mock
+      .calls[0][0] as (current: { props: unknown[]; placed: unknown[] }) => {
+      props: unknown[];
+      placed: unknown[];
+    };
+    const after = patch({ props: [], placed: [{ id: 'reliquary' }] });
+    expect(after.props).toHaveLength(0);
+    expect(after.placed).toHaveLength(1);
+  });
+});
+
 describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', () => {
   it('names the drop once a HELD beat says this member is carrying', async () => {
     // THE OTHER INTEGRATION POINT. `viewerHoldings.ts` has its own unit

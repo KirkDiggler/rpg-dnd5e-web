@@ -291,6 +291,31 @@ export function sceneExits(
   return exits;
 }
 
+/**
+ * Which authored placements are ABSENT from this viewer's atlas — the
+ * placement-id universe minus `placed`, names only, never state
+ * (rpg-dnd5e-web#1182). A placement is absent in reserve, held by somebody,
+ * or concealed from this viewer; all three collapse to "not drawn". The
+ * universe is the authored `place[].id` (surfaced by `useDungeonScene`), the
+ * present set is `atlas.placed[].id`.
+ *
+ * Pure so the render gate's one piece of arithmetic is testable without a
+ * WebGL canvas, the same split every other selector on this route keeps.
+ *
+ * `placed ?? []` for the standing reason, and here the failure is NAMED: a
+ * producer older than the field hands back a message with `placed` absent,
+ * not empty — and then every authored placement reads as absent, so the
+ * renderer hides all of them (fail-closed) until that producer adopts the
+ * field and the scheduled refetch self-heals.
+ */
+export function hiddenPlacedPropIds(
+  placedPropIds: ReadonlySet<string>,
+  placed: readonly { id: string }[] | undefined
+): ReadonlySet<string> {
+  const present = new Set((placed ?? []).map((p) => p.id));
+  return new Set([...placedPropIds].filter((id) => !present.has(id)));
+}
+
 export function buildScene3D(
   atlas: Pick<
     GetAtlasResponse,

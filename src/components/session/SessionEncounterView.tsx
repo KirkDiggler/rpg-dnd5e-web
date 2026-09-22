@@ -71,18 +71,14 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
-import {
-  applyDropped,
-  applyHeld,
-  heldPlacedProp,
-  heldProp,
-} from './applyHolding';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
 import { arrivingStep } from './arrivingStep';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
+  hiddenPlacedPropIds,
   positionToCube,
   resolveSceneLayout,
 } from './atlasToScene3D';
@@ -297,12 +293,6 @@ function SessionEncounterScope({
    * ref dies with this scope, which remounts per session and member. A
    * prop picked up again simply overwrites its own entry. */
   const heldPropsRef = useRef(new Map<string, AtlasProp>());
-  /** What was removed from `atlas.placed` when a placed FOOTPRINT was picked
-   * up — the id alone, so a later DROPPED beat is not mistaken for a cell
-   * prop (`applyHolding.ts`). No restore is remembered: a placed prop cannot
-   * be put back from `Dropped`, so the scheduled refetch does it
-   * (rpg-api-protos#356). */
-  const heldPlacedRef = useRef(new Set<string>());
   /** What the local member is carrying, projected from the beats — the
    * wire reports a member's holdings nowhere else (`viewerHoldings.ts`).
    * Read only by the Leave button, to name what leaving from the wrong
@@ -358,10 +348,10 @@ function SessionEncounterScope({
   // reserve, held by somebody, or concealed from them — and the renderer
   // suppresses it. Names only, never state: the universe is the authored
   // `place[].id`, the present set is `atlas.placed[].id`.
-  const hiddenPlacedIds = useMemo(() => {
-    const present = new Set((atlas?.placed ?? []).map((p) => p.id));
-    return new Set([...placedPropIds].filter((id) => !present.has(id)));
-  }, [atlas, placedPropIds]);
+  const hiddenPlacedIds = useMemo(
+    () => hiddenPlacedPropIds(placedPropIds, atlas?.placed),
+    [atlas, placedPropIds]
+  );
   const sceneBuild = useMemo(() => {
     if (!atlas || !layoutOutcome?.ok) return null;
     // A dungeon whose room is still being read is not yet a scene.
@@ -1193,9 +1183,6 @@ function SessionEncounterScope({
         applyAtlasReveal((current) => {
           const removed = heldProp(current, beat);
           if (removed) heldPropsRef.current.set(beat.prop, removed);
-          if (heldPlacedProp(current, beat)) {
-            heldPlacedRef.current.add(beat.prop);
-          }
           return applyHeld(current, beat);
         });
       }
@@ -1206,7 +1193,7 @@ function SessionEncounterScope({
             current,
             beat,
             heldPropsRef.current.get(beat.prop),
-            heldPlacedRef.current.has(beat.prop)
+            placedPropIds.has(beat.prop)
           )
         );
       }

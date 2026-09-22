@@ -9,12 +9,7 @@ import {
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
-import {
-  applyDropped,
-  applyHeld,
-  heldPlacedProp,
-  heldProp,
-} from './applyHolding';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
 
 /** Two props on the floor: the artifact, named, and a pillar the author
  * never named — the second is what proves the patch works on IDS and not
@@ -196,17 +191,6 @@ describe('applyHeld — a placed footprint leaves the floor by the same id', () 
     const before = atlasWithPlacedFootprint();
     const after = applyHeld(before, create(HeldSchema, { prop: 'crown' }));
     expect(after.placed).toHaveLength(1);
-  });
-
-  it('reports the placement it would remove, for the caller to remember', () => {
-    const before = atlasWithPlacedFootprint();
-    expect(
-      heldPlacedProp(before, create(HeldSchema, { prop: 'reliquary' }))?.id
-    ).toBe('reliquary');
-    expect(
-      heldPlacedProp(before, create(HeldSchema, { prop: 'crown' }))
-    ).toBeUndefined();
-    expect(heldPlacedProp(before, create(HeldSchema, {}))).toBeUndefined();
   });
 });
 
