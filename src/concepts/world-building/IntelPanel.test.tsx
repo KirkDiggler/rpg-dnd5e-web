@@ -154,6 +154,31 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
       /read by the engine when the record changes hands/
     );
   });
+
+  it('carries a concealment reveal read-only, not edited into a fact (rpg-project#490)', () => {
+    // A hand-written record may now reveal a CONCEALMENT — the thing "reveals:
+    // { concealment }" names under the root `concealments:`. The form only
+    // authors `fact` today, so a concealment record is preserved read-only:
+    // disabled, labelled a secret, and never silently re-written as a fact on
+    // re-save.
+    render(
+      <IntelPanel
+        scope={{
+          intel: [{ id: 'vault-map', reveals: { concealment: 'vault' } }],
+        }}
+        room={roomWithThug()}
+        onChange={() => {}}
+      />
+    );
+    const input = screen.getByLabelText(
+      'Intel reveals secret for vault-map'
+    ) as HTMLInputElement;
+    expect(input.value).toBe('vault');
+    expect(input.disabled).toBe(true);
+    expect(
+      screen.getByTestId('intel-concealment-vault-map').textContent
+    ).toMatch(/Carried read-only/);
+  });
 });
 
 describe('an intel record collapses to its id and what it reveals', () => {

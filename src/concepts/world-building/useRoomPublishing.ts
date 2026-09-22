@@ -282,6 +282,10 @@ export function useRoomPublishing({
           factions: scope.factions,
           dispositions: scope.dispositions,
           intel: scope.intel,
+          exits: scope.exits,
+          endings: scope.endings,
+          scenarios: scope.scenarios,
+          concealments: scope.concealments,
         }),
         error: null,
       };
@@ -393,6 +397,10 @@ export function useRoomPublishing({
           factions: currentScope.factions,
           dispositions: currentScope.dispositions,
           intel: currentScope.intel,
+          exits: currentScope.exits,
+          endings: currentScope.endings,
+          scenarios: currentScope.scenarios,
+          concealments: currentScope.concealments,
         });
       } catch (err) {
         setError(
@@ -546,6 +554,10 @@ export function useRoomPublishing({
       ...(decoded.factions ? { factions: decoded.factions } : {}),
       ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
       ...(decoded.intel ? { intel: decoded.intel } : {}),
+      ...(decoded.exits ? { exits: decoded.exits } : {}),
+      ...(decoded.endings ? { endings: decoded.endings } : {}),
+      ...(decoded.scenarios ? { scenarios: decoded.scenarios } : {}),
+      ...(decoded.concealments ? { concealments: decoded.concealments } : {}),
     });
     if (!accepted) return false;
     // The imported file's root key becomes the publication key for the

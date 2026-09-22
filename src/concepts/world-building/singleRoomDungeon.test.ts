@@ -590,4 +590,103 @@ ${ROOM_BLOCK}
       decodeSingleRoomDungeon(withOn('          intimidated: []'))
     ).toThrow(/this names a trigger and lists nothing that happens on it/);
   });
+
+  it('round trips the four root keys — exits, endings, scenarios, concealments — verbatim (web#1184)', () => {
+    // The carry: a hand-written v4 room whose purpose and secrets are declared
+    // at the root. None of them is a thing standing on the floor, so each lives
+    // beside `intel`/`factions`, and all four round-trip byte-verbatim with the
+    // engine grading them at PutDungeon.
+    const source = `version: 4
+key: tomb-heirloom
+${PLAY_BLOCK}
+exits:
+  - {id: entrance, cell: {q: 1, r: 3}}
+endings:
+  - id: held-out
+    when: {round: 6}
+  - id: turned
+    when: {stance: {between: [raiders, party], is: neutral}}
+scenarios:
+  recover-the-artifact: {artifact: heirloom, exit: entrance}
+  hold-out: {convince: raiders}
+concealments:
+  vault:
+    checks: [{ability: perception, dc: 15}]
+    cells: [{q: 4, r: 1}]
+    props: [vault-door]
+intel:
+  - {id: vault-map, reveals: {concealment: vault}}
+  - {id: wisemans-letter, reveals: {fact: saved-wiseman}}
+${ROOM_BLOCK}
+`;
+    const decoded = decodeSingleRoomDungeon(source);
+    expect(decoded.exits).toEqual([{ id: 'entrance', cell: { q: 1, r: 3 } }]);
+    expect(decoded.endings).toEqual([
+      { id: 'held-out', when: { round: 6 } },
+      {
+        id: 'turned',
+        when: { stance: { between: ['raiders', 'party'], is: 'neutral' } },
+      },
+    ]);
+    expect(decoded.scenarios).toEqual({
+      'recover-the-artifact': { artifact: 'heirloom', exit: 'entrance' },
+      'hold-out': { convince: 'raiders' },
+    });
+    expect(decoded.concealments).toEqual({
+      vault: {
+        checks: [{ ability: 'perception', dc: 15 }],
+        cells: [{ q: 4, r: 1 }],
+        props: ['vault-door'],
+      },
+    });
+    // A record reveals a CONCEALMENT now (rpg-project#490 R7), not a door.
+    expect(decoded.intel).toEqual([
+      { id: 'vault-map', reveals: { concealment: 'vault' } },
+      { id: 'wisemans-letter', reveals: { fact: 'saved-wiseman' } },
+    ]);
+
+    // Re-emitting preserves everything, claims v4, and round-trips identically.
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+      intel: decoded.intel,
+      exits: decoded.exits,
+      endings: decoded.endings,
+      scenarios: decoded.scenarios,
+      concealments: decoded.concealments,
+    });
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('exits:');
+    expect(emitted).toContain('endings:');
+    expect(emitted).toContain('scenarios:');
+    expect(emitted).toContain('concealments:');
+    expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
+  });
+
+  it('claims v4 for a room whose only v4 fact is one of the four root keys', () => {
+    // The version is a statement about what a file MAY contain. A room whose
+    // ONLY new fact is a single exit must claim v4, the same argument a
+    // doorBindings-only room makes.
+    const onlyExit = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nexits:\n  - {id: way-out, cell: {q: 0, r: 0}}\n`;
+    const onlyEnding = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nendings:\n  - {id: done, when: {down: goblin-1}}\n`;
+    const onlyScenario = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nscenarios:\n  hold-out: {convince: goblins}\n`;
+    const onlyConcealment = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nconcealments:\n  vault:\n    checks: [{ability: perception, dc: 15}]\n`;
+    for (const source of [
+      onlyExit,
+      onlyEnding,
+      onlyScenario,
+      onlyConcealment,
+    ]) {
+      const decoded = decodeSingleRoomDungeon(source);
+      const emitted = encodeSingleRoomDungeon({
+        key: decoded.key,
+        draft: decoded.draft,
+        exits: decoded.exits,
+        endings: decoded.endings,
+        scenarios: decoded.scenarios,
+        concealments: decoded.concealments,
+      });
+      expect(emitted.startsWith('version: 4\n')).toBe(true);
+    }
+  });
 });
