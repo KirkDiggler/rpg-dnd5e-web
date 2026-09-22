@@ -16,7 +16,10 @@
  * to a real, synced GLB), not one showcase's actual usage. See
  * `ALL_PROP_KEYS` below.
  */
-import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
+import {
+  MONSTER_REF_IDS,
+  resolveMonsterModelUrl,
+} from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS, type PropRole } from '@/components/hex-grid/propManifest';
 import { refInitials, refLabel, refSlug } from '@/utils/refs';
 import { isDungeonLightSourceRef } from '../rendering/dungeonLightSources';
@@ -224,54 +227,74 @@ export interface PaletteMonster {
  * one ref; the board is what shows three faces. That is the shape Kirk's
  * 2026-09-11 zombie ruling rejected FOR ZOMBIES, and it is right here for the
  * opposite reason — a warband is a crowd, a zombie is a thing.
+ *
+ * The list is now DERIVED from `monsterModels.ts`'s `MONSTER_REF_IDS`, so this
+ * file stops being a second place to remember: mapping a monster there makes it
+ * authorable here. Only the copy that cannot come from a ref id lives in
+ * `MONSTER_OVERRIDES` below.
  */
-export const PALETTE_MONSTERS: PaletteMonster[] = (
-  [
-    {
-      ref: 'dnd5e:monsters:skeleton',
-      refId: 'skeleton',
-      short: 'Sk',
-      label: 'skeleton',
-      sub: 'flags forced off — dungeonspec rejects blocks_* on monster place: entries',
-    },
-    {
-      ref: 'dnd5e:monsters:skeleton-captain',
-      refId: 'skeleton-captain',
-      short: 'Sc',
-      label: 'skeleton-captain',
-      sub: 'flags forced off — dungeonspec rejects blocks_* on monster place: entries',
-      bossable: true,
-    },
-    {
-      ref: 'dnd5e:monsters:zombie',
-      refId: 'zombie',
-      short: 'Zo',
-      label: 'zombie',
-      sub: 'flags forced off, same as every monster place: entry · renders as the gaunt look',
-    },
-    {
-      ref: 'dnd5e:monsters:animated-armor',
-      refId: 'animated-armor',
-      short: 'Aa',
-      label: 'animated-armor',
-      sub: 'flags forced off, same as every monster place: entry · vanishes when it drops — no downed model exists',
-    },
-    {
-      ref: 'dnd5e:monsters:goblin',
-      refId: 'goblin',
-      short: 'Go',
-      label: 'goblin',
-      sub: 'flags forced off, same as every monster place: entry · renders as one of three war-camp looks, picked from the entity id',
-    },
-    {
-      ref: 'dnd5e:monsters:goblin-boss',
-      refId: 'goblin-boss',
-      short: 'Gb',
-      label: 'goblin-boss',
-      sub: 'flags forced off, same as every monster place: entry · two scimitar swings a turn, the second at disadvantage',
-      bossable: true,
-    },
-  ] satisfies PaletteMonster[]
+
+/** Per-ref copy the palette cannot derive from a ref id: the characterful
+ * `sub` line, and whether the ref's RULES identity is boss-shaped. Everything
+ * else — `ref`, `short`, `label` — is derived. A ref with no entry here gets
+ * the standard `sub` and is not bossable, which is the right default for a
+ * freshly promoted appearance. */
+interface MonsterOverride {
+  short?: string;
+  sub?: string;
+  bossable?: boolean;
+}
+
+const DEFAULT_MONSTER_SUB =
+  'flags forced off, same as every monster place: entry';
+
+/** `short` is the swatch/alt badge when a thumbnail is missing. It is curated
+ * rather than derived: `refInitials` collides across the palette (the prop
+ * `statue-knight-hooded` and `skeleton` both badge `SK`), and a duplicate
+ * accessible name is a real defect, not a cosmetic one. A ref with no entry
+ * here falls back to `refInitials`. */
+const MONSTER_OVERRIDES: Readonly<Record<string, MonsterOverride>> = {
+  skeleton: { short: 'Sk' },
+  'skeleton-captain': { short: 'Sc', bossable: true },
+  zombie: {
+    short: 'Zo',
+    sub: 'flags forced off, same as every monster place: entry · renders as the gaunt look',
+  },
+  'animated-armor': {
+    short: 'Aa',
+    sub: 'flags forced off, same as every monster place: entry · vanishes when it drops — no downed model exists',
+  },
+  goblin: {
+    short: 'Go',
+    sub: 'flags forced off, same as every monster place: entry · renders as one of three war-camp looks, picked from the entity id',
+  },
+  'goblin-boss': {
+    short: 'Gb',
+    sub: 'flags forced off, same as every monster place: entry · two scimitar swings a turn, the second at disadvantage',
+    bossable: true,
+  },
+  thug: {
+    short: 'Th',
+    sub: 'flags forced off, same as every monster place: entry · one Fantasy Kingdom look with a downed sibling',
+  },
+  bandit: {
+    short: 'Bd',
+    sub: 'flags forced off, same as every monster place: entry · older Pirate-pack rig with a downed sibling',
+  },
+};
+
+export const PALETTE_MONSTERS: PaletteMonster[] = MONSTER_REF_IDS.map(
+  (refId): PaletteMonster => {
+    const override = MONSTER_OVERRIDES[refId];
+    const monster: PaletteMonster = {
+      ref: `dnd5e:monsters:${refId}`,
+      refId,
+      short: override?.short ?? refInitials(`dnd5e:monsters:${refId}`),
+      label: refId,
+      sub: override?.sub ?? DEFAULT_MONSTER_SUB,
+    };
+    return override?.bossable ? { ...monster, bossable: true } : monster;
+  }
 ).filter(
   (m) => resolveMonsterModelUrl(m.refId, undefined, false) !== undefined
 );
