@@ -9,7 +9,12 @@ import {
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
-import { applyDropped, applyHeld, heldProp } from './applyHolding';
+import {
+  applyDropped,
+  applyHeld,
+  heldPlacedProp,
+  heldProp,
+} from './applyHolding';
 
 /** Two props on the floor: the artifact, named, and a pillar the author
  * never named — the second is what proves the patch works on IDS and not
@@ -155,5 +160,73 @@ describe('applyDropped — it lands where the carrier stood (R9)', () => {
       create(DroppedSchema, { prop: 'heirloom', at: { x: 1, y: 1 } })
     );
     expect(before.props).toHaveLength(0);
+  });
+});
+
+/** One placed FOOTPRINT on the floor — a rectangle, not a cell prop, with
+ * its own id namespace shared with `props` (`AtlasPlacedProp.id`'s doc). */
+function atlasWithPlacedFootprint(): GetAtlasResponse {
+  return create(GetAtlasResponseSchema, {
+    cells: [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ],
+    placed: [
+      {
+        id: 'reliquary',
+        holdable: true,
+        blocksMovement: true,
+        blocksLineOfSight: false,
+        cells: [{ x: 1, y: 0 }],
+      },
+    ],
+  });
+}
+
+describe('applyHeld — a placed footprint leaves the floor by the same id', () => {
+  it('removes the placement with that id, and no cell prop moves', () => {
+    const before = atlasWithPlacedFootprint();
+    const after = applyHeld(before, create(HeldSchema, { prop: 'reliquary' }));
+    expect(after.placed).toHaveLength(0);
+    expect(after.props).toHaveLength(0);
+    expect(after.cells).toEqual(before.cells);
+  });
+
+  it('removes nothing for an id this atlas never held as a placement', () => {
+    const before = atlasWithPlacedFootprint();
+    const after = applyHeld(before, create(HeldSchema, { prop: 'crown' }));
+    expect(after.placed).toHaveLength(1);
+  });
+
+  it('reports the placement it would remove, for the caller to remember', () => {
+    const before = atlasWithPlacedFootprint();
+    expect(
+      heldPlacedProp(before, create(HeldSchema, { prop: 'reliquary' }))?.id
+    ).toBe('reliquary');
+    expect(
+      heldPlacedProp(before, create(HeldSchema, { prop: 'crown' }))
+    ).toBeUndefined();
+    expect(heldPlacedProp(before, create(HeldSchema, {}))).toBeUndefined();
+  });
+});
+
+describe('applyDropped — a placed footprint is NOT restored from the beat', () => {
+  it('leaves the atlas alone, rather than invent a bare cell prop', () => {
+    // `Dropped` carries no placement geometry or re-traced cells
+    // (rpg-api-protos#356), so a placed footprint cannot be put back locally.
+    // The scheduled atlas refetch restores it; the patch must not mint a bare
+    // cell prop under a placement id in the meantime.
+    const taken = applyHeld(
+      atlasWithPlacedFootprint(),
+      create(HeldSchema, { prop: 'reliquary' })
+    );
+    const after = applyDropped(
+      taken,
+      create(DroppedSchema, { prop: 'reliquary', at: { x: 5, y: 7 } }),
+      undefined,
+      true
+    );
+    expect(after.placed).toHaveLength(0);
+    expect(after.props).toHaveLength(0);
   });
 });

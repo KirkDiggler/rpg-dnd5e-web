@@ -314,4 +314,43 @@ describe('RoomSceneEnvironment', () => {
       status: 'error',
     });
   });
+
+  it('suppresses a placed prop absent from the viewer’s atlas (rpg-dnd5e-web#1182)', async () => {
+    // `table` is a placement this viewer cannot see (reserve / held /
+    // concealed); the scene bytes are the author's truth, the atlas is the
+    // player's. Its leaf never runs, while scenery beside it still draws.
+    const renderer = await ReactThreeTestRenderer.create(
+      <RoomSceneEnvironment
+        presentation={presentation}
+        hiddenPlacedIds={new Set(['table'])}
+      />
+    );
+
+    // One legacy leaf remains (the candles), the hidden table is gone.
+    expect(hoisted.legacyLeafCalls).toHaveLength(1);
+    expect(hoisted.legacyLeafCalls[0]!.position).toEqual([-2.1, 1.2, 1.25]);
+    // Scenery (the fort wall, never a placement) still draws.
+    expect(hoisted.generatedLeafCalls).toHaveLength(1);
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'room-scene-item-table'
+      )
+    ).toHaveLength(0);
+  });
+
+  it('hides nothing when no placements are withheld', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <RoomSceneEnvironment
+        presentation={presentation}
+        hiddenPlacedIds={new Set()}
+      />
+    );
+    expect(hoisted.legacyLeafCalls).toHaveLength(2);
+    expect(hoisted.generatedLeafCalls).toHaveLength(1);
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'room-scene-item-table'
+      )
+    ).toHaveLength(1);
+  });
 });

@@ -42,6 +42,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AtlasPropSchema,
+  type AtlasPlacedProp,
   type AtlasProp,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
@@ -62,6 +63,12 @@ export function applyHeld(
   if (!event.prop) return atlas;
   const next = clone(GetAtlasResponseSchema, atlas);
   next.props = next.props.filter((p) => p.id !== event.prop);
+  // A placed footprint leaves the floor by the SAME id — the two lists share
+  // one namespace (`AtlasPlacedProp.id`'s doc: the compiler refuses a
+  // placement whose name a cell prop already took), so the one removal runs
+  // on both. `?? []` for the standing reason: a producer older than the
+  // field hands back a message with `placed` absent, not empty.
+  next.placed = (next.placed ?? []).filter((p) => p.id !== event.prop);
   return next;
 }
 
@@ -74,6 +81,19 @@ export function heldProp(
 ): AtlasProp | undefined {
   if (!event.prop) return undefined;
   return atlas.props.find((p) => p.id === event.prop);
+}
+
+/** What `applyHeld` would remove from `placed` — for the caller to know the
+ * held thing was a placed FOOTPRINT, not a cell prop. `applyDropped` needs
+ * that distinction: a cell prop it restores from the beat, a placed prop it
+ * cannot (see there). Undefined when this atlas never held it as a
+ * placement. */
+export function heldPlacedProp(
+  atlas: GetAtlasResponse,
+  event: Held
+): AtlasPlacedProp | undefined {
+  if (!event.prop) return undefined;
+  return (atlas.placed ?? []).find((p) => p.id === event.prop);
 }
 
 /**
@@ -91,8 +111,16 @@ export function heldProp(
 export function applyDropped(
   atlas: GetAtlasResponse,
   event: Dropped,
-  remembered?: AtlasProp
+  remembered?: AtlasProp,
+  placed = false
 ): GetAtlasResponse {
+  // A placed footprint cannot be restored from this beat: `Dropped` carries
+  // the id and the drop cell, never the placement geometry or the engine's
+  // re-traced `cells` (rpg-api-protos#356 — the client is told not to run a
+  // second geometry beside the engine's). Leave it absent and let the
+  // scheduled atlas refetch put it back correctly; the patch buys the frame
+  // and the server keeps the truth.
+  if (placed) return atlas;
   // A drop with no cell is a beat this client cannot place. Putting the
   // prop at the origin would be a guess about where it lies, and the
   // refetch answers correctly a moment later — so nothing moves here.

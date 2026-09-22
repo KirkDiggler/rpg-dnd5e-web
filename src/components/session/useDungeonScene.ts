@@ -52,14 +52,25 @@ import { useEffect, useState } from 'react';
 export interface UseDungeonSceneResult {
   /** The room to draw, or null when this dungeon has none to draw. */
   presentation: RoomScenePresentation | null;
+  /** The authored placement-id universe — `place[].id` (the
+   * `propDeclarations` keys) — surfaced for the RENDER GATE, not inside the
+   * presentation (rpg-dnd5e-web#1182). Names, not state: the set of ids that
+   * CAN stand on the floor, so a renderer can tell a placement (draws only
+   * while `atlas.placed` lists it) from scenery (always draws). Empty while
+   * loading, on an empty key, and for a dungeonspec dungeon — none of which
+   * have placements to hide. */
+  placedPropIds: ReadonlySet<string>;
   loading: boolean;
   /** Non-null only for the named refusals above — never for a dungeon
    * that simply has no authored room. */
   error: string | null;
 }
 
+const NO_PLACED_PROPS: ReadonlySet<string> = new Set<string>();
+
 const NOTHING: UseDungeonSceneResult = {
   presentation: null,
+  placedPropIds: NO_PLACED_PROPS,
   loading: false,
   error: null,
 };
@@ -79,7 +90,12 @@ export function useDungeonScene(
     // moved off (or for an unmounted view) may not write state, so a
     // slow read of an old room can never replace a newer one.
     let live = true;
-    setState({ presentation: null, loading: true, error: null });
+    setState({
+      presentation: null,
+      placedPropIds: NO_PLACED_PROPS,
+      loading: true,
+      error: null,
+    });
     void (async () => {
       let yaml: string;
       try {
@@ -91,6 +107,7 @@ export function useDungeonScene(
         if (!live) return;
         setState({
           presentation: null,
+          placedPropIds: NO_PLACED_PROPS,
           loading: false,
           error: `Could not load the dungeon “${dungeonKey}” this session is playing: ${errorMessageOf(err)}`,
         });
@@ -99,14 +116,20 @@ export function useDungeonScene(
       if (!live) return;
       try {
         const read = readSingleRoomDungeon(yaml);
+        // Narrowed to the three presentation fields on purpose, PLUS the
+        // placement-id set surfaced at the render gate (rpg-dnd5e-web#1182).
+        // The decoded draft also carries the room's AUTHORING gameplay data —
+        // walkable cells, prop declarations, monster markers — and none of
+        // that may ride into a scene: where a creature stands and what a prop
+        // blocks are session and engine answers. The placement IDS alone are
+        // different: they are names, not state, and the render gate needs them
+        // to decide which scene items are placements (absent from the atlas
+        // means reserve/held/concealed, never "not a placement").
+        const placedPropIds =
+          read.dialect === 'single-room'
+            ? new Set(Object.keys(read.draft.room.propDeclarations))
+            : NO_PLACED_PROPS;
         setState({
-          // Narrowed to the three presentation fields on purpose. The
-          // decoded draft also carries the room's AUTHORING gameplay
-          // data — walkable cells, prop declarations, monster markers —
-          // and none of that may ride into a scene: where a creature
-          // stands and what a prop blocks are session and engine
-          // answers, and a renderer that found them here would be
-          // reading the author's intent instead of the game's state.
           presentation:
             read.dialect === 'single-room'
               ? {
@@ -115,12 +138,14 @@ export function useDungeonScene(
                   scene: read.draft.scene,
                 }
               : null,
+          placedPropIds,
           loading: false,
           error: null,
         });
       } catch (err) {
         setState({
           presentation: null,
+          placedPropIds: NO_PLACED_PROPS,
           loading: false,
           error: `Could not read the room authored under “${dungeonKey}”: ${
             err instanceof Error ? err.message : String(err)

@@ -185,6 +185,15 @@ export interface Scene3D {
    * above remain the movement/sight truth regardless of this field.
    */
   roomScene?: RoomScenePresentation;
+  /**
+   * Placed props this viewer's atlas does NOT list — the authored
+   * placement-id universe minus `atlas.placed` (rpg-dnd5e-web#1182). The
+   * canonical room renderer suppresses a scene item whose id is here: a
+   * placement in reserve, held by somebody, or concealed from this viewer.
+   * Names only, never state. Absent means "hide nothing", which is also the
+   * author preview's truth — the author sees every placement.
+   */
+  hiddenPlacedIds?: ReadonlySet<string>;
 }
 
 export type SceneLayoutOutcome =
@@ -290,7 +299,8 @@ export function buildScene3D(
     Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
   layout: HexLayout,
-  roomScene?: RoomScenePresentation
+  roomScene?: RoomScenePresentation,
+  hiddenPlacedIds?: ReadonlySet<string>
 ): Scene3D {
   if (layout !== 'pointy') {
     throw new Error(
@@ -386,6 +396,7 @@ export function buildScene3D(
     wallRuns,
     doorGaps,
     roomScene,
+    hiddenPlacedIds,
     // The floor this member knows is what was just built above, so an
     // exit in a room they have not opened is skipped rather than floated
     // over void.

@@ -29,6 +29,13 @@ function workshopYaml() {
     transform: { x: -2.25, y: 0, z: 1.3, rotationY: 0.37 },
     heightScale: 1.5,
   });
+  // A PLACED FOOTPRINT: the authored declaration that makes `table` a
+  // placement in the engine's eyes, so `placedPropIds` has something to name.
+  draft.room.propDeclarations.table = {
+    blocksMovement: true,
+    blocksLineOfSight: false,
+    footprint: { width: 2, depth: 1, offsetX: 0, offsetZ: 0 },
+  };
   return {
     draft,
     yaml: encodeSingleRoomDungeon({ key: 'room-workshop', draft }),
@@ -70,6 +77,10 @@ describe('useDungeonScene', () => {
       workspace: draft.workspace,
       scene: draft.scene,
     });
+    // The placement-id universe rides ALONGSIDE the presentation, not inside
+    // it: the authored `place[].id` (the propDeclarations keys), surfaced for
+    // the render gate (rpg-dnd5e-web#1182).
+    expect(result.current.placedPropIds).toEqual(new Set(['table']));
   });
 
   it('asks for nothing when the session carries no dungeon key', () => {
@@ -79,6 +90,7 @@ describe('useDungeonScene', () => {
     expect(client.getDungeon).not.toHaveBeenCalled();
     expect(result.current).toEqual({
       presentation: null,
+      placedPropIds: new Set(),
       loading: false,
       error: null,
     });
@@ -91,8 +103,10 @@ describe('useDungeonScene', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.presentation).toBeNull();
     // Not a failure: this dungeon genuinely has no authored room, and
-    // the legacy atlas route draws it exactly as it always did.
+    // the legacy atlas route draws it exactly as it always did. No room
+    // means no placements to hide either.
     expect(result.current.error).toBeNull();
+    expect(result.current.placedPropIds).toEqual(new Set());
   });
 
   it('names a single-room file it cannot read whole, never calling it roomless', async () => {

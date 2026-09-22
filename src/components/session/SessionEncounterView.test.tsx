@@ -86,6 +86,7 @@ const hoisted = vi.hoisted(() => ({
   },
   dungeonSceneResult: {
     presentation: null as unknown,
+    placedPropIds: new Set<string>() as ReadonlySet<string>,
     loading: false,
     error: null as string | null,
   },
@@ -576,6 +577,7 @@ beforeEach(() => {
   hoisted.atlasResult.refetch.mockReset();
   Object.assign(hoisted.dungeonSceneResult, {
     presentation: null,
+    placedPropIds: new Set<string>(),
     loading: false,
     error: null,
   });

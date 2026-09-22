@@ -26,6 +26,13 @@ export interface RoomSceneEnvironmentProps {
   /** Fires with the clicked door's id. The affordance lives in the caller,
    * which knows who acts and what the door's state is. */
   readonly onDoorClick?: (door: string) => void;
+  /** Placed-prop ids this viewer's atlas does NOT list (rpg-dnd5e-web#1182):
+   * placements in reserve, held by somebody, or concealed from this viewer.
+   * A scene item whose id is here is suppressed — the scene bytes are the
+   * author's truth, the atlas is the player's, and a placement the player
+   * cannot see must not be drawn. Undefined/empty hides nothing (the author
+   * preview's case: the author sees every placement). */
+  readonly hiddenPlacedIds?: ReadonlySet<string>;
 }
 
 /**
@@ -227,11 +234,21 @@ export function RoomSceneEnvironment({
   dungeonKey,
   doors,
   onDoorClick,
+  hiddenPlacedIds,
 }: RoomSceneEnvironmentProps) {
+  // THE HIDE RULE (rpg-dnd5e-web#1182). The authored scene is the author's
+  // truth and the atlas is the player's: a scene item whose id is a placed
+  // prop absent from THIS viewer's atlas — reserve, held, or concealed — is
+  // withheld, and reappears when the atlas lists it again. Scenery (an item
+  // that is not a placement at all) is never in `hiddenPlacedIds` and always
+  // draws. No `hiddenPlacedIds` is the author preview's case: hide nothing.
+  const items = hiddenPlacedIds
+    ? presentation.scene.items.filter((item) => !hiddenPlacedIds.has(item.id))
+    : presentation.scene.items;
   return (
     <>
       <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
-      {presentation.scene.items.map((item) => (
+      {items.map((item) => (
         <RoomSceneItem
           key={item.id}
           item={item}
