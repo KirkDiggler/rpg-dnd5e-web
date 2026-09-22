@@ -35,6 +35,7 @@ const roleFixtures = vi.hoisted(() => {
         { role: 'leaf', node: 'Gate_Left', door: 'gate' },
         { role: 'leaf', node: 'Gate_Right', door: 'gate' },
         { role: 'leaf', node: 'Bridge_Leaf', door: 'bridge' },
+        { role: 'leaf', node: 'Trim_Leaf', door: 'trim' },
         { role: 'above', node: 'Masonry_Above' },
       ],
     },
@@ -116,6 +117,13 @@ vi.mock('@react-three/drei', () => ({
       bridge.name = 'Bridge_Leaf';
       bridge.geometry.translate(0, 0.1, 2);
       scene.add(bridge);
+      const trim = new THREE.Mesh(
+        new THREE.BoxGeometry(1.0014, 2.4, 0.27),
+        material
+      );
+      trim.name = 'Trim_Leaf';
+      trim.geometry.translate(0.4993, 1.2, 0);
+      scene.add(trim);
       return { scene };
     }
     const scene = new THREE.Group();
@@ -287,6 +295,7 @@ describe('WorldAssetModel named roles', () => {
       'bridge',
       'east',
       'gate',
+      'trim',
       'west',
     ]);
     expect(doors.find((door) => door.id === 'east')!.position).toEqual([
@@ -420,6 +429,27 @@ describe('WorldAssetModel named roles', () => {
       height: 3,
       depth: 4,
     });
+    await renderer.unmount();
+  });
+
+  it('derives a vertical hinge when trim protrudes past the pivot', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef={roleFixtures.ref}
+        position={[0, 0, 0]}
+        openDoors={['trim']}
+      />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    const leaf = model.instance.getObjectByName('Trim_Leaf')!;
+    const axis = new THREE.Vector3(
+      leaf.quaternion.x,
+      leaf.quaternion.y,
+      leaf.quaternion.z
+    ).normalize();
+    expect(Math.abs(axis.y)).toBeCloseTo(1, 2);
+    expect(axis.x).toBeCloseTo(0, 2);
+    expect(axis.z).toBeCloseTo(0, 2);
     await renderer.unmount();
   });
 
