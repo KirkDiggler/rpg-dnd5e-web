@@ -78,6 +78,15 @@ export function refreshKeysFor(
       return ['doors', 'atlas'];
     case 'regionRevealed':
       return ['atlas'];
+    // CONCEALMENT_REVEALED IS THE ONE BEAT THAT SUPERSEDES BOTH reveals above
+    // (rpg-api-protos#352): one secret, one beat, carrying the floor cells,
+    // props, member doors AND their doorways it was withholding. So it pops
+    // the same two cached views a hidden thing can touch — the atlas (floor +
+    // props) and the doors list (member doors + their doorways) — for the same
+    // reason and by the same deliberate re-verify path the two reveals above
+    // use: these are rare beats, not a hot path.
+    case 'concealmentRevealed':
+      return ['doors', 'atlas'];
     // THIS VIEWER'S OWN PERCEPTION CHANGED: somebody came into their view,
     // or left it. `view` and nothing else — sightings are the only thing it
     // touches. Nobody moved, nothing was spent, no card changed, so

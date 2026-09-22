@@ -3,6 +3,7 @@ import {
   AnsweredSchema,
   ArrivedSchema,
   CastSchema,
+  ConcealmentRevealedSchema,
   ConcentrationEndedSchema,
   EventKind,
   EventSchema,
@@ -329,5 +330,25 @@ describe('the social beats and the creature’s answer', () => {
     // And it is the same answer for a bystander, because it is not about
     // whose turn it was.
     expect(refreshKeysFor(answered, 'someone-else')).toEqual(mine);
+  });
+
+  describe('concealment_revealed (rpg-api-protos#352, landed in the v0.1.207 bump)', () => {
+    it('re-reads the doors and the atlas — one secret, both patch surfaces', () => {
+      // CONCEALMENT_REVEALED supersedes BOTH doorRevealed and regionRevealed:
+      // one beat carries the hidden floor cells and props (an atlas patch) plus
+      // the member doors and their doorways (a doors-list patch). So this row
+      // is the reveal union, by the same deliberate re-verify path the two
+      // reveals above use rather than splicing the beat's own payload.
+      const revealed = create(EventSchema, {
+        kind: EventKind.CONCEALMENT_REVEALED,
+        body: {
+          case: 'concealmentRevealed',
+          value: create(ConcealmentRevealedSchema, {
+            concealment: 'vault',
+          }),
+        },
+      });
+      expect(refreshKeysFor(revealed, VIEWER)).toEqual(['doors', 'atlas']);
+    });
   });
 });
