@@ -5,6 +5,7 @@ import { useGetCharacter } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
+import { SpellInfoDisplay } from '../creation/components/SpellInfoDisplay';
 import { CharacterHeader } from './components/CharacterHeader';
 import { DnDAbilityScores } from './components/DnDAbilityScores';
 import { DnDAppearance } from './components/DnDAppearance';
@@ -279,6 +280,13 @@ export function CharacterSheet({
           <div className="mt-6 space-y-6">
             {/* Attacks & Spellcasting */}
             <AttacksSection character={character} />
+            {(character.knownCantrips.length > 0 ||
+              character.knownSpells.length > 0) && (
+              <SpellInfoDisplay
+                knownCantripRefs={character.knownCantrips}
+                knownSpellRefs={character.knownSpells}
+              />
+            )}
 
             {/* Appearance */}
             <div className="max-w-md">

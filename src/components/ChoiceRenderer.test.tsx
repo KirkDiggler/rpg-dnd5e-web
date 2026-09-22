@@ -1,4 +1,5 @@
 import { create } from '@bufbuild/protobuf';
+import { SpellInfoSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
   ChoiceSchema,
@@ -14,6 +15,28 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { getToolInfo } from '../utils/enumRegistry';
 import { ChoiceRenderer } from './ChoiceRenderer';
+
+vi.mock('../api/useSpellCatalog', () => ({
+  useSpellCatalog: () =>
+    new Map([
+      [
+        'dnd5e:spells:light',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:light',
+          name: 'Light',
+          notYetImplemented: true,
+        }),
+      ],
+      [
+        'dnd5e:spells:disguise-self',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:disguise-self',
+          name: 'Disguise Self',
+          notYetImplemented: true,
+        }),
+      ],
+    ]),
+}));
 
 describe('ChoiceRenderer - EXPERTISE', () => {
   const expertiseChoice = create(ChoiceSchema, {
@@ -348,4 +371,42 @@ describe('automatic spell grants', () => {
       ).toBe(false);
     }
   );
+});
+
+it('keeps NYI spells selectable and domain grants locked with an honest label', () => {
+  const onSelectionChange = vi.fn();
+  const choice = create(ChoiceSchema, {
+    id: 'spell-choice',
+    chooseCount: 1,
+    choiceType: ChoiceCategory.SPELLS,
+    options: {
+      case: 'spellOptions',
+      value: create(SpellOptionsSchema, {
+        availableRefs: ['dnd5e:spells:light'],
+        grants: [
+          {
+            spellRef: 'dnd5e:spells:disguise-self',
+            sourceName: 'Trickery Domain',
+          },
+        ],
+      }),
+    },
+  });
+  render(
+    <ChoiceRenderer
+      choice={choice}
+      currentSelections={[]}
+      onSelectionChange={onSelectionChange}
+    />
+  );
+  expect(screen.getAllByText('Not yet implemented')).toHaveLength(2);
+  fireEvent.click(screen.getByText('Light'));
+  expect(onSelectionChange).toHaveBeenCalledWith('spell-choice', [
+    'dnd5e:spells:light',
+  ]);
+  expect(
+    screen.getByRole('button', {
+      name: 'Disguise Self Granted by Trickery Domain',
+    })
+  ).toHaveProperty('disabled', true);
 });

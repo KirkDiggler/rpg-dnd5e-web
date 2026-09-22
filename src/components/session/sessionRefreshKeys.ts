@@ -34,6 +34,8 @@ export function refreshKeysFor(
   member: string
 ): SessionRefreshKey[] {
   switch (event.body.case) {
+    case 'experienceGained':
+      return ['characterData'];
     case 'moved':
       return event.body.value.member === member
         ? ['where', 'afford', 'turn']
