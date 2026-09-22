@@ -79,66 +79,92 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                 className="wb-policy-faction"
                 data-testid={`intel-${record.id}`}
               >
-                <label>
-                  <span>Id</span>
-                  <input
-                    aria-label={`Intel id for ${record.id}`}
-                    value={record.id}
-                    onChange={(event) =>
-                      onChange(
-                        renameIntelRecord(scope, record.id, event.target.value)
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Reveals a fact</span>
-                  <input
-                    aria-label={`Intel reveals fact for ${record.id}`}
-                    value={
-                      revealsDoor(record.reveals)
-                        ? ''
-                        : revealTarget(record.reveals)
-                    }
-                    placeholder="cellar-is-clear"
-                    disabled={revealsDoor(record.reveals)}
-                    onChange={(event) =>
-                      onChange(
-                        setIntelReveals(scope, record.id, {
-                          fact: event.target.value,
-                        })
-                      )
-                    }
-                  />
-                </label>
-                {revealsDoor(record.reveals) && (
-                  // REFUSED, NOT CARRIED: this dialect will not run a record
-                  // that reveals a door, so the form says so in the engine's own
-                  // words at the record's own row instead of preserving bytes
-                  // the server rejects (rpg-project#488 R3, rpg-toolkit#1855).
-                  <p
-                    className="wb-help"
-                    data-testid={`intel-door-${record.id}`}
-                    role="alert"
-                  >
-                    {INTEL_REVEALS_DOOR_REFUSAL}
-                  </p>
-                )}
-                <p
-                  className="wb-help"
-                  data-testid={`intel-held-by-${record.id}`}
+                <details
+                  className="wb-policy-row"
+                  data-testid={`intel-row-${record.id}`}
                 >
-                  {holders.length === 0
-                    ? 'Held by nobody yet — give it to a creature or prop.'
-                    : `Held by ${holders.join(', ')}.`}
-                </p>
-                <button
-                  type="button"
-                  aria-label={`Remove intel ${record.id}`}
-                  onClick={() => onChange(removeIntelRecord(scope, record.id))}
-                >
-                  Remove
-                </button>
+                  {/* THE LINE IS THE ID AND WHAT IT REVEALS (web#1178
+                      follow-up): a record is knowledge, and "what does this
+                      tell you" is the fact worth reading at a glance. The id
+                      and its target are the form behind it. */}
+                  <summary aria-label={`Intel ${record.id}`}>
+                    {record.id}
+                    {!revealsDoor(record.reveals) && (
+                      <span className="wb-policy-summary-note">
+                        {' '}
+                        · fact {revealTarget(record.reveals)}
+                      </span>
+                    )}
+                  </summary>
+                  <div className="wb-policy-form">
+                    <label>
+                      <span>Id</span>
+                      <input
+                        aria-label={`Intel id for ${record.id}`}
+                        value={record.id}
+                        onChange={(event) =>
+                          onChange(
+                            renameIntelRecord(
+                              scope,
+                              record.id,
+                              event.target.value
+                            )
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Reveals a fact</span>
+                      <input
+                        aria-label={`Intel reveals fact for ${record.id}`}
+                        value={
+                          revealsDoor(record.reveals)
+                            ? ''
+                            : revealTarget(record.reveals)
+                        }
+                        placeholder="cellar-is-clear"
+                        disabled={revealsDoor(record.reveals)}
+                        onChange={(event) =>
+                          onChange(
+                            setIntelReveals(scope, record.id, {
+                              fact: event.target.value,
+                            })
+                          )
+                        }
+                      />
+                    </label>
+                    {revealsDoor(record.reveals) && (
+                      // REFUSED, NOT CARRIED: this dialect will not run a record
+                      // that reveals a door, so the form says so in the engine's own
+                      // words at the record's own row instead of preserving bytes
+                      // the server rejects (rpg-project#488 R3, rpg-toolkit#1855).
+                      <p
+                        className="wb-help"
+                        data-testid={`intel-door-${record.id}`}
+                        role="alert"
+                      >
+                        {INTEL_REVEALS_DOOR_REFUSAL}
+                      </p>
+                    )}
+                    <p
+                      className="wb-help"
+                      data-testid={`intel-held-by-${record.id}`}
+                    >
+                      {holders.length === 0
+                        ? 'Held by nobody yet — give it to a creature or prop.'
+                        : `Held by ${holders.join(', ')}.`}
+                    </p>
+                    <button
+                      type="button"
+                      aria-label={`Remove intel ${record.id}`}
+                      onClick={() =>
+                        onChange(removeIntelRecord(scope, record.id))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </details>
               </li>
             );
           })}

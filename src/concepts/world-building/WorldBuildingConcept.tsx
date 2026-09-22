@@ -26,6 +26,10 @@ import { IntelPanel } from './IntelPanel';
 import { withBinding } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
+import {
+  selectedSceneItems,
+  selectionOptionSections,
+} from './propOptionSections';
 import { PropOrders } from './PropOrders';
 import { addRepeatedProps } from './repeatPlacement';
 import {
@@ -90,7 +94,11 @@ import {
   validateLibrary,
   validateScene,
 } from './serialization';
-import { CreatureOrders, SitePolicies } from './SitePolicies';
+import {
+  CreatureOrders,
+  DispositionsPanel,
+  FactionsPanel,
+} from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import type {
   ArrangementLibrary,
@@ -1515,6 +1523,16 @@ export function WorldBuildingConcept({
     if (!selectedHeightMixed)
       setHeightDraftPercent(Math.round(selectedHeight * 100));
   }, [selectedHeight, selectedHeightMixed]);
+  /** Which PER-PROP option sections this selection earns (web#1178). A door
+   * gets door state, a declared non-door prop gets orders, a multi-selection
+   * gets neither and says why — one control cannot mean three props' values.
+   * The rule lives in `propOptionSections.ts`, so the panel and its tests
+   * cannot drift. */
+  const optionSections = selectionOptionSections(
+    selectedSceneItems(scene, selectedIds),
+    roomDraft.room
+  );
+
   /** The props an authored declaration lands on: the SELECTION, resolved the
    * same way visual height resolves it — group members in, support-linked
    * decorations out (`selectionPropIds`). Not `selectedProp`, which is only
@@ -3055,24 +3073,6 @@ export function WorldBuildingConcept({
                   </li>
                 ))}
               </ul>
-              {selectedMonster && (
-                // The design's creature split, made legible: the actor carries
-                // identity and placement, the binding carries the orders, and
-                // this view reports what the faction supplies against what the
-                // placement overrides (design slice 2, web#1157).
-                <CreatureOrders
-                  scope={siteScope}
-                  monster={selectedMonster}
-                  room={roomDraft.room}
-                  binding={roomDraft.room.monsterBindings?.[selectedMonster.id]}
-                  onFactionChange={(faction) =>
-                    setMonsterFaction(selectedMonster.id, faction)
-                  }
-                  onOrdersChange={(next) =>
-                    setMonsterOrders(selectedMonster.id, next)
-                  }
-                />
-              )}
               {selectedActorId === 'start' && (
                 <p
                   className="wb-help"
@@ -3095,59 +3095,30 @@ export function WorldBuildingConcept({
               )}
             </details>
 
+            {/* THE SITE'S NOUNS, each its own node (rpg-dnd5e-web#1178
+                follow-up). "Policies" was a wrapper over exactly two things —
+                factions and dispositions — and a wrapper that names nothing
+                its children do not name is a level of nesting that buys
+                nothing. It also made Intel's home ambiguous, which is the
+                evidence that decided it. Three peers now, collapsed by
+                default like Props: the top level is the nouns themselves.
+                The form writes the document and the SERVER judges it through
+                the publish panel's validation (design slices 3/4, #1160). */}
             <details className="wb-collapse">
-              <summary aria-label="Doors">Doors</summary>
-              {/* A door is a prop PLUS a state (rpg-project#485). The panel
-                  authors the state; the asset's own `leaf` role is what makes
-                  a placed prop a candidate, because until `doorBindings` says
-                  so nothing in the document calls it a door. */}
-              <DoorStates
-                items={scene.items}
-                bindings={roomDraft.room.doorBindings}
-                declaredIds={
-                  new Set(Object.keys(roomDraft.room.propDeclarations))
-                }
-                onChange={setDoorBinding}
-              />
-            </details>
-
-            <details className="wb-collapse">
-              <summary aria-label="Prop orders">Prop orders</summary>
-              {/* What a PLACED PROP does — holdable, what it carries, whether
-                  it arrives (rpg-project#488 R1, rpg-toolkit#1855). The fourth
-                  declaration kind, beside `propDeclarations` (the definition)
-                  and `doorBindings` (a door's state). It compiles since
-                  rpg-toolkit#1854 — a placed footprint can be taken and can
-                  arrive — and the engine grades it at publish like every other
-                  carried key. */}
-              <PropOrders
-                items={scene.items}
-                bindings={roomDraft.room.propBindings}
-                declaredIds={
-                  new Set(Object.keys(roomDraft.room.propDeclarations))
-                }
-                doorIds={
-                  new Set(Object.keys(roomDraft.room.doorBindings ?? {}))
-                }
-                recordIds={(siteScope.intel ?? []).map((record) => record.id)}
+              <summary aria-label="Factions">Factions</summary>
+              <FactionsPanel
                 scope={siteScope}
-                room={roomDraft.room}
-                onChange={setPropBinding}
+                onChange={commitPolicies}
+                onNotice={setNotice}
               />
             </details>
 
             <details className="wb-collapse">
-              <summary aria-label="Policies">Policies</summary>
-              {/* Editable document facts (design slices 3/4, #1160): the
-                  site's factions, their temperaments and shared tables, and
-                  the dispositions between sides. The form writes the document
-                  and the SERVER judges it through the publish panel's
-                  validation. */}
-              <SitePolicies
+              <summary aria-label="Dispositions">Dispositions</summary>
+              <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
                 onChange={commitPolicies}
-                onNotice={setNotice}
               />
             </details>
 
@@ -3166,20 +3137,114 @@ export function WorldBuildingConcept({
               />
             </details>
 
-            {/* Selection declarations belong to a selection, not to the
-                  site, so they exist only while props are selected. */}
-            {selectedIds.length > 0 && (
+            {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the
+                  thing (or things) selected on the canvas, not to the site: the
+                  transform verbs, the height, the movement/sight declaration,
+                  and — one rule for every noun — the selected thing's own
+                  options. A creature is a selection too, so it opens the same
+                  scope rather than living inside the Monsters roster. */}
+            {(selectedIds.length > 0 || selectedMonster) && (
               <section
                 className="wb-light-editor"
                 aria-label="Selection declarations"
               >
                 <h3>Selection</h3>
-                <div className="wb-actions">{duplicateDeleteButtons}</div>
-                {cardinalRotateActions}
-                {groupUngroupActions}
-                {visualHeightEditor}
-                {declarationEditor}
-                {pointLightEditor}
+                {selectedIds.length > 0 && (
+                  <>
+                    <div className="wb-actions">{duplicateDeleteButtons}</div>
+                    {cardinalRotateActions}
+                    {groupUngroupActions}
+                    {visualHeightEditor}
+                    {declarationEditor}
+                    {pointLightEditor}
+                  </>
+                )}
+
+                {/* THE PROP'S OWN OPTIONS (web#1178). A prop has options, and
+                    which ones depend on what it is: every prop has a transform,
+                    a height and a declaration above; a door adds its state; a
+                    declared, non-door prop adds what it does — holdable, what
+                    it carries, whether it arrives. These were document
+                    sections listing every prop in the room, which is the wrong
+                    shape for a setting that belongs to one. */}
+                {optionSections.door && selectedProp && (
+                  <div
+                    className="wb-light-editor"
+                    aria-label="Door state"
+                    data-testid="selected-door-state"
+                  >
+                    <h4>Door</h4>
+                    <DoorStates
+                      items={[selectedProp]}
+                      bindings={roomDraft.room.doorBindings}
+                      declaredIds={
+                        new Set(Object.keys(roomDraft.room.propDeclarations))
+                      }
+                      onChange={setDoorBinding}
+                    />
+                  </div>
+                )}
+                {optionSections.orders && selectedProp && (
+                  <div
+                    className="wb-light-editor"
+                    aria-label="Prop orders"
+                    data-testid="selected-prop-orders"
+                  >
+                    <h4>Prop orders</h4>
+                    <PropOrders
+                      items={[selectedProp]}
+                      bindings={roomDraft.room.propBindings}
+                      declaredIds={
+                        new Set(Object.keys(roomDraft.room.propDeclarations))
+                      }
+                      doorIds={
+                        new Set(Object.keys(roomDraft.room.doorBindings ?? {}))
+                      }
+                      recordIds={(siteScope.intel ?? []).map(
+                        (record) => record.id
+                      )}
+                      scope={siteScope}
+                      room={roomDraft.room}
+                      onChange={setPropBinding}
+                    />
+                  </div>
+                )}
+                {/* ONE RULE FOR EVERY NOUN (web#1178): selecting a thing
+                    configures that thing. The selected creature's facts sit
+                    here, beside the props' sections, instead of inside the
+                    Monsters node — the design's creature split made legible
+                    (actor carries identity and placement, the binding carries
+                    the orders), and reported as what its faction supplies
+                    against what the placement overrides (slice 2, web#1157). */}
+                {selectedMonster && (
+                  <div
+                    className="wb-light-editor"
+                    aria-label="Creature options"
+                    data-testid="selected-creature"
+                  >
+                    <CreatureOrders
+                      scope={siteScope}
+                      monster={selectedMonster}
+                      room={roomDraft.room}
+                      binding={
+                        roomDraft.room.monsterBindings?.[selectedMonster.id]
+                      }
+                      onFactionChange={(faction) =>
+                        setMonsterFaction(selectedMonster.id, faction)
+                      }
+                      onOrdersChange={(next) =>
+                        setMonsterOrders(selectedMonster.id, next)
+                      }
+                    />
+                  </div>
+                )}
+                {optionSections.reason === 'multi-select' && (
+                  <p className="wb-help" data-testid="option-sections-multi">
+                    {selectedIds.length} props selected — door state and prop
+                    orders belong to one prop, so they appear when a single prop
+                    is selected. What applies to all of them is above.
+                  </p>
+                )}
               </section>
             )}
           </aside>

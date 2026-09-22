@@ -235,8 +235,15 @@ describe('WorldBuilderWorkspace', () => {
     expect(screen.getByLabelText('Rooms')).toBeTruthy();
     expect(screen.getByLabelText('Props')).toBeTruthy();
     expect(screen.getByLabelText('Monsters')).toBeTruthy();
-    expect(screen.getByLabelText('Doors')).toBeTruthy();
-    expect(screen.getByLabelText('Policies')).toBeTruthy();
+    // The site's nouns are peers, each its own collapsible node: "Policies"
+    // was a wrapper over exactly two of them (rpg-dnd5e-web#1178 follow-up).
+    expect(screen.getByLabelText('Factions')).toBeTruthy();
+    expect(screen.getByLabelText('Dispositions')).toBeTruthy();
+    expect(screen.getByLabelText('Intel')).toBeTruthy();
+    // A prop's own options are NOT a site noun (web#1178): they belong to a
+    // selection, so no node lists every door or every prop.
+    expect(screen.queryByLabelText('Doors')).toBeNull();
+    expect(screen.queryByLabelText('Prop orders')).toBeNull();
 
     // No document admin in the body: the old Library and The site
     // destinations are gone.

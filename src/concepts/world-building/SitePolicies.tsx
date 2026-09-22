@@ -566,62 +566,76 @@ function FactionRow({
   };
   return (
     <li className="wb-policy-faction" data-faction-id={faction.id}>
-      <label>
-        <span>Id</span>
-        <input
-          aria-label={`Faction id for ${faction.id}`}
-          value={typedId}
-          onChange={(event) => setTypedId(event.target.value)}
-          onBlur={commitId}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commitId();
-          }}
-        />
-      </label>
-      <p className="wb-help">
-        A placement’s `faction`, a disposition’s `between` and a `stance`
-        predicate all name this id. Renaming writes the declaration; the server
-        refuses any reference that no longer resolves.
-      </p>
+      <details className="wb-policy-row" data-testid={`faction-${faction.id}`}>
+        {/* THE LINE IS THE ID (rpg-dnd5e-web#1178 follow-up): a faction is one
+            noun, and its id is what names it. Its temper and its shared answer
+            table are the form behind it. */}
+        <summary aria-label={`Faction ${faction.id}`}>{faction.id}</summary>
+        <div className="wb-policy-form">
+          <label>
+            <span>Id</span>
+            <input
+              aria-label={`Faction id for ${faction.id}`}
+              value={typedId}
+              onChange={(event) => setTypedId(event.target.value)}
+              onBlur={commitId}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitId();
+              }}
+            />
+          </label>
+          <p className="wb-help">
+            A placement’s `faction`, a disposition’s `between` and a `stance`
+            predicate all name this id. Renaming writes the declaration; the
+            server refuses any reference that no longer resolves.
+          </p>
 
-      <label>
-        <span>Mind</span>
-        <input
-          aria-label={`Mind for ${faction.id}`}
-          value={faction.mind ?? ''}
-          placeholder="a placement id"
-          onChange={(event) =>
-            onChange(
-              patchSiteFaction(scope, faction.id, {
-                mind:
-                  event.target.value === '' ? undefined : event.target.value,
-              })
-            )
-          }
-        />
-      </label>
-      <p className="wb-help">
-        The faction knows what its mind knows. Whether this names a placement in
-        the faction is the server’s to check.
-      </p>
+          <label>
+            <span>Mind</span>
+            <input
+              aria-label={`Mind for ${faction.id}`}
+              value={faction.mind ?? ''}
+              placeholder="a placement id"
+              onChange={(event) =>
+                onChange(
+                  patchSiteFaction(scope, faction.id, {
+                    mind:
+                      event.target.value === ''
+                        ? undefined
+                        : event.target.value,
+                  })
+                )
+              }
+            />
+          </label>
+          <p className="wb-help">
+            The faction knows what its mind knows. Whether this names a
+            placement in the faction is the server’s to check.
+          </p>
 
-      <FactionTemperEditor
-        temper={faction.temper}
-        onCommit={(temper) =>
-          onChange(patchSiteFaction(scope, faction.id, { temper }))
-        }
-      />
+          <FactionTemperEditor
+            temper={faction.temper}
+            onCommit={(temper) =>
+              onChange(patchSiteFaction(scope, faction.id, { temper }))
+            }
+          />
 
-      <FactionTableEditor scope={scope} faction={faction} onChange={onChange} />
+          <FactionTableEditor
+            scope={scope}
+            faction={faction}
+            onChange={onChange}
+          />
 
-      <button
-        type="button"
-        className="wb-danger"
-        aria-label={`Remove faction ${faction.id}`}
-        onClick={() => onChange(removeSiteFaction(scope, faction.id))}
-      >
-        Remove faction
-      </button>
+          <button
+            type="button"
+            className="wb-danger"
+            aria-label={`Remove faction ${faction.id}`}
+            onClick={() => onChange(removeSiteFaction(scope, faction.id))}
+          >
+            Remove faction
+          </button>
+        </div>
+      </details>
     </li>
   );
 }
@@ -854,64 +868,78 @@ function DispositionRow({
       className="wb-policy-disposition"
       data-disposition={disposition.between.join('|')}
     >
-      <div className="wb-policy-pair">
-        <FactionNameSelect
-          label="Between first faction"
-          value={a}
-          options={options}
-          onChange={(next) =>
-            onChange(
-              updateSiteDisposition(scope, index, { between: [next, b] })
-            )
-          }
-        />
-        <FactionNameSelect
-          label="Between second faction"
-          value={b}
-          options={options}
-          onChange={(next) =>
-            onChange(
-              updateSiteDisposition(scope, index, { between: [a, next] })
-            )
-          }
-        />
-      </div>
-      <label>
-        <span>Stance</span>
-        <select
-          aria-label="Stance"
-          value={disposition.stance}
-          onChange={(event) =>
-            onChange(
-              updateSiteDisposition(scope, index, {
-                stance: event.target.value as Stance,
-              })
-            )
-          }
-        >
-          {STANCES.map((word) => (
-            <option key={word} value={word}>
-              {word}
-            </option>
-          ))}
-        </select>
-      </label>
-      <UntilEditor
-        scope={scope}
-        room={room}
-        disposition={disposition}
-        onCommit={(until) =>
-          onChange(updateSiteDisposition(scope, index, { until }))
-        }
-      />
-      <button
-        type="button"
-        className="wb-danger"
-        aria-label={`Remove disposition ${disposition.between.join(' and ')}`}
-        onClick={() => onChange(removeSiteDisposition(scope, index))}
-      >
-        Remove disposition
-      </button>
+      <details className="wb-policy-row" data-testid={`disposition-${a}-${b}`}>
+        {/* THE LINE IS THE ENTRY (rpg-dnd5e-web#1178 follow-up): a disposition
+            is a pair, so the pair is what it reads as. The stance and the
+            `until` are the form behind it. */}
+        <summary aria-label={`Disposition between ${a} and ${b}`}>
+          between {a} and {b}
+          <span className="wb-policy-summary-note">
+            {' '}
+            · {disposition.stance}
+          </span>
+        </summary>
+        <div className="wb-policy-form">
+          <div className="wb-policy-pair">
+            <FactionNameSelect
+              label="Between first faction"
+              value={a}
+              options={options}
+              onChange={(next) =>
+                onChange(
+                  updateSiteDisposition(scope, index, { between: [next, b] })
+                )
+              }
+            />
+            <FactionNameSelect
+              label="Between second faction"
+              value={b}
+              options={options}
+              onChange={(next) =>
+                onChange(
+                  updateSiteDisposition(scope, index, { between: [a, next] })
+                )
+              }
+            />
+          </div>
+          <label>
+            <span>Stance</span>
+            <select
+              aria-label="Stance"
+              value={disposition.stance}
+              onChange={(event) =>
+                onChange(
+                  updateSiteDisposition(scope, index, {
+                    stance: event.target.value as Stance,
+                  })
+                )
+              }
+            >
+              {STANCES.map((word) => (
+                <option key={word} value={word}>
+                  {word}
+                </option>
+              ))}
+            </select>
+          </label>
+          <UntilEditor
+            scope={scope}
+            room={room}
+            disposition={disposition}
+            onCommit={(until) =>
+              onChange(updateSiteDisposition(scope, index, { until }))
+            }
+          />
+          <button
+            type="button"
+            className="wb-danger"
+            aria-label={`Remove disposition ${disposition.between.join(' and ')}`}
+            onClick={() => onChange(removeSiteDisposition(scope, index))}
+          >
+            Remove disposition
+          </button>
+        </div>
+      </details>
     </li>
   );
 }
@@ -932,18 +960,18 @@ export interface SitePoliciesProps {
   onNotice?: (message: string) => void;
 }
 
-/** The editable `Policies` body: the site's factions, their temperaments and
- * shared tables, and the dispositions between the sides. */
-export function SitePolicies({
+/** The site's FACTIONS: who fights as one side, each with its temperament
+ * and its shared answer table. Its own top-level node — a faction is a
+ * thing, and "Policies" was a wrapper that named nothing the rows did not
+ * already name (rpg-dnd5e-web#1178 follow-up). */
+export function FactionsPanel({
   scope,
-  room,
   onChange,
   onNotice,
-}: SitePoliciesProps) {
+}: Omit<SitePoliciesProps, 'room'>) {
   const factions = scope.factions ?? [];
-  const dispositions = scope.dispositions ?? [];
   return (
-    <div data-testid="site-policies">
+    <div data-testid="site-factions">
       <h4>Factions</h4>
       <div className="wb-actions">
         <button type="button" onClick={() => onChange(addSiteFaction(scope))}>
@@ -951,9 +979,10 @@ export function SitePolicies({
         </button>
       </div>
       {factions.length === 0 ? (
-        <p className="wb-help">
-          No factions are authored. Every monster is on the reserved `monsters`
-          side.
+        <p className="wb-help" data-testid="policies-none">
+          No factions are authored on this site. Every monster is on the
+          reserved `monsters` side, and no disposition can be declared until a
+          faction exists.
         </p>
       ) : (
         <ul className="wb-policy-list">
@@ -968,6 +997,23 @@ export function SitePolicies({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** The site's DISPOSITIONS: how two sides stand to each other, and the
+ * predicate that ends the hostility. Its own top-level node, beside
+ * Factions — the pair a disposition is *about* is what it reads, and it is
+ * a different noun from a faction. */
+export function DispositionsPanel({
+  scope,
+  room,
+  onChange,
+}: Omit<SitePoliciesProps, 'onNotice'>) {
+  const factions = scope.factions ?? [];
+  const dispositions = scope.dispositions ?? [];
+  return (
+    <div data-testid="site-dispositions">
       <h4>Dispositions</h4>
       <div className="wb-actions">
         <button
@@ -997,11 +1043,6 @@ export function SitePolicies({
             />
           ))}
         </ul>
-      )}
-      {factions.length === 0 && dispositions.length === 0 && (
-        <p className="wb-help" data-testid="policies-none">
-          No factions and no dispositions are authored on this site.
-        </p>
       )}
     </div>
   );
