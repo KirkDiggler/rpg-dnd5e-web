@@ -506,6 +506,28 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     expect('when' in next.on.time[0]).toBe(false);
   });
 
+  it('opens the trigger picker on `time`, not on a social key', () => {
+    // FOUND ON THE WALK: the picker's default was the vocabulary's first key
+    // (`intimidated`), so the obvious first click authored a SOCIAL entry —
+    // the half this slice is not about — and the `when` editor (legal on `time`
+    // alone) never appeared. A creature with no table opens on `time`.
+    const bare = { ...fixture.draft.room.monsterBindings!['goblin-1'] };
+    delete bare.on;
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={bare}
+        onOrdersChange={() => {}}
+      />
+    );
+    const picker = screen.getByLabelText(
+      'Add trigger to this creature'
+    ) as HTMLSelectElement;
+    expect(picker.value).toBe('time');
+  });
+
   it('offers no condition on a social trigger, because the verb IS the condition', () => {
     // `intimidated` already means "the threat landed"; a second condition under
     // it would be asking when a thing that just happened happened. The control

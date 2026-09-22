@@ -1366,13 +1366,22 @@ function CreatureTableEditor({
   const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
     (key) => table[key] === undefined
   );
-  const [newTrigger, setNewTrigger] = useState(available[0] ?? '');
+  /** WHICH TRIGGER THE PICKER OPENS ON. `time` FIRST when it is offered: it is the
+   * trigger a creature's OWN table is mostly about — what it does with its turn,
+   * gated by a `when` — and it is the ONLY trigger the `when` editor is legal
+   * on. Opening on a social key (the vocabulary's own order) points an author at
+   * the half this slice is not about, and at a control with no condition on it.
+   * Falls back to the vocabulary's order once `time` is authored. */
+  const [newTrigger, setNewTrigger] = useState(
+    available.includes('time') ? 'time' : (available[0] ?? '')
+  );
   return (
     <div className="wb-policy-table-editor" data-testid="creature-table">
       <p className="wb-help">Its own table, laid over the faction’s.</p>
       {authored.length === 0 && (
         <p className="wb-help" data-testid="creature-table-none">
-          No table of its own — the faction’s answers stand.
+          No table of its own yet — the faction’s answers stand. Add a trigger
+          below to give this creature its own row.
         </p>
       )}
       {authored.map((trigger) => (
