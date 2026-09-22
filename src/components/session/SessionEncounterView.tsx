@@ -1225,6 +1225,7 @@ function SessionEncounterScope({
       applyAtlasReveal,
       invalidateAuthority,
       member,
+      placedPropIds,
       refreshKeysForEvent,
       scheduleRefresh,
     ]
