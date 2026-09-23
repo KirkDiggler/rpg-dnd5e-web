@@ -361,6 +361,78 @@ describe('the `when` shape', () => {
       /`enemy: ` is not a condition this build reads: they are reach, seen, remembered, none/
     );
   });
+
+  /**
+   * A SCOPE ON A DEED, AND THE SILENT DROP THAT USED TO BE HERE
+   * (rpg-dnd5e-web#1199).
+   *
+   * This reader read `within` off a deed's body and threw the REST of the body
+   * away — so `{ fled: { within: 3, on: ally } }` was accepted, dropped, and
+   * emitted back as `{ fled: { within: 3 } }`, a condition about the creature
+   * ITSELF. The author's meaning changed and nothing said so: exactly the
+   * silent-rewrite class the strict reader exists to stop (#1118).
+   *
+   * So the first case below is the regression: a scope must survive the round
+   * trip. The rest are `WhenSpec.scopeOf`'s own sentences.
+   */
+  describe('a deed scope', () => {
+    /** The `fled` row with its body replaced, so the mutation is one authored
+     * line and the fixture's commentary cannot satisfy it by accident. */
+    const body = (to: string): string =>
+      mutated(
+        TIME_FLED,
+        TIME_FLED.replace('{ fled: { within: 3 } }', `{ fled: ${to} }`)
+      );
+
+    it('round-trips `on: ally` instead of dropping it', () => {
+      const emitted = emitDungeon(
+        parseDungeon(body('{ within: 3, on: ally }'))
+      );
+      expect(emitted).toContain('{ fled: { within: 3, on: ally } }');
+    });
+
+    it('round-trips `as: actor` instead of dropping it', () => {
+      const emitted = emitDungeon(
+        parseDungeon(body('{ within: 3, as: actor }'))
+      );
+      expect(emitted).toContain('{ fled: { within: 3, as: actor } }');
+    });
+
+    it('leaves a condition about the creature itself byte-unchanged', () => {
+      // Omitting the field IS "the creature itself", so no third word is
+      // written for it — a scopeless row round-trips exactly as it arrived.
+      // (`on:` alone also names the TABLE's own block key, so this asserts the
+      // deed body, not the document.)
+      const emitted = emitDungeon(parseDungeon(REFERENCE_FRONT_ROOM_YAML));
+      expect(emitted).toContain('{ fled: { within: 3 } }');
+      expect(emitted).not.toMatch(/within: 3, (on|as):/);
+    });
+
+    it('refuses both spellings at once', () => {
+      expect(() =>
+        parseDungeon(body('{ within: 3, on: ally, as: actor }'))
+      ).toThrow(
+        /`fled` names both `on: ally` and `as: actor`, and a condition asks one thing/
+      );
+    });
+
+    it('refuses a scope word this build does not read, by name', () => {
+      expect(() => parseDungeon(body('{ within: 3, on: self }'))).toThrow(
+        /`on: self` is not a scope this build reads: they are ally, actor \(and omitting it means the creature itself\)/
+      );
+      expect(() => parseDungeon(body('{ within: 3, as: enemy }'))).toThrow(
+        /`as: enemy` is not a scope this build reads: they are ally, actor/
+      );
+    });
+
+    it('refuses an unknown body key rather than dropping it', () => {
+      // `no: ally` is the typo this guards: dropped, the row would read the
+      // SELF wound and fire for the wrong one.
+      expect(() => parseDungeon(body('{ within: 3, no: ally }'))).toThrow(
+        /field no not found in type dungeonspec\.withinSpec/
+      );
+    });
+  });
 });
 
 describe('selectors', () => {

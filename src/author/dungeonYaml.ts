@@ -42,6 +42,7 @@ import {
   answerWord,
   answerWordRefusal,
   atSelectorRefusal,
+  bothScopesRefusal,
   EMPTY_ENTRY_REFUSAL,
   EMPTY_FACT_REFUSAL,
   EMPTY_TEMPER_MIX_REFUSAL,
@@ -56,6 +57,7 @@ import {
   temperShareRefusal,
   unknownDeedRefusal,
   unknownEnemyBandRefusal,
+  unknownScopeRefusal,
   unknownSelectorKeyRefusal,
   unknownSelectorRefusal,
   unknownTemperRefusal,
@@ -211,10 +213,28 @@ export interface AnswerEntryDoc {
  * The language is the file's own: an enemy band is `{ enemy: reach }`, and a
  * deed is `{ fled: { within: 3 } }` — the deed's own past-tense name, not a
  * generic `deed` key.
+ *
+ * A DEED MAY ALSO NAME A SCOPE (rpg-dnd5e-web#1199): `on` reads a deed against
+ * the creature's own side, `as` reads one the creature did. The scope REFINES
+ * the deed rather than adding a second condition, so it is one optional field
+ * here and never a sibling of `kind`.
  */
 export type AnswerWhenDoc =
   | { kind: 'enemy'; band: string }
-  | { kind: 'deed'; deed: string; within: number };
+  | {
+      kind: 'deed';
+      deed: string;
+      within: number;
+      /** `on: ally` or `as: actor`, absent for the creature itself. */
+      scope?: AnswerWhenScopeDoc;
+    };
+
+/** One scope as written: the key the body carries and the value it takes. Both
+ * are the file's spellings, so the emitter writes them back unchanged. */
+export interface AnswerWhenScopeDoc {
+  key: string;
+  value: string;
+}
 
 /** What a selector word or an authored cell names
  * (`answerVocabulary.ts`'s selectors). EXACTLY ONE of the two is set: a word
@@ -1173,6 +1193,19 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
   if (!isRecord(body)) {
     throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
   }
+  // UNKNOWN BODY KEYS ARE REFUSED, not dropped (rpg-dnd5e-web#1199). This
+  // reader used to read `within` and silently discard everything else in the
+  // body — so `on: ally` was accepted, dropped, and emitted back as a
+  // condition about the creature itself: the author's meaning changed with no
+  // error. The dropped key now decides WHOSE deeds the row reads, which is
+  // exactly the class of silent rewrite the strict reader was built to stop
+  // (#1118), so the sentence is Go's own strict-field text.
+  for (const bodyKey of Object.keys(body)) {
+    if (ANSWER_WHEN.bodyKeys.includes(bodyKey)) continue;
+    throw new DungeonParseError(
+      `${path}.${key}.${bodyKey}: field ${bodyKey} not found in type dungeonspec.withinSpec`
+    );
+  }
   const within = body.within;
   if (within === undefined || within === null) {
     throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
@@ -1185,7 +1218,58 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
   if (within < ANSWER_WHEN.minimumWithin) {
     throw new DungeonParseError(`${path}: ${spanRefusal(within)}`);
   }
-  return { kind: 'deed', deed: key, within };
+  const scope = answerWhenScope(body, `${path}.${key}`, key);
+  return scope === undefined
+    ? { kind: 'deed', deed: key, within }
+    : { kind: 'deed', deed: key, within, scope };
+}
+
+/** WHOSE deed a condition is about, or undefined for the creature itself.
+ * `WhenSpec.scopeOf`'s two refusals, in its own order: both spellings at once,
+ * then an unknown word BY NAME. Shared by both readers so the sentence an
+ * author meets is one sentence.
+ *
+ * THE NON-SCALAR IS A SENTENCE DIVERGENCE, NOT A SILENT REWRITE (independent
+ * review round, finding 2). A scalar matches the engine exactly (`on: 5` reads
+ * as "5", `on: ""` is refused, `on: null` is the creature itself); a MAPPING or
+ * SEQUENCE fails earlier in Go — at `body.Decode` — so the engine never reaches
+ * `scopeOf` and says "`<deed>` takes { within: N }: yaml: unmarshal errors: …"
+ * instead. Both sides refuse the document; only the words differ, and this
+ * reader does not restate a Go yaml error string to close the gap. The full
+ * table is beside `validateWhenScope` in `answerTableShape.ts`, which is the
+ * same behavior through the same helper. */
+function answerWhenScope(
+  body: Record<string, unknown>,
+  path: string,
+  deed: string
+): AnswerWhenScopeDoc | undefined {
+  const hasOn = body.on !== undefined && body.on !== null;
+  const hasAs = body.as !== undefined && body.as !== null;
+
+  if (hasOn && hasAs) {
+    throw new DungeonParseError(
+      `${path}: ${bothScopesRefusal(deed, scalarText(body.on), scalarText(body.as))}`
+    );
+  }
+  if (hasOn) {
+    const value = scalarText(body.on);
+    if (value !== 'ally') {
+      throw new DungeonParseError(
+        `${path}.on: ${unknownScopeRefusal('on', value)}`
+      );
+    }
+    return { key: 'on', value };
+  }
+  if (hasAs) {
+    const value = scalarText(body.as);
+    if (value !== 'actor') {
+      throw new DungeonParseError(
+        `${path}.as: ${unknownScopeRefusal('as', value)}`
+      );
+    }
+    return { key: 'as', value };
+  }
+  return undefined;
 }
 
 /** One selector: a word (`enemy`/`attacker`/`actor`) or `{ at: [col,row] }`.
@@ -1932,9 +2016,14 @@ function fmtApproach(a: ApproachDoc): string {
  * past-tense name with its span. The language is the author's, not a generic
  * `deed:` key this module invented. */
 function whenText(when: AnswerWhenDoc): string {
-  return when.kind === 'enemy'
-    ? `{ enemy: ${when.band} }`
-    : `{ ${when.deed}: { within: ${when.within} } }`;
+  if (when.kind === 'enemy') return `{ enemy: ${when.band} }`;
+  // THE SCOPE IS WRITTEN ONLY WHEN IT WAS READ, so a condition about the
+  // creature itself round-trips as the bytes it arrived as — the scope being
+  // absent is what "the creature itself" means, and writing a third word for
+  // it would invent a spelling the engine does not read.
+  const scope =
+    when.scope === undefined ? '' : `, ${when.scope.key}: ${when.scope.value}`;
+  return `{ ${when.deed}: { within: ${when.within}${scope} } }`;
 }
 
 /** One selector as the file writes it: a word, or the authored cell — axial
