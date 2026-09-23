@@ -76,16 +76,20 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       within(panel).getByText('temper coward ×2 · soldier ×1 · aggressive ×1')
     ).toBeTruthy();
 
-    // The shared table, trigger by trigger, with each entry's condition, its
-    // weight, its `say` and the one word it does.
+    // The shared table, trigger by trigger, with each entry's weight, its `say`
+    // and the one word it does. THE SOCIAL ROWS CARRY NO CONDITION LEAD: `when`
+    // is illegal under a social key (the verdict IS the condition), so "any
+    // time" there would assert a timing the row does not have. Only the `time`
+    // row leads with its condition. (Corrected in review — the first cut
+    // labelled every row, social included.)
     expect(within(panel).getByText('intimidated')).toBeTruthy();
     expect(
       within(panel).getByText(
-        'any time · weight 70 · say “Fine! The cellar door is behind the barrels.” · fact goblin-cowed'
+        'weight 70 · say “Fine! The cellar door is behind the barrels.” · fact goblin-cowed'
       )
     ).toBeTruthy();
     expect(
-      within(panel).getByText('any time · weight 30 · say “Boss! BOSS!” · flee')
+      within(panel).getByText('weight 30 · say “Boss! BOSS!” · flee')
     ).toBeTruthy();
     expect(within(panel).getByText('time')).toBeTruthy();
     expect(
@@ -526,6 +530,51 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
       'Add trigger to this creature'
     ) as HTMLSelectElement;
     expect(picker.value).toBe('time');
+  });
+
+  it('opens a FACTION’s picker on `time` too, for the same reason', () => {
+    // FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
+    // the faction's was not, so a faction author landed on the social half
+    // where no condition control can ever appear. Same invisibility, same fix.
+    const bare: SiteScope = { factions: [{ id: 'goblins' }] };
+    render(<SiteFacts scope={bare} />);
+    // The label carries the faction's own id, and the faction list is
+    // collapsed by default — so open the faction's row first.
+    fireEvent.click(screen.getByLabelText('Faction goblins'));
+    const picker = screen.getByLabelText(
+      'Add trigger to goblins'
+    ) as HTMLSelectElement;
+    expect(picker.value).toBe('time');
+  });
+
+  it('offers no span the author did not type', () => {
+    // FOUND IN REVIEW (independent-gate): clearing the span committed
+    // `within: 0` — `Number('')` — a number nobody typed, where a weight's
+    // absent IS 1 to the engine but a span has no legal absence. Emptying the
+    // field now commits nothing, so the author's own value stands.
+    // A DEED row, so the span field exists: the component renders from its
+    // `binding` prop, so the row is mounted already authored rather than
+    // switched in place (which only calls back and does not re-render here).
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: { time: [{ when: { attacked: { within: 3 } }, hold: {} }] },
+        }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    expect(
+      (screen.getByLabelText('Within for time entry') as HTMLInputElement).value
+    ).toBe('3');
+
+    fireEvent.change(screen.getByLabelText('Within for time entry'), {
+      target: { value: '' },
+    });
+    expect(onOrdersChange).not.toHaveBeenCalled();
   });
 
   it('offers no condition on a social trigger, because the verb IS the condition', () => {

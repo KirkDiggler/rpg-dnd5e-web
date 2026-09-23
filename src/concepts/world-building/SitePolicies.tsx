@@ -128,13 +128,28 @@ function whenText(when: AnswerWhenShape): string {
   return `${deed} within ${span.within}`;
 }
 
-/** One entry: its condition (when it is on the table at all), its weight (an
- * omitted weight IS 1 to the engine), the `say` that goes with it, and the one
- * word it does. */
-function entryText(entry: AnswerEntryShape): string {
-  const parts = [
-    entry.when === undefined ? 'any time' : `when ${whenText(entry.when)}`,
-  ];
+/** One entry: its condition — WHEN it is on the table at all, said only where
+ * a condition is a thing this grammar has — its weight (an omitted weight IS 1
+ * to the engine), the `say` that goes with it, and the one word it does.
+ *
+ * THE CONDITION LEAD IS `time`-ONLY, so the trigger is a parameter rather than
+ * something this function can work out for itself. On a `time` row, no `when`
+ * honestly means "always eligible" and the line says so. On a SOCIAL row
+ * `when` is ILLEGAL — the verdict IS the condition, `answerWhenRefusal`'s own
+ * sentence being "a `when` under it asks when a thing that just happened
+ * happened" — so labelling one "any time" asserts a timing the row does not
+ * have: that same falsehood from the other side. Social rows carry no
+ * condition lead at all.
+ *
+ * FOUND IN REVIEW (independent-gate): the first cut printed "any time" on
+ * every row, social included, and a test locked the mislabel in. */
+function entryText(entry: AnswerEntryShape, trigger: string): string {
+  const parts: string[] = [];
+  if (answerWhenLegalOn(trigger)) {
+    parts.push(
+      entry.when === undefined ? 'any time' : `when ${whenText(entry.when)}`
+    );
+  }
   parts.push(`weight ${entry.weight ?? 1}`);
   if (entry.say !== undefined) parts.push(`say “${entry.say}”`);
   const word = entryWord(entry);
@@ -179,7 +194,7 @@ function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
           <span className="wb-policy-trigger">{trigger}</span>
           <ul>
             {entries.map((entry, index) => (
-              <li key={index}>{entryText(entry)}</li>
+              <li key={index}>{entryText(entry, trigger)}</li>
             ))}
           </ul>
         </li>
@@ -299,11 +314,19 @@ function AnswerWhenEditor({
           min={ANSWER_WHEN.minimumWithin}
           aria-label={`Within for ${trigger} entry`}
           value={String(form.within)}
-          onChange={(event) =>
+          onChange={(event) => {
+            // AN EMPTY FIELD COMMITS NOTHING. `Number('')` is 0 — a number the
+            // author never typed — and unlike a weight, where absence IS 1 to
+            // the engine, a span has no legal absence (`within: 0` is refused
+            // by name). Committing a fabricated 0 would be the form inventing
+            // a number, which is what this control avoids everywhere else;
+            // keeping the last real span leaves the author's own value in the
+            // field until they type a new one.
+            if (event.target.value === '') return;
             onCommit({
               [form.deed]: { within: Number(event.target.value) },
-            } as AnswerWhenShape)
-          }
+            } as AnswerWhenShape);
+          }}
         />
       )}
     </label>
@@ -517,7 +540,7 @@ function AnswerEntryRow({
       >
         Remove entry
       </button>
-      <p className="wb-help">{entryText(entry)}</p>
+      <p className="wb-help">{entryText(entry, trigger)}</p>
     </li>
   );
 }
@@ -541,7 +564,16 @@ function FactionTableEditor({
   const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
     (key) => table[key] === undefined
   );
-  const [newTrigger, setNewTrigger] = useState(available[0] ?? '');
+  /** `time` FIRST, for the reason `CreatureTableEditor` states: it is the
+   * trigger a behavior table is mostly about, and the only one the `when`
+   * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
+   * lands an author on the social half, where no condition control can ever
+   * appear — the same invisibility the walk found on the creature's table.
+   * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
+   * the faction's was not. */
+  const [newTrigger, setNewTrigger] = useState(
+    available.includes('time') ? 'time' : (available[0] ?? '')
+  );
   return (
     <div className="wb-policy-table-editor">
       <p className="wb-help">Shared table its members inherit.</p>
