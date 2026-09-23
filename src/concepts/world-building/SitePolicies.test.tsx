@@ -76,8 +76,12 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       within(panel).getByText('temper coward ×2 · soldier ×1 · aggressive ×1')
     ).toBeTruthy();
 
-    // The shared table, trigger by trigger, with each entry's weight, its
-    // `say` and the one word it does.
+    // The shared table, trigger by trigger, with each entry's weight, its `say`
+    // and the one word it does. THE SOCIAL ROWS CARRY NO CONDITION LEAD: `when`
+    // is illegal under a social key (the verdict IS the condition), so "any
+    // time" there would assert a timing the row does not have. Only the `time`
+    // row leads with its condition. (Corrected in review — the first cut
+    // labelled every row, social included.)
     expect(within(panel).getByText('intimidated')).toBeTruthy();
     expect(
       within(panel).getByText(
@@ -89,7 +93,7 @@ describe('SitePolicies — the site’s own facts, editable', () => {
     ).toBeTruthy();
     expect(within(panel).getByText('time')).toBeTruthy();
     expect(
-      within(panel).getByText('weight 1 · when enemy reach · attack enemy')
+      within(panel).getByText('when enemy reach · weight 1 · attack enemy')
     ).toBeTruthy();
 
     // A disposition is the pair, its stance, and the `until` that ends it —
@@ -188,7 +192,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
     // Overridden: its own ONE word, its own `time` table and its actions.
     expect(within(creature).getByText(/^temper coward$/)).toBeTruthy();
     expect(
-      within(creature).getByText('weight 1 · when enemy reach · hold')
+      within(creature).getByText('when enemy reach · weight 1 · hold')
     ).toBeTruthy();
     expect(
       within(creature).getByText(
@@ -444,5 +448,205 @@ describe('every entry in a site node collapses to its own line (web#1178 follow-
     expect(row.querySelector('summary')).toBeTruthy();
     // Closed by default: the nodes collapse AND each entry inside them does.
     expect((row as HTMLDetailsElement).open).toBe(false);
+  });
+});
+
+describe('an entry’s `when:` condition is authored, not just read (web#1192)', () => {
+  /** The creature panel EDITABLE — the real mount, so the control is tested
+   * where an author meets it. */
+  function editableCreature(onOrdersChange = vi.fn()) {
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={fixture.draft.room.monsterBindings?.['goblin-1']}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    return onOrdersChange;
+  }
+
+  it('reads the document’s condition as the control’s value', () => {
+    // The fixture's goblin authors `{when: {enemy: reach}, hold: {}}`, so the
+    // picker must open on that band — the form holds the document's value, it
+    // does not default to something of its own.
+    editableCreature();
+    const picker = screen.getByLabelText(
+      'When for time entry'
+    ) as HTMLSelectElement;
+    expect(picker.value).toBe('enemy:reach');
+  });
+
+  it('authors an enemy band, handing the parent the whole next table', () => {
+    const onOrdersChange = editableCreature();
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'enemy:seen' },
+    });
+    // The commit is the creature's ORDERS, carrying the new condition.
+    const next = onOrdersChange.mock.calls[0][0];
+    expect(next.on.time[0].when).toEqual({ enemy: 'seen' });
+  });
+
+  it('authors a deed with a span — the case the slice exists for', () => {
+    // "change targets when it is attacked": the condition is a DEED, and the
+    // span is authored beside it.
+    const onOrdersChange = editableCreature();
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'deed:attacked' },
+    });
+    const next = onOrdersChange.mock.calls[0][0];
+    expect(next.on.time[0].when).toEqual({ attacked: { within: 1 } });
+  });
+
+  it('clears the condition to `(any time)`, which DELETES the key', () => {
+    // An empty `when` is a condition naming nothing — refused by name — so the
+    // authored state "no condition" is the key's absence, never `{}`.
+    const onOrdersChange = editableCreature();
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'any' },
+    });
+    const next = onOrdersChange.mock.calls[0][0];
+    expect('when' in next.on.time[0]).toBe(false);
+  });
+
+  it('opens the trigger picker on `time`, not on a social key', () => {
+    // FOUND ON THE WALK: the picker's default was the vocabulary's first key
+    // (`intimidated`), so the obvious first click authored a SOCIAL entry —
+    // the half this slice is not about — and the `when` editor (legal on `time`
+    // alone) never appeared. A creature with no table opens on `time`.
+    const bare = { ...fixture.draft.room.monsterBindings!['goblin-1'] };
+    delete bare.on;
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={bare}
+        onOrdersChange={() => {}}
+      />
+    );
+    const picker = screen.getByLabelText(
+      'Add trigger to this creature'
+    ) as HTMLSelectElement;
+    expect(picker.value).toBe('time');
+  });
+
+  it('opens a FACTION’s picker on `time` too, for the same reason', () => {
+    // FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
+    // the faction's was not, so a faction author landed on the social half
+    // where no condition control can ever appear. Same invisibility, same fix.
+    const bare: SiteScope = { factions: [{ id: 'goblins' }] };
+    render(<SiteFacts scope={bare} />);
+    // The label carries the faction's own id, and the faction list is
+    // collapsed by default — so open the faction's row first.
+    fireEvent.click(screen.getByLabelText('Faction goblins'));
+    const picker = screen.getByLabelText(
+      'Add trigger to goblins'
+    ) as HTMLSelectElement;
+    expect(picker.value).toBe('time');
+  });
+
+  it('offers no span the author did not type', () => {
+    // FOUND IN REVIEW (independent-gate): clearing the span committed
+    // `within: 0` — `Number('')` — a number nobody typed, where a weight's
+    // absent IS 1 to the engine but a span has no legal absence. Emptying the
+    // field now commits nothing, so the author's own value stands.
+    // A DEED row, so the span field exists: the component renders from its
+    // `binding` prop, so the row is mounted already authored rather than
+    // switched in place (which only calls back and does not re-render here).
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: { time: [{ when: { attacked: { within: 3 } }, hold: {} }] },
+        }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    expect(
+      (screen.getByLabelText('Within for time entry') as HTMLInputElement).value
+    ).toBe('3');
+
+    fireEvent.change(screen.getByLabelText('Within for time entry'), {
+      target: { value: '' },
+    });
+    expect(onOrdersChange).not.toHaveBeenCalled();
+  });
+
+  it('offers no condition on a social trigger, because the verb IS the condition', () => {
+    // `intimidated` already means "the threat landed"; a second condition under
+    // it would be asking when a thing that just happened happened. The control
+    // is ABSENT rather than disabled — the builder does not offer what the
+    // engine refuses.
+    const withIntimidated = {
+      ...fixture.draft.room.monsterBindings!['goblin-1'],
+      on: { intimidated: [{ say: 'Fine!' }] },
+    };
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={withIntimidated}
+        onOrdersChange={() => {}}
+      />
+    );
+    expect(screen.queryByLabelText('When for intimidated entry')).toBeNull();
+  });
+
+  it('offers `actor` only once the condition names a deed', () => {
+    // `actor` names the actor of a deed, and an entry naming none has no actor
+    // to name. The selector list follows the condition rather than offering a
+    // choice the engine refuses.
+    const awayOnFled = {
+      ...fixture.draft.room.monsterBindings!['goblin-1'],
+      on: {
+        time: [{ when: { fled: { within: 3 } }, away: 'actor' }],
+      },
+    };
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={awayOnFled}
+        onOrdersChange={() => {}}
+      />
+    );
+    const selector = screen.getByLabelText(
+      'away selector for time entry'
+    ) as HTMLSelectElement;
+    expect(
+      Array.from(selector.options).map((option) => option.value)
+    ).toContain('actor');
+  });
+
+  it('clears an `actor` selector when the deed condition is cleared', () => {
+    // The one place this form edits a second field: leaving `actor` behind with
+    // no deed would publish a document the engine refuses by name.
+    const onOrdersChange = vi.fn();
+    const awayOnFled = {
+      ...fixture.draft.room.monsterBindings!['goblin-1'],
+      on: { time: [{ when: { fled: { within: 3 } }, away: 'actor' }] },
+    };
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={awayOnFled}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'any' },
+    });
+    const next = onOrdersChange.mock.calls[0][0];
+    expect('when' in next.on.time[0]).toBe(false);
+    expect(next.on.time[0].away).not.toBe('actor');
   });
 });
