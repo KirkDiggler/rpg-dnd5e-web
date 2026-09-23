@@ -284,6 +284,8 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  onAreaAim?: (aim: CubeCoord | null) => void;
+  areaTargets?: readonly string[];
   sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
@@ -339,6 +341,8 @@ export function SessionScene({
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  onAreaAim,
+  areaTargets,
   sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
@@ -579,6 +583,11 @@ export function SessionScene({
     return hoveredHex;
   }, [meshHoveredSubject, otherMembers, hoveredHex]);
 
+  const displayedAim = freeAreaAim ?? effectiveHoveredHex;
+  useEffect(() => {
+    onAreaAim?.(cellAimEnabled ? displayedAim : null);
+  }, [onAreaAim, cellAimEnabled, displayedAim]);
+
   // Which OTHER member, if any, sits under the hovered cell — the mesh's
   // own report wins outright when present; otherwise the SAME geometric
   // lookup this module has always used (cheap — otherMembers is small).
@@ -644,9 +653,12 @@ export function SessionScene({
   const attackableRingPositions = useMemo(
     () =>
       (otherMembers ?? []).filter(
-        (m) => !m.remembered && attackableSet.has(m.subject)
+        (m) =>
+          !m.remembered &&
+          (attackableSet.has(m.subject) ||
+            (cellAimEnabled && areaTargets?.includes(m.subject)))
       ),
-    [otherMembers, attackableSet]
+    [otherMembers, attackableSet, areaTargets, cellAimEnabled]
   );
 
   return (
@@ -681,7 +693,7 @@ export function SessionScene({
       <AreaFootprintPreview
         footprint={areaFootprint}
         caster={myPosition}
-        aimed={freeAreaAim ?? effectiveHoveredHex}
+        aimed={displayedAim}
         hexSize={hexSize}
       />
       {attackableRingPositions.map((member) => (

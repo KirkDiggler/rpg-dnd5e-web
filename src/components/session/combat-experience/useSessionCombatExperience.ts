@@ -141,6 +141,7 @@ export interface UseSessionCombatExperienceResult {
   cellCastArmed: boolean;
   /** Provider-authored presentation data from that exact armed CELL cast. */
   cellCastFootprint?: Footprint;
+  cellCastDeclarationId?: string;
   /** Combat movement preview/intent is available only after explicit Move. */
   movementEnabled: boolean;
   /** Clear a selected action locally; also bound to Escape. */
@@ -2013,6 +2014,7 @@ export function useSessionCombatExperience({
       onCellClick,
       cellCastArmed,
       cellCastFootprint,
+      cellCastDeclarationId: armedCellCast?.id,
       movementEnabled,
       onCancelSelection,
       onEndTurn,
@@ -2028,6 +2030,7 @@ export function useSessionCombatExperience({
       acceptStreamEvent,
       cellCastArmed,
       cellCastFootprint,
+      armedCellCast?.id,
       invalidateAuthority,
       movementEnabled,
       onCancelSelection,
