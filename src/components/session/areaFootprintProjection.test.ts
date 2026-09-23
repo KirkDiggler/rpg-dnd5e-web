@@ -151,3 +151,30 @@ describe('equilateral caster-tip triangle', () => {
     }
   });
 });
+
+it('places the shared point box at the selected cell, including self, without a bearing', () => {
+  const caster = { x: 2, y: -3, z: 1 };
+  for (const aimed of [caster, { x: 5, y: -6, z: 1 }]) {
+    const projection = areaFootprintProjection({
+      footprint: footprint(FootprintShape.BOX, FootprintOrigin.POINT, 20),
+      caster,
+      aimed,
+      hexSize: 1,
+    });
+    expect(projection).toEqual({
+      kind: 'box',
+      center: cubeToWorld(aimed, 1),
+      depth: 4 * Math.sqrt(3),
+      width: 4 * Math.sqrt(3),
+      rotationY: 0,
+    });
+  }
+  expect(
+    areaFootprintProjection({
+      footprint: footprint(FootprintShape.BOX, FootprintOrigin.POINT, 20),
+      caster,
+      aimed: null,
+      hexSize: 1,
+    })
+  ).toBeNull();
+});

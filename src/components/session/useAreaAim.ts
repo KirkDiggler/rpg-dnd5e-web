@@ -1,13 +1,18 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { worldToFractionalCube, type CubeCoord } from '../hex-grid/hexMath';
+import {
+  worldToCube,
+  worldToFractionalCube,
+  type CubeCoord,
+} from '../hex-grid/hexMath';
 
-/** Continuous floor-plane aiming, independent of hex snapping or model hits. */
+/** Shared floor-plane aiming, with cell snapping for point placement. */
 export function useAreaAim(
   enabled: boolean,
   hexSize: number,
-  onCast?: (aim: CubeCoord) => void
+  onCast?: (aim: CubeCoord) => void,
+  snapToCell = false
 ) {
   const { gl, camera } = useThree();
   const [aim, setAim] = useState<CubeCoord | null>(null);
@@ -29,7 +34,10 @@ export function useAreaAim(
       );
       const point = raycaster.ray.intersectPlane(floor, new THREE.Vector3());
       return point
-        ? worldToFractionalCube({ x: point.x, z: point.z }, hexSize)
+        ? (snapToCell ? worldToCube : worldToFractionalCube)(
+            { x: point.x, z: point.z },
+            hexSize
+          )
         : null;
     };
     const move = (event: PointerEvent) => {
@@ -63,6 +71,6 @@ export function useAreaAim(
       canvas.removeEventListener('pointerdown', start);
       canvas.removeEventListener('click', click, true);
     };
-  }, [enabled, hexSize, gl, camera, onCast]);
+  }, [enabled, hexSize, gl, camera, onCast, snapToCell]);
   return enabled ? aim : null;
 }

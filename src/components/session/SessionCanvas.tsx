@@ -58,6 +58,7 @@ import type {
   SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  FootprintOrigin,
   FootprintShape,
   MemberKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -513,9 +514,12 @@ export function SessionScene({
   );
 
   const freeAreaAim = useAreaAim(
-    cellAimEnabled && areaFootprint?.shape === FootprintShape.TRIANGLE,
+    cellAimEnabled &&
+      (areaFootprint?.shape === FootprintShape.TRIANGLE ||
+        areaFootprint?.origin === FootprintOrigin.POINT),
     hexSize,
-    onHexClick
+    onHexClick,
+    areaFootprint?.origin === FootprintOrigin.POINT
   );
 
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
