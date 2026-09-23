@@ -82,6 +82,15 @@ export function cubeToWorld(cube: CubeCoord, hexSize: number): WorldPos {
  * @param hexSize - The hex radius (distance from center to vertex)
  * @returns The nearest hex in cube coordinates
  */
+export function worldToFractionalCube(
+  world: WorldPos,
+  hexSize: number
+): CubeCoord {
+  const x = ((SQRT_3 / 3) * world.x - world.z / 3) / hexSize;
+  const z = ((2 / 3) * world.z) / hexSize;
+  return { x, y: -x - z, z };
+}
+
 export function worldToCube(world: WorldPos, hexSize: number): CubeCoord {
   // Convert world position to fractional axial coordinates
   // This is the inverse of cubeToWorld

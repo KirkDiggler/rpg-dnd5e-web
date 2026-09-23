@@ -57,7 +57,10 @@ import type {
   PublicMemberInfo,
   SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  FootprintShape,
+  MemberKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
 import {
   useCallback,
@@ -90,6 +93,7 @@ import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
+import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
 const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
@@ -503,6 +507,12 @@ export function SessionScene({
     [otherMembers, handleTargetClick, onHexClick]
   );
 
+  const freeAreaAim = useAreaAim(
+    cellAimEnabled && areaFootprint?.shape === FootprintShape.TRIANGLE,
+    hexSize,
+    onHexClick
+  );
+
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
     hexSize,
     floorTiles: scene.floorTiles,
@@ -671,7 +681,7 @@ export function SessionScene({
       <AreaFootprintPreview
         footprint={areaFootprint}
         caster={myPosition}
-        aimed={effectiveHoveredHex}
+        aimed={freeAreaAim ?? effectiveHoveredHex}
         hexSize={hexSize}
       />
       {attackableRingPositions.map((member) => (
