@@ -1,4 +1,5 @@
 import {
+  FootprintOrigin,
   FootprintShape,
   TargetKind,
   Verb,
@@ -152,7 +153,9 @@ export function TargetSurface({
           <strong>
             {declaration.footprint?.shape === FootprintShape.TRIANGLE
               ? 'Move the pointer to rotate the area; click to cast'
-              : 'Pick a cell to aim toward'}
+              : declaration.footprint?.origin === FootprintOrigin.POINT
+                ? 'Pick a cell to place the area; click to cast'
+                : 'Pick a cell to aim toward'}
           </strong>
           {castCost && <span>{castCost}</span>}
           {onCancelSelection && (

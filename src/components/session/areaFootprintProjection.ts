@@ -11,8 +11,8 @@ import {
 
 /** The encounter engine's fixed authored scale (`encounter.FeetPerCell`). */
 export const FEET_PER_HEX = 5;
-/** Pending rpg-api-protos #350: point-centered radius origin. */
-export const FOOTPRINT_ORIGIN_POINT = 3 as FootprintOrigin;
+/** Shared selected-point origin for radius and box footprints. */
+export const FOOTPRINT_ORIGIN_POINT = FootprintOrigin.POINT;
 
 export type AreaFootprintProjection =
   | {
@@ -96,6 +96,20 @@ export function areaFootprintProjection({
           ? cubeToWorld(aimed, hexSize)
           : casterCenter,
       radius: extent,
+      rotationY: 0,
+    };
+  }
+
+  if (
+    footprint.shape === FootprintShape.BOX &&
+    footprint.origin === FootprintOrigin.POINT
+  ) {
+    if (!aimed || !finiteCube(aimed)) return null;
+    return {
+      kind: 'box',
+      center: cubeToWorld(aimed, hexSize),
+      depth: extent,
+      width: extent,
       rotationY: 0,
     };
   }
