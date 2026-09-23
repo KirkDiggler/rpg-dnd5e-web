@@ -376,10 +376,28 @@ function validateWhenScope(
   const on = body.on;
   const as = body.as;
 
-  // The engine tests presence, not truth, and reads the value as its text —
-  // `scopeOf` compares against the sealed word, so a non-scalar reaches it as
-  // whatever Go's decode makes of it. Mirroring that: a non-string is simply
-  // not the sealed word, and is refused by the unknown-word sentence.
+  // THE ENGINE'S OWN PATH, for every value class (probed against yaml.v3
+  // v3.0.1, the toolkit's pinned version — independent review round, finding 2).
+  //
+  //   on: 5      decodes to the string "5"     -> scopeOf refuses by name   MATCHES
+  //   on: true   decodes to the string "true"  -> scopeOf refuses by name   MATCHES
+  //   on: ""     decodes to a non-nil empty    -> scopeOf refuses by name   MATCHES
+  //   on: null   decodes to nil                -> the creature itself       MATCHES
+  //   on: {a: b} FAILS at body.Decode          -> the takes-wrapper sentence DIVERGES
+  //   on: [1, 2] FAILS at body.Decode          -> the takes-wrapper sentence DIVERGES
+  //
+  // THE NON-SCALAR IS A SENTENCE DIVERGENCE, NOT A SILENT REWRITE: both sides
+  // still REFUSE the document, only the words differ. The engine never reaches
+  // `scopeOf` for one — `Decode` fails first and `UnmarshalYAML` wraps it as
+  // "`<deed>` takes { within: N }: yaml: unmarshal errors: ...". That wrapper
+  // quotes a Go yaml error string, and restating it here would put a second
+  // copy of yaml.v3's phrasing in this file for a pathological input — the
+  // drift this module exists to prevent. So the unknown-word sentence stands,
+  // and the divergence is stated rather than pretended away.
+  //
+  // THE ENGINE TESTS PRESENCE, NOT TRUTH, and `null` is the absence: mirroring
+  // that is why a nullish value is dropped BEFORE `scalarText`, which maps a
+  // non-scalar to "" and so refuses rather than silently reading it as self.
   const onText = on === undefined || on === null ? undefined : scalarText(on);
   const asText = as === undefined || as === null ? undefined : scalarText(as);
 

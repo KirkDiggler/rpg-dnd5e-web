@@ -164,6 +164,52 @@ describe('answer table shape', () => {
   });
 
   /**
+   * A NON-SCALAR SCOPE VALUE, WHERE THE SENTENCE DIVERGES (independent review
+   * round, finding 2 — probed against yaml.v3 v3.0.1).
+   *
+   * The engine never reaches `scopeOf` for a mapping or a sequence: `Decode`
+   * fails first and says "`<deed>` takes { within: N }: yaml: unmarshal
+   * errors: …". This reader says the unknown-word sentence instead.
+   *
+   * BOTH REFUSE THE DOCUMENT — that is the property under test. The words
+   * differ because the alternative is restating a Go yaml error string here,
+   * which is the drift this module exists to prevent. Pinned so the divergence
+   * is a known, held fact rather than something a future reader discovers.
+   */
+  it('refuses a non-scalar scope value, in its own words', () => {
+    expect(
+      table({ time: [{ when: { fled: { within: 3, on: { a: 'b' } } } }] })
+    ).toThrow(/is not a scope this build reads/);
+    expect(
+      table({ time: [{ when: { fled: { within: 3, as: [1, 2] } } }] })
+    ).toThrow(/is not a scope this build reads/);
+  });
+
+  /** The scalar classes DO match the engine exactly — the four the reviewer
+   * verified: numbers and booleans read as their text, null is the absence,
+   * and an empty string is refused. */
+  it('matches the engine for every scalar scope value', () => {
+    // `on: 5` / `on: true` decode to "5" / "true" and are refused by name.
+    expect(table({ time: [{ when: { fled: { within: 3, on: 5 } } }] })).toThrow(
+      /`on: 5` is not a scope this build reads/
+    );
+    expect(
+      table({ time: [{ when: { fled: { within: 3, on: true } } }] })
+    ).toThrow(/`on: true` is not a scope this build reads/);
+    // `on: ""` is non-nil and empty, so the engine refuses it.
+    expect(
+      table({ time: [{ when: { fled: { within: 3, on: '' } } }] })
+    ).toThrow(/is not a scope this build reads/);
+    // `on: null` is nil — the ABSENCE, which means the creature itself.
+    expect(
+      validateAnswerTable(
+        { time: [{ when: { fled: { within: 3, on: null } }, hold: {} }] },
+        'on'
+      )
+    ).toEqual({ time: [{ when: { fled: { within: 3 } }, hold: {} }] });
+  });
+
+  /**
    * THE ENGINE'S OWN WALK DOCUMENT, READ BY THE BUILDER.
    *
    * `rpg-api`'s `feat/1885-creature-facts-walk` carries a v4 room that authors

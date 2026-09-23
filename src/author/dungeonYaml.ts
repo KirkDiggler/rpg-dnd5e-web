@@ -1227,7 +1227,17 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
 /** WHOSE deed a condition is about, or undefined for the creature itself.
  * `WhenSpec.scopeOf`'s two refusals, in its own order: both spellings at once,
  * then an unknown word BY NAME. Shared by both readers so the sentence an
- * author meets is one sentence. */
+ * author meets is one sentence.
+ *
+ * THE NON-SCALAR IS A SENTENCE DIVERGENCE, NOT A SILENT REWRITE (independent
+ * review round, finding 2). A scalar matches the engine exactly (`on: 5` reads
+ * as "5", `on: ""` is refused, `on: null` is the creature itself); a MAPPING or
+ * SEQUENCE fails earlier in Go — at `body.Decode` — so the engine never reaches
+ * `scopeOf` and says "`<deed>` takes { within: N }: yaml: unmarshal errors: …"
+ * instead. Both sides refuse the document; only the words differ, and this
+ * reader does not restate a Go yaml error string to close the gap. The full
+ * table is beside `validateWhenScope` in `answerTableShape.ts`, which is the
+ * same behavior through the same helper. */
 function answerWhenScope(
   body: Record<string, unknown>,
   path: string,
