@@ -124,8 +124,17 @@ function entryWordText(entry: AnswerEntryShape, word: string): string {
  * The shape carries exactly one key, so the key IS the condition. */
 function whenText(when: AnswerWhenShape): string {
   if ('enemy' in when) return `enemy ${when.enemy}`;
-  const [deed, span] = Object.entries(when)[0] as [string, { within: number }];
-  return `${deed} within ${span.within}`;
+  const [deed, span] = Object.entries(when)[0] as [
+    string,
+    { within: number; on?: string; as?: string },
+  ];
+  // The scope and the span both come off the body, so the readout says whose
+  // deed the row reads and not merely which deed.
+  const whose =
+    span.on !== undefined ? 'an ally' : span.as !== undefined ? 'I' : undefined;
+  return whose === undefined
+    ? `${deed} within ${span.within}`
+    : `${whose} ${deed} within ${span.within}`;
 }
 
 /** One entry: its condition — WHEN it is on the table at all, said only where
@@ -222,6 +231,10 @@ type WhenForm =
       kind: 'deed';
       deed: string;
       within: number;
+      /** WHOSE deed — the scope's key and value, or undefined for the creature
+       * itself. Absent is the third answer and has no spelling (see
+       * `AnswerWhenShape`). */
+      scope?: { key: string; value: string };
     };
 
 /** Read a written `when` into the form. Absent is `any` — the authored state
@@ -229,8 +242,33 @@ type WhenForm =
 function whenFormOf(when: AnswerWhenShape | undefined): WhenForm {
   if (when === undefined) return { kind: 'any' };
   if ('enemy' in when) return { kind: 'enemy', band: when.enemy };
-  const [deed, span] = Object.entries(when)[0] as [string, { within: number }];
-  return { kind: 'deed', deed, within: span.within };
+  const [deed, span] = Object.entries(when)[0] as [
+    string,
+    { within: number; on?: 'ally'; as?: 'actor' },
+  ];
+  // THE SCOPE IS READ OFF THE BODY, not guessed: whichever of the two keys the
+  // document carries is the one the form shows, and neither means the creature
+  // itself.
+  const scope =
+    span.on !== undefined
+      ? { key: 'on', value: span.on }
+      : span.as !== undefined
+        ? { key: 'as', value: span.as }
+        : undefined;
+  return { kind: 'deed', deed, within: span.within, scope };
+}
+
+/** Write a deed body back: the span, plus the scope ONLY when one was chosen.
+ * An omitted scope is "the creature itself", so the form must be able to say
+ * that by writing no key at all rather than by writing a third word. */
+function deedBody(
+  within: number,
+  scope: { key: string; value: string } | undefined
+): { within: number; on?: 'ally'; as?: 'actor' } {
+  if (scope === undefined) return { within };
+  return scope.key === 'on'
+    ? { within, on: scope.value as 'ally' }
+    : { within, as: scope.value as 'actor' };
 }
 
 /** Whether a written `when` names a DEED — the condition under which the
@@ -240,6 +278,12 @@ function whenFormOf(when: AnswerWhenShape | undefined): WhenForm {
 function whenNamesDeed(when: AnswerWhenShape | undefined): boolean {
   return when !== undefined && !('enemy' in when);
 }
+
+/** The `when` picker's value for the reading with NO scope word: "the creature
+ * itself", which a document writes by omitting the key. A sentinel rather than
+ * a real scope, because writing a word for it would invent a spelling the
+ * engine does not read. */
+const SELF_SCOPE = '__self__';
 
 /** The `when:` control. LEGAL ON `time` ALONE — a social key IS already the
  * condition (`intimidated` means the threat landed), so the caller does not
@@ -283,14 +327,14 @@ function AnswerWhenEditor({
           else {
             const deed = next.slice('deed:'.length);
             // A NEW DEED KEEPS THE AUTHOR'S SPAN IF ONE WAS TYPED, else starts
-            // at the engine's floor (a span is counted from 1).
+            // at the engine's floor (a span is counted from 1). The scope is
+            // kept too: switching which deed fired does not change whose deed
+            // the author is asking about.
             onCommit({
-              [deed]: {
-                within:
-                  form.kind === 'deed'
-                    ? form.within
-                    : ANSWER_WHEN.minimumWithin,
-              },
+              [deed]: deedBody(
+                form.kind === 'deed' ? form.within : ANSWER_WHEN.minimumWithin,
+                form.kind === 'deed' ? form.scope : undefined
+              ),
             } as AnswerWhenShape);
           }
         }}
@@ -308,26 +352,64 @@ function AnswerWhenEditor({
         ))}
       </select>
       {form.kind === 'deed' && (
-        <input
-          type="number"
-          step={1}
-          min={ANSWER_WHEN.minimumWithin}
-          aria-label={`Within for ${trigger} entry`}
-          value={String(form.within)}
-          onChange={(event) => {
-            // AN EMPTY FIELD COMMITS NOTHING. `Number('')` is 0 — a number the
-            // author never typed — and unlike a weight, where absence IS 1 to
-            // the engine, a span has no legal absence (`within: 0` is refused
-            // by name). Committing a fabricated 0 would be the form inventing
-            // a number, which is what this control avoids everywhere else;
-            // keeping the last real span leaves the author's own value in the
-            // field until they type a new one.
-            if (event.target.value === '') return;
-            onCommit({
-              [form.deed]: { within: Number(event.target.value) },
-            } as AnswerWhenShape);
-          }}
-        />
+        <>
+          <input
+            type="number"
+            step={1}
+            min={ANSWER_WHEN.minimumWithin}
+            aria-label={`Within for ${trigger} entry`}
+            value={String(form.within)}
+            onChange={(event) => {
+              // AN EMPTY FIELD COMMITS NOTHING. `Number('')` is 0 — a number the
+              // author never typed — and unlike a weight, where absence IS 1 to
+              // the engine, a span has no legal absence (`within: 0` is refused
+              // by name). Committing a fabricated 0 would be the form inventing
+              // a number, which is what this control avoids everywhere else;
+              // keeping the last real span leaves the author's own value in the
+              // field until they type a new one.
+              if (event.target.value === '') return;
+              onCommit({
+                [form.deed]: deedBody(Number(event.target.value), form.scope),
+              } as AnswerWhenShape);
+            }}
+          />
+          {/*
+            WHOSE DEED THIS IS (rpg-dnd5e-web#1199). A scope REFINES the deed
+            rather than adding a second condition, so it sits with the span it
+            belongs to and is offered on a DEED alone — an enemy band has no
+            "whose", which is why this is inside the deed branch.
+
+            "(the creature itself)" is the third reading and the DEFAULT: it is
+            what omitting the key means, so it is rendered as the absence of a
+            choice rather than as a word the file would carry. Selecting it
+            DELETES the key, which is the only way to write that reading.
+          */}
+          <select
+            aria-label={`Whose deed for ${trigger} entry`}
+            value={form.scope?.value ?? SELF_SCOPE}
+            onChange={(event) => {
+              const next = event.target.value;
+              const scope =
+                next === SELF_SCOPE
+                  ? undefined
+                  : {
+                      key: ANSWER_WHEN.scopes.find((s) => s.value === next)
+                        ?.key as string,
+                      value: next,
+                    };
+              onCommit({
+                [form.deed]: deedBody(form.within, scope),
+              } as AnswerWhenShape);
+            }}
+          >
+            <option value={SELF_SCOPE}>(the creature itself)</option>
+            {ANSWER_WHEN.scopes.map((scope) => (
+              <option key={scope.value} value={scope.value}>
+                {scope.label}
+              </option>
+            ))}
+          </select>
+        </>
       )}
     </label>
   );

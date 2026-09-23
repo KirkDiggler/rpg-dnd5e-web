@@ -510,6 +510,109 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     expect('when' in next.on.time[0]).toBe(false);
   });
 
+  /**
+   * A DEED'S SCOPE (rpg-dnd5e-web#1199): `on: ally` is a deed against the
+   * creature's own side, `as: actor` is one it did. The scope REFINES the deed
+   * — a `when` still names exactly one thing — so the control sits with the
+   * span and is offered on a DEED alone.
+   *
+   * "(the creature itself)" is the third reading and is what OMITTING the key
+   * says: selecting it must delete the key rather than write a word, because
+   * the engine has no spelling for it.
+   */
+  it('authors a deed scope, and clears it by deleting the key', () => {
+    // MOUNTED ALREADY AUTHORED: this component renders from its `binding`
+    // prop, so switching the picker only calls back and does not re-render —
+    // the scope control exists only on a deed, so the row starts as one.
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: { time: [{ when: { attacked: { within: 3 } }, hold: {} }] },
+        }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
+      target: { value: 'ally' },
+    });
+    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+      attacked: { within: 3, on: 'ally' },
+    });
+
+    // "(the creature itself)" is what OMITTING the key says, so selecting it
+    // DELETES the scope rather than writing a word the engine does not read.
+    fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
+      target: { value: '__self__' },
+    });
+    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+      attacked: { within: 3 },
+    });
+  });
+
+  it('authors `as: actor` — the pause', () => {
+    const onOrdersChange = vi.fn();
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: { time: [{ when: { attacked: { within: 2 } }, hold: {} }] },
+        }}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
+      target: { value: 'actor' },
+    });
+    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+      attacked: { within: 2, as: 'actor' },
+    });
+  });
+
+  it('reads a scope off the document and shows it', () => {
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: {
+            time: [{ when: { attacked: { within: 3, on: 'ally' } }, hold: {} }],
+          },
+        }}
+        onOrdersChange={() => {}}
+      />
+    );
+    expect(
+      (screen.getByLabelText('Whose deed for time entry') as HTMLSelectElement)
+        .value
+    ).toBe('ally');
+  });
+
+  it('offers no scope on an enemy band — a band has no “whose”', () => {
+    // The band branch has no `whose`, so the control is ABSENT rather than
+    // rendered disabled: the builder does not offer what the engine refuses.
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          on: { time: [{ when: { enemy: 'reach' }, hold: {} }] },
+        }}
+        onOrdersChange={() => {}}
+      />
+    );
+    expect(screen.getByLabelText('When for time entry')).toBeTruthy();
+    expect(screen.queryByLabelText('Whose deed for time entry')).toBeNull();
+  });
+
   it('opens the trigger picker on `time`, not on a social key', () => {
     // FOUND ON THE WALK: the picker's default was the vocabulary's first key
     // (`intimidated`), so the obvious first click authored a SOCIAL entry —

@@ -42,6 +42,7 @@ import {
   answerWord,
   answerWordRefusal,
   atSelectorRefusal,
+  bothScopesRefusal,
   EMPTY_ENTRY_REFUSAL,
   EMPTY_FACT_REFUSAL,
   EMPTY_TRIGGER_REFUSAL,
@@ -54,6 +55,7 @@ import {
   suggestKey,
   unknownDeedRefusal,
   unknownEnemyBandRefusal,
+  unknownScopeRefusal,
   unknownSelectorKeyRefusal,
   unknownSelectorRefusal,
   unknownTriggerRefusal,
@@ -66,13 +68,29 @@ import {
 export type AnswerSelectorShape = string | { at: [number, number] };
 
 /** A `when:` as written: EXACTLY ONE exclusive enemy band, or one deed with
- * its span. The key IS the shape, so no generic `deed:` field is invented. */
+ * its span and — optionally — WHOSE deed it is about. The key IS the shape,
+ * so no generic `deed:` field is invented.
+ *
+ * THE SCOPE REFINES THE DEED, it is not a second condition: `{ attacked: {
+ * within: 3, on: ally } }` still names exactly one thing (rpg-toolkit#1883).
+ * An enemy band has no "whose", which is why the scope lives on the deed
+ * branches alone.
+ *
+ * THE TWO KEYS ARE OPTIONAL AND MUTUALLY EXCLUSIVE BY CONSTRUCTION: absent
+ * means "the creature itself", which is what the field being absent says — so
+ * there is no third word for it to disagree about. */
+export type AnswerWhenDeed = {
+  within: number;
+  on?: 'ally';
+  as?: 'actor';
+};
+
 export type AnswerWhenShape =
   | { enemy: string }
-  | { attacked: { within: number } }
-  | { intimidated: { within: number } }
-  | { persuaded: { within: number } }
-  | { fled: { within: number } };
+  | { attacked: AnswerWhenDeed }
+  | { intimidated: AnswerWhenDeed }
+  | { persuaded: AnswerWhenDeed }
+  | { fled: AnswerWhenDeed };
 
 /** One answer entry as written. `weight`/`say`/`when` + at most one word. */
 export interface AnswerEntryShape {
@@ -290,7 +308,20 @@ function validateAnswerEntry(
 }
 
 /** A `when:` — EXACTLY ONE of the four exclusive enemy bands, or one of the
- * four deeds with `{ within: N }` (`dungeonspec.WhenSpec`). */
+ * four deeds with `{ within: N }` and an optional SCOPE
+ * (`dungeonspec.WhenSpec`).
+ *
+ * THE REFUSALS RUN IN THE ENGINE'S OWN ORDER (`WhenSpec.UnmarshalYAML`), so an
+ * author who made one mistake gets one sentence: the shape, then two
+ * conditions, then the enemy band or the deed, then an unknown BODY key by
+ * hand, then the span, then the scope.
+ *
+ * UNKNOWN BODY KEYS ARE REFUSED BY HAND because `Decode`'s strictness does not
+ * reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3). Before scopes
+ * a dropped key in this body did nothing; now the dropped key decides WHOSE
+ * deeds the row reads — `no: ally` would leave the condition on the self
+ * reading, firing for the wrong wound and never for its own. So a body key
+ * this build does not read is refused rather than dropped. */
 function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
   if (!isMapping(value) || Object.keys(value).length === 0)
     fail(path, whenShapeRefusal());
@@ -308,13 +339,64 @@ function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
   if (!ANSWER_WHEN.deeds.includes(key)) fail(path, unknownDeedRefusal(key));
   const body = value[key];
   if (!isMapping(body)) fail(path, missingSpanRefusal(key));
+
+  for (const bodyKey of Object.keys(body)) {
+    // `within`, `on` and `as` are the three keys the engine decodes, read from
+    // the one declaration rather than listed again. The sentence is Go's own
+    // strict-field text, because that is what the server would say.
+    if (ANSWER_WHEN.bodyKeys.includes(bodyKey)) continue;
+    fail(
+      `${path}.${key}.${bodyKey}`,
+      `field ${bodyKey} not found in type dungeonspec.withinSpec`
+    );
+  }
+
   const within = body.within;
   if (within === undefined || within === null)
     fail(path, missingSpanRefusal(key));
   if (typeof within !== 'number' || !Number.isInteger(within))
     fail(`${path}.${key}.within`, 'expected a whole number');
   if (within < ANSWER_WHEN.minimumWithin) fail(path, spanRefusal(within));
-  return { [key]: { within } } as AnswerWhenShape;
+
+  const scope = validateWhenScope(body, `${path}.${key}`, key);
+  return { [key]: { within, ...scope } } as AnswerWhenShape;
+}
+
+/** WHOSE deed a condition is about — `on: ally`, `as: actor`, or `undefined`
+ * for the creature itself. `WhenSpec.scopeOf`'s two refusals, in its own
+ * order: both spellings at once, then an unknown word BY NAME.
+ *
+ * `undefined` is the third answer and is NOT a spelling: a document says "the
+ * creature itself" by omitting the field, so there is no word to return. */
+function validateWhenScope(
+  body: Record<string, unknown>,
+  path: string,
+  deed: string
+): Pick<AnswerWhenDeed, 'on' | 'as'> {
+  const on = body.on;
+  const as = body.as;
+
+  // The engine tests presence, not truth, and reads the value as its text —
+  // `scopeOf` compares against the sealed word, so a non-scalar reaches it as
+  // whatever Go's decode makes of it. Mirroring that: a non-string is simply
+  // not the sealed word, and is refused by the unknown-word sentence.
+  const onText = on === undefined || on === null ? undefined : scalarText(on);
+  const asText = as === undefined || as === null ? undefined : scalarText(as);
+
+  if (onText !== undefined && asText !== undefined)
+    fail(path, bothScopesRefusal(deed, onText, asText));
+
+  if (onText !== undefined) {
+    if (onText !== 'ally')
+      fail(`${path}.on`, unknownScopeRefusal('on', onText));
+    return { on: 'ally' };
+  }
+  if (asText !== undefined) {
+    if (asText !== 'actor')
+      fail(`${path}.as`, unknownScopeRefusal('as', asText));
+    return { as: 'actor' };
+  }
+  return {};
 }
 
 /** One selector: a sealed word, or `{ at: [col, row] }`. */

@@ -104,4 +104,93 @@ describe('answer table shape', () => {
       table({ time: [{ away: 'actor', when: { attacked: { within: 2 } } }] })
     ).not.toThrow();
   });
+
+  /**
+   * A `when` ON A DEED MAY NAME A SCOPE (rpg-dnd5e-web#1199). `on: ally` reads
+   * a deed against the creature's own side, `as: actor` reads one it did; the
+   * scope REFINES the deed rather than adding a second condition, so a `when`
+   * still names exactly one thing.
+   *
+   * The sentences are `dungeonspec.WhenSpec`'s own (`scopeOf`), so an author
+   * meets the same words from the form and from the server.
+   */
+  it('carries a deed scope verbatim, and refuses a scope it does not read', () => {
+    const authored = {
+      time: [
+        { when: { attacked: { within: 3, on: 'ally' } }, attack: 'enemy' },
+        { when: { fled: { within: 2, as: 'actor' } }, hold: {} },
+      ],
+    };
+    expect(validateAnswerTable(authored, 'on')).toEqual(authored);
+
+    // Both spellings at once: two different questions, refused rather than
+    // silently preferring one.
+    expect(
+      table({
+        time: [{ when: { fled: { within: 3, on: 'ally', as: 'actor' } } }],
+      })
+    ).toThrow(
+      /`fled` names both `on: ally` and `as: actor`, and a condition asks one thing/
+    );
+
+    // An unknown word is refused BY NAME — the two named readings, because
+    // omitting the field is what "the creature itself" means.
+    expect(
+      table({ time: [{ when: { fled: { within: 3, on: 'self' } } }] })
+    ).toThrow(
+      /`on: self` is not a scope this build reads: they are ally, actor \(and omitting it means the creature itself\)/
+    );
+    expect(
+      table({ time: [{ when: { fled: { within: 3, as: 'enemy' } } }] })
+    ).toThrow(
+      /`as: enemy` is not a scope this build reads: they are ally, actor/
+    );
+
+    // AN UNKNOWN BODY KEY IS REFUSED, NOT DROPPED. Before scopes a dropped key
+    // here did nothing; now it would decide WHOSE deeds the row reads, so
+    // `no: ally` would leave the condition firing for the wrong wound.
+    expect(
+      table({ time: [{ when: { fled: { within: 3, no: 'ally' } } }] })
+    ).toThrow(/field no not found in type dungeonspec\.withinSpec/);
+  });
+
+  /** A scope is a refinement of a DEED, so it has no meaning on an enemy band
+   * — and the body of `{ enemy: X }` is a scalar, so a body key there is not a
+   * scope an author could have meant. */
+  it('offers no scope on an enemy band', () => {
+    expect(
+      table({ time: [{ when: { enemy: { on: 'ally' } }, hold: {} }] })
+    ).toThrow(/`enemy: ` is not a condition this build reads/);
+  });
+
+  /**
+   * THE ENGINE'S OWN WALK DOCUMENT, READ BY THE BUILDER.
+   *
+   * `rpg-api`'s `feat/1885-creature-facts-walk` carries a v4 room that authors
+   * BOTH scopes (`internal/dungeons/testdata/creature-facts-walk.yaml`), and
+   * the walk compiles it through the real `PutDungeon` path. This is that
+   * document's `guard-1` table, transcribed: the builder must be able to open
+   * exactly the shape the engine has already accepted, which is the thing
+   * #1199 exists to make true.
+   */
+  it('reads the engine’s walk table, both scopes, verbatim', () => {
+    const walk = {
+      time: [
+        {
+          when: { attacked: { within: 2, as: 'actor' } },
+          hold: {},
+          weight: 100,
+        },
+        {
+          when: { attacked: { within: 3, on: 'ally' } },
+          toward: 'enemy',
+          weight: 50,
+        },
+        { when: { enemy: 'reach' }, attack: 'enemy', weight: 10 },
+        { when: { enemy: 'seen' }, toward: 'enemy' },
+        { when: { enemy: 'none' }, hold: {} },
+      ],
+    };
+    expect(validateAnswerTable(walk, 'on')).toEqual(walk);
+  });
 });

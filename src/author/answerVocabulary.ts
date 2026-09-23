@@ -209,6 +209,26 @@ export interface AnswerWhenSpec {
   /** A span is counted from 1 (`WhenSpec.Within`): `{ within: 0 }` is a
    * condition that can never hold. */
   readonly minimumWithin: number;
+  /** The three keys a deed condition's body may carry, sealed so the reader
+   * and the writer cannot drift apart (`dungeonspec`'s `whenBodyWithin`,
+   * `whenBodyOn`, `whenBodyAs`). */
+  readonly bodyKeys: readonly string[];
+  /** WHOSE deed a condition is about — the two NAMED readings, in the
+   * engine's order (`encounter.DeedScopes` minus `ScopeSelf`). */
+  readonly scopes: readonly AnswerScopeSpec[];
+}
+
+/** One scope: the spelling a `when` body carries, and the words the form
+ * shows for it. `on:` reads a deed against the creature's own side; `as:`
+ * reads one the creature did (`WhenSpec.Scope`). */
+export interface AnswerScopeSpec {
+  /** The key the body carries — `on` or `as`. */
+  readonly key: string;
+  /** The value that key takes — `ally` or `actor`. */
+  readonly value: string;
+  /** What the form calls it, since the file says `on: ally` and an author
+   * reading the row wants the sentence. */
+  readonly label: string;
 }
 
 export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
@@ -216,6 +236,14 @@ export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
   enemyBands: Object.freeze(['reach', 'seen', 'remembered', 'none']),
   deeds: Object.freeze(['attacked', 'intimidated', 'persuaded', 'fled']),
   minimumWithin: 1,
+  bodyKeys: Object.freeze(['within', 'on', 'as']),
+  // THE TWO NAMED SCOPES. Omitting both means the creature itself, which is
+  // what the field being absent says — so `self` is deliberately NOT a third
+  // word a document may write, and a refusal lists only these two.
+  scopes: Object.freeze([
+    Object.freeze({ key: 'on', value: 'ally', label: 'an ally was' }),
+    Object.freeze({ key: 'as', value: 'actor', label: 'I did it' }),
+  ]),
 });
 
 /** One selector word: what an `attack`/`toward`/`away` entry acts on
@@ -499,6 +527,32 @@ export function missingSpanRefusal(deed: string): string {
 /** `WhenSpec.UnmarshalYAML`: a span counted from zero. */
 export function spanRefusal(within: number): string {
   return `a span of ${within} rounds is counted from 1`;
+}
+
+/** `scopeWords` (`dungeonspec/spec.go`): the scopes a refusal lists — the two
+ * NAMED readings, since the default is what omitting the field means and
+ * saying so twice would read as a third option. Read from the declaration, so
+ * a scope the engine adds is listed here with no change. */
+export function scopeWords(): string {
+  return ANSWER_WHEN.scopes.map((scope) => scope.value).join(', ');
+}
+
+/** `scopeOf` (`dungeonspec/spec.go`): BOTH spellings at once. The two are
+ * different questions — "was my side hit" vs "did I act" — so an author who
+ * wrote both has made a mistake the grammar cannot resolve for them. */
+export function bothScopesRefusal(
+  deed: string,
+  on: string,
+  as: string
+): string {
+  return `\`${deed}\` names both \`on: ${on}\` and \`as: ${as}\`, and a condition asks one thing: \`on: ally\` is a deed against your side, \`as: actor\` is one you did`;
+}
+
+/** `scopeOf` (`dungeonspec/spec.go`): a scope word outside the named two, in
+ * the same shape every other refusal in this dialect takes — the word means
+ * something, it is simply not a scope this build reads. */
+export function unknownScopeRefusal(key: string, value: string): string {
+  return `\`${key}: ${value}\` is not a scope this build reads: they are ${scopeWords()} (and omitting it means the creature itself)`;
 }
 
 /** `SelectorSpec.UnmarshalYAML`: a scalar outside the sealed three. */
