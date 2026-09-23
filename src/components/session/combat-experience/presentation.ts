@@ -1710,6 +1710,14 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     case 'activationResult': {
       const activation = event.body.value;
       switch (activation.result.case) {
+        case 'damageApplied':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            damage: activation.result.value,
+          });
         case 'stabilized':
           return Object.freeze({
             kind: event.kind,

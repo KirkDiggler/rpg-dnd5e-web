@@ -26,6 +26,11 @@ import {
   SpellRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
+import {
+  emptyPresentation,
+  reduceCombatPresentation,
+  selectVisibleStory,
+} from './presentation';
 import { buildCombatStory, type CombatStoryFact } from './story';
 
 const context = {
@@ -311,4 +316,49 @@ describe('the whole exchange, in order', () => {
       'Skeleton takes 3 psychic damage',
     ]);
   });
+});
+
+describe('spell damage through the actual event pipeline', () => {
+  it.each(['live', 'catchup'] as const)(
+    'admits %s damage and preserves its HP and arithmetic',
+    (source) => {
+      let state = reduceCombatPresentation(emptyPresentation(), {
+        type: 'configure',
+        session: 'crypt-run',
+        viewerMember: 'bard-1',
+        memberNames: context.memberNames,
+        rollerRoles: { 'bard-1': 'player', 'skeleton-1': 'monster' },
+      });
+      const event = damageAppliedEvent();
+      if (
+        event.body.case !== 'activationResult' ||
+        event.body.value.result.case !== 'damageApplied'
+      )
+        throw new Error('fixture');
+      const damage = event.body.value.result.value;
+      damage.amount = 4;
+      damage.requested = 4;
+      damage.hpBefore = 9;
+      damage.hpAfter = 5;
+      damage.sourceName = 'Burning Hands';
+      damage.sourceRef = 'dnd5e:spells:burning-hands';
+      damage.damageType = DamageType.FIRE;
+      state = reduceCombatPresentation(state, {
+        type: 'stream-event',
+        event,
+        metadata: { source },
+      });
+      const story = selectVisibleStory(state);
+      expect(story).toHaveLength(1);
+      expect(story[0].headline).toBe('Skeleton takes 4 fire damage');
+      expect(story[0].detail).toContain('9 → 5 HP');
+      expect(story[0].detail).toContain('Burning Hands');
+      state = reduceCombatPresentation(state, {
+        type: 'stream-event',
+        event,
+        metadata: { source: 'catchup' },
+      });
+      expect(selectVisibleStory(state)).toHaveLength(1);
+    }
+  );
 });

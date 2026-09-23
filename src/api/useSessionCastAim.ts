@@ -1,8 +1,11 @@
 import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sessionClient } from './client';
 
-/** Read-only provider preview. Stale or failed replies never supply highlights. */
+/** Poll the latest aim while moving; retain the last completed preview until
+ * its replacement arrives. Cast still revalidates the exact click position.
+ * Selection/revision changes revoke highlights immediately; older requests
+ * cannot overwrite a newer preview. */
 export function useSessionCastAim(
   session: string,
   member: string,
@@ -10,26 +13,39 @@ export function useSessionCastAim(
   cell: { x: number; y: number } | null,
   declarations: readonly Declaration[]
 ) {
-  const x = cell?.x;
-  const y = cell?.y;
-  const key = JSON.stringify([session, member, declaration, x, y]);
+  const key = JSON.stringify([session, member, declaration]);
+  const latestCell = useRef(cell);
+  latestCell.current = cell;
   const [result, setResult] = useState<{
     key: string;
     revision: readonly Declaration[];
     members: string[];
   } | null>(null);
   useEffect(() => {
-    if (!declaration || x === undefined || y === undefined) return;
+    if (!declaration) return;
     let current = true;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
+    let generation = 0;
+    let lastAim = '';
+    let pending = false;
+    let controller: AbortController | undefined;
+    const read = () => {
+      if (pending) return;
+      const aim = latestCell.current;
+      if (!aim) return;
+      const { x, y } = aim;
+      const aimKey = JSON.stringify([x, y]);
+      if (aimKey === lastAim) return;
+      lastAim = aimKey;
+      pending = true;
+      const request = ++generation;
+      controller = new AbortController();
       void sessionClient
         .afford(
           { session, member, castAim: { declaration, cell: { x, y } } },
           { signal: controller.signal }
         )
         .then((response) => {
-          if (!current) return;
+          if (!current || request !== generation) return;
           const preview = response.castAim;
           const echo = preview?.aim;
           const matches =
@@ -44,16 +60,23 @@ export function useSessionCastAim(
           });
         })
         .catch(() => {
-          if (current) setResult({ key, revision: declarations, members: [] });
+          if (current && request === generation) {
+            lastAim = '';
+            setResult({ key, revision: declarations, members: [] });
+          }
+        })
+        .finally(() => {
+          pending = false;
         });
-    }, 80);
+    };
+    const timer = setInterval(read, 80);
     return () => {
       current = false;
-      clearTimeout(timer);
-      controller.abort();
+      clearInterval(timer);
+      controller?.abort();
     };
-  }, [session, member, declaration, x, y, key, declarations]);
-  return result?.key === key && result.revision === declarations
+  }, [session, member, declaration, key, declarations]);
+  return cell && result?.key === key && result.revision === declarations
     ? result.members
     : [];
 }

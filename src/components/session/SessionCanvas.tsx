@@ -81,6 +81,7 @@ import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import { AreaFootprintPreview } from './AreaFootprintPreview';
+import { AreaTargetOutline } from './AreaTargetOutline';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
@@ -653,12 +654,9 @@ export function SessionScene({
   const attackableRingPositions = useMemo(
     () =>
       (otherMembers ?? []).filter(
-        (m) =>
-          !m.remembered &&
-          (attackableSet.has(m.subject) ||
-            (cellAimEnabled && areaTargets?.includes(m.subject)))
+        (m) => !m.remembered && attackableSet.has(m.subject)
       ),
-    [otherMembers, attackableSet, areaTargets, cellAimEnabled]
+    [otherMembers, attackableSet]
   );
 
   return (
@@ -696,6 +694,19 @@ export function SessionScene({
         aimed={displayedAim}
         hexSize={hexSize}
       />
+      {cellAimEnabled &&
+        (otherMembers ?? [])
+          .filter(
+            (member) =>
+              !member.remembered && areaTargets?.includes(member.subject)
+          )
+          .map((member) => (
+            <AreaTargetOutline
+              key={`area-target-${member.subject}`}
+              position={member.position}
+              hexSize={hexSize}
+            />
+          ))}
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}
