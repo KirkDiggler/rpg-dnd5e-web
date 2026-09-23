@@ -17,6 +17,7 @@ import {
   ChoiceCategory,
   ChoiceDataSchema,
   ChoiceSchema,
+  ChoiceSource,
   EquipmentBundleSchema,
   EquipmentCategoryChoiceSchema,
   EquipmentItemSchema,
@@ -28,12 +29,14 @@ import {
 import {
   Armor,
   Class,
+  Language,
   Race,
+  Skill,
   Subclass,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps, ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CharacterDraftState } from './CharacterDraftContextDef';
 import { CharacterDraftContext } from './CharacterDraftContextDef';
@@ -54,7 +57,13 @@ vi.mock('./AppearanceSelectionModal', () => ({
 vi.mock('./BackgroundSelectionModal', () => ({
   BackgroundSelectionModal: () => null,
 }));
-vi.mock('./ClassSelectionModal', () => ({ ClassSelectionModal: () => null }));
+const classModal = vi.hoisted(() => vi.fn());
+vi.mock('./ClassSelectionModal', () => ({
+  ClassSelectionModal: (props: unknown) => {
+    classModal(props);
+    return null;
+  },
+}));
 vi.mock('./RaceSelectionModal', () => ({ RaceSelectionModal: () => null }));
 vi.mock('./SpellSelectionModal', () => ({ SpellSelectionModal: () => null }));
 vi.mock('./components/SpellInfoDisplay', () => ({
@@ -564,5 +573,63 @@ describe('InteractiveCharacterSheet spell choice rehydration', () => {
     expect(screen.getByTestId('spell-info').textContent).toBe(
       'cantrips:dnd5e:spells:vicious-mockery|spells:dnd5e:spells:bane'
     );
+  });
+});
+
+describe('Knowledge subclass choice submission', () => {
+  it('preserves independent class and subclass skill IDs and language answers', async () => {
+    const state = draftState(vi.fn());
+    render(
+      <CharacterDraftContext.Provider value={state}>
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+    const props = classModal.mock.lastCall![0] as ComponentProps<
+      typeof import('./ClassSelectionModal').ClassSelectionModal
+    >;
+    const selected = create(ClassInfoSchema, {
+      classId: Class.CLERIC,
+      name: 'Cleric',
+    });
+    await act(async () => {
+      await props.onSelect(selected, {
+        skills: [
+          {
+            choiceId: 'cleric-skills',
+            skills: [Skill.MEDICINE, Skill.RELIGION],
+          },
+          {
+            choiceId: 'cleric-knowledge-skills',
+            skills: [Skill.ARCANA, Skill.HISTORY],
+          },
+        ],
+        languages: [
+          {
+            choiceId: 'cleric-knowledge-languages',
+            languages: [Language.ELVISH, Language.GNOMISH],
+          },
+        ],
+      });
+    });
+    expect(state.setClass).toHaveBeenCalledWith(selected, [
+      expect.objectContaining({
+        choiceId: 'cleric-skills',
+        source: ChoiceSource.CLASS,
+      }),
+      expect.objectContaining({
+        choiceId: 'cleric-knowledge-skills',
+        source: ChoiceSource.CLASS,
+      }),
+      expect.objectContaining({
+        choiceId: 'cleric-knowledge-languages',
+        source: ChoiceSource.CLASS,
+        selection: {
+          case: 'languages',
+          value: expect.objectContaining({
+            languages: [Language.ELVISH, Language.GNOMISH],
+          }),
+        },
+      }),
+    ]);
   });
 });

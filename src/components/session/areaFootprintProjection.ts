@@ -11,8 +11,8 @@ import {
 
 /** The encounter engine's fixed authored scale (`encounter.FeetPerCell`). */
 export const FEET_PER_HEX = 5;
-/** Pending rpg-api-protos #350: point-centered radius origin. */
-export const FOOTPRINT_ORIGIN_POINT = 3 as FootprintOrigin;
+/** Shared selected-point origin for radius and box footprints. */
+export const FOOTPRINT_ORIGIN_POINT = FootprintOrigin.POINT;
 
 export type AreaFootprintProjection =
   | {
@@ -23,6 +23,13 @@ export type AreaFootprintProjection =
       /** Full box width in world units, across the aimed bearing. */
       width: number;
       /** Three.js Y rotation; local +X points along the aimed bearing. */
+      rotationY: number;
+    }
+  | {
+      kind: 'triangle';
+      center: WorldPos;
+      depth: number;
+      width: number;
       rotationY: number;
     }
   | {
@@ -94,8 +101,26 @@ export function areaFootprintProjection({
   }
 
   if (
-    footprint.shape !== FootprintShape.BOX ||
-    footprint.origin !== FootprintOrigin.CASTER_EDGE ||
+    footprint.shape === FootprintShape.BOX &&
+    footprint.origin === FootprintOrigin.POINT
+  ) {
+    if (!aimed || !finiteCube(aimed)) return null;
+    return {
+      kind: 'box',
+      center: cubeToWorld(aimed, hexSize),
+      depth: extent,
+      width: extent,
+      rotationY: 0,
+    };
+  }
+
+  if (
+    !(
+      (footprint.shape === FootprintShape.BOX &&
+        footprint.origin === FootprintOrigin.CASTER_EDGE) ||
+      (footprint.shape === FootprintShape.TRIANGLE &&
+        footprint.origin === FootprintOrigin.CASTER)
+    ) ||
     !aimed ||
     !finiteCube(aimed)
   ) {
@@ -110,18 +135,22 @@ export function areaFootprintProjection({
 
   // Toolkit `boxPolygon`: the near edge begins one inradius (half the
   // across-flats cell width) from the caster, then the full depth extends out.
-  const centerDistance = (Math.sqrt(3) * hexSize + extent) / 2;
+  const triangle = footprint.shape === FootprintShape.TRIANGLE;
+  // Triangle's bounding-box centre is half its altitude ahead of the tip.
+  const centerDistance = triangle
+    ? extent / 2
+    : (Math.sqrt(3) * hexSize + extent) / 2;
   const ux = dx / aimDistance;
   const uz = dz / aimDistance;
 
   return {
-    kind: 'box',
+    kind: triangle ? 'triangle' : 'box',
     center: {
       x: casterCenter.x + ux * centerDistance,
       z: casterCenter.z + uz * centerDistance,
     },
     depth: extent,
-    width: extent,
+    width: triangle ? (2 * extent) / Math.sqrt(3) : extent,
     // Three's positive Y rotation sends local +X toward world -Z, while the
     // toolkit bearing uses +Y south (the web's +Z), hence the sign inversion.
     rotationY: -Math.atan2(dz, dx),

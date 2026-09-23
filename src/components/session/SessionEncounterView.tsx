@@ -15,6 +15,7 @@ import { useCharacterData } from '@/api/useCharacterData';
 import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
+import { useSessionCastAim } from '@/api/useSessionCastAim';
 import { useSessionDoors } from '@/api/useSessionDoors';
 import { useSessionHold } from '@/api/useSessionHold';
 import { useSessionInteract } from '@/api/useSessionInteract';
@@ -632,6 +633,15 @@ function SessionEncounterScope({
   // During CELL aiming, `SessionCanvas` also sends a clicked creature's
   // observed occupied hex here. That keeps exposed-floor and entity-mesh aim
   // on this one conversion/submission path without selecting a victim.
+  const [areaAim, setAreaAim] = useState<CubeCoord | null>(null);
+  const areaTargets = useSessionCastAim(
+    sessionId,
+    member,
+    combat.cellCastDeclarationId,
+    areaAim ? cubeToPosition(areaAim) : null,
+    coherentDeclarations
+  );
+
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       if (combat.cellCastArmed) {
@@ -1906,6 +1916,8 @@ function SessionEncounterScope({
                       (experienceClock === ClockKind.TURN &&
                         combat.movementEnabled)
                     }
+                    onAreaAim={setAreaAim}
+                    areaTargets={areaTargets}
                     areaFootprint={
                       runEnded === null ? combat.cellCastFootprint : undefined
                     }

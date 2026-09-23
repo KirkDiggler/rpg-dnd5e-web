@@ -1,4 +1,6 @@
 import {
+  FootprintOrigin,
+  FootprintShape,
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -148,7 +150,13 @@ export function TargetSurface({
       {phase === 'targeting' && isCellTargeted && (
         <div className={styles.contextPrompt} data-phase="targeting">
           <span className={styles.turnPromptKicker}>{armedName} armed</span>
-          <strong>Pick a cell to aim toward</strong>
+          <strong>
+            {declaration.footprint?.shape === FootprintShape.TRIANGLE
+              ? 'Move the pointer to rotate the area; click to cast'
+              : declaration.footprint?.origin === FootprintOrigin.POINT
+                ? 'Pick a cell to place the area; click to cast'
+                : 'Pick a cell to aim toward'}
+          </strong>
           {castCost && <span>{castCost}</span>}
           {onCancelSelection && (
             <button

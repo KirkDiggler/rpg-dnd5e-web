@@ -1431,7 +1431,8 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // Excluded HERE rather than by leaving a hole in the table: an unlisted
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
-  if (bodyCase === 'sighted') {
+  // XP added in the catalog SDK release updates private state; narration is deferred.
+  if (bodyCase === 'sighted' || bodyCase === 'experienceGained') {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
@@ -1709,6 +1710,14 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     case 'activationResult': {
       const activation = event.body.value;
       switch (activation.result.case) {
+        case 'damageApplied':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            damage: activation.result.value,
+          });
         case 'stabilized':
           return Object.freeze({
             kind: event.kind,
