@@ -1,5 +1,6 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import { useSpellCatalog } from '../api/useSpellCatalog';
 import {
   getFightingStyleInfo,
   getLanguageInfo,
@@ -33,6 +34,7 @@ export function ChoiceRenderer({
   currentSelections,
   hasInvalidPersistedEquipmentSelection = false,
 }: ChoiceRendererProps) {
+  const spellCatalog = useSpellCatalog(choice.options?.case === 'spellOptions');
   // Check if it's an equipment choice with bundles (the special case we handle properly)
   if (
     choice.choiceType === ChoiceCategory.EQUIPMENT &&
@@ -194,7 +196,9 @@ export function ChoiceRenderer({
           choice={choice}
           available={choice.options.value.availableRefs}
           currentSelections={currentSelections}
-          getDisplayInfo={(ref: string) => ({ name: spellRefLabel(ref) })}
+          getDisplayInfo={(ref: string) => ({
+            name: `${spellCatalog.get(ref)?.name || spellRefLabel(ref)}${spellCatalog.get(ref)?.notYetImplemented ? ' (Not yet implemented)' : ''}`,
+          })}
           onSelectionChange={onSelectionChange}
         />
         {(choice.options.value.grants ?? []).length > 0 && (
@@ -221,6 +225,9 @@ export function ChoiceRenderer({
                 >
                   Granted by {grant.sourceName}
                 </span>
+                {spellCatalog.get(grant.spellRef)?.notYetImplemented && (
+                  <span className="block text-sm">Not yet implemented</span>
+                )}
               </button>
             ))}
           </div>

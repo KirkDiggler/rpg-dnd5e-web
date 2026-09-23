@@ -1,6 +1,7 @@
 import type { SpellcastingInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { BookOpen, Focus, Sparkles, Zap } from 'lucide-react';
+import { useSpellCatalog } from '../../../api/useSpellCatalog';
 import { spellRefLabel } from '../../../utils/spellRefs';
 
 interface SpellInfoDisplayProps {
@@ -25,6 +26,7 @@ export function SpellInfoDisplay({
   knownCantripRefs,
   knownSpellRefs,
 }: SpellInfoDisplayProps) {
+  const catalog = useSpellCatalog();
   const getAbilityDisplayName = (ability: string) => {
     const abilityMap: Record<string, string> = {
       intelligence: 'Intelligence',
@@ -204,7 +206,12 @@ export function SpellInfoDisplay({
           </div>
           <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {knownCantripRefs.map((ref) => (
-              <li key={ref}>{spellRefLabel(ref)}</li>
+              <li key={ref}>
+                {catalog.get(ref)?.name || spellRefLabel(ref)}
+                {catalog.get(ref)?.notYetImplemented && (
+                  <span> (Not yet implemented)</span>
+                )}
+              </li>
             ))}
           </ul>
         </div>
@@ -232,7 +239,12 @@ export function SpellInfoDisplay({
           </div>
           <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {knownSpellRefs.map((ref) => (
-              <li key={ref}>{spellRefLabel(ref)}</li>
+              <li key={ref}>
+                {catalog.get(ref)?.name || spellRefLabel(ref)}
+                {catalog.get(ref)?.notYetImplemented && (
+                  <span> (Not yet implemented)</span>
+                )}
+              </li>
             ))}
           </ul>
         </div>

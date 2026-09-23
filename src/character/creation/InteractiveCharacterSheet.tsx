@@ -1895,6 +1895,13 @@ export function InteractiveCharacterSheet({
             });
           }
 
+          // Preserve each subclass language requirement alongside class skills.
+          for (const languageChoice of choices.languages ?? []) {
+            choiceData.push(
+              convertLanguageChoiceToProto(languageChoice, ChoiceSource.CLASS)
+            );
+          }
+
           // Convert equipment choices
           if (choices.equipment) {
             choices.equipment.forEach((equipChoice) => {
