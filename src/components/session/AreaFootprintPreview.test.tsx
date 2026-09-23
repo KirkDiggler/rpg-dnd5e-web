@@ -164,3 +164,47 @@ describe('AreaFootprintPreview', () => {
     }
   });
 });
+
+it('renders an equilateral triangle with its tip at the caster and clipped grid inside', async () => {
+  const renderer = await ReactThreeTestRenderer.create(
+    <AreaFootprintPreview
+      footprint={{
+        ...box,
+        shape: FootprintShape.TRIANGLE,
+        origin: FootprintOrigin.CASTER,
+      }}
+      caster={{ x: 0, y: 0, z: 0 }}
+      aimed={{ x: 1, y: -1, z: 0 }}
+      hexSize={1}
+    />
+  );
+  const mesh = renderer.scene.findByProps({
+    name: 'area-footprint-preview-fill',
+  }).instance as THREE.Mesh;
+  const positions = mesh.geometry.getAttribute('position');
+  expect(positions.count).toBe(3);
+  const points = Array.from({ length: 3 }, (_, i) =>
+    new THREE.Vector3().fromBufferAttribute(positions, i)
+  );
+  expect(points[0]!.distanceTo(points[1]!)).toBeCloseTo(
+    points[1]!.distanceTo(points[2]!)
+  );
+  expect(points[0]!.distanceTo(points[2]!)).toBeCloseTo(
+    points[1]!.distanceTo(points[2]!)
+  );
+  const grid = renderer.scene.findByProps({
+    name: 'area-footprint-preview-grid',
+  }).instance as THREE.LineSegments;
+  const seams = grid.geometry.getAttribute('position');
+  expect(seams.count).toBeGreaterThan(0);
+  const depth = 3 * Math.sqrt(3);
+  for (let i = 0; i < seams.count; i++) {
+    const x = seams.getX(i),
+      z = seams.getZ(i);
+    expect(x).toBeGreaterThanOrEqual(-1e-6);
+    expect(x).toBeLessThanOrEqual(depth + 1e-6);
+    expect(Math.abs(z)).toBeLessThanOrEqual(x / Math.sqrt(3) + 1e-6);
+  }
+  expect(mesh.raycast).toBe(NON_INTERACTIVE_FOOTPRINT_RAYCAST);
+  await renderer.unmount();
+});
