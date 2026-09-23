@@ -220,4 +220,42 @@ describe('answering a reaction window on the mover’s turn', () => {
       })
     );
   });
+  it.each(['use', 'decline'])(
+    'answers Warding Flare before an attack roll: %s',
+    async (answer) => {
+      const declaration = create(DeclarationSchema, {
+        id: 'flare-window',
+        verb: Verb.REACT,
+        slot: Slot.REACTION,
+        available: true,
+        targetKind: TargetKind.NONE,
+        reaction: {
+          ref: 'dnd5e:features:warding_flare',
+          name: 'Warding Flare',
+        },
+        options: [{ id: 'use', label: 'Use Warding Flare' }],
+      });
+      render(<Harness declarations={[declaration]} />);
+      expect(screen.getByTestId('reaction-window').textContent).toContain(
+        'Warding Flare'
+      );
+      expect(screen.getByTestId('reaction-window').textContent).not.toContain(
+        'rolled'
+      );
+      fireEvent.click(
+        screen.getByTestId(
+          answer === 'use' ? 'reaction-option-use' : 'reaction-hold'
+        )
+      );
+      await waitFor(() =>
+        expect(hoisted.reactFn).toHaveBeenCalledExactlyOnceWith({
+          session: 'crypt-run',
+          member: 'fighter-1',
+          declarationId: 'flare-window',
+          choice: answer === 'use' ? ReactChoice.STRIKE : ReactChoice.HOLD,
+          ...(answer === 'use' ? { option: 'use' } : {}),
+        })
+      );
+    }
+  );
 });
