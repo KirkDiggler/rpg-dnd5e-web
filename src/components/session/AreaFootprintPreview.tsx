@@ -86,6 +86,47 @@ function clipToBox(
   };
 }
 
+function clipToTriangle(
+  from: GridPoint,
+  to: GridPoint,
+  depth: number
+): GridSegment | null {
+  // Triangle in bounding-box-local coordinates: tip (-depth/2, 0).
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  let start = 0;
+  let end = 1;
+  for (const [nx, nz, limit] of [
+    [1, 0, depth / 2],
+    [-1, Math.sqrt(3), depth / 2],
+    [-1, -Math.sqrt(3), depth / 2],
+  ]) {
+    const distance = nx! * from.x + nz! * from.z - limit!;
+    const change = nx! * dx + nz! * dz;
+    if (Math.abs(change) < CLIP_EPSILON) {
+      if (distance > 0) return null;
+      continue;
+    }
+    const t = -distance / change;
+    if (change > 0) end = Math.min(end, t);
+    else start = Math.max(start, t);
+    if (start > end) return null;
+  }
+  return {
+    from: { x: from.x + dx * start, z: from.z + dz * start },
+    to: { x: from.x + dx * end, z: from.z + dz * end },
+  };
+}
+
+function triangleGeometry(depth: number, width: number): THREE.ShapeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(-depth / 2, 0);
+  shape.lineTo(depth / 2, -width / 2);
+  shape.lineTo(depth / 2, width / 2);
+  shape.closePath();
+  return new THREE.ShapeGeometry(shape);
+}
+
 function clipToCircle(
   from: GridPoint,
   to: GridPoint,
@@ -151,7 +192,9 @@ function clipGridEdge(
           projection.depth / 2,
           projection.width / 2
         )
-      : clipToCircle(localFrom, localTo, projection.radius);
+      : projection.kind === 'triangle'
+        ? clipToTriangle(localFrom, localTo, projection.depth)
+        : clipToCircle(localFrom, localTo, projection.radius);
   if (!clipped) return null;
 
   const cos = Math.cos(projection.rotationY);
@@ -237,7 +280,9 @@ function ProjectedAreaFootprint({
     () =>
       projection.kind === 'box'
         ? new THREE.PlaneGeometry(projection.depth, projection.width)
-        : new THREE.CircleGeometry(projection.radius, CIRCLE_SEGMENTS),
+        : projection.kind === 'triangle'
+          ? triangleGeometry(projection.depth, projection.width)
+          : new THREE.CircleGeometry(projection.radius, CIRCLE_SEGMENTS),
     [projection]
   );
   const borderGeometry = useMemo(

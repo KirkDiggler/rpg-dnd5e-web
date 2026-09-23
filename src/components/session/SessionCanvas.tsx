@@ -57,7 +57,10 @@ import type {
   PublicMemberInfo,
   SightArea,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  FootprintShape,
+  MemberKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
 import {
   useCallback,
@@ -78,6 +81,7 @@ import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import { AreaFootprintPreview } from './AreaFootprintPreview';
+import { AreaTargetOutline } from './AreaTargetOutline';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
@@ -90,6 +94,7 @@ import { SightAreaOverlay } from './SightAreaOverlay';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { stanceRingColor } from './stanceRing';
 import { startAzimuth } from './startAzimuth';
+import { useAreaAim } from './useAreaAim';
 import { useMoveIndicator } from './useMoveIndicator';
 
 const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
@@ -280,6 +285,8 @@ export interface SessionCanvasProps {
   /** Provider-authored outline for the exact armed CELL cast. Placement uses
    * the existing effective floor/entity hover and never derives coverage. */
   areaFootprint?: Footprint;
+  onAreaAim?: (aim: CubeCoord | null) => void;
+  areaTargets?: readonly string[];
   sightAreas?: readonly SightArea[];
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
@@ -335,6 +342,8 @@ export function SessionScene({
   pathIndex = null,
   movementPreviewEnabled = true,
   areaFootprint,
+  onAreaAim,
+  areaTargets,
   sightAreas = [],
   turnLocked = false,
   movementBudgetFeet,
@@ -503,6 +512,12 @@ export function SessionScene({
     [otherMembers, handleTargetClick, onHexClick]
   );
 
+  const freeAreaAim = useAreaAim(
+    cellAimEnabled && areaFootprint?.shape === FootprintShape.TRIANGLE,
+    hexSize,
+    onHexClick
+  );
+
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
     hexSize,
     floorTiles: scene.floorTiles,
@@ -568,6 +583,11 @@ export function SessionScene({
     }
     return hoveredHex;
   }, [meshHoveredSubject, otherMembers, hoveredHex]);
+
+  const displayedAim = freeAreaAim ?? effectiveHoveredHex;
+  useEffect(() => {
+    onAreaAim?.(cellAimEnabled ? displayedAim : null);
+  }, [onAreaAim, cellAimEnabled, displayedAim]);
 
   // Which OTHER member, if any, sits under the hovered cell — the mesh's
   // own report wins outright when present; otherwise the SAME geometric
@@ -671,9 +691,22 @@ export function SessionScene({
       <AreaFootprintPreview
         footprint={areaFootprint}
         caster={myPosition}
-        aimed={effectiveHoveredHex}
+        aimed={displayedAim}
         hexSize={hexSize}
       />
+      {cellAimEnabled &&
+        (otherMembers ?? [])
+          .filter(
+            (member) =>
+              !member.remembered && areaTargets?.includes(member.subject)
+          )
+          .map((member) => (
+            <AreaTargetOutline
+              key={`area-target-${member.subject}`}
+              position={member.position}
+              hexSize={hexSize}
+            />
+          ))}
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}

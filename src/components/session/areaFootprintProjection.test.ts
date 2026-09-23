@@ -114,3 +114,40 @@ it('centers a point-origin radius on the aimed cell', () => {
   expect(projection?.kind).toBe('radius');
   expect(projection?.center).toEqual(cubeToWorld({ x: 2, y: -2, z: 0 }, 1));
 });
+
+describe('equilateral caster-tip triangle', () => {
+  it.each([
+    { x: 1, y: -1, z: 0 },
+    { x: 0, y: -1, z: 1 },
+    { x: -1, y: 1, z: 0 },
+  ])('keeps the tip fixed when aimed toward %j', (aimed) => {
+    const caster = { x: 0, y: 0, z: 0 };
+    const p = areaFootprintProjection({
+      footprint: footprint(FootprintShape.TRIANGLE, FootprintOrigin.CASTER),
+      caster,
+      aimed,
+      hexSize: 1,
+    });
+    expect(p?.kind).toBe('triangle');
+    if (p?.kind !== 'triangle') throw new Error('triangle missing');
+    expect(p.center.x - (Math.cos(p.rotationY) * p.depth) / 2).toBeCloseTo(0);
+    expect(p.center.z + (Math.sin(p.rotationY) * p.depth) / 2).toBeCloseTo(0);
+    expect(p.width).toBeCloseTo((2 * p.depth) / Math.sqrt(3));
+    expect(p.depth).toBeCloseTo((15 * Math.sqrt(3)) / 5);
+  });
+  it('refuses missing direction and an unsupported edge anchor', () => {
+    for (const origin of [
+      FootprintOrigin.CASTER,
+      FootprintOrigin.CASTER_EDGE,
+    ]) {
+      expect(
+        areaFootprintProjection({
+          footprint: footprint(FootprintShape.TRIANGLE, origin),
+          caster: { x: 0, y: 0, z: 0 },
+          aimed: { x: 0, y: 0, z: 0 },
+          hexSize: 1,
+        })
+      ).toBeNull();
+    }
+  });
+});
