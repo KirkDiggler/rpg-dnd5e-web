@@ -12,6 +12,7 @@ import {
   validateSiteExits,
   validateSiteFactions,
   validateSiteScenarios,
+  validateSiteTables,
   type SiteConcealments,
   type SiteDisposition,
   type SiteEnding,
@@ -20,6 +21,7 @@ import {
   type SiteIntelRecord,
   type SiteScenarios,
   type SiteScope,
+  type SiteTables,
 } from './siteScope';
 
 export interface EncodeSingleRoomDungeonInput {
@@ -31,6 +33,9 @@ export interface EncodeSingleRoomDungeonInput {
    * emitting v3 exactly as it always did. */
   /* Carried, never interpreted: the site's intel records (web#933's section
    * ported to the site root). Omitted means the document does not carry them. */
+  /** The answer tables this site declares, keyed by id — the shared thing a
+   * faction or a binding NAMES rather than copies (rpg-toolkit#1897). */
+  tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
@@ -47,7 +52,8 @@ export interface DecodeSingleRoomDungeonResult {
   key: string;
   draft: RoomDraft;
   /** Present only when the file carried at least one; absence is the authored
-   * state "no factions", never an empty list. */
+   * state "no tables", never an empty map. */
+  tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
@@ -75,6 +81,10 @@ const ROOT_KEYS = [
   'key',
   'play',
   'room',
+  // The engine's own root order: `tables` sits before `factions` in
+  // `SingleRoomSpec`, and this list mirrors it so a file the engine writes
+  // reads here in the order it was authored (rpg-toolkit#1897).
+  'tables',
   'factions',
   'dispositions',
   'intel',
@@ -120,6 +130,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * root 4 with room 3 is the only combination this build produces, and the Go
  * decoder's half of the seam says the same (`acceptedRootVersions`). */
 function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
+  // A ROOT TABLE IS A v4 FACT TOO (rpg-toolkit#1897): a room whose only
+  // authored orders are a named table must still claim v4, the same argument a
+  // `factions`-only or `doorBindings`-only room makes below.
+  if (Object.keys(scope.tables ?? {}).length > 0) return true;
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
   if ((scope.intel?.length ?? 0) > 0) return true;
@@ -164,6 +178,7 @@ export function encodeSingleRoomDungeon(
   };
   // The scope is validated on the way OUT as the draft is, so an encoder can
   // never write a site block the strict decoder would refuse to read back.
+  const tables = input.tables ? validateSiteTables(input.tables) : undefined;
   const factions = input.factions
     ? validateSiteFactions(input.factions)
     : undefined;
@@ -182,6 +197,7 @@ export function encodeSingleRoomDungeon(
     ? validateSiteConcealments(input.concealments)
     : undefined;
   const scope: SiteScope = {
+    ...(tables && Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions && factions.length > 0 ? { factions } : {}),
     ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
     ...(intel && intel.length > 0 ? { intel } : {}),
@@ -199,6 +215,7 @@ export function encodeSingleRoomDungeon(
     // ABSENT, NOT EMPTY: a document with no site scope emits the bytes it
     // emitted before these keys existed. Key order stays version, key, play,
     // room when they are absent, which is what makes the bytes identical.
+    ...(scope.tables ? { tables: scope.tables } : {}),
     ...(scope.factions ? { factions: scope.factions } : {}),
     ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
     ...(scope.intel ? { intel: scope.intel } : {}),
@@ -293,6 +310,13 @@ function decodeSingleRoomRoot(
   }
   // The site scope is validated BEFORE the room, so a typo in a faction is
   // reported as the typo it is rather than as a room problem.
+  //
+  // THE TABLES FIRST, because a faction and a monster binding may each NAME
+  // one and a name cannot be judged before the universe it names exists — the
+  // same ordering reason `intel` is read before a `holds` that names a record.
+  const tables = Object.hasOwn(root, 'tables')
+    ? validateSiteTables(root.tables)
+    : {};
   const factions = Object.hasOwn(root, 'factions')
     ? validateSiteFactions(root.factions)
     : [];
@@ -324,9 +348,17 @@ function decodeSingleRoomRoot(
     version: roomVersion ?? 3,
     draft: root.room,
   });
+  const draft = parseRoomDraftJson(draftJson);
+  // EVERY `table:` NAME MUST RESOLVE, and this is the one place both halves are
+  // visible (rpg-toolkit#1897): the room reader carries a name without judging
+  // it, and the scope reader declares the universe. Refused here so the author
+  // gets a sentence about the id they wrote rather than a compile that quietly
+  // orders nothing.
+  requireTableNames(draft, factions, tables);
   return {
     key: root.key,
-    draft: parseRoomDraftJson(draftJson),
+    draft,
+    ...(Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
     ...(intel.length > 0 ? { intel } : {}),
@@ -335,4 +367,36 @@ function decodeSingleRoomRoot(
     ...(Object.keys(scenarios).length > 0 ? { scenarios } : {}),
     ...(Object.keys(concealments).length > 0 ? { concealments } : {}),
   };
+}
+
+/** Refuse a `table:` that names nothing (rpg-toolkit#1897).
+ *
+ * TWO PLACES MAY NAME ONE — a faction and a monster binding — and the engine
+ * refuses both by name at their own paths ("faction %q names the table %q, and
+ * no table in this dungeon has that id" / the binding's twin). The builder says
+ * the same thing in its own words because it is judging before the server does,
+ * which is the whole point of the local pass.
+ *
+ * A NAME IS JUDGED HERE AND NOWHERE ELSE, because nowhere else holds both the
+ * name and the universe it names. */
+function requireTableNames(
+  draft: RoomDraft,
+  factions: SiteFaction[],
+  tables: SiteTables
+): void {
+  const declared = new Set(Object.keys(tables));
+  for (const faction of factions) {
+    if (faction.table !== undefined && !declared.has(faction.table))
+      throw new Error(
+        `Site faction ${faction.id} names the table ${faction.table}, and no table in this site has that id.`
+      );
+  }
+  for (const [id, binding] of Object.entries(
+    draft.room.monsterBindings ?? {}
+  )) {
+    if (binding.table !== undefined && !declared.has(binding.table))
+      throw new Error(
+        `Monster binding for ${id} names the table ${binding.table}, and no table in this site has that id.`
+      );
+  }
 }

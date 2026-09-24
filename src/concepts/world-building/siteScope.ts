@@ -51,13 +51,34 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
 export type SiteTemper = string | Record<string, number>;
 
 /** One declared faction. `on` is the shared answer table its members inherit,
- * validated by the ONE answer grammar; `temper` is the mix dealt per member. */
+ * validated by the ONE answer grammar; `temper` is the mix dealt per member.
+ *
+ * `table` NAMES A ROOT TABLE INSTEAD OF WRITING ONE (rpg-toolkit#1897). Both
+ * spellings may be written: the named table is the BASE and this faction's own
+ * `on:` is laid over it, nearest key winning wholesale — the same rule the
+ * whole orders stack uses. So a side may share one drill and still add a row. */
 export interface SiteFaction {
   id: string;
   mind?: string;
+  table?: string;
   on?: AnswerTableShape;
   temper?: SiteTemper;
 }
+
+/** One authored answer table at the root, keyed by its id in
+ * [SiteScope.tables] (rpg-toolkit#1897).
+ *
+ * THE SHAPE IS THE TABLE ITSELF, not a wrapper around one: the id is the MAP
+ * KEY, exactly as `concealments` does it, so there is no second `id:` field
+ * that could disagree with the first. The value is the same
+ * [AnswerTableShape] a faction's or a binding's `on:` carries, judged by the
+ * one grammar.
+ *
+ * WHY IT IS AT THE ROOT: a table is declared once and named from whatever
+ * answers it, and it stands nowhere — `factions`, `intel` and `concealments`
+ * are there for the same reason. Six goblins sharing one table write it once
+ * instead of six times. */
+export type SiteTables = Record<string, AnswerTableShape>;
 
 /** How two factions stand to each other, and the predicate that ends the
  * hostility. `until` is legal only with `stance: hostile`. */
@@ -70,6 +91,9 @@ export interface SiteDisposition {
 /** The authored site scope. Each key is absent when nothing was authored, so a
  * document with none of it writes v3 exactly as it always did. */
 export interface SiteScope {
+  /** The answer tables this site declared, keyed by id — the shared thing a
+   * faction or a binding NAMES rather than copies (rpg-toolkit#1897). */
+  tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
@@ -166,7 +190,7 @@ export interface SiteConcealmentSpec {
 /** The root `concealments:` map, keyed by id — the secret-vault shape. */
 export type SiteConcealments = Record<string, SiteConcealmentSpec>;
 
-const FACTION_KEYS = ['id', 'mind', 'on', 'temper'] as const;
+const FACTION_KEYS = ['id', 'mind', 'table', 'on', 'temper'] as const;
 const DISPOSITION_KEYS = ['between', 'stance', 'until'] as const;
 const INTEL_KEYS = ['id', 'reveals'] as const;
 const REVEALS_KEYS = ['door', 'fact', 'concealment'] as const;
@@ -223,6 +247,14 @@ export function validateSiteFactions(value: unknown): SiteFaction[] {
     ids.add(raw.id);
     const faction: SiteFaction = { id: raw.id };
     // ABSENT WHEN UNAUTHORED: each key is added only when the file wrote one.
+    // A TABLE NAME IS CARRIED, NOT RESOLVED here — whether it names a declared
+    // table needs the whole scope, and `validateSiteScope` checks every name
+    // once both halves are read (rpg-toolkit#1897).
+    if (raw.table !== undefined && raw.table !== null) {
+      if (typeof raw.table !== 'string' || !raw.table)
+        fail(`${path} table`, 'must name a declared table');
+      faction.table = raw.table;
+    }
     if (raw.mind !== undefined && raw.mind !== null) {
       if (typeof raw.mind !== 'string' || !raw.mind)
         fail(`${path} mind`, 'must name a placement id');
@@ -307,6 +339,7 @@ function isStance(word: string): word is Stance {
 }
 
 const SCOPE_KEYS = [
+  'tables',
   'factions',
   'dispositions',
   'intel',
@@ -446,6 +479,30 @@ export function validateSiteScenarios(value: unknown): SiteScenarios {
  * everywhere follows the lower-case-dash grammar. Carried, never graded: what
  * resolves — cells that are standable, props that are declared — is the
  * engine's question at `PutDungeon`. */
+/** The site's `tables:` — answer tables declared once and NAMED by whatever
+ * answers them (rpg-toolkit#1897).
+ *
+ * KEYED BY ID IN THE FILE, so the id is the map key and the value is the table
+ * itself, exactly as `concealments` does it. Each table's grammar is judged by
+ * the ONE answer grammar (`validateAnswerTable`), which is what makes a root
+ * table and a faction's `on:` and a binding's `on:` the same vocabulary rather
+ * than three nearly-equal ones.
+ *
+ * AN EMPTY TABLE IS NOT REFUSED HERE, and that is deliberate: the engine refuses
+ * a table that names a trigger and lists nothing under it, at the table's own
+ * path, so `{}` is caught there. What this refuses is the id, because an id
+ * nothing can name is the one defect with no other home. */
+export function validateSiteTables(value: unknown): SiteTables {
+  if (!isMapping(value)) fail('Site tables', 'must be a map');
+  const tables: SiteTables = {};
+  for (const [id, body] of Object.entries(value)) {
+    const path = `Site table ${id}`;
+    if (!FACTION_ID_RE.test(id)) fail(path, 'needs an id such as goblin-mind');
+    tables[id] = validateAnswerTable(body, path);
+  }
+  return tables;
+}
+
 export function validateSiteConcealments(value: unknown): SiteConcealments {
   if (!isMapping(value)) fail('Site concealments', 'must be a map');
   const concealments: SiteConcealments = {};
@@ -537,6 +594,13 @@ export function validateSiteScope(value: unknown): SiteScope {
   const raw = objectShape(value, 'Site scope');
   rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
   const scope: SiteScope = {};
+  // THE TABLES FIRST, because both a faction and a monster binding may NAME
+  // one, and a name cannot be judged before the universe it names exists — the
+  // same ordering reason `intel` comes before a `holds` that names a record.
+  if (Object.hasOwn(raw, 'tables')) {
+    const tables = validateSiteTables(raw.tables);
+    if (Object.keys(tables).length > 0) scope.tables = tables;
+  }
   if (Object.hasOwn(raw, 'factions')) {
     const factions = validateSiteFactions(raw.factions);
     if (factions.length > 0) scope.factions = factions;

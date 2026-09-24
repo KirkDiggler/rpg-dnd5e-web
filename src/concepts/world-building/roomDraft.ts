@@ -199,6 +199,11 @@ export interface RoomMonsterInteraction {
  * `round | down | fact | stance` shape the shared `PredicateEditor` already
  * authors for a disposition's `until` (v2 `PlaceSpec.Arrives`). */
 export interface RoomMonsterBinding extends RoomMonsterInteraction {
+  /** A root answer table this creature answers with, by id
+   * (rpg-toolkit#1897). The referenced table is the BASE this binding's own
+   * `on:` layers over — so a creature may share a table and override one
+   * trigger without copying the rest. Absent means it names no shared table. */
+  table?: string;
   on?: AnswerTableShape;
   temper?: string;
   actions?: string[];
@@ -663,6 +668,7 @@ const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
  * here (rpg-dnd5e-web#1201) — see `RoomMonsterInteraction` for why a priced
  * check is not a monster's fact. */
 const BINDING_KEYS = [
+  'table',
   'on',
   'temper',
   'actions',
@@ -800,6 +806,19 @@ function validateMonsterBindings(
     const block = objectShape(binding, `Monster binding for ${id}`);
     rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
     const parsed: RoomMonsterBinding = {};
+    // A TABLE NAME IS CARRIED, NOT RESOLVED (rpg-toolkit#1897). Whether the id
+    // names a table the SITE declares is the site scope's question, and this
+    // reader has no scope in hand — `decodeSingleRoomDungeon` checks it once,
+    // where both halves are visible, exactly as it does for `holds` naming an
+    // intel record.
+    if (Object.hasOwn(block, 'table')) {
+      const table = block.table;
+      if (typeof table !== 'string' || !table)
+        throw new Error(
+          `Monster binding for ${id} table must name a declared table.`
+        );
+      parsed.table = table;
+    }
     if (Object.hasOwn(block, 'on'))
       parsed.on = validateAnswerTable(block.on, `Monster binding for ${id} on`);
     if (Object.hasOwn(block, 'temper'))
@@ -872,6 +891,7 @@ function validateMonsterBindings(
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
     if (
+      parsed.table === undefined &&
       parsed.on === undefined &&
       parsed.temper === undefined &&
       parsed.actions === undefined &&

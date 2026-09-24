@@ -690,3 +690,123 @@ ${ROOM_BLOCK}
     }
   });
 });
+
+/**
+ * ANSWER TABLES AT THE ROOT (rpg-toolkit#1897) — a table declared once and
+ * NAMED by whatever answers it.
+ *
+ * THE ROW COUNTS ARE THE ASSERTION, deliberately. A test that only checked
+ * "the document loads" would pass with the whole feature ignored, which is the
+ * weakness an independent review found in the toolkit's first version of this
+ * (`require.Len(..., 1)` passing under every layering permutation). So each
+ * layer carries a DISTINGUISHABLE number of `time` rows and the count says
+ * which one won.
+ */
+describe('answer tables at the root', () => {
+  const TABLES_BLOCK = `tables:
+  goblin-drill:
+    time:
+      - { when: { enemy: reach }, attack: enemy }
+      - { when: { enemy: none }, hold: {} }`;
+
+  // `ROOM_BLOCK` already places `goblin-1` (in faction `goblins`) and declares
+  // the hall, so the only thing this adds is a bindings block underneath it.
+  const source = (root: string, bindings: string) =>
+    `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${root}\n${ROOM_BLOCK}\n    monsterBindings:\n${bindings}\n`;
+
+  it('reads a root table, and a binding that names it answers with both rows', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(TABLES_BLOCK, '      goblin-1: { table: goblin-drill }')
+    );
+    expect(decoded.tables).toEqual({
+      'goblin-drill': {
+        time: [
+          { when: { enemy: 'reach' }, attack: 'enemy' },
+          { when: { enemy: 'none' }, hold: {} },
+        ],
+      },
+    });
+    expect(decoded.draft.room.monsterBindings?.['goblin-1'].table).toBe(
+      'goblin-drill'
+    );
+  });
+
+  it('round-trips a root table and its names verbatim', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(TABLES_BLOCK, '      goblin-1: { table: goblin-drill }')
+    );
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+      tables: decoded.tables,
+      factions: decoded.factions,
+    });
+    // A ROOT TABLE IS A v4 FACT: a room whose only authored orders are a named
+    // table must still claim v4, not fall back to v3 bytes that cannot hold it.
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('tables:');
+    expect(emitted).toContain('table: goblin-drill');
+    const again = decodeSingleRoomDungeon(emitted);
+    expect(again.tables).toEqual(decoded.tables);
+    expect(again.draft.room.monsterBindings).toEqual(
+      decoded.draft.room.monsterBindings
+    );
+  });
+
+  it('refuses a binding naming a table the site does not declare', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(TABLES_BLOCK, '      goblin-1: { table: goblin-dril }')
+      )
+    ).toThrow(/names the table goblin-dril, and no table in this site/);
+  });
+
+  it('refuses a faction naming a table the site does not declare', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(
+          `factions:\n  - { id: watch, table: watch-dril }\n${TABLES_BLOCK}`,
+          '      goblin-1: { temper: aggressive }'
+        )
+      )
+    ).toThrow(
+      /faction watch names the table watch-dril, and no table in this site/
+    );
+  });
+
+  it('carries a faction naming a table, and both spellings coexist', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(
+        `factions:\n  - { id: watch, table: goblin-drill, temper: soldier }\n${TABLES_BLOCK}`,
+        '      goblin-1: { temper: aggressive }'
+      )
+    );
+    // BOTH the name and the faction's own `on:` are carried: the engine layers
+    // them (table under, `on:` over), so the builder must not choose between
+    // them — choosing would be the builder deciding a rule.
+    expect(decoded.factions).toEqual([
+      { id: 'watch', table: 'goblin-drill', temper: 'soldier' },
+    ]);
+  });
+
+  it('rejects a table id that is not lower-case-dash', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source('tables:\n  Goblin Drill:\n    time:\n      - { hold: {} }', '')
+      )
+    ).toThrow(/Site table Goblin Drill: needs an id such as goblin-mind/);
+  });
+
+  it('judges a root table with the ONE answer grammar', () => {
+    // The same refusal a binding's own `on:` earns, because it is the same
+    // validator — a second, nearly-equal grammar is what this avoids.
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(
+          'tables:\n  goblin-drill:\n    taunted:\n      - { hold: {} }',
+          ''
+        )
+      )
+    ).toThrow(/is not a trigger this build rolls/);
+  });
+});
