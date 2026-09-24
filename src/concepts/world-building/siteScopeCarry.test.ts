@@ -22,8 +22,19 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SCOPE_KEYS } from './siteScope';
 
-const SRC =
-  '/home/kirk/game-dev/rpg-dnd5e-web/.worktrees/1201-yaml-cleanup/src/concepts/world-building/';
+/**
+ * RESOLVED RELATIVE TO THIS FILE, never by an absolute path.
+ *
+ * The first version hardcoded the author's own worktree directory. It passed on
+ * that machine and failed CI with ENOENT — a test that can only pass where it
+ * was written is not a test, and this one shipped that way for exactly one CI
+ * run before the runner said so.
+ *
+ * `import.meta.dirname` rather than `fileURLToPath(new URL('.', import.meta.url))`:
+ * under Vitest's transform the URL form threw "The URL must be of scheme file"
+ * at module scope, while `dirname` is resolved directly.
+ */
+const SRC = `${import.meta.dirname}/`;
 
 /** The one file that carries a scope across every boundary. */
 function publishingSource(): string {
