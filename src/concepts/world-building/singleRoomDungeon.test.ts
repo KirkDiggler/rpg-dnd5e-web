@@ -34,7 +34,7 @@ function goldenDraft(): RoomDraft {
     {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 2, r: -1 },
+      startingCell: { location: { q: 2, r: -1 } },
     },
   ];
   return draft;
@@ -54,7 +54,7 @@ const ROOM_BLOCK = `room:
     propDeclarations: {}
     arrangementDeclarations: {}
     monsters:
-      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}`;
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}}, faction: goblins}`;
 
 const PLAY_BLOCK = `play: {void: transparent, lighting: bright, standing: centre-covered}`;
 
@@ -74,7 +74,7 @@ describe('single-room dungeon source', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 2, r: -1 },
+        startingCell: { location: { q: 2, r: -1 } },
       },
     ];
     const decoded = decodeSingleRoomDungeon(
@@ -140,7 +140,7 @@ room:
   room:
     implicitRegionId: room-1-region
     monsters:
-      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: -1}}
+      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: {location: {q: 2, r: -1}}}
     walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
     propDeclarations: {}
     arrangementDeclarations: {}
@@ -159,7 +159,7 @@ play:
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 2, r: -1 },
+        startingCell: { location: { q: 2, r: -1 } },
       },
     ]);
 
@@ -202,12 +202,12 @@ play:
         ref: 'dnd5e:monsters:skeleton',
         // Off painted floor and overlapping the start: encounter legality is
         // not a client question, so this source stays retainable verbatim.
-        cell: { q: 3, r: -3 },
+        startingCell: { location: { q: 3, r: -3 } },
       },
       {
         id: 'not-yet-modeled',
         ref: 'dnd5e:monsters:unknown-thing',
-        cell: { q: -2, r: 1 },
+        startingCell: { location: { q: -2, r: 1 } },
       },
     ];
     const decoded = decodeSingleRoomDungeon(
@@ -620,7 +620,12 @@ intel:
 ${ROOM_BLOCK}
 `;
     const decoded = decodeSingleRoomDungeon(source);
-    expect(decoded.exits).toEqual([{ id: 'entrance', cell: { q: 1, r: 3 } }]);
+    // AN EXIT KEEPS `cell` (rpg-project#501 §6.1). Only a MONSTER's placement
+    // gained `startingCell`: an exit is a way out rather than a creature, has
+    // no facing, and changing it would be a different decision.
+    expect(decoded.exits).toEqual([
+      { id: 'entrance', cell: { q: 1, r: 3 } },
+    ]);
     expect(decoded.endings).toEqual([
       { id: 'held-out', when: { round: 6 } },
       {

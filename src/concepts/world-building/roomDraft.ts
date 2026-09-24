@@ -1,5 +1,6 @@
 import { ANSWER_TEMPER, unknownTemperRefusal } from '@/author/answerVocabulary';
 import type { PredicateDoc } from '@/author/factionVocabulary';
+import { FACING_NAMES, isValidFacing } from '@/components/hex-grid/facingYaw';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -76,8 +77,34 @@ export interface RoomPropDeclaration {
 export interface RoomMonsterPlacement {
   id: string;
   ref: string;
-  cell: RoomHexCell;
+  /** WHERE IT STARTS, and which way it is looking (rpg-project#501 §6.1).
+   *
+   * `startingCell` NAMES WHEN. The engine reads this once, at compile, into
+   * `MonsterPlacement.At`, and NEVER writes a live position back into the
+   * document — so a bare `cell` invited the reading that it tracked movement.
+   * It does not: the file says where a creature begins, and the encounter owns
+   * where it is now.
+   *
+   * A HEX WITH A LOCATION HAS AN ORIENTATION, which is why `facing` is nested
+   * here rather than sitting beside the cell as a second field. `location` is
+   * required and `facing` is optional — absence means the asset's own facing,
+   * which is a default rather than a missing answer, because a model has no
+   * "no orientation". */
+  startingCell: RoomStartingCell;
   faction?: string;
+}
+
+/** A creature's authored start: the cell it stands on, and the direction it
+ * faces (rpg-project#501 §6.1).
+ *
+ * `facing` takes the EIGHT TRUE-COMPASS NAMES (`n|ne|e|se|s|sw|w|nw`), which
+ * live in world space and are therefore valid under both hex orientations
+ * (rpg-project#272). The engine CARRIES it and never reads it — it decides
+ * which way the model is turned when the door opens, and no rule branches on
+ * it — so the builder validates the word and asks nothing else of it. */
+export interface RoomStartingCell {
+  location: RoomHexCell;
+  facing?: string;
 }
 /** One placed prop's ORDERS — the FOURTH declaration kind, after
  * `propDeclarations`, `monsterBindings` and `doorBindings`, keyed by the same
@@ -321,10 +348,30 @@ export type RoomScenePresentation = Pick<
  * from the draft's own `version: 3`: v3 carries only the draft (the bytes
  * every document wrote before policies could be authored), and v4 carries the
  * site scope beside it (rpg-dnd5e-web#1160). A document with no scope keeps
- * emitting v3 byte-identically. */
+ * emitting v3 byte-identically.
+ *
+ * **v5 IS THE `startingCell` SHAPE** (rpg-project#501 §6.1). A draft written
+ * before that change stores `monsters[].cell`; the field is now
+ * `startingCell: { location, facing }`, so the old bytes are not a draft this
+ * build can read. The version is what TELLS THE TWO APART — a v3/v4 envelope is
+ * refused BY NAME with a sentence saying to rebuild it, rather than failing
+ * somewhere inside the shape with a message about a missing field.
+ *
+ * THE BUMP IS DELIBERATE AND KIRK'S CALL: *"migration is not important because
+ * there is only 1 [custom dungeon] and if I have to rebuild that one it would
+ * not be the end of the world."* So there is NO compatibility path here — the
+ * old spelling is not read, not deprecated, not migrated. It is refused, once,
+ * clearly. */
+/** The envelope version THIS BUILD WRITES — one number, in one place, because
+ * more than the writer needs it. `singleRoomDungeon`'s decoder mints an
+ * envelope around the room it just parsed, and it must mint the CURRENT shape
+ * rather than borrow `room.version` (which is the room draft's own axis and
+ * stays 3). Two copies of this number would be two things to forget. */
+export const ROOM_DRAFT_ENVELOPE_VERSION = 5;
+
 interface RoomDraftEnvelope {
   kind: typeof ROOM_DRAFT_KIND;
-  version: 3 | 4;
+  version: 3 | 4 | 5;
   draft: RoomDraft;
   scope?: SiteScope;
 }
@@ -442,7 +489,12 @@ export function placeRoomMonster(
   placement: RoomMonsterPlacement
 ): RoomDraft {
   if (!placement.id) throw new Error('Monster placement requires a stable id.');
-  if (!isCellWithinWorkspace(placement.cell, draft.workspace.hexRadius))
+  if (
+    !isCellWithinWorkspace(
+      placement.startingCell.location,
+      draft.workspace.hexRadius
+    )
+  )
     throw new Error('Monster placement is outside the authoring floor.');
   if (draft.room.monsters.some((monster) => monster.id === placement.id))
     throw new Error(`Monster id is already placed: ${placement.id}.`);
@@ -463,8 +515,20 @@ export function moveRoomMonster(
   if (!isCellWithinWorkspace(cell, draft.workspace.hexRadius))
     throw new Error('Monster placement is outside the authoring floor.');
   if (!draft.room.monsters.some((monster) => monster.id === id)) return draft;
+  // MOVING KEEPS THE FACING. A creature moved to another hex is the same
+  // creature — it still faces the way the author pointed it, and a move that
+  // dropped `facing` would silently re-aim it at the asset's default
+  // (rpg-project#501 §6.1: `startingCell` is one noun).
   const monsters = draft.room.monsters.map((monster) =>
-    monster.id === id ? { ...monster, cell: { ...cell } } : monster
+    monster.id === id
+      ? {
+          ...monster,
+          startingCell: {
+            ...monster.startingCell,
+            location: { ...cell },
+          },
+        }
+      : monster
   );
   return { ...draft, room: { ...draft.room, monsters } };
 }
@@ -585,6 +649,45 @@ function validateCell(cell: unknown, field: string): RoomHexCell {
   return { q: (cell as RoomHexCell).q, r: (cell as RoomHexCell).r };
 }
 
+/** A creature's authored start (`startingCell`): a required `location` and an
+ * optional `facing` (rpg-project#501 §6.1).
+ *
+ * A HEX WITH A LOCATION HAS AN ORIENTATION, so the two are one noun and the
+ * nesting says so. `location` is `validateCell`'s own shape; `facing` is the
+ * EIGHT COMPASS NAMES the engine carries, read from `facingYaw`'s one set
+ * rather than restated here (rpg-project#272: they live in world space and are
+ * valid under both hex orientations).
+ *
+ * ABSENT IS A DEFAULT, NOT A GAP. Omitting `facing` means the asset's own
+ * orientation, which is why the key is written only when an author chose one —
+ * and why this is not the "absent means something the author did not mean"
+ * case `holds` and `arrives` guard against. */
+function validateStartingCell(value: unknown, field: string): RoomStartingCell {
+  // A MISSING OR NON-OBJECT `startingCell` IS REPORTED BY ITS LOCATION
+  // (rpg-project#501 §6.1). `objectShape` would say "must be an object", which
+  // is true and less useful: the author who wrote `startingCell: null` or left
+  // it out has a creature with nowhere to stand, and
+  // "must contain integral axial coordinates" names the missing thing. So the
+  // object check is folded into the location read rather than standing in
+  // front of it.
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  rejectUnknownKeys(source, STARTING_CELL_KEYS, field);
+  const start: RoomStartingCell = {
+    location: validateCell(source.location, `${field} location`),
+  };
+  if (source.facing !== undefined && source.facing !== null) {
+    if (typeof source.facing !== 'string' || !isValidFacing(source.facing))
+      throw new Error(
+        `${field} facing must be one of ${FACING_NAMES.join(', ')}.`
+      );
+    start.facing = source.facing;
+  }
+  return start;
+}
+
 // `rejectUnknownKeys` / `objectShape` live in `strictShape.ts` and are
 // re-exported at the top of this module — one home, the same words.
 
@@ -663,7 +766,10 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
 export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
+const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'faction'] as const;
+/** What `startingCell` may carry. `location` is required and `facing` is not —
+ * a model has no "no orientation", so absence means the asset's own. */
+const STARTING_CELL_KEYS = ['location', 'facing'] as const;
 /** What a monster binding may carry. `intimidate` and `persuade` were removed
  * here (rpg-dnd5e-web#1201) — see `RoomMonsterInteraction` for why a priced
  * check is not a monster's fact. */
@@ -705,7 +811,10 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
     const monster: RoomMonsterPlacement = {
       id: source.id,
       ref: source.ref,
-      cell: validateCell(source.cell, `Monster ${source.id} cell`),
+      startingCell: validateStartingCell(
+        source.startingCell,
+        `Monster ${source.id} startingCell`
+      ),
     };
     // ABSENT WHEN UNAUTHORED: the key is added only when the file wrote one,
     // so an unauthored creature stays byte-identical to one from before
@@ -1021,9 +1130,14 @@ function validateDraft(value: unknown): RoomDraft {
   }
   const monsters = validateMonsters(room.monsters);
   for (const monster of monsters) {
-    if (!isCellWithinWorkspace(monster.cell, workspace.hexRadius))
+    if (
+      !isCellWithinWorkspace(
+        monster.startingCell.location,
+        workspace.hexRadius
+      )
+    )
       throw new Error(
-        `Monster ${monster.id} cell is outside the authoring floor.`
+        `Monster ${monster.id} startingCell is outside the authoring floor.`
       );
   }
   // The bindings are validated AFTER the monsters, because a binding names a
@@ -1109,11 +1223,14 @@ export function stringifyRoomDraft(
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
-      // ABSENT, NOT EMPTY: a document with no site scope keeps the v3 envelope
-      // bytes it always wrote. The envelope version is what decides whether a
-      // scope is read, exactly as the v1/v2 legacy paths decide whether
-      // `monsters`/`workspace` are synthesized.
-      version: carriesScope ? 4 : 3,
+      // ALWAYS v5, WHETHER OR NOT A SCOPE RIDES ALONG. Before the
+      // `startingCell` change this was `carriesScope ? 4 : 3`, because the
+      // version's only job was to say whether a scope could be present. It now
+      // has a second job — it says which MONSTER SHAPE the draft stores — and
+      // that is true of every draft this build writes, scope or no scope. So
+      // the version stops being conditional and the scope key stays absent
+      // when there is none.
+      version: ROOM_DRAFT_ENVELOPE_VERSION,
       draft: validateDraft(draft),
       ...(carriesScope ? { scope: validatedScope } : {}),
     } satisfies RoomDraftEnvelope,
@@ -1196,15 +1313,21 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
       scope: {},
     };
   }
-  if (envelope.version !== 3 && envelope.version !== 4)
-    throw new Error('Expected a version 1, 2, 3 or 4 room authoring draft.');
-  if (envelope.version === 3) {
-    if (Object.hasOwn(envelope, 'scope'))
-      throw new Error(
-        'A version 3 room authoring draft carries no site scope; a scope is a version 4 envelope.'
-      );
-    return { draft: validateDraft(envelope.draft), scope: {} };
-  }
+  if (envelope.version !== 3 && envelope.version !== 4 && envelope.version !== 5)
+    throw new Error('Expected a version 1, 2, 3, 4 or 5 room authoring draft.');
+  // v3 AND v4 STORE THE OLD MONSTER SHAPE, so they are refused BY NAME rather
+  // than handed to `validateDraft` to fail somewhere inside with a sentence
+  // about a missing field (rpg-project#501 §6.1). Kirk ruled migration out:
+  // there is one custom dungeon and rebuilding it is cheap. So the author is
+  // told the one thing that helps — this draft predates the change, rebuild it
+  // — instead of being told a monster is missing its `startingCell`.
+  if (envelope.version === 3 || envelope.version === 4)
+    throw new Error(
+      `This room authoring draft was saved before monsters carried a \`startingCell\` ` +
+        `(it is a version ${envelope.version} envelope, and this build writes version 5), ` +
+        'so its creatures store a bare `cell` this build no longer reads. ' +
+        'Rebuild the room rather than migrating it.'
+    );
   return {
     draft: validateDraft(envelope.draft),
     scope: validateSiteScope(envelope.scope ?? {}),

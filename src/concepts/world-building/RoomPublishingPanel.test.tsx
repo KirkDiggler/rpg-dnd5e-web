@@ -257,7 +257,7 @@ function richDraft(id = 'room-abc123'): RoomDraft {
   };
   draft.room.partyStart = { q: 0, r: 0 };
   draft.room.monsters = [
-    { id: 'skeleton-a', ref: 'dnd5e:monsters:skeleton', cell: { q: 1, r: 0 } },
+    { id: 'skeleton-a', ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 1, r: 0 } } },
   ];
   return draft;
 }
@@ -377,7 +377,7 @@ describe('RoomPublishingPanel — save to a new key', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 1, r: 0 },
+        startingCell: { location: { q: 1, r: 0 } },
       },
     ]);
     expect(decoded.draft.room.partyStart).toEqual({ q: 0, r: 0 });

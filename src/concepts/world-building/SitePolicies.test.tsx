@@ -251,7 +251,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
         monster={{
           id: 'stray',
           ref: 'dnd5e:monsters:zombie',
-          cell: { q: 0, r: 0 },
+          startingCell: { location: { q: 0, r: 0 } },
         }}
         room={fixture.draft.room}
       />
@@ -266,7 +266,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
         monster={{
           id: 'stray',
           ref: 'dnd5e:monsters:zombie',
-          cell: { q: 0, r: 0 },
+          startingCell: { location: { q: 0, r: 0 } },
           faction: 'ghosts',
         }}
         room={fixture.draft.room}

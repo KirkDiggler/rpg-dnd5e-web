@@ -272,13 +272,13 @@ describe('room snapshot document', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 2, r: -1 },
+        startingCell: { location: { q: 2, r: -1 } },
       },
       // A syntactically valid unknown monster id stays retainable.
       {
         id: 'not-yet-modeled',
         ref: 'dnd5e:monsters:unknown-thing',
-        cell: { q: -2, r: 1 },
+        startingCell: { location: { q: -2, r: 1 } },
       },
     ];
     const json = encodeRoomDocument(draft);

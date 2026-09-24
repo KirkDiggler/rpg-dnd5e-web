@@ -41,9 +41,10 @@ room:
     monsters:
       - id: skeleton-a
         ref: dnd5e:monsters:skeleton
-        cell:
-          q: 2
-          r: -1
+        startingCell:
+          location:
+            q: 2
+            r: -1
     partyStart:
       q: 0
       r: 0

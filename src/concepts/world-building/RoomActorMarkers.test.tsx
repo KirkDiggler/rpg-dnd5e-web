@@ -24,8 +24,8 @@ beforeAll(() => {
 
 it('uses the shared skeleton-safe model renderer inside each snapped actor transform', async () => {
   const monsters = [
-    { id: 'a', ref: 'dnd5e:monsters:skeleton', cell: { q: -1, r: 2 } },
-    { id: 'b', ref: 'dnd5e:monsters:skeleton', cell: { q: 2, r: -1 } },
+    { id: 'a', ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: -1, r: 2 } } },
+    { id: 'b', ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: -1 } } },
   ];
   const renderer = await ReactThreeTestRenderer.create(
     <RoomActorMarkers
@@ -46,9 +46,9 @@ it('uses the shared skeleton-safe model renderer inside each snapped actor trans
       );
       const center = cubeToWorld(
         {
-          x: monster.cell.q,
-          y: -monster.cell.q - monster.cell.r,
-          z: monster.cell.r,
+          x: monster.startingCell.location.q,
+          y: -monster.startingCell.location.q - monster.startingCell.location.r,
+          z: monster.startingCell.location.r,
         },
         HEX_SIZE
       );

@@ -110,7 +110,7 @@ function MonsterMarker({
   selected: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
-  const center = roomActorCenter(placement.cell);
+  const center = roomActorCenter(placement.startingCell.location);
   const label = paletteNameForRef(placement.ref);
   const refId = placement.ref.startsWith('dnd5e:monsters:')
     ? placement.ref.slice('dnd5e:monsters:'.length)

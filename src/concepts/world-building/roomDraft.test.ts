@@ -14,6 +14,7 @@ import {
   reconcileRoomDraft,
   remapRoomDeclarations,
   removeRoomMonster,
+  ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
@@ -141,7 +142,11 @@ describe('room authoring draft', () => {
       parseRoomDraftJson(
         JSON.stringify({
           kind: 'rpg-room-authoring-draft',
-          version: 3,
+          // THE CURRENT VERSION, because this probes WORKSPACE bounds
+          // (rpg-project#501 §6.1). A v3 envelope is refused earlier and by
+          // name — it stored the old monster shape — so pinning 3 here would
+          // test the wrong refusal.
+          version: ROOM_DRAFT_ENVELOPE_VERSION,
           draft: {
             ...draft,
             workspace: { hexRadius: 100, horizontalLimit: 200 },
@@ -449,7 +454,7 @@ describe('room draft v3 migration and structural exactness', () => {
     const withActor = placeRoomMonster(painted, {
       id: 'actor-1',
       ref: 'dnd5e:monsters:zombie',
-      cell: { q: 2, r: -1 },
+      startingCell: { location: { q: 2, r: -1 } },
     });
     expect(saveRoomDraft(storage, withActor)).toBeNull();
 
@@ -461,7 +466,10 @@ describe('room draft v3 migration and structural exactness', () => {
     const written = JSON.parse(
       storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
     ) as { version: number; draft: RoomDraft };
-    expect(written.version).toBe(3);
+    // The CURRENT envelope version, whatever it is this build — this test is
+    // about which KEY is written and that legacy bytes are left alone, not
+    // about the number (rpg-project#501 §6.1 moved it to 5).
+    expect(written.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(written.draft.room.monsters).toHaveLength(1);
   });
 
@@ -518,7 +526,7 @@ describe('room draft v3 migration and structural exactness', () => {
         {
           id: 'm',
           ref: 'dnd5e:monsters:zombie',
-          cell: { q: 0, r: 0 },
+          startingCell: { location: { q: 0, r: 0 } },
           facing: 0,
         },
       ] as unknown as RoomDraft['room']['monsters'];
@@ -652,18 +660,30 @@ describe('room draft v3 migration and structural exactness', () => {
     // weapon reference is refused, while a syntactically valid unknown
     // monster id stays editable.
     expectRejected(
-      [{ id: 'm1', ref: 'dnd5e:weapons:longsword', cell: { q: 0, r: 0 } }],
+      [
+        {
+          id: 'm1',
+          ref: 'dnd5e:weapons:longsword',
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+      ],
       /ref must be a monster reference/
     );
     expectRejected(
-      [{ id: 'm1', ref: 'dnd5e:monsters', cell: { q: 0, r: 0 } }],
+      [
+        {
+          id: 'm1',
+          ref: 'dnd5e:monsters',
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+      ],
       /ref must be a monster reference/
     );
     const unknownId = withMonsters([
       {
         id: 'homebrew-1',
         ref: 'dnd5e:monsters:not-yet-modeled',
-        cell: { q: 0, r: 0 },
+        startingCell: { location: { q: 0, r: 0 } },
       },
     ]);
     expect(
@@ -672,29 +692,123 @@ describe('room draft v3 migration and structural exactness', () => {
       {
         id: 'homebrew-1',
         ref: 'dnd5e:monsters:not-yet-modeled',
-        cell: { q: 0, r: 0 },
+        startingCell: { location: { q: 0, r: 0 } },
       },
     ]);
 
     expectRejected(
-      [{ id: 'm1', ref: 'dnd5e:monsters:zombie', cell: { q: 0.5, r: 0 } }],
+      [
+        {
+          id: 'm1',
+          ref: 'dnd5e:monsters:zombie',
+          startingCell: { location: { q: 0.5, r: 0 } },
+        },
+      ],
       /must contain integral axial coordinates/
     );
     expectRejected(
-      [{ id: 'm1', ref: 'dnd5e:monsters:zombie', cell: { q: 7, r: 0 } }],
+      [
+        {
+          id: 'm1',
+          ref: 'dnd5e:monsters:zombie',
+          startingCell: { location: { q: 7, r: 0 } },
+        },
+      ],
       /outside the authoring floor/
     );
     expectRejected(
       [
-        { id: 'm1', ref: 'dnd5e:monsters:zombie', cell: { q: 0, r: 0 } },
-        { id: 'm1', ref: 'dnd5e:monsters:skeleton', cell: { q: 1, r: 0 } },
+        {
+          id: 'm1',
+          ref: 'dnd5e:monsters:zombie',
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+        {
+          id: 'm1',
+          ref: 'dnd5e:monsters:skeleton',
+          startingCell: { location: { q: 1, r: 0 } },
+        },
       ],
       /stable nonempty unique ids are required/
     );
     expectRejected(
-      [{ id: 'm1', ref: 'dnd5e:monsters:zombie', cell: null }],
+      [{ id: 'm1', ref: 'dnd5e:monsters:zombie', startingCell: null }],
       /must contain integral axial coordinates/
     );
+  });
+
+  /**
+   * A CREATURE'S START IS A CELL WITH A FACING (rpg-project#501 §6.1), and the
+   * two facts travel together.
+   *
+   * THESE EXIST BECAUSE A MUTATION SURVIVED. Dropping `facing` from
+   * `moveRoomMonster` — writing `{ location }` instead of spreading the start —
+   * left the WHOLE SUITE GREEN, because no test authored a facing at all. The
+   * behaviour was written and nothing held it, which is the same weakness an
+   * independent review found in the toolkit's three-layer test.
+   */
+  it('carries a creature’s authored facing through the round trip', () => {
+    const base = createRoomDraft(
+      createEmptyScene('scene-facing'),
+      'room-facing'
+    );
+    base.room.walkableHexes = [{ q: 0, r: 0 }];
+    const placed = placeRoomMonster(base, {
+      id: 'guard-1',
+      ref: 'dnd5e:monsters:thug',
+      startingCell: { location: { q: 0, r: 0 }, facing: 'ne' },
+    });
+    expect(placed.room.monsters[0].startingCell).toEqual({
+      location: { q: 0, r: 0 },
+      facing: 'ne',
+    });
+    expect(
+      parseRoomDraftJson(stringifyRoomDraft(placed)).room.monsters[0]
+        .startingCell
+    ).toEqual({ location: { q: 0, r: 0 }, facing: 'ne' });
+  });
+
+  it('refuses a facing outside the eight compass names', () => {
+    // The vocabulary is closed, so a word outside it is refused with the names
+    // that ARE legal rather than carried to the engine.
+    const base = createRoomDraft(createEmptyScene('scene-bad'), 'room-bad');
+    base.room.walkableHexes = [{ q: 0, r: 0 }];
+    expect(() =>
+      stringifyRoomDraft({
+        ...base,
+        room: {
+          ...base.room,
+          monsters: [
+            {
+              id: 'guard-1',
+              ref: 'dnd5e:monsters:thug',
+              startingCell: { location: { q: 0, r: 0 }, facing: 'north' },
+            },
+          ],
+        },
+      })
+    ).toThrow(/facing must be one of n, ne, e, se, s, sw, w, nw/);
+  });
+
+  it('moving a creature keeps the facing it was authored with', () => {
+    // THE MOVED CREATURE IS THE SAME CREATURE: a move changes WHERE it stands
+    // and must not silently re-aim it at the asset's default, which is exactly
+    // what dropping the field would do.
+    const base = createRoomDraft(createEmptyScene('scene-move'), 'room-move');
+    base.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ];
+    const placed = placeRoomMonster(base, {
+      id: 'guard-1',
+      ref: 'dnd5e:monsters:thug',
+      startingCell: { location: { q: 0, r: 0 }, facing: 'sw' },
+    });
+    const moved = moveRoomMonster(placed, 'guard-1', { q: 1, r: 0 });
+    expect(moved.room.monsters[0].startingCell).toEqual({
+      location: { q: 1, r: 0 },
+      facing: 'sw',
+    });
   });
 
   it('round trips monster orders, and an unauthored faction stays absent', () => {
@@ -706,10 +820,14 @@ describe('room draft v3 migration and structural exactness', () => {
       placeRoomMonster(base, {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
-        cell: { q: 1, r: 0 },
+        startingCell: { location: { q: 1, r: 0 } },
         faction: 'goblins',
       }),
-      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } }
+      {
+        id: 'goblin-2',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 2, r: 0 } },
+      }
     );
     withActors.room.monsterBindings = {
       'goblin-1': {
@@ -751,7 +869,11 @@ describe('room draft v3 migration and structural exactness', () => {
       'room-temper'
     );
     draft.room.monsters = [
-      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 1, r: 0 } },
+      },
     ];
     const rejection = (value: unknown) => {
       (draft.room as unknown as Record<string, unknown>).monsterBindings = {
@@ -791,7 +913,11 @@ describe('room draft v3 migration and structural exactness', () => {
       'room-orphan'
     );
     draft.room.monsters = [
-      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 1, r: 0 } },
+      },
     ];
     const rejection = (value: unknown) => {
       (draft.room as unknown as Record<string, unknown>).monsterBindings =
@@ -838,8 +964,16 @@ describe('room draft v3 migration and structural exactness', () => {
   it('drops the orders when their creature is removed, leaving no orphan', () => {
     const draft = createRoomDraft(createEmptyScene('scene-drop'), 'room-drop');
     draft.room.monsters = [
-      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
-      { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', cell: { q: 2, r: 0 } },
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 1, r: 0 } },
+      },
+      {
+        id: 'goblin-2',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 2, r: 0 } },
+      },
     ];
     draft.room.monsterBindings = {
       'goblin-1': { actions: ['dnd5e:weapons:scimitar'] },
@@ -859,7 +993,11 @@ describe('room draft v3 migration and structural exactness', () => {
   it('writes no monsterBindings and no faction when nothing authored them', () => {
     const draft = createRoomDraft(createEmptyScene('scene-none'), 'room-none');
     draft.room.monsters = [
-      { id: 'goblin-1', ref: 'dnd5e:monsters:goblin', cell: { q: 1, r: 0 } },
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 1, r: 0 } },
+      },
     ];
     const json = stringifyRoomDraft(draft);
     expect(json).not.toContain('monsterBindings');
@@ -963,7 +1101,7 @@ describe('room draft v3 migration and structural exactness', () => {
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
-        cell: { q: 1, r: 0 },
+        startingCell: { location: { q: 1, r: 0 } },
         faction: 'The Goblins',
       },
     ];
@@ -980,7 +1118,7 @@ describe('room draft v3 migration and structural exactness', () => {
     const withActor = placeRoomMonster(draft, {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 5, r: -5 },
+      startingCell: { location: { q: 5, r: -5 } },
     });
     const withStart = setRoomPartyStart(withActor, { q: 5, r: -5 });
     const roundTrip = parseRoomDraftJson(stringifyRoomDraft(withStart));
@@ -988,7 +1126,7 @@ describe('room draft v3 migration and structural exactness', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 5, r: -5 },
+        startingCell: { location: { q: 5, r: -5 } },
       },
     ]);
     expect(roundTrip.room.partyStart).toEqual({ q: 5, r: -5 });
@@ -1016,14 +1154,14 @@ describe('room draft v3 migration and structural exactness', () => {
     draft = placeRoomMonster(draft, {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 1, r: -1 },
+      startingCell: { location: { q: 1, r: -1 } },
     });
     // A move retains the minted identity and only changes the cell.
     const moved = moveRoomMonster(draft, 'skeleton-a', { q: 2, r: -2 });
     expect(moved.room.monsters[0]).toEqual({
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 2, r: -2 },
+      startingCell: { location: { q: 2, r: -2 } },
     });
     // No-op mutations return the same draft so the editor commits nothing.
     expect(moveRoomMonster(draft, 'absent', { q: 0, r: 0 })).toBe(draft);
@@ -1038,7 +1176,7 @@ describe('room draft v3 migration and structural exactness', () => {
       placeRoomMonster(draft, {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:zombie',
-        cell: { q: 0, r: 0 },
+        startingCell: { location: { q: 0, r: 0 } },
       })
     ).toThrow(/already placed/);
     const removed = removeRoomMonster(moved, 'skeleton-a');
@@ -1068,7 +1206,7 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
     dispositions: [{ between: ['goblins', 'party'], stance: 'hostile' }],
   };
 
-  it('keeps a document with no scope emitting the byte-identical v3 envelope', () => {
+  it('writes the CURRENT envelope version, and no scope key when there is none', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const bare = stringifyRoomDraft(draft);
     // No scope, or an explicitly empty one, is the same document.
@@ -1077,18 +1215,24 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
       bare
     );
     const envelope = JSON.parse(bare) as { version: number; scope?: unknown };
-    expect(envelope.version).toBe(3);
+    // THE VERSION IS NO LONGER CONDITIONAL (rpg-project#501 §6.1). It used to
+    // be `carriesScope ? 4 : 3`, because its only job was to say whether a
+    // scope could be present. It now also says which MONSTER SHAPE the draft
+    // stores — `startingCell` — and that is true of every draft this build
+    // writes. So the version is constant and the SCOPE key is what comes and
+    // goes, which is the part this test is really about.
+    expect(envelope.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect('scope' in envelope).toBe(false);
   });
 
-  it('writes a v4 envelope carrying the scope and reads it back', () => {
+  it('writes an envelope carrying the scope and reads it back', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const json = stringifyRoomDraft(draft, scope);
     const envelope = JSON.parse(json) as {
       version: number;
       scope: typeof scope;
     };
-    expect(envelope.version).toBe(4);
+    expect(envelope.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(envelope.scope).toEqual(scope);
     expect(parseRoomDocumentJson(json)).toEqual({ draft, scope });
   });
@@ -1111,15 +1255,20 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
     expect(() => parseRoomDraftJson(stringifyRoomDraft(draft, scope))).toThrow(
       /carries a site scope/
     );
-    // A scope under a version that cannot mean it is refused, not ignored.
-    const v3WithScope = JSON.stringify({
+    // A PRE-`startingCell` ENVELOPE IS REFUSED BY NAME (rpg-project#501 §6.1),
+    // which is now what a v3 envelope means — it stored `monsters[].cell`, a
+    // shape this build no longer reads. The sentence names the change and says
+    // to rebuild, because Kirk ruled migration out (there is one custom
+    // dungeon). A scope riding along does not change that: the shape is the
+    // older one either way.
+    const v3 = JSON.stringify({
       kind: 'rpg-room-authoring-draft',
       version: 3,
       draft: JSON.parse(stringifyRoomDraft(draft)).draft,
       scope,
     });
-    expect(() => parseRoomDocumentJson(v3WithScope)).toThrow(
-      /version 3 room authoring draft carries no site scope/
+    expect(() => parseRoomDocumentJson(v3)).toThrow(
+      /saved before monsters carried a `startingCell`/
     );
   });
 

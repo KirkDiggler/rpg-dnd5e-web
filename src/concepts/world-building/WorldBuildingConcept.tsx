@@ -706,7 +706,7 @@ export function WorldBuildingConcept({
       const next = placeRoomMonster(roomDraft, {
         id,
         ref: armedMonsterRef,
-        cell: { ...cell },
+        startingCell: { location: { ...cell } },
       });
       commit(scene, selectedIds, next.room);
       setSelectedActorId(id);
@@ -3043,8 +3043,9 @@ export function WorldBuildingConcept({
                     data-actor-id={monster.id}
                   >
                     <span>
-                      {paletteNameForRef(monster.ref)} ({monster.cell.q},{' '}
-                      {monster.cell.r})
+                      {paletteNameForRef(monster.ref)} (
+                      {monster.startingCell.location.q},{' '}
+                      {monster.startingCell.location.r})
                     </span>
                     <button
                       type="button"

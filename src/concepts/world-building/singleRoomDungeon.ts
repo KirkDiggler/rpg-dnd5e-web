@@ -1,5 +1,6 @@
 import { parse, stringify } from 'yaml';
 import {
+  ROOM_DRAFT_ENVELOPE_VERSION,
   parseRoomDraftJson,
   stringifyRoomDraft,
   type RoomDraft,
@@ -338,14 +339,27 @@ function decodeSingleRoomRoot(
     : {};
   if (!isPlainObject(root.room))
     throw new Error('Single-room source is missing a room.');
-  // The embedded room draft keeps ITS OWN version, and it is passed through
-  // rather than forced to 3. Forcing it would silently accept a room claiming
-  // a version this build cannot read; passing it through makes the refusal name
-  // the real gap instead of hiding it behind the root's version.
-  const roomVersion = (root.room as { version?: unknown }).version;
+  // THREE VERSION AXES MEET HERE, AND THIS LINE USED TO CONFLATE TWO
+  // (rpg-project#501 §6.1):
+  //
+  //   root `version:`       the DIALECT — 3 or 4, which keys the file may hold
+  //   `room.version:`       the ROOM DRAFT's shape — stays 3, a separate
+  //                         artifact (`carriesV4Keys` says so above)
+  //   the ENVELOPE version  the shape of the STORED draft this wrapper mints
+  //
+  // This wrote `version: roomVersion ?? 3`, borrowing the room's number for the
+  // envelope. That worked only while the two happened to agree. When the
+  // envelope went to 5 for `startingCell`, borrowing the room's 3 made this
+  // build REJECT ITS OWN freshly-decoded document — caught by the suite, which
+  // is why the wrapper no longer borrows.
+  //
+  // The room's own version is NOT dropped: it stays on `root.room` and
+  // `validateDraft` judges it where it belongs, so a room claiming a version
+  // this build cannot read is still refused by name rather than silently
+  // accepted.
   const draftJson = JSON.stringify({
     kind: 'rpg-room-authoring-draft',
-    version: roomVersion ?? 3,
+    version: ROOM_DRAFT_ENVELOPE_VERSION,
     draft: root.room,
   });
   const draft = parseRoomDraftJson(draftJson);

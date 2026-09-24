@@ -78,13 +78,13 @@ room:
       - {
           id: goblin-1,
           ref: 'dnd5e:monsters:goblin',
-          cell: { q: 2, r: 0 },
+          startingCell: {location: {q: 2, r: 0}},
           faction: goblins,
         }
       - {
           id: bandit-1,
           ref: 'dnd5e:monsters:bandit',
-          cell: { q: 3, r: 0 },
+          startingCell: {location: {q: 3, r: 0}},
           faction: bandits,
         }
       # No `faction`: this one is the kind's default side, which is NOT a
@@ -92,5 +92,5 @@ room:
       - {
           id: skeleton-a,
           ref: 'dnd5e:monsters:skeleton',
-          cell: { q: 1, r: -1 },
+          startingCell: {location: {q: 1, r: -1}},
         }

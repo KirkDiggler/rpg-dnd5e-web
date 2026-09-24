@@ -21,6 +21,7 @@ import {
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
+  ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
   type RoomDraft,
@@ -1797,9 +1798,13 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    // THE CURRENT DRAFT-ENVELOPE VERSION (rpg-project#501 §6.1). It was
+    // pinned to 3 while the envelope's only job was to say whether a scope
+    // rode along; it now also says which MONSTER SHAPE the draft stores, so a
+    // save writes the version this build actually produces.
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
   });
 
   it('keeps corrupt current bytes and untouched legacy bytes until an explicit save', () => {
@@ -1851,9 +1856,13 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    // THE CURRENT DRAFT-ENVELOPE VERSION (rpg-project#501 §6.1). It was
+    // pinned to 3 while the envelope's only job was to say whether a scope
+    // rode along; it now also says which MONSTER SHAPE the draft stores, so a
+    // save writes the version this build actually produces.
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1888,9 +1897,12 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         idFactory={deterministicIds()}
       />
     );
+    // THE MIGRATED DRAFT IS REWRITTEN AT THE CURRENT ENVELOPE VERSION, while
+    // the LEGACY RECOVERY COPY IS LEFT EXACTLY AS IT WAS — which is the claim
+    // this test exists to make (rpg-project#501 §6.1 moved the number to 5).
     expect(
       JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -2129,7 +2141,7 @@ describe('room actor authoring', () => {
     expect(actors().monsters).toHaveLength(1);
     const placed = actors().monsters[0];
     expect(placed.ref).toBe('dnd5e:monsters:skeleton');
-    expect(placed.cell).toEqual({ q: 1, r: 0 });
+    expect(placed.startingCell.location).toEqual({ q: 1, r: 0 });
     // A structurally valid placement on unpainted ground is retained: the
     // encounter decides legality at Play, not this editor.
     expect(
@@ -2150,14 +2162,23 @@ describe('room actor authoring', () => {
     expect(actors().monsters[0]).toEqual({
       id: placed.id,
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 2, r: -2 },
+      // THE MOVE KEEPS THE FACING (rpg-project#501 §6.1): `startingCell` is one
+      // noun, so moving a creature to another hex does not re-aim it. This
+      // placement authored no facing, so the object carries only `location`.
+      startingCell: { location: { q: 2, r: -2 } },
     });
 
     // One whole-room Undo, one Redo.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(actors().monsters[0].cell).toEqual({ q: 1, r: 0 });
+    expect(actors().monsters[0].startingCell.location).toEqual({
+      q: 1,
+      r: 0,
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-    expect(actors().monsters[0].cell).toEqual({ q: 2, r: -2 });
+    expect(actors().monsters[0].startingCell.location).toEqual({
+      q: 2,
+      r: -2,
+    });
 
     // Repeat placement keeps arming until the tool changes.
     fireEvent.click(
@@ -2588,7 +2609,7 @@ describe('WorldBuildingConcept room publishing', () => {
       const stored = JSON.parse(
         storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
       ) as { version: number; scope?: SiteScope };
-      expect(stored.version).toBe(4);
+      expect(stored.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
       expect(stored.scope?.factions?.[0]?.id).toBe('goblins');
     });
     first.unmount();
