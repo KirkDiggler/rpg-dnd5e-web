@@ -46,7 +46,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
-import type { SiteScope } from './siteScope';
+import { renderScope, scopeFrom, type SiteScope } from './siteScope';
 
 /** The stable "nothing authored" scope. A caller that passes no scope must
  * not re-create an object on every render, or the `yaml` memo below would
@@ -279,20 +279,11 @@ export function useRoomPublishing({
         yaml: encodeSingleRoomDungeon({
           key: trimmedKey,
           draft,
-          // EVERY ROOT NOUN IS PASSED AT BOTH CALL SITES, and this list is the
-          // one place a key can go missing. Slice 2 taught the ENCODER about
-          // `tables` and left both call sites alone, so an authored table was
-          // dropped from the published YAML while the local draft still
-          // carried it — a walk that reads the draft cannot see that, which is
-          // how it reached Kirk's walk (rpg-dnd5e-web#1201).
-          tables: scope.tables,
-          factions: scope.factions,
-          dispositions: scope.dispositions,
-          intel: scope.intel,
-          exits: scope.exits,
-          endings: scope.endings,
-          scenarios: scope.scenarios,
-          concealments: scope.concealments,
+          // THE WHOLE SCOPE, SPREAD BY THE ONE FUNCTION THAT KNOWS ITS KEYS
+          // (rpg-dnd5e-web#1201). This site and the publish path used to name
+          // every root noun by hand; `tables` went missing from both, so an
+          // authored table never reached the published YAML.
+          ...renderScope(scope),
         }),
         error: null,
       };
@@ -401,17 +392,9 @@ export function useRoomPublishing({
         yamlText = encodeSingleRoomDungeon({
           key: trimmed,
           draft: current,
-          // The publish path's copy of the same list — see the `encoded` memo
-          // above for why every root noun has to be named at BOTH sites
-          // (rpg-dnd5e-web#1201).
-          tables: currentScope.tables,
-          factions: currentScope.factions,
-          dispositions: currentScope.dispositions,
-          intel: currentScope.intel,
-          exits: currentScope.exits,
-          endings: currentScope.endings,
-          scenarios: currentScope.scenarios,
-          concealments: currentScope.concealments,
+          // The publish path spreads the same one declaration — see the
+          // `encoded` memo above (rpg-dnd5e-web#1201).
+          ...renderScope(currentScope),
         });
       } catch (err) {
         setError(
@@ -561,23 +544,17 @@ export function useRoomPublishing({
       );
       return false;
     }
-    // THE THIRD COPY OF THIS LIST, AND THE SECOND ONE TO GO WRONG. Every root
-    // noun `decodeSingleRoomDungeon` returns has to be named here or it is
-    // dropped on the way IN — which is what happened to `tables`: an imported
-    // document's root table vanished from the site scope, the Tables panel
-    // listed nothing, and a creature naming it still showed the name because
-    // the BINDING kept its reference while the DECLARATION was gone.
-    // (rpg-dnd5e-web#1201, found on Kirk's walk.)
-    const accepted = onImportDraftRef.current(decoded.draft, {
-      ...(decoded.tables ? { tables: decoded.tables } : {}),
-      ...(decoded.factions ? { factions: decoded.factions } : {}),
-      ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
-      ...(decoded.intel ? { intel: decoded.intel } : {}),
-      ...(decoded.exits ? { exits: decoded.exits } : {}),
-      ...(decoded.endings ? { endings: decoded.endings } : {}),
-      ...(decoded.scenarios ? { scenarios: decoded.scenarios } : {}),
-      ...(decoded.concealments ? { concealments: decoded.concealments } : {}),
-    });
+    // NO LIST HERE ANY MORE (rpg-dnd5e-web#1201). This used to name every root
+    // noun by hand, and `tables` went missing: an imported document's root
+    // table vanished from the site scope, the Tables panel listed nothing, and
+    // a creature naming it still showed the name because the BINDING kept its
+    // reference while the DECLARATION was gone. `scopeFrom` reads the one
+    // declaration, so a key added to `SiteScope` crosses this boundary without
+    // anyone remembering to come back here.
+    const accepted = onImportDraftRef.current(
+      decoded.draft,
+      scopeFrom(decoded)
+    );
     if (!accepted) return false;
     // The imported file's root key becomes the publication key for the
     // imported room identity; pending confirmations and the "saved

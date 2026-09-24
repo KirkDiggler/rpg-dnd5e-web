@@ -340,14 +340,15 @@ function isStance(word: string): word is Stance {
 
 /** EVERY KEY THE SITE SCOPE CARRIES, in the root's own order.
  *
- * EXPORTED (rpg-dnd5e-web#1201) so a test can hold the import and both publish
- * call sites to it. A key added to `SiteScope` has to be wired in three places,
- * and on this branch `tables` was missed in TWO of them — first both encode
- * call sites, then the import that rebuilds the scope key by key. Both times
- * the form looked like it worked and the document silently lost the key.
+ * A key added to `SiteScope` has to be carried across four boundaries, and on
+ * this branch `tables` was missed at THREE of them — both encode call sites and
+ * the import that rebuilds the scope key by key. Each time the form looked like
+ * it worked and the document silently lost the key.
  *
- * THIS LIST IS THE SINGLE DECLARATION those three sites are judged against,
- * rather than a fourth copy that can drift from them. */
+ * This list names them once. `scopeFrom` and `renderScope` below are the only
+ * two things that read it, so the boundaries hold no lists of their own —
+ * and `siteScopeCarry.test.ts` still guards it, because a key added to
+ * `SiteScope` and NOT to this list is invisible to every one of them. */
 export const SCOPE_KEYS = [
   'tables',
   'factions',
@@ -358,6 +359,50 @@ export const SCOPE_KEYS = [
   'scenarios',
   'concealments',
 ] as const;
+
+/**
+ * Copy the AUTHORED keys out of anything shaped like a scope — a decoded
+ * document, an editor scope, a partial patch.
+ *
+ * THIS IS THE ONE FUNCTION THE BOUNDARIES CALL, and it exists because the
+ * boundaries used to spell the list out by hand. Three of them got it wrong for
+ * `tables`, and the failure is silent by construction: a missing spread leaves
+ * a perfectly valid `SiteScope`, so TypeScript is satisfied and the document
+ * quietly loses the key.
+ *
+ * ABSENCE IS THE AUTHORED STATE, so a key that is `undefined` on the source is
+ * absent on the result rather than present-and-undefined. That is the same law
+ * the encoder's "emit only what was authored" rule keeps, and keeping it here
+ * means the boundaries cannot disagree about it.
+ */
+export function scopeFrom(source: Partial<SiteScope>): SiteScope {
+  const scope: SiteScope = {};
+  for (const key of SCOPE_KEYS) {
+    const value = source[key];
+    if (value !== undefined) {
+      // Each key's own type is preserved: only the presence test is shared.
+      (scope as Record<string, unknown>)[key] = value;
+    }
+  }
+  return scope;
+}
+
+/**
+ * Spread a scope back out for emission, in `SCOPE_KEYS`' order — the root's own
+ * order, which is what makes the bytes stable.
+ *
+ * TYPED AS `SiteScope`, NOT as a record of `unknown`. The result is spread into
+ * `EncodeSingleRoomDungeonInput`, so each key has to keep the type that
+ * interface demands: an `unknown`-valued record typechecks here and fails at
+ * every call site, which is the wrong place to learn about it.
+ *
+ * The alternative at every call site is eight hand-written `...(scope.x ? {
+ * x: scope.x } : {})` spreads, which is precisely the list that went stale
+ * three times. One key, one line, one place to add the next one.
+ */
+export function renderScope(scope: SiteScope): SiteScope {
+  return scopeFrom(scope);
+}
 
 /** The site's `intel:` records, in authored order. An id is unique and follows
  * the same lower-case-dash grammar as a faction id; `reveals` is REQUIRED and

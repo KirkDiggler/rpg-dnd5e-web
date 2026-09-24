@@ -6,6 +6,8 @@ import {
   type RoomDraft,
 } from './roomDraft';
 import {
+  renderScope,
+  scopeFrom,
   validateIntel,
   validateSiteConcealments,
   validateSiteDispositions,
@@ -13,6 +15,7 @@ import {
   validateSiteExits,
   validateSiteFactions,
   validateSiteScenarios,
+  validateSiteScope,
   validateSiteTables,
   type SiteConcealments,
   type SiteDisposition,
@@ -193,36 +196,14 @@ export function encodeSingleRoomDungeon(
   };
   // The scope is validated on the way OUT as the draft is, so an encoder can
   // never write a site block the strict decoder would refuse to read back.
-  const tables = input.tables ? validateSiteTables(input.tables) : undefined;
-  const factions = input.factions
-    ? validateSiteFactions(input.factions)
-    : undefined;
-  const dispositions = input.dispositions
-    ? validateSiteDispositions(input.dispositions)
-    : undefined;
-  const intel = input.intel ? validateIntel(input.intel) : undefined;
-  const exits = input.exits ? validateSiteExits(input.exits) : undefined;
-  const endings = input.endings
-    ? validateSiteEndings(input.endings)
-    : undefined;
-  const scenarios = input.scenarios
-    ? validateSiteScenarios(input.scenarios)
-    : undefined;
-  const concealments = input.concealments
-    ? validateSiteConcealments(input.concealments)
-    : undefined;
-  const scope: SiteScope = {
-    ...(tables && Object.keys(tables).length > 0 ? { tables } : {}),
-    ...(factions && factions.length > 0 ? { factions } : {}),
-    ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
-    ...(intel && intel.length > 0 ? { intel } : {}),
-    ...(exits && exits.length > 0 ? { exits } : {}),
-    ...(endings && endings.length > 0 ? { endings } : {}),
-    ...(scenarios && Object.keys(scenarios).length > 0 ? { scenarios } : {}),
-    ...(concealments && Object.keys(concealments).length > 0
-      ? { concealments }
-      : {}),
-  };
+  //
+  // ONE CALL, NOT EIGHT (rpg-dnd5e-web#1201). This used to validate each field
+  // by name and then re-list the survivors when building the scope — two more
+  // copies of the key list that could go stale, and the reason the encoder's
+  // input interface gained `tables` while both publish call sites did not.
+  // `validateSiteScope` already owns the per-key validation AND the
+  // "an empty value is an absent key" rule this block was open-coding.
+  const scope = validateSiteScope(scopeFrom(input));
   return stringify({
     version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
     key: input.key,
@@ -230,14 +211,9 @@ export function encodeSingleRoomDungeon(
     // ABSENT, NOT EMPTY: a document with no site scope emits the bytes it
     // emitted before these keys existed. Key order stays version, key, play,
     // room when they are absent, which is what makes the bytes identical.
-    ...(scope.tables ? { tables: scope.tables } : {}),
-    ...(scope.factions ? { factions: scope.factions } : {}),
-    ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
-    ...(scope.intel ? { intel: scope.intel } : {}),
-    ...(scope.exits ? { exits: scope.exits } : {}),
-    ...(scope.endings ? { endings: scope.endings } : {}),
-    ...(scope.scenarios ? { scenarios: scope.scenarios } : {}),
-    ...(scope.concealments ? { concealments: scope.concealments } : {}),
+    // `renderScope` writes them in `SCOPE_KEYS`' order — the root's own — and
+    // is the one place the list lives (rpg-dnd5e-web#1201).
+    ...renderScope(scope),
     room: draft.draft,
   });
 }
