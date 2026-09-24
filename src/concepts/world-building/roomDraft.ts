@@ -1131,10 +1131,7 @@ function validateDraft(value: unknown): RoomDraft {
   const monsters = validateMonsters(room.monsters);
   for (const monster of monsters) {
     if (
-      !isCellWithinWorkspace(
-        monster.startingCell.location,
-        workspace.hexRadius
-      )
+      !isCellWithinWorkspace(monster.startingCell.location, workspace.hexRadius)
     )
       throw new Error(
         `Monster ${monster.id} startingCell is outside the authoring floor.`
@@ -1313,7 +1310,11 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
       scope: {},
     };
   }
-  if (envelope.version !== 3 && envelope.version !== 4 && envelope.version !== 5)
+  if (
+    envelope.version !== 3 &&
+    envelope.version !== 4 &&
+    envelope.version !== 5
+  )
     throw new Error('Expected a version 1, 2, 3, 4 or 5 room authoring draft.');
   // v3 AND v4 STORE THE OLD MONSTER SHAPE, so they are refused BY NAME rather
   // than handed to `validateDraft` to fail somewhere inside with a sentence

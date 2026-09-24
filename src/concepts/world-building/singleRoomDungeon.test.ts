@@ -623,9 +623,7 @@ ${ROOM_BLOCK}
     // AN EXIT KEEPS `cell` (rpg-project#501 §6.1). Only a MONSTER's placement
     // gained `startingCell`: an exit is a way out rather than a creature, has
     // no facing, and changing it would be a different decision.
-    expect(decoded.exits).toEqual([
-      { id: 'entrance', cell: { q: 1, r: 3 } },
-    ]);
+    expect(decoded.exits).toEqual([{ id: 'entrance', cell: { q: 1, r: 3 } }]);
     expect(decoded.endings).toEqual([
       { id: 'held-out', when: { round: 6 } },
       {

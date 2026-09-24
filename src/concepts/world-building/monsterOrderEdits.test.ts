@@ -36,7 +36,11 @@ function roomWithTwoGoblins() {
       ref: 'dnd5e:monsters:goblin',
       startingCell: { location: { q: 1, r: 0 } },
     }),
-    { id: 'goblin-2', ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } } }
+    {
+      id: 'goblin-2',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 2, r: 0 } },
+    }
   );
 }
 

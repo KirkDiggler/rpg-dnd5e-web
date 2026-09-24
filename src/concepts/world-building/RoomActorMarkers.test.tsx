@@ -24,8 +24,16 @@ beforeAll(() => {
 
 it('uses the shared skeleton-safe model renderer inside each snapped actor transform', async () => {
   const monsters = [
-    { id: 'a', ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: -1, r: 2 } } },
-    { id: 'b', ref: 'dnd5e:monsters:skeleton', startingCell: { location: { q: 2, r: -1 } } },
+    {
+      id: 'a',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: -1, r: 2 } },
+    },
+    {
+      id: 'b',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 2, r: -1 } },
+    },
   ];
   const renderer = await ReactThreeTestRenderer.create(
     <RoomActorMarkers
