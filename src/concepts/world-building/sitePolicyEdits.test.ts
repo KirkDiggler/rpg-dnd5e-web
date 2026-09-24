@@ -12,14 +12,20 @@ import {
   addSiteAnswerEntry,
   addSiteDisposition,
   addSiteFaction,
+  addSiteTable,
+  addSiteTableAnswerEntry,
   defaultAnswerEntry,
   entryWord,
   patchSiteAnswerEntry,
   patchSiteFaction,
+  patchSiteTableAnswerEntry,
   removeSiteAnswerEntry,
   removeSiteDisposition,
   removeSiteFaction,
+  removeSiteTable,
+  removeSiteTableAnswerEntry,
   renameSiteFaction,
+  renameSiteTable,
   setAnswerEntryWord,
   updateSiteDisposition,
 } from './sitePolicyEdits';
@@ -133,5 +139,131 @@ describe('site policy edits — mechanics', () => {
     });
     expect(entryWord(defaultAnswerEntry('intimidated'))).toBe('flee');
     expect(entryWord(defaultAnswerEntry('time'))).toBe('hold');
+  });
+});
+
+/* THE ROOT ANSWER TABLES (rpg-toolkit#1897, rpg-dnd5e-web#1201). Declared once
+ * at the site root, named by a faction or a binding — so the one thing these
+ * must get right is that a table's IDENTITY and a reference to it are separate
+ * facts: renaming or removing the declaration NEVER rewrites a name that
+ * points at it. That is `renameSiteFaction`'s law one noun over, and the reason
+ * is the same: the engine's refusal, by name and with the fix, is the sentence
+ * worth surfacing. */
+describe('site root tables — mechanics', () => {
+  const withTables = {
+    ...baseScope,
+    tables: {
+      'goblin-drill': { time: [{ when: { enemy: 'reach' }, attack: 'enemy' }] },
+      'watch-drill': {},
+    },
+  };
+
+  it('declares a fresh table, born empty', () => {
+    const next = addSiteTable({ tables: { 'table-1': {} } });
+    expect(Object.keys(next.tables ?? {})).toEqual(['table-1', 'table-2']);
+    // EMPTY IS A LEGAL AUTHORED STATE FOR A TABLE, unlike a binding: an
+    // unnamed table waiting for its second creature is the point of declaring
+    // one at the root, and the grammar judges it whether or not it is named.
+    expect(next.tables?.['table-2']).toEqual({});
+  });
+
+  it('renames the declaration and leaves every reference as written', () => {
+    const scope = {
+      ...withTables,
+      factions: [{ id: 'goblins', table: 'goblin-drill' }],
+    };
+    const renamed = renameSiteTable(scope, 'goblin-drill', 'goblin-orders');
+    expect(Object.keys(renamed.tables ?? {})).toEqual([
+      'goblin-orders',
+      'watch-drill',
+    ]);
+    // The faction still names the OLD id — resolving it is the engine's job
+    // (`factionTable` refuses it by name), and that sentence is the one to
+    // surface. THE MUTATION: make `renameSiteTable` rewrite references and
+    // this assertion fails.
+    expect(renamed.factions?.[0]?.table).toBe('goblin-drill');
+  });
+
+  it('refuses a rename onto a name that already exists, rather than deleting it', () => {
+    // A naive implementation assigns into an object literal and silently
+    // overwrites `watch-drill`. This is the assertion that catches it.
+    const collided = renameSiteTable(withTables, 'goblin-drill', 'watch-drill');
+    expect(collided).toBe(withTables);
+    expect(Object.keys(collided.tables ?? {}).sort()).toEqual([
+      'goblin-drill',
+      'watch-drill',
+    ]);
+  });
+
+  it('renames nothing when the id is not declared', () => {
+    expect(renameSiteTable(withTables, 'nope', 'other')).toBe(withTables);
+  });
+
+  it('removes the declaration and leaves references to it alone', () => {
+    const scope = {
+      ...withTables,
+      factions: [{ id: 'goblins', table: 'goblin-drill' }],
+    };
+    const removed = removeSiteTable(scope, 'goblin-drill');
+    expect(Object.keys(removed.tables ?? {})).toEqual(['watch-drill']);
+    expect(removed.factions?.[0]?.table).toBe('goblin-drill');
+  });
+
+  it('removing the last table drops the key, so "none" is absence and not an empty map', () => {
+    const removed = removeSiteTable(
+      removeSiteTable({ tables: { 'goblin-drill': {} } }, 'goblin-drill')
+    );
+    expect(removed.tables).toBeUndefined();
+    expect('tables' in removed).toBe(false);
+  });
+
+  it('adds, patches and removes an entry, dropping an emptied trigger but keeping the table', () => {
+    const withEntry = addSiteTableAnswerEntry(
+      withTables,
+      'watch-drill',
+      'time'
+    );
+    expect(withEntry.tables?.['watch-drill']?.time).toHaveLength(1);
+    // A new entry is a document the decoder reads, the same claim the faction
+    // test makes about the same default.
+    expect(() =>
+      validateAnswerTable(withEntry.tables?.['watch-drill'], 'Site table')
+    ).not.toThrow();
+
+    const patched = patchSiteTableAnswerEntry(
+      withEntry,
+      'watch-drill',
+      'time',
+      0,
+      { weight: 3, say: 'Drill!', hold: {} }
+    );
+    expect(patched.tables?.['watch-drill']?.time?.[0]).toEqual({
+      weight: 3,
+      say: 'Drill!',
+      hold: {},
+    });
+
+    const removed = removeSiteTableAnswerEntry(
+      patched,
+      'watch-drill',
+      'time',
+      0
+    );
+    // The emptied TRIGGER goes; the declared TABLE stays — clearing the last
+    // entry is not the same act as removing the declaration.
+    expect(removed.tables?.['watch-drill']).toEqual({});
+    expect(Object.hasOwn(removed.tables ?? {}, 'watch-drill')).toBe(true);
+  });
+
+  it('an edit against a table that is not declared changes nothing', () => {
+    expect(addSiteTableAnswerEntry(withTables, 'nope', 'time')).toBe(
+      withTables
+    );
+    expect(
+      patchSiteTableAnswerEntry(withTables, 'nope', 'time', 0, { hold: {} })
+    ).toBe(withTables);
+    expect(removeSiteTableAnswerEntry(withTables, 'nope', 'time', 0)).toBe(
+      withTables
+    );
   });
 });

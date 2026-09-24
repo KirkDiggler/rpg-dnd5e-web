@@ -60,6 +60,33 @@ describe('normalizeBinding — absence is the only empty representation', () => 
   it('a binding with nothing left is undefined, never {}', () => {
     expect(normalizeBinding({})).toBeUndefined();
   });
+
+  /* A NAMED ROOT TABLE SURVIVES NORMALIZATION (rpg-dnd5e-web#1201).
+   *
+   * `table` is not an override that can be empty: it is a REFERENCE, and a
+   * reference has no "empty" state — it either names a table or is absent. So
+   * it is the one key here that is kept verbatim rather than dropped when the
+   * rest of the block is thin.
+   *
+   * THIS TEST EXISTS BECAUSE THE KEY WAS SILENTLY LOST. `normalizeBinding`
+   * normalized `on`, `temper`, `actions`, `holds` and `arrives` and simply
+   * forgot `table`; `BINDING_KEYS` and the reader both accept it, so a binding
+   * authored with a named table READ fine and then lost the name the moment
+   * any orders edit ran through this function — add a trigger, change the
+   * temper, remove a hold. The mutation that proves it: delete the
+   * `next.table` case in `normalizeBinding` and this test fails. */
+  it('keeps a named root table, which is a reference and has no empty state', () => {
+    expect(normalizeBinding({ table: 'goblin-drill' })).toEqual({
+      table: 'goblin-drill',
+    });
+    expect(
+      normalizeBinding({ table: 'goblin-drill', actions: [SCIMITAR] })
+    ).toEqual({ table: 'goblin-drill', actions: [SCIMITAR] });
+  });
+
+  it('an empty table name is dropped, because a name that names nothing is not a reference', () => {
+    expect(normalizeBinding({ table: '' })).toBeUndefined();
+  });
 });
 
 describe('withBinding — the map level, which the caller owns', () => {

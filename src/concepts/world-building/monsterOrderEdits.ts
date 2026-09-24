@@ -58,6 +58,16 @@ export function normalizeBinding(
   next: RoomMonsterBinding
 ): RoomMonsterBinding | undefined {
   const normalized: RoomMonsterBinding = {};
+  // A NAMED ROOT TABLE IS A REFERENCE, SO IT IS KEPT VERBATIM (rpg-toolkit#1897).
+  // Every other key here is an override that can be emptied and must then be
+  // dropped; a reference has no empty state — it names a table or it is absent.
+  // Its absence was a real bug: the reader and `BINDING_KEYS` accept `table`,
+  // so a binding authored with one read fine and then lost the name on the
+  // first orders edit, because this function never copied it. There is no
+  // validation to do here — whether the name resolves is
+  // `requireTableNames`' question, asked once where the table universe is.
+  if (next.table !== undefined && next.table !== '')
+    normalized.table = next.table;
   if (next.on !== undefined && Object.keys(next.on).length > 0)
     normalized.on = next.on;
   if (next.temper !== undefined && next.temper !== '')
