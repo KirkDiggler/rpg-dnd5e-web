@@ -2053,7 +2053,11 @@ describe('room actor authoring', () => {
     monsters: Array<{
       id: string;
       ref: string;
-      cell: { q: number; r: number };
+      // `startingCell`, not `cell` (rpg-project#501 §6.1). This inline type
+      // describes what the viewport emits, so it moves with the shape — a
+      // stale copy here is what CI's typecheck caught after the local suite
+      // passed, because vitest transpiles without checking types.
+      startingCell: { location: { q: number; r: number }; facing?: string };
     }>;
     partyStart: { q: number; r: number } | null;
     selectedActorId: string | null;
