@@ -54,20 +54,16 @@ import type {
 import {
   addMonsterAction,
   addMonsterAnswerEntry,
-  addMonsterCheck,
   addMonsterHold,
   moveMonsterAction,
   patchMonsterAnswerEntry,
-  patchMonsterCheck,
   removeMonsterAction,
   removeMonsterAnswerEntry,
-  removeMonsterCheck,
   removeMonsterHold,
   setMonsterArrives,
   setMonsterTemper,
 } from './monsterOrderEdits';
 import type {
-  RoomCheckApproach,
   RoomGameplayData,
   RoomMonsterBinding,
   RoomMonsterPlacement,
@@ -177,19 +173,6 @@ function predicateText(predicate: PredicateDoc): string {
     predicate as { stance: { between: [string, string]; is: string } }
   ).stance;
   return `stance ${stance.between[0]} ↔ ${stance.between[1]} is ${stance.is}`;
-}
-
-/** A check route list as one line of text — the read-only form of
- * `intimidate:`/`persuade:` (`dc 12 intimidation`, `dc 15 strength via
- * dnd5e:items:crowbar`). */
-function checkText(rows: RoomCheckApproach[]): string {
-  return rows
-    .map((row) =>
-      row.tool === undefined
-        ? `dc ${row.dc} ${row.ability}`
-        : `dc ${row.dc} ${row.ability} via ${row.tool}`
-    )
-    .join(', ');
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -1730,101 +1713,6 @@ export function ArrivesEditor({
   );
 }
 
-/** The check rows a creature carries under `intimidate:`/`persuade:`. Each row
- * is one authored route (`{ ability, dc, tool? }`), CARRIED verbatim: whether
- * an ability ref resolves and what an absent DC derives is the engine's
- * judgement, so the form never validates either. An empty list is refused by
- * the encoder, which is why the last row's removal goes through
- * `removeMonsterCheck` and deletes the key. */
-function CreatureCheckEditor({
-  label,
-  testId,
-  rows,
-  onAdd,
-  onPatch,
-  onRemove,
-}: {
-  label: string;
-  testId: string;
-  rows: RoomCheckApproach[];
-  onAdd: (row: RoomCheckApproach) => void;
-  onPatch: (index: number, row: RoomCheckApproach) => void;
-  onRemove: (index: number) => void;
-}) {
-  return (
-    <div className="wb-creature-checks" data-testid={testId}>
-      <h6>{label}</h6>
-      {rows.length === 0 ? (
-        <p className="wb-help" data-testid={`${testId}-none`}>
-          Nothing authored — the rulebook derives the DC from the stat block.
-        </p>
-      ) : (
-        <ul className="wb-policy-entries">
-          {rows.map((row, index) => (
-            <li key={index} className="wb-policy-entry">
-              <label>
-                <span>Ability</span>
-                <input
-                  aria-label={`${label} ability ${index}`}
-                  value={row.ability}
-                  onChange={(event) =>
-                    onPatch(index, { ...row, ability: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>DC</span>
-                <input
-                  type="number"
-                  step={1}
-                  aria-label={`${label} dc ${index}`}
-                  value={String(row.dc)}
-                  onChange={(event) =>
-                    onPatch(index, { ...row, dc: Number(event.target.value) })
-                  }
-                />
-              </label>
-              <label>
-                <span>Tool</span>
-                <input
-                  aria-label={`${label} tool ${index}`}
-                  value={row.tool ?? ''}
-                  placeholder="(none)"
-                  onChange={(event) => {
-                    const next: RoomCheckApproach = {
-                      ability: row.ability,
-                      dc: row.dc,
-                    };
-                    // ABSENT WHEN UNAUTHORED: an empty box removes the key
-                    // rather than writing `tool: ''`.
-                    if (event.target.value !== '')
-                      next.tool = event.target.value;
-                    onPatch(index, next);
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                aria-label={`Remove ${label} row ${index}`}
-                onClick={() => onRemove(index)}
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button
-        type="button"
-        aria-label={`Add ${label} row`}
-        onClick={() => onAdd({ ability: '', dc: 1 })}
-      >
-        Add route
-      </button>
-    </div>
-  );
-}
-
 /** The intel records this creature CARRIES (`holds`). The record itself is a
  * site noun edited in the Intel panel — this is only which of them this
  * creature holds, so the picker offers what the site declares and never
@@ -2025,14 +1913,6 @@ export function CreatureOrders({
             {binding.actions !== undefined && (
               <p className="wb-help">actions {binding.actions.join(', ')}</p>
             )}
-            {binding.intimidate !== undefined && (
-              <p className="wb-help">
-                intimidate {checkText(binding.intimidate)}
-              </p>
-            )}
-            {binding.persuade !== undefined && (
-              <p className="wb-help">persuade {checkText(binding.persuade)}</p>
-            )}
             {binding.holds !== undefined && (
               <p className="wb-help">holds {binding.holds.join(', ')}</p>
             )}
@@ -2045,45 +1925,17 @@ export function CreatureOrders({
         )}
       </div>
 
-      {/* The creature's interaction and reserve facts (web#1176). They are
+      {/* The creature's reserve and holdings facts (web#1176). They are
           neither inherited nor overridden — a faction never supplies them — so
-          they are their own block rather than a row in Overrides. */}
+          they are their own block rather than a row in Overrides.
+
+          THE PRICED CHECKS WERE HERE AND ARE GONE (rpg-dnd5e-web#1201): a
+          check is a property of INTERACTING WITH AN NPC, and a hostile monster
+          is not one. See `RoomMonsterInteraction` in `roomDraft.ts`. */}
       <div className="wb-policy-block">
-        <h5>Interaction</h5>
+        <h5>Reserve and holdings</h5>
         {onOrdersChange !== undefined ? (
           <>
-            <CreatureCheckEditor
-              label="Intimidate"
-              testId="creature-intimidate"
-              rows={binding?.intimidate ?? []}
-              onAdd={(row) =>
-                onOrdersChange(addMonsterCheck(binding, 'intimidate', row))
-              }
-              onPatch={(index, row) =>
-                onOrdersChange(
-                  patchMonsterCheck(binding, 'intimidate', index, row)
-                )
-              }
-              onRemove={(index) =>
-                onOrdersChange(removeMonsterCheck(binding, 'intimidate', index))
-              }
-            />
-            <CreatureCheckEditor
-              label="Persuade"
-              testId="creature-persuade"
-              rows={binding?.persuade ?? []}
-              onAdd={(row) =>
-                onOrdersChange(addMonsterCheck(binding, 'persuade', row))
-              }
-              onPatch={(index, row) =>
-                onOrdersChange(
-                  patchMonsterCheck(binding, 'persuade', index, row)
-                )
-              }
-              onRemove={(index) =>
-                onOrdersChange(removeMonsterCheck(binding, 'persuade', index))
-              }
-            />
             <CreatureHoldsEditor
               scope={scope}
               holds={binding?.holds ?? []}

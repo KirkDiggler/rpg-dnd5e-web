@@ -2807,15 +2807,18 @@ describe('WorldBuildingConcept room publishing', () => {
     });
   });
 
-  it('authors intel, priced checks and a creature in reserve with no YAML, and publishes all four (web#1176)', async () => {
+  it('authors intel and a creature in reserve with no YAML, and publishes both (web#1176)', async () => {
     // The Front Room's driving case, end to end: a record is declared in the
-    // Intel node, a creature prices its checks and is held in reserve until the
-    // fact the failed persuasion teaches. Nothing here is YAML — and the point
-    // of the test is that NOTHING IS DROPPED between the forms and the bytes
-    // the engine is handed. The three drop bugs this slice had to fix (the two
-    // encode calls and the storage envelope each enumerated only
-    // factions/dispositions) would leave this test green on intel and red on
-    // the published document, which is exactly what it is here to catch.
+    // Intel node, a creature holds it and is held in reserve until the fact it
+    // teaches lands. Nothing here is YAML — and the point of the test is that
+    // NOTHING IS DROPPED between the forms and the bytes the engine is handed.
+    // The three drop bugs this slice had to fix (the two encode calls and the
+    // storage envelope each enumerated only factions/dispositions) would leave
+    // this test green on intel and red on the published document.
+    //
+    // THE PRICED CHECKS WERE PART OF THIS WALK AND ARE GONE
+    // (rpg-dnd5e-web#1201): the builder no longer offers `intimidate` or
+    // `persuade`, so the walk authors what it still can.
     const storage = new MemoryStorage();
     const mount = () => (
       <WorldBuildingConcept
@@ -2842,20 +2845,13 @@ describe('WorldBuildingConcept room publishing', () => {
       }
     );
 
-    // 2. A creature, with a priced persuade and the record in its hands.
+    // 2. A creature, with the record in its hands.
     fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit monster gesture' })
     );
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
 
-    fireEvent.click(screen.getByLabelText('Add Persuade row'));
-    fireEvent.change(screen.getByLabelText('Persuade ability 0'), {
-      target: { value: 'persuasion' },
-    });
-    fireEvent.change(screen.getByLabelText('Persuade dc 0'), {
-      target: { value: '10' },
-    });
     fireEvent.change(screen.getByLabelText('Give intel record'), {
       target: { value: 'cellar-lie' },
     });
@@ -2879,7 +2875,6 @@ describe('WorldBuildingConcept room publishing', () => {
             monsterBindings?: Record<
               string,
               {
-                persuade?: Array<{ ability: string; dc: number }>;
                 holds?: string[];
                 arrives?: { fact?: string };
               }
@@ -2892,7 +2887,6 @@ describe('WorldBuildingConcept room publishing', () => {
       ]);
       const bindings = stored.draft?.room?.monsterBindings ?? {};
       const only = Object.values(bindings)[0];
-      expect(only?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
       expect(only?.holds).toEqual(['cellar-lie']);
       expect(only?.arrives).toEqual({ fact: 'cellar-is-clear' });
     });
@@ -2901,12 +2895,11 @@ describe('WorldBuildingConcept room publishing', () => {
     // It survives a reload with no import …
     render(mount());
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
-    expect(
-      (screen.getByLabelText('Persuade dc 0') as HTMLInputElement).value
-    ).toBe('10');
     expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
       /Held in reserve until fact cellar-is-clear/
     );
+    // And the removed control stays removed across a reload.
+    expect(screen.queryByLabelText('Persuade dc 0')).toBeNull();
 
     // … and it is what the ENGINE is handed.
     openIdentity();
@@ -2932,9 +2925,6 @@ describe('WorldBuildingConcept room publishing', () => {
     ]);
     const emittedBindings = emitted.draft.room.monsterBindings ?? {};
     const emittedCreature = Object.values(emittedBindings)[0];
-    expect(emittedCreature?.persuade).toEqual([
-      { ability: 'persuasion', dc: 10 },
-    ]);
     expect(emittedCreature?.holds).toEqual(['cellar-lie']);
     expect(emittedCreature?.arrives).toEqual({ fact: 'cellar-is-clear' });
   });

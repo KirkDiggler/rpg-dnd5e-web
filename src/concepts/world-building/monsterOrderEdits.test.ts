@@ -2,15 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   addMonsterAction,
   addMonsterAnswerEntry,
-  addMonsterCheck,
   addMonsterHold,
   moveMonsterAction,
   normalizeBinding,
   patchMonsterAnswerEntry,
-  patchMonsterCheck,
   removeMonsterAction,
   removeMonsterAnswerEntry,
-  removeMonsterCheck,
   removeMonsterHold,
   setMonsterArrives,
   setMonsterTemper,
@@ -244,41 +241,10 @@ describe('what the panel produces, the encoder accepts', () => {
   });
 });
 
-describe('a creature’s interaction and reserve facts (web#1176)', () => {
-  it('adds, patches and removes check routes, and drops the key when the last goes', () => {
-    let binding: RoomMonsterBinding | undefined = addMonsterCheck(
-      undefined,
-      'intimidate',
-      { ability: 'intimidation', dc: 12 }
-    );
-    binding = addMonsterCheck(binding, 'persuade', {
-      ability: 'persuasion',
-      dc: 10,
-    });
-    expect(binding).toEqual({
-      intimidate: [{ ability: 'intimidation', dc: 12 }],
-      persuade: [{ ability: 'persuasion', dc: 10 }],
-    });
-
-    // A route carries an optional tool; patching replaces the row whole.
-    binding = patchMonsterCheck(binding, 'intimidate', 0, {
-      ability: 'strength',
-      dc: 15,
-      tool: 'dnd5e:items:crowbar',
-    });
-    expect(binding?.intimidate).toEqual([
-      { ability: 'strength', dc: 15, tool: 'dnd5e:items:crowbar' },
-    ]);
-
-    // Removing the last intimidate row DELETES the key rather than writing [].
-    binding = removeMonsterCheck(binding, 'intimidate', 0);
-    expect(binding?.intimidate).toBeUndefined();
-    expect(binding?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
-    // An out-of-range patch/remove never empties the creature.
-    expect(
-      patchMonsterCheck(binding, 'persuade', 5, { ability: 'x', dc: 1 })
-    ).toBe(binding);
-  });
+describe('a creature’s reserve and holdings facts (web#1176)', () => {
+  // THE PRICED CHECKS WERE TESTED HERE AND ARE GONE (rpg-dnd5e-web#1201): a
+  // check is a property of INTERACTING WITH AN NPC, and a hostile monster is
+  // not one. See `RoomMonsterInteraction` in `roomDraft.ts`.
 
   it('adds and removes held records without duplicating one', () => {
     let binding: RoomMonsterBinding | undefined = addMonsterHold(
@@ -316,17 +282,14 @@ describe('a creature’s interaction and reserve facts (web#1176)', () => {
 
   it('a creature emptied back to nothing still publishes, with the new fields too', () => {
     const draft = roomWithTwoGoblins();
-    let binding: RoomMonsterBinding | undefined = addMonsterCheck(
+    let binding: RoomMonsterBinding | undefined = addMonsterHold(
       undefined,
-      'persuade',
-      { ability: 'persuasion', dc: 10 }
+      'cellar-lie'
     );
-    binding = addMonsterHold(binding, 'cellar-lie');
     binding = setMonsterArrives(binding, { fact: 'cellar-is-clear' });
     draft.room.monsterBindings = withBinding(undefined, 'goblin-1', binding);
 
     // Remove every authored fact, one at a time.
-    binding = removeMonsterCheck(binding, 'persuade', 0);
     binding = removeMonsterHold(binding, 'cellar-lie');
     binding = setMonsterArrives(binding, undefined);
     const emptied = withBinding(

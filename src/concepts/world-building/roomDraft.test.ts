@@ -803,8 +803,8 @@ describe('room draft v3 migration and structural exactness', () => {
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
     // A key this dialect's binding does not carry is still refused as the
-    // unknown key it is. `intimidate` IS carried since web#1176, so the
-    // boundary moved and the probe moves with it.
+    // unknown key it is — the boundary `intimidate` sits INSIDE of, because it
+    // is read even though no control offers it (rpg-dnd5e-web#1201).
     expect(rejection({ 'goblin-1': { intimidating: {} } })).toThrow(
       /Monster binding for goblin-1 has an unsupported field: intimidating/
     );
@@ -814,6 +814,22 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
       /Monster binding for goblin-1 actions is empty/
     );
+    // READ, NEVER OFFERED (rpg-dnd5e-web#1201). Kirk removed the priced checks
+    // from the builder — a check is a property of INTERACTING WITH AN NPC, and
+    // a hostile monster is not one — but a document authored before that still
+    // carries them and the ENGINE still reads them. So they must still open and
+    // still round-trip; refusing them here would make an editable file
+    // unopenable while the server accepts it.
+    const withChecks = {
+      'goblin-1': { intimidate: [{ ability: 'intimidation', dc: 12 }] },
+    };
+    expect(rejection(withChecks)).not.toThrow();
+    (draft.room as unknown as Record<string, unknown>).monsterBindings =
+      withChecks;
+    expect(
+      parseRoomDraftJson(stringifyRoomDraft(structuredClone(draft))).room
+        .monsterBindings?.['goblin-1'].intimidate
+    ).toEqual([{ ability: 'intimidation', dc: 12 }]);
     expect(rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })).toThrow(
       /must be a weapon reference/
     );

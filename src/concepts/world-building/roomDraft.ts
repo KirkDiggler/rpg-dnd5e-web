@@ -154,12 +154,36 @@ export interface RoomCheckApproach {
  * fact block for a placed thing (site design Decision 4). */
 export interface RoomMonsterInteraction {
   /** The priced checks the party must beat to frighten this creature, in the
-   * author's order, each a route (`CheckSpec`). Absent means the rulebook
-   * derives the DC from the stat block's passive Insight. */
+   * author's order, each a route (`CheckSpec`).
+   *
+   * READ, NEVER OFFERED (rpg-dnd5e-web#1201, Kirk 2026-09-24):
+   *
+   *   "remove intimidate and persuade. they will come back when we have the use
+   *    case but monsters that are hostile cannot have them and they should come
+   *    from interacting with an npc so remove and deferred."
+   *
+   * So NO CONTROL WRITES THEM ANY MORE — the reason is the useful part: a
+   * priced check is a property of INTERACTING WITH AN NPC, and a hostile
+   * monster is not one. Authoring a DC on every bandit said the party could
+   * talk it round, which is the opposite of what a hostile disposition means.
+   *
+   * BUT THEY ARE STILL READ, and that is deliberate. A document authored before
+   * this still carries them, the ENGINE still reads them (`single_room.go`,
+   * validated in `single_room_site.go`), and refusing them here would make an
+   * editable file unopenable while the server accepts it. So they are CARRIED,
+   * NOT GRADED — `holds`' and `arrives`' own law (rpg-dnd5e-web#1176): the web
+   * keeps the shape so the file round-trips, and the engine judges it at
+   * `PutDungeon`.
+   *
+   * DEFERRED, NOT DELETED. They return with the NPC-interaction use case, which
+   * is where the `intimidate`/`persuade` SESSION VERBS already live
+   * (`useSessionIntimidate`, `useSessionPersuade`) — those are the live action a
+   * player takes at the table and are untouched by this. */
   intimidate?: RoomCheckApproach[];
-  /** The checks the party must beat to talk this creature round. Absent
-   * means derived, never ungated. */
+  /** The checks the party must beat to talk this creature round —
+   * [RoomMonsterInteraction.intimidate]'s twin. Read, never offered. */
   persuade?: RoomCheckApproach[];
+
   /** The intel records this creature carries, by record id (`PlaceSpec.Holds`).
    * Absent means it carries none. These are the AUTHORED record ids; the
    * engine keys them into the composition at compile, not this module. */
@@ -635,6 +659,9 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * must not live in two places. */
 export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
 const MONSTER_KEYS = ['id', 'ref', 'cell', 'faction'] as const;
+/** What a monster binding may carry. `intimidate` and `persuade` were removed
+ * here (rpg-dnd5e-web#1201) — see `RoomMonsterInteraction` for why a priced
+ * check is not a monster's fact. */
 const BINDING_KEYS = [
   'on',
   'temper',
@@ -721,7 +748,10 @@ function validateBindingTemper(value: unknown, path: string): string {
 /** One creature's `intimidate:`/`persuade:` route list (`CheckSpec`), CARRIED
  * verbatim. Only the SHAPE is kept here — `ability` an opaque string and `dc`
  * a whole number of at least 1 — because what a route resolves to and what an
- * absent DC derives is the engine's judgement at `PutDungeon`. */
+ * absent DC derives is the engine's judgement at `PutDungeon`.
+ *
+ * READ, NEVER OFFERED (rpg-dnd5e-web#1201): no control writes these, but a file
+ * carrying them still opens. See `RoomMonsterInteraction`. */
 function validateCheckApproaches(
   value: unknown,
   path: string
@@ -797,6 +827,12 @@ function validateMonsterBindings(
     // the web keeps the SHAPE so the file round-trips, and the engine judges
     // what a check ref resolves to, what an absent DC derives, and what an
     // `arrives` or `holds` name at PutDungeon — with its own path and sentence.
+    //
+    // `intimidate`/`persuade` ARE READ HERE AND NO LONGER OFFERED
+    // (rpg-dnd5e-web#1201): a document authored before that change still
+    // carries them and the engine still reads them, so refusing them would make
+    // an editable file unopenable while the server accepts it. See
+    // `RoomMonsterInteraction`.
     const checkPath = (key: 'intimidate' | 'persuade') =>
       `Monster binding for ${id} ${key}`;
     if (Object.hasOwn(block, 'intimidate'))

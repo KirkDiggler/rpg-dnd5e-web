@@ -278,45 +278,33 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
   });
 });
 
-describe('CreatureOrders — the creature’s checks, intel and reserve (web#1176)', () => {
-  it('edits the priced checks, handing the parent a next binding each time', () => {
-    const onOrdersChange = vi.fn();
+describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () => {
+  /**
+   * THE PRICED CHECKS ARE NO LONGER OFFERED (rpg-dnd5e-web#1201). Kirk ruled
+   * they come off the builder — a check is a property of INTERACTING WITH AN
+   * NPC, and a hostile monster is not one — so this asserts the ABSENCE, which
+   * is the behaviour change. The fields are still READ (see
+   * `roomDraft.test.ts`), so a document carrying them still opens.
+   */
+  it('offers no control for the priced checks, which are no longer the builder’s', () => {
     render(
       <CreatureOrders
         scope={siteScope}
         monster={goblin}
         room={fixture.draft.room}
-        binding={{ intimidate: [{ ability: 'intimidation', dc: 12 }] }}
-        onOrdersChange={onOrdersChange}
+        binding={{
+          intimidate: [{ ability: 'intimidation', dc: 12 }],
+          persuade: [{ ability: 'persuasion', dc: 10 }],
+          holds: ['cellar-lie'],
+        }}
+        onOrdersChange={vi.fn()}
       />
     );
-    const intimidate = screen.getByTestId('creature-intimidate');
-    expect(
-      (
-        within(intimidate).getByLabelText(
-          'Intimidate ability 0'
-        ) as HTMLInputElement
-      ).value
-    ).toBe('intimidation');
-    expect(
-      (within(intimidate).getByLabelText('Intimidate dc 0') as HTMLInputElement)
-        .value
-    ).toBe('12');
-
-    // A new row starts blank with a legal DC — the form never invents an
-    // ability word, because it keeps no rules catalog.
-    fireEvent.click(within(intimidate).getByLabelText('Add Intimidate row'));
-    expect(onOrdersChange.mock.calls[0][0].intimidate).toEqual([
-      { ability: 'intimidation', dc: 12 },
-      { ability: '', dc: 1 },
-    ]);
-
-    // Persuade with nothing authored says the rulebook derives the DC.
-    expect(
-      within(screen.getByTestId('creature-persuade')).getByTestId(
-        'creature-persuade-none'
-      )
-    ).toBeTruthy();
+    expect(screen.queryByTestId('creature-intimidate')).toBeNull();
+    expect(screen.queryByTestId('creature-persuade')).toBeNull();
+    expect(screen.queryByLabelText('Add Intimidate row')).toBeNull();
+    // And the block they lived in is now about what it still carries.
+    expect(screen.getByText('Reserve and holdings')).toBeTruthy();
   });
 
   it('gives and takes away a held record from the site’s declared ones', () => {
@@ -388,13 +376,15 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
     ).toMatch(/Held in reserve until fact cellar-is-clear/);
   });
 
-  it('reports the interaction facts read-only when no editor is given', () => {
+  it('reports the remaining facts read-only when no editor is given', () => {
     render(
       <CreatureOrders
         scope={siteScope}
         monster={goblin}
         room={fixture.draft.room}
         binding={{
+          // CARRIED, NOT SHOWN (rpg-dnd5e-web#1201): these still round-trip
+          // through the document, and the panel no longer reports them.
           intimidate: [{ ability: 'intimidation', dc: 12 }],
           persuade: [
             { ability: 'persuasion', dc: 10, tool: 'dnd5e:items:lute' },
@@ -405,18 +395,11 @@ describe('CreatureOrders — the creature’s checks, intel and reserve (web#117
       />
     );
     const creature = screen.getByLabelText('Selected creature');
-    expect(
-      within(creature).getByText('intimidate dc 12 intimidation')
-    ).toBeTruthy();
-    expect(
-      within(creature).getByText(
-        'persuade dc 10 persuasion via dnd5e:items:lute'
-      )
-    ).toBeTruthy();
     expect(within(creature).getByText('holds cellar-lie')).toBeTruthy();
     expect(
       within(creature).getByText(/held in reserve until fact cellar-is-clear/)
     ).toBeTruthy();
+    expect(within(creature).queryByText(/intimidate dc/)).toBeNull();
     expect(screen.getByTestId('creature-interaction-readonly')).toBeTruthy();
   });
 });
