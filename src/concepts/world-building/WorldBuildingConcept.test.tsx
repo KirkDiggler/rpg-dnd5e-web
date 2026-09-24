@@ -3361,7 +3361,19 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     // read-only single line survives only where no editor is wired
     // (`SitePolicies.test.tsx` covers that path).
     expect(screen.getByTestId('creature-weapons-none')).toBeTruthy();
+    // THE CREATURE'S ORDERS ARE NAMED, NOT PASTED (rpg-dnd5e-web#1201). The
+    // inline table editor was REMOVED from this panel by Kirk's ruling — "there
+    // should be no inline table defined on a monster anymore" — so what stands
+    // here is the answer to "what does it answer WITH": a picker over the site's
+    // root tables, and the statement that names none.
     expect(screen.getByTestId('creature-table-none')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Table for id-4') as HTMLSelectElement).value
+    ).toBe('');
+    // And the inline table it no longer authors has no editor here: the row
+    // appears only READ-ONLY when a hand-written file carries one, which this
+    // document does not.
+    expect(screen.queryByTestId('creature-inline-table-readonly')).toBeNull();
     expect(
       (screen.getByLabelText('Creature temper') as HTMLSelectElement).value
     ).toBe('');

@@ -100,6 +100,7 @@ import {
   FactionsPanel,
 } from './SitePolicies';
 import type { SiteScope } from './siteScope';
+import { TablesPanel } from './TablesPanel';
 import type {
   ArrangementLibrary,
   IdFactory,
@@ -3136,6 +3137,18 @@ export function WorldBuildingConcept({
                 room={roomDraft.room}
                 onChange={commitPolicies}
               />
+            </details>
+
+            {/* THE SHARED ANSWER TABLES (rpg-toolkit#1897, web#1201). Beside
+                Intel for Intel's own reason: a table is declared once and
+                NAMED from whatever answers it, and it stands nowhere — so it
+                belongs to the site and never inside one creature's panel.
+                Kirk's direction (rpg-project#498): "having the place in the
+                builder where we can name the tables at the root like we do
+                disposition and others." */}
+            <details className="wb-collapse">
+              <summary aria-label="Tables">Tables</summary>
+              <TablesPanel scope={siteScope} onChange={commitPolicies} />
             </details>
 
             {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the

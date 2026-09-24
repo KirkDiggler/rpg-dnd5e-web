@@ -83,6 +83,9 @@ export function patchSiteFaction(
       const next: SiteFaction = { ...faction, ...patch };
       if (next.mind === undefined || next.mind === '') delete next.mind;
       if (next.temper === undefined) delete next.temper;
+      // A TABLE NAME IS A REFERENCE WITH NO EMPTY STATE: cleared means absent,
+      // never written as an empty string the encoder would refuse.
+      if (next.table === undefined || next.table === '') delete next.table;
       if (next.on === undefined || Object.keys(next.on).length === 0)
         delete next.on;
       return next;

@@ -13,6 +13,7 @@
  */
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { AnswerTableShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import {
   CreatureOrders,
@@ -20,6 +21,7 @@ import {
   FactionsPanel,
 } from './SitePolicies';
 import type { SiteScope } from './siteScope';
+import { TablesPanel } from './TablesPanel';
 
 const fixture = decodeWorldBuilderV4Site();
 
@@ -435,26 +437,50 @@ describe('every entry in a site node collapses to its own line (web#1178 follow-
 });
 
 describe('an entry’s `when:` condition is authored, not just read (web#1192)', () => {
-  /** The creature panel EDITABLE — the real mount, so the control is tested
-   * where an author meets it. */
-  function editableCreature(onOrdersChange = vi.fn()) {
+  /** THE CONDITION IS AUTHORED ON A NAMED ROOT TABLE NOW (rpg-dnd5e-web#1201).
+   *
+   * Kirk's ruling removed the creature's inline table — "there should be no
+   * inline table defined on a monster anymore" — so the ONE `AnswerEntryRow`
+   * these tests drive is reached through `TablesPanel`, which is where a table's
+   * grammar is authored. THE GRAMMAR IS UNCHANGED and so is every assertion
+   * below: only the panel that owns the row moved. The harness therefore builds
+   * a site declaring the table the fixture's goblin authors inline, so each case
+   * still starts from the same document content.
+   *
+   * `onChange` answers the whole next SCOPE, so `next.tables['goblin-drill']`
+   * is where the table that used to be `next.on` now lives. */
+  const DRILL = 'goblin-drill';
+  function editableTable(
+    table: AnswerTableShape,
+    onChange = vi.fn()
+  ): ReturnType<typeof vi.fn> {
     render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={fixture.draft.room.monsterBindings?.['goblin-1']}
-        onOrdersChange={onOrdersChange}
+      <TablesPanel
+        scope={{ ...siteScope, tables: { [DRILL]: table } }}
+        onChange={onChange}
       />
     );
-    return onOrdersChange;
+    // The table list is collapsed by default, like every other site noun.
+    fireEvent.click(screen.getByLabelText(`Table ${DRILL}`));
+    return onChange;
+  }
+
+  /** The fixture goblin's own table, which is what these cases were written
+   * against: `{when: {enemy: reach}, hold: {}}`. */
+  function fixtureTable(): AnswerTableShape {
+    return { time: [{ when: { enemy: 'reach' }, hold: {} }] };
+  }
+
+  /** The table an `onChange` last answered with. */
+  function lastTable(onChange: ReturnType<typeof vi.fn>): AnswerTableShape {
+    return onChange.mock.calls.at(-1)![0].tables[DRILL];
   }
 
   it('reads the document’s condition as the control’s value', () => {
     // The fixture's goblin authors `{when: {enemy: reach}, hold: {}}`, so the
     // picker must open on that band — the form holds the document's value, it
     // does not default to something of its own.
-    editableCreature();
+    editableTable(fixtureTable());
     const picker = screen.getByLabelText(
       'When for time entry'
     ) as HTMLSelectElement;
@@ -462,35 +488,34 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
   });
 
   it('authors an enemy band, handing the parent the whole next table', () => {
-    const onOrdersChange = editableCreature();
+    const onChange = editableTable(fixtureTable());
     fireEvent.change(screen.getByLabelText('When for time entry'), {
       target: { value: 'enemy:seen' },
     });
-    // The commit is the creature's ORDERS, carrying the new condition.
-    const next = onOrdersChange.mock.calls[0][0];
-    expect(next.on.time[0].when).toEqual({ enemy: 'seen' });
+    // The commit is the SITE's tables, carrying the new condition.
+    expect(lastTable(onChange).time![0]!.when).toEqual({ enemy: 'seen' });
   });
 
   it('authors a deed with a span — the case the slice exists for', () => {
     // "change targets when it is attacked": the condition is a DEED, and the
     // span is authored beside it.
-    const onOrdersChange = editableCreature();
+    const onChange = editableTable(fixtureTable());
     fireEvent.change(screen.getByLabelText('When for time entry'), {
       target: { value: 'deed:attacked' },
     });
-    const next = onOrdersChange.mock.calls[0][0];
-    expect(next.on.time[0].when).toEqual({ attacked: { within: 1 } });
+    expect(lastTable(onChange).time![0]!.when).toEqual({
+      attacked: { within: 1 },
+    });
   });
 
   it('clears the condition to `(any time)`, which DELETES the key', () => {
     // An empty `when` is a condition naming nothing — refused by name — so the
     // authored state "no condition" is the key's absence, never `{}`.
-    const onOrdersChange = editableCreature();
+    const onChange = editableTable(fixtureTable());
     fireEvent.change(screen.getByLabelText('When for time entry'), {
       target: { value: 'any' },
     });
-    const next = onOrdersChange.mock.calls[0][0];
-    expect('when' in next.on.time[0]).toBe(false);
+    expect('when' in lastTable(onChange).time![0]!).toBe(false);
   });
 
   /**
@@ -504,26 +529,16 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
    * the engine has no spelling for it.
    */
   it('authors a deed scope, and clears it by deleting the key', () => {
-    // MOUNTED ALREADY AUTHORED: this component renders from its `binding`
-    // prop, so switching the picker only calls back and does not re-render —
-    // the scope control exists only on a deed, so the row starts as one.
-    const onOrdersChange = vi.fn();
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{
-          on: { time: [{ when: { attacked: { within: 3 } }, hold: {} }] },
-        }}
-        onOrdersChange={onOrdersChange}
-      />
-    );
+    // MOUNTED ALREADY AUTHORED: the scope control exists only on a DEED, so
+    // the table starts as one rather than being switched in place.
+    const onChange = editableTable({
+      time: [{ when: { attacked: { within: 3 } }, hold: {} }],
+    });
 
     fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
       target: { value: 'ally' },
     });
-    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+    expect(lastTable(onChange).time![0]!.when).toEqual({
       attacked: { within: 3, on: 'ally' },
     });
 
@@ -532,46 +547,27 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
       target: { value: '__self__' },
     });
-    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+    expect(lastTable(onChange).time![0]!.when).toEqual({
       attacked: { within: 3 },
     });
   });
 
   it('authors `as: actor` — the pause', () => {
-    const onOrdersChange = vi.fn();
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{
-          on: { time: [{ when: { attacked: { within: 2 } }, hold: {} }] },
-        }}
-        onOrdersChange={onOrdersChange}
-      />
-    );
+    const onChange = editableTable({
+      time: [{ when: { attacked: { within: 2 } }, hold: {} }],
+    });
     fireEvent.change(screen.getByLabelText('Whose deed for time entry'), {
       target: { value: 'actor' },
     });
-    expect(onOrdersChange.mock.calls.at(-1)![0].on.time[0].when).toEqual({
+    expect(lastTable(onChange).time![0]!.when).toEqual({
       attacked: { within: 2, as: 'actor' },
     });
   });
 
   it('reads a scope off the document and shows it', () => {
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{
-          on: {
-            time: [{ when: { attacked: { within: 3, on: 'ally' } }, hold: {} }],
-          },
-        }}
-        onOrdersChange={() => {}}
-      />
-    );
+    editableTable({
+      time: [{ when: { attacked: { within: 3, on: 'ally' } }, hold: {} }],
+    });
     expect(
       (screen.getByLabelText('Whose deed for time entry') as HTMLSelectElement)
         .value
@@ -581,17 +577,7 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
   it('offers no scope on an enemy band — a band has no “whose”', () => {
     // The band branch has no `whose`, so the control is ABSENT rather than
     // rendered disabled: the builder does not offer what the engine refuses.
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{
-          on: { time: [{ when: { enemy: 'reach' }, hold: {} }] },
-        }}
-        onOrdersChange={() => {}}
-      />
-    );
+    editableTable({ time: [{ when: { enemy: 'reach' }, hold: {} }] });
     expect(screen.getByLabelText('When for time entry')).toBeTruthy();
     expect(screen.queryByLabelText('Whose deed for time entry')).toBeNull();
   });
@@ -600,20 +586,14 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     // FOUND ON THE WALK: the picker's default was the vocabulary's first key
     // (`intimidated`), so the obvious first click authored a SOCIAL entry —
     // the half this slice is not about — and the `when` editor (legal on `time`
-    // alone) never appeared. A creature with no table opens on `time`.
-    const bare = { ...fixture.draft.room.monsterBindings!['goblin-1'] };
-    delete bare.on;
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={bare}
-        onOrdersChange={() => {}}
-      />
-    );
+    // alone) never appeared. A table with no triggers opens on `time`.
+    //
+    // THE ROOT TABLE'S PICKER CARRIES THE SAME FIX (web#1201): it was written
+    // from the creature editor's own comment and keeps its default, so the
+    // third picker cannot drift back to the social half the faction's did.
+    editableTable({});
     const picker = screen.getByLabelText(
-      'Add trigger to this creature'
+      `Add trigger to ${DRILL}`
     ) as HTMLSelectElement;
     expect(picker.value).toBe('time');
   });
@@ -641,18 +621,9 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     // A DEED row, so the span field exists: the component renders from its
     // `binding` prop, so the row is mounted already authored rather than
     // switched in place (which only calls back and does not re-render here).
-    const onOrdersChange = vi.fn();
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={{
-          on: { time: [{ when: { attacked: { within: 3 } }, hold: {} }] },
-        }}
-        onOrdersChange={onOrdersChange}
-      />
-    );
+    const onChange = editableTable({
+      time: [{ when: { attacked: { within: 3 } }, hold: {} }],
+    });
     expect(
       (screen.getByLabelText('Within for time entry') as HTMLInputElement).value
     ).toBe('3');
@@ -660,7 +631,7 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     fireEvent.change(screen.getByLabelText('Within for time entry'), {
       target: { value: '' },
     });
-    expect(onOrdersChange).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('offers no condition on a social trigger, because the verb IS the condition', () => {
@@ -668,19 +639,7 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     // it would be asking when a thing that just happened happened. The control
     // is ABSENT rather than disabled — the builder does not offer what the
     // engine refuses.
-    const withIntimidated = {
-      ...fixture.draft.room.monsterBindings!['goblin-1'],
-      on: { intimidated: [{ say: 'Fine!' }] },
-    };
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={withIntimidated}
-        onOrdersChange={() => {}}
-      />
-    );
+    editableTable({ intimidated: [{ say: 'Fine!' }] });
     expect(screen.queryByLabelText('When for intimidated entry')).toBeNull();
   });
 
@@ -688,21 +647,9 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     // `actor` names the actor of a deed, and an entry naming none has no actor
     // to name. The selector list follows the condition rather than offering a
     // choice the engine refuses.
-    const awayOnFled = {
-      ...fixture.draft.room.monsterBindings!['goblin-1'],
-      on: {
-        time: [{ when: { fled: { within: 3 } }, away: 'actor' }],
-      },
-    };
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={awayOnFled}
-        onOrdersChange={() => {}}
-      />
-    );
+    editableTable({
+      time: [{ when: { fled: { within: 3 } }, away: 'actor' }],
+    });
     const selector = screen.getByLabelText(
       'away selector for time entry'
     ) as HTMLSelectElement;
@@ -714,25 +661,14 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
   it('clears an `actor` selector when the deed condition is cleared', () => {
     // The one place this form edits a second field: leaving `actor` behind with
     // no deed would publish a document the engine refuses by name.
-    const onOrdersChange = vi.fn();
-    const awayOnFled = {
-      ...fixture.draft.room.monsterBindings!['goblin-1'],
-      on: { time: [{ when: { fled: { within: 3 } }, away: 'actor' }] },
-    };
-    render(
-      <CreatureOrders
-        scope={siteScope}
-        monster={goblin}
-        room={fixture.draft.room}
-        binding={awayOnFled}
-        onOrdersChange={onOrdersChange}
-      />
-    );
+    const onChange = editableTable({
+      time: [{ when: { fled: { within: 3 } }, away: 'actor' }],
+    });
     fireEvent.change(screen.getByLabelText('When for time entry'), {
       target: { value: 'any' },
     });
-    const next = onOrdersChange.mock.calls[0][0];
-    expect('when' in next.on.time[0]).toBe(false);
-    expect(next.on.time[0].away).not.toBe('actor');
+    const table = lastTable(onChange);
+    expect('when' in table.time![0]!).toBe(false);
+    expect(table.time![0]!.away).not.toBe('actor');
   });
 });

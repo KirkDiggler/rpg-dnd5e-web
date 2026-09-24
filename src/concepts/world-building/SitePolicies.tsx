@@ -53,14 +53,12 @@ import type {
 } from './answerTableShape';
 import {
   addMonsterAction,
-  addMonsterAnswerEntry,
   addMonsterHold,
   moveMonsterAction,
-  patchMonsterAnswerEntry,
   removeMonsterAction,
-  removeMonsterAnswerEntry,
   removeMonsterHold,
   setMonsterArrives,
+  setMonsterTable,
   setMonsterTemper,
 } from './monsterOrderEdits';
 import type {
@@ -177,8 +175,13 @@ function predicateText(predicate: PredicateDoc): string {
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
  * facts view, which stays a readout: the faction owns the table, so it is
- * edited in the `Policies` node and never from inside a creature's panel. */
-function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
+ * edited in the `Policies` node and never from inside a creature's panel.
+ *
+ * EXPORTED (rpg-dnd5e-web#1201) so a creature's panel can show the ROOT TABLE
+ * it names without a second readout: the whole point of a named table is that
+ * the author can SEE it whole from where it is referenced, which is the hazard
+ * it removes. */
+export function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
   return (
     <ul className="wb-policy-table">
       {Object.entries(table).map(([trigger, entries]) => (
@@ -405,7 +408,7 @@ function AnswerWhenEditor({
 /** One entry row: its weight, its `say`, and its ONE word. Every control
  * writes what the author set; whether the entry is legal is the server's call,
  * and `when` is carried verbatim because the builder never reads it. */
-function AnswerEntryRow({
+export function AnswerEntryRow({
   trigger,
   entry,
   onCommit,
@@ -420,7 +423,12 @@ function AnswerEntryRow({
    * by name on a binding, because this dialect's cells are axial and the same
    * bytes would mean two things in the two dialects. A faction's table keeps
    * it. Defaults to `true` so the faction editor is untouched — a control that
-   * can never save is not authoring, it is a trap. */
+   * can never save is not authoring, it is a trap.
+   *
+   * EXPORTED (rpg-dnd5e-web#1201): a ROOT table is authored by `TablesPanel`,
+   * and it keeps the cell selector for the reason a faction's does — a root
+   * table is what a faction NAMES, so the grammar inside it is the faction's,
+   * not a placement's. One entry editor, three callers. */
   allowCellSelector?: boolean;
 }) {
   const words = answerWordsForTrigger(trigger);
@@ -610,6 +618,57 @@ function AnswerEntryRow({
   );
 }
 
+/** A NAMED ROOT TABLE, CHOSEN FROM WHAT THE SITE DECLARES (rpg-toolkit#1897,
+ * rpg-dnd5e-web#1201).
+ *
+ * A CLOSED LIST IS RIGHT HERE, and it is the opposite of `CreatureWeaponEditor`
+ * — which refuses to offer a vocabulary because the engine carries weapon refs
+ * and NEVER interprets them. A table name is different in kind: the engine
+ * RESOLVES it, and refuses by name an id the document does not declare
+ * (`bindingTable`/`factionTable`). So the universe is exactly the root's
+ * `tables:` keys, which this panel can see, and offering anything else would be
+ * offering a document the server rejects.
+ *
+ * A NAME THAT RESOLVES TO NOTHING IS STILL SHOWN. A hand-written file may name
+ * a table this site does not declare — `IntelPanel`'s treatment of a `holds`
+ * that outlived its record, for the same reason: the builder must not silently
+ * rewrite the author's bytes, and the engine's refusal is the sentence worth
+ * surfacing. It appears as its own option so selecting it is not a way to lose
+ * it. */
+export function TableNameSelect({
+  scope,
+  value,
+  label,
+  placeholder,
+  onChange,
+}: {
+  scope: SiteScope;
+  value: string | undefined;
+  label: string;
+  placeholder: string;
+  onChange: (next: string | undefined) => void;
+}) {
+  const declared = Object.keys(scope.tables ?? {});
+  const dangling = value !== undefined && !declared.includes(value);
+  return (
+    <select
+      aria-label={label}
+      value={value ?? ''}
+      onChange={(event) =>
+        onChange(event.target.value === '' ? undefined : event.target.value)
+      }
+    >
+      <option value="">{placeholder}</option>
+      {declared.map((id) => (
+        <option key={id} value={id}>
+          {id}
+        </option>
+      ))}
+      {dangling && <option value={value}>{value} (not declared here)</option>}
+    </select>
+  );
+}
+
 /** One faction's shared table: its authored triggers, each with its entries,
  * and a trigger picker for the ones it does not carry yet. Triggers come from
  * `ANSWER_TRIGGERS`; the builder never invents one. */
@@ -629,11 +688,11 @@ function FactionTableEditor({
   const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
     (key) => table[key] === undefined
   );
-  /** `time` FIRST, for the reason `CreatureTableEditor` states: it is the
+  /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
    * trigger a behavior table is mostly about, and the only one the `when`
    * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
    * lands an author on the social half, where no condition control can ever
-   * appear — the same invisibility the walk found on the creature's table.
+   * appear — the same invisibility the walk found on a creature's table.
    * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
    * the faction's was not. */
   const [newTrigger, setNewTrigger] = useState(
@@ -876,6 +935,29 @@ function FactionRow({
               onChange(patchSiteFaction(scope, faction.id, { temper }))
             }
           />
+
+          {/* A FACTION NAMES A ROOT TABLE (rpg-project#501 §6.2, "i think we
+              add table to faction"), and it may ALSO write its own `on:` — the
+              engine layers the named table UNDER the inline one, key by key,
+              through the same `encounter.Layer` every other layer uses. The
+              builder carries both rather than deciding a layering rule it does
+              not own. */}
+          <label>
+            <span>Shared table</span>
+            <TableNameSelect
+              scope={scope}
+              value={faction.table}
+              label={`Table for ${faction.id}`}
+              placeholder="none — write its own below"
+              onChange={(table) =>
+                onChange(patchSiteFaction(scope, faction.id, { table }))
+              }
+            />
+          </label>
+          <p className="wb-help">
+            A table declared at the site root, written once and named here. The
+            server refuses a name this site does not declare.
+          </p>
 
           <FactionTableEditor
             scope={scope}
@@ -1442,91 +1524,6 @@ function CreatureTemperEditor({
   );
 }
 
-/** The creature's OWN `on:` table — driven by the SAME one vocabulary
- * declaration the faction editor uses, with the one thing a placement may not
- * write left out: a selector may not name a cell here, because
- * `{ at: [col, row] }` is refused by name on a binding. */
-function CreatureTableEditor({
-  table,
-  onAdd,
-  onPatch,
-  onRemove,
-}: {
-  table: AnswerTableShape;
-  onAdd: (trigger: string) => void;
-  onPatch: (trigger: string, index: number, entry: AnswerEntryShape) => void;
-  onRemove: (trigger: string, index: number) => void;
-}) {
-  const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] !== undefined
-  );
-  const available = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
-    (key) => table[key] === undefined
-  );
-  /** WHICH TRIGGER THE PICKER OPENS ON. `time` FIRST when it is offered: it is the
-   * trigger a creature's OWN table is mostly about — what it does with its turn,
-   * gated by a `when` — and it is the ONLY trigger the `when` editor is legal
-   * on. Opening on a social key (the vocabulary's own order) points an author at
-   * the half this slice is not about, and at a control with no condition on it.
-   * Falls back to the vocabulary's order once `time` is authored. */
-  const [newTrigger, setNewTrigger] = useState(
-    available.includes('time') ? 'time' : (available[0] ?? '')
-  );
-  return (
-    <div className="wb-policy-table-editor" data-testid="creature-table">
-      <p className="wb-help">Its own table, laid over the faction’s.</p>
-      {authored.length === 0 && (
-        <p className="wb-help" data-testid="creature-table-none">
-          No table of its own yet — the faction’s answers stand. Add a trigger
-          below to give this creature its own row.
-        </p>
-      )}
-      {authored.map((trigger) => (
-        <div key={trigger} className="wb-policy-trigger-block">
-          <p className="wb-policy-trigger">
-            <code>{trigger}</code>{' '}
-            {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
-          </p>
-          <ul className="wb-policy-entries">
-            {(table[trigger] ?? []).map((entry, index) => (
-              <AnswerEntryRow
-                key={index}
-                trigger={trigger}
-                entry={entry}
-                allowCellSelector={false}
-                onCommit={(next) => onPatch(trigger, index, next)}
-                onRemove={() => onRemove(trigger, index)}
-              />
-            ))}
-          </ul>
-        </div>
-      ))}
-      {available.length > 0 && (
-        <div className="wb-actions">
-          <select
-            aria-label="Add trigger to this creature"
-            value={newTrigger}
-            onChange={(event) => setNewTrigger(event.target.value)}
-          >
-            {available.map((key) => (
-              <option key={key} value={key}>
-                {answerTrigger(key)?.label ?? key} ({key})
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-label={`Add entry on ${newTrigger} to this creature`}
-            onClick={() => onAdd(newTrigger)}
-          >
-            Add entry on {newTrigger}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export interface CreatureOrdersProps {
   scope: SiteScope;
   monster: RoomMonsterPlacement;
@@ -1805,6 +1802,14 @@ export function CreatureOrders({
   const faction = monster.faction
     ? (scope.factions ?? []).find((entry) => entry.id === monster.faction)
     : undefined;
+  /** The root table this creature NAMES, resolved against what the site
+   * declares. `undefined` covers both "names nothing" and "names something this
+   * site does not declare" — the second is reported where the control is, the
+   * same distinction `IntelPanel` draws for a `holds` that outlived its
+   * record. RESOLVING IT IS NOT DECIDING IT: the engine owns whether the name
+   * is acceptable, and this only decides what to SHOW. */
+  const namedTable =
+    binding?.table !== undefined ? scope.tables?.[binding.table] : undefined;
   return (
     <div className="wb-creature-orders" aria-label="Selected creature">
       <h4>Selected creature</h4>
@@ -1880,22 +1885,32 @@ export function CreatureOrders({
                 onOrdersChange(setMonsterTemper(binding, temper))
               }
             />
-            <CreatureTableEditor
-              table={binding?.on ?? {}}
-              onAdd={(trigger) =>
-                onOrdersChange(addMonsterAnswerEntry(binding, trigger))
-              }
-              onPatch={(trigger, index, entry) =>
-                onOrdersChange(
-                  patchMonsterAnswerEntry(binding, trigger, index, entry)
-                )
-              }
-              onRemove={(trigger, index) =>
-                onOrdersChange(
-                  removeMonsterAnswerEntry(binding, trigger, index)
-                )
-              }
-            />
+            {/* WHAT IT ANSWERS WITH, BY NAME (rpg-toolkit#1897, web#1201).
+                THE INLINE TABLE EDITOR IS GONE from this panel, because a
+                creature's orders are DECLARED ONCE AND NAMED — that is the
+                whole reason tables moved to the root, and leaving a second
+                place to paste them re-opens the hazard the move removes:
+                `time:` replaces the kind's whole default table, so an inline
+                entry silently discards what the kind carried. Kirk's ruling
+                (rpg-project#501 §6.6, web#1201): "there should be no inline
+                table defined on a monster anymore."
+
+                `on:` IS STILL READ AND STILL ROUND-TRIPS. A hand-written file
+                with one opens, and the engine still reads it — it is a legal
+                BASE for `table` to lay over. Refusing it here would make an
+                editable file unopenable while the server accepts it, which is
+                `holds`' and `arrives'` law (web#1176): CARRIED, NOT OFFERED.
+                If one is present the author sees it read-only below. */}
+            {binding?.on !== undefined && (
+              <div data-testid="creature-inline-table-readonly">
+                <p className="wb-help">
+                  This creature also carries an inline table, which this build
+                  no longer authors. The server reads it: it is layered over
+                  anything it names.
+                </p>
+                <AnswerTableReadout table={binding.on} />
+              </div>
+            )}
           </>
         ) : binding === undefined ? (
           <p className="wb-help" data-testid="creature-overrides-none">
@@ -1955,6 +1970,58 @@ export function CreatureOrders({
           <p className="wb-help" data-testid="creature-interaction-readonly">
             Checks, intel and the reserve predicate are authored through the
             creature’s own panel.
+          </p>
+        )}
+      </div>
+
+      <div className="wb-policy-block">
+        <h5>Answers with</h5>
+        {onOrdersChange !== undefined ? (
+          <>
+            <label>
+              <span>Table</span>
+              <TableNameSelect
+                scope={scope}
+                value={binding?.table}
+                label={`Table for ${monster.id}`}
+                placeholder="none — what its kind or faction supplies stands"
+                onChange={(table) =>
+                  onOrdersChange(setMonsterTable(binding, table))
+                }
+              />
+            </label>
+            {/* A REFERENCE IS SHOWN WHOLE, and that is the hazard it removes:
+                `time:` replaces the kind's entire default table, so an author
+                who cannot see the table cannot tell what they are replacing. */}
+            {namedTable !== undefined && (
+              <div data-testid="creature-named-table">
+                <AnswerTableReadout table={namedTable} />
+              </div>
+            )}
+            {binding?.table !== undefined && namedTable === undefined && (
+              <p className="wb-help" data-testid="creature-table-dangling">
+                This creature names the table “{binding.table}”, and this site
+                declares no table with that id. The server refuses it by name;
+                it is kept here rather than silently rewritten.
+              </p>
+            )}
+            {/* THE EMPTY STATE IS STATED, like every other section's: a
+                creature naming no table is not an error and not a gap — what
+                its kind and faction supply stands, which is the state most
+                creatures are in. */}
+            {binding?.table === undefined && (
+              <p className="wb-help" data-testid="creature-table-none">
+                No named table — this creature answers from what its kind and
+                faction supply.
+              </p>
+            )}
+          </>
+        ) : binding?.table !== undefined ? (
+          <p className="wb-help">Answers with the table “{binding.table}”.</p>
+        ) : (
+          <p className="wb-help" data-testid="creature-table-none">
+            No named table — this creature answers from what its kind and
+            faction supply.
           </p>
         )}
       </div>
