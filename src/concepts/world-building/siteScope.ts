@@ -338,7 +338,17 @@ function isStance(word: string): word is Stance {
   return (STANCES as readonly string[]).includes(word);
 }
 
-const SCOPE_KEYS = [
+/** EVERY KEY THE SITE SCOPE CARRIES, in the root's own order.
+ *
+ * EXPORTED (rpg-dnd5e-web#1201) so a test can hold the import and both publish
+ * call sites to it. A key added to `SiteScope` has to be wired in three places,
+ * and on this branch `tables` was missed in TWO of them — first both encode
+ * call sites, then the import that rebuilds the scope key by key. Both times
+ * the form looked like it worked and the document silently lost the key.
+ *
+ * THIS LIST IS THE SINGLE DECLARATION those three sites are judged against,
+ * rather than a fourth copy that can drift from them. */
+export const SCOPE_KEYS = [
   'tables',
   'factions',
   'dispositions',

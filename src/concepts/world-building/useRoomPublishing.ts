@@ -561,7 +561,15 @@ export function useRoomPublishing({
       );
       return false;
     }
+    // THE THIRD COPY OF THIS LIST, AND THE SECOND ONE TO GO WRONG. Every root
+    // noun `decodeSingleRoomDungeon` returns has to be named here or it is
+    // dropped on the way IN — which is what happened to `tables`: an imported
+    // document's root table vanished from the site scope, the Tables panel
+    // listed nothing, and a creature naming it still showed the name because
+    // the BINDING kept its reference while the DECLARATION was gone.
+    // (rpg-dnd5e-web#1201, found on Kirk's walk.)
     const accepted = onImportDraftRef.current(decoded.draft, {
+      ...(decoded.tables ? { tables: decoded.tables } : {}),
       ...(decoded.factions ? { factions: decoded.factions } : {}),
       ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
       ...(decoded.intel ? { intel: decoded.intel } : {}),
