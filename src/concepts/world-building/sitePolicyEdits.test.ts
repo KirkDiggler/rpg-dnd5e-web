@@ -211,7 +211,8 @@ describe('site root tables — mechanics', () => {
 
   it('removing the last table drops the key, so "none" is absence and not an empty map', () => {
     const removed = removeSiteTable(
-      removeSiteTable({ tables: { 'goblin-drill': {} } }, 'goblin-drill')
+      { tables: { 'goblin-drill': {} } },
+      'goblin-drill'
     );
     expect(removed.tables).toBeUndefined();
     expect('tables' in removed).toBe(false);

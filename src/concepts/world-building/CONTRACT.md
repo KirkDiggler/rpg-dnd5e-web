@@ -25,6 +25,40 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Shared answer tables at the root (#1201)
+
+**A table is declared once and NAMED, not pasted.** `tables` at the site root
+holds a creature's answer table under an id; a faction or a creature names that
+id and the engine layers it under their own `on:`. The reference field already
+existed on both (`SiteFaction.table`, `RoomMonsterBinding.table`); #1201 adds the
+panel that authors the declaration and the controls that name it.
+
+The reason is a hazard, not tidiness. `time:` **replaces the kind's whole default
+table**, so authoring one entry on one creature silently discarded everything its
+kind carried — this bit the project three times, once losing `enemy: seen →
+toward` so a goblin stood still in a fight it should have walked into. A named
+table is total by construction: declared once, seen whole, referenced. There is
+no invisible partial edit left to lose a default in.
+
+**A creature no longer authors an inline table.** Kirk's ruling: _"there should
+be no inline table defined on a monster anymore."_ The creature's editor is
+removed. `on:` is **still read and still round-trips** — a hand-written file with
+one opens and shows it read-only, and the engine still reads it as a base for a
+named table to lay over. Refusing it here would make an editable file
+unopenable while the server accepts it: `holds`' and `arrives'` **carried, not
+offered** law (#1176).
+
+**The builder mirrors the grammar and never resolves a name.** Renaming or
+removing a table rewrites the declaration and nothing else; a faction's or a
+creature's `table:` keeps the old id, and a name that resolves to nothing is the
+**engine's** refusal, by name and with the fix (`bindingTable`/`factionTable`).
+A hand-written name this site does not declare keeps its own option in the
+picker rather than being silently rewritten. Semantic authority is the server's.
+
+The entry editor inside a table is the **one** `AnswerEntryRow` a faction's
+table already used, over the one vocabulary declaration — so a root table keeps
+the `at:` cell selector, which is refused only on a placement.
+
 ## Destinations — the site is the document (#1152, corrected model)
 
 The World Builder route has **two** destinations: **Site** and **Prop
@@ -56,15 +90,20 @@ nouns persist across rooms.
   `Expand workspace`.
 - **Right, collapsible site nouns** — `Monsters` (placement, party start, the
   placed-creature list with Move/Remove, and for the selected creature its
-  faction, mind table (`monsterBindings[id].on`) and weapons (`actions`), which
-  are named placeholders until those v4 shapes land), `Doors` (`doorBindings`
+  faction, weapons (`actions`) and the **named root table it answers with**
+  (`TableNameSelect`; see the tables section above for why the inline `on:`
+  editor is gone), which are named placeholders until those v4 shapes land),
+  `Doors` (`doorBindings`
   editable per placed item, whose own state decides what it blocks — see the
   doors section below) and `Policies`
-  (editable factions — add/remove; `id`, `mind`, and `temper` as absent, one
+  (editable factions — add/remove; `id`, `mind`, **the root table it names**, and
+  `temper` as absent, one
   word, or a word→share mix — editable dispositions — add/remove; `between`,
   `stance`, `until` — and each faction's shared `on:` table, per trigger, with
   weighted `say`/one-word entries; the inherited-vs-overridden readout for a
-  selected creature is design slice 2). An `Edit` collapsible holds Undo/Redo.
+  selected creature is design slice 2), plus `Intel` and **`Tables`** (the site's
+  shared answer tables: add/remove/rename a declaration and edit its triggers and
+  entries). An `Edit` collapsible holds Undo/Redo.
   **Selection declarations stay contextual** — they appear only while props are
   selected, because they belong to a selection and not to the site.
 
