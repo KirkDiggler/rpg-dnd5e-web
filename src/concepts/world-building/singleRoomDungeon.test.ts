@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createRoomDraft, type RoomDraft } from './roomDraft';
+import { createRoomDraft, placeRoomMonster, type RoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import {
   decodeSingleRoomDungeon,
@@ -11,9 +11,9 @@ import {
  * the encoder as it stood before this slice (rpg-dnd5e-web#1136) and committed
  * byte-accurate. This is the one test the issue says not to skip: the file
  * format is the expensive thing to walk back. */
-const readV3Golden = () =>
+const readGolden = () =>
   readFileSync(
-    'src/concepts/world-building/fixtures/singleRoomV3.golden.yaml',
+    'src/concepts/world-building/fixtures/singleRoomV4.golden.yaml',
     'utf8'
   );
 
@@ -217,19 +217,27 @@ play:
     expect(decoded.draft.room.partyStart).toEqual({ q: 3, r: -3 });
   });
 
-  it('emits exactly the bytes it emitted before the v4 keys existed', () => {
-    // THE PROOF THE ISSUE SAYS NOT TO SKIP. `singleRoomV3.golden.yaml` is the
-    // pre-slice encoder's own output, committed byte-accurate. A site with no
-    // `factions`, no `dispositions`, no `faction` and no `monsterBindings`
-    // must reproduce it exactly — not "equivalently".
+  it('emits byte-for-byte what the golden holds, with no empty v4 placeholder', () => {
+    // THE PROOF THE ISSUE SAYS NOT TO SKIP. `singleRoomV4.golden.yaml` is the
+    // encoder's own output committed byte-accurate, so this is a real diff and
+    // not a re-parse.
+    //
+    // IT CLAIMS `version: 4` NOW, AND THAT IS THE FIX (rpg-toolkit#1900,
+    // rpg-project#501 §6.1). The test used to assert `version: 3` because a
+    // room with no scope had no v4 fact to state. It has one: EVERY monster
+    // carries a `startingCell`, which has no place in v3 — so the old `3` was
+    // a false statement about what the file may contain, which is the same
+    // defect the door wave left behind (see `carriesV4Keys`). The golden was
+    // renamed from `singleRoomV3` with it, because a file named for a version
+    // it no longer claims misleads the next reader.
     const emitted = encodeSingleRoomDungeon({
       key: 'crypt-room',
       draft: goldenDraft(),
     });
-    expect(emitted).toBe(readV3Golden());
-    // The version is the LOWEST that carries the document, and none of the v4
-    // keys is present as an empty placeholder.
-    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted).toBe(readGolden());
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    // AND STILL NO EMPTY PLACEHOLDER: the version is a claim, not a licence to
+    // write keys the author never authored.
     expect(emitted).not.toContain('factions');
     expect(emitted).not.toContain('dispositions');
     expect(emitted).not.toContain('faction');
@@ -245,16 +253,16 @@ play:
       factions: [],
       dispositions: [],
     });
-    expect(emitted).toBe(readV3Golden());
+    expect(emitted).toBe(readGolden());
 
     const decoded = decodeSingleRoomDungeon(
-      `${readV3Golden()}factions: []\ndispositions: []\n`
+      `${readGolden()}factions: []\ndispositions: []\n`
     );
     expect(decoded.factions).toBeUndefined();
     expect(decoded.dispositions).toBeUndefined();
     expect(
       encodeSingleRoomDungeon({ key: decoded.key, draft: decoded.draft })
-    ).toBe(readV3Golden());
+    ).toBe(readGolden());
   });
 
   it('round trips hand-written monster orders and a creature faction at v4', () => {
@@ -811,5 +819,52 @@ describe('answer tables at the root', () => {
         )
       )
     ).toThrow(/is not a trigger this build rolls/);
+  });
+});
+
+/**
+ * A MONSTER'S START MAKES A DOCUMENT v4 (rpg-toolkit#1900).
+ *
+ * THIS IS THE REGRESSION TEST FOR A BUG KIRK FOUND BY EYE. A room whose only
+ * authored fact was a monster emitted `version: 3` while carrying
+ * `startingCell` — a key v3 has no place for, so the file stated something
+ * false. `carriesV4Keys` enumerated tables, factions, doors, props and
+ * bindings, and simply did not mention monsters.
+ *
+ * IT IS THE SAME DEFECT THE DOOR WAVE LEFT, which that function's own comment
+ * describes: a version is a statement about what a file MAY contain. The test
+ * is here so the next shape added to `monsters:` cannot repeat it silently.
+ */
+describe('the version a document claims', () => {
+  it('claims v4 for a room whose ONLY v4 fact is a monster placement', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    draft.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 1 },
+    ];
+    const placed = placeRoomMonster(draft, {
+      id: 'goblin-1',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 1, r: 1 } },
+    });
+    const emitted = encodeSingleRoomDungeon({
+      key: 'monster-only',
+      draft: placed,
+    });
+    expect(emitted).toContain('startingCell');
+    expect(
+      emitted.startsWith('version: 4\n'),
+      'a document carrying `startingCell` cannot honestly claim v3 — v3 has no place for it'
+    ).toBe(true);
+  });
+
+  it('still claims v3 for a room with no monster and no scope at all', () => {
+    // The other side of the claim: nothing authored means nothing to state, so
+    // the lowest true version is still 3 and no placeholder is written.
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const emitted = encodeSingleRoomDungeon({ key: 'empty-room', draft });
+    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted).not.toContain('startingCell');
   });
 });

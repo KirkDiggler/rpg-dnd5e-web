@@ -166,7 +166,21 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
     Object.keys(draft.room.propBindings).length > 0
   )
     return true;
-  return draft.room.monsters.some((monster) => monster.faction !== undefined);
+  // A MONSTER'S START IS A v4 FACT, AND SO IS ITS FACING
+  // (rpg-toolkit#1900, rpg-project#501 §6.1). A room whose ONLY v4 fact is a
+  // placement's `startingCell` must still claim v4 — THIS IS THE DOOR BUG
+  // AGAIN, in the shape the comment above warns about: `startingCell` has no
+  // place in v3, so a `version: 3` document carrying one states something
+  // false.
+  //
+  // `startingCell` is NOT itself the marker, because every monster has one —
+  // the marker is the SHAPE being authored rather than a bare `cell`. This
+  // dialect emits `startingCell` for every placement, so any monster at all
+  // makes the document v4. That is the honest reading: a v3 document cannot
+  // express this build's `monsters:` block.
+  if (draft.room.monsters.length > 0) return true;
+
+  return false;
 }
 
 export function encodeSingleRoomDungeon(
