@@ -754,6 +754,47 @@ describe('RoomPublishingPanel — the site scope (web#1157)', () => {
     expect(emitted.dispositions).toEqual(fixture.dispositions);
   });
 
+  it('publishes the site’s root tables instead of dropping them', async () => {
+    /* THE SAME REGRESSION, ONE KEY LATER (rpg-dnd5e-web#1201). Slice 2 taught
+     * the ENCODER about `tables` and taught neither publish call site to pass
+     * it, so an authored table was dropped from the published YAML while the
+     * local draft still carried it — the form looked like it worked and the
+     * document that reached the engine did not have it. Found on Kirk's walk:
+     * "I added an entry and thought I would edit the yaml to add the table I
+     * have but it wasnt there."
+     *
+     * This test reads the bytes the PANEL PUTS ON THE WIRE, which is the only
+     * place the omission shows: the draft envelope carries `tables` correctly,
+     * which is why a walk that reads the draft passes on the broken code. */
+    const fixture = decodeWorldBuilderV4Site();
+    const tables = {
+      'goblin-drill': {
+        time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+      },
+    };
+    render(
+      <RoomPublishingPanel
+        draft={fixture.draft}
+        scope={{ tables }}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={vi.fn(() => true)}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(rpc.gets).toHaveLength(1));
+    await act(async () =>
+      getAnswers[0]!.reject(new ConnectError('absent', Code.NotFound))
+    );
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    const yaml = savePuts()[0]!.request.yaml;
+    const emitted = decodeSingleRoomDungeon(yaml);
+    expect(emitted.tables).toEqual(tables);
+    // And a faction NAMING a table survives with it, so the reference and its
+    // declaration land in the same document.
+    expect(yaml).toContain('tables:');
+  });
+
   it('hands the imported document’s scope to the editor callback', () => {
     const fixture = decodeWorldBuilderV4Site();
     const onImportDraft = vi.fn<

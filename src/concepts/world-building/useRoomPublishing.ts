@@ -279,6 +279,13 @@ export function useRoomPublishing({
         yaml: encodeSingleRoomDungeon({
           key: trimmedKey,
           draft,
+          // EVERY ROOT NOUN IS PASSED AT BOTH CALL SITES, and this list is the
+          // one place a key can go missing. Slice 2 taught the ENCODER about
+          // `tables` and left both call sites alone, so an authored table was
+          // dropped from the published YAML while the local draft still
+          // carried it — a walk that reads the draft cannot see that, which is
+          // how it reached Kirk's walk (rpg-dnd5e-web#1201).
+          tables: scope.tables,
           factions: scope.factions,
           dispositions: scope.dispositions,
           intel: scope.intel,
@@ -394,6 +401,10 @@ export function useRoomPublishing({
         yamlText = encodeSingleRoomDungeon({
           key: trimmed,
           draft: current,
+          // The publish path's copy of the same list — see the `encoded` memo
+          // above for why every root noun has to be named at BOTH sites
+          // (rpg-dnd5e-web#1201).
+          tables: currentScope.tables,
           factions: currentScope.factions,
           dispositions: currentScope.dispositions,
           intel: currentScope.intel,
