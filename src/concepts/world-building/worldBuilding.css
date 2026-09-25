@@ -235,6 +235,65 @@
     );
 }
 
+/* Room configuration owns a stable width; composition mode keeps its layout. */
+.wb-workspace:has(> .wb-config-inspector) {
+  grid-template-columns: 170px minmax(420px, 1fr) minmax(480px, 640px);
+}
+
+.wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {
+  grid-template-columns: 170px minmax(300px, 1fr) 94px;
+}
+
+.wb-workspace:has(> .wb-config-inspector) .wb-tool-strip {
+  flex-wrap: wrap;
+}
+
+.wb-workspace:has(> .wb-config-inspector) .wb-tool-strip > span {
+  flex: 1 1 10rem;
+}
+
+.wb-config-inspector {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--wb-panel);
+  border-left: 1px solid var(--wb-border);
+}
+
+.wb-config-inspector[data-collapsed='true'] {
+  grid-template-columns: 94px;
+}
+
+.wb-inspector-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--wb-border);
+}
+
+.wb-inspector-nav button {
+  white-space: normal;
+  padding: 0.5rem 0.2rem;
+  font-size: 0.72rem;
+}
+
+.wb-inspector-nav button[aria-pressed='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent);
+}
+
+.wb-inspector-content {
+  min-height: 0;
+}
+
+.wb-inspector-content[hidden] {
+  display: none;
+}
+
 /* Collapsible nodes (Rooms / Props / Edit / Monsters / Doors / Policies).
  * Each summary carries a stable aria-label; the details element owns the
  * open/closed state. */
@@ -552,6 +611,77 @@ button.wb-tree-row[aria-pressed='true'] {
   margin: 0.3rem 0;
   padding: 0.3rem 0.4rem;
   border-left: 2px solid #35564f;
+}
+
+.wb-entry-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem 0.6rem;
+}
+
+.wb-entry-sentence .wb-policy-when {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+  color: var(--wb-muted);
+  font-size: 0.75rem;
+}
+
+.wb-policy-when > select {
+  width: auto;
+  max-width: 100%;
+  flex: 1 1 12rem;
+}
+
+.wb-policy-when > input {
+  width: 4rem;
+  flex: 0 0 4rem;
+}
+
+.wb-entry-perspective-label {
+  flex-basis: 100%;
+  font-size: 0.65rem;
+}
+
+.wb-entry-action,
+.wb-entry-target {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-entry-arrow {
+  align-self: center;
+  color: var(--wb-accent);
+}
+
+.wb-entry-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.wb-entry-dialogue {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.wb-entry-weight {
+  flex: 0 0 4.5rem;
+}
+
+.wb-entry-remove {
+  flex: 0 0 auto;
+  margin-bottom: 0.25rem;
+}
+
+.wb-entry-weight-help {
+  margin-top: 0.25rem;
 }
 
 .wb-policy-trigger-block {
@@ -1015,6 +1145,12 @@ button.wb-tree-row[aria-pressed='true'] {
     grid-template-rows: minmax(520px, 65vh) auto;
   }
 
+  .wb-workspace-route
+    .wb-shell--world
+    .wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {
+    grid-template-rows: minmax(260px, 1fr) auto;
+  }
+
   .wb-inspector {
     grid-column: 1 / -1;
     border-top: 1px solid var(--wb-border);
@@ -1035,6 +1171,44 @@ button.wb-tree-row[aria-pressed='true'] {
   .wb-identity-columns {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Stack room configuration before the wider inspector would squeeze the
+ * canvas tool strip. Composition mode retains its existing breakpoint. */
+@media (max-width: 1200px) {
+  .wb-workspace:has(> .wb-config-inspector),
+  .wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {
+    grid-template-columns: minmax(120px, 170px) minmax(0, 1fr);
+    grid-template-rows: minmax(300px, 1fr) minmax(0, 45%);
+  }
+
+  .wb-config-inspector {
+    grid-column: 1 / -1;
+    max-height: 45vh;
+    border-top: 1px solid var(--wb-border);
+  }
+
+  .wb-config-inspector .wb-inspector {
+    grid-column: auto;
+  }
+
+  .wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {
+    grid-template-rows: minmax(300px, 1fr) auto;
+  }
+
+  .wb-config-inspector[data-collapsed='true'] {
+    grid-template-columns: 1fr;
+  }
+
+  .wb-config-inspector[data-collapsed='true'] .wb-inspector-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.wb-config-inspector select[aria-label='Creature faction'] {
+  width: 100%;
+  padding: 0.4rem;
 }
 
 .wb-repeat-action {

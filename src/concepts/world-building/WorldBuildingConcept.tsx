@@ -115,6 +115,7 @@ import type {
 import type { RoomPublishingCapability } from './useRoomPublishing';
 import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
 import { WorldAssetThumbnailRenderer } from './WorldAssetThumbnailRenderer';
+import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
 import {
   writeWorldBuildingDragPayload,
@@ -2976,8 +2977,18 @@ export function WorldBuildingConcept({
         </main>
 
         {roomMode ? (
-          <aside className="wb-panel wb-inspector" aria-label="Site nouns">
-            <details className="wb-collapse" open>
+          <WorldBuilderInspector
+            selectionKey={
+              selectedIds.length > 0 || selectedMonster
+                ? JSON.stringify([
+                    roomDraft.id,
+                    selectedMonster?.id,
+                    selectedIds,
+                  ])
+                : ''
+            }
+          >
+            <details className="wb-collapse" data-inspector-section="edit" open>
               <summary aria-label="Edit">Edit</summary>
               <div className="wb-actions">{undoRedoButtons}</div>
               {shortcutsHelp}
@@ -2986,7 +2997,11 @@ export function WorldBuildingConcept({
             {/* The active nouns of the site, present whichever room the
                   camera is on: they are not a scope and do not change when a
                   room is jumped to. */}
-            <details className="wb-collapse" open>
+            <details
+              className="wb-collapse"
+              data-inspector-section="monsters"
+              open
+            >
               <summary aria-label="Monsters">Monsters</summary>
               <p className="wb-help">
                 Monsters and the party start are authoring markers. Props stay
@@ -3107,7 +3122,7 @@ export function WorldBuildingConcept({
                 default like Props: the top level is the nouns themselves.
                 The form writes the document and the SERVER judges it through
                 the publish panel's validation (design slices 3/4, #1160). */}
-            <details className="wb-collapse">
+            <details className="wb-collapse" data-inspector-section="factions">
               <summary aria-label="Factions">Factions</summary>
               <FactionsPanel
                 scope={siteScope}
@@ -3116,7 +3131,10 @@ export function WorldBuildingConcept({
               />
             </details>
 
-            <details className="wb-collapse">
+            <details
+              className="wb-collapse"
+              data-inspector-section="dispositions"
+            >
               <summary aria-label="Dispositions">Dispositions</summary>
               <DispositionsPanel
                 scope={siteScope}
@@ -3125,7 +3143,7 @@ export function WorldBuildingConcept({
               />
             </details>
 
-            <details className="wb-collapse">
+            <details className="wb-collapse" data-inspector-section="intel">
               <summary aria-label="Intel">Intel</summary>
               {/* The site's knowledge records (web#1176, v2's web#933). A
                   record is a SITE noun held by many creatures, so it lives
@@ -3147,7 +3165,7 @@ export function WorldBuildingConcept({
                 Kirk's direction (rpg-project#498): "having the place in the
                 builder where we can name the tables at the root like we do
                 disposition and others." */}
-            <details className="wb-collapse">
+            <details className="wb-collapse" data-inspector-section="tables">
               <summary aria-label="Tables">Tables</summary>
               <TablesPanel scope={siteScope} onChange={commitPolicies} />
             </details>
@@ -3162,6 +3180,7 @@ export function WorldBuildingConcept({
               <section
                 className="wb-light-editor"
                 aria-label="Selection declarations"
+                data-inspector-section="selection"
               >
                 <h3>Selection</h3>
                 {selectedIds.length > 0 && (
@@ -3262,7 +3281,7 @@ export function WorldBuildingConcept({
                 )}
               </section>
             )}
-          </aside>
+          </WorldBuilderInspector>
         ) : (
           <aside
             className="wb-panel wb-inspector"

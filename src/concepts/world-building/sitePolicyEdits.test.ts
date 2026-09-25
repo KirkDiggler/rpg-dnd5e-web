@@ -45,6 +45,13 @@ describe('site policy edits — mechanics', () => {
     ]);
   });
 
+  it.each(['', '   '])(
+    'does not turn a faction into the absent-id dropdown value (%j)',
+    (id) => {
+      expect(renameSiteFaction(baseScope, 'goblins', id)).toBe(baseScope);
+    }
+  );
+
   it('renames only the declaration, leaving references as written', () => {
     const renamed = renameSiteFaction(baseScope, 'goblins', 'orcs');
     expect(renamed.factions?.[0]?.id).toBe('orcs');

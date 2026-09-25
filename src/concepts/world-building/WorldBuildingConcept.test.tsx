@@ -2471,7 +2471,7 @@ describe('WorldBuildingConcept room publishing', () => {
     );
     const creature = screen.getByLabelText('Selected creature');
     expect(
-      (within(creature).getByLabelText('Creature faction') as HTMLInputElement)
+      (within(creature).getByLabelText('Creature faction') as HTMLSelectElement)
         .value
     ).toBe('goblins');
     // ITS FACTION SUPPLIES the mix and the two-trigger table …
@@ -3339,6 +3339,14 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     const placed = JSON.parse(
       screen.getByTestId('viewport-actors').textContent ?? '{}'
     ).monsters[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Factions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+    const factionId = screen.getByLabelText('Faction id for faction-1');
+    fireEvent.change(factionId, { target: { value: 'watch' } });
+    fireEvent.blur(factionId);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Configure Selection' })
+    );
     fireEvent.change(screen.getByLabelText('Creature faction'), {
       target: { value: 'watch' },
     });
@@ -3353,7 +3361,7 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
       });
     });
     expect(
-      (screen.getByLabelText('Creature faction') as HTMLInputElement).value
+      (screen.getByLabelText('Creature faction') as HTMLSelectElement).value
     ).toBe('watch');
     fireEvent.change(screen.getByLabelText('Creature faction'), {
       target: { value: '' },

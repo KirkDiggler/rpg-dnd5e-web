@@ -51,6 +51,8 @@ export function renameSiteFaction(
   from: string,
   to: string
 ): SiteScope {
+  // Empty membership means the kind's default, never a faction declaration.
+  if (to.trim() === '') return scope;
   return {
     ...scope,
     factions: (scope.factions ?? []).map((faction) =>
