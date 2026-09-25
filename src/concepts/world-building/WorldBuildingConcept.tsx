@@ -844,7 +844,7 @@ export function WorldBuildingConcept({
    * here rather than in the panel: an emptied creature becomes a DELETED
    * binding, and an emptied map omits the key entirely, because the encoder
    * refuses both `actions: []` ("omit the key instead") and a binding that
-   * "declares no orders". The panel edits one creature and knows nothing about
+   * "declares no bindings". The panel edits one creature and knows nothing about
    * the room it lives in. */
   const setMonsterOrders = useCallback(
     (id: string, next: RoomMonsterBinding | undefined) => {

@@ -29,7 +29,7 @@
  *   `actions: []`          -> "actions is empty; omit the key instead."
  *   `intimidate: []`       -> "intimidate is empty; omit the key instead."
  *   `holds: []`            -> "holds is empty; omit the key instead."
- *   a binding with no keys -> "declares no orders; omit the binding instead."
+ *   a binding with no keys -> "declares no bindings; omit the binding instead."
  *
  * So removing the last weapon, the last check row or the last held record is
  * not a list edit — it must delete that key, and if nothing else is left, the
