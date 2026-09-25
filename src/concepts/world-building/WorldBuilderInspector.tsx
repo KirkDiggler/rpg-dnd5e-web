@@ -56,23 +56,23 @@ export function WorldBuilderInspector({
   useEffect(() => {
     const container = content.current;
     if (!container) return;
-    // Native toggle does not bubble. Capture nested table expansion so the
-    // section can align after it grows beyond the inspector's viewport.
+    // Native toggle does not bubble. Track root summaries as navigation too,
+    // but leave nested disclosures alone so they retain their scroll context.
     const onToggle = (event: Event) => {
       const target = event.target;
-      if (
-        target instanceof HTMLDetailsElement &&
-        target.open &&
-        target
-          .closest('[data-inspector-section]')
-          ?.getAttribute('data-inspector-section') === active
-      ) {
-        setNavigation((value) => value + 1);
+      if (target instanceof HTMLDetailsElement && target.open) {
+        const section = SECTIONS.find(
+          ([id]) => id === target.dataset.inspectorSection
+        );
+        if (section) {
+          setActive(section[0]);
+          setNavigation((value) => value + 1);
+        }
       }
     };
     container.addEventListener('toggle', onToggle, true);
     return () => container.removeEventListener('toggle', onToggle, true);
-  }, [active]);
+  }, []);
 
   return (
     <aside
@@ -88,7 +88,7 @@ export function WorldBuilderInspector({
           aria-controls={contentId}
           onClick={() => setCollapsed(!collapsed)}
         >
-          {collapsed ? 'Configure ›' : '‹ Tuck away'}
+          {collapsed ? 'Expand inspector' : 'Collapse inspector'}
         </button>
         {SECTIONS.map(([id, label]) => (
           <button

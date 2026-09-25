@@ -875,6 +875,11 @@ function FactionRow({
   const [typedId, setTypedId] = useState(faction.id);
   const commitId = () => {
     if (typedId === faction.id) return;
+    if (typedId.trim() === '') {
+      setTypedId(faction.id);
+      onNotice?.('Faction id cannot be empty; the declaration was kept.');
+      return;
+    }
     onChange(renameSiteFaction(scope, faction.id, typedId));
     onNotice?.(
       `Renamed the faction “${faction.id}” to “${typedId}”. References that still name “${faction.id}” are the engine’s to refuse.`

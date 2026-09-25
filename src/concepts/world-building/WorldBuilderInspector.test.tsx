@@ -17,6 +17,19 @@ function panels() {
 }
 
 describe('World Builder inspector navigation', () => {
+  it('tracks a root summary opened directly, not just navigation buttons', () => {
+    render(
+      <WorldBuilderInspector selectionKey="">{panels()}</WorldBuilderInspector>
+    );
+    const root = screen.getByText('Tables panel').closest('details')!;
+    root.open = true;
+    fireEvent(root, new Event('toggle'));
+    expect(
+      screen
+        .getByRole('button', { name: 'Configure Tables' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+  });
   it('opens a root section and preserves edits while tucked away', () => {
     render(
       <WorldBuilderInspector selectionKey="">{panels()}</WorldBuilderInspector>

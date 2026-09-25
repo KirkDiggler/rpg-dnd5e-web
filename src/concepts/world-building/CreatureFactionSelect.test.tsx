@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { CreatureOrders } from './SitePolicies';
+import { CreatureOrders, FactionsPanel } from './SitePolicies';
 import { createRoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 
@@ -12,6 +12,27 @@ const monster = {
 };
 
 describe('Creature faction selector', () => {
+  it('keeps the declaration when an author clears its required id', () => {
+    const change = vi.fn();
+    const notice = vi.fn();
+    render(
+      <FactionsPanel
+        scope={{ factions: [{ id: 'watch' }] }}
+        onChange={change}
+        onNotice={notice}
+      />
+    );
+    const id = screen.getByLabelText(
+      'Faction id for watch'
+    ) as HTMLInputElement;
+    fireEvent.change(id, { target: { value: '' } });
+    fireEvent.blur(id);
+    expect(id.value).toBe('watch');
+    expect(change).not.toHaveBeenCalled();
+    expect(notice).toHaveBeenCalledWith(
+      'Faction id cannot be empty; the declaration was kept.'
+    );
+  });
   it('offers declared factions and default, with no arbitrary membership text', () => {
     const change = vi.fn();
     render(

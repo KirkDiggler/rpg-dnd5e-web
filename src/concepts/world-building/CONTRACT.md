@@ -28,8 +28,9 @@ below, not the standalone composition interaction or ownership contract. See
 ## Wide, tuck-away configuration inspector (#1204)
 
 Room/site mode keeps a persistent navigation strip for root sections and the
-current Selection. Opening a section expands the same comfortable-width inspector
-and brings its existing panel into view. Selecting a different canvas object opens
+current Selection. Opening a section expands the inspector and brings its existing
+panel into view. The expanded inspector shares extra window width with the canvas
+rather than stopping at a fixed maximum; the collapsed navigation stays narrow. Selecting a different canvas object opens
 Selection; edits or re-renders of the same selection do not force a collapsed
 inspector open. Tucking it away preserves selection, unsaved inputs, and panel
 state because the controls remain mounted. On narrower screens configuration

@@ -237,7 +237,7 @@
 
 /* Room configuration owns a stable width; composition mode keeps its layout. */
 .wb-workspace:has(> .wb-config-inspector) {
-  grid-template-columns: 170px minmax(420px, 1fr) minmax(480px, 560px);
+  grid-template-columns: 170px minmax(420px, 1fr) minmax(480px, 1fr);
 }
 
 .wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {

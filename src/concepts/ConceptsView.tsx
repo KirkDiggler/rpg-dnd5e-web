@@ -79,7 +79,11 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
   const [activePage, setActivePage] = useState<ConceptPage>(initialPage);
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div
+      className={
+        activePage === 'room-authoring' ? 'w-full min-w-0' : 'max-w-7xl mx-auto'
+      }
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
