@@ -288,7 +288,6 @@
 
 .wb-inspector-content {
   min-height: 0;
-  container-type: inline-size;
 }
 
 .wb-inspector-content[hidden] {
