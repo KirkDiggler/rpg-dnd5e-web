@@ -2,8 +2,8 @@
 #
 # What it exercises: the three v4 keys in their minimum form.
 #   - a root `factions:` with ONE faction and nothing else on it
-#   - a `faction:` on a placement (the actor carries membership)
-#   - NO `monsterBindings` at all: four creatures in one faction with no
+#   - a faction-only `monsterBindings` entry (membership is a binding)
+#   - no orders overrides: creatures in one faction with no
 #     overrides need no orders blocks, which is the whole point of the split
 #   - NO `dispositions:`: absence is the authored state
 #
@@ -53,10 +53,11 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }
-    monsters:
+    monsterDeclarations:
       - {
           id: skeleton-a,
           ref: 'dnd5e:monsters:skeleton',
           startingCell: { location: { q: 2, r: 0 } },
-          faction: goblins,
         }
+    monsterBindings:
+      skeleton-a: { faction: goblins }

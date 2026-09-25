@@ -66,14 +66,8 @@ export interface RoomPropDeclaration {
  * grammar; an unknown-but-syntactically-valid monster id stays editable and
  * is reported as an unavailable model, never dropped or substituted.
  *
- * `faction` is the site-scope membership and is OPTIONAL, ABSENT WHEN
- * UNAUTHORED (rpg-project#477 Decision 4). It is never written out as
- * `faction: monsters`: `factionOf` (`encounter/field.go`) stores it "as given,
- * never resolved here, so a member in the default faction persists
- * byte-identically to one from before factions existed" and resolves the
- * kind's default on every read. Membership sits on the ACTOR because it is
- * what SELECTS the defaults, while everything a faction supplies (`on`,
- * `actions`) is overridable and therefore lives in the orders block below. */
+ * Identity and starting position are declarations. Faction membership and
+ * authored overrides live in `monsterBindings`, keyed by this actor's id. */
 export interface RoomMonsterPlacement {
   id: string;
   ref: string;
@@ -91,7 +85,6 @@ export interface RoomMonsterPlacement {
    * which is a default rather than a missing answer, because a model has no
    * "no orientation". */
   startingCell: RoomStartingCell;
-  faction?: string;
 }
 
 /** A creature's authored start: the cell it stands on, and the direction it
@@ -138,8 +131,8 @@ export interface RoomPropBinding {
  * It carries the authored facts the FACTION would otherwise supply, because
  * being supplied by the faction is exactly what makes them overridable:
  * `FactionSpec.On` is "LAYERED, NEAREST KEY WINS WHOLESALE" and `TemperSpec`
- * says "A PLACEMENT'S OWN WORD WINS". `faction` is deliberately NOT here —
- * nothing overrides it.
+ * says "A PLACEMENT'S OWN WORD WINS". `faction` selects membership and
+ * therefore the inherited defaults; it is optional and absent when unauthored.
  *
  * `on`, `temper` and `actions` are all here, because the engine carries all
  * three on a binding (`RoomMonsterBinding`, `dungeonspec/single_room.go`).
@@ -226,6 +219,8 @@ export interface RoomMonsterInteraction {
  * `round | down | fact | stance` shape the shared `PredicateEditor` already
  * authors for a disposition's `until` (v2 `PlaceSpec.Arrives`). */
 export interface RoomMonsterBinding extends RoomMonsterInteraction {
+  /** Site faction reference. A faction-only binding is meaningful. */
+  faction?: string;
   /** A root answer table this creature answers with, by id
    * (rpg-toolkit#1897). The referenced table is the BASE this binding's own
    * `on:` layers over — so a creature may share a table and override one
@@ -250,9 +245,9 @@ export interface RoomGameplayData {
   /** Optional authoring metadata; a missing start is never invented. */
   partyStart?: RoomHexCell;
   /** Authoring actor markers only; the encounter owns legality at Play. */
-  monsters: RoomMonsterPlacement[];
-  /** Stable monster id -> its authored orders. ABSENT when nothing has any,
-   * so a room with no orders emits the bytes it always did. */
+  monsterDeclarations: RoomMonsterPlacement[];
+  /** Stable monster id -> membership, shared references and overrides.
+   * Absent when no creature has authored bindings. */
   monsterBindings?: Record<string, RoomMonsterBinding>;
   /** Stable item id -> its door's resting state. CARRIED, NOT GRADED: the
    * keys are the engine's and the engine judges them at `PutDungeon`, which
@@ -382,7 +377,7 @@ const defaultRoom = (id: string): RoomGameplayData => ({
   walkableHexes: [],
   propDeclarations: {},
   arrangementDeclarations: {},
-  monsters: [],
+  monsterDeclarations: [],
 });
 
 export function createRoomDraft(scene: WorldScene, id: string): RoomDraft {
@@ -496,13 +491,20 @@ export function placeRoomMonster(
     )
   )
     throw new Error('Monster placement is outside the authoring floor.');
-  if (draft.room.monsters.some((monster) => monster.id === placement.id))
+  if (
+    draft.room.monsterDeclarations.some(
+      (monster) => monster.id === placement.id
+    )
+  )
     throw new Error(`Monster id is already placed: ${placement.id}.`);
   return {
     ...draft,
     room: {
       ...draft.room,
-      monsters: [...draft.room.monsters, structuredClone(placement)],
+      monsterDeclarations: [
+        ...draft.room.monsterDeclarations,
+        structuredClone(placement),
+      ],
     },
   };
 }
@@ -514,12 +516,13 @@ export function moveRoomMonster(
 ): RoomDraft {
   if (!isCellWithinWorkspace(cell, draft.workspace.hexRadius))
     throw new Error('Monster placement is outside the authoring floor.');
-  if (!draft.room.monsters.some((monster) => monster.id === id)) return draft;
+  if (!draft.room.monsterDeclarations.some((monster) => monster.id === id))
+    return draft;
   // MOVING KEEPS THE FACING. A creature moved to another hex is the same
   // creature — it still faces the way the author pointed it, and a move that
   // dropped `facing` would silently re-aim it at the asset's default
   // (rpg-project#501 §6.1: `startingCell` is one noun).
-  const monsters = draft.room.monsters.map((monster) =>
+  const monsters = draft.room.monsterDeclarations.map((monster) =>
     monster.id === id
       ? {
           ...monster,
@@ -530,7 +533,7 @@ export function moveRoomMonster(
         }
       : monster
   );
-  return { ...draft, room: { ...draft.room, monsters } };
+  return { ...draft, room: { ...draft.room, monsterDeclarations: monsters } };
 }
 
 /** Removing the creature removes its orders. A binding can never outlive the
@@ -538,9 +541,14 @@ export function moveRoomMonster(
  * creature it names") — the decoder refuses an orphan, and this helper must
  * not be the thing that creates one. */
 export function removeRoomMonster(draft: RoomDraft, id: string): RoomDraft {
-  const monsters = draft.room.monsters.filter((monster) => monster.id !== id);
-  if (monsters.length === draft.room.monsters.length) return draft;
-  const room: RoomGameplayData = { ...draft.room, monsters };
+  const monsters = draft.room.monsterDeclarations.filter(
+    (monster) => monster.id !== id
+  );
+  if (monsters.length === draft.room.monsterDeclarations.length) return draft;
+  const room: RoomGameplayData = {
+    ...draft.room,
+    monsterDeclarations: monsters,
+  };
   if (room.monsterBindings?.[id]) {
     const bindings = { ...room.monsterBindings };
     delete bindings[id];
@@ -766,7 +774,7 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
 export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'faction'] as const;
+const MONSTER_KEYS = ['id', 'ref', 'startingCell'] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
 const STARTING_CELL_KEYS = ['location', 'facing'] as const;
@@ -774,6 +782,7 @@ const STARTING_CELL_KEYS = ['location', 'facing'] as const;
  * here (rpg-dnd5e-web#1201) — see `RoomMonsterInteraction` for why a priced
  * check is not a monster's fact. */
 const BINDING_KEYS = [
+  'faction',
   'table',
   'on',
   'temper',
@@ -794,6 +803,10 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       placement,
       `Monster placement at index ${index}`
     );
+    if (Object.hasOwn(source, 'faction'))
+      throw new Error(
+        `room.room.monsterDeclarations[${index}].faction: faction belongs in monsterBindings, keyed by this monster's id; move it there`
+      );
     rejectUnknownKeys(
       source,
       MONSTER_KEYS,
@@ -816,19 +829,6 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id} startingCell`
       ),
     };
-    // ABSENT WHEN UNAUTHORED: the key is added only when the file wrote one,
-    // so an unauthored creature stays byte-identical to one from before
-    // factions existed.
-    if (source.faction !== undefined && source.faction !== null) {
-      if (
-        typeof source.faction !== 'string' ||
-        !FACTION_ID_RE.test(source.faction)
-      )
-        throw new Error(
-          `Monster ${source.id} faction must be a faction id such as goblins.`
-        );
-      monster.faction = source.faction;
-    }
     monsters.push(monster);
   }
   return monsters;
@@ -915,6 +915,16 @@ function validateMonsterBindings(
     const block = objectShape(binding, `Monster binding for ${id}`);
     rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
     const parsed: RoomMonsterBinding = {};
+    if (Object.hasOwn(block, 'faction')) {
+      if (
+        typeof block.faction !== 'string' ||
+        !FACTION_ID_RE.test(block.faction)
+      )
+        throw new Error(
+          `Monster binding for ${id} faction must be a faction id such as goblins.`
+        );
+      parsed.faction = block.faction;
+    }
     // A TABLE NAME IS CARRIED, NOT RESOLVED (rpg-toolkit#1897). Whether the id
     // names a table the SITE declares is the site scope's question, and this
     // reader has no scope in hand — `decodeSingleRoomDungeon` checks it once,
@@ -1000,6 +1010,7 @@ function validateMonsterBindings(
     // A block that says nothing is a key the file did not need: absence is
     // the authored state, exactly as it is for the faction it overrides.
     if (
+      parsed.faction === undefined &&
       parsed.table === undefined &&
       parsed.on === undefined &&
       parsed.temper === undefined &&
@@ -1010,7 +1021,7 @@ function validateMonsterBindings(
       parsed.holds === undefined
     )
       throw new Error(
-        `Monster binding for ${id} declares no orders; omit the binding instead.`
+        `Monster binding for ${id} declares no bindings; omit the binding instead.`
       );
     bindings[id] = parsed;
   }
@@ -1065,6 +1076,10 @@ function validateDraft(value: unknown): RoomDraft {
   if (cellBudget > MAX_ROOM_WORKSPACE_HEXES)
     throw new Error('Room workspace exceeds the cell allocation budget.');
   const room = objectShape(input.room, 'Room gameplay data');
+  if (Object.hasOwn(room, 'monsters'))
+    throw new Error(
+      'room.room.monsters: monsters has been renamed to monsterDeclarations; rename this key'
+    );
   rejectUnknownKeys(
     room,
     [
@@ -1073,7 +1088,7 @@ function validateDraft(value: unknown): RoomDraft {
       'propDeclarations',
       'arrangementDeclarations',
       'partyStart',
-      'monsters',
+      'monsterDeclarations',
       'monsterBindings',
       'doorBindings',
       'propBindings',
@@ -1128,7 +1143,7 @@ function validateDraft(value: unknown): RoomDraft {
       `Arrangement declarations for ${arrangementId}`
     );
   }
-  const monsters = validateMonsters(room.monsters);
+  const monsters = validateMonsters(room.monsterDeclarations);
   for (const monster of monsters) {
     if (
       !isCellWithinWorkspace(monster.startingCell.location, workspace.hexRadius)
@@ -1182,7 +1197,7 @@ function validateDraft(value: unknown): RoomDraft {
       walkableHexes,
       propDeclarations,
       arrangementDeclarations,
-      monsters,
+      monsterDeclarations: monsters,
       ...(partyStart ? { partyStart } : {}),
       // ABSENT, NOT EMPTY: a room with no orders must emit the bytes it
       // emitted before `monsterBindings` existed.
@@ -1287,7 +1302,7 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
         ...envelope.draft,
         version: 3,
         workspace: { ...ROOM_WORKSPACE_STEPS[0] },
-        room: { ...(envelope.draft.room as object), monsters: [] },
+        room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
       }),
       scope: {},
     };
@@ -1305,7 +1320,7 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
       draft: validateDraft({
         ...envelope.draft,
         version: 3,
-        room: { ...(envelope.draft.room as object), monsters: [] },
+        room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
       }),
       scope: {},
     };

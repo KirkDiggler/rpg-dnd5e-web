@@ -23,7 +23,10 @@ import {
 import { withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
 import { IntelPanel } from './IntelPanel';
-import { withBinding } from './monsterOrderEdits';
+import {
+  setMonsterFaction as changeMonsterFaction,
+  withBinding,
+} from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
 import {
@@ -56,7 +59,6 @@ import {
   type RoomGameplayData,
   type RoomHexCell,
   type RoomMonsterBinding,
-  type RoomMonsterPlacement,
   type RoomPropBinding,
   type RoomPropDeclaration,
   type RoomWorkspace,
@@ -821,20 +823,19 @@ export function WorldBuildingConcept({
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
 
-  /** The ACTOR carries its faction (design Decision 4): assigning one is the
-   * creature's identity, not a policy edit, and the faction's shared table
-   * stays the faction's to own in `Policies` — a creature's panel never writes
-   * another creature's policy. */
+  /** Membership is a binding, keyed by the declared creature id. Editing it
+   * never changes the faction's shared policy or the actor's placement. */
   const setMonsterFaction = useCallback(
     (id: string, faction: string | undefined) => {
-      const monsters = roomDraft.room.monsters.map((monster) => {
-        if (monster.id !== id) return monster;
-        const next: RoomMonsterPlacement = { ...monster };
-        if (faction === undefined) delete next.faction;
-        else next.faction = faction;
-        return next;
-      });
-      commit(scene, selectedIds, { ...roomDraft.room, monsters });
+      const next = changeMonsterFaction(
+        roomDraft.room.monsterBindings?.[id],
+        faction
+      );
+      const bindings = withBinding(roomDraft.room.monsterBindings, id, next);
+      const room = { ...roomDraft.room };
+      if (bindings === undefined) delete room.monsterBindings;
+      else room.monsterBindings = bindings;
+      commit(scene, selectedIds, room);
     },
     [commit, roomDraft.room, scene, selectedIds]
   );
@@ -843,7 +844,7 @@ export function WorldBuildingConcept({
    * here rather than in the panel: an emptied creature becomes a DELETED
    * binding, and an emptied map omits the key entirely, because the encoder
    * refuses both `actions: []` ("omit the key instead") and a binding that
-   * "declares no orders". The panel edits one creature and knows nothing about
+   * "declares no bindings". The panel edits one creature and knows nothing about
    * the room it lives in. */
   const setMonsterOrders = useCallback(
     (id: string, next: RoomMonsterBinding | undefined) => {
@@ -1492,7 +1493,7 @@ export function WorldBuildingConcept({
    * identity and placement live here, the orders in its binding. */
   const selectedMonster =
     selectedActorId && selectedActorId !== 'start'
-      ? roomDraft.room.monsters.find(
+      ? roomDraft.room.monsterDeclarations.find(
           (monster) => monster.id === selectedActorId
         )
       : undefined;
@@ -2554,7 +2555,7 @@ export function WorldBuildingConcept({
                 </div>
                 <div>
                   <dt>Creatures</dt>
-                  <dd>{roomDraft.room.monsters.length}</dd>
+                  <dd>{roomDraft.room.monsterDeclarations.length}</dd>
                 </div>
                 <div>
                   <dt>Props</dt>
@@ -2902,7 +2903,7 @@ export function WorldBuildingConcept({
                       workspace: roomDraft.workspace,
                       walkableHexes: roomDraft.room.walkableHexes,
                       repeat: repeatDescriptor,
-                      monsters: roomDraft.room.monsters,
+                      monsters: roomDraft.room.monsterDeclarations,
                       partyStart: roomDraft.room.partyStart ?? null,
                       armedMonsterRef: armedMonsterRef,
                       selectedActorId: selectedActorId,
@@ -3033,7 +3034,7 @@ export function WorldBuildingConcept({
                 aria-label="Placed monsters"
                 data-testid="placed-monsters"
               >
-                {roomDraft.room.monsters.map((monster) => (
+                {roomDraft.room.monsterDeclarations.map((monster) => (
                   <li
                     key={monster.id}
                     className={

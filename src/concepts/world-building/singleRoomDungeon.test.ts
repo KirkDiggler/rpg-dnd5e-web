@@ -30,7 +30,7 @@ function goldenDraft(): RoomDraft {
     heightScale: 1.5,
   });
   draft.room.partyStart = { q: 0, r: 0 };
-  draft.room.monsters = [
+  draft.room.monsterDeclarations = [
     {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
@@ -53,8 +53,8 @@ const ROOM_BLOCK = `room:
     walkableHexes: [{q: 0, r: 0}]
     propDeclarations: {}
     arrangementDeclarations: {}
-    monsters:
-      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}}, faction: goblins}`;
+    monsterDeclarations:
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}}}`;
 
 const PLAY_BLOCK = `play: {void: transparent, lighting: bright, standing: centre-covered}`;
 
@@ -70,7 +70,7 @@ describe('single-room dungeon source', () => {
       heightScale: 1.5,
     });
     draft.room.partyStart = { q: 0, r: 0 };
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -139,7 +139,7 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    monsters:
+    monsterDeclarations:
       - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: {location: {q: 2, r: -1}}}
     walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
     propDeclarations: {}
@@ -155,7 +155,7 @@ play:
     expect(decoded.key).toBe('crypt-room');
     expect(decoded.draft.version).toBe(3);
     expect(decoded.draft.room.partyStart).toEqual({ q: 0, r: 0 });
-    expect(decoded.draft.room.monsters).toEqual([
+    expect(decoded.draft.room.monsterDeclarations).toEqual([
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -196,7 +196,7 @@ play:
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     draft.room.walkableHexes = [{ q: 0, r: 0 }];
     draft.room.partyStart = { q: 3, r: -3 };
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -213,7 +213,9 @@ play:
     const decoded = decodeSingleRoomDungeon(
       encodeSingleRoomDungeon({ key: 'crypt-room', draft })
     );
-    expect(decoded.draft.room.monsters).toEqual(draft.room.monsters);
+    expect(decoded.draft.room.monsterDeclarations).toEqual(
+      draft.room.monsterDeclarations
+    );
     expect(decoded.draft.room.partyStart).toEqual({ q: 3, r: -3 });
   });
 
@@ -272,6 +274,7 @@ ${PLAY_BLOCK}
 ${ROOM_BLOCK}
     monsterBindings:
       goblin-1:
+        faction: goblins
         on:
           intimidated:
             - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
@@ -281,9 +284,12 @@ ${ROOM_BLOCK}
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']
 `;
     const decoded = decodeSingleRoomDungeon(source);
-    expect(decoded.draft.room.monsters[0].faction).toBe('goblins');
+    expect(decoded.draft.room.monsterBindings?.['goblin-1'].faction).toBe(
+      'goblins'
+    );
     expect(decoded.draft.room.monsterBindings).toEqual({
       'goblin-1': {
+        faction: 'goblins',
         on: {
           intimidated: [
             {
@@ -833,7 +839,7 @@ describe('answer tables at the root', () => {
  *
  * IT IS THE SAME DEFECT THE DOOR WAVE LEFT, which that function's own comment
  * describes: a version is a statement about what a file MAY contain. The test
- * is here so the next shape added to `monsters:` cannot repeat it silently.
+ * is here so the next shape added to `monsterDeclarations:` cannot repeat it silently.
  */
 describe('the version a document claims', () => {
   it('claims v4 for a room whose ONLY v4 fact is a monster placement', () => {

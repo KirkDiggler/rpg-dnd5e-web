@@ -38,7 +38,7 @@ room:
     walkableHexes: []
     propDeclarations: {}
     arrangementDeclarations: {}
-    monsters:
+    monsterDeclarations:
       - id: skeleton-a
         ref: dnd5e:monsters:skeleton
         startingCell:

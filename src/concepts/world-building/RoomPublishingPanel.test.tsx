@@ -256,7 +256,7 @@ function richDraft(id = 'room-abc123'): RoomDraft {
     },
   };
   draft.room.partyStart = { q: 0, r: 0 };
-  draft.room.monsters = [
+  draft.room.monsterDeclarations = [
     {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
@@ -377,7 +377,7 @@ describe('RoomPublishingPanel — save to a new key', () => {
       blocksMovement: false,
       blocksLineOfSight: false,
     });
-    expect(decoded.draft.room.monsters).toEqual([
+    expect(decoded.draft.room.monsterDeclarations).toEqual([
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -540,11 +540,13 @@ describe('RoomPublishingPanel — Save & Play', () => {
     getAnswers[0]!.reject(new ConnectError('no such key', Code.NotFound));
     await waitFor(() => expect(savePuts()).toHaveLength(1));
     await resolvePut(savePuts()[0]!.deferred, {
-      errors: [{ path: 'room.monsters[0].ref', message: 'unknown monster' }],
+      errors: [
+        { path: 'room.monsterDeclarations[0].ref', message: 'unknown monster' },
+      ],
     });
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /room\.monsters\[0\]\.ref.*unknown monster/s
+        /room\.monsterDeclarations\[0\]\.ref.*unknown monster/s
       )
     );
     expect(rpc.lobby.createLobby).toEqual([]);
@@ -773,7 +775,7 @@ describe('RoomPublishingPanel — canonical YAML exchange', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Canonical YAML' }), {
       target: {
         value:
-          'version: 3\nkey: other-key\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3, id: room-abc123, name: X, coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}, workspace: {hexRadius: 6, horizontalLimit: 12}, scene: {version: 1, id: s, name: X, items: [], groups: []}, room: {implicitRegionId: r, walkableHexes: [], propDeclarations: {}, arrangementDeclarations: {}, monsters: []}}\n',
+          'version: 3\nkey: other-key\nplay: {void: transparent, lighting: bright, standing: centre-covered}\nroom: {version: 3, id: room-abc123, name: X, coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}, workspace: {hexRadius: 6, horizontalLimit: 12}, scene: {version: 1, id: s, name: X, items: [], groups: []}, room: {implicitRegionId: r, walkableHexes: [], propDeclarations: {}, arrangementDeclarations: {}, monsterDeclarations: []}}\n',
       },
     });
     fireEvent.click(

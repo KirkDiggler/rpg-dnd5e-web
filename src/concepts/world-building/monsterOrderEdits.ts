@@ -29,7 +29,7 @@
  *   `actions: []`          -> "actions is empty; omit the key instead."
  *   `intimidate: []`       -> "intimidate is empty; omit the key instead."
  *   `holds: []`            -> "holds is empty; omit the key instead."
- *   a binding with no keys -> "declares no orders; omit the binding instead."
+ *   a binding with no keys -> "declares no bindings; omit the binding instead."
  *
  * So removing the last weapon, the last check row or the last held record is
  * not a list edit — it must delete that key, and if nothing else is left, the
@@ -58,6 +58,12 @@ export function normalizeBinding(
   next: RoomMonsterBinding
 ): RoomMonsterBinding | undefined {
   const normalized: RoomMonsterBinding = {};
+  if (next.faction !== undefined && next.faction !== '')
+    normalized.faction = next.faction;
+  // These are still accepted on import, although no longer offered by the UI.
+  // Editing membership must not erase the imported creature's other facts.
+  if (next.intimidate !== undefined) normalized.intimidate = next.intimidate;
+  if (next.persuade !== undefined) normalized.persuade = next.persuade;
   // A NAMED ROOT TABLE IS A REFERENCE, SO IT IS KEPT VERBATIM (rpg-toolkit#1897).
   // Every other key here is an override that can be emptied and must then be
   // dropped; a reference has no empty state — it names a table or it is absent.
@@ -78,12 +84,19 @@ export function normalizeBinding(
     normalized.actions = next.actions;
   // The reserve + holdings facts keep the SAME law (web#1176): the encoder
   // refuses an empty `holds` and a binding that declares nothing, so both are
-  // dropped here rather than written out. (`intimidate`/`persuade` were
-  // normalized here too until rpg-dnd5e-web#1201 removed them.)
+  // dropped here rather than written out.
   if (next.holds !== undefined && next.holds.length > 0)
     normalized.holds = next.holds;
   if (next.arrives !== undefined) normalized.arrives = next.arrives;
   return Object.keys(normalized).length === 0 ? undefined : normalized;
+}
+
+/** Set membership without changing the creature's other bindings. */
+export function setMonsterFaction(
+  binding: RoomMonsterBinding | undefined,
+  faction: string | undefined
+): RoomMonsterBinding | undefined {
+  return normalizeBinding({ ...working(binding), faction });
 }
 
 /** Set or clear ONE creature's named root table (rpg-toolkit#1897). A name is a

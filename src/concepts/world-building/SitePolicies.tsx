@@ -1058,7 +1058,7 @@ function UntilEditor({
             if (next === 'none') onCommit(undefined);
             else if (next === 'round') onCommit({ round: 1 });
             else if (next === 'down')
-              onCommit({ down: room.monsters[0]?.id ?? '' });
+              onCommit({ down: room.monsterDeclarations[0]?.id ?? '' });
             else if (next === 'fact')
               onCommit({ fact: (shown?.fact as string) ?? '' });
             else
@@ -1101,7 +1101,7 @@ function UntilEditor({
             onChange={(event) => onCommit({ down: event.target.value })}
           >
             <option value="">(choose a placement)</option>
-            {room.monsters.map((monster) => (
+            {room.monsterDeclarations.map((monster) => (
               <option key={monster.id} value={monster.id}>
                 {monster.id} · {paletteNameForRef(monster.ref)}
               </option>
@@ -1581,7 +1581,7 @@ export function ArrivesEditor({
             if (next === 'none') onCommit(undefined);
             else if (next === 'round') onCommit({ round: 1 });
             else if (next === 'down')
-              onCommit({ down: room.monsters[0]?.id ?? '' });
+              onCommit({ down: room.monsterDeclarations[0]?.id ?? '' });
             else if (next === 'fact')
               onCommit({ fact: (shown?.fact as string) ?? '' });
             else
@@ -1624,7 +1624,7 @@ export function ArrivesEditor({
             onChange={(event) => onCommit({ down: event.target.value })}
           >
             <option value="">(choose a placement)</option>
-            {room.monsters.map((monster) => (
+            {room.monsterDeclarations.map((monster) => (
               <option key={monster.id} value={monster.id}>
                 {monster.id} · {paletteNameForRef(monster.ref)}
               </option>
@@ -1799,8 +1799,8 @@ export function CreatureOrders({
   onFactionChange,
   onOrdersChange,
 }: CreatureOrdersProps) {
-  const faction = monster.faction
-    ? (scope.factions ?? []).find((entry) => entry.id === monster.faction)
+  const faction = binding?.faction
+    ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
     : undefined;
   /** The root table this creature NAMES, resolved against what the site
    * declares. `undefined` covers both "names nothing" and "names something this
@@ -1823,7 +1823,7 @@ export function CreatureOrders({
             {onFactionChange ? (
               <input
                 aria-label="Creature faction"
-                value={monster.faction ?? ''}
+                value={binding?.faction ?? ''}
                 placeholder="its kind’s default"
                 onChange={(event) =>
                   onFactionChange(
@@ -1832,7 +1832,7 @@ export function CreatureOrders({
                 }
               />
             ) : (
-              (monster.faction ??
+              (binding?.faction ??
               'None — this creature keeps its kind’s default.')
             )}
           </dd>
@@ -1841,13 +1841,13 @@ export function CreatureOrders({
 
       <div className="wb-policy-block">
         <h5>Inherits</h5>
-        {monster.faction === undefined ? (
+        {binding?.faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-none">
             Nothing authored here — its kind’s default supplies the table.
           </p>
         ) : faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-unknown">
-            This site declares no faction with the id “{monster.faction}”.
+            This site declares no faction with the id “{binding?.faction}”.
           </p>
         ) : (
           <>

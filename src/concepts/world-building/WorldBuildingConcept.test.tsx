@@ -3322,6 +3322,51 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     );
   });
 
+  it('stores faction edits in bindings and keeps declarations unchanged', async () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit monster gesture' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
+    const placed = JSON.parse(
+      screen.getByTestId('viewport-actors').textContent ?? '{}'
+    ).monsters[0];
+    fireEvent.change(screen.getByLabelText('Creature faction'), {
+      target: { value: 'watch' },
+    });
+    await waitFor(() => {
+      const saved = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      );
+      expect(saved.draft.room.monsterDeclarations).toEqual([placed]);
+      expect(saved.draft.room).not.toHaveProperty('monsters');
+      expect(saved.draft.room.monsterBindings).toEqual({
+        [placed.id]: { faction: 'watch' },
+      });
+    });
+    expect(
+      (screen.getByLabelText('Creature faction') as HTMLInputElement).value
+    ).toBe('watch');
+    fireEvent.change(screen.getByLabelText('Creature faction'), {
+      target: { value: '' },
+    });
+    await waitFor(() => {
+      const saved = JSON.parse(
+        storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+      );
+      expect(saved.draft.room.monsterBindings).toBeUndefined();
+      expect(saved.draft.room.monsterDeclarations).toEqual([placed]);
+    });
+  });
+
   it('reads a selected creature as inherited vs overridden, with both asymmetries stated', () => {
     render(
       <WorldBuildingConcept

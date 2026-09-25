@@ -20,7 +20,7 @@ function room(overrides: Partial<RoomGameplayData> = {}): RoomGameplayData {
     walkableHexes: [{ q: 0, r: 0 }],
     propDeclarations: {},
     arrangementDeclarations: {},
-    monsters: [],
+    monsterDeclarations: [],
     ...overrides,
   };
 }

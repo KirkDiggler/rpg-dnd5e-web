@@ -424,7 +424,7 @@ describe('room draft v3 migration and structural exactness', () => {
         .blocksMovement
     ).toBe(false);
     // Lossless v2 -> v3: monsters arrive empty and no start is invented.
-    expect(migrated.room.monsters).toEqual([]);
+    expect(migrated.room.monsterDeclarations).toEqual([]);
     expect('partyStart' in migrated.room).toBe(false);
   });
 
@@ -433,7 +433,7 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(migrated.version).toBe(3);
     expect(migrated.workspace).toEqual(ROOM_WORKSPACE_STEPS[0]);
     expect(migrated.room.walkableHexes).toContainEqual({ q: -3, r: 1 });
-    expect(migrated.room.monsters).toEqual([]);
+    expect(migrated.room.monsterDeclarations).toEqual([]);
   });
 
   it('keeps legacy stored bytes byte-identical and writes only v3 to the current key', () => {
@@ -470,7 +470,7 @@ describe('room draft v3 migration and structural exactness', () => {
     // about which KEY is written and that legacy bytes are left alone, not
     // about the number (rpg-project#501 §6.1 moved it to 5).
     expect(written.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
-    expect(written.draft.room.monsters).toHaveLength(1);
+    expect(written.draft.room.monsterDeclarations).toHaveLength(1);
   });
 
   it('never recovers older keys when the current v3 record is empty or malformed', () => {
@@ -522,14 +522,14 @@ describe('room draft v3 migration and structural exactness', () => {
     }, /Room coordinate frame has an unsupported field: engineUnit/);
     expectRejected((draft) => {
       draft.room.walkableHexes = [{ q: 0, r: 0 }];
-      draft.room.monsters = [
+      draft.room.monsterDeclarations = [
         {
           id: 'm',
           ref: 'dnd5e:monsters:zombie',
           startingCell: { location: { q: 0, r: 0 } },
           facing: 0,
         },
-      ] as unknown as RoomDraft['room']['monsters'];
+      ] as unknown as RoomDraft['room']['monsterDeclarations'];
     }, /Monster placement at index 0 has an unsupported field: facing/);
     expectRejected((draft) => {
       draft.scene.items.push({
@@ -650,7 +650,8 @@ describe('room draft v3 migration and structural exactness', () => {
     const base = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const withMonsters = (monsters: unknown[]): RoomDraft => {
       const draft = structuredClone(base);
-      (draft.room as unknown as Record<string, unknown>).monsters = monsters;
+      (draft.room as unknown as Record<string, unknown>).monsterDeclarations =
+        monsters;
       return draft;
     };
     const expectRejected = (monsters: unknown[], re: RegExp) =>
@@ -687,7 +688,7 @@ describe('room draft v3 migration and structural exactness', () => {
       },
     ]);
     expect(
-      parseRoomDraftJson(stringifyRoomDraft(unknownId)).room.monsters
+      parseRoomDraftJson(stringifyRoomDraft(unknownId)).room.monsterDeclarations
     ).toEqual([
       {
         id: 'homebrew-1',
@@ -758,12 +759,12 @@ describe('room draft v3 migration and structural exactness', () => {
       ref: 'dnd5e:monsters:thug',
       startingCell: { location: { q: 0, r: 0 }, facing: 'ne' },
     });
-    expect(placed.room.monsters[0].startingCell).toEqual({
+    expect(placed.room.monsterDeclarations[0].startingCell).toEqual({
       location: { q: 0, r: 0 },
       facing: 'ne',
     });
     expect(
-      parseRoomDraftJson(stringifyRoomDraft(placed)).room.monsters[0]
+      parseRoomDraftJson(stringifyRoomDraft(placed)).room.monsterDeclarations[0]
         .startingCell
     ).toEqual({ location: { q: 0, r: 0 }, facing: 'ne' });
   });
@@ -778,7 +779,7 @@ describe('room draft v3 migration and structural exactness', () => {
         ...base,
         room: {
           ...base.room,
-          monsters: [
+          monsterDeclarations: [
             {
               id: 'guard-1',
               ref: 'dnd5e:monsters:thug',
@@ -805,7 +806,7 @@ describe('room draft v3 migration and structural exactness', () => {
       startingCell: { location: { q: 0, r: 0 }, facing: 'sw' },
     });
     const moved = moveRoomMonster(placed, 'guard-1', { q: 1, r: 0 });
-    expect(moved.room.monsters[0].startingCell).toEqual({
+    expect(moved.room.monsterDeclarations[0].startingCell).toEqual({
       location: { q: 1, r: 0 },
       facing: 'sw',
     });
@@ -821,7 +822,6 @@ describe('room draft v3 migration and structural exactness', () => {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
         startingCell: { location: { q: 1, r: 0 } },
-        faction: 'goblins',
       }),
       {
         id: 'goblin-2',
@@ -831,6 +831,7 @@ describe('room draft v3 migration and structural exactness', () => {
     );
     withActors.room.monsterBindings = {
       'goblin-1': {
+        faction: 'goblins',
         on: {
           intimidated: [
             { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
@@ -868,7 +869,7 @@ describe('room draft v3 migration and structural exactness', () => {
       createEmptyScene('scene-temper'),
       'room-temper'
     );
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
@@ -912,7 +913,7 @@ describe('room draft v3 migration and structural exactness', () => {
       createEmptyScene('scene-orphan'),
       'room-orphan'
     );
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
@@ -935,7 +936,7 @@ describe('room draft v3 migration and structural exactness', () => {
       /Monster binding for goblin-1 has an unsupported field: intimidating/
     );
     expect(rejection({ 'goblin-1': {} })).toThrow(
-      /Monster binding for goblin-1 declares no orders/
+      /Monster binding for goblin-1 declares no bindings/
     );
     expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
       /Monster binding for goblin-1 actions is empty/
@@ -963,7 +964,7 @@ describe('room draft v3 migration and structural exactness', () => {
 
   it('drops the orders when their creature is removed, leaving no orphan', () => {
     const draft = createRoomDraft(createEmptyScene('scene-drop'), 'room-drop');
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
@@ -992,7 +993,7 @@ describe('room draft v3 migration and structural exactness', () => {
 
   it('writes no monsterBindings and no faction when nothing authored them', () => {
     const draft = createRoomDraft(createEmptyScene('scene-none'), 'room-none');
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
@@ -1097,14 +1098,14 @@ describe('room draft v3 migration and structural exactness', () => {
       createEmptyScene('scene-bad-faction'),
       'room-bad-faction'
     );
-    (draft.room as unknown as Record<string, unknown>).monsters = [
+    (draft.room as unknown as Record<string, unknown>).monsterDeclarations = [
       {
         id: 'goblin-1',
         ref: 'dnd5e:monsters:goblin',
         startingCell: { location: { q: 1, r: 0 } },
-        faction: 'The Goblins',
       },
     ];
+    draft.room.monsterBindings = { 'goblin-1': { faction: 'The Goblins' } };
     expect(() => stringifyRoomDraft(draft)).toThrow(
       /faction must be a faction id such as goblins/
     );
@@ -1122,7 +1123,7 @@ describe('room draft v3 migration and structural exactness', () => {
     });
     const withStart = setRoomPartyStart(withActor, { q: 5, r: -5 });
     const roundTrip = parseRoomDraftJson(stringifyRoomDraft(withStart));
-    expect(roundTrip.room.monsters).toEqual([
+    expect(roundTrip.room.monsterDeclarations).toEqual([
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -1158,7 +1159,7 @@ describe('room draft v3 migration and structural exactness', () => {
     });
     // A move retains the minted identity and only changes the cell.
     const moved = moveRoomMonster(draft, 'skeleton-a', { q: 2, r: -2 });
-    expect(moved.room.monsters[0]).toEqual({
+    expect(moved.room.monsterDeclarations[0]).toEqual({
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
       startingCell: { location: { q: 2, r: -2 } },
@@ -1180,7 +1181,7 @@ describe('room draft v3 migration and structural exactness', () => {
       })
     ).toThrow(/already placed/);
     const removed = removeRoomMonster(moved, 'skeleton-a');
-    expect(removed.room.monsters).toEqual([]);
+    expect(removed.room.monsterDeclarations).toEqual([]);
     expect(removed.room.partyStart).toEqual({ q: 0, r: 0 });
   });
 

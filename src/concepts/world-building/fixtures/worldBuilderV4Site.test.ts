@@ -49,24 +49,23 @@ describe('the engine’s own v4 single-room example', () => {
     ]);
   });
 
-  it('reads the creature split: membership on the actor, orders on the binding', () => {
+  it('reads the creature split: identity on the declaration, membership and orders on the binding', () => {
     const { draft } = decodeWorldBuilderV4Site();
-    const monsters = draft.room.monsters;
+    const monsters = draft.room.monsterDeclarations;
     expect(monsters.map((monster) => monster.id)).toEqual([
       'goblin-1',
       'skeleton-a',
       'skeleton-b',
     ]);
-    // `faction` is on the ACTOR, and ABSENT when unauthored — never written as
-    // `faction: monsters` (rpg-project#477 Decision 4).
-    expect(monsters[0]?.faction).toBe('goblins');
-    expect(monsters[1]?.faction).toBeUndefined();
-    expect(monsters[2]?.faction).toBeUndefined();
+    // Declarations never carry membership; unauthored membership stays absent.
+    for (const monster of monsters)
+      expect(monster).not.toHaveProperty('faction');
 
     const bindings = draft.room.monsterBindings;
     // The binding overrides all three: the faction's `on`, its `temper`, and
     // the actions it carries.
     expect(bindings?.['goblin-1']).toEqual({
+      faction: 'goblins',
       on: { time: [{ when: { enemy: 'reach' }, hold: {} }] },
       temper: 'coward',
       actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
