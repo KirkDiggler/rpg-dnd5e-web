@@ -651,7 +651,7 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
       time: [{ when: { fled: { within: 3 } }, away: 'actor' }],
     });
     const selector = screen.getByLabelText(
-      'away selector for time entry'
+      'From for time entry'
     ) as HTMLSelectElement;
     expect(
       Array.from(selector.options).map((option) => option.value)

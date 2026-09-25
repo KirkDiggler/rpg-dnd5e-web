@@ -24,9 +24,9 @@ describe('answer-entry sentence', () => {
     const controls = [
       screen.getByLabelText('When for time entry'),
       screen.getByLabelText('Within for time entry'),
-      screen.getByLabelText('Word for time entry'),
-      screen.getByLabelText('attack selector for time entry'),
-      screen.getByLabelText('Say for time entry'),
+      screen.getByRole('combobox', { name: 'Do for time entry' }),
+      screen.getByRole('combobox', { name: 'To for time entry' }),
+      screen.getByLabelText('Say (optional) for time entry'),
       screen.getByLabelText('Weight for time entry'),
     ];
     for (let i = 1; i < controls.length; i++) {

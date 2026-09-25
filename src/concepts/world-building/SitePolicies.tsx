@@ -374,7 +374,7 @@ function AnswerWhenEditor({
             }}
           />
           <span>rounds</span>
-          <span className="wb-entry-perspective-label">Perspective</span>
+          <span className="wb-entry-perspective-label">Whose deed</span>
           {/*
             WHOSE DEED THIS IS (rpg-dnd5e-web#1199). A scope REFINES the deed
             rather than adding a second condition, so it sits with the span it
@@ -510,7 +510,7 @@ export function AnswerEntryRow({
         <label className="wb-entry-action">
           <span>Do</span>
           <select
-            aria-label={`Word for ${trigger} entry`}
+            aria-label={`Do for ${trigger} entry`}
             value={word}
             onChange={(event) =>
               onCommit(setAnswerEntryWord(entry, event.target.value))
@@ -538,7 +538,7 @@ export function AnswerEntryRow({
             <label className="wb-entry-target">
               <span>{word === 'away' ? 'From' : 'To'}</span>
               <select
-                aria-label={`${word} selector for ${trigger} entry`}
+                aria-label={`${word === 'away' ? 'From' : 'To'} for ${trigger} entry`}
                 value={
                   typeof value === 'string'
                     ? value
@@ -605,7 +605,7 @@ export function AnswerEntryRow({
             Say <span className="wb-help">(optional)</span>
           </span>
           <input
-            aria-label={`Say for ${trigger} entry`}
+            aria-label={`Say (optional) for ${trigger} entry`}
             placeholder="Optional dialogue"
             value={entry.say ?? ''}
             onChange={(event) => {
