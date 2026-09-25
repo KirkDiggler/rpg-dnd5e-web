@@ -39,7 +39,7 @@ const room = {
   walkableHexes: [{ q: 0, r: 0 }],
   propDeclarations: {},
   arrangementDeclarations: {},
-  monsters: [],
+  monsterDeclarations: [],
 };
 
 function mount(overrides: Partial<Parameters<typeof PropOrders>[0]> = {}) {

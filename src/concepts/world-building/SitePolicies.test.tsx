@@ -32,7 +32,7 @@ const siteScope: SiteScope = {
 };
 
 /** The example's goblin, which overrides all three binding fields. */
-const goblin = fixture.draft.room.monsters.find(
+const goblin = fixture.draft.room.monsterDeclarations.find(
   (monster) => monster.id === 'goblin-1'
 )!;
 
@@ -227,7 +227,7 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
   });
 
   it('renders an absent faction as the kind’s default, never as a faction named monsters', () => {
-    const skeleton = fixture.draft.room.monsters.find(
+    const skeleton = fixture.draft.room.monsterDeclarations.find(
       (monster) => monster.id === 'skeleton-a'
     )!;
     render(
@@ -269,8 +269,8 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
           id: 'stray',
           ref: 'dnd5e:monsters:zombie',
           startingCell: { location: { q: 0, r: 0 } },
-          faction: 'ghosts',
         }}
+        binding={{ faction: 'ghosts' }}
         room={fixture.draft.room}
       />
     );

@@ -25,6 +25,22 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Monster declarations and bindings (#1202)
+
+The current single-room authoring shape uses `room.room.monsterDeclarations`
+for identity (`id`, `ref`) and `startingCell`. Membership belongs in
+`room.room.monsterBindings[id].faction`, alongside table references and overrides.
+A faction-only binding is valid; clearing the last authored binding omits it.
+The faction control and actor placement interactions are unchanged.
+
+Import/export and editor state use this shape directly, matching toolkit
+`encounter/v0.107.0` and API dev. Old `monsters` keys and declaration-level
+`faction` are rejected with migration guidance, not silently converted. This
+also applies to current local drafts: old bytes are preserved on refusal.
+There is no v5 document or schema alias, and no automatic rewrite of saved
+compositions. Server error paths are displayed verbatim by the publish panel.
+The engine example is pinned to toolkit merge `6cbee563`.
+
 ## Shared answer tables at the root (#1201)
 
 **A table is declared once and NAMED, not pasted.** `tables` at the site root

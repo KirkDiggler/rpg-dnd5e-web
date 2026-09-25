@@ -74,12 +74,16 @@ describe('the authored sample corpus', () => {
     ).toBe(true); // 02 has a mix
     expect(
       scopes.some((s) =>
-        s.draft.room.monsters.some((m) => m.faction !== undefined)
+        s.draft.room.monsterDeclarations.some(
+          (m) => s.draft.room.monsterBindings?.[m.id]?.faction !== undefined
+        )
       )
     ).toBe(true);
     expect(
       scopes.some((s) =>
-        s.draft.room.monsters.some((m) => m.faction === undefined)
+        s.draft.room.monsterDeclarations.some(
+          (m) => s.draft.room.monsterBindings?.[m.id]?.faction === undefined
+        )
       )
     ).toBe(true); // 03 has one on the kind's default side
     expect(

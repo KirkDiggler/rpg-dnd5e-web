@@ -180,8 +180,8 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
   // the marker is the SHAPE being authored rather than a bare `cell`. This
   // dialect emits `startingCell` for every placement, so any monster at all
   // makes the document v4. That is the honest reading: a v3 document cannot
-  // express this build's `monsters:` block.
-  if (draft.room.monsters.length > 0) return true;
+  // express this build's `monsterDeclarations:` block.
+  if (draft.room.monsterDeclarations.length > 0) return true;
 
   return false;
 }

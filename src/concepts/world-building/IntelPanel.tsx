@@ -70,7 +70,7 @@ export interface IntelPanelProps {
 
 export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
   const records = scope.intel ?? [];
-  const monsterIds = room.monsters.map((monster) => monster.id);
+  const monsterIds = room.monsterDeclarations.map((monster) => monster.id);
 
   return (
     <div className="wb-intel-panel" data-testid="intel-panel">

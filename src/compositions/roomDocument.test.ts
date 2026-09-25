@@ -261,14 +261,14 @@ describe('room snapshot document', () => {
       footprint: { width: 1.2, depth: 0.5, offsetX: 0.1, offsetZ: -0.2 },
     });
     // Lossless upgrade: no monsters are invented and no start appears.
-    expect(migrated.room.monsters).toEqual([]);
+    expect(migrated.room.monsterDeclarations).toEqual([]);
     expect('partyStart' in migrated.room).toBe(false);
   });
 
   it('retains authored actors through the version 2 snapshot round trip', () => {
     const draft = richRoomDraft();
     draft.room.partyStart = { q: 1, r: -1 };
-    draft.room.monsters = [
+    draft.room.monsterDeclarations = [
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
@@ -303,7 +303,7 @@ describe('room snapshot document', () => {
         draftBody.version = 1;
         delete draftBody.workspace;
         const room = draftBody.room as Record<string, unknown>;
-        delete room.monsters;
+        delete room.monsterDeclarations;
         delete room.partyStart;
       } else {
         draftBody.version = draftVersion;
