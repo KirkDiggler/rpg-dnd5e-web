@@ -29,15 +29,20 @@ below, not the standalone composition interaction or ownership contract. See
 
 Room/site mode keeps a persistent navigation strip for root sections and the
 current Selection. Opening a section expands the inspector and brings its existing
-panel into view. The expanded inspector shares extra window width with the canvas
-rather than stopping at a fixed maximum; the collapsed navigation stays narrow. Selecting a different canvas object opens
+panel into view. The expanded inspector has a comfortable 640px maximum after
+Kirk's table-editing walk; the collapsed navigation stays narrow. Readability
+comes from the entry layout rather than stretching every input with the window. Selecting a different canvas object opens
 Selection; edits or re-renders of the same selection do not force a collapsed
 inspector open. Tucking it away preserves selection, unsaved inputs, and panel
 state because the controls remain mounted. On narrower screens configuration
 stacks below the canvas; prop-composition mode retains its existing layout.
 
-Answer-entry controls use the available width for two columns, without changing
-their editing logic. Creature faction is a select of declared site factions plus
+Answer entries read in condition → action → target order. Deed conditions name
+“within N rounds” explicitly and keep the existing perspective control. Action
+labels use imperative wording from the shared vocabulary. Optional dialogue,
+numeric weight, and removal are secondary; weight is relative chance among
+eligible entries, not execution priority. The entry order and YAML meaning are
+unchanged. No future action constraints are invented. Creature faction is a select of declared site factions plus
 “Kind’s default”; an undeclared imported reference remains visible as
 “(not declared)” until the author changes it. The server still judges references.
 

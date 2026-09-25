@@ -61,6 +61,8 @@ export type AnswerApplicability = (typeof ANSWER_APPLICABILITY)[number];
  * written `{}` and carry nothing, `attack`/`toward`/`away` carry a
  * selector. */
 export interface AnswerWordSpec {
+  /** Imperative wording for the sentence editor: “do [Attack]”. */
+  readonly commandLabel: string;
   readonly key: string;
   readonly label: string;
   readonly help: string;
@@ -84,6 +86,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'fact',
     label: 'Teaches a fact',
+    commandLabel: 'Teach a fact',
     help: 'Witnesses learn this fact. An id and nothing else — a fact carries no truth bit, so a lie looks exactly like the truth.',
     value: 'string',
     legalOn: 'social',
@@ -91,6 +94,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'flee',
     label: 'Bolts',
+    commandLabel: 'Bolt',
     help: 'The creature holds `fled` against whoever spoke to it. It does NOT step here: it lands the memory, and its own `time` table does the running.',
     value: 'none',
     legalOn: 'social',
@@ -98,6 +102,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'hold',
     label: 'Holds',
+    commandLabel: 'Hold',
     help: 'The creature does nothing with its time. An unconditional `hold` competes on every roll, so it usually wants a `when`.',
     value: 'none',
     legalOn: 'time',
@@ -105,6 +110,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'attack',
     label: 'Attacks',
+    commandLabel: 'Attack',
     help: 'Strikes the selected creature. A swing at somebody out of reach is a wasted turn — this belongs under `{ enemy: reach }`.',
     value: 'selector',
     legalOn: 'time',
@@ -112,6 +118,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'toward',
     label: 'Walks toward',
+    commandLabel: 'Walk toward',
     help: 'Walks toward the selected creature, or onto an authored cell. The only word `{ at: [col,row] }` is legal on.',
     value: 'selector',
     legalOn: 'time',
@@ -119,6 +126,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
   {
     key: 'away',
     label: 'Walks away',
+    commandLabel: 'Walk away',
     help: 'Walks away from the selected creature for the turn — the coward’s run. Acts on a creature, never on a cell.',
     value: 'selector',
     legalOn: 'time',

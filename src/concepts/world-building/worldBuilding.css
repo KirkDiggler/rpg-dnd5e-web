@@ -237,7 +237,7 @@
 
 /* Room configuration owns a stable width; composition mode keeps its layout. */
 .wb-workspace:has(> .wb-config-inspector) {
-  grid-template-columns: 170px minmax(420px, 1fr) minmax(480px, 1fr);
+  grid-template-columns: 170px minmax(420px, 1fr) minmax(480px, 640px);
 }
 
 .wb-workspace:has(> .wb-config-inspector[data-collapsed='true']) {
@@ -293,19 +293,6 @@
 
 .wb-inspector-content[hidden] {
   display: none;
-}
-
-@container (min-width: 360px) {
-  .wb-policy-entry[data-entry-word] {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.4rem 0.75rem;
-  }
-
-  .wb-policy-entry > .wb-policy-when,
-  .wb-policy-entry > .wb-help {
-    grid-column: 1 / -1;
-  }
 }
 
 /* Collapsible nodes (Rooms / Props / Edit / Monsters / Doors / Policies).
@@ -625,6 +612,77 @@ button.wb-tree-row[aria-pressed='true'] {
   margin: 0.3rem 0;
   padding: 0.3rem 0.4rem;
   border-left: 2px solid #35564f;
+}
+
+.wb-entry-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.4rem 0.6rem;
+}
+
+.wb-entry-sentence .wb-policy-when {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+  color: var(--wb-muted);
+  font-size: 0.75rem;
+}
+
+.wb-policy-when > select {
+  width: auto;
+  max-width: 100%;
+  flex: 1 1 12rem;
+}
+
+.wb-policy-when > input {
+  width: 4rem;
+  flex: 0 0 4rem;
+}
+
+.wb-entry-perspective-label {
+  flex-basis: 100%;
+  font-size: 0.65rem;
+}
+
+.wb-entry-action,
+.wb-entry-target {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.wb-entry-arrow {
+  align-self: center;
+  color: var(--wb-accent);
+}
+
+.wb-entry-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.wb-entry-dialogue {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.wb-entry-weight {
+  flex: 0 0 4.5rem;
+}
+
+.wb-entry-remove {
+  flex: 0 0 auto;
+  margin-bottom: 0.25rem;
+}
+
+.wb-entry-weight-help {
+  margin-top: 0.25rem;
 }
 
 .wb-policy-trigger-block {

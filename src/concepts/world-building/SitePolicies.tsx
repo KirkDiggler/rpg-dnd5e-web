@@ -300,7 +300,11 @@ function AnswerWhenEditor({
         : `deed:${form.deed}`;
 
   return (
-    <label className="wb-policy-when">
+    <div
+      className="wb-policy-when"
+      role="group"
+      aria-label={`Condition for ${trigger} entry`}
+    >
       <span>When</span>
       <select
         aria-label={`When for ${trigger} entry`}
@@ -328,17 +332,27 @@ function AnswerWhenEditor({
         <option value="any">(any time) — always eligible</option>
         {ANSWER_WHEN.enemyBands.map((band) => (
           <option key={`enemy:${band}`} value={`enemy:${band}`}>
-            an enemy is {band}
+            {band === 'none'
+              ? 'no enemy is seen or remembered'
+              : `an enemy is ${band === 'reach' ? 'in reach' : band}`}
           </option>
         ))}
         {ANSWER_WHEN.deeds.map((deed) => (
           <option key={`deed:${deed}`} value={`deed:${deed}`}>
-            this creature was {deed}
+            {form.kind === 'deed' && form.scope?.value === 'ally'
+              ? 'an ally'
+              : 'I'}{' '}
+            {deed !== 'fled' &&
+            !(form.kind === 'deed' && form.scope?.value === 'actor')
+              ? 'was '
+              : ''}
+            {deed}
           </option>
         ))}
       </select>
       {form.kind === 'deed' && (
         <>
+          <span>within</span>
           <input
             type="number"
             step={1}
@@ -359,6 +373,8 @@ function AnswerWhenEditor({
               } as AnswerWhenShape);
             }}
           />
+          <span>rounds</span>
+          <span className="wb-entry-perspective-label">Perspective</span>
           {/*
             WHOSE DEED THIS IS (rpg-dnd5e-web#1199). A scope REFINES the deed
             rather than adding a second condition, so it sits with the span it
@@ -397,7 +413,7 @@ function AnswerWhenEditor({
           </select>
         </>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -476,143 +492,163 @@ export function AnswerEntryRow({
   };
 
   return (
-    <li className="wb-policy-entry" data-entry-word={word}>
-      {whenLegal && (
-        <AnswerWhenEditor
-          trigger={trigger}
-          when={entry.when}
-          onCommit={withWhen}
-        />
-      )}
-      <label>
-        <span>Weight</span>
-        <input
-          type="number"
-          step={1}
-          aria-label={`Weight for ${trigger} entry`}
-          value={entry.weight === undefined ? '' : String(entry.weight)}
-          placeholder="1"
-          onChange={(event) => {
-            const raw = event.target.value;
-            const next: AnswerEntryShape = { ...entry };
-            if (raw === '') delete next.weight;
-            else next.weight = Number(raw);
-            onCommit(next);
-          }}
-        />
-      </label>
-      <label>
-        <span>Say</span>
-        <input
-          aria-label={`Say for ${trigger} entry`}
-          value={entry.say ?? ''}
-          onChange={(event) => {
-            const next: AnswerEntryShape = { ...entry };
-            if (event.target.value === '') delete next.say;
-            else next.say = event.target.value;
-            onCommit(next);
-          }}
-        />
-      </label>
-      <label>
-        <span>One word</span>
-        <select
-          aria-label={`Word for ${trigger} entry`}
-          value={word}
-          onChange={(event) =>
-            onCommit(setAnswerEntryWord(entry, event.target.value))
-          }
-        >
-          {words.map((candidate) => (
-            <option key={candidate.key} value={candidate.key}>
-              {candidate.label} ({candidate.key})
-            </option>
-          ))}
-        </select>
-      </label>
-      {spec?.value === 'string' && (
-        <label>
-          <span>{word}</span>
+    <li
+      className="wb-policy-entry wb-entry-sentence-card"
+      data-entry-word={word}
+    >
+      <div className="wb-entry-sentence">
+        {whenLegal && (
+          <AnswerWhenEditor
+            trigger={trigger}
+            when={entry.when}
+            onCommit={withWhen}
+          />
+        )}
+        <span className="wb-entry-arrow" aria-hidden="true">
+          →
+        </span>
+        <label className="wb-entry-action">
+          <span>Do</span>
+          <select
+            aria-label={`Word for ${trigger} entry`}
+            value={word}
+            onChange={(event) =>
+              onCommit(setAnswerEntryWord(entry, event.target.value))
+            }
+          >
+            {words.map((candidate) => (
+              <option key={candidate.key} value={candidate.key}>
+                {candidate.commandLabel}
+              </option>
+            ))}
+          </select>
+        </label>
+        {spec?.value === 'string' && (
+          <label>
+            <span>{word}</span>
+            <input
+              aria-label={`${word} for ${trigger} entry`}
+              value={typeof value === 'string' ? value : ''}
+              onChange={(event) => onCommit(withWordValue(event.target.value))}
+            />
+          </label>
+        )}
+        {spec?.value === 'selector' && (
+          <>
+            <label className="wb-entry-target">
+              <span>{word === 'away' ? 'From' : 'To'}</span>
+              <select
+                aria-label={`${word} selector for ${trigger} entry`}
+                value={
+                  typeof value === 'string'
+                    ? value
+                    : cellSelectorAllowed
+                      ? ANSWER_AT_SELECTOR.key
+                      : (ANSWER_SELECTOR_WORDS[0]?.key ?? '')
+                }
+                onChange={(event) =>
+                  onCommit(
+                    withWordValue(
+                      event.target.value === ANSWER_AT_SELECTOR.key
+                        ? { at: [0, 0] }
+                        : event.target.value
+                    )
+                  )
+                }
+              >
+                {selectorWords.map((selector) => (
+                  <option key={selector.key} value={selector.key}>
+                    {selector.label} ({selector.key})
+                  </option>
+                ))}
+                {cellSelectorAllowed && (
+                  <option value={ANSWER_AT_SELECTOR.key}>
+                    {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
+                  </option>
+                )}
+              </select>
+            </label>
+            {cellSelectorAllowed &&
+              isMapping(value) &&
+              Array.isArray(value.at) && (
+                <label>
+                  <span>Cell</span>
+                  <span className="wb-policy-cell">
+                    {([0, 1] as const).map((axis) => {
+                      const at = value.at as [number, number];
+                      return (
+                        <input
+                          key={axis}
+                          type="number"
+                          step={1}
+                          aria-label={`${
+                            axis === 0 ? 'Column' : 'Row'
+                          } for ${trigger} entry`}
+                          value={String(at[axis] ?? 0)}
+                          onChange={(event) => {
+                            const cell = [...at] as [number, number];
+                            cell[axis] = Number(event.target.value);
+                            onCommit(withWordValue({ at: cell }));
+                          }}
+                        />
+                      );
+                    })}
+                  </span>
+                </label>
+              )}
+          </>
+        )}
+      </div>
+      <div className="wb-entry-secondary">
+        <label className="wb-entry-dialogue">
+          <span>
+            Say <span className="wb-help">(optional)</span>
+          </span>
           <input
-            aria-label={`${word} for ${trigger} entry`}
-            value={typeof value === 'string' ? value : ''}
-            onChange={(event) => onCommit(withWordValue(event.target.value))}
+            aria-label={`Say for ${trigger} entry`}
+            placeholder="Optional dialogue"
+            value={entry.say ?? ''}
+            onChange={(event) => {
+              const next: AnswerEntryShape = { ...entry };
+              if (event.target.value === '') delete next.say;
+              else next.say = event.target.value;
+              onCommit(next);
+            }}
           />
         </label>
-      )}
-      {spec?.value === 'selector' && (
-        <>
-          <label>
-            <span>{word} acts on</span>
-            <select
-              aria-label={`${word} selector for ${trigger} entry`}
-              value={
-                typeof value === 'string'
-                  ? value
-                  : cellSelectorAllowed
-                    ? ANSWER_AT_SELECTOR.key
-                    : (ANSWER_SELECTOR_WORDS[0]?.key ?? '')
-              }
-              onChange={(event) =>
-                onCommit(
-                  withWordValue(
-                    event.target.value === ANSWER_AT_SELECTOR.key
-                      ? { at: [0, 0] }
-                      : event.target.value
-                  )
-                )
-              }
-            >
-              {selectorWords.map((selector) => (
-                <option key={selector.key} value={selector.key}>
-                  {selector.label} ({selector.key})
-                </option>
-              ))}
-              {cellSelectorAllowed && (
-                <option value={ANSWER_AT_SELECTOR.key}>
-                  {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
-                </option>
-              )}
-            </select>
-          </label>
-          {cellSelectorAllowed &&
-            isMapping(value) &&
-            Array.isArray(value.at) && (
-              <label>
-                <span>Cell</span>
-                <span className="wb-policy-cell">
-                  {([0, 1] as const).map((axis) => {
-                    const at = value.at as [number, number];
-                    return (
-                      <input
-                        key={axis}
-                        type="number"
-                        step={1}
-                        aria-label={`${
-                          axis === 0 ? 'Column' : 'Row'
-                        } for ${trigger} entry`}
-                        value={String(at[axis] ?? 0)}
-                        onChange={(event) => {
-                          const cell = [...at] as [number, number];
-                          cell[axis] = Number(event.target.value);
-                          onCommit(withWordValue({ at: cell }));
-                        }}
-                      />
-                    );
-                  })}
-                </span>
-              </label>
-            )}
-        </>
-      )}
-      <button
-        type="button"
-        className="wb-danger"
-        aria-label={`Remove ${trigger} entry`}
-        onClick={onRemove}
-      >
-        Remove entry
-      </button>
+        <label
+          className="wb-entry-weight"
+          title="Relative chance among eligible entries, not execution order."
+        >
+          <span>Weight</span>
+          <input
+            type="number"
+            step={1}
+            aria-label={`Weight for ${trigger} entry`}
+            value={entry.weight === undefined ? '' : String(entry.weight)}
+            placeholder="1"
+            onChange={(event) => {
+              const raw = event.target.value;
+              const next: AnswerEntryShape = { ...entry };
+              if (raw === '') delete next.weight;
+              else next.weight = Number(raw);
+              onCommit(next);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="wb-danger wb-entry-remove"
+          aria-label={`Remove ${trigger} entry`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
+      <p className="wb-help wb-entry-weight-help">
+        Weight changes relative chance among eligible entries, not execution
+        order.
+      </p>
       <p className="wb-help">{entryText(entry, trigger)}</p>
     </li>
   );
