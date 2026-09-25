@@ -46,7 +46,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
-import type { SiteScope } from './siteScope';
+import { renderScope, scopeFrom, type SiteScope } from './siteScope';
 
 /** The stable "nothing authored" scope. A caller that passes no scope must
  * not re-create an object on every render, or the `yaml` memo below would
@@ -279,13 +279,11 @@ export function useRoomPublishing({
         yaml: encodeSingleRoomDungeon({
           key: trimmedKey,
           draft,
-          factions: scope.factions,
-          dispositions: scope.dispositions,
-          intel: scope.intel,
-          exits: scope.exits,
-          endings: scope.endings,
-          scenarios: scope.scenarios,
-          concealments: scope.concealments,
+          // THE WHOLE SCOPE, SPREAD BY THE ONE FUNCTION THAT KNOWS ITS KEYS
+          // (rpg-dnd5e-web#1201). This site and the publish path used to name
+          // every root noun by hand; `tables` went missing from both, so an
+          // authored table never reached the published YAML.
+          ...renderScope(scope),
         }),
         error: null,
       };
@@ -394,13 +392,9 @@ export function useRoomPublishing({
         yamlText = encodeSingleRoomDungeon({
           key: trimmed,
           draft: current,
-          factions: currentScope.factions,
-          dispositions: currentScope.dispositions,
-          intel: currentScope.intel,
-          exits: currentScope.exits,
-          endings: currentScope.endings,
-          scenarios: currentScope.scenarios,
-          concealments: currentScope.concealments,
+          // The publish path spreads the same one declaration — see the
+          // `encoded` memo above (rpg-dnd5e-web#1201).
+          ...renderScope(currentScope),
         });
       } catch (err) {
         setError(
@@ -550,15 +544,17 @@ export function useRoomPublishing({
       );
       return false;
     }
-    const accepted = onImportDraftRef.current(decoded.draft, {
-      ...(decoded.factions ? { factions: decoded.factions } : {}),
-      ...(decoded.dispositions ? { dispositions: decoded.dispositions } : {}),
-      ...(decoded.intel ? { intel: decoded.intel } : {}),
-      ...(decoded.exits ? { exits: decoded.exits } : {}),
-      ...(decoded.endings ? { endings: decoded.endings } : {}),
-      ...(decoded.scenarios ? { scenarios: decoded.scenarios } : {}),
-      ...(decoded.concealments ? { concealments: decoded.concealments } : {}),
-    });
+    // NO LIST HERE ANY MORE (rpg-dnd5e-web#1201). This used to name every root
+    // noun by hand, and `tables` went missing: an imported document's root
+    // table vanished from the site scope, the Tables panel listed nothing, and
+    // a creature naming it still showed the name because the BINDING kept its
+    // reference while the DECLARATION was gone. `scopeFrom` reads the one
+    // declaration, so a key added to `SiteScope` crosses this boundary without
+    // anyone remembering to come back here.
+    const accepted = onImportDraftRef.current(
+      decoded.draft,
+      scopeFrom(decoded)
+    );
     if (!accepted) return false;
     // The imported file's root key becomes the publication key for the
     // imported room identity; pending confirmations and the "saved

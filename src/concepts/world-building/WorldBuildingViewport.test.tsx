@@ -794,7 +794,7 @@ describe('room actor markers and snapped setup gestures', () => {
   const ACTOR = {
     id: 'actor-1',
     ref: 'dnd5e:monsters:skeleton',
-    cell: { q: 1, r: 0 },
+    startingCell: { location: { q: 1, r: 0 } },
   };
 
   /** One snapped world point inside cell (q, r): the SAME shared
@@ -1184,7 +1184,7 @@ describe('room actor markers and snapped setup gestures', () => {
             {
               id: 'imported-1',
               ref: 'dnd5e:monsters:not-yet-modeled',
-              cell: { q: 0, r: 0 },
+              startingCell: { location: { q: 0, r: 0 } },
             },
           ],
         }}

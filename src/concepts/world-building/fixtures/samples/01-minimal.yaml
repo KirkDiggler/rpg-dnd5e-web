@@ -57,6 +57,6 @@ room:
       - {
           id: skeleton-a,
           ref: 'dnd5e:monsters:skeleton',
-          cell: { q: 2, r: 0 },
+          startingCell: { location: { q: 2, r: 0 } },
           faction: goblins,
         }

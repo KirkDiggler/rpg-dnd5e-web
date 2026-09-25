@@ -21,6 +21,7 @@ import {
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
+  ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
   type RoomDraft,
@@ -1797,9 +1798,13 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    // THE CURRENT DRAFT-ENVELOPE VERSION (rpg-project#501 §6.1). It was
+    // pinned to 3 while the envelope's only job was to say whether a scope
+    // rode along; it now also says which MONSTER SHAPE the draft stores, so a
+    // save writes the version this build actually produces.
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
   });
 
   it('keeps corrupt current bytes and untouched legacy bytes until an explicit save', () => {
@@ -1851,9 +1856,13 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     openIdentity();
     fireEvent.click(screen.getByRole('button', { name: 'Save room draft' }));
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).not.toBe(corrupt);
+    // THE CURRENT DRAFT-ENVELOPE VERSION (rpg-project#501 §6.1). It was
+    // pinned to 3 while the envelope's only job was to say whether a scope
+    // rode along; it now also says which MONSTER SHAPE the draft stores, so a
+    // save writes the version this build actually produces.
     expect(
       JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -1888,9 +1897,12 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         idFactory={deterministicIds()}
       />
     );
+    // THE MIGRATED DRAFT IS REWRITTEN AT THE CURRENT ENVELOPE VERSION, while
+    // the LEGACY RECOVERY COPY IS LEFT EXACTLY AS IT WAS — which is the claim
+    // this test exists to make (rpg-project#501 §6.1 moved the number to 5).
     expect(
       JSON.parse(v1Storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}').version
-    ).toBe(3);
+    ).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
     expect(v1Storage.values.get(LEGACY_ROOM_DRAFT_STORAGE_KEY)).toBe(legacyRaw);
   });
 
@@ -2041,7 +2053,11 @@ describe('room actor authoring', () => {
     monsters: Array<{
       id: string;
       ref: string;
-      cell: { q: number; r: number };
+      // `startingCell`, not `cell` (rpg-project#501 §6.1). This inline type
+      // describes what the viewport emits, so it moves with the shape — a
+      // stale copy here is what CI's typecheck caught after the local suite
+      // passed, because vitest transpiles without checking types.
+      startingCell: { location: { q: number; r: number }; facing?: string };
     }>;
     partyStart: { q: number; r: number } | null;
     selectedActorId: string | null;
@@ -2129,7 +2145,7 @@ describe('room actor authoring', () => {
     expect(actors().monsters).toHaveLength(1);
     const placed = actors().monsters[0];
     expect(placed.ref).toBe('dnd5e:monsters:skeleton');
-    expect(placed.cell).toEqual({ q: 1, r: 0 });
+    expect(placed.startingCell.location).toEqual({ q: 1, r: 0 });
     // A structurally valid placement on unpainted ground is retained: the
     // encounter decides legality at Play, not this editor.
     expect(
@@ -2150,14 +2166,23 @@ describe('room actor authoring', () => {
     expect(actors().monsters[0]).toEqual({
       id: placed.id,
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 2, r: -2 },
+      // THE MOVE KEEPS THE FACING (rpg-project#501 §6.1): `startingCell` is one
+      // noun, so moving a creature to another hex does not re-aim it. This
+      // placement authored no facing, so the object carries only `location`.
+      startingCell: { location: { q: 2, r: -2 } },
     });
 
     // One whole-room Undo, one Redo.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(actors().monsters[0].cell).toEqual({ q: 1, r: 0 });
+    expect(actors().monsters[0].startingCell.location).toEqual({
+      q: 1,
+      r: 0,
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-    expect(actors().monsters[0].cell).toEqual({ q: 2, r: -2 });
+    expect(actors().monsters[0].startingCell.location).toEqual({
+      q: 2,
+      r: -2,
+    });
 
     // Repeat placement keeps arming until the tool changes.
     fireEvent.click(
@@ -2588,7 +2613,7 @@ describe('WorldBuildingConcept room publishing', () => {
       const stored = JSON.parse(
         storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
       ) as { version: number; scope?: SiteScope };
-      expect(stored.version).toBe(4);
+      expect(stored.version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
       expect(stored.scope?.factions?.[0]?.id).toBe('goblins');
     });
     first.unmount();
@@ -2807,15 +2832,18 @@ describe('WorldBuildingConcept room publishing', () => {
     });
   });
 
-  it('authors intel, priced checks and a creature in reserve with no YAML, and publishes all four (web#1176)', async () => {
+  it('authors intel and a creature in reserve with no YAML, and publishes both (web#1176)', async () => {
     // The Front Room's driving case, end to end: a record is declared in the
-    // Intel node, a creature prices its checks and is held in reserve until the
-    // fact the failed persuasion teaches. Nothing here is YAML — and the point
-    // of the test is that NOTHING IS DROPPED between the forms and the bytes
-    // the engine is handed. The three drop bugs this slice had to fix (the two
-    // encode calls and the storage envelope each enumerated only
-    // factions/dispositions) would leave this test green on intel and red on
-    // the published document, which is exactly what it is here to catch.
+    // Intel node, a creature holds it and is held in reserve until the fact it
+    // teaches lands. Nothing here is YAML — and the point of the test is that
+    // NOTHING IS DROPPED between the forms and the bytes the engine is handed.
+    // The three drop bugs this slice had to fix (the two encode calls and the
+    // storage envelope each enumerated only factions/dispositions) would leave
+    // this test green on intel and red on the published document.
+    //
+    // THE PRICED CHECKS WERE PART OF THIS WALK AND ARE GONE
+    // (rpg-dnd5e-web#1201): the builder no longer offers `intimidate` or
+    // `persuade`, so the walk authors what it still can.
     const storage = new MemoryStorage();
     const mount = () => (
       <WorldBuildingConcept
@@ -2842,20 +2870,13 @@ describe('WorldBuildingConcept room publishing', () => {
       }
     );
 
-    // 2. A creature, with a priced persuade and the record in its hands.
+    // 2. A creature, with the record in its hands.
     fireEvent.click(screen.getByRole('button', { name: 'Place skeleton' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Commit monster gesture' })
     );
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
 
-    fireEvent.click(screen.getByLabelText('Add Persuade row'));
-    fireEvent.change(screen.getByLabelText('Persuade ability 0'), {
-      target: { value: 'persuasion' },
-    });
-    fireEvent.change(screen.getByLabelText('Persuade dc 0'), {
-      target: { value: '10' },
-    });
     fireEvent.change(screen.getByLabelText('Give intel record'), {
       target: { value: 'cellar-lie' },
     });
@@ -2879,7 +2900,6 @@ describe('WorldBuildingConcept room publishing', () => {
             monsterBindings?: Record<
               string,
               {
-                persuade?: Array<{ ability: string; dc: number }>;
                 holds?: string[];
                 arrives?: { fact?: string };
               }
@@ -2892,7 +2912,6 @@ describe('WorldBuildingConcept room publishing', () => {
       ]);
       const bindings = stored.draft?.room?.monsterBindings ?? {};
       const only = Object.values(bindings)[0];
-      expect(only?.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
       expect(only?.holds).toEqual(['cellar-lie']);
       expect(only?.arrives).toEqual({ fact: 'cellar-is-clear' });
     });
@@ -2901,12 +2920,11 @@ describe('WorldBuildingConcept room publishing', () => {
     // It survives a reload with no import …
     render(mount());
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
-    expect(
-      (screen.getByLabelText('Persuade dc 0') as HTMLInputElement).value
-    ).toBe('10');
     expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
       /Held in reserve until fact cellar-is-clear/
     );
+    // And the removed control stays removed across a reload.
+    expect(screen.queryByLabelText('Persuade dc 0')).toBeNull();
 
     // … and it is what the ENGINE is handed.
     openIdentity();
@@ -2932,9 +2950,6 @@ describe('WorldBuildingConcept room publishing', () => {
     ]);
     const emittedBindings = emitted.draft.room.monsterBindings ?? {};
     const emittedCreature = Object.values(emittedBindings)[0];
-    expect(emittedCreature?.persuade).toEqual([
-      { ability: 'persuasion', dc: 10 },
-    ]);
     expect(emittedCreature?.holds).toEqual(['cellar-lie']);
     expect(emittedCreature?.arrives).toEqual({ fact: 'cellar-is-clear' });
   });
@@ -3346,7 +3361,19 @@ describe('WorldBuildingConcept site organization (web#1152, corrected model)', (
     // read-only single line survives only where no editor is wired
     // (`SitePolicies.test.tsx` covers that path).
     expect(screen.getByTestId('creature-weapons-none')).toBeTruthy();
+    // THE CREATURE'S ORDERS ARE NAMED, NOT PASTED (rpg-dnd5e-web#1201). The
+    // inline table editor was REMOVED from this panel by Kirk's ruling — "there
+    // should be no inline table defined on a monster anymore" — so what stands
+    // here is the answer to "what does it answer WITH": a picker over the site's
+    // root tables, and the statement that names none.
     expect(screen.getByTestId('creature-table-none')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Table for id-4') as HTMLSelectElement).value
+    ).toBe('');
+    // And the inline table it no longer authors has no editor here: the row
+    // appears only READ-ONLY when a hand-written file carries one, which this
+    // document does not.
+    expect(screen.queryByTestId('creature-inline-table-readonly')).toBeNull();
     expect(
       (screen.getByLabelText('Creature temper') as HTMLSelectElement).value
     ).toBe('');

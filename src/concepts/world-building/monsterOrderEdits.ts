@@ -1,7 +1,12 @@
 /**
- * Editing ONE creature's own orders and interaction facts — its `on`, its
- * `temper`, its `actions` (rpg-dnd5e-web#1164), and its `intimidate`,
- * `persuade`, `arrives` and `holds` (rpg-dnd5e-web#1176).
+ * Editing ONE creature's own orders and reserve facts — its `on`, its
+ * `temper`, its `actions` (rpg-dnd5e-web#1164), and its `arrives` and `holds`
+ * (rpg-dnd5e-web#1176).
+ *
+ * `intimidate` AND `persuade` WERE EDITED HERE AND ARE GONE
+ * (rpg-dnd5e-web#1201). They are not a monster's fact: a priced check is a
+ * property of INTERACTING WITH AN NPC, and a hostile monster is not one. See
+ * `RoomMonsterInteraction` in `roomDraft.ts` for the reason in full.
  *
  * THE BUILDER IS A FORM BUILDER, AND THESE ARE ITS MECHANICS, NOT ITS
  * OPINIONS. Every function here moves bytes the toolkit already accepts
@@ -39,7 +44,7 @@
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
-import type { RoomCheckApproach, RoomMonsterBinding } from './roomDraft';
+import type { RoomMonsterBinding } from './roomDraft';
 import { defaultAnswerEntry } from './sitePolicyEdits';
 
 /** The authored orders, keyed by creature id. `undefined` is the authored
@@ -53,6 +58,16 @@ export function normalizeBinding(
   next: RoomMonsterBinding
 ): RoomMonsterBinding | undefined {
   const normalized: RoomMonsterBinding = {};
+  // A NAMED ROOT TABLE IS A REFERENCE, SO IT IS KEPT VERBATIM (rpg-toolkit#1897).
+  // Every other key here is an override that can be emptied and must then be
+  // dropped; a reference has no empty state — it names a table or it is absent.
+  // Its absence was a real bug: the reader and `BINDING_KEYS` accept `table`,
+  // so a binding authored with one read fine and then lost the name on the
+  // first orders edit, because this function never copied it. There is no
+  // validation to do here — whether the name resolves is
+  // `requireTableNames`' question, asked once where the table universe is.
+  if (next.table !== undefined && next.table !== '')
+    normalized.table = next.table;
   if (next.on !== undefined && Object.keys(next.on).length > 0)
     normalized.on = next.on;
   if (next.temper !== undefined && next.temper !== '')
@@ -61,17 +76,26 @@ export function normalizeBinding(
   // when it carries at least one weapon.
   if (next.actions !== undefined && next.actions.length > 0)
     normalized.actions = next.actions;
-  // The interaction + reserve facts keep the SAME law (web#1176): the encoder
-  // refuses an empty check list, an empty `holds`, and a binding that declares
-  // nothing, so every one of them is dropped here rather than written out.
-  if (next.intimidate !== undefined && next.intimidate.length > 0)
-    normalized.intimidate = next.intimidate;
-  if (next.persuade !== undefined && next.persuade.length > 0)
-    normalized.persuade = next.persuade;
+  // The reserve + holdings facts keep the SAME law (web#1176): the encoder
+  // refuses an empty `holds` and a binding that declares nothing, so both are
+  // dropped here rather than written out. (`intimidate`/`persuade` were
+  // normalized here too until rpg-dnd5e-web#1201 removed them.)
   if (next.holds !== undefined && next.holds.length > 0)
     normalized.holds = next.holds;
   if (next.arrives !== undefined) normalized.arrives = next.arrives;
   return Object.keys(normalized).length === 0 ? undefined : normalized;
+}
+
+/** Set or clear ONE creature's named root table (rpg-toolkit#1897). A name is a
+ * REFERENCE, so clearing it is `undefined` and never an empty string — the
+ * other half of the bug `normalizeBinding` carried. Everything else on the
+ * binding is untouched, which is the point: naming a table is not an edit to
+ * the creature's arms, temper or reserve. */
+export function setMonsterTable(
+  binding: RoomMonsterBinding | undefined,
+  table: string | undefined
+): RoomMonsterBinding | undefined {
+  return normalizeBinding({ ...working(binding), table });
 }
 
 /** Set or clear ONE creature's orders in the map. `undefined` deletes the
@@ -212,58 +236,6 @@ export function removeMonsterAnswerEntry(
 // opaque ref, a `holds` id names a record the engine resolves at compile, and
 // what an `arrives` form means is the engine's judgement. Nothing here decides
 // whether a check succeeds or a record exists.
-
-/** One authored check route — the default a new row starts from. `dc: 1` is a
- * legal-but-uninteresting authored number rather than a derived one, so the
- * author always sees the number the engine will use; the ability is the first
- * the caller offers, because this module has no rules catalog of its own. */
-export function defaultCheckApproach(ability: string): RoomCheckApproach {
-  return { ability, dc: 1 };
-}
-
-/** Append a check route to `intimidate` or `persuade`. The route is carried
- * verbatim; an empty `ability` is the caller's to seed, not this module's to
- * invent a rules word for. */
-export function addMonsterCheck(
-  binding: RoomMonsterBinding | undefined,
-  key: 'intimidate' | 'persuade',
-  approach: RoomCheckApproach
-): RoomMonsterBinding | undefined {
-  const next = working(binding);
-  return normalizeBinding({
-    ...next,
-    [key]: [...(next[key] ?? []), approach],
-  });
-}
-
-/** Patch one check route by index. An out-of-range index returns the binding
- * unchanged, and never `undefined`. */
-export function patchMonsterCheck(
-  binding: RoomMonsterBinding | undefined,
-  key: 'intimidate' | 'persuade',
-  index: number,
-  approach: RoomCheckApproach
-): RoomMonsterBinding | undefined {
-  const next = working(binding);
-  const rows = [...(next[key] ?? [])];
-  if (index < 0 || index >= rows.length) return binding;
-  rows[index] = approach;
-  return normalizeBinding({ ...next, [key]: rows });
-}
-
-/** Remove one check route. Removing the last one drops the key — an empty
- * list is refused by the encoder, so absence is the authored state. */
-export function removeMonsterCheck(
-  binding: RoomMonsterBinding | undefined,
-  key: 'intimidate' | 'persuade',
-  index: number
-): RoomMonsterBinding | undefined {
-  const next = working(binding);
-  return normalizeBinding({
-    ...next,
-    [key]: (next[key] ?? []).filter((_, i) => i !== index),
-  });
-}
 
 /** Add an intel record id to this creature's `holds`. Order is authored and
  * preserved; a duplicate is prevented because holding one record twice means

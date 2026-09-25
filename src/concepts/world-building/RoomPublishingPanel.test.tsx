@@ -257,7 +257,11 @@ function richDraft(id = 'room-abc123'): RoomDraft {
   };
   draft.room.partyStart = { q: 0, r: 0 };
   draft.room.monsters = [
-    { id: 'skeleton-a', ref: 'dnd5e:monsters:skeleton', cell: { q: 1, r: 0 } },
+    {
+      id: 'skeleton-a',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 1, r: 0 } },
+    },
   ];
   return draft;
 }
@@ -377,7 +381,7 @@ describe('RoomPublishingPanel — save to a new key', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 1, r: 0 },
+        startingCell: { location: { q: 1, r: 0 } },
       },
     ]);
     expect(decoded.draft.room.partyStart).toEqual({ q: 0, r: 0 });
@@ -624,6 +628,70 @@ describe('RoomPublishingPanel — Save & Play', () => {
 });
 
 describe('RoomPublishingPanel — canonical YAML exchange', () => {
+  it('imports a document’s root tables into the site scope', async () => {
+    /* FOUND ON KIRK'S WALK, WITH HIS OWN 1234-LINE SITE: "the table does not
+     * show in the ui. I do see it set to the goblin but not in the table
+     * list."
+     *
+     * `importYaml` rebuilds the site scope KEY BY KEY — the same list the two
+     * ENCODE call sites keep — and omitted `tables`. So a document's root table
+     * was dropped on the way IN and the panel's list rendered nothing. The
+     * creature still showed its name because the picker resolves against
+     * `scope.tables` at render time while the BINDING kept its reference: only
+     * the DECLARATION was lost, which is exactly the asymmetry he described.
+     *
+     * THE THIRD TIME THIS LIST HAS BEEN WRONG on this branch — twice on the
+     * encode side (slices 2 and 5) and now on the import side. A key added to
+     * `SiteScope` has three places to be wired and no single place that fails
+     * loudly when it is not. */
+    const { onImportDraft } = renderPanel(richDraft('room-abc123'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export canonical YAML' })
+    );
+    const textarea = screen.getByRole('textbox', {
+      name: 'Canonical YAML',
+    }) as HTMLTextAreaElement;
+    // A document declaring a root table AND a faction naming it — the shape
+    // `goblin-mind-test-v4.yaml` carries.
+    const body = textarea.value
+      .split('\n')
+      .filter((line) => !line.startsWith('factions:'))
+      .join('\n');
+    const imported = [
+      'tables:',
+      '  goblin-drill:',
+      '    time:',
+      '      - when:',
+      '          enemy: reach',
+      '        attack: enemy',
+      'factions:',
+      '  - id: goblin',
+      '    table: goblin-drill',
+      body,
+    ].join('\n');
+
+    const before = decodeSingleRoomDungeon(imported);
+    expect(before.tables).toEqual({
+      'goblin-drill': {
+        time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+      },
+    });
+
+    fireEvent.change(textarea, { target: { value: imported } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import canonical YAML' })
+    );
+    await waitFor(() => expect(onImportDraft).toHaveBeenCalledTimes(1));
+
+    const scope = (
+      onImportDraft.mock.calls as unknown as Array<[RoomDraft, SiteScope]>
+    )[0]![1];
+    // The DECLARATION reaches the editor, so the Tables panel has something to
+    // list and the reference the binding already holds can resolve.
+    expect(scope.tables).toEqual(before.tables);
+    expect(scope.factions).toEqual(before.factions);
+  });
+
   it('export shows the root key and import adopts key and room', async () => {
     const { onImportDraft } = renderPanel(richDraft('room-abc123'));
 
@@ -748,6 +816,47 @@ describe('RoomPublishingPanel — the site scope (web#1157)', () => {
     const emitted = decodeSingleRoomDungeon(yaml);
     expect(emitted.factions).toEqual(fixture.factions);
     expect(emitted.dispositions).toEqual(fixture.dispositions);
+  });
+
+  it('publishes the site’s root tables instead of dropping them', async () => {
+    /* THE SAME REGRESSION, ONE KEY LATER (rpg-dnd5e-web#1201). Slice 2 taught
+     * the ENCODER about `tables` and taught neither publish call site to pass
+     * it, so an authored table was dropped from the published YAML while the
+     * local draft still carried it — the form looked like it worked and the
+     * document that reached the engine did not have it. Found on Kirk's walk:
+     * "I added an entry and thought I would edit the yaml to add the table I
+     * have but it wasnt there."
+     *
+     * This test reads the bytes the PANEL PUTS ON THE WIRE, which is the only
+     * place the omission shows: the draft envelope carries `tables` correctly,
+     * which is why a walk that reads the draft passes on the broken code. */
+    const fixture = decodeWorldBuilderV4Site();
+    const tables = {
+      'goblin-drill': {
+        time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+      },
+    };
+    render(
+      <RoomPublishingPanel
+        draft={fixture.draft}
+        scope={{ tables }}
+        capability={{ characterId: 'char-1', onPlay: vi.fn() }}
+        client={fakeClient()}
+        onImportDraft={vi.fn(() => true)}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
+    await waitFor(() => expect(rpc.gets).toHaveLength(1));
+    await act(async () =>
+      getAnswers[0]!.reject(new ConnectError('absent', Code.NotFound))
+    );
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    const yaml = savePuts()[0]!.request.yaml;
+    const emitted = decodeSingleRoomDungeon(yaml);
+    expect(emitted.tables).toEqual(tables);
+    // And a faction NAMING a table survives with it, so the reference and its
+    // declaration land in the same document.
+    expect(yaml).toContain('tables:');
   });
 
   it('hands the imported document’s scope to the editor callback', () => {

@@ -78,7 +78,7 @@ room:
       - {
           id: front-goblin,
           ref: 'dnd5e:monsters:goblin',
-          cell: { q: 4, r: 0 },
+          startingCell: { location: { q: 4, r: 0 } },
           faction: goblins,
         }
     monsterBindings:

@@ -1,10 +1,13 @@
 import { parse, stringify } from 'yaml';
 import {
+  ROOM_DRAFT_ENVELOPE_VERSION,
   parseRoomDraftJson,
   stringifyRoomDraft,
   type RoomDraft,
 } from './roomDraft';
 import {
+  renderScope,
+  scopeFrom,
   validateIntel,
   validateSiteConcealments,
   validateSiteDispositions,
@@ -12,6 +15,8 @@ import {
   validateSiteExits,
   validateSiteFactions,
   validateSiteScenarios,
+  validateSiteScope,
+  validateSiteTables,
   type SiteConcealments,
   type SiteDisposition,
   type SiteEnding,
@@ -20,6 +25,7 @@ import {
   type SiteIntelRecord,
   type SiteScenarios,
   type SiteScope,
+  type SiteTables,
 } from './siteScope';
 
 export interface EncodeSingleRoomDungeonInput {
@@ -31,6 +37,9 @@ export interface EncodeSingleRoomDungeonInput {
    * emitting v3 exactly as it always did. */
   /* Carried, never interpreted: the site's intel records (web#933's section
    * ported to the site root). Omitted means the document does not carry them. */
+  /** The answer tables this site declares, keyed by id — the shared thing a
+   * faction or a binding NAMES rather than copies (rpg-toolkit#1897). */
+  tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
@@ -47,7 +56,8 @@ export interface DecodeSingleRoomDungeonResult {
   key: string;
   draft: RoomDraft;
   /** Present only when the file carried at least one; absence is the authored
-   * state "no factions", never an empty list. */
+   * state "no tables", never an empty map. */
+  tables?: SiteTables;
   factions?: SiteFaction[];
   dispositions?: SiteDisposition[];
   intel?: SiteIntelRecord[];
@@ -75,6 +85,10 @@ const ROOT_KEYS = [
   'key',
   'play',
   'room',
+  // The engine's own root order: `tables` sits before `factions` in
+  // `SingleRoomSpec`, and this list mirrors it so a file the engine writes
+  // reads here in the order it was authored (rpg-toolkit#1897).
+  'tables',
   'factions',
   'dispositions',
   'intel',
@@ -120,6 +134,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * root 4 with room 3 is the only combination this build produces, and the Go
  * decoder's half of the seam says the same (`acceptedRootVersions`). */
 function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
+  // A ROOT TABLE IS A v4 FACT TOO (rpg-toolkit#1897): a room whose only
+  // authored orders are a named table must still claim v4, the same argument a
+  // `factions`-only or `doorBindings`-only room makes below.
+  if (Object.keys(scope.tables ?? {}).length > 0) return true;
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
   if ((scope.intel?.length ?? 0) > 0) return true;
@@ -151,7 +169,21 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
     Object.keys(draft.room.propBindings).length > 0
   )
     return true;
-  return draft.room.monsters.some((monster) => monster.faction !== undefined);
+  // A MONSTER'S START IS A v4 FACT, AND SO IS ITS FACING
+  // (rpg-toolkit#1900, rpg-project#501 §6.1). A room whose ONLY v4 fact is a
+  // placement's `startingCell` must still claim v4 — THIS IS THE DOOR BUG
+  // AGAIN, in the shape the comment above warns about: `startingCell` has no
+  // place in v3, so a `version: 3` document carrying one states something
+  // false.
+  //
+  // `startingCell` is NOT itself the marker, because every monster has one —
+  // the marker is the SHAPE being authored rather than a bare `cell`. This
+  // dialect emits `startingCell` for every placement, so any monster at all
+  // makes the document v4. That is the honest reading: a v3 document cannot
+  // express this build's `monsters:` block.
+  if (draft.room.monsters.length > 0) return true;
+
+  return false;
 }
 
 export function encodeSingleRoomDungeon(
@@ -164,34 +196,14 @@ export function encodeSingleRoomDungeon(
   };
   // The scope is validated on the way OUT as the draft is, so an encoder can
   // never write a site block the strict decoder would refuse to read back.
-  const factions = input.factions
-    ? validateSiteFactions(input.factions)
-    : undefined;
-  const dispositions = input.dispositions
-    ? validateSiteDispositions(input.dispositions)
-    : undefined;
-  const intel = input.intel ? validateIntel(input.intel) : undefined;
-  const exits = input.exits ? validateSiteExits(input.exits) : undefined;
-  const endings = input.endings
-    ? validateSiteEndings(input.endings)
-    : undefined;
-  const scenarios = input.scenarios
-    ? validateSiteScenarios(input.scenarios)
-    : undefined;
-  const concealments = input.concealments
-    ? validateSiteConcealments(input.concealments)
-    : undefined;
-  const scope: SiteScope = {
-    ...(factions && factions.length > 0 ? { factions } : {}),
-    ...(dispositions && dispositions.length > 0 ? { dispositions } : {}),
-    ...(intel && intel.length > 0 ? { intel } : {}),
-    ...(exits && exits.length > 0 ? { exits } : {}),
-    ...(endings && endings.length > 0 ? { endings } : {}),
-    ...(scenarios && Object.keys(scenarios).length > 0 ? { scenarios } : {}),
-    ...(concealments && Object.keys(concealments).length > 0
-      ? { concealments }
-      : {}),
-  };
+  //
+  // ONE CALL, NOT EIGHT (rpg-dnd5e-web#1201). This used to validate each field
+  // by name and then re-list the survivors when building the scope — two more
+  // copies of the key list that could go stale, and the reason the encoder's
+  // input interface gained `tables` while both publish call sites did not.
+  // `validateSiteScope` already owns the per-key validation AND the
+  // "an empty value is an absent key" rule this block was open-coding.
+  const scope = validateSiteScope(scopeFrom(input));
   return stringify({
     version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
     key: input.key,
@@ -199,13 +211,9 @@ export function encodeSingleRoomDungeon(
     // ABSENT, NOT EMPTY: a document with no site scope emits the bytes it
     // emitted before these keys existed. Key order stays version, key, play,
     // room when they are absent, which is what makes the bytes identical.
-    ...(scope.factions ? { factions: scope.factions } : {}),
-    ...(scope.dispositions ? { dispositions: scope.dispositions } : {}),
-    ...(scope.intel ? { intel: scope.intel } : {}),
-    ...(scope.exits ? { exits: scope.exits } : {}),
-    ...(scope.endings ? { endings: scope.endings } : {}),
-    ...(scope.scenarios ? { scenarios: scope.scenarios } : {}),
-    ...(scope.concealments ? { concealments: scope.concealments } : {}),
+    // `renderScope` writes them in `SCOPE_KEYS`' order — the root's own — and
+    // is the one place the list lives (rpg-dnd5e-web#1201).
+    ...renderScope(scope),
     room: draft.draft,
   });
 }
@@ -293,6 +301,13 @@ function decodeSingleRoomRoot(
   }
   // The site scope is validated BEFORE the room, so a typo in a faction is
   // reported as the typo it is rather than as a room problem.
+  //
+  // THE TABLES FIRST, because a faction and a monster binding may each NAME
+  // one and a name cannot be judged before the universe it names exists — the
+  // same ordering reason `intel` is read before a `holds` that names a record.
+  const tables = Object.hasOwn(root, 'tables')
+    ? validateSiteTables(root.tables)
+    : {};
   const factions = Object.hasOwn(root, 'factions')
     ? validateSiteFactions(root.factions)
     : [];
@@ -314,19 +329,40 @@ function decodeSingleRoomRoot(
     : {};
   if (!isPlainObject(root.room))
     throw new Error('Single-room source is missing a room.');
-  // The embedded room draft keeps ITS OWN version, and it is passed through
-  // rather than forced to 3. Forcing it would silently accept a room claiming
-  // a version this build cannot read; passing it through makes the refusal name
-  // the real gap instead of hiding it behind the root's version.
-  const roomVersion = (root.room as { version?: unknown }).version;
+  // THREE VERSION AXES MEET HERE, AND THIS LINE USED TO CONFLATE TWO
+  // (rpg-project#501 §6.1):
+  //
+  //   root `version:`       the DIALECT — 3 or 4, which keys the file may hold
+  //   `room.version:`       the ROOM DRAFT's shape — stays 3, a separate
+  //                         artifact (`carriesV4Keys` says so above)
+  //   the ENVELOPE version  the shape of the STORED draft this wrapper mints
+  //
+  // This wrote `version: roomVersion ?? 3`, borrowing the room's number for the
+  // envelope. That worked only while the two happened to agree. When the
+  // envelope went to 5 for `startingCell`, borrowing the room's 3 made this
+  // build REJECT ITS OWN freshly-decoded document — caught by the suite, which
+  // is why the wrapper no longer borrows.
+  //
+  // The room's own version is NOT dropped: it stays on `root.room` and
+  // `validateDraft` judges it where it belongs, so a room claiming a version
+  // this build cannot read is still refused by name rather than silently
+  // accepted.
   const draftJson = JSON.stringify({
     kind: 'rpg-room-authoring-draft',
-    version: roomVersion ?? 3,
+    version: ROOM_DRAFT_ENVELOPE_VERSION,
     draft: root.room,
   });
+  const draft = parseRoomDraftJson(draftJson);
+  // EVERY `table:` NAME MUST RESOLVE, and this is the one place both halves are
+  // visible (rpg-toolkit#1897): the room reader carries a name without judging
+  // it, and the scope reader declares the universe. Refused here so the author
+  // gets a sentence about the id they wrote rather than a compile that quietly
+  // orders nothing.
+  requireTableNames(draft, factions, tables);
   return {
     key: root.key,
-    draft: parseRoomDraftJson(draftJson),
+    draft,
+    ...(Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),
     ...(intel.length > 0 ? { intel } : {}),
@@ -335,4 +371,36 @@ function decodeSingleRoomRoot(
     ...(Object.keys(scenarios).length > 0 ? { scenarios } : {}),
     ...(Object.keys(concealments).length > 0 ? { concealments } : {}),
   };
+}
+
+/** Refuse a `table:` that names nothing (rpg-toolkit#1897).
+ *
+ * TWO PLACES MAY NAME ONE — a faction and a monster binding — and the engine
+ * refuses both by name at their own paths ("faction %q names the table %q, and
+ * no table in this dungeon has that id" / the binding's twin). The builder says
+ * the same thing in its own words because it is judging before the server does,
+ * which is the whole point of the local pass.
+ *
+ * A NAME IS JUDGED HERE AND NOWHERE ELSE, because nowhere else holds both the
+ * name and the universe it names. */
+function requireTableNames(
+  draft: RoomDraft,
+  factions: SiteFaction[],
+  tables: SiteTables
+): void {
+  const declared = new Set(Object.keys(tables));
+  for (const faction of factions) {
+    if (faction.table !== undefined && !declared.has(faction.table))
+      throw new Error(
+        `Site faction ${faction.id} names the table ${faction.table}, and no table in this site has that id.`
+      );
+  }
+  for (const [id, binding] of Object.entries(
+    draft.room.monsterBindings ?? {}
+  )) {
+    if (binding.table !== undefined && !declared.has(binding.table))
+      throw new Error(
+        `Monster binding for ${id} names the table ${binding.table}, and no table in this site has that id.`
+      );
+  }
 }

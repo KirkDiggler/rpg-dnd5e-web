@@ -29,7 +29,11 @@ function frontRoomScope(): SiteScope {
 function roomWithThug() {
   const room = structuredClone(fixture.draft.room);
   room.monsters = [
-    { id: 'thug-1', ref: 'dnd5e:monsters:thug', cell: { q: 4, r: 0 } },
+    {
+      id: 'thug-1',
+      ref: 'dnd5e:monsters:thug',
+      startingCell: { location: { q: 4, r: 0 } },
+    },
   ];
   room.monsterBindings = { 'thug-1': { holds: ['cellar-lie'] } };
   return room;

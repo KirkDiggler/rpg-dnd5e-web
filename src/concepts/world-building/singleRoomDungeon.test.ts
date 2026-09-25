@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createRoomDraft, type RoomDraft } from './roomDraft';
+import { createRoomDraft, placeRoomMonster, type RoomDraft } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import {
   decodeSingleRoomDungeon,
@@ -11,9 +11,9 @@ import {
  * the encoder as it stood before this slice (rpg-dnd5e-web#1136) and committed
  * byte-accurate. This is the one test the issue says not to skip: the file
  * format is the expensive thing to walk back. */
-const readV3Golden = () =>
+const readGolden = () =>
   readFileSync(
-    'src/concepts/world-building/fixtures/singleRoomV3.golden.yaml',
+    'src/concepts/world-building/fixtures/singleRoomV4.golden.yaml',
     'utf8'
   );
 
@@ -34,7 +34,7 @@ function goldenDraft(): RoomDraft {
     {
       id: 'skeleton-a',
       ref: 'dnd5e:monsters:skeleton',
-      cell: { q: 2, r: -1 },
+      startingCell: { location: { q: 2, r: -1 } },
     },
   ];
   return draft;
@@ -54,7 +54,7 @@ const ROOM_BLOCK = `room:
     propDeclarations: {}
     arrangementDeclarations: {}
     monsters:
-      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', cell: {q: 2, r: -1}, faction: goblins}`;
+      - {id: goblin-1, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}}, faction: goblins}`;
 
 const PLAY_BLOCK = `play: {void: transparent, lighting: bright, standing: centre-covered}`;
 
@@ -74,7 +74,7 @@ describe('single-room dungeon source', () => {
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 2, r: -1 },
+        startingCell: { location: { q: 2, r: -1 } },
       },
     ];
     const decoded = decodeSingleRoomDungeon(
@@ -140,7 +140,7 @@ room:
   room:
     implicitRegionId: room-1-region
     monsters:
-      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', cell: {q: 2, r: -1}}
+      - {id: skeleton-a, ref: 'dnd5e:monsters:skeleton', startingCell: {location: {q: 2, r: -1}}}
     walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
     propDeclarations: {}
     arrangementDeclarations: {}
@@ -159,7 +159,7 @@ play:
       {
         id: 'skeleton-a',
         ref: 'dnd5e:monsters:skeleton',
-        cell: { q: 2, r: -1 },
+        startingCell: { location: { q: 2, r: -1 } },
       },
     ]);
 
@@ -202,12 +202,12 @@ play:
         ref: 'dnd5e:monsters:skeleton',
         // Off painted floor and overlapping the start: encounter legality is
         // not a client question, so this source stays retainable verbatim.
-        cell: { q: 3, r: -3 },
+        startingCell: { location: { q: 3, r: -3 } },
       },
       {
         id: 'not-yet-modeled',
         ref: 'dnd5e:monsters:unknown-thing',
-        cell: { q: -2, r: 1 },
+        startingCell: { location: { q: -2, r: 1 } },
       },
     ];
     const decoded = decodeSingleRoomDungeon(
@@ -217,19 +217,27 @@ play:
     expect(decoded.draft.room.partyStart).toEqual({ q: 3, r: -3 });
   });
 
-  it('emits exactly the bytes it emitted before the v4 keys existed', () => {
-    // THE PROOF THE ISSUE SAYS NOT TO SKIP. `singleRoomV3.golden.yaml` is the
-    // pre-slice encoder's own output, committed byte-accurate. A site with no
-    // `factions`, no `dispositions`, no `faction` and no `monsterBindings`
-    // must reproduce it exactly — not "equivalently".
+  it('emits byte-for-byte what the golden holds, with no empty v4 placeholder', () => {
+    // THE PROOF THE ISSUE SAYS NOT TO SKIP. `singleRoomV4.golden.yaml` is the
+    // encoder's own output committed byte-accurate, so this is a real diff and
+    // not a re-parse.
+    //
+    // IT CLAIMS `version: 4` NOW, AND THAT IS THE FIX (rpg-toolkit#1900,
+    // rpg-project#501 §6.1). The test used to assert `version: 3` because a
+    // room with no scope had no v4 fact to state. It has one: EVERY monster
+    // carries a `startingCell`, which has no place in v3 — so the old `3` was
+    // a false statement about what the file may contain, which is the same
+    // defect the door wave left behind (see `carriesV4Keys`). The golden was
+    // renamed from `singleRoomV3` with it, because a file named for a version
+    // it no longer claims misleads the next reader.
     const emitted = encodeSingleRoomDungeon({
       key: 'crypt-room',
       draft: goldenDraft(),
     });
-    expect(emitted).toBe(readV3Golden());
-    // The version is the LOWEST that carries the document, and none of the v4
-    // keys is present as an empty placeholder.
-    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted).toBe(readGolden());
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    // AND STILL NO EMPTY PLACEHOLDER: the version is a claim, not a licence to
+    // write keys the author never authored.
     expect(emitted).not.toContain('factions');
     expect(emitted).not.toContain('dispositions');
     expect(emitted).not.toContain('faction');
@@ -245,16 +253,16 @@ play:
       factions: [],
       dispositions: [],
     });
-    expect(emitted).toBe(readV3Golden());
+    expect(emitted).toBe(readGolden());
 
     const decoded = decodeSingleRoomDungeon(
-      `${readV3Golden()}factions: []\ndispositions: []\n`
+      `${readGolden()}factions: []\ndispositions: []\n`
     );
     expect(decoded.factions).toBeUndefined();
     expect(decoded.dispositions).toBeUndefined();
     expect(
       encodeSingleRoomDungeon({ key: decoded.key, draft: decoded.draft })
-    ).toBe(readV3Golden());
+    ).toBe(readGolden());
   });
 
   it('round trips hand-written monster orders and a creature faction at v4', () => {
@@ -620,6 +628,9 @@ intel:
 ${ROOM_BLOCK}
 `;
     const decoded = decodeSingleRoomDungeon(source);
+    // AN EXIT KEEPS `cell` (rpg-project#501 §6.1). Only a MONSTER's placement
+    // gained `startingCell`: an exit is a way out rather than a creature, has
+    // no facing, and changing it would be a different decision.
     expect(decoded.exits).toEqual([{ id: 'entrance', cell: { q: 1, r: 3 } }]);
     expect(decoded.endings).toEqual([
       { id: 'held-out', when: { round: 6 } },
@@ -688,5 +699,172 @@ ${ROOM_BLOCK}
       });
       expect(emitted.startsWith('version: 4\n')).toBe(true);
     }
+  });
+});
+
+/**
+ * ANSWER TABLES AT THE ROOT (rpg-toolkit#1897) — a table declared once and
+ * NAMED by whatever answers it.
+ *
+ * THE ROW COUNTS ARE THE ASSERTION, deliberately. A test that only checked
+ * "the document loads" would pass with the whole feature ignored, which is the
+ * weakness an independent review found in the toolkit's first version of this
+ * (`require.Len(..., 1)` passing under every layering permutation). So each
+ * layer carries a DISTINGUISHABLE number of `time` rows and the count says
+ * which one won.
+ */
+describe('answer tables at the root', () => {
+  const TABLES_BLOCK = `tables:
+  goblin-drill:
+    time:
+      - { when: { enemy: reach }, attack: enemy }
+      - { when: { enemy: none }, hold: {} }`;
+
+  // `ROOM_BLOCK` already places `goblin-1` (in faction `goblins`) and declares
+  // the hall, so the only thing this adds is a bindings block underneath it.
+  const source = (root: string, bindings: string) =>
+    `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${root}\n${ROOM_BLOCK}\n    monsterBindings:\n${bindings}\n`;
+
+  it('reads a root table, and a binding that names it answers with both rows', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(TABLES_BLOCK, '      goblin-1: { table: goblin-drill }')
+    );
+    expect(decoded.tables).toEqual({
+      'goblin-drill': {
+        time: [
+          { when: { enemy: 'reach' }, attack: 'enemy' },
+          { when: { enemy: 'none' }, hold: {} },
+        ],
+      },
+    });
+    expect(decoded.draft.room.monsterBindings?.['goblin-1'].table).toBe(
+      'goblin-drill'
+    );
+  });
+
+  it('round-trips a root table and its names verbatim', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(TABLES_BLOCK, '      goblin-1: { table: goblin-drill }')
+    );
+    const emitted = encodeSingleRoomDungeon({
+      key: decoded.key,
+      draft: decoded.draft,
+      tables: decoded.tables,
+      factions: decoded.factions,
+    });
+    // A ROOT TABLE IS A v4 FACT: a room whose only authored orders are a named
+    // table must still claim v4, not fall back to v3 bytes that cannot hold it.
+    expect(emitted.startsWith('version: 4\n')).toBe(true);
+    expect(emitted).toContain('tables:');
+    expect(emitted).toContain('table: goblin-drill');
+    const again = decodeSingleRoomDungeon(emitted);
+    expect(again.tables).toEqual(decoded.tables);
+    expect(again.draft.room.monsterBindings).toEqual(
+      decoded.draft.room.monsterBindings
+    );
+  });
+
+  it('refuses a binding naming a table the site does not declare', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(TABLES_BLOCK, '      goblin-1: { table: goblin-dril }')
+      )
+    ).toThrow(/names the table goblin-dril, and no table in this site/);
+  });
+
+  it('refuses a faction naming a table the site does not declare', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(
+          `factions:\n  - { id: watch, table: watch-dril }\n${TABLES_BLOCK}`,
+          '      goblin-1: { temper: aggressive }'
+        )
+      )
+    ).toThrow(
+      /faction watch names the table watch-dril, and no table in this site/
+    );
+  });
+
+  it('carries a faction naming a table, and both spellings coexist', () => {
+    const decoded = decodeSingleRoomDungeon(
+      source(
+        `factions:\n  - { id: watch, table: goblin-drill, temper: soldier }\n${TABLES_BLOCK}`,
+        '      goblin-1: { temper: aggressive }'
+      )
+    );
+    // BOTH the name and the faction's own `on:` are carried: the engine layers
+    // them (table under, `on:` over), so the builder must not choose between
+    // them — choosing would be the builder deciding a rule.
+    expect(decoded.factions).toEqual([
+      { id: 'watch', table: 'goblin-drill', temper: 'soldier' },
+    ]);
+  });
+
+  it('rejects a table id that is not lower-case-dash', () => {
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source('tables:\n  Goblin Drill:\n    time:\n      - { hold: {} }', '')
+      )
+    ).toThrow(/Site table Goblin Drill: needs an id such as goblin-mind/);
+  });
+
+  it('judges a root table with the ONE answer grammar', () => {
+    // The same refusal a binding's own `on:` earns, because it is the same
+    // validator — a second, nearly-equal grammar is what this avoids.
+    expect(() =>
+      decodeSingleRoomDungeon(
+        source(
+          'tables:\n  goblin-drill:\n    taunted:\n      - { hold: {} }',
+          ''
+        )
+      )
+    ).toThrow(/is not a trigger this build rolls/);
+  });
+});
+
+/**
+ * A MONSTER'S START MAKES A DOCUMENT v4 (rpg-toolkit#1900).
+ *
+ * THIS IS THE REGRESSION TEST FOR A BUG KIRK FOUND BY EYE. A room whose only
+ * authored fact was a monster emitted `version: 3` while carrying
+ * `startingCell` — a key v3 has no place for, so the file stated something
+ * false. `carriesV4Keys` enumerated tables, factions, doors, props and
+ * bindings, and simply did not mention monsters.
+ *
+ * IT IS THE SAME DEFECT THE DOOR WAVE LEFT, which that function's own comment
+ * describes: a version is a statement about what a file MAY contain. The test
+ * is here so the next shape added to `monsters:` cannot repeat it silently.
+ */
+describe('the version a document claims', () => {
+  it('claims v4 for a room whose ONLY v4 fact is a monster placement', () => {
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    draft.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 1 },
+    ];
+    const placed = placeRoomMonster(draft, {
+      id: 'goblin-1',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 1, r: 1 } },
+    });
+    const emitted = encodeSingleRoomDungeon({
+      key: 'monster-only',
+      draft: placed,
+    });
+    expect(emitted).toContain('startingCell');
+    expect(
+      emitted.startsWith('version: 4\n'),
+      'a document carrying `startingCell` cannot honestly claim v3 — v3 has no place for it'
+    ).toBe(true);
+  });
+
+  it('still claims v3 for a room with no monster and no scope at all', () => {
+    // The other side of the claim: nothing authored means nothing to state, so
+    // the lowest true version is still 3 and no placeholder is written.
+    const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
+    draft.room.walkableHexes = [{ q: 0, r: 0 }];
+    const emitted = encodeSingleRoomDungeon({ key: 'empty-room', draft });
+    expect(emitted.startsWith('version: 3\n')).toBe(true);
+    expect(emitted).not.toContain('startingCell');
   });
 });

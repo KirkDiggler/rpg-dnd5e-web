@@ -86,13 +86,13 @@ room:
       - {
           id: goblin-1,
           ref: 'dnd5e:monsters:goblin',
-          cell: { q: 2, r: 0 },
+          startingCell: { location: { q: 2, r: 0 } },
           faction: goblins,
         }
       - {
           id: goblin-2,
           ref: 'dnd5e:monsters:goblin',
-          cell: { q: 1, r: -1 },
+          startingCell: { location: { q: 1, r: -1 } },
           faction: goblins,
         }
     monsterBindings:
