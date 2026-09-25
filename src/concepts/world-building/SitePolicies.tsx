@@ -1821,16 +1821,27 @@ export function CreatureOrders({
           <dt>Faction</dt>
           <dd>
             {onFactionChange ? (
-              <input
+              <select
                 aria-label="Creature faction"
                 value={binding?.faction ?? ''}
-                placeholder="its kind’s default"
                 onChange={(event) =>
                   onFactionChange(
                     event.target.value === '' ? undefined : event.target.value
                   )
                 }
-              />
+              >
+                <option value="">Kind’s default</option>
+                {binding?.faction && !faction && (
+                  <option value={binding.faction}>
+                    {binding.faction} (not declared)
+                  </option>
+                )}
+                {(scope.factions ?? []).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.id}
+                  </option>
+                ))}
+              </select>
             ) : (
               (binding?.faction ??
               'None — this creature keeps its kind’s default.')

@@ -25,6 +25,21 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Wide, tuck-away configuration inspector (#1204)
+
+Room/site mode keeps a persistent navigation strip for root sections and the
+current Selection. Opening a section expands the same comfortable-width inspector
+and brings its existing panel into view. Selecting a different canvas object opens
+Selection; edits or re-renders of the same selection do not force a collapsed
+inspector open. Tucking it away preserves selection, unsaved inputs, and panel
+state because the controls remain mounted. On narrower screens configuration
+stacks below the canvas; prop-composition mode retains its existing layout.
+
+Answer-entry controls use the available width for two columns, without changing
+their editing logic. Creature faction is a select of declared site factions plus
+“Kind’s default”; an undeclared imported reference remains visible as
+“(not declared)” until the author changes it. The server still judges references.
+
 ## Monster declarations and bindings (#1202)
 
 The current single-room authoring shape uses `room.room.monsterDeclarations`
