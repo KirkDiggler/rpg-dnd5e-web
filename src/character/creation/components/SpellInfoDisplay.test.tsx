@@ -24,16 +24,15 @@ vi.mock('../../../api/useSpellCatalog', () => ({
       ],
     ]),
 }));
-it('shows known NYI grants alongside existing spells without offering a cast', () => {
+it('hides known NYI grants while retaining implemented spells', () => {
   render(
     <SpellInfoDisplay
       knownSpellRefs={['dnd5e:spells:identify', 'dnd5e:spells:command']}
     />
   );
-  expect(screen.getByText('Identify')).toBeTruthy();
-  expect(screen.getByText('(Not yet implemented)')).toBeTruthy();
+  expect(screen.queryByText('Identify')).toBeNull();
   expect(screen.getByText('Command')).toBeTruthy();
-  expect(screen.getAllByText('(Not yet implemented)')).toHaveLength(1);
+  expect(screen.queryByText('(Not yet implemented)')).toBeNull();
   expect(screen.queryByRole('button')).toBeNull();
 });
 

@@ -22,6 +22,8 @@ interface ChoiceRendererProps {
   currentSelections: SelectionValue; // Will be Language[] | Skill[] | string[] etc based on choice type
   /** Persisted equipment data could not be fully assigned to declared slots. */
   hasInvalidPersistedEquipmentSelection?: boolean;
+  /** Canonical spell refs already selected in another visible requirement. */
+  selectedElsewhereRefs?: string[];
 }
 
 /**
@@ -33,6 +35,7 @@ export function ChoiceRenderer({
   onSelectionChange,
   currentSelections,
   hasInvalidPersistedEquipmentSelection = false,
+  selectedElsewhereRefs = [],
 }: ChoiceRendererProps) {
   const spellCatalog = useSpellCatalog(choice.options?.case === 'spellOptions');
   // Check if it's an equipment choice with bundles (the special case we handle properly)
@@ -190,20 +193,46 @@ export function ChoiceRenderer({
       choice.choiceType === ChoiceCategory.SPELLS) &&
     choice.options?.case === 'spellOptions'
   ) {
+    const visibleRefs = choice.options.value.availableRefs.filter(
+      (ref) => !spellCatalog.get(ref)?.notYetImplemented
+    );
+    const visibleGrants = (choice.options.value.grants ?? []).filter(
+      (grant) => !spellCatalog.get(grant.spellRef)?.notYetImplemented
+    );
+    const lockedRefs = visibleRefs.filter(
+      (ref) =>
+        selectedElsewhereRefs.includes(ref) && !currentSelections.includes(ref)
+    );
     return (
       <div className="space-y-3">
         <EnumChoice
           choice={choice}
-          available={choice.options.value.availableRefs}
+          available={visibleRefs.filter((ref) => !lockedRefs.includes(ref))}
           currentSelections={currentSelections}
           getDisplayInfo={(ref: string) => ({
-            name: `${spellCatalog.get(ref)?.name || spellRefLabel(ref)}${spellCatalog.get(ref)?.notYetImplemented ? ' (Not yet implemented)' : ''}`,
+            name: spellCatalog.get(ref)?.name || spellRefLabel(ref),
           })}
           onSelectionChange={onSelectionChange}
         />
-        {(choice.options.value.grants ?? []).length > 0 && (
+        {lockedRefs.map((ref) => (
+          <button
+            key={ref}
+            aria-label={`${spellCatalog.get(ref)?.name || spellRefLabel(ref)} Already selected in another cantrip choice`}
+            type="button"
+            disabled
+            className="rounded-lg border p-3 text-left cursor-not-allowed"
+          >
+            <span className="block font-semibold">
+              {spellCatalog.get(ref)?.name || spellRefLabel(ref)}
+            </span>
+            <span className="block text-sm">
+              Already selected in another cantrip choice
+            </span>
+          </button>
+        ))}
+        {visibleGrants.length > 0 && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(choice.options.value.grants ?? []).map((grant) => (
+            {visibleGrants.map((grant) => (
               <button
                 key={grant.spellRef}
                 aria-label={`${spellRefLabel(grant.spellRef)} Granted by ${grant.sourceName}`}
@@ -225,9 +254,6 @@ export function ChoiceRenderer({
                 >
                   Granted by {grant.sourceName}
                 </span>
-                {spellCatalog.get(grant.spellRef)?.notYetImplemented && (
-                  <span className="block text-sm">Not yet implemented</span>
-                )}
               </button>
             ))}
           </div>
