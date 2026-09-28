@@ -27,6 +27,12 @@ export function SpellInfoDisplay({
   knownSpellRefs,
 }: SpellInfoDisplayProps) {
   const catalog = useSpellCatalog();
+  const visibleCantrips = (knownCantripRefs ?? []).filter(
+    (ref) => !catalog.get(ref)?.notYetImplemented
+  );
+  const visibleSpells = (knownSpellRefs ?? []).filter(
+    (ref) => !catalog.get(ref)?.notYetImplemented
+  );
   const getAbilityDisplayName = (ability: string) => {
     const abilityMap: Record<string, string> = {
       intelligence: 'Intelligence',
@@ -184,7 +190,7 @@ export function SpellInfoDisplay({
         </div>
       )}
       {/* Cantrips this build knows, by name */}
-      {knownCantripRefs && knownCantripRefs.length > 0 && (
+      {visibleCantrips.length > 0 && (
         <div
           className="p-3 rounded-lg border"
           style={{
@@ -205,19 +211,14 @@ export function SpellInfoDisplay({
             </span>
           </div>
           <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {knownCantripRefs.map((ref) => (
-              <li key={ref}>
-                {catalog.get(ref)?.name || spellRefLabel(ref)}
-                {catalog.get(ref)?.notYetImplemented && (
-                  <span> (Not yet implemented)</span>
-                )}
-              </li>
+            {visibleCantrips.map((ref) => (
+              <li key={ref}>{catalog.get(ref)?.name || spellRefLabel(ref)}</li>
             ))}
           </ul>
         </div>
       )}
 
-      {knownSpellRefs && knownSpellRefs.length > 0 && (
+      {visibleSpells.length > 0 && (
         <div
           className="p-3 rounded-lg border"
           style={{
@@ -238,13 +239,8 @@ export function SpellInfoDisplay({
             </span>
           </div>
           <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {knownSpellRefs.map((ref) => (
-              <li key={ref}>
-                {catalog.get(ref)?.name || spellRefLabel(ref)}
-                {catalog.get(ref)?.notYetImplemented && (
-                  <span> (Not yet implemented)</span>
-                )}
-              </li>
+            {visibleSpells.map((ref) => (
+              <li key={ref}>{catalog.get(ref)?.name || spellRefLabel(ref)}</li>
             ))}
           </ul>
         </div>

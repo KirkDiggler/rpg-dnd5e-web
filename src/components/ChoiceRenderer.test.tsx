@@ -313,7 +313,6 @@ describe('automatic spell grants', () => {
   it.each([
     [ChoiceCategory.SPELLS, 'bless', 'Bless', 'Life Domain', 4],
     [ChoiceCategory.SPELLS, 'cure-wounds', 'Cure Wounds', 'Life Domain', 4],
-    [ChoiceCategory.CANTRIPS, 'light', 'Light', 'Light Domain', 3],
   ] as const)(
     'locks %s grant %s without consuming choices',
     (category, id, name, source, count) => {
@@ -369,7 +368,7 @@ describe('automatic spell grants', () => {
       expect(
         (
           screen.getByRole('button', {
-            name: id === 'light' ? 'Light (Not yet implemented)' : name,
+            name,
           }) as HTMLButtonElement
         ).disabled
       ).toBe(false);
@@ -377,7 +376,7 @@ describe('automatic spell grants', () => {
   );
 });
 
-it('keeps NYI spells selectable and domain grants locked with an honest label', () => {
+it('hides NYI spells from choices and domain grants', () => {
   const onSelectionChange = vi.fn();
   const choice = create(ChoiceSchema, {
     id: 'spell-choice',
@@ -403,18 +402,10 @@ it('keeps NYI spells selectable and domain grants locked with an honest label', 
       onSelectionChange={onSelectionChange}
     />
   );
-  expect(screen.getAllByText(/Not yet implemented/)).toHaveLength(2);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Light (Not yet implemented)' })
-  );
-  expect(onSelectionChange).toHaveBeenCalledWith('spell-choice', [
-    'dnd5e:spells:light',
-  ]);
-  expect(
-    screen.getByRole('button', {
-      name: 'Disguise Self Granted by Trickery Domain',
-    })
-  ).toHaveProperty('disabled', true);
+  expect(screen.queryByText(/Light/)).toBeNull();
+  expect(screen.queryByText(/Disguise Self/)).toBeNull();
+  expect(screen.queryByText(/Not yet implemented/)).toBeNull();
+  expect(onSelectionChange).not.toHaveBeenCalled();
 });
 
 it('keeps shared cantrips visible but locked until the other choice releases them', () => {

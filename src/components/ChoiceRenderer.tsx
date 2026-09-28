@@ -193,7 +193,13 @@ export function ChoiceRenderer({
       choice.choiceType === ChoiceCategory.SPELLS) &&
     choice.options?.case === 'spellOptions'
   ) {
-    const lockedRefs = choice.options.value.availableRefs.filter(
+    const visibleRefs = choice.options.value.availableRefs.filter(
+      (ref) => !spellCatalog.get(ref)?.notYetImplemented
+    );
+    const visibleGrants = (choice.options.value.grants ?? []).filter(
+      (grant) => !spellCatalog.get(grant.spellRef)?.notYetImplemented
+    );
+    const lockedRefs = visibleRefs.filter(
       (ref) =>
         selectedElsewhereRefs.includes(ref) && !currentSelections.includes(ref)
     );
@@ -201,12 +207,10 @@ export function ChoiceRenderer({
       <div className="space-y-3">
         <EnumChoice
           choice={choice}
-          available={choice.options.value.availableRefs.filter(
-            (ref) => !lockedRefs.includes(ref)
-          )}
+          available={visibleRefs.filter((ref) => !lockedRefs.includes(ref))}
           currentSelections={currentSelections}
           getDisplayInfo={(ref: string) => ({
-            name: `${spellCatalog.get(ref)?.name || spellRefLabel(ref)}${spellCatalog.get(ref)?.notYetImplemented ? ' (Not yet implemented)' : ''}`,
+            name: spellCatalog.get(ref)?.name || spellRefLabel(ref),
           })}
           onSelectionChange={onSelectionChange}
         />
@@ -226,9 +230,9 @@ export function ChoiceRenderer({
             </span>
           </button>
         ))}
-        {(choice.options.value.grants ?? []).length > 0 && (
+        {visibleGrants.length > 0 && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(choice.options.value.grants ?? []).map((grant) => (
+            {visibleGrants.map((grant) => (
               <button
                 key={grant.spellRef}
                 aria-label={`${spellRefLabel(grant.spellRef)} Granted by ${grant.sourceName}`}
@@ -250,9 +254,6 @@ export function ChoiceRenderer({
                 >
                   Granted by {grant.sourceName}
                 </span>
-                {spellCatalog.get(grant.spellRef)?.notYetImplemented && (
-                  <span className="block text-sm">Not yet implemented</span>
-                )}
               </button>
             ))}
           </div>
