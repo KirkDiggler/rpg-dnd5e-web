@@ -416,3 +416,44 @@ it('keeps NYI spells selectable and domain grants locked with an honest label', 
     })
   ).toHaveProperty('disabled', true);
 });
+
+it('keeps shared cantrips visible but locked until the other choice releases them', () => {
+  const choice = create(ChoiceSchema, {
+    id: 'bonus-cantrip',
+    description: 'Choose a bonus cantrip',
+    chooseCount: 1,
+    choiceType: ChoiceCategory.CANTRIPS,
+    options: {
+      case: 'spellOptions',
+      value: create(SpellOptionsSchema, {
+        availableRefs: ['dnd5e:spells:guidance'],
+      }),
+    },
+  });
+  const onSelectionChange = vi.fn();
+  const { rerender } = render(
+    <ChoiceRenderer
+      choice={choice}
+      currentSelections={[]}
+      selectedElsewhereRefs={['dnd5e:spells:guidance']}
+      onSelectionChange={onSelectionChange}
+    />
+  );
+  const locked = screen.getByRole('button', {
+    name: /Guidance Already selected/,
+  });
+  expect((locked as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(locked);
+  expect(onSelectionChange).not.toHaveBeenCalled();
+  rerender(
+    <ChoiceRenderer
+      choice={choice}
+      currentSelections={[]}
+      onSelectionChange={onSelectionChange}
+    />
+  );
+  fireEvent.click(screen.getByText('Guidance'));
+  expect(onSelectionChange).toHaveBeenCalledWith('bonus-cantrip', [
+    'dnd5e:spells:guidance',
+  ]);
+});

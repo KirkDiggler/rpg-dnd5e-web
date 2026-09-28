@@ -450,6 +450,19 @@ export function ClassSelectionModal({
         (choice) => choice.choiceType === ChoiceCategory.CANTRIPS
       ) || [];
 
+    const selectedCantripRefs = cantripChoices.flatMap(
+      (choice) =>
+        currentClassChoices.cantrips?.find(
+          (selected) => selected.choiceId === choice.id
+        )?.spellRefs ?? []
+    );
+    if (new Set(selectedCantripRefs).size !== selectedCantripRefs.length) {
+      setErrorMessage(
+        'Each cantrip can only be selected once across your cantrip choices.'
+      );
+      return;
+    }
+
     for (const choice of cantripChoices) {
       const cantripChoice = currentClassChoices.cantrips?.find(
         (cc) => cc.choiceId === choice.id
@@ -1415,6 +1428,18 @@ export function ClassSelectionModal({
                             >
                               <ChoiceRenderer
                                 choice={choice}
+                                selectedElsewhereRefs={(
+                                  currentClassChoices.cantrips ?? []
+                                )
+                                  .filter(
+                                    (selected) =>
+                                      selected.choiceId !== choice.id &&
+                                      cantripChoices.some(
+                                        (active) =>
+                                          active.id === selected.choiceId
+                                      )
+                                  )
+                                  .flatMap((selected) => selected.spellRefs)}
                                 currentSelections={
                                   currentClassChoices.cantrips?.find(
                                     (cc) => cc.choiceId === choice.id
