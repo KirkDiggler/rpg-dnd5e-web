@@ -38,6 +38,7 @@ import {
   HexLayout,
   LifeState,
   MemberKind,
+  Passage,
   ReactionRefSchema,
   ShortfallReason,
   ShortfallSchema,
@@ -4010,6 +4011,7 @@ describe('SessionEncounterView production combat integration', () => {
           kind: MemberKind.WORLD,
           seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
           currentVia: ['sight'],
+          passage: Passage.BLOCKED,
         },
       ],
     });
@@ -5858,6 +5860,7 @@ describe('the ground click while a cell cast is armed', () => {
           kind: MemberKind.MONSTER,
           seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
           currentVia: ['sight'],
+          passage: Passage.BLOCKED,
         },
       ],
     });

@@ -46,6 +46,7 @@
 import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
+  Passage,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CubeCoord } from '../hex-grid/hexMath';
@@ -64,6 +65,8 @@ export interface SightedMember {
    * below, the same "producer bug is the server's, not a reason to invent a
    * new default" reasoning `standing`'s doc comment already gives. */
   kind: MemberKind;
+  /** Provider-owned occupancy permission; never inferred from render metadata. */
+  passage?: Passage;
   /** The toolkit monster ref id derived from `subject` (strips the
    * trailing `-<ordinal>`) — feeds `resolveMonsterModelUrl` via
    * `HexEntity.monsterRefId`. Undefined for a PLAYER-kind subject: a
@@ -157,11 +160,12 @@ export function sightingsToEntities(
       subject: sighting.subject,
       name: sighting.name || sighting.subject,
       kind: sighting.kind,
+      passage: sighting.passage,
       monsterRefId: isPlayer
         ? undefined
         : monsterRefIdFromSubject(sighting.subject),
       position: positionToCube(sighting.seen.position),
-      remembered: sighting.currentVia.length === 0,
+      remembered: !sighting.currentVia.includes('sight'),
       standing: sighting.seen.standing,
       equipment: sighting.seen.equipment
         ? {
