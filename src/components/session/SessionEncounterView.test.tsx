@@ -5688,6 +5688,7 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     name: subject,
     kind: MemberKind.PLAYER,
     seen: { position: { x, y }, standing: Standing.UP },
+    passage: Passage.PASS_THROUGH,
     currentVia,
   });
 

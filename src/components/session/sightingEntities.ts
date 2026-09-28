@@ -10,7 +10,7 @@
  *
  *   - `seen` unset means no position is known for this subject at all —
  *     never guessed, never drawn (`sightingsToEntities` simply omits it).
- *   - `currentVia` empty means the observer holds a MEMORY, not a live
+ *   - `currentVia` without sight means the observer holds a visual MEMORY, not a live
  *     sighting — still drawn, but flagged `remembered` so the caller can
  *     feed `HexEntity.knowledgeState="remembered"`, the same frozen/
  *     crypt-colored treatment `sceneKnowledge.ts` already gives a
@@ -78,7 +78,7 @@ export interface SightedMember {
    * doc comment for the full reasoning. */
   monsterRefId: string | undefined;
   position: CubeCoord;
-  /** True when `currentVia` was empty — a held memory, not a live
+  /** True when `currentVia` lacks sight — a held visual memory, not a live
    * sighting. Feeds `HexEntity.knowledgeState="remembered"`. */
   remembered: boolean;
   /** `Sighting.seen.standing`, verbatim — drives `HexEntity.isDead`

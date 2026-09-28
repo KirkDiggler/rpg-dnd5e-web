@@ -60,6 +60,33 @@ describe('provider-owned occupant passage', () => {
     const hostilePlayer = index(Passage.BLOCKED);
     expect(hostilePlayer.blocked.has(coordToKey(cubes[1]))).toBe(true);
   });
+  it('a heard-only occupant is remembered and cannot block or invalidate routing', () => {
+    const members = sightingsToEntities(
+      [
+        create(SightingSchema, {
+          subject: 'heard-occupant',
+          currentVia: ['hearing'],
+          passage: Passage.UNSPECIFIED,
+          seen: { position: positions[1] },
+        }),
+      ],
+      'walker'
+    );
+    expect(members[0].remembered).toBe(true);
+    const occupancy = indexOccupantPassages(members);
+    expect(occupancy.error).toBeNull();
+    expect(occupancy.blocked.size).toBe(0);
+    expect(occupancy.passThrough.size).toBe(0);
+    const graph = buildAtlasPathIndex(
+      atlas,
+      undefined,
+      occupancy.blocked,
+      occupancy.passThrough
+    );
+    expect(findAtlasPath(graph, cubes[0], cubes[2]).map(coordToKey)).toEqual(
+      cubes.map(coordToKey)
+    );
+  });
   it('ignores memories and exposes a missing contract as an error', () => {
     expect(index(Passage.BLOCKED, true).blocked.size).toBe(0);
     expect(index(Passage.UNSPECIFIED).error).toBeTruthy();
