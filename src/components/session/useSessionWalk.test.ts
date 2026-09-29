@@ -227,30 +227,34 @@ describe('useSessionWalk', () => {
     expect(result.current.busy).toBe(true);
   });
 
-  it('a walk with fewer returned steps than requested (stopped early) still animates and is not treated as an error', async () => {
-    hoisted.moveFn.mockResolvedValue({
-      steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
-    });
-    const routeBegan = vi.fn();
-    const { result } = renderHook(() =>
-      useSessionWalk(
-        'enc-1',
-        'char-1',
-        corridorIndex(),
-        { x: 0, y: 0 } as never,
-        vi.fn(),
-        '',
-        undefined,
-        undefined,
-        undefined,
-        routeBegan
-      )
-    );
-    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
-    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
-    expect(routeBegan).toHaveBeenCalledWith([{ x: 1, y: -1, z: 0 }]);
-    expect(result.current.moveError).toBeNull();
-  });
+  it.each(['', 'movement stopped at an obstruction'])(
+    'a shortened walk animates completed steps and preserves the provider explanation: %s',
+    async (stopReason) => {
+      hoisted.moveFn.mockResolvedValue({
+        stopReason,
+        steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
+      });
+      const routeBegan = vi.fn();
+      const { result } = renderHook(() =>
+        useSessionWalk(
+          'enc-1',
+          'char-1',
+          corridorIndex(),
+          { x: 0, y: 0 } as never,
+          vi.fn(),
+          '',
+          undefined,
+          undefined,
+          undefined,
+          routeBegan
+        )
+      );
+      act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+      await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
+      expect(routeBegan).toHaveBeenCalledWith([{ x: 1, y: -1, z: 0 }]);
+      expect(result.current.moveError).toBe(stopReason || null);
+    }
+  );
 
   it('a Move RPC that returns zero steps clears busy without animating', async () => {
     hoisted.moveFn.mockResolvedValue({ steps: [] });
