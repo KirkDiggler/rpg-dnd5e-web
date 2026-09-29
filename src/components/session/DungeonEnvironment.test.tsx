@@ -21,9 +21,11 @@ import type { Scene3D, SceneProp3D } from './atlasToScene3D';
 vi.mock('./DungeonShell', () => ({
   DungeonShell: ({
     floorLighting,
+    scene,
   }: {
     floorLighting: DungeonFloorLighting;
-  }) => <group name="environment-shell" userData={{ floorLighting }} />,
+    scene: Scene3D;
+  }) => <group name="environment-shell" userData={{ floorLighting, scene }} />,
 }));
 vi.mock('./AtlasPropModel', () => ({
   AtlasPropModel: ({
@@ -508,6 +510,44 @@ describe('DungeonEnvironment', () => {
     expect(onLightingDiagnostics).toHaveBeenCalledTimes(1);
   });
 
+  it('withholds concealed lights and props, then reveals them with the atlas shell', async () => {
+    const hidden = {
+      ...sceneWith(factsWithSources(1), [], roomPresentation),
+      hiddenPlacedIds: new Set(['candles']),
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment scene={hidden} focus={{ x: 0, z: 0 }} hexSize={1} />
+    );
+    expect(pointLights(renderer)).toHaveLength(0);
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'stub-legacy-prop'
+      )
+    ).toHaveLength(1);
+    const shell = () =>
+      renderer.scene.find((node) => node.instance?.name === 'environment-shell')
+        .instance.userData.scene;
+    expect(shell()).toBe(hidden);
+    const revealed = {
+      ...hidden,
+      hiddenPlacedIds: new Set<string>(),
+      floorTiles: new Map(hidden.floorTiles),
+    };
+    revealed.floorTiles.set('1,-1,0', { x: 1, y: -1, z: 0, roomId: '' });
+    await renderer.update(
+      <DungeonEnvironment scene={revealed} focus={{ x: 0, z: 0 }} hexSize={1} />
+    );
+    expect(shell()).toBe(revealed);
+    expect(shell().floorTiles.size).toBe(2);
+    expect(pointLights(renderer)).toHaveLength(1);
+    expect(
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'stub-legacy-prop'
+      )
+    ).toHaveLength(2);
+    await renderer.unmount();
+  });
+
   it('renders the canonical presentation once through the shared leaves and suppresses duplicated legacy sources', async () => {
     const getComposition = vi.fn(async (worldId: string, id: string) =>
       create(CompositionSchema, {
@@ -566,14 +606,13 @@ describe('DungeonEnvironment', () => {
       />
     );
 
-    // NO legacy proxy leaves at all in the canonical branch: no shell
-    // floor/walls/perimeter, no duplicated atlas prop placements — even
-    // though the atlas itself still carries them.
+    // The observer's floor/walls remain authoritative, while duplicated
+    // legacy props are suppressed in favor of the authored appearance.
     expect(
       renderer.scene.findAll(
         (node) => node.instance?.name === 'environment-shell'
       )
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       renderer.scene.findAll(
         (node) => node.instance?.name === 'environment-prop'
@@ -618,23 +657,12 @@ describe('DungeonEnvironment', () => {
       rotationY: -0.4,
     });
 
-    // The full workspace Crypt floor, at the authoring radius
-    // (horizontalLimit + 1) and the exact profile the editor presents.
-    const floor = renderer.scene.find(
-      (node) => node.instance?.name === 'stub-workspace-floor'
-    );
+    // Never restore concealed floor from the full authored workspace.
     expect(
-      (floor.instance as unknown as { userData: Record<string, unknown> })
-        .userData
-    ).toEqual({
-      radius: 13,
-      profile: {
-        diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
-        sha256:
-          'ec84f155a32297c64e86b8c678955e25d8f8180023327e42c840dd086916b841',
-        worldUnitsPerRepeat: 6,
-      },
-    });
+      renderer.scene.findAll(
+        (node) => node.instance?.name === 'stub-workspace-floor'
+      )
+    ).toHaveLength(0);
 
     // Canonical lights project exactly ONCE: item-local offset rotated by
     // the item's own yaw, surface lift once, identity outer placement —

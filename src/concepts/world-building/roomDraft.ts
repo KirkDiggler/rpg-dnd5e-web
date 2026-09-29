@@ -1228,10 +1228,9 @@ export function stringifyRoomDraft(
   // the editor can never persist a document its own reader would refuse
   // (rpg-dnd5e-web#1160). An empty scope normalizes to no scope at all.
   const validatedScope = validateSiteScope(scope ?? {});
-  const carriesScope =
-    (validatedScope.factions?.length ?? 0) > 0 ||
-    (validatedScope.dispositions?.length ?? 0) > 0 ||
-    (validatedScope.intel?.length ?? 0) > 0;
+  // validateSiteScope already omits empty entries. Inspect the normalized
+  // scope, not a second key inventory that silently drops new site nouns.
+  const carriesScope = Object.keys(validatedScope).length > 0;
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
@@ -1355,11 +1354,7 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
  * floor: callers that must keep the scope read `parseRoomDocumentJson`. */
 export function parseRoomDraftJson(json: string): RoomDraft {
   const document = parseRoomDocumentJson(json);
-  if (
-    (document.scope.factions?.length ?? 0) > 0 ||
-    (document.scope.dispositions?.length ?? 0) > 0 ||
-    (document.scope.intel?.length ?? 0) > 0
-  )
+  if (Object.keys(document.scope).length > 0)
     throw new Error(
       'This room authoring draft carries a site scope; read it with parseRoomDocumentJson.'
     );

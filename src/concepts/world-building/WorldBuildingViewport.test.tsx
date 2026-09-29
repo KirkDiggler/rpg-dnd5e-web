@@ -123,6 +123,156 @@ beforeEach(() => {
   floorTextureState.base = new THREE.Texture();
 });
 
+describe('concealment membership overlays', () => {
+  it('routes canvas prop and walkable-cell clicks to membership without ordinary selection or painting', async () => {
+    const onCell = vi.fn();
+    const onProp = vi.fn();
+    const onSelect = vi.fn();
+    const onWalkableGesture = vi.fn();
+    const props = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [TABLE],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect,
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+      showCompositionBounds: false,
+      roomAuthoring: {
+        tool: 'select' as const,
+        workspace: { hexRadius: 6, horizontalLimit: 12 },
+        walkableHexes: [{ q: 0, r: 0 }],
+        propDeclarations: {},
+        onWalkableGesture,
+        activeConcealmentId: 'vault',
+        onConcealmentCellPick: onCell,
+        onConcealmentPropPick: onProp,
+      },
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...props} />
+    );
+    const event = {
+      button: 0,
+      pointerId: 1,
+      point: new THREE.Vector3(0, 0, 0),
+      intersections: [],
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    };
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    await renderer.fireEvent(ground, 'pointerDown', event);
+    expect(onCell).toHaveBeenCalledExactlyOnceWith({ q: 0, r: 0 });
+    await renderer.fireEvent(ground, 'pointerDown', {
+      ...event,
+      point: new THREE.Vector3(8, 0, 8),
+    });
+    expect(onCell).toHaveBeenCalledTimes(1);
+    const prop = renderer.scene.findByProps({
+      name: 'world-building-interaction-table',
+    });
+    await renderer.fireEvent(prop, 'pointerDown', event);
+    expect(onProp).toHaveBeenCalledExactlyOnceWith('table');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onWalkableGesture).not.toHaveBeenCalled();
+    await renderer.update(
+      <WorldSceneContents
+        {...props}
+        roomAuthoring={{ ...props.roomAuthoring, activeConcealmentId: null }}
+      />
+    );
+    await renderer.fireEvent(prop, 'pointerDown', event);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(['table']);
+    expect(onProp).toHaveBeenCalledTimes(1);
+    await renderer.unmount();
+  });
+
+  it('tints the same authored cell lists and distinguishes the active secret', async () => {
+    const props = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+      showCompositionBounds: false,
+      roomAuthoring: {
+        tool: 'paint' as const,
+        workspace: { hexRadius: 6, horizontalLimit: 12 },
+        walkableHexes: [{ q: 0, r: 0 }],
+        propDeclarations: {},
+        onWalkableGesture: vi.fn(),
+        activeConcealmentId: 'vault',
+        concealments: {
+          vault: {
+            checks: [{ ability: 'perception', dc: 15 }],
+            cells: [{ q: 0, r: 0 }],
+          },
+          cellar: {
+            checks: [{ ability: 'perception', dc: 15 }],
+            cells: [{ q: 1, r: 0 }],
+          },
+        },
+      },
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...props} />
+    );
+    const color = (name: string) =>
+      (
+        renderer.scene.findByProps({ name }).instance as THREE.Mesh<
+          THREE.BufferGeometry,
+          THREE.MeshBasicMaterial
+        >
+      ).material.color.getHexString();
+    expect(color('room-concealment-vault-0-0')).toBe('fbbf24');
+    expect(color('room-concealment-cellar-1-0')).toBe('c084fc');
+    // Membership does not grow the walkable floor.
+    expect(
+      renderer.scene.findAll((node) =>
+        node.instance?.name?.startsWith('room-walkable-')
+      )
+    ).toHaveLength(1);
+    await renderer.update(
+      <WorldSceneContents
+        {...props}
+        roomAuthoring={{
+          ...props.roomAuthoring,
+          activeConcealmentId: 'cellar',
+        }}
+      />
+    );
+    expect(color('room-concealment-vault-0-0')).toBe('c084fc');
+    expect(color('room-concealment-cellar-1-0')).toBe('fbbf24');
+    await renderer.unmount();
+  });
+});
+
 describe('editor atmosphere', () => {
   it('removes distance fog for room authoring and restores composer fog', async () => {
     const renderer = await ReactThreeTestRenderer.create(

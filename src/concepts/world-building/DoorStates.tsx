@@ -18,7 +18,7 @@
  * no leaf at all, so an authored door can never be edited or removed only by
  * luck.
  */
-import { APPROACH_ABILITIES } from '@/author/types';
+import { CheckApproachRows } from './CheckApproachRows';
 import {
   addDoorApproach,
   doorBindingState,
@@ -125,96 +125,18 @@ export function DoorStates({
                   definition, so it is authored shut whatever its closed state
                   said.
                 </p>
-                {rows.map((row, index) => (
-                  <div
-                    className="wb-approach-row"
-                    key={index}
-                    data-testid={`door-${id}-approach-${index}`}
-                  >
-                    <label>
-                      <span>ability</span>
-                      <select
-                        aria-label={`Ability for approach ${index} of ${id}`}
-                        value={row.ability}
-                        onChange={(event) =>
-                          onChange(
-                            id,
-                            patchDoorApproach(binding, index, {
-                              ability: event.target.value,
-                            })
-                          )
-                        }
-                      >
-                        {/* An ability this build does not list is CARRIED, so
-                          it stays visible as its own option rather than
-                          silently snapping the document to the first word. */}
-                        {!APPROACH_ABILITIES.includes(row.ability as never) && (
-                          <option value={row.ability}>
-                            {row.ability === '' ? '(none)' : row.ability}
-                          </option>
-                        )}
-                        {APPROACH_ABILITIES.map((ability) => (
-                          <option key={ability} value={ability}>
-                            {ability}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>tool</span>
-                      <input
-                        aria-label={`Tool for approach ${index} of ${id}`}
-                        value={row.tool ?? ''}
-                        placeholder="(none)"
-                        onChange={(event) => {
-                          const tool = event.target.value;
-                          onChange(
-                            id,
-                            patchDoorApproach(binding, index, {
-                              tool: tool === '' ? undefined : tool,
-                            })
-                          );
-                        }}
-                      />
-                    </label>
-                    <label className="wb-approach-dc">
-                      <span>dc</span>
-                      <input
-                        aria-label={`DC for approach ${index} of ${id}`}
-                        type="number"
-                        min={1}
-                        value={row.dc}
-                        onChange={(event) =>
-                          onChange(
-                            id,
-                            patchDoorApproach(binding, index, {
-                              dc: Number(event.target.value),
-                            })
-                          )
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      aria-label={`Remove approach ${index} from ${id}`}
-                      disabled={rows.length <= 1}
-                      onClick={() =>
-                        onChange(id, removeDoorApproach(binding, index))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                <div className="wb-actions">
-                  <button
-                    type="button"
-                    aria-label={`Add approach to ${id}`}
-                    onClick={() => onChange(id, addDoorApproach(binding))}
-                  >
-                    Add approach
-                  </button>
-                </div>
+                <CheckApproachRows
+                  id={id}
+                  rows={rows}
+                  testIdPrefix={`door-${id}`}
+                  onPatch={(index, patch) =>
+                    onChange(id, patchDoorApproach(binding, index, patch))
+                  }
+                  onRemove={(index) =>
+                    onChange(id, removeDoorApproach(binding, index))
+                  }
+                  onAdd={() => onChange(id, addDoorApproach(binding))}
+                />
               </>
             )}
           </div>

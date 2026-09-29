@@ -33,6 +33,9 @@ export interface RoomSceneEnvironmentProps {
    * cannot see must not be drawn. Undefined/empty hides nothing (the author
    * preview's case: the author sees every placement). */
   readonly hiddenPlacedIds?: ReadonlySet<string>;
+  /** Editor previews may show the full workspace. Play supplies its floor
+   * separately from the observer atlas, never from this presentation. */
+  readonly renderWorkspaceFloor?: boolean;
 }
 
 /**
@@ -235,6 +238,7 @@ export function RoomSceneEnvironment({
   doors,
   onDoorClick,
   hiddenPlacedIds,
+  renderWorkspaceFloor = true,
 }: RoomSceneEnvironmentProps) {
   // THE HIDE RULE (rpg-dnd5e-web#1182). The authored scene is the author's
   // truth and the atlas is the player's: a scene item whose id is a placed
@@ -247,7 +251,9 @@ export function RoomSceneEnvironment({
     : presentation.scene.items;
   return (
     <>
-      <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
+      {renderWorkspaceFloor && (
+        <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
+      )}
       {items.map((item) => (
         <RoomSceneItem
           key={item.id}

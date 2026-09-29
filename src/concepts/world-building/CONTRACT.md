@@ -25,6 +25,42 @@ This room-mode addition supersedes the historical **room/gameplay limitations**
 below, not the standalone composition interaction or ownership contract. See
 `docs/how-to/world-builder-play-verification.md` for current proof and limits.
 
+## Concealment authoring
+
+`Concealments` is a site-level inspector section. Each named declaration owns
+its search checks, optional notice rows, cell membership and prop membership.
+The check-row control is shared with doors. Imported ability and prop references
+remain visible; the engine grades references, walkability and overlapping claims
+through the publish panel rather than the editor inventing rules.
+
+`Add members` activates canvas picking for one concealment. Clicking an authored
+walkable hex, door or prop adds that member; repeated clicks do not toggle or
+duplicate it. Empty workspace is not a floor member. Picking does not change the
+walkable floor, ordinary selection, groups, transforms or door state. A picked
+prop without a placement declaration gets the same measured, nonblocking shape
+seed as a new door; existing declarations remain untouched.
+
+Purple marks membership; gold marks the active declaration. `Done`, Escape, or
+switching canvas tools exits picking. The panel lists only current members with
+explicit removal buttons, not a checkbox inventory of the scene. Each addition
+or removal is one undoable transaction. Removing the final declaration omits
+the root key.
+Intel can name a concealment through a picker; renaming a declaration does not
+silently rewrite intel references.
+
+Local draft persistence examines the normalized scope, not a separate inventory
+of its keys. A document containing only concealments must survive save/reload
+just as one containing factions does.
+
+In play, authored content supplies prop appearance while the observer atlas
+supplies floor, wall segments and placed-prop presence. The full workspace floor
+is editor-only; hidden placed props contribute neither meshes nor point lights.
+The editor's standalone unaware-observer preview is not yet implemented.
+Placed-prop doors also require an upstream visible masking segment to appear as
+a fitted, continuous wall before discovery; hiding the prop and blocking its
+footprint alone does not supply that picture. This editor does not invent a
+replacement asset or infer wall segments.
+
 ## Wide, tuck-away configuration inspector (#1204)
 
 Room/site mode keeps a persistent navigation strip for root sections and the

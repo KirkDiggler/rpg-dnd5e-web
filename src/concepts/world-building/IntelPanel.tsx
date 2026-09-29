@@ -29,16 +29,8 @@ import {
   type SiteScope,
 } from './siteScope';
 
-/** The ONE target this panel authors, and the only one this dialect accepts:
- * `fact` — the thing a failed persuasion teaches and an `arrives` reads.
- *
- * `reveals: { door: … }` is REFUSED, not merely unauthored (rpg-project#488 R3,
- * rpg-toolkit#1855): revealing the way to a door needs a concealed door on a
- * crossing, and a single room has none. The design first said a door reveal was
- * "accepted and inert" and this panel first carried one read-only; the engine
- * made it a sentence, so the form refuses it with the engine's own words and
- * the validator will not store one. The refusal is reported HERE, beside the
- * control that would write it, rather than only at publish time. */
+/** Facts and named concealments are authored targets. Legacy door reveals
+ * remain refused by name; a secret is named through its declaration. */
 function revealTarget(reveals: SiteIntelReveals): string {
   if ('door' in reveals) return reveals.door;
   if ('concealment' in reveals) return reveals.concealment;
@@ -52,10 +44,7 @@ function revealsDoor(reveals: SiteIntelReveals): boolean {
   return 'door' in reveals;
 }
 
-/** Whether a record names a CONCEALMENT — carried, not authored (the form only
- * authors `fact`). A hand-written record that reveals a secret is shown
- * read-only, exactly as a `door` one is, so it is never silently edited into a
- * fact on re-save. The engine grades the target at `PutDungeon`. */
+/** The target picker preserves unknown imported names for server validation. */
 function revealsConcealment(reveals: SiteIntelReveals): boolean {
   return 'concealment' in reveals;
 }
@@ -127,31 +116,108 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                         }
                       />
                     </label>
-                    <label>
-                      <span>
-                        {revealsConcealment(record.reveals)
-                          ? 'Reveals a secret'
-                          : 'Reveals a fact'}
-                      </span>
-                      <input
-                        aria-label={`Intel reveals ${
-                          revealsConcealment(record.reveals) ? 'secret' : 'fact'
-                        } for ${record.id}`}
-                        value={revealTarget(record.reveals)}
-                        placeholder="cellar-is-clear"
-                        disabled={
-                          revealsDoor(record.reveals) ||
-                          revealsConcealment(record.reveals)
-                        }
-                        onChange={(event) =>
-                          onChange(
-                            setIntelReveals(scope, record.id, {
-                              fact: event.target.value,
-                            })
-                          )
-                        }
-                      />
-                    </label>
+                    {!revealsDoor(record.reveals) && (
+                      <label>
+                        <span>Reveals a</span>
+                        <select
+                          aria-label={`Intel reveal kind for ${record.id}`}
+                          value={
+                            revealsConcealment(record.reveals)
+                              ? 'concealment'
+                              : 'fact'
+                          }
+                          onChange={(event) =>
+                            onChange(
+                              setIntelReveals(
+                                scope,
+                                record.id,
+                                event.target.value === 'concealment'
+                                  ? {
+                                      concealment:
+                                        Object.keys(
+                                          scope.concealments ?? {}
+                                        )[0] ?? '',
+                                    }
+                                  : { fact: '' }
+                              )
+                            )
+                          }
+                        >
+                          <option value="fact">Fact</option>
+                          <option
+                            value="concealment"
+                            disabled={
+                              Object.keys(scope.concealments ?? {}).length ===
+                                0 && !revealsConcealment(record.reveals)
+                            }
+                          >
+                            Concealment
+                          </option>
+                        </select>
+                      </label>
+                    )}
+                    {revealsConcealment(record.reveals) ? (
+                      <label>
+                        <span>Reveals a secret</span>
+                        <select
+                          aria-label={`Intel reveals secret for ${record.id}`}
+                          value={revealTarget(record.reveals)}
+                          onChange={(event) =>
+                            onChange(
+                              setIntelReveals(scope, record.id, {
+                                concealment: event.target.value,
+                              })
+                            )
+                          }
+                        >
+                          <option value="" disabled>
+                            Choose a concealment
+                          </option>
+                          {revealTarget(record.reveals) &&
+                            !Object.hasOwn(
+                              scope.concealments ?? {},
+                              revealTarget(record.reveals)
+                            ) && (
+                              <option value={revealTarget(record.reveals)}>
+                                {revealTarget(record.reveals)} (not declared)
+                              </option>
+                            )}
+                          {Object.keys(scope.concealments ?? {}).map((id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <label>
+                        <span>
+                          {revealsConcealment(record.reveals)
+                            ? 'Reveals a secret'
+                            : 'Reveals a fact'}
+                        </span>
+                        <input
+                          aria-label={`Intel reveals ${
+                            revealsConcealment(record.reveals)
+                              ? 'secret'
+                              : 'fact'
+                          } for ${record.id}`}
+                          value={revealTarget(record.reveals)}
+                          placeholder="cellar-is-clear"
+                          disabled={
+                            revealsDoor(record.reveals) ||
+                            revealsConcealment(record.reveals)
+                          }
+                          onChange={(event) =>
+                            onChange(
+                              setIntelReveals(scope, record.id, {
+                                fact: event.target.value,
+                              })
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                     {revealsDoor(record.reveals) && (
                       // REFUSED, NOT CARRIED: this dialect will not run a record
                       // that reveals a door, so the form says so in the engine's own
@@ -166,18 +232,13 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                       </p>
                     )}
                     {revealsConcealment(record.reveals) && (
-                      // CARRIED, NOT EDITED: the form authors only `fact`
-                      // today; a hand-written record that reveals a CONCEALMENT
-                      // is preserved read-only rather than degraded into a fact
-                      // on re-save. The engine grades the target at `PutDungeon`
-                      // (rpg-project#490).
                       <p
                         className="wb-help"
                         data-testid={`intel-concealment-${record.id}`}
                       >
-                        Carried read-only — this record reveals a secret (a root
-                        concealments entry). Editing it to a fact is a later
-                        slice of the form.
+                        Names a root concealment. The server validates the
+                        target; renaming a declaration never silently changes
+                        this record.
                       </p>
                     )}
                     <p
@@ -208,9 +269,7 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
         type="button"
         aria-label="Add intel record"
         onClick={() =>
-          // A NEW record reveals a FACT, which is the only kind this slice
-          // authors: the driving case is a failed persuasion teaching one, and
-          // a door target is the deferred concealed-door coupling.
+          // Start with a fact; the author can select a concealment instead.
           onChange(addIntelRecord(scope, { fact: '' }))
         }
       >
