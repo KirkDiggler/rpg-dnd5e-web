@@ -10,7 +10,7 @@
  *
  *   - `seen` unset means no position is known for this subject at all —
  *     never guessed, never drawn (`sightingsToEntities` simply omits it).
- *   - `currentVia` empty means the observer holds a MEMORY, not a live
+ *   - `currentVia` without sight means the observer holds a visual MEMORY, not a live
  *     sighting — still drawn, but flagged `remembered` so the caller can
  *     feed `HexEntity.knowledgeState="remembered"`, the same frozen/
  *     crypt-colored treatment `sceneKnowledge.ts` already gives a
@@ -46,6 +46,7 @@
 import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
+  Passage,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CubeCoord } from '../hex-grid/hexMath';
@@ -64,6 +65,8 @@ export interface SightedMember {
    * below, the same "producer bug is the server's, not a reason to invent a
    * new default" reasoning `standing`'s doc comment already gives. */
   kind: MemberKind;
+  /** Provider-owned occupancy permission; never inferred from render metadata. */
+  passage?: Passage;
   /** The toolkit monster ref id derived from `subject` (strips the
    * trailing `-<ordinal>`) — feeds `resolveMonsterModelUrl` via
    * `HexEntity.monsterRefId`. Undefined for a PLAYER-kind subject: a
@@ -75,7 +78,7 @@ export interface SightedMember {
    * doc comment for the full reasoning. */
   monsterRefId: string | undefined;
   position: CubeCoord;
-  /** True when `currentVia` was empty — a held memory, not a live
+  /** True when `currentVia` lacks sight — a held visual memory, not a live
    * sighting. Feeds `HexEntity.knowledgeState="remembered"`. */
   remembered: boolean;
   /** `Sighting.seen.standing`, verbatim — drives `HexEntity.isDead`
@@ -157,11 +160,12 @@ export function sightingsToEntities(
       subject: sighting.subject,
       name: sighting.name || sighting.subject,
       kind: sighting.kind,
+      passage: sighting.passage,
       monsterRefId: isPlayer
         ? undefined
         : monsterRefIdFromSubject(sighting.subject),
       position: positionToCube(sighting.seen.position),
-      remembered: sighting.currentVia.length === 0,
+      remembered: !sighting.currentVia.includes('sight'),
       standing: sighting.seen.standing,
       equipment: sighting.seen.equipment
         ? {

@@ -1,3 +1,4 @@
+import { indexOccupantPassages } from './occupantPassages';
 /**
  * Production SessionService game route.
  *
@@ -61,12 +62,7 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import {
-  coordToKey,
-  type CubeCoord,
-  cubeToWorld,
-  HEX_SIZE,
-} from '../hex-grid/hexMath';
+import { type CubeCoord, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -453,6 +449,31 @@ function SessionEncounterScope({
     [moves, member]
   );
 
+  const otherMembers = useMemo(
+    () => sightingsToEntities(sightings, member),
+    [member, sightings]
+  );
+
+  const occupantPassages = useMemo(
+    () => indexOccupantPassages(otherMembers),
+    [otherMembers]
+  );
+  const pathIndex = useMemo(
+    () =>
+      atlas && !occupantPassages.error
+        ? buildAtlasPathIndex(
+            atlas,
+            doors,
+            occupantPassages.blocked,
+            occupantPassages.passThrough
+          )
+        : null,
+    [atlas, doors, occupantPassages]
+  );
+  if (canDrawSceneNow) {
+    lastGoodPathIndexRef.current = pathIndex;
+  }
+
   const {
     displayPosition,
     busy: walking,
@@ -462,7 +483,7 @@ function SessionEncounterScope({
   } = useSessionWalk(
     sessionId,
     member,
-    lastGoodPathIndexRef.current,
+    pathIndex,
     wherePosition,
     refetchWhere,
     moveDeclarationId,
@@ -470,11 +491,6 @@ function SessionEncounterScope({
     isMoveAuthorityFresh,
     handleMoveAccepted,
     beginLocalRoute
-  );
-
-  const otherMembers = useMemo(
-    () => sightingsToEntities(sightings, member),
-    [member, sightings]
   );
 
   // A movement is something the viewer WATCHES happen, so it lives only as
@@ -502,32 +518,6 @@ function SessionEncounterScope({
   useEffect(() => {
     forgetUnsightedMovements(liveSighted);
   }, [liveSighted, forgetUnsightedMovements]);
-
-  // The path PREVIEW must route around exactly what the server's own Move
-  // already refuses to enter — a live other member's cell, world NPC,
-  // monster, or player alike (the vendor is only what made the gap
-  // visible: it is the first entity that sits permanently in open floor).
-  // A `remembered` sighting is filtered out here, not left for
-  // `buildAtlasPathIndex` to guess: it is a held memory, not confirmed
-  // still there, and must never block a route the way a live one does —
-  // the same distinction `SightedMember.remembered`'s own doc comment
-  // already draws for rendering.
-  const occupiedCellKeys = useMemo(
-    () =>
-      new Set(
-        otherMembers
-          .filter((m) => !m.remembered)
-          .map((m) => coordToKey(m.position))
-      ),
-    [otherMembers]
-  );
-  const pathIndex = useMemo(
-    () => (atlas ? buildAtlasPathIndex(atlas, doors, occupiedCellKeys) : null),
-    [atlas, doors, occupiedCellKeys]
-  );
-  if (canDrawSceneNow) {
-    lastGoodPathIndexRef.current = pathIndex;
-  }
 
   const publicMemberNames = useMemo(
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
@@ -1764,9 +1754,9 @@ function SessionEncounterScope({
             sceneNotice={
               <>
                 {walking && <span>Walking…</span>}
-                {moveError && !walking && (
+                {(moveError || occupantPassages.error) && !walking && (
                   <span style={{ color: 'var(--color-error, #f87171)' }}>
-                    {moveError}
+                    {moveError || occupantPassages.error}
                   </span>
                 )}
                 {doorNotice && <span>{doorNotice}</span>}
@@ -1910,7 +1900,11 @@ function SessionEncounterScope({
                     reactionMover={
                       runEnded === null ? reactionMover : undefined
                     }
-                    pathIndex={lastGoodPathIndexRef.current}
+                    pathIndex={
+                      occupantPassages.error
+                        ? null
+                        : lastGoodPathIndexRef.current
+                    }
                     movementPreviewEnabled={
                       experienceClock === ClockKind.WORLD ||
                       (experienceClock === ClockKind.TURN &&

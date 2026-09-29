@@ -71,18 +71,10 @@ export interface AtlasPathIndex {
   /** Cells a prop occupies with `blocksMovement: true` — nothing may enter
    * one, even from an otherwise-open edge. */
   blockedCells: ReadonlySet<string>;
-  /** Cells a live, currently-sighted OTHER member occupies right now
-   * (rpg-api#903 follow-up: the vendor NPC is the first entity that sits
-   * permanently in open floor, which is what made this gap visible — but
-   * the fix is entity-kind-agnostic, the same as a monster or another
-   * player standing in the way). Blocks entry the same as a
-   * movement-blocking prop. LIVE, not construction truth, like
-   * `shutDoorEdges` above — kept as its own set for the same reason that
-   * one is: reopening a door is a doors-map change, not an atlas change,
-   * and a member moving is a sightings change, not an atlas change
-   * either. Empty for every caller that doesn't track members (tests,
-   * callers predating this). */
+  /** Currently observed cells whose provider permission blocks entry. */
   occupiedCells: ReadonlySet<string>;
+  /** Traversable cells that cannot be a voluntary destination. */
+  passThroughCells: ReadonlySet<string>;
 }
 
 export function buildAtlasPathIndex(
@@ -99,7 +91,8 @@ export function buildAtlasPathIndex(
    * pre-occupancy behavior. A `remembered` sighting (a held memory, not
    * confirmed still there) must never appear here — the caller filters
    * that out before building this set. */
-  occupiedCells?: ReadonlySet<string>
+  occupiedCells?: ReadonlySet<string>,
+  passThroughCells?: ReadonlySet<string>
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
@@ -156,6 +149,7 @@ export function buildAtlasPathIndex(
     shutDoorEdges,
     blockedCells,
     occupiedCells: occupiedCells ?? new Set(),
+    passThroughCells: passThroughCells ?? new Set(),
   };
 }
 
@@ -198,7 +192,7 @@ export function findAtlasPath(
   const startKey = coordToKey(start);
   const goalKey = coordToKey(goal);
   if (!index.floor.has(startKey) || !index.floor.has(goalKey)) return [];
-  if (startKey === goalKey) return [];
+  if (startKey === goalKey || index.passThroughCells.has(goalKey)) return [];
 
   const nodes = new Map<string, CubeCoord>([[startKey, start]]);
   const open = new Set<string>([startKey]);

@@ -168,6 +168,7 @@ export function useSessionWalk(
           // old declarations before publishing any animation state and without
           // waiting for a redundant MOVED delivery.
           onMoveAccepted?.();
+          if (response.stopReason) setMoveError(response.stopReason);
           const steps = response.steps
             .filter((step) => step.position !== undefined)
             .map((step) => positionToCube(step.position!));
