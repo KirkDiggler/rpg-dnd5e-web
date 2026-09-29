@@ -182,6 +182,8 @@ vi.mock('./WorldBuildingViewport', () => ({
     onTransformReject: (message: string) => void;
     roomAuthoring?: {
       tool: string;
+      onConcealmentCellPick?: (cell: { q: number; r: number }) => void;
+      onConcealmentPropPick?: (id: string) => void;
       repeat?: {
         assetRef: string;
         step: number;
@@ -332,6 +334,20 @@ vi.mock('./WorldBuildingViewport', () => ({
               }
             >
               Erase empty cell
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onConcealmentCellPick?.({ q: 0, r: 0 })
+              }
+            >
+              Pick concealment hex
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onConcealmentPropPick?.('prop-1')
+              }
+            >
+              Pick concealment prop
             </button>
             <button
               onClick={() =>
@@ -2397,6 +2413,73 @@ function publishedDraft(): RoomDraft {
   ) as { draft: RoomDraft };
   return envelope.draft;
 }
+
+describe('WorldBuildingConcept concealment authoring', () => {
+  it('picks members independently of floor and selection, undoes them, and reloads the saved scope', () => {
+    const storage = new MemoryStorage();
+    seedImportedRoom(storage);
+    const mount = () =>
+      render(
+        <WorldBuildingConcept
+          roomMode
+          storage={storage}
+          idFactory={deterministicIds()}
+        />
+      );
+    const editor = mount();
+    fireEvent.click(screen.getByLabelText('Concealments'));
+    fireEvent.click(screen.getByRole('button', { name: 'New concealment' }));
+    fireEvent.click(screen.getByLabelText('Add members to secret-1'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment prop' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment prop' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment hex' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment hex' })
+    );
+    const stored = () =>
+      JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY)!);
+    expect(stored().scope.concealments['secret-1'].props).toEqual(['prop-1']);
+    expect(stored().draft.room.propDeclarations['prop-1']).toMatchObject({
+      blocksMovement: false,
+      blocksLineOfSight: false,
+    });
+    expect(stored().scope.concealments['secret-1'].cells).toEqual([
+      { q: 0, r: 0 },
+    ]);
+    expect(stored().draft.room.walkableHexes).toEqual([{ q: 0, r: 0 }]);
+    fireEvent.click(screen.getByLabelText('Edit'));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(stored().scope.concealments['secret-1'].cells).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(stored().scope.concealments['secret-1'].cells).toHaveLength(1);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByLabelText('Add members to secret-1')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment prop' })
+    );
+    expect(stored().draft.scene.items).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText('Add members to secret-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Paint' }));
+    expect(screen.getByLabelText('Add members to secret-1')).toBeTruthy();
+    editor.unmount();
+    mount();
+    expect(screen.getByLabelText('Concealment secret-1').textContent).toMatch(
+      /1 cells/
+    );
+    expect(screen.queryByText(/Adding members to/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit rectangle gesture' })
+    );
+    expect(stored().draft.room.walkableHexes).toHaveLength(2);
+    expect(stored().scope.concealments['secret-1'].cells).toHaveLength(1);
+  });
+});
 
 describe('WorldBuildingConcept room publishing', () => {
   afterEach(() => publishRpc.reset());

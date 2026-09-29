@@ -33,6 +33,9 @@ export interface RoomSceneEnvironmentProps {
    * cannot see must not be drawn. Undefined/empty hides nothing (the author
    * preview's case: the author sees every placement). */
   readonly hiddenPlacedIds?: ReadonlySet<string>;
+  /** Editor previews may show the full workspace. Play supplies its floor
+   * separately from the observer atlas, never from this presentation. */
+  readonly renderWorkspaceFloor?: boolean;
 }
 
 /**
@@ -44,9 +47,10 @@ export interface RoomSceneEnvironmentProps {
  * units out, no feet conversion and no second group transform.
  *
  * What is deliberately NOT here:
- * - the atlas's duplicated legacy cell props, shell walls, per-cell
- *   floor and any authoring guides (composition bounds, anchor ring,
- *   paint tint) — the canonical branch suppresses all of them;
+ * - the atlas's duplicated legacy cell props and authoring guides
+ *   (composition bounds, anchor ring, paint tint) stay suppressed;
+ * - in play, per-cell floor and shell walls come from the caller's
+ *   observer-atlas DungeonShell, not the authored workspace floor;
  * - actors: monster/start markers do not belong in a presentation, and
  *   real actors are member-scoped session state rendered above this
  *   component (`SessionCanvas`'s roster/sightings path);
@@ -235,6 +239,7 @@ export function RoomSceneEnvironment({
   doors,
   onDoorClick,
   hiddenPlacedIds,
+  renderWorkspaceFloor = true,
 }: RoomSceneEnvironmentProps) {
   // THE HIDE RULE (rpg-dnd5e-web#1182). The authored scene is the author's
   // truth and the atlas is the player's: a scene item whose id is a placed
@@ -247,7 +252,9 @@ export function RoomSceneEnvironment({
     : presentation.scene.items;
   return (
     <>
-      <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
+      {renderWorkspaceFloor && (
+        <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
+      )}
       {items.map((item) => (
         <RoomSceneItem
           key={item.id}

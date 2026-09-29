@@ -52,13 +52,10 @@ export function DungeonEnvironment({
   onLightingDiagnostics,
   compositionSource,
 }: DungeonEnvironmentProps): ReactElement {
-  // THE CANONICAL BRANCH. A scene carrying a decoded room presentation
-  // renders that presentation through the shared World Building leaves;
-  // the atlas's own cell props are then the legacy DUPLICATES of the same
-  // room, so their placements, shell walls and per-cell floor are
-  // suppressed — while the mechanical channels themselves stay untouched
-  // (movement, sight, doors' live state and member visibility remain
-  // atlas/session answers above this component).
+  // Presentation supplies prop appearance, not the observer's floor or walls.
+  // Both dialects draw the atlas shell; only duplicated legacy prop models
+  // are suppressed for an authored room. Concealed space must never be
+  // restored from the author's full workspace.
   const canonicalPresentation = scene.roomScene ?? null;
   const compositionResolutions = useDungeonCompositions(
     canonicalPresentation ? NO_LEGACY_PROPS : scene.props,
@@ -112,7 +109,12 @@ export function DungeonEnvironment({
       // transform — `projectCompositionPointLights` applies the item's
       // own yaw to its light offset and the shared surface lift once.
       const canonicalLights = projectCompositionPointLights(
-        canonicalPresentation.scene,
+        {
+          ...canonicalPresentation.scene,
+          items: canonicalPresentation.scene.items.filter(
+            (item) => !scene.hiddenPlacedIds?.has(item.id)
+          ),
+        },
         {
           compositionId: canonicalPresentation.scene.id,
           placementId: canonicalPresentation.scene.id,
@@ -140,6 +142,7 @@ export function DungeonEnvironment({
     authoredPointLights,
     canonicalPresentation,
     scene.lighting,
+    scene.hiddenPlacedIds,
     focus.x,
     focus.z,
   ]);
@@ -177,8 +180,16 @@ export function DungeonEnvironment({
         {/* The canonical branch renders the authored room, so it is the one
             that has to join live door state to the item that draws the door.
             The legacy branch below takes the same three. */}
+        <DungeonShell
+          scene={scene}
+          doors={doors}
+          onDoorClick={onDoorClick}
+          onFallbackReason={onShellFallbackReason}
+          floorLighting={floorLighting}
+        />
         <RoomSceneEnvironment
           presentation={canonicalPresentation}
+          renderWorkspaceFloor={false}
           dungeonKey={dungeonKey}
           doors={doors}
           onDoorClick={onDoorClick}

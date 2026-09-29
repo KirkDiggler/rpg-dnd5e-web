@@ -4,6 +4,7 @@ const SECTIONS = [
   ['monsters', 'Monsters'],
   ['factions', 'Factions'],
   ['dispositions', 'Dispositions'],
+  ['concealments', 'Concealments'],
   ['intel', 'Intel'],
   ['tables', 'Tables'],
   ['selection', 'Selection'],

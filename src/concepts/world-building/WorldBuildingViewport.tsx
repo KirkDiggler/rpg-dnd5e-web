@@ -50,6 +50,7 @@ import {
 } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
+import type { SiteConcealments } from './siteScope';
 import type { WorldScene, WorldTransform } from './types';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
@@ -103,6 +104,10 @@ export interface WorldBuildingViewportProps {
       | 'monster'
       | 'start';
     walkableHexes: readonly RoomHexCell[];
+    concealments?: SiteConcealments;
+    activeConcealmentId?: string | null;
+    onConcealmentCellPick?: (cell: RoomHexCell) => void;
+    onConcealmentPropPick?: (id: string) => void;
     workspace: RoomWorkspace;
     propDeclarations: Readonly<Record<string, RoomPropDeclaration>>;
     onWalkableGesture: (
@@ -176,6 +181,8 @@ interface WorldPropVisualProps {
   ) => string | null;
   onAssetState: WorldBuildingViewportProps['onAssetState'];
   onBoundsMeasured?: (id: string, measurement: MeasuredWorldPropBounds) => void;
+  onMemberPick?: (id: string) => void;
+  memberColor?: string;
 }
 
 export function WorldPropVisual({
@@ -187,6 +194,8 @@ export function WorldPropVisual({
   resolveSelectionId,
   onAssetState,
   onBoundsMeasured,
+  onMemberPick,
+  memberColor,
 }: WorldPropVisualProps) {
   const entry = WORLD_BUILDING_CATALOG_BY_REF.get(item.assetRef);
   const [measurement, setMeasurement] =
@@ -222,6 +231,10 @@ export function WorldPropVisual({
     if (event.button !== 0 || isGizmoPointer()) return;
     event.stopPropagation();
     const selectionId = resolveSelectionId(event.intersections) ?? item.id;
+    if (onMemberPick) {
+      onMemberPick(selectionId);
+      return;
+    }
     const nextSelection = event.shiftKey
       ? selectedIds.includes(selectionId)
         ? [...selectedIds]
@@ -286,7 +299,7 @@ export function WorldPropVisual({
           />
         </mesh>
       )}
-      {selected && bounds && (
+      {(selected || memberColor) && bounds && (
         <mesh
           name={`world-building-selection-${item.id}`}
           position={[
@@ -305,7 +318,7 @@ export function WorldPropVisual({
             ]}
           />
           <meshBasicMaterial
-            color="#67e8f9"
+            color={memberColor ?? '#67e8f9'}
             wireframe
             depthTest={false}
             toneMapped={false}
@@ -391,6 +404,32 @@ function RoomAuthoringDeclarations({
           </mesh>
         );
       })}
+      {Object.entries(authoring.concealments ?? {}).flatMap(([id, spec]) =>
+        (spec.cells ?? []).map((cell) => {
+          const center = cubeToWorld(
+            { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+            HEX_SIZE
+          );
+          return (
+            <mesh
+              key={`${id}-${cell.q},${cell.r}`}
+              name={`room-concealment-${id}-${cell.q}-${cell.r}`}
+              position={[center.x, DUNGEON_SURFACE_Y + 0.021, center.z]}
+              geometry={fillGeometry}
+              raycast={() => null}
+            >
+              <meshBasicMaterial
+                color={
+                  id === authoring.activeConcealmentId ? '#fbbf24' : '#c084fc'
+                }
+                transparent
+                opacity={0.6}
+                depthWrite={false}
+              />
+            </mesh>
+          );
+        })
+      )}
       {rectanglePreview.map((cell) => {
         const center = cubeToWorld(
           { x: cell.q, y: -cell.q - cell.r, z: cell.r },
@@ -455,6 +494,19 @@ export function WorldSceneContents(
   const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
     props;
   const { gl } = useThree();
+  // Ground and actor overlays pick the same authored cell. Markers intercept
+  // pointer events, so their occupied floor must use this path too.
+  const pickConcealmentCell = (cell: RoomHexCell | null | undefined): void => {
+    const authoring = props.roomAuthoring;
+    if (!cell || !authoring?.activeConcealmentId) return;
+    if (
+      authoring.walkableHexes.some(
+        (value) => value.q === cell.q && value.r === cell.r
+      )
+    ) {
+      authoring.onConcealmentCellPick?.(cell);
+    }
+  };
   const displayScene = previewScene ?? scene;
   const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
@@ -612,6 +664,7 @@ export function WorldSceneContents(
   useEffect(cancelFloorGesture, [
     cancelFloorGesture,
     props.roomAuthoring?.tool,
+    props.roomAuthoring?.activeConcealmentId,
   ]);
   useEffect(() => {
     // The hover preview belongs to the armed actor tools alone.
@@ -655,6 +708,16 @@ export function WorldSceneContents(
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
           const actor = props.roomAuthoring?.selectedActorId;
+          if (props.roomAuthoring?.activeConcealmentId) {
+            const cube = worldToCube(
+              { x: event.point.x, z: event.point.z },
+              HEX_SIZE
+            );
+            // Pick authored floor, not empty workspace; this is document
+            // membership, never a gameplay-legality calculation.
+            pickConcealmentCell({ q: cube.x, r: cube.z });
+            return;
+          }
           // Room actor authoring: one click is one whole-room history
           // transaction committed by the editor, on the snapped cell. This
           // is placement selection, not game legality.
@@ -903,7 +966,19 @@ export function WorldSceneContents(
           monsters={props.roomAuthoring.monsters ?? []}
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
-          onSelectActor={(actor) => props.roomAuthoring?.onSelectActor?.(actor)}
+          onSelectActor={(actor) => {
+            const authoring = props.roomAuthoring;
+            if (authoring?.activeConcealmentId) {
+              pickConcealmentCell(
+                actor === 'start'
+                  ? authoring.partyStart
+                  : authoring.monsters?.find((monster) => monster.id === actor)
+                      ?.startingCell.location
+              );
+              return;
+            }
+            authoring?.onSelectActor?.(actor);
+          }}
         />
       )}
       {props.roomAuthoring &&
@@ -935,6 +1010,24 @@ export function WorldSceneContents(
           resolveSelectionId={resolveSelectionId}
           onAssetState={props.onAssetState}
           onBoundsMeasured={recordMeasuredBounds}
+          onMemberPick={
+            props.roomAuthoring?.activeConcealmentId
+              ? props.roomAuthoring.onConcealmentPropPick
+              : undefined
+          }
+          memberColor={
+            Object.entries(props.roomAuthoring?.concealments ?? {}).some(
+              ([id, spec]) =>
+                id === props.roomAuthoring?.activeConcealmentId &&
+                spec.props?.includes(item.id)
+            )
+              ? '#fbbf24'
+              : Object.values(props.roomAuthoring?.concealments ?? {}).some(
+                    (spec) => spec.props?.includes(item.id)
+                  )
+                ? '#c084fc'
+                : undefined
+          }
         />
       ))}
       <WorldBuildingCameraControls
@@ -944,7 +1037,9 @@ export function WorldSceneContents(
       <WorldBuildingTransformGizmo
         controlsRef={controlsRef}
         scene={scene}
-        selectedIds={selectedIds}
+        selectedIds={
+          props.roomAuthoring?.activeConcealmentId ? [] : selectedIds
+        }
         tool={tool}
         onPreview={props.onTransformPreview}
         onCommit={props.onTransformCommit}
@@ -953,7 +1048,9 @@ export function WorldSceneContents(
         sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
       />
       <WorldBuildingDropInteraction
-        activeDrag={activeDrag}
+        activeDrag={
+          props.roomAuthoring?.activeConcealmentId ? null : activeDrag
+        }
         floorY={DUNGEON_SURFACE_Y}
         onDrop={props.onDrop}
         onDragFinished={props.onDragFinished}

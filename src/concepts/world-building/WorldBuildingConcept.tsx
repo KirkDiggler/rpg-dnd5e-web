@@ -16,6 +16,8 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
   type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
+import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
+import { ConcealmentPanel } from './ConcealmentPanel';
 import {
   declarationMapForSelection,
   seedDeclarations,
@@ -369,6 +371,22 @@ export function WorldBuildingConcept({
    * `loadRoomDraft`; emptied by every path that replaces the document with one
    * that authors none. */
   const siteScope = roomHistory.present.scope;
+  const [paintingConcealmentId, setPaintingConcealmentId] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    setPaintingConcealmentId(null);
+  }, [roomDraft.id]);
+  useEffect(() => {
+    if (roomTool !== 'select') setPaintingConcealmentId(null);
+  }, [roomTool]);
+  const activeConcealmentId =
+    roomMode &&
+    roomTool === 'select' &&
+    paintingConcealmentId &&
+    Object.hasOwn(siteScope.concealments ?? {}, paintingConcealmentId)
+      ? paintingConcealmentId
+      : null;
   const scene = roomMode ? roomDraft.scene : history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -991,6 +1009,14 @@ export function WorldBuildingConcept({
       ) {
         return;
       }
+      if (event.key === 'Escape') setPaintingConcealmentId(null);
+      // Membership picking must not rotate, duplicate or delete a previous
+      // scene selection. Undo/redo still operate on the document below.
+      if (
+        activeConcealmentId &&
+        ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
+      )
+        return;
       const modifier = event.ctrlKey || event.metaKey;
       if (modifier && event.key.toLowerCase() === 'z') {
         event.preventDefault();
@@ -1025,6 +1051,7 @@ export function WorldBuildingConcept({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [
+    activeConcealmentId,
     applyToSelection,
     duplicate,
     redo,
@@ -2816,6 +2843,7 @@ export function WorldBuildingConcept({
                   aria-pressed={(roomMode ? roomTool : tool) === entry}
                   onClick={() => {
                     setPreviewScene(null);
+                    setPaintingConcealmentId(null);
                     if (entry !== 'repeat') setRepeatAssetRef(null);
                     // Actor arming lives in the Room setup controls; a tool
                     // strip switch always disarms a placement.
@@ -2838,29 +2866,31 @@ export function WorldBuildingConcept({
               ))}
             </div>
             <span data-testid="interaction-status">
-              {roomMode && roomTool === 'paint'
-                ? 'Drag on floor: paint walkable ground'
-                : roomMode && roomTool === 'erase'
-                  ? 'Drag on floor: erase walkable ground'
-                  : roomMode && roomTool === 'rectangle'
-                    ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
-                    : roomMode && roomTool === 'repeat'
-                      ? repeatDescriptor
-                        ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
-                        : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
-                      : roomMode && roomTool === 'monster'
-                        ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
-                        : roomMode && roomTool === 'start'
-                          ? 'Click the floor: place or move the party start'
-                          : roomMode && roomTool === 'move' && selectedActorId
-                            ? selectedActorId === 'start'
-                              ? 'Click the floor: move the party start · Delete: clear it'
-                              : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
-                            : tool === 'select'
-                              ? 'Left: select · Shift-left: add selection'
-                              : tool === 'move'
-                                ? 'Drag arrows or planes · Esc/right-click: cancel'
-                                : 'Drag the Y ring · Esc/right-click: cancel'}
+              {roomMode && activeConcealmentId
+                ? 'Click walkable hexes, doors and props to add members · Escape: done'
+                : roomMode && roomTool === 'paint'
+                  ? 'Drag on floor: paint walkable ground'
+                  : roomMode && roomTool === 'erase'
+                    ? 'Drag on floor: erase walkable ground'
+                    : roomMode && roomTool === 'rectangle'
+                      ? 'Drag a world X/Z rectangle: preview full hexes; release to paint · Esc/right-click: cancel'
+                      : roomMode && roomTool === 'repeat'
+                        ? repeatDescriptor
+                          ? `Drag on floor: repeat ${WORLD_BUILDING_CATALOG_BY_REF.get(repeatDescriptor.assetRef)?.label ?? 'asset'} · release once to group · Esc/right-click: cancel`
+                          : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
+                        : roomMode && roomTool === 'monster'
+                          ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
+                          : roomMode && roomTool === 'start'
+                            ? 'Click the floor: place or move the party start'
+                            : roomMode && roomTool === 'move' && selectedActorId
+                              ? selectedActorId === 'start'
+                                ? 'Click the floor: move the party start · Delete: clear it'
+                                : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
+                              : tool === 'select'
+                                ? 'Left: select · Shift-left: add selection'
+                                : tool === 'move'
+                                  ? 'Drag arrows or planes · Esc/right-click: cancel'
+                                  : 'Drag the Y ring · Esc/right-click: cancel'}
             </span>
             {/* Canvas extent is a canvas control, so it lives with the
                   canvas rather than in the room chrome. */}
@@ -2890,6 +2920,18 @@ export function WorldBuildingConcept({
               {failedCount > 0 ? ` · ${failedCount} failed` : ''}
             </span>
           </div>
+          {roomMode && activeConcealmentId && (
+            <div className="wb-help" role="status">
+              Adding members to “{activeConcealmentId}” — click hexes, doors and
+              props.
+              <button
+                type="button"
+                onClick={() => setPaintingConcealmentId(null)}
+              >
+                Done
+              </button>
+            </div>
+          )}
           <div className="wb-canvas-wrap">
             <WorldBuildingViewport
               scene={scene}
@@ -2903,6 +2945,50 @@ export function WorldBuildingConcept({
                       tool: roomTool,
                       workspace: roomDraft.workspace,
                       walkableHexes: roomDraft.room.walkableHexes,
+                      concealments: siteScope.concealments,
+                      activeConcealmentId,
+                      onConcealmentCellPick: (cell) => {
+                        if (!activeConcealmentId) return;
+                        commitPolicies(
+                          paintConcealmentCells(
+                            siteScope,
+                            activeConcealmentId,
+                            [cell],
+                            'paint'
+                          )
+                        );
+                      },
+                      onConcealmentPropPick: (id) => {
+                        if (
+                          !activeConcealmentId ||
+                          !scene.items.some((item) => item.id === id)
+                        )
+                          return;
+                        // Hidden props must be placements the engine can name.
+                        // Like making a door, this seeds only a missing shape;
+                        // existing geometry and blocking flags stay authored.
+                        const room = roomDraft.room.propDeclarations[id]
+                          ? roomDraft.room
+                          : {
+                              ...roomDraft.room,
+                              propDeclarations: {
+                                ...roomDraft.room.propDeclarations,
+                                ...seedDeclarations(
+                                  [id],
+                                  (itemId) => measuredBounds.get(itemId)?.bounds
+                                ),
+                              },
+                            };
+                        commitPolicies(
+                          setConcealmentProp(
+                            siteScope,
+                            activeConcealmentId,
+                            id,
+                            true
+                          ),
+                          room
+                        );
+                      },
                       repeat: repeatDescriptor,
                       monsters: roomDraft.room.monsterDeclarations,
                       partyStart: roomDraft.room.partyStart ?? null,
@@ -2923,6 +3009,7 @@ export function WorldBuildingConcept({
                             }
                           : roomDraft.room.propDeclarations,
                       onWalkableGesture: (cells, mode) => {
+                        if (activeConcealmentId) return;
                         const next = updateWalkableHexes(
                           roomDraft,
                           cells,
@@ -3139,6 +3226,28 @@ export function WorldBuildingConcept({
               <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                onChange={commitPolicies}
+              />
+            </details>
+
+            <details
+              className="wb-collapse"
+              data-inspector-section="concealments"
+            >
+              <summary aria-label="Concealments">Concealments</summary>
+              <ConcealmentPanel
+                scope={siteScope}
+                items={scene.items}
+                activeId={activeConcealmentId}
+                onActivate={(id) => {
+                  setPaintingConcealmentId(id);
+                  setPreviewScene(null);
+                  setActiveDrag(null);
+                  setSelectedActorId(null);
+                  setArmedMonsterRef(null);
+                  setRoomTool('select');
+                  setTool('select');
+                }}
                 onChange={commitPolicies}
               />
             </details>

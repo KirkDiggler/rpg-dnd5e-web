@@ -7,6 +7,7 @@
  * holds a record without resolving anything itself.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { IntelPanel } from './IntelPanel';
@@ -40,6 +41,42 @@ function roomWithThug() {
 }
 
 describe('IntelPanel — the site’s knowledge records, editable', () => {
+  it('never replaces a carried undeclared concealment with an empty target', () => {
+    function StatefulIntel() {
+      const [scope, setScope] = useState<SiteScope>({
+        intel: [{ id: 'map', reveals: { concealment: 'lost-vault' } }],
+      });
+      return (
+        <>
+          <IntelPanel scope={scope} room={roomWithThug()} onChange={setScope} />
+          <output data-testid="intel-scope">{JSON.stringify(scope)}</output>
+        </>
+      );
+    }
+    render(<StatefulIntel />);
+    const kind = screen.getByLabelText('Intel reveal kind for map');
+    // A synthetic same-kind event must preserve the carried name, too.
+    fireEvent.change(kind, { target: { value: 'concealment' } });
+    expect(
+      JSON.parse(screen.getByTestId('intel-scope').textContent!).intel[0]
+        .reveals
+    ).toEqual({ concealment: 'lost-vault' });
+    fireEvent.change(kind, { target: { value: 'fact' } });
+    expect(
+      (
+        screen.getByRole('option', {
+          name: 'Concealment',
+          hidden: true,
+        }) as HTMLOptionElement
+      ).disabled
+    ).toBe(true);
+    // Native UI cannot choose the disabled option; even a forced event is safe.
+    fireEvent.change(kind, { target: { value: 'concealment' } });
+    expect(
+      JSON.parse(screen.getByTestId('intel-scope').textContent!).intel[0]
+        .reveals
+    ).toEqual({ fact: '' });
+  });
   it('shows each record’s id and the fact it reveals, and REFUSES a door reveal', () => {
     render(
       <IntelPanel
@@ -159,29 +196,34 @@ describe('IntelPanel — the site’s knowledge records, editable', () => {
     );
   });
 
-  it('carries a concealment reveal read-only, not edited into a fact (rpg-project#490)', () => {
-    // A hand-written record may now reveal a CONCEALMENT — the thing "reveals:
-    // { concealment }" names under the root `concealments:`. The form only
-    // authors `fact` today, so a concealment record is preserved read-only:
-    // disabled, labelled a secret, and never silently re-written as a fact on
-    // re-save.
+  it('edits concealment targets and preserves undeclared imported names', () => {
+    const onChange = vi.fn();
     render(
       <IntelPanel
         scope={{
           intel: [{ id: 'vault-map', reveals: { concealment: 'vault' } }],
+          concealments: {
+            cellar: { checks: [{ ability: 'perception', dc: 15 }] },
+          },
         }}
         room={roomWithThug()}
-        onChange={() => {}}
+        onChange={onChange}
       />
     );
     const input = screen.getByLabelText(
       'Intel reveals secret for vault-map'
-    ) as HTMLInputElement;
+    ) as HTMLSelectElement;
     expect(input.value).toBe('vault');
-    expect(input.disabled).toBe(true);
-    expect(
-      screen.getByTestId('intel-concealment-vault-map').textContent
-    ).toMatch(/Carried read-only/);
+    expect(input.disabled).toBe(false);
+    expect(screen.getByText('vault (not declared)')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'cellar' } });
+    expect(onChange.mock.calls[0][0].intel[0].reveals).toEqual({
+      concealment: 'cellar',
+    });
+    fireEvent.change(screen.getByLabelText('Intel reveal kind for vault-map'), {
+      target: { value: 'fact' },
+    });
+    expect(onChange.mock.calls[1][0].intel[0].reveals).toEqual({ fact: '' });
   });
 });
 
