@@ -127,6 +127,7 @@ describe('concealment membership overlays', () => {
   it('routes canvas prop and walkable-cell clicks to membership without ordinary selection or painting', async () => {
     const onCell = vi.fn();
     const onProp = vi.fn();
+    const onSelectActor = vi.fn();
     const onSelect = vi.fn();
     const onWalkableGesture = vi.fn();
     const props = {
@@ -158,6 +159,20 @@ describe('concealment membership overlays', () => {
         activeConcealmentId: 'vault',
         onConcealmentCellPick: onCell,
         onConcealmentPropPick: onProp,
+        onSelectActor,
+        partyStart: { q: 0, r: 0 },
+        monsters: [
+          {
+            id: 'goblin',
+            ref: 'dnd5e:monsters:goblin',
+            startingCell: { location: { q: 0, r: 0 } },
+          },
+          {
+            id: 'off-floor',
+            ref: 'dnd5e:monsters:goblin',
+            startingCell: { location: { q: 1, r: 0 } },
+          },
+        ],
       },
     };
     const renderer = await ReactThreeTestRenderer.create(
@@ -181,6 +196,25 @@ describe('concealment membership overlays', () => {
       point: new THREE.Vector3(8, 0, 8),
     });
     expect(onCell).toHaveBeenCalledTimes(1);
+    const marker = renderer.scene.findByProps({
+      name: 'room-actor-pick-goblin',
+    });
+    await renderer.fireEvent(marker, 'pointerDown', event);
+    expect(onCell).toHaveBeenCalledTimes(2);
+    expect(onCell).toHaveBeenLastCalledWith({ q: 0, r: 0 });
+    await renderer.fireEvent(
+      renderer.scene.findByProps({ name: 'room-party-start-disc' }),
+      'pointerDown',
+      event
+    );
+    expect(onCell).toHaveBeenCalledTimes(3);
+    await renderer.fireEvent(
+      renderer.scene.findByProps({ name: 'room-actor-pick-off-floor' }),
+      'pointerDown',
+      event
+    );
+    expect(onCell).toHaveBeenCalledTimes(3);
+    expect(onSelectActor).not.toHaveBeenCalled();
     const prop = renderer.scene.findByProps({
       name: 'world-building-interaction-table',
     });
@@ -197,6 +231,9 @@ describe('concealment membership overlays', () => {
     await renderer.fireEvent(prop, 'pointerDown', event);
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(['table']);
     expect(onProp).toHaveBeenCalledTimes(1);
+    await renderer.fireEvent(marker, 'pointerDown', event);
+    expect(onSelectActor).toHaveBeenCalledExactlyOnceWith('goblin');
+    expect(onCell).toHaveBeenCalledTimes(3);
     await renderer.unmount();
   });
 

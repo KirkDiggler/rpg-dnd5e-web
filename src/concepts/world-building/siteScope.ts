@@ -43,7 +43,8 @@ import { objectShape, rejectUnknownKeys } from './strictShape';
 /** A faction id has the same grammar as the room key: lower-case, digits,
  * dashes. `party` is never declared — it is the players' side — and the
  * engine refuses it by name. */
-const FACTION_ID_RE = /^[-a-z0-9]+$/;
+/** Shared site-id grammar for declarations and their editor fields. */
+export const FACTION_ID_RE = /^[-a-z0-9]+$/;
 
 /** A `temper:` as written: one sealed word, or a word->share mix on a faction.
  * A placement names one creature, so it takes a word; a faction is several and

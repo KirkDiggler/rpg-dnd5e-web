@@ -7,6 +7,7 @@
  * holds a record without resolving anything itself.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { IntelPanel } from './IntelPanel';
@@ -40,6 +41,42 @@ function roomWithThug() {
 }
 
 describe('IntelPanel — the site’s knowledge records, editable', () => {
+  it('never replaces a carried undeclared concealment with an empty target', () => {
+    function StatefulIntel() {
+      const [scope, setScope] = useState<SiteScope>({
+        intel: [{ id: 'map', reveals: { concealment: 'lost-vault' } }],
+      });
+      return (
+        <>
+          <IntelPanel scope={scope} room={roomWithThug()} onChange={setScope} />
+          <output data-testid="intel-scope">{JSON.stringify(scope)}</output>
+        </>
+      );
+    }
+    render(<StatefulIntel />);
+    const kind = screen.getByLabelText('Intel reveal kind for map');
+    // A synthetic same-kind event must preserve the carried name, too.
+    fireEvent.change(kind, { target: { value: 'concealment' } });
+    expect(
+      JSON.parse(screen.getByTestId('intel-scope').textContent!).intel[0]
+        .reveals
+    ).toEqual({ concealment: 'lost-vault' });
+    fireEvent.change(kind, { target: { value: 'fact' } });
+    expect(
+      (
+        screen.getByRole('option', {
+          name: 'Concealment',
+          hidden: true,
+        }) as HTMLOptionElement
+      ).disabled
+    ).toBe(true);
+    // Native UI cannot choose the disabled option; even a forced event is safe.
+    fireEvent.change(kind, { target: { value: 'concealment' } });
+    expect(
+      JSON.parse(screen.getByTestId('intel-scope').textContent!).intel[0]
+        .reveals
+    ).toEqual({ fact: '' });
+  });
   it('shows each record’s id and the fact it reveals, and REFUSES a door reveal', () => {
     render(
       <IntelPanel

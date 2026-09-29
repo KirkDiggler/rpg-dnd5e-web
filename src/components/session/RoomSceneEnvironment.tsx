@@ -47,9 +47,10 @@ export interface RoomSceneEnvironmentProps {
  * units out, no feet conversion and no second group transform.
  *
  * What is deliberately NOT here:
- * - the atlas's duplicated legacy cell props, shell walls, per-cell
- *   floor and any authoring guides (composition bounds, anchor ring,
- *   paint tint) — the canonical branch suppresses all of them;
+ * - the atlas's duplicated legacy cell props and authoring guides
+ *   (composition bounds, anchor ring, paint tint) stay suppressed;
+ * - in play, per-cell floor and shell walls come from the caller's
+ *   observer-atlas DungeonShell, not the authored workspace floor;
  * - actors: monster/start markers do not belong in a presentation, and
  *   real actors are member-scoped session state rendered above this
  *   component (`SessionCanvas`'s roster/sightings path);

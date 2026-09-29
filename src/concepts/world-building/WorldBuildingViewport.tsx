@@ -494,6 +494,19 @@ export function WorldSceneContents(
   const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
     props;
   const { gl } = useThree();
+  // Ground and actor overlays pick the same authored cell. Markers intercept
+  // pointer events, so their occupied floor must use this path too.
+  const pickConcealmentCell = (cell: RoomHexCell | null | undefined): void => {
+    const authoring = props.roomAuthoring;
+    if (!cell || !authoring?.activeConcealmentId) return;
+    if (
+      authoring.walkableHexes.some(
+        (value) => value.q === cell.q && value.r === cell.r
+      )
+    ) {
+      authoring.onConcealmentCellPick?.(cell);
+    }
+  };
   const displayScene = previewScene ?? scene;
   const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
@@ -700,16 +713,9 @@ export function WorldSceneContents(
               { x: event.point.x, z: event.point.z },
               HEX_SIZE
             );
-            const cell = { q: cube.x, r: cube.z };
-            // Pick only authored floor, not empty workspace. This selects
-            // document members; gameplay legality remains the engine's.
-            if (
-              props.roomAuthoring.walkableHexes.some(
-                (value) => value.q === cell.q && value.r === cell.r
-              )
-            ) {
-              props.roomAuthoring.onConcealmentCellPick?.(cell);
-            }
+            // Pick authored floor, not empty workspace; this is document
+            // membership, never a gameplay-legality calculation.
+            pickConcealmentCell({ q: cube.x, r: cube.z });
             return;
           }
           // Room actor authoring: one click is one whole-room history
@@ -961,8 +967,17 @@ export function WorldSceneContents(
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
           onSelectActor={(actor) => {
-            if (!props.roomAuthoring?.activeConcealmentId)
-              props.roomAuthoring?.onSelectActor?.(actor);
+            const authoring = props.roomAuthoring;
+            if (authoring?.activeConcealmentId) {
+              pickConcealmentCell(
+                actor === 'start'
+                  ? authoring.partyStart
+                  : authoring.monsters?.find((monster) => monster.id === actor)
+                      ?.startingCell.location
+              );
+              return;
+            }
+            authoring?.onSelectActor?.(actor);
           }}
         />
       )}

@@ -25,6 +25,24 @@ const value = (): SiteScope =>
   JSON.parse(screen.getByTestId('scope').textContent!);
 
 describe('ConcealmentPanel', () => {
+  it('uses the document grammar for imported and renamed ids', () => {
+    render(
+      <Harness
+        initial={{
+          concealments: {
+            '2vault': { checks: [{ ability: 'perception', dc: 15 }] },
+          },
+        }}
+      />
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    const input = screen.getByLabelText('Concealment id for 2vault');
+    fireEvent.change(input, { target: { value: '-vault' } });
+    fireEvent.blur(input);
+    expect(value().concealments?.['-vault']).toBeDefined();
+    expect(value().concealments?.['2vault']).toBeUndefined();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
   it('creates a declaration, edits shared check rows, drops empty notice, removes the last declaration', () => {
     render(<Harness />);
     fireEvent.click(screen.getByText('New concealment'));

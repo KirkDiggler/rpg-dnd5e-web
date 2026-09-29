@@ -36,7 +36,9 @@ function roomActorCenter(cell: RoomHexCell) {
  * BOTH it and the visible ring carry the same selection gesture, so clicking
  * the ring selects exactly as it always did and the rest of the cell now does
  * too. `stopPropagation` is what keeps a click on an actor from also selecting
- * the scene prop beneath it.
+ * the scene prop beneath it. Display-only Html labels use pointer-events:none
+ * on the Html wrapper as well as the chip, so DOM overlays cannot swallow a
+ * canvas click before it reaches these pick surfaces.
  *
  * The pick surface is added BEFORE the ring so the ring's colour is drawn over
  * it; both sit just above the floor. */
@@ -91,7 +93,7 @@ function ActorRing({
  * monster: an unavailable ref renders a labeled chip and nothing else. */
 function ActorChip({ tone, text }: { tone: string; text: string }) {
   return (
-    <Html center>
+    <Html center style={{ pointerEvents: 'none' }}>
       <output className={`wb-actor-chip wb-actor-chip--${tone}`}>{text}</output>
     </Html>
   );
@@ -148,7 +150,7 @@ function MonsterMarker({
       ) : (
         <ActorChip tone="unavailable" text={`${label} — model unavailable`} />
       )}
-      <Html center>
+      <Html center style={{ pointerEvents: 'none' }}>
         <output
           className={`wb-actor-chip wb-actor-chip--monster${
             selected ? ' wb-actor-chip--selected' : ''
@@ -205,7 +207,7 @@ function StartMarker({
           toneMapped={false}
         />
       </mesh>
-      <Html center>
+      <Html center style={{ pointerEvents: 'none' }}>
         <output
           className={`wb-actor-chip wb-actor-chip--start${
             selected ? ' wb-actor-chip--selected' : ''
@@ -247,7 +249,7 @@ export function RoomActorPreview({
           toneMapped={false}
         />
       </mesh>
-      <Html center>
+      <Html center style={{ pointerEvents: 'none' }}>
         <output className="wb-actor-chip wb-actor-chip--preview">
           {label}
         </output>

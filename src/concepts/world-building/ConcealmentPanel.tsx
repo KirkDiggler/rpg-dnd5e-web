@@ -7,7 +7,11 @@ import {
   setConcealment,
   setConcealmentProp,
 } from './concealmentEdits';
-import type { SiteConcealmentSpec, SiteScope } from './siteScope';
+import {
+  FACTION_ID_RE,
+  type SiteConcealmentSpec,
+  type SiteScope,
+} from './siteScope';
 import type { WorldScene } from './types';
 
 export interface ConcealmentPanelProps {
@@ -33,7 +37,7 @@ function ConcealmentRow({
   const [typedId, setTypedId] = useState(id);
   const idTaken =
     typedId !== id && Object.hasOwn(scope.concealments ?? {}, typedId);
-  const invalidId = !/^[a-z][a-z0-9-]*$/.test(typedId);
+  const invalidId = !FACTION_ID_RE.test(typedId);
   const commitId = () => {
     if (idTaken || invalidId || typedId === id) return;
     onChange(renameConcealment(scope, id, typedId));

@@ -5,7 +5,12 @@ import * as THREE from 'three';
 import { beforeAll, expect, it, vi } from 'vitest';
 
 vi.mock('@react-three/drei', () => ({
-  Html: () => null,
+  Html: ({ style }: { style?: { pointerEvents?: string } }) => (
+    <group
+      name="actor-html-label"
+      userData={{ pointerEvents: style?.pointerEvents }}
+    />
+  ),
   useGLTF: () => ({ scene: new THREE.Group() }),
 }));
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
@@ -14,12 +19,41 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ),
 }));
 
-import { RoomActorMarkers } from './RoomActorMarkers';
+import { RoomActorMarkers, RoomActorPreview } from './RoomActorMarkers';
 
 beforeAll(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
+});
+
+it('makes every display-only label wrapper transparent to canvas clicks', async () => {
+  const renderer = await ReactThreeTestRenderer.create(
+    <>
+      <RoomActorMarkers
+        monsters={[
+          {
+            id: 'unknown',
+            ref: 'dnd5e:monsters:missing',
+            startingCell: { location: { q: 0, r: 0 } },
+          },
+        ]}
+        partyStart={{ q: 1, r: 0 }}
+        selectedActorId={null}
+        onSelectActor={vi.fn()}
+      />
+      <RoomActorPreview
+        hoverCell={{ q: 2, r: 0 }}
+        label="Preview"
+        color="#ffffff"
+      />
+    </>
+  );
+  const labels = renderer.scene.findAllByProps({ name: 'actor-html-label' });
+  expect(labels).toHaveLength(4); // unavailable chip, monster label, start, preview
+  for (const label of labels)
+    expect(label.instance.userData.pointerEvents).toBe('none');
+  await renderer.unmount();
 });
 
 it('uses the shared skeleton-safe model renderer inside each snapped actor transform', async () => {

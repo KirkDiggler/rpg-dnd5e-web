@@ -126,22 +126,25 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                               ? 'concealment'
                               : 'fact'
                           }
-                          onChange={(event) =>
-                            onChange(
-                              setIntelReveals(
-                                scope,
-                                record.id,
-                                event.target.value === 'concealment'
-                                  ? {
-                                      concealment:
-                                        Object.keys(
-                                          scope.concealments ?? {}
-                                        )[0] ?? '',
-                                    }
-                                  : { fact: '' }
-                              )
-                            )
-                          }
+                          onChange={(event) => {
+                            if (event.target.value === 'concealment') {
+                              const target = Object.keys(
+                                scope.concealments ?? {}
+                              )[0];
+                              // Match the disabled option, and preserve a carried
+                              // undeclared target rather than inventing an empty id.
+                              if (target === undefined) return;
+                              onChange(
+                                setIntelReveals(scope, record.id, {
+                                  concealment: target,
+                                })
+                              );
+                            } else {
+                              onChange(
+                                setIntelReveals(scope, record.id, { fact: '' })
+                              );
+                            }
+                          }}
                         >
                           <option value="fact">Fact</option>
                           <option
@@ -191,23 +194,12 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                       </label>
                     ) : (
                       <label>
-                        <span>
-                          {revealsConcealment(record.reveals)
-                            ? 'Reveals a secret'
-                            : 'Reveals a fact'}
-                        </span>
+                        <span>Reveals a fact</span>
                         <input
-                          aria-label={`Intel reveals ${
-                            revealsConcealment(record.reveals)
-                              ? 'secret'
-                              : 'fact'
-                          } for ${record.id}`}
+                          aria-label={`Intel reveals fact for ${record.id}`}
                           value={revealTarget(record.reveals)}
                           placeholder="cellar-is-clear"
-                          disabled={
-                            revealsDoor(record.reveals) ||
-                            revealsConcealment(record.reveals)
-                          }
+                          disabled={revealsDoor(record.reveals)}
                           onChange={(event) =>
                             onChange(
                               setIntelReveals(scope, record.id, {
