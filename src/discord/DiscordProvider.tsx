@@ -16,6 +16,7 @@ import type {
 } from './types';
 
 const MEMBERSHIP_SCOPE = 'guilds.members.read';
+const OWNERSHIP_SCOPE = 'guilds';
 const RECONNECT_MESSAGE =
   'Discord authorization was cancelled or denied. Please reconnect.';
 
@@ -144,7 +145,12 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
           response_type: 'code',
           state: '',
-          scope: ['identify', 'applications.commands', MEMBERSHIP_SCOPE],
+          scope: [
+            'identify',
+            'applications.commands',
+            MEMBERSHIP_SCOPE,
+            OWNERSHIP_SCOPE,
+          ],
         });
         if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
 
@@ -190,9 +196,12 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         for (const scope of auth.scopes ?? []) {
           if (typeof scope === 'string') scopes.push(scope);
         }
-        if (!scopes.includes(MEMBERSHIP_SCOPE)) {
+        if (
+          !scopes.includes(MEMBERSHIP_SCOPE) ||
+          !scopes.includes(OWNERSHIP_SCOPE)
+        ) {
           throw new Error(
-            'Discord did not grant server membership access. Please reconnect and approve access.'
+            'Discord did not grant server membership and ownership access. Please reconnect and approve access.'
           );
         }
         if (!auth.user) {

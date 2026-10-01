@@ -12,6 +12,16 @@ let it rot.
 
 ## Active work
 
+- **Configured Discord world access (rpg-project#514, paired API #1065)** —
+  Uses published protos v0.1.216. Server access is reachable before game-role
+  admission and submits owner setup or delegated builder/player updates through
+  distinct WorldService RPCs. Discord authorization requests membership and guild
+  scopes; selected guild metadata travels on gameplay/configuration calls and
+  streams. UI/transport/provider tests and the full local gate pass; local-stack
+  and real Discord verification are tracked separately. Role catalog discovery
+  and multi-server character/content isolation are not implemented. See
+  [world-access](architecture/components/world-access.md).
+
 - **Sanctuary web adoption** — SDK `v0.1.201`, paired with merged API #1007 and
   released Toolkit providers. Warded attacks and casts render their aggressor-owned
   failed save in live/recovered Story and Debug; warded responses cannot invent an

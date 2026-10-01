@@ -1,5 +1,12 @@
 import { motion } from 'framer-motion';
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { getAuthDecision, getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
@@ -30,6 +37,7 @@ import { useDiscord } from './discord';
 import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
 import { FEEL_LAB_LAYER_Z } from './feel/layer';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
+import { WorldAccessSettings } from './world/WorldAccessSettings';
 
 const LazyToolkitContributorSandbox =
   import.meta.env.MODE === 'development'
@@ -181,8 +189,16 @@ function AppContent() {
       !!new URLSearchParams(window.location.search).get('thumbGlb')
   );
   const [currentView, setCurrentView] = useState<AppView>(
-    hasConceptDeepLink() ? 'concepts' : 'home'
+    new URLSearchParams(window.location.search).get('worldSettings') === '1'
+      ? 'world-settings'
+      : hasConceptDeepLink()
+        ? 'concepts'
+        : 'home'
   );
+  const currentViewRef = useRef(currentView);
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
     null
@@ -256,7 +272,8 @@ function AppContent() {
         'The running encounter has no recoverable character seat.')
       : null;
   useEffect(() => {
-    if (hasConceptDeepLink()) return; // deep link owns the view
+    if (hasConceptDeepLink() || currentViewRef.current === 'world-settings')
+      return; // setup/deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
       if (resumedLobbyCharacter.loading || resumeIdentityError) return;
@@ -461,7 +478,17 @@ function AppContent() {
         {/* Header — full-bleed views draw their own chrome, and the lobby
             has none. */}
         {!fullBleed && currentView !== 'lobby' && (
-          <div className="flex justify-end items-center mb-6">
+          <div className="flex justify-end items-center gap-4 mb-6">
+            {playerId && (
+              <button
+                type="button"
+                onClick={() => setCurrentView('world-settings')}
+                className="rounded border border-slate-500 px-3 py-2"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Server access
+              </button>
+            )}
             <ThemeSelector />
           </div>
         )}
@@ -521,6 +548,16 @@ function AppContent() {
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
             compositionSource={compositionSource}
+          />
+        ) : currentView === 'world-settings' ? (
+          <WorldAccessSettings
+            key={`${compositionIdentity}:${playerId}`}
+            worldId={
+              authKind === 'discord'
+                ? authGuildId
+                : (import.meta.env.VITE_DEV_WORLD_ID ?? null)
+            }
+            onBack={handleBackToHome}
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView

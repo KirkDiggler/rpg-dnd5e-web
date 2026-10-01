@@ -38,7 +38,7 @@ describe('authInterceptor', () => {
     vi.unstubAllEnvs();
   });
 
-  it('adds the guild selector only to Discord CompositionService calls', async () => {
+  it('adds the selected guild to Discord authoring and gameplay calls', async () => {
     setAuth('private-token', 'player-1', '123456789012345678');
     const compositionReq = makeAuthReq(CompositionService);
     const characterReq = makeAuthReq(CharacterService);
@@ -56,7 +56,9 @@ describe('authInterceptor', () => {
     expect(characterReq.header.get('authorization')).toBe(
       'Discord private-token'
     );
-    expect(characterReq.header.has('x-rpg-guild-id')).toBe(false);
+    expect(characterReq.header.get('x-rpg-guild-id')).toBe(
+      '123456789012345678'
+    );
   });
 
   it('uses the shared Dev decision without a guild selector', async () => {
