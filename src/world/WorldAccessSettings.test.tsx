@@ -2,7 +2,13 @@ import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { WorldSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/world/v1alpha1/service_pb';
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorldAccessSettings } from './WorldAccessSettings';
 
@@ -89,6 +95,49 @@ describe('WorldAccessSettings', () => {
       'Only the server owner can change admins'
     );
     expect(screen.queryByText('Server access saved.')).not.toBeInTheDocument();
+  });
+
+  it('discards an old world response that completes after the new world load', async () => {
+    let resolveOld!: (value: { world: typeof world }) => void;
+    const oldResponse = new Promise<{ world: typeof world }>((resolve) => {
+      resolveOld = resolve;
+    });
+    const newerWorldId = '923456789012345678';
+    const newerRoles = {
+      adminRoleId: '623456789012345678',
+      builderRoleId: '723456789012345678',
+      playerRoleId: '823456789012345678',
+    };
+    const newerWorld = create(WorldSchema, {
+      worldId: newerWorldId,
+      roles: newerRoles,
+    });
+    client.getWorld
+      .mockReturnValueOnce(oldResponse)
+      .mockResolvedValueOnce({ world: newerWorld });
+    const { rerender } = render(
+      <WorldAccessSettings worldId={worldId} onBack={vi.fn()} />
+    );
+    expect(client.getWorld).toHaveBeenNthCalledWith(1, { worldId });
+    rerender(<WorldAccessSettings worldId={newerWorldId} onBack={vi.fn()} />);
+    await screen.findByLabelText('World admin role ID');
+    expect(screen.getByLabelText('World admin role ID')).toHaveValue(
+      newerRoles.adminRoleId
+    );
+    await act(async () => {
+      resolveOld({ world });
+      await oldResponse;
+    });
+    expect(screen.getByLabelText('World admin role ID')).toHaveValue(
+      newerRoles.adminRoleId
+    );
+    expect(screen.getByLabelText('World builder role ID')).toHaveValue(
+      newerRoles.builderRoleId
+    );
+    expect(screen.getByLabelText('Player role ID')).toHaveValue(
+      newerRoles.playerRoleId
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('refuses configuration outside a server or when access is denied', async () => {
