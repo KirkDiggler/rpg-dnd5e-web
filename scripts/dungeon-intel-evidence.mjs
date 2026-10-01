@@ -39,6 +39,13 @@ try {
     await page.screenshot({ path: resolve(out, `${name}.png`) });
   };
   await capture('01-start-A');
+  await page.getByRole('button', { name: 'Observer B', exact: true }).click();
+  await page
+    .getByText('Entry door · closed · current', { exact: true })
+    .waitFor();
+  await page.getByText('Current · Door closed', { exact: true }).waitFor();
+  await capture('01-start-B');
+  await page.getByRole('button', { name: 'Observer A', exact: true }).click();
   await page.getByRole('button', { name: '2 · A looks inside' }).click();
   await capture('02-look-A');
   await page.getByRole('button', { name: 'Observer B', exact: true }).click();
@@ -85,7 +92,7 @@ try {
       `Browser smoke: ${errors.length} errors, ${unexpected.length} unexpected RPC/mutation requests; see browser.json`
     );
   console.log(
-    `Eight fixture screenshots; no console errors or dungeon/session RPCs. ${requests.length} existing app-shell reads recorded. Evidence: ${out}`
+    `Nine fixture screenshots; no console errors or dungeon/session RPCs. ${requests.length} existing app-shell reads recorded. Evidence: ${out}`
   );
 } finally {
   await browser.close();

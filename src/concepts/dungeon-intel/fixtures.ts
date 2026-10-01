@@ -163,17 +163,11 @@ function guard(observation: Observation): Sighting {
 }
 const closedEntrance = (observer: Observer): ObserverSnapshot => ({
   observer,
-  position: observer === 'A' ? at(3, 1) : at(1, 3),
+  position: observer === 'A' ? at(3, 1) : at(3, 0),
   atlas: entrance,
   sightings: [],
   props: [],
-  doors: [
-    door(
-      ENTRY_DOOR,
-      DoorState.CLOSED,
-      observer === 'A' ? 'current' : 'remembered'
-    ),
-  ],
+  doors: [door(ENTRY_DOOR, DoorState.CLOSED, 'current')],
   observedEmpty: [],
   account:
     'Only the entrance and its closed door are known. No gallery layout or contents supplied.',
@@ -194,7 +188,9 @@ const aLooking: ObserverSnapshot = {
 };
 const bObstructed: ObserverSnapshot = {
   ...closedEntrance('B'),
-  // Opening outside B's sight shares neither door values nor A's discovery.
+  position: at(1, 3),
+  doors: [door(ENTRY_DOOR, DoorState.CLOSED, 'remembered')],
+  // B withdraws before A opens. Neither door values nor discovery are shared.
   account:
     'The corner obstructs the doorway and gallery. The entry door is remembered closed; no gallery geometry or contents are supplied.',
 };
@@ -261,7 +257,7 @@ export const STEPS: readonly StoryboardStep[] = [
     id: 'look',
     label: '2 · A looks inside',
     description:
-      'A receives gallery geometry and observations. B remains obstructed.',
+      'B withdraws behind the corner before A opens and looks inside. Only A receives the gallery.',
     views: { A: aLooking, B: bObstructed },
   },
   {

@@ -19,12 +19,17 @@ The lab selects explicit observer snapshots and renders the same `SessionCanvas`
 | Door values                           | Generated `DoorInfo` and supplied doorway geometry                            | `DoorTestimony.observation` is fixture-only; a remembered value is not a current `GetDoors` read. Doorway endpoints describe the visible threshold, not a discovered floor cell on its far side. How a permitted threshold is encoded without future interior disclosure remains an upstream question. |
 | Observed empty former position        | Explicit fixture coordinate                                                   | Positive evidence is supplied, never inferred from lack of a prop/event. No carrier/destination is supplied. The final absence-correction contract remains open.                                                                                                                                       |
 
+The lab's unknown-location wording concerns world placement only. It does not
+represent B's own holdings or assert that B forgets picking up the vase. The
+server-backed acceptance walk must supply B's holding through the existing
+holdings seam; that channel is not exercised by this scene-input prototype.
+
 These fields discover consumer requirements; they do not ratify protobuf schemas. The inspector serializes generated messages with protobuf JSON and labels the separated provisional envelopes. It shows only the selected answer, not all fixture states.
 
 ## Storyboard acceptance
 
 1. Start: both observers have only entrance floor, fixed bookcase and a closed ordinary door; no room-2 floor/region/scenery/holdable prop/sentinel/further-door data.
-2. A looks inside: the supplied gallery geometry, fixed pillar, vase, sentinel and further door render. Obstructed B retains the remembered closed entry door and receives no gallery.
+2. B withdraws behind the corner before A opens and looks inside: the supplied gallery geometry, fixed pillar, vase, sentinel and further door render for A. Obstructed B retains the remembered closed entry door and receives no gallery.
 3. A withdraws: discovered construction remains; prop, creature and door observations become remembered.
 4. B looks inside: B receives an independent current view; A's answer remains unchanged.
 5. Unseen changes: B's supplied answer loses the vase placement and sees a closed entry; A's remembered vase and open entry remain unchanged.
@@ -34,9 +39,16 @@ Controls are developer snapshot selectors, not movement/open/pickup game command
 
 ## Verification and limits
 
+The hand-authored fractional-axial wall segments are a coarse illustrative shell:
+some lines bisect staggered floor tiles rather than follow their hex edges. They
+are wire-legal presentation, not a compiled fixture or proof of geometric LOS.
+The lab never uses these lines to decide knowledge. A server-backed proof needs
+its real authored/compiled geometry and sight verification, not this shell as an
+acceptance fixture.
+
 - Fixture/adapter tests cover construction channels, observer isolation, unchanged memory, location correction and backwards replacement without accumulation/mutation.
-- Mounted concept tests double only `SessionCanvas`'s WebGL boundary; real scene-building and sighting adaptation run. Shared marker and camera tests exercise real R3F trees.
-- `scripts/dungeon-intel-evidence.mjs` captures eight real browser scenes and records errors and RPC requests. Run with `CHROME_BINARY=/usr/bin/google-chrome` if Playwright's browser is not installed. The existing app shell may issue five named lobby/catalog reads; they remain in evidence. No dungeon/session RPC or mutation is permitted by this smoke check.
+- Mounted concept tests double only `SessionCanvas`'s WebGL boundary; real scene-building and sighting adaptation run. Shared marker and camera tests exercise real R3F trees, including `SessionScene` forwarding the fit request to the real camera hook.
+- `scripts/dungeon-intel-evidence.mjs` captures nine real browser scenes and records errors and RPC requests. Run with `CHROME_BINARY=/usr/bin/google-chrome` if Playwright's browser is not installed. The existing app shell may issue five named lobby/catalog reads; they remain in evidence. No dungeon/session RPC or mutation is permitted by this smoke check.
 - Browser appearance needs locally synced game assets. Never commit licensed GLBs/source into this public repository.
 
 The developer bundle includes later A/B fixtures. Initial selected renderer inputs omit room 2, but this is **not browser-bundle or authenticated server non-disclosure proof**. No live toolkit/API/proto changes, replay/reconnect, RAW sight/lighting, storage, performance budget, independent review or production promotion are proved by the concept alone. Independent review and the complete local gate remain PR prerequisites. Inward implementation needs upstream contracts and server evidence; no layer is silently absorbed by the web.

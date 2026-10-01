@@ -36,6 +36,10 @@ describe('DungeonIntelConcept real composition', () => {
       HEIRLOOM
     );
     expect(lastCanvas().presentationLayer).toBeDefined();
+    choose('Observer B');
+    expect(screen.getByText('Entry door · closed · current')).toBeTruthy();
+    choose('2 · A looks inside');
+    expect(screen.getByText('Entry door · closed · remembered')).toBeTruthy();
   });
 
   it('selects isolated observer snapshots, displays memory and replaces disproved placement', () => {

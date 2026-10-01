@@ -39,6 +39,8 @@ describe('explicit dungeon-intel supplied answers', () => {
       expect(snapshot.props).toEqual([]);
       expect(renderSnapshot(snapshot).scene.floorTiles.size).toBe(20);
       expect(snapshot.doors[0].info.state).toBe(DoorState.CLOSED);
+      expect(snapshot.doors[0].observation).toBe('current');
+      expect(renderSnapshot(snapshot).markers[0].knowledge).toBe('visible');
     }
   });
 
@@ -74,6 +76,32 @@ describe('explicit dungeon-intel supplied answers', () => {
     expect(
       after.markers.every((marker) => marker.knowledge === 'remembered')
     ).toBe(true);
+  });
+
+  it('supplies B’s own current discovery at step 4 without refreshing A', () => {
+    const snapshot = view('b-look', 'B');
+    const rendered = renderSnapshot(snapshot);
+    expect(snapshot.observer).toBe('B');
+    expect(rendered.scene.floorTiles.size).toBe(44);
+    expect(rendered.scene.props.map((prop) => prop.id)).toEqual([
+      'bookcase',
+      'fixed-pillar',
+      HEIRLOOM,
+    ]);
+    expect(rendered.doors.get(ENTRY_DOOR)?.state).toBe(DoorState.OPEN);
+    expect(rendered.scene.doorGaps.map((door) => door.connection)).toEqual([
+      ENTRY_DOOR,
+      FURTHER_DOOR,
+    ]);
+    expect(snapshot.doors.every((door) => door.observation === 'current')).toBe(
+      true
+    );
+    expect(snapshot.props[0].observation).toBe('current');
+    expect(rendered.members[0].remembered).toBe(false);
+    expect(
+      rendered.markers.every((marker) => marker.knowledge === 'visible')
+    ).toBe(true);
+    expect(view('b-look')).toBe(view('withdraw'));
   });
 
   it('does not refresh A from B’s observations, pickup or unseen door close', () => {
@@ -144,6 +172,18 @@ describe('explicit dungeon-intel supplied answers', () => {
           false
         );
         expect(scene.roomScene).toBeUndefined();
+        for (const testimony of snapshot.props) {
+          if (!testimony.placement) continue;
+          expect(testimony.placement.at).toBeDefined();
+          expect(testimony.placement.at!.x).toBeLessThanOrEqual(10);
+        }
+        // Both fixed scenery and provisional mutable placement channels stay
+        // on supplied discovered floor, never floating into unknown space.
+        expect(
+          scene.props.every((prop) =>
+            scene.floorTiles.has(coordToKey(prop.position))
+          )
+        ).toBe(true);
       }
   });
 
