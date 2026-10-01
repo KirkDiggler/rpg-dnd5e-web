@@ -374,7 +374,9 @@ describe('exact-body fitted weapon catalog generation', () => {
             ? fixture.catalog.weapons[0]!.asset
             : 'npcs/warrior-01-weapons.json';
       put(join(fixture.runtime, path), 'bad synchronized bytes');
-      expect(() => generateFitted(fixture)).toThrow('synchronized GLB SHA-256');
+      expect(() => generateFitted(fixture)).toThrow(
+        `synchronized ${target === 'catalog' ? 'JSON' : 'GLB'} SHA-256`
+      );
     }
   );
 });

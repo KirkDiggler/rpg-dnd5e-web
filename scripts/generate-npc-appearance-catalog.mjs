@@ -163,18 +163,21 @@ function verifyModelBytes({
   expectedHash,
   label,
 }) {
+  const artifact = relativePath.endsWith('.json') ? 'JSON' : 'GLB';
   const providerFile = containedRegularFile(modelRoot, relativePath, label);
   if (hashBytes(readFileSync(providerFile)) !== expectedHash) {
-    fail(`${label} SHA-256 does not agree with the provider GLB`);
+    fail(`${label} SHA-256 does not agree with the provider ${artifact}`);
   }
   if (!runtimeRoot) return;
   const runtimeFile = containedRegularFile(
     runtimeRoot,
     relativePath,
-    `${label} synchronized GLB`
+    `${label} synchronized ${artifact}`
   );
   if (hashBytes(readFileSync(runtimeFile)) !== expectedHash) {
-    fail(`${label} synchronized GLB SHA-256 does not agree with the catalog`);
+    fail(
+      `${label} synchronized ${artifact} SHA-256 does not agree with the catalog`
+    );
   }
 }
 

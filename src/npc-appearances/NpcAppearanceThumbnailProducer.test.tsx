@@ -54,9 +54,9 @@ const appearance: GeneratedNpcAppearance = {
   standingUrl: '/models/synty/npcs/goblin-warrior-male-01.glb',
   downedUrl: '/models/synty/npcs/goblin-warrior-male-01-downed.glb',
   standingSha256:
-    '2cb9c964d1b587b1a1a7115df65766ca32dbe86d00a80879dc8732a83f682c22',
+    '1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444',
   downedSha256:
-    '617800a4c3b2d2aaa535b3c718154f953939accb74fdc07fa25b680d0ce1d843',
+    '1b69eb82c8322f5b396dfb84caf22b80ab3de5cad9abe887a7d6bec5a7fbac0d',
   animationClips: ['Idle_Relaxed', 'Walk_Forward'],
   jointCount: 50,
   pose: 'Compatible baked 50-bone donor Actions.',
