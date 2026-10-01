@@ -29,22 +29,23 @@ confidence: high — verified by reading hexUtils.ts, hexMath.ts, useMovementRan
 
 ## Visual components
 
-| Component                                     | Purpose                                                                                                               |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `HexTile.tsx` / `InstancedHexTiles.tsx`       | Floor tile geometry (instanced for performance)                                                                       |
-| `HexWall.tsx` / `ShadedHexWall.tsx`           | Wall geometry with cel-shading                                                                                        |
-| `HexDoor.tsx`                                 | Door geometry, open/closed state visual                                                                               |
-| `HexEntity.tsx`                               | Entity container — positions the resolved class/monster model and threads the local owner's exact hand presentations  |
-| `ClassCharacterModel.tsx`                     | Animated Synty class/monster GLB clone; independently mounts normalized `Hand_R` and `Hand_L` assets                  |
-| `mainHandWeapons.ts`                          | Exact 30-ref main-hand presentation catalog and rig-family sockets; no equipment rules                                |
-| `offHandEquipment.ts`                         | Exact reviewed six-ref off-hand presentation catalog and rig-family `Hand_L` sockets; no legality inference           |
-| `boneAttachment.ts`, `BoneAttachmentSlot.tsx` | Shared rigid bone-parenting, clone, lifecycle, and attachment-local failure boundary used by both semantic hand slots |
-| `MediumHumanoid.tsx`                          | 12-part OBJ voxel character fallback assembly                                                                         |
-| `CharacterHair.tsx`, `CharacterWeapon.tsx`    | Legacy OBJ hair/weapon attachments used by the fallback renderer                                                      |
-| `MovementRangeBorder.tsx`                     | BFS range visualization outline                                                                                       |
-| `PathPreview.tsx`                             | A\* path line preview                                                                                                 |
-| `TurnOrderOverlay.tsx`                        | Initiative order numbers on entities                                                                                  |
-| `ShadedHexFloor.tsx`                          | Floor with shader-based shading                                                                                       |
+| Component                                     | Purpose                                                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `HexTile.tsx` / `InstancedHexTiles.tsx`       | Floor tile geometry (instanced for performance)                                                                            |
+| `HexWall.tsx` / `ShadedHexWall.tsx`           | Wall geometry with cel-shading                                                                                             |
+| `HexDoor.tsx`                                 | Door geometry, open/closed state visual                                                                                    |
+| `HexEntity.tsx`                               | Positions the resolved body; threads player hand presentations and resolves observed monster hands against that exact body |
+| `ClassCharacterModel.tsx`                     | Animated Synty class/monster GLB clone; independently mounts normalized `Hand_R` and `Hand_L` assets                       |
+| `mainHandWeapons.ts`                          | Exact 30-ref player main-hand presentation catalog and rig-family sockets; no equipment rules                              |
+| `npcMainHandPresentation.ts`                  | Exact-body NPC weapon fits from the pinned generated catalog; observed item refs and authored weapon refs share one lookup |
+| `offHandEquipment.ts`                         | Exact reviewed six-ref off-hand presentation catalog and rig-family `Hand_L` sockets; no legality inference                |
+| `boneAttachment.ts`, `BoneAttachmentSlot.tsx` | Shared rigid bone-parenting, clone, lifecycle, and attachment-local failure boundary used by both semantic hand slots      |
+| `MediumHumanoid.tsx`                          | 12-part OBJ voxel character fallback assembly                                                                              |
+| `CharacterHair.tsx`, `CharacterWeapon.tsx`    | Legacy OBJ hair/weapon attachments used by the fallback renderer                                                           |
+| `MovementRangeBorder.tsx`                     | BFS range visualization outline                                                                                            |
+| `PathPreview.tsx`                             | A\* path line preview                                                                                                      |
+| `TurnOrderOverlay.tsx`                        | Initiative order numbers on entities                                                                                       |
+| `ShadedHexFloor.tsx`                          | Floor with shader-based shading                                                                                            |
 
 ## Door wall contract
 
@@ -87,6 +88,12 @@ See the [Bard appearance integration worked example](../../how-to/integrate-prov
 
 `src/shaders/OutlineShader.ts` — cel-shading outline effect.
 
-## No rendering tests
+## Visual tests
 
-No snapshot or canvas tests for any of the visual components. React Three Fiber requires a WebGL context, which makes testing difficult. At minimum, prop-level tests (does `HexEntity` receive the right position?) could be written with a mocked R3F context.
+React Three Fiber test-renderer suites exercise the component and attachment
+chain with network asset fetching doubled. `SessionCanvas.test.tsx` covers
+observed monster weapons, exact fitted sockets, remembered testimony,
+replacement/downed detach and attachment-local failure. `RoomActorMarkers.test.tsx`
+covers binding/order plumbing with the model renderer doubled. These tests do
+not prove the appearance of licensed assets; real model loading, animation and
+fit still require browser verification.

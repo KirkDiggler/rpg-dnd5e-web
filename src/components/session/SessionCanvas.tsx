@@ -847,11 +847,16 @@ export function SessionScene({
           // fetches another player's sheet, and could not honestly draw from
           // one anyway: what a viewer is entitled to see is what their own
           // sighting recorded (rpg-toolkit#1615). Undefined equipment means
-          // nobody looked, or there was nothing with hands to look at, and it
+          // no sheet/presentation answer was observed, and it
           // stays undefined rather than resolving to "unarmed" — a peer whose
           // observation has not arrived must not be drawn empty-handed.
+          observedMainHandRef={
+            member.kind === MemberKind.MONSTER
+              ? member.equipment?.mainHand
+              : undefined
+          }
           mainHandPresentation={
-            member.equipment
+            member.kind === MemberKind.PLAYER && member.equipment
               ? resolveMainHandPresentationByRefKey(member.equipment.mainHand)
                   .presentation
               : undefined

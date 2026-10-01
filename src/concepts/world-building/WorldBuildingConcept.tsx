@@ -2991,6 +2991,7 @@ export function WorldBuildingConcept({
                       },
                       repeat: repeatDescriptor,
                       monsters: roomDraft.room.monsterDeclarations,
+                      monsterBindings: roomDraft.room.monsterBindings,
                       partyStart: roomDraft.room.partyStart ?? null,
                       armedMonsterRef: armedMonsterRef,
                       selectedActorId: selectedActorId,

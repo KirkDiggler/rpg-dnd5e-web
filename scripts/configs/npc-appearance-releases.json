@@ -1,5 +1,19 @@
 {
   "schemaVersion": 1,
+  "weaponSets": [
+    {
+      "manifestId": "goblinWarriorMale01",
+      "assetRef": "dnd5e:npcs:goblin:warrior-male-01",
+      "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444",
+      "catalogSha256": "062faf88d2d3e31b3dcd186b7a10a31f8cb672366f364e89d57059bf1937ee68"
+    },
+    {
+      "manifestId": "skeletonSoldier01",
+      "assetRef": "dnd5e:npcs:skeleton:soldier-01",
+      "standingSha256": "00d151eaeb7d0ee53dca26dc1a122a86e61a13d990a6879803e6b0d517d25ba0",
+      "catalogSha256": "b49e5d117ca9553028511ebeccbf0ef10afa728fbdf1c8bac2e7044f9d5e107e"
+    }
+  ],
   "releases": [
     {
       "releaseId": "goblin-war-camp-v1",
@@ -9,8 +23,8 @@
           "assetRef": "dnd5e:npcs:goblin:warrior-male-01",
           "displayName": "Warrior Male 01",
           "jointCount": 50,
-          "standingSha256": "2cb9c964d1b587b1a1a7115df65766ca32dbe86d00a80879dc8732a83f682c22",
-          "downedSha256": "617800a4c3b2d2aaa535b3c718154f953939accb74fdc07fa25b680d0ce1d843"
+          "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444",
+          "downedSha256": "1b69eb82c8322f5b396dfb84caf22b80ab3de5cad9abe887a7d6bec5a7fbac0d"
         },
         {
           "manifestId": "goblinArcherMale01",
