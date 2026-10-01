@@ -29,7 +29,7 @@ import {
 import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { readFileSync } from 'node:fs';
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, type ReactElement } from 'react';
 import * as THREE from 'three';
 import {
   afterEach,
@@ -551,6 +551,47 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('forwards known-floor fit requests to the real camera hook without fitting unrelated renders', async () => {
+    const rig = new THREE.OrthographicCamera(-480, 480, 240, -240, 0.1, 1000);
+    rig.zoom = 137;
+    const fitScene = (request: number): ReactElement => (
+      <>
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fit preview"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          fitRequest={request}
+        />
+        <CameraProbe
+          onReady={() => undefined}
+          onCanvas={(canvas) => {
+            Object.defineProperties(canvas, {
+              clientWidth: { value: 960, configurable: true },
+              clientHeight: { value: 480, configurable: true },
+            });
+          }}
+        />
+      </>
+    );
+    const renderer = await ReactThreeTestRenderer.create(fitScene(0), {
+      camera: rig,
+    });
+    await renderer.advanceFrames(1, 0.016);
+    expect(rig.zoom).not.toBe(137);
+    const fittedZoom = rig.zoom;
+    rig.zoom = 55;
+    await renderer.update(fitScene(0));
+    await renderer.advanceFrames(1, 0.016);
+    expect(rig.zoom).toBe(55);
+    await renderer.update(fitScene(1));
+    await renderer.advanceFrames(1, 0.016);
+    expect(rig.zoom).toBe(fittedZoom);
+    await renderer.unmount();
+  });
+
   it('wires opt-in touch pan to the real session camera', async () => {
     let camera: THREE.Camera | undefined;
     let canvas: HTMLCanvasElement | undefined;

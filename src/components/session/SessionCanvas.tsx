@@ -201,6 +201,9 @@ export interface SessionCanvasProps {
   touchRotateEnabled?: boolean;
   /** Changed request counter invokes camera focus without altering zoom/heading. */
   focusRequest?: number;
+  /** Changed counter requests the shared camera's known-floor fit (Home).
+   * A supplied initial value fits on mount; absent leaves framing unchanged. */
+  fitRequest?: number;
   /** Local map-selection cancel invoked only by a quick right click. The
    * camera owns click-vs-drag classification so right-drag remains pan. */
   onCancelSelection?: () => void;
@@ -313,6 +316,7 @@ export function SessionScene({
   touchPinchEnabled = false,
   touchRotateEnabled = false,
   focusRequest,
+  fitRequest,
   scene,
   characterId,
   characterName,
@@ -431,6 +435,7 @@ export function SessionScene({
     touchPinchEnabled,
     touchRotateEnabled,
     focusRequest,
+    fitRequest,
     // WHERE THE CAMERA STARTS, from the dungeon's own start facing
     // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
     // moment a player turns the camera it is theirs. Undefined for a

@@ -8,6 +8,7 @@ import { CharacterCustomizationConcept } from './character-customization/Charact
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
+import { DungeonIntelConcept } from './dungeon-intel/DungeonIntelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
@@ -29,6 +30,7 @@ type ConceptPage =
   | 'combat-pacing'
   | 'just-roll'
   | 'fog-of-war'
+  | 'dungeon-intel'
   | 'session-combat'
   | 'session-tomb'
   | 'weapon-attachment'
@@ -49,6 +51,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
+  { id: 'dungeon-intel', label: 'Dungeon Intel' },
   { id: 'session-combat', label: 'Session Combat' },
   { id: 'session-tomb', label: 'Session Tomb' },
   { id: 'weapon-attachment', label: 'Weapon Attachment' },
@@ -153,6 +156,7 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
+        {activePage === 'dungeon-intel' && <DungeonIntelConcept />}
         {activePage === 'session-combat' && <SessionCombatConcept />}
         {activePage === 'session-tomb' && <SessionTombConcept />}
         {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
