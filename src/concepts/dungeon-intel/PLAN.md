@@ -17,6 +17,17 @@ flowchart LR
 3. **Web / src/concepts/ConceptsView.tsx:** register the concept. Controls select observer and storyboard snapshot, not game commands. Inspector exposes selected supplied answer only. Fixed scenery appearance is supplied by permitted atlas refs, never full GetDungeon/source content.
 4. **Verification:** focused fixture/adapter tests inspect all atlas channels, scene inputs and observer isolation; component test mocks only WebGL boundary. Typecheck, focused lint/format, browser screenshots and console/network inspection verify real rendering. Complete ci-check once at a PR boundary, not after each edit. Independent review/publication is a separate gate; no automatic merge.
 
+## Shared-renderer restoration check
+
+The creature's supplied current -> remembered -> current transition restores its
+original presentation on the same model and owned material under StrictMode.
+`src/components/hex-grid/ClassCharacterModel.tsx` prepares an immutable ownership
+plan during memoization and binds it at commit, before outfit/overlay effects.
+No remount-by-knowledge key or concept-only renderer bypass is introduced.
+Verification includes a StrictMode regression (red before the repair), retained
+body/material identity, unchanged cached GLTF material, existing outfit/accessory
+and session suites, and a native-browser material witness on the real sentinel.
+
 ## Contract and dependency boundaries
 
 Existing generated messages carry atlas construction, creature sightings and door values. Fixture annotations for prop/door current-vs-remembered testimony are provisional; neither final wire shape nor ordinary geometry discovery semantics are ratified. No proto/API/toolkit changes or dependency bumps. Promotion depends on upstream lawful observation, authorized delivery, persistence and revision-bound permitted appearance; merge provider-first after that wave exists.

@@ -47,7 +47,14 @@ import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import {
@@ -246,11 +253,21 @@ export function ClassCharacterModel({
         snapshots.set(material, snapshotMaterial(material))
       );
       const assignment = Array.isArray(child.material) ? owned : owned[0]!;
-      child.material = assignment;
       baseByMesh.set(child, assignment);
     });
     return { baseByMesh, snapshots };
   }, [cloned]);
+
+  // Publish the retained ownership plan only at commit. StrictMode probes
+  // useMemo initializers twice; assigning there can bind a discarded plan's
+  // materials, leaving the displayed body outside the snapshot/reset owner.
+  // Bind before passive outfit/overlay effects, without replacing the model
+  // or reassigning its materials on ordinary treatment changes.
+  useLayoutEffect(() => {
+    materialOwnership.baseByMesh.forEach((assignment, mesh) => {
+      mesh.material = assignment;
+    });
+  }, [materialOwnership]);
 
   const outfitRef = useRef(outfit);
   outfitRef.current = outfit;
