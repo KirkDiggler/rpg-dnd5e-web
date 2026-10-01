@@ -97,7 +97,12 @@ beforeEach(() => {
       avatar: null,
       global_name: 'Player',
     },
-    scopes: ['identify', 'applications.commands', 'guilds.members.read'],
+    scopes: [
+      'identify',
+      'applications.commands',
+      'guilds.members.read',
+      'guilds',
+    ],
   });
   sdkMocks.participants.mockResolvedValue({ participants: [] });
   vi.stubGlobal(
@@ -131,7 +136,12 @@ describe('DiscordProvider guild authorization', () => {
       client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
       response_type: 'code',
       state: '',
-      scope: ['identify', 'applications.commands', 'guilds.members.read'],
+      scope: [
+        'identify',
+        'applications.commands',
+        'guilds.members.read',
+        'guilds',
+      ],
     });
     expect(sdkMocks.authorize.mock.calls[0]![0]).not.toHaveProperty('prompt');
     expect(screen.getByTestId('guild').textContent).toBe('123456789012345678');
@@ -168,7 +178,12 @@ describe('DiscordProvider guild authorization', () => {
           username: 'player',
           discriminator: '0',
         },
-        scopes: ['identify', 'applications.commands', 'guilds.members.read'],
+        scopes: [
+          'identify',
+          'applications.commands',
+          'guilds.members.read',
+          'guilds',
+        ],
       })
     );
     renderProvider();
@@ -334,7 +349,7 @@ describe('DiscordProvider guild authorization', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('error').textContent).toMatch(
-        /membership access/i
+        /membership and ownership access/i
       )
     );
     expect(screen.getByTestId('authenticated').textContent).toBe('false');

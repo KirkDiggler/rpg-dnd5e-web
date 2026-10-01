@@ -3,6 +3,7 @@ import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
+import { WorldService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/world/v1alpha1/service_pb';
 import { AuthoringService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { SessionPresentationService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
@@ -36,10 +37,7 @@ export const authInterceptor: Interceptor = (next) => async (req) => {
     // only the non-secret decision above.
     const token = getDiscordToken();
     if (token) req.header.set('authorization', `Discord ${token}`);
-    if (
-      decision.guildId &&
-      req.service.typeName === CompositionService.typeName
-    ) {
+    if (decision.guildId) {
       req.header.set('x-rpg-guild-id', decision.guildId);
     }
   } else if (decision.kind === 'dev') {
@@ -183,9 +181,12 @@ export const sessionPresentationClient = createClient(
 export const lobbyClient = createClient(LobbyService, transport);
 
 // Create the immutable world-composition client. Discord calls carry the
-// selected guild only for this service; the API verifies membership and owns
+// selected guild on world-scoped requests; the API verifies membership and owns
 // the trusted world context.
 export const compositionClient = createClient(CompositionService, transport);
+
+// Owner bootstrap is authorized separately from gameplay role admission.
+export const worldClient = createClient(WorldService, transport);
 
 // Create the authoring service client (dnd5e.api.authoring.v1alpha1 —
 // PutDungeon). Absent from the server's reflection list (Unimplemented)
