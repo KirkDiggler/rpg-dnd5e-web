@@ -7,6 +7,7 @@
  */
 import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
+import { NPC_WEAPON_SETS } from '@/generated/npcAppearanceCatalog';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
@@ -169,7 +170,12 @@ vi.mock('@react-three/drei', () => {
     );
     mesh.name = name;
     scene.add(mesh);
-    if (name.includes('/models/synty/characters/')) {
+    if (
+      name.includes('/models/synty/characters/') ||
+      (name.includes('/models/synty/npcs/') &&
+        !name.includes('/weapons/') &&
+        !name.endsWith('-downed.glb'))
+    ) {
       const hand = new THREE.Bone();
       hand.name = 'Hand_R';
       const offHand = new THREE.Bone();
@@ -1660,6 +1666,119 @@ describe('SessionScene', () => {
         TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
         TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
       ]);
+    });
+  });
+
+  describe('observed monster equipment through the real render chain', () => {
+    const member = {
+      subject: 'skeleton-1',
+      name: 'Skeleton',
+      monsterRefId: 'skeleton',
+      kind: MemberKind.MONSTER,
+      position: { x: 1, y: -1, z: 0 },
+      remembered: false,
+      standing: Standing.UP,
+      stance: '',
+      equipment: { mainHand: 'dnd5e:item:shortsword', offHand: '' },
+    };
+    const draw = (other = member) => (
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Fighter"
+        classRefId={undefined}
+        myPosition={{ x: 0, y: 0, z: 0 }}
+        otherMembers={[other]}
+      />
+    );
+    const fitted = NPC_WEAPON_SETS.find(
+      (set) => set.appearanceRef === 'dnd5e:npcs:skeleton:soldier-01'
+    )!;
+    const sword = fitted.weapons.find(
+      (weapon) => weapon.itemRef === 'dnd5e:item:shortsword'
+    )!;
+    const bow = fitted.weapons.find(
+      (weapon) => weapon.itemRef === 'dnd5e:item:shortbow'
+    )!;
+
+    it.each([false, true])(
+      'attaches only the observed weapon at its exact fitted socket, remembered=%s',
+      async (remembered) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          draw({ ...member, remembered })
+        );
+        const root = attachedMainHandRoot(renderer);
+        expect(root.parent?.name).toBe('Hand_R');
+        expect(root.getObjectByName(sword.weaponUrl)).toBeDefined();
+        const units = 1 / sword.socket.boneUnitMeters;
+        expectVectorCloseTo(
+          root.position.toArray(),
+          sword.socket.positionMeters.map((v) => v * units)
+        );
+        expectVectorCloseTo(
+          root.quaternion.toArray(),
+          sword.socket.rotationQuaternion
+        );
+        expect(gltfMockState.requests).not.toContain(
+          '/models/synty/weapons/shortsword.glb'
+        );
+        await renderer.unmount();
+        expect(root.parent).toBeNull();
+      }
+    );
+
+    it('replaces an observation without leaving the old weapon attached, and removes attachment on a downed body', async () => {
+      const renderer = await ReactThreeTestRenderer.create(draw());
+      const old = attachedMainHandRoot(renderer);
+      await renderer.update(
+        draw({ ...member, equipment: { mainHand: bow.itemRef, offHand: '' } })
+      );
+      expect(old.parent).toBeNull();
+      const replacement = attachedMainHandRoot(renderer);
+      expect(replacement.getObjectByName(bow.weaponUrl)).toBeDefined();
+      await renderer.update(draw({ ...member, standing: Standing.DOWNED }));
+      expect(replacement.parent).toBeNull();
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            node.instance.name === sword.weaponUrl ||
+            node.instance.name === bow.weaponUrl
+        )
+      ).toHaveLength(0);
+      await renderer.unmount();
+    });
+
+    it('isolates a weapon load failure without replacing the known body', async () => {
+      gltfMockState.failedUrls.add(sword.weaponUrl);
+      const renderer = await ReactThreeTestRenderer.create(draw());
+      expect(gltfMockState.requests).toContain(sword.weaponUrl);
+      expect(
+        renderer.scene.findAll((node) => node.instance.name === fitted.bodyUrl)
+      ).toHaveLength(1);
+      expect(
+        renderer.scene.findAll((node) => node.instance.name === sword.weaponUrl)
+      ).toHaveLength(0);
+      await renderer.unmount();
+    });
+
+    it('never borrows the fitted warrior socket for an archer appearance', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        draw({
+          ...member,
+          subject: 'goblin-1',
+          name: 'Goblin',
+          monsterRefId: 'goblin',
+          equipment: { mainHand: 'dnd5e:item:shortbow', offHand: '' },
+        })
+      );
+      expect(gltfMockState.requests).toContain(
+        '/models/synty/npcs/goblin-archer-male-01.glb'
+      );
+      expect(
+        gltfMockState.requests.some((url) => url.includes('/weapons/'))
+      ).toBe(false);
+      await renderer.unmount();
     });
   });
 

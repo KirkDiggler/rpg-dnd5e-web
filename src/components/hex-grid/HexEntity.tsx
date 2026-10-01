@@ -46,6 +46,7 @@ import {
   monsterHidesWhenDowned,
   resolveMonsterModelUrl,
 } from './monsterModels';
+import { resolveNpcMainHandPresentation } from './npcMainHandPresentation';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import {
   offHandSocketForRigFamily,
@@ -134,9 +135,12 @@ export interface HexEntityProps {
   /** @deprecated Compatibility seam for old callers; new owner/peer paths use
    * `customization` so sibling Hair and Outfit cannot be separated. */
   hairCustomization?: HairCustomization;
-  /** Exact owner-authoritative visual projection for this player's main hand.
-   * Undefined means unarmed; only class GLBs consume it. */
+  /** Exact visual projection for a player's main hand. Undefined means no
+   * presentation supplied; monster testimony uses observedMainHandRef. */
   mainHandPresentation?: MainHandPresentation;
+  /** Per-observer monster testimony. Undefined is unknown, not empty hands.
+   * Resolved against the actual model being rendered, never player sockets. */
+  observedMainHandRef?: string;
   /** Exact owner-private visual projection for this player's off hand.
    * Undefined means no reviewed off-hand presentation. */
   offHandPresentation?: OffHandPresentation;
@@ -369,6 +373,7 @@ export function HexEntity({
   customization,
   hairCustomization,
   mainHandPresentation,
+  observedMainHandRef,
   offHandPresentation,
   isDowned = false,
   obstacleType,
@@ -603,6 +608,13 @@ export function HexEntity({
     // (a downed variant's static collapsed pose) or worth its dev-mode
     // warning (a standing model that should hold a presentable pose).
     const isDownedModelVariant = type === 'player' ? isDowned : isDead;
+    const npcMainHand =
+      type === 'monster'
+        ? resolveNpcMainHandPresentation({
+            bodyUrl: effectiveModelUrl,
+            mainHandRef: observedMainHandRef,
+          })
+        : undefined;
     // The forward-axis correction is a property of WHICH rig is mounted,
     // not of the entity type in the abstract — a player's resolved model is
     // always the Fantasy Rivals class rig, a monster's is always the
@@ -721,9 +733,13 @@ export function HexEntity({
                   isMoving={!isDead && !isGhost && !remembered && isMoving}
                   isDownedVariant={isDownedModelVariant}
                   mainHandPresentation={
-                    type === 'player' ? mainHandPresentation : undefined
+                    type === 'player'
+                      ? mainHandPresentation
+                      : npcMainHand?.presentation
                   }
-                  mainHandSocketOverride={mainHandSocketOverride}
+                  mainHandSocketOverride={
+                    type === 'player' ? mainHandSocketOverride : undefined
+                  }
                   offHandPresentation={
                     type === 'player' ? offHandPresentation : undefined
                   }

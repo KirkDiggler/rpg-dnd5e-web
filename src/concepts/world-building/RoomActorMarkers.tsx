@@ -2,12 +2,17 @@ import { MONSTER_COLOR, paletteNameForRef } from '@/author/paletteData';
 import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
 import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
+import { resolveNpcMainHandPresentation } from '@/components/hex-grid/npcMainHandPresentation';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Suspense } from 'react';
-import type { RoomHexCell, RoomMonsterPlacement } from './roomDraft';
+import type {
+  RoomHexCell,
+  RoomMonsterBinding,
+  RoomMonsterPlacement,
+} from './roomDraft';
 
 /** Authoring colors are unmistakable against the walkable green fill, the
  * cyan rectangle preview, and the amber footprint outlines: the live board's
@@ -105,10 +110,12 @@ function ActorChip({ tone, text }: { tone: string; text: string }) {
  * substitute monster. */
 function MonsterMarker({
   placement,
+  mainHandRef,
   selected,
   onSelectActor,
 }: {
   placement: RoomMonsterPlacement;
+  mainHandRef: string | undefined;
   selected: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
@@ -123,6 +130,12 @@ function MonsterMarker({
     false,
     placement.id
   );
+  // Authored overrides are weapon-only ordered refs at the room-draft ingress.
+  // With no override, no client reconstruction of the rulebook default occurs.
+  const mainHand = resolveNpcMainHandPresentation({
+    bodyUrl: modelUrl,
+    mainHandRef,
+  });
   return (
     <group
       name={`room-monster-${placement.id}`}
@@ -144,7 +157,10 @@ function MonsterMarker({
           >
             {/* Reuse the game's skeleton-safe cloning, scale and idle pose.
                 A plain scene.clone leaves skinned bodies at the source origin. */}
-            <ClassCharacterModel url={modelUrl} />
+            <ClassCharacterModel
+              url={modelUrl}
+              mainHandPresentation={mainHand.presentation}
+            />
           </ErrorBoundary>
         </Suspense>
       ) : (
@@ -156,6 +172,15 @@ function MonsterMarker({
             selected ? ' wb-actor-chip--selected' : ''
           }`}
           aria-label={`Monster ${label} ${placement.id}`}
+          data-weapon-preview={mainHand.code}
+          title={
+            mainHand.code === 'unobserved'
+              ? 'Weapon preview needs an authored override; rulebook default not supplied.'
+              : mainHand.code === 'unsupported-body' ||
+                  mainHand.code === 'unsupported-weapon'
+                ? 'No approved weapon fit for this exact appearance and weapon.'
+                : undefined
+          }
         >
           {label}
         </output>
@@ -263,11 +288,13 @@ export function RoomActorPreview({
  * props, never gameplay legality. */
 export function RoomActorMarkers({
   monsters,
+  monsterBindings,
   partyStart,
   selectedActorId,
   onSelectActor,
 }: {
   monsters: readonly RoomMonsterPlacement[];
+  monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
   partyStart: RoomHexCell | null;
   selectedActorId: string | null;
   onSelectActor: (actorId: string | null) => void;
@@ -278,6 +305,7 @@ export function RoomActorMarkers({
         <MonsterMarker
           key={placement.id}
           placement={placement}
+          mainHandRef={monsterBindings?.[placement.id]?.actions?.[0]}
           selected={selectedActorId === placement.id}
           onSelectActor={onSelectActor}
         />
