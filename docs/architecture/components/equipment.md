@@ -132,6 +132,27 @@ public roster entry has no equipment projection, so peer hand equipment remains
 a separate contract rather than a client guess. Existing server equip/unequip,
 AC, damage, two-handed displacement, and reconnect authority are unchanged.
 
+### Session-route observed hands
+
+Other members' hands come from their own per-observer
+`Sighting.seen.equipment`, never a live sheet or the owner's equipment cache.
+A remembered sighting retains that snapshot. Absent equipment is unknown,
+not observed empty hands.
+
+`SessionCanvas` carries a monster's observed main-hand item ref to `HexEntity`.
+After selecting the actual rendered body, `npcMainHandPresentation.ts` resolves
+only its approved exact-body weapon fit from `npcAppearanceCatalog.ts`. The
+catalog shares the NPC provider pin and validates body, catalog and weapon
+hashes before publication. No player rig-family socket, another appearance's
+socket or standing fit on a downed body is substituted.
+
+Monsters carry the rulebook's temporary first-weapon presentation answer, not
+tracked equipped state. The World Builder preview uses the existing ordered
+weapon-only override from `monsterBindings.actions` and the same fit lookup;
+without an override, it has no provider-sourced default answer. Unsupported
+fits and unarmed-strike have no invented weapon visual. Neither route selects
+combat actions or grants weapon swaps.
+
 ## Scope decisions
 
 - **No live push to other clients.** `EquipItem`/`UnequipItem` are

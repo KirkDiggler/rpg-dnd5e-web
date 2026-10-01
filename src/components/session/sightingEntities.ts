@@ -94,8 +94,9 @@ export interface SightedMember {
    * off-hand tables are keyed by (rpg-toolkit#1615).
    *
    * UNDEFINED IS NOT EMPTY HANDS. Undefined means nobody looked, or there was
-   * nothing with hands to look at — a skeleton has no character sheet. An
-   * object whose strings are empty means the hands WERE observed and they were
+   * no sheet/presentation answer was observed. Monsters carry the rulebook's
+   * first-weapon presentation answer, not tracked equipped state. An object
+   * whose strings are empty means the hands WERE observed and they were
    * empty. Drawing the first as the second would show a peer whose data has
    * not arrived as a peer standing there unarmed, which is the exact confusion
    * the seam carries this distinction to prevent.

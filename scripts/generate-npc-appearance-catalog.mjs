@@ -17,6 +17,12 @@ const PROVIDER_MODEL_ROOT = 'harness/models/synty';
 const RUNTIME_URL_ROOT = '/models/synty/';
 const SELECTION_KEYS = ['releases', 'schemaVersion'];
 const RELEASE_KEYS = ['appearances', 'releaseId'];
+const WEAPON_SET_SELECTION_KEYS = [
+  'assetRef',
+  'catalogSha256',
+  'manifestId',
+  'standingSha256',
+];
 const APPEARANCE_SELECTION_KEYS = [
   'assetRef',
   'displayName',
@@ -74,18 +80,20 @@ function hashBytes(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function safeRelativeGlb(value, label) {
+function safeNpcRuntimePath(value, label, extension = '.glb') {
   const result = nonempty(value, label);
   const parts = result.split('/');
   if (
     isAbsolute(result) ||
     result.includes('\\') ||
     result.includes('://') ||
-    !result.endsWith('.glb') ||
+    !result.endsWith(extension) ||
     parts.some((part) => part === '' || part === '.' || part === '..') ||
     result !== parts.join('/')
   ) {
-    fail(`${label} must be a normalized traversal-free relative GLB path`);
+    fail(
+      `${label} must be a normalized traversal-free relative ${extension} path`
+    );
   }
   if (!result.startsWith('npcs/')) {
     fail(`${label} must stay in the NPC runtime root`);
@@ -155,24 +163,33 @@ function verifyModelBytes({
   expectedHash,
   label,
 }) {
+  const artifact = relativePath.endsWith('.json') ? 'JSON' : 'GLB';
   const providerFile = containedRegularFile(modelRoot, relativePath, label);
   if (hashBytes(readFileSync(providerFile)) !== expectedHash) {
-    fail(`${label} SHA-256 does not agree with the provider GLB`);
+    fail(`${label} SHA-256 does not agree with the provider ${artifact}`);
   }
   if (!runtimeRoot) return;
   const runtimeFile = containedRegularFile(
     runtimeRoot,
     relativePath,
-    `${label} synchronized GLB`
+    `${label} synchronized ${artifact}`
   );
   if (hashBytes(readFileSync(runtimeFile)) !== expectedHash) {
-    fail(`${label} synchronized GLB SHA-256 does not agree with the catalog`);
+    fail(
+      `${label} synchronized ${artifact} SHA-256 does not agree with the catalog`
+    );
   }
 }
 
 function parseSelection(selectionPath) {
   const { bytes, value } = readJsonFile(selectionPath, 'release selection');
-  const selection = exactObject(value, SELECTION_KEYS, 'release selection');
+  const selection = exactObject(
+    value,
+    value && Object.hasOwn(value, 'weaponSets')
+      ? [...SELECTION_KEYS, 'weaponSets']
+      : SELECTION_KEYS,
+    'release selection'
+  );
   if (selection.schemaVersion !== 1) {
     fail('release selection schemaVersion must be 1');
   }
@@ -253,7 +270,31 @@ function parseSelection(selectionPath) {
     return { releaseId, appearances };
   });
   releases.sort((left, right) => left.releaseId.localeCompare(right.releaseId));
-  return { selectionSha256: hashBytes(bytes), releases };
+  const selectedWeapons = Object.hasOwn(selection, 'weaponSets')
+    ? selection.weaponSets
+    : [];
+  if (!Array.isArray(selectedWeapons)) fail('weaponSets must be an array');
+  const weaponBodies = new Set();
+  const weaponSets = selectedWeapons.map((raw, index) => {
+    const label = `weaponSets[${index}]`;
+    const selected = exactObject(raw, WEAPON_SET_SELECTION_KEYS, label);
+    const assetRef = nonempty(selected.assetRef, `${label}.assetRef`);
+    if (!/^dnd5e:npcs:[a-z0-9][a-z0-9:-]*$/.test(assetRef)) {
+      fail(`${label}.assetRef must be an exact NPC appearance reference`);
+    }
+    if (weaponBodies.has(assetRef)) fail(`duplicate weapon body: ${assetRef}`);
+    weaponBodies.add(assetRef);
+    return {
+      manifestId: nonempty(selected.manifestId, `${label}.manifestId`),
+      assetRef,
+      standingSha256: sha256(
+        selected.standingSha256,
+        `${label}.standingSha256`
+      ),
+      catalogSha256: sha256(selected.catalogSha256, `${label}.catalogSha256`),
+    };
+  });
+  return { selectionSha256: hashBytes(bytes), releases, weaponSets };
 }
 
 function parseManifest(providerRoot, runtimeRoot, selection) {
@@ -300,8 +341,8 @@ function parseManifest(providerRoot, runtimeRoot, selection) {
       if (downedSha256 !== selected.downedSha256) {
         fail(`${label} downed SHA-256 does not match the selected release`);
       }
-      const standingFile = safeRelativeGlb(raw.file, `${label}.file`);
-      const downedFile = safeRelativeGlb(raw.downed, `${label}.downed`);
+      const standingFile = safeNpcRuntimePath(raw.file, `${label}.file`);
+      const downedFile = safeNpcRuntimePath(raw.downed, `${label}.downed`);
       if (standingFile === downedFile) fail(`${label} models must be distinct`);
       const standingUrl = RUNTIME_URL_ROOT + standingFile;
       const downedUrl = RUNTIME_URL_ROOT + downedFile;
@@ -358,7 +399,135 @@ function parseManifest(providerRoot, runtimeRoot, selection) {
   appearances.sort((left, right) =>
     left.assetRef.localeCompare(right.assetRef)
   );
-  return { manifestSha256: hashBytes(manifestBytes), appearances };
+  const fittedBodyFiles = new Set();
+  const weaponSets = selection.weaponSets.map((selected) => {
+    const label = `fitted weapon body ${selected.manifestId}`;
+    const raw = manifest.npcs[selected.manifestId];
+    if (
+      !raw ||
+      raw.assetRef !== selected.assetRef ||
+      raw.sha256 !== selected.standingSha256
+    ) {
+      fail(`${label} does not match the selected exact appearance/body`);
+    }
+    const bodyFile = safeNpcRuntimePath(raw.file, `${label}.file`);
+    if (fittedBodyFiles.has(bodyFile))
+      fail(`duplicate fitted body URL: ${bodyFile}`);
+    fittedBodyFiles.add(bodyFile);
+    verifyModelBytes({
+      modelRoot,
+      runtimeRoot,
+      relativePath: bodyFile,
+      expectedHash: selected.standingSha256,
+      label,
+    });
+    const catalogFile = safeNpcRuntimePath(
+      raw.weapons?.file,
+      `${label}.weapons.file`,
+      '.json'
+    );
+    if (raw.weapons?.sha256 !== selected.catalogSha256) {
+      fail(`${label} weapon catalog does not match selected SHA-256`);
+    }
+    verifyModelBytes({
+      modelRoot,
+      runtimeRoot,
+      relativePath: catalogFile,
+      expectedHash: selected.catalogSha256,
+      label: `${label} catalog`,
+    });
+    const { value: catalog } = readJsonFile(
+      containedRegularFile(modelRoot, catalogFile, `${label} catalog`),
+      `${label} catalog`
+    );
+    exactObject(
+      catalog,
+      ['schemaVersion', 'appearance', 'body', 'weapons'],
+      `${label} catalog`
+    );
+    exactObject(catalog.body, ['file', 'sha256'], `${label} catalog body`);
+    if (
+      catalog.schemaVersion !== 1 ||
+      catalog.appearance !== selected.assetRef ||
+      catalog.body.file !== bodyFile ||
+      catalog.body.sha256 !== selected.standingSha256
+    ) {
+      fail(`${label} catalog is not bound to the selected exact body`);
+    }
+    if (!Array.isArray(catalog.weapons) || catalog.weapons.length === 0) {
+      fail(`${label} weapons must be a non-empty array`);
+    }
+    const refs = new Set();
+    const weapons = catalog.weapons.map((weapon, index) => {
+      const entry = `${label} weapons[${index}]`;
+      exactObject(weapon, ['ref', 'asset', 'sha256', 'socket'], entry);
+      const ref = nonempty(weapon.ref, `${entry}.ref`);
+      if (!/^dnd5e:weapons:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(ref)) {
+        fail(`${entry}.ref must be an exact weapon reference`);
+      }
+      if (refs.has(ref)) fail(`${entry} duplicate weapon reference: ${ref}`);
+      refs.add(ref);
+      const file = safeNpcRuntimePath(weapon.asset, `${entry}.asset`);
+      const hash = sha256(weapon.sha256, `${entry}.sha256`);
+      verifyModelBytes({
+        modelRoot,
+        runtimeRoot,
+        relativePath: file,
+        expectedHash: hash,
+        label: entry,
+      });
+      exactObject(
+        weapon.socket,
+        [
+          'bone',
+          'boneUnitMeters',
+          'positionMeters',
+          'rotationQuaternion',
+          'scale',
+        ],
+        `${entry}.socket`
+      );
+      const socket = weapon.socket;
+      nonempty(socket.bone, `${entry}.socket.bone`, 120);
+      for (const key of ['boneUnitMeters', 'scale']) {
+        if (!Number.isFinite(socket[key]) || socket[key] <= 0)
+          fail(`${entry}.socket.${key} must be positive and finite`);
+      }
+      for (const [key, length] of [
+        ['positionMeters', 3],
+        ['rotationQuaternion', 4],
+      ]) {
+        if (
+          !Array.isArray(socket[key]) ||
+          socket[key].length !== length ||
+          socket[key].some((v) => !Number.isFinite(v))
+        ) {
+          fail(`${entry}.socket.${key} must be a finite ${length}-tuple`);
+        }
+      }
+      if (Math.abs(Math.hypot(...socket.rotationQuaternion) - 1) > 0.0001) {
+        fail(`${entry}.socket.rotationQuaternion must be normalized`);
+      }
+      return {
+        weaponRef: ref,
+        itemRef: ref.replace('dnd5e:weapons:', 'dnd5e:item:'),
+        weaponUrl: RUNTIME_URL_ROOT + file,
+        weaponSha256: hash,
+        socket,
+      };
+    });
+    return {
+      appearanceRef: selected.assetRef,
+      bodyUrl: RUNTIME_URL_ROOT + bodyFile,
+      bodySha256: selected.standingSha256,
+      catalogSha256: selected.catalogSha256,
+      weapons,
+    };
+  });
+  weaponSets.sort((left, right) =>
+    left.appearanceRef.localeCompare(right.appearanceRef)
+  );
+  return { manifestSha256: hashBytes(manifestBytes), appearances, weaponSets };
 }
 
 const q = (value) => JSON.stringify(value);
@@ -369,6 +538,7 @@ export function renderNpcAppearanceCatalogModule({
   selectionSha256,
   releases,
   appearances,
+  weaponSets = [],
 }) {
   const entries = appearances
     .map(
@@ -392,7 +562,7 @@ export function renderNpcAppearanceCatalogModule({
           )}\n    animationClips: Object.freeze(${q(appearance.animationClips)}),\n    jointCount: ${q(appearance.jointCount)},\n    pose: ${q(appearance.pose)},\n    rootWrapper: ${q(appearance.rootWrapper)},\n    forwardAxis: ${q(appearance.forwardAxis)},\n  }),`
     )
     .join('\n');
-  const source = `// Generated by scripts/generate-npc-appearance-catalog.mjs. Do not edit.\n\nexport const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({\n  commit: ${q(commit)},\n  manifestSha256: ${q(manifestSha256)},\n  selectionSha256: ${q(selectionSha256)},\n  releases: Object.freeze(${q(releases)}),\n});\n\nexport interface GeneratedNpcAppearance {\n  readonly releaseId: string;\n  readonly manifestId: string;\n  readonly assetRef: string;\n  readonly displayName: string;\n  readonly rulesRef: null;\n  readonly sourceName: string;\n  readonly sourcePack: string;\n  readonly standingUrl: string;\n  readonly downedUrl: string;\n  readonly standingSha256: string;\n  readonly downedSha256: string;\n  readonly animationClips: readonly string[];\n  readonly jointCount: number;\n  readonly pose: string;\n  readonly rootWrapper: string;\n  readonly forwardAxis: string;\n}\n\nexport interface NpcAppearanceResolutionDiagnostic {\n  readonly assetRef: string;\n  readonly reason: 'unsupported-exact-asset-ref';\n}\n\nexport const GENERATED_NPC_APPEARANCES: Readonly<Record<string, GeneratedNpcAppearance>> = Object.freeze({\n${entries}\n});\n\n/** Deterministic exact release selection; it is separate from every prop catalog. */\nexport const NPC_APPEARANCE_CATALOG: readonly GeneratedNpcAppearance[] =\n  Object.freeze(Object.values(GENERATED_NPC_APPEARANCES));\n\n/** Exact-only lookup. It never substitutes an appearance or rules identity. */\nexport function resolveNpcAppearance(\n  assetRef: string,\n  onDiagnostic?: (diagnostic: NpcAppearanceResolutionDiagnostic) => void\n): GeneratedNpcAppearance | undefined {\n  const appearance = Object.hasOwn(GENERATED_NPC_APPEARANCES, assetRef)\n    ? GENERATED_NPC_APPEARANCES[assetRef]\n    : undefined;\n  if (!appearance) {\n    onDiagnostic?.({ assetRef, reason: 'unsupported-exact-asset-ref' });\n  }\n  return appearance;\n}\n`;
+  const source = `// Generated by scripts/generate-npc-appearance-catalog.mjs. Do not edit.\n\nimport type { MainHandSocket } from '../components/hex-grid/mainHandPresentation';\n\nexport const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({\n  commit: ${q(commit)},\n  manifestSha256: ${q(manifestSha256)},\n  selectionSha256: ${q(selectionSha256)},\n  releases: Object.freeze(${q(releases)}),\n});\n\nexport interface GeneratedNpcAppearance {\n  readonly releaseId: string;\n  readonly manifestId: string;\n  readonly assetRef: string;\n  readonly displayName: string;\n  readonly rulesRef: null;\n  readonly sourceName: string;\n  readonly sourcePack: string;\n  readonly standingUrl: string;\n  readonly downedUrl: string;\n  readonly standingSha256: string;\n  readonly downedSha256: string;\n  readonly animationClips: readonly string[];\n  readonly jointCount: number;\n  readonly pose: string;\n  readonly rootWrapper: string;\n  readonly forwardAxis: string;\n}\n\nexport interface GeneratedNpcWeapon {\n  readonly weaponRef: string;\n  readonly itemRef: string;\n  readonly weaponUrl: string;\n  readonly weaponSha256: string;\n  readonly socket: MainHandSocket;\n}\n\nexport interface GeneratedNpcWeaponSet {\n  readonly appearanceRef: string;\n  readonly bodyUrl: string;\n  readonly bodySha256: string;\n  readonly catalogSha256: string;\n  readonly weapons: readonly GeneratedNpcWeapon[];\n}\n\n/** Exact standing-body fits, governed by the same NPC provider pin. */\nexport const NPC_WEAPON_SETS: readonly GeneratedNpcWeaponSet[] = Object.freeze(${q(weaponSets)} as const);\n\nexport interface NpcAppearanceResolutionDiagnostic {\n  readonly assetRef: string;\n  readonly reason: 'unsupported-exact-asset-ref';\n}\n\nexport const GENERATED_NPC_APPEARANCES: Readonly<Record<string, GeneratedNpcAppearance>> = Object.freeze({\n${entries}\n});\n\n/** Deterministic exact release selection; it is separate from every prop catalog. */\nexport const NPC_APPEARANCE_CATALOG: readonly GeneratedNpcAppearance[] =\n  Object.freeze(Object.values(GENERATED_NPC_APPEARANCES));\n\n/** Exact-only lookup. It never substitutes an appearance or rules identity. */\nexport function resolveNpcAppearance(\n  assetRef: string,\n  onDiagnostic?: (diagnostic: NpcAppearanceResolutionDiagnostic) => void\n): GeneratedNpcAppearance | undefined {\n  const appearance = Object.hasOwn(GENERATED_NPC_APPEARANCES, assetRef)\n    ? GENERATED_NPC_APPEARANCES[assetRef]\n    : undefined;\n  if (!appearance) {\n    onDiagnostic?.({ assetRef, reason: 'unsupported-exact-asset-ref' });\n  }\n  return appearance;\n}\n`;
   return execFileSync(
     process.execPath,
     [PRETTIER_CLI, '--stdin-filepath', GENERATED_FORMAT_PATH],
@@ -425,6 +595,7 @@ export function generateNpcAppearanceCatalog({
     selectionSha256: selection.selectionSha256,
     releases,
     appearances: manifest.appearances,
+    weaponSets: manifest.weaponSets,
   });
   if (
     source.includes(canonicalProvider) ||

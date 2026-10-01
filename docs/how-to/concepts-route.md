@@ -54,6 +54,19 @@ components against fixture data — not throwaway mockups:
   the concept supplies generated fixtures, while production supplies exact
   RPC declarations, owner-private CharacterData, and recovered typed events.
 
+## Dungeon intel snapshot lab
+
+`?concept=dungeon-intel` mounts the real session renderer on explicit A/B
+observer snapshots: unknown room, discovery, remembered props/creatures/doors,
+unseen changes and positive empty-position evidence. Select an observer and
+storyboard step, use **Fit known floor** (or Home), then inspect the selected
+answer. Green/amber markers distinguish current/remembered mutable testimony.
+
+This is fixture-only contract exploration, not server non-disclosure proof.
+No client LOS/discovery rules or full authored dungeon fetch are involved.
+Provisional fields and inward implementation gaps live in
+[`src/concepts/dungeon-intel/CONTRACT.md`](../../src/concepts/dungeon-intel/CONTRACT.md).
+
 ## Promoting a concept to production
 
 Use this promotion checklist when a concept is ready:

@@ -1,4 +1,6 @@
 import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
+import type { MainHandPresentation } from '@/components/hex-grid/mainHandPresentation';
+import { resolveNpcMainHandPresentation } from '@/components/hex-grid/npcMainHandPresentation';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
@@ -14,8 +16,17 @@ vi.mock('@react-three/drei', () => ({
   useGLTF: () => ({ scene: new THREE.Group() }),
 }));
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
-  ClassCharacterModel: ({ url }: { url: string }) => (
-    <group name="shared-room-monster-model" userData={{ url }} />
+  ClassCharacterModel: ({
+    url,
+    mainHandPresentation,
+  }: {
+    url: string;
+    mainHandPresentation?: MainHandPresentation;
+  }) => (
+    <group
+      name="shared-room-monster-model"
+      userData={{ url, mainHandPresentation }}
+    />
   ),
 }));
 
@@ -53,6 +64,48 @@ it('makes every display-only label wrapper transparent to canvas clicks', async 
   expect(labels).toHaveLength(4); // unavailable chip, monster label, start, preview
   for (const label of labels)
     expect(label.instance.userData.pointerEvents).toBe('none');
+  await renderer.unmount();
+});
+
+it('reads authored order from existing bindings and uses the shared exact-body fit, without a default or later-weapon fallback', async () => {
+  const monsters = [
+    {
+      id: 'skeleton-1',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 0, r: 0 } },
+    },
+  ];
+  const draw = (actions?: string[]) => (
+    <RoomActorMarkers
+      monsters={monsters}
+      monsterBindings={actions ? { 'skeleton-1': { actions } } : undefined}
+      partyStart={null}
+      selectedActorId={null}
+      onSelectActor={vi.fn()}
+    />
+  );
+  const renderer = await ReactThreeTestRenderer.create(
+    draw(['dnd5e:weapons:shortbow', 'dnd5e:weapons:shortsword'])
+  );
+  const presentation = () =>
+    renderer.scene.findByProps({ name: 'shared-room-monster-model' }).instance
+      .userData.mainHandPresentation;
+  expect(presentation()).toEqual(
+    resolveNpcMainHandPresentation({
+      bodyUrl: '/models/synty/npcs/skeleton-soldier-01.glb',
+      mainHandRef: 'dnd5e:weapons:shortbow',
+    }).presentation
+  );
+  await renderer.update(
+    draw(['dnd5e:weapons:shortsword', 'dnd5e:weapons:shortbow'])
+  );
+  expect(presentation().ref).toBe('dnd5e:item:shortsword');
+  await renderer.update(
+    draw(['dnd5e:weapons:longsword', 'dnd5e:weapons:shortbow'])
+  );
+  expect(presentation()).toBeUndefined();
+  await renderer.update(draw());
+  expect(presentation()).toBeUndefined();
   await renderer.unmount();
 });
 

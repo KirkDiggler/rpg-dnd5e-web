@@ -1,6 +1,6 @@
 import type { OutfitPresentation } from '@/character/customization/outfitCustomization';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
-import type { ComponentProps } from 'react';
+import { StrictMode, type ComponentProps } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type {
@@ -317,6 +317,48 @@ it('isolates a rejected scalp from the body and valid facial-hair sibling', asyn
     ])
   );
 
+  await renderer.unmount();
+});
+
+it('restores the same body material after remembered-to-current transitions under StrictMode', async () => {
+  const bodyView = (remembered: boolean): React.ReactElement => (
+    <StrictMode>
+      <ClassCharacterModel url={fighterUrl} remembered={remembered} />
+    </StrictMode>
+  );
+  const renderer = await ReactThreeTestRenderer.create(bodyView(false));
+  const body = renderer.scene.findAll(
+    (node) =>
+      (node.instance as { name?: string } | undefined)?.name === 'fighter-body'
+  )[0]!.instance as THREE.SkinnedMesh;
+  const material = body.material as THREE.MeshStandardMaterial;
+  const originalColor = material.color.clone();
+  const originalEmissive = material.emissive.clone();
+  const originalIntensity = material.emissiveIntensity;
+  const bodyUuid = body.uuid;
+  const materialUuid = material.uuid;
+  const cachedBody = gltf.scenes
+    .get(fighterUrl)!
+    .getObjectByName('fighter-body') as THREE.SkinnedMesh;
+  const cachedMaterial = cachedBody.material as THREE.MeshStandardMaterial;
+  expect(material).not.toBe(cachedMaterial);
+
+  // Repeat so a partial reset or cumulative tint cannot pass once by accident.
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await renderer.update(bodyView(true));
+    expect(material.color.getHex()).not.toBe(originalColor.getHex());
+    expect(material.emissive.getHexString()).toBe('111923');
+    expect(cachedMaterial.color.getHexString()).toBe('ffffff');
+    await renderer.update(bodyView(false));
+    expect(body.uuid).toBe(bodyUuid);
+    expect(body.material).toBe(material);
+    expect(material.uuid).toBe(materialUuid);
+    expect(material.color.getHex()).toBe(originalColor.getHex());
+    expect(material.emissive.getHex()).toBe(originalEmissive.getHex());
+    expect(material.emissiveIntensity).toBe(originalIntensity);
+    expect(material.transparent).toBe(false);
+    expect(material.opacity).toBe(1);
+  }
   await renderer.unmount();
 });
 

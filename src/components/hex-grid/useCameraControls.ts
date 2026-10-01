@@ -169,6 +169,9 @@ interface CameraControlsOptions {
   touchRotateEnabled?: boolean;
   /** Increment to request the same camera focus operation as F. */
   focusRequest?: number;
+  /** Changed counter requests Home's existing known-floor fit. A supplied
+   * initial value also fits on mount; omission preserves production behavior. */
+  fitRequest?: number;
   /**
    * Where the camera SITS on the first frame, as a bearing in radians
    * measured from the target the way `updateCamera` measures it — the
@@ -205,6 +208,7 @@ export function useCameraControls({
   touchPinchEnabled = false,
   touchRotateEnabled = false,
   focusRequest = 0,
+  fitRequest,
   initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
@@ -234,6 +238,14 @@ export function useCameraControls({
     oneShotKeys.current.focus = true;
     invalidate();
   }, [focusRequest, invalidate]);
+  const lastFitRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (fitRequest === undefined || lastFitRequest.current === fitRequest)
+      return;
+    lastFitRequest.current = fitRequest;
+    oneShotKeys.current.fit = true;
+    invalidate();
+  }, [fitRequest, invalidate]);
 
   // Latest `revealedBounds` prop, mirrored into a ref every render so the
   // `Home` handling above (which only runs inside useFrame, not on every
@@ -811,8 +823,8 @@ export function useCameraControls({
       }
     }
 
-    // Home (#906): fit the revealed board ON THIS KEYPRESS ONLY — never
-    // automatic (rpg-dnd5e-web#457's own regression). No-op without both an
+    // Home or explicit caller request: never fit just because bounds change
+    // (rpg-dnd5e-web#457's regression). No-op without both an
     // orthographic band ladder and a revealed bbox to fit.
     if (oneShotKeys.current.fit) {
       oneShotKeys.current.fit = false;

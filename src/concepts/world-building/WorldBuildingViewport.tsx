@@ -44,6 +44,7 @@ import {
 import {
   walkableCellsInWorldRectangle,
   type RoomHexCell,
+  type RoomMonsterBinding,
   type RoomMonsterPlacement,
   type RoomPropDeclaration,
   type RoomWorkspace,
@@ -128,6 +129,7 @@ export interface WorldBuildingViewportProps {
      * start, and their controls. These are authoring metadata only — never
      * scene props, and never a game-legality gate. */
     monsters?: readonly RoomMonsterPlacement[];
+    monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
     partyStart?: RoomHexCell | null;
     armedMonsterRef?: string | null;
     selectedActorId?: string | null;
@@ -964,6 +966,7 @@ export function WorldSceneContents(
       {props.roomAuthoring && (
         <RoomActorMarkers
           monsters={props.roomAuthoring.monsters ?? []}
+          monsterBindings={props.roomAuthoring.monsterBindings}
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
           onSelectActor={(actor) => {

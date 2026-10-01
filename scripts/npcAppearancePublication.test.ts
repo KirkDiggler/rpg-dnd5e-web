@@ -4,6 +4,7 @@ import {
   GENERATED_NPC_APPEARANCES,
   GENERATED_NPC_APPEARANCE_PROVIDER,
   NPC_APPEARANCE_CATALOG,
+  NPC_WEAPON_SETS,
   resolveNpcAppearance,
 } from '../src/generated/npcAppearanceCatalog';
 
@@ -41,8 +42,8 @@ const EXPECTED_LABELS: Readonly<Record<string, string>> = {
 
 const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
   'dnd5e:npcs:goblin:warrior-male-01': [
-    '2cb9c964d1b587b1a1a7115df65766ca32dbe86d00a80879dc8732a83f682c22',
-    '617800a4c3b2d2aaa535b3c718154f953939accb74fdc07fa25b680d0ce1d843',
+    '1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444',
+    '1b69eb82c8322f5b396dfb84caf22b80ab3de5cad9abe887a7d6bec5a7fbac0d',
   ],
   'dnd5e:npcs:goblin:archer-male-01': [
     'f149b4a950cca28a37f452d88a63a627b4a4aa1f4c00a810d9035cba3c5c2614',
@@ -97,7 +98,7 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 describe('approved NPC appearance publication', () => {
   it('exports exactly the 13 approved unique identities and no provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: '273dc89fdf73160b71a45afc4550e9a9ca8b512b',
+      commit: 'abb2eaaee861f71ea0ce0da1947293197b1615fd',
       releases: ['goblin-war-camp-v1'],
     });
     expect(NPC_APPEARANCE_CATALOG).toHaveLength(13);
@@ -142,6 +143,37 @@ describe('approved NPC appearance publication', () => {
       modelUrls.add(appearance!.downedUrl);
     }
     expect(modelUrls.size).toBe(26);
+  });
+
+  it('publishes only approved exact-body weapon sets without adding rules-bound bodies to the appearance palette', () => {
+    expect(NPC_WEAPON_SETS.map((set) => set.appearanceRef)).toEqual([
+      'dnd5e:npcs:goblin:warrior-male-01',
+      'dnd5e:npcs:skeleton:soldier-01',
+    ]);
+    expect(
+      NPC_WEAPON_SETS.map((set) =>
+        set.weapons.map((weapon) => weapon.weaponRef)
+      )
+    ).toEqual([
+      ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
+      ['dnd5e:weapons:shortsword', 'dnd5e:weapons:shortbow'],
+    ]);
+    expect(
+      resolveNpcAppearance('dnd5e:npcs:skeleton:soldier-01')
+    ).toBeUndefined();
+    for (const set of NPC_WEAPON_SETS) {
+      expect(set.bodySha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(set.catalogSha256).toMatch(/^[a-f0-9]{64}$/);
+      for (const weapon of set.weapons) {
+        expect(weapon.itemRef).toBe(
+          weapon.weaponRef.replace('dnd5e:weapons:', 'dnd5e:item:')
+        );
+        expect(weapon.weaponUrl).toMatch(
+          /^\/models\/synty\/npcs\/weapons\/.+\.glb$/
+        );
+        expect(weapon.socket.bone).toBe('Hand_R');
+      }
+    }
   });
 
   it('fails exact lookup closed without inferring an NPC, rules default, or inherited object member', () => {
