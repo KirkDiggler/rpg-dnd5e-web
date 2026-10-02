@@ -111,11 +111,26 @@ export function applyRegionRevealed(
 
   // The region's own cells are the patch for `cells`, and the region
   // entry is what makes those cells OWNED rather than scenery.
-  next.cells = appendNew(next.cells, region.cells, cellKey);
+  next.cells = appendNew(
+    next.cells,
+    [...region.cells, ...(event.scenery ?? [])],
+    cellKey
+  );
   next.regions = next.regions.some((r) => r.id === region.id)
     ? next.regions.map((r) => (r.id === region.id ? region : r))
     : [...next.regions, region];
-  next.props = [...next.props, ...event.props];
+  next.props = appendNew(
+    next.props,
+    event.props,
+    (p) => p.id || `${p.ref}:${p.at ? cellKey(p.at) : ''}`
+  );
+  next.doorways = appendNew(
+    next.doorways,
+    event.doorways ?? [],
+    (d) => `${d.connection}:${pairKey(d.from, d.to)}`
+  );
+  next.placed = appendNew(next.placed, event.placed ?? [], (p) => p.id);
+  next.exits = appendNew(next.exits, event.exits ?? [], (e) => e.id);
   next.boundaries = appendNew(next.boundaries, event.boundaries, (b) =>
     pairKey(b.from, b.to)
   );
@@ -126,10 +141,11 @@ export function applyRegionRevealed(
   // this member could see, and it is that room's own floor now — and
   // the event's own list goes back in.
   const revealed = new Set(region.cells.map(cellKey));
-  next.sealed = [
-    ...next.sealed.filter((c) => !revealed.has(cellKey(c))),
-    ...sealed,
-  ];
+  next.sealed = appendNew(
+    next.sealed.filter((c) => !revealed.has(cellKey(c))),
+    sealed,
+    cellKey
+  );
   return next;
 }
 
