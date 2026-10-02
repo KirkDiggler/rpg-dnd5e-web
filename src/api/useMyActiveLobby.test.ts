@@ -1,6 +1,6 @@
 import type { GetMyActiveLobbyResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { LobbyStatus } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/types_pb';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
@@ -165,5 +165,80 @@ describe('useMyActiveLobby', () => {
     // negative before the fetch effect even runs (App.tsx's Home hold-gate,
     // Copilot review on #461).
     expect(result.current.loading).toBe(true);
+  });
+
+  it('treats the same player in a different identity scope as a new lookup', async () => {
+    hoisted.getMyActiveLobbyFn
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-world-a',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-world-b',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: string }) => useMyActiveLobby('alice', scope),
+      { initialProps: { scope: 'game:world-a' } }
+    );
+
+    await waitFor(() =>
+      expect(result.current.data?.lobbyId).toBe('lobby-world-a')
+    );
+
+    rerender({ scope: 'game:world-b' });
+
+    // The same player in another world must not keep showing the previous
+    // world's resume target while the new lookup is in flight.
+    expect(result.current.data).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() =>
+      expect(result.current.data?.lobbyId).toBe('lobby-world-b')
+    );
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases a late answer from the previous identity scope instead of publishing it', async () => {
+    let resolveWorldA!: (value: GetMyActiveLobbyResponse) => void;
+    const pendingWorldA = new Promise<GetMyActiveLobbyResponse>((resolve) => {
+      resolveWorldA = resolve;
+    });
+    hoisted.getMyActiveLobbyFn
+      .mockReturnValueOnce(pendingWorldA)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-world-b',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: string }) => useMyActiveLobby('alice', scope),
+      { initialProps: { scope: 'game:world-a' } }
+    );
+    await waitFor(() => expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalled());
+
+    rerender({ scope: 'game:world-b' });
+    await waitFor(() =>
+      expect(result.current.data?.lobbyId).toBe('lobby-world-b')
+    );
+
+    // World A's response arrives after the identity moved on: it must be
+    // dropped, not written into B's state (no A state on the next render).
+    await act(async () => {
+      resolveWorldA({
+        lobbyId: 'lobby-world-a',
+        encounterId: 'enc-a',
+        lobbyStatus: LobbyStatus.STARTED,
+      } as GetMyActiveLobbyResponse);
+      await pendingWorldA;
+    });
+
+    expect(result.current.data?.lobbyId).toBe('lobby-world-b');
+    expect(result.current.data?.encounterId).toBe('');
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(2);
   });
 });

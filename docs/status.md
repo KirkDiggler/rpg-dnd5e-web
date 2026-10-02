@@ -90,7 +90,11 @@ let it rot.
   can use replacement credentials. No-guild, denied/missing consent,
   unauthenticated, and provider failures have no Dev/test-world fallback. The
   explicit `VITE_DEV_WORLD_ID` (default `test-world`) remains available only
-  for actual Dev auth in a Vite development build. Local editor draft/import/
+  for actual Dev auth in a Vite development build; an explicit
+  `VITE_DEV_WORLD_IDS` allowlist plus `?worldId=` adds local same-player A/B
+  simulation (Dev requests then carry `x-rpg-guild-id`, and an invalid
+  selection is refused rather than falling back) — see
+  `docs/how-to/local-dev.md`. Local editor draft/import/
   export semantics remain independent. Real Discord consent and proxy-path
   proof remain a coordinated deployment acceptance step.
 

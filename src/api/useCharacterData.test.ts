@@ -9,6 +9,7 @@ import {
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, StrictMode, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createGameIdentity, resolveDevWorldSelection } from './gameIdentity';
 
 const hoisted = vi.hoisted(() => ({
   getCharacterDataFn:
@@ -387,5 +388,76 @@ describe('useCharacterData', () => {
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.error?.message).toContain('CharacterData');
     expect(result.current.characterData).toBeUndefined();
+  });
+
+  it('scopes the same player and character by world/epoch: world A data never serves world B', async () => {
+    const worldA = '123456789012345678';
+    const worldB = '223456789012345678';
+    const devScope = (worldId: string, authSessionId: number) =>
+      createGameIdentity({
+        authKind: 'dev',
+        playerId: 'player-1',
+        mode: 'development',
+        authSessionId,
+        devWorld: resolveDevWorldSelection({
+          mode: 'development',
+          allowlist: `${worldA},${worldB}`,
+          devWorldId: worldA,
+          selectedWorldIds: [worldId],
+        }),
+      }).scopeKey;
+
+    const scopeA = devScope(worldA, 0);
+    const scopeB = devScope(worldB, 0);
+    const sameWorldNewEpoch = devScope(worldB, 1);
+    expect(new Set([scopeA, scopeB, sameWorldNewEpoch]).size).toBe(3);
+
+    const worldARequest = deferred<GetCharacterDataResponse>();
+    const worldBRequest = deferred<GetCharacterDataResponse>();
+    hoisted.getCharacterDataFn
+      .mockReturnValueOnce(worldARequest.promise)
+      .mockReturnValueOnce(worldBRequest.promise);
+
+    const observations: Array<{
+      ownerScope: string;
+      characterData: CharacterData | undefined;
+    }> = [];
+    const { result, rerender } = renderHook(
+      ({ ownerScope }: { ownerScope: string }) => {
+        const value = useCharacterData('fighter-1', ownerScope);
+        observations.push({
+          ownerScope,
+          characterData: value.characterData,
+        });
+        return value;
+      },
+      { initialProps: { ownerScope: scopeA } }
+    );
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    observations.length = 0;
+    rerender({ ownerScope: scopeB });
+
+    // First render for the new world is empty of the previous world's sheet.
+    expect(
+      observations.find(({ ownerScope }) => ownerScope === scopeB)
+    ).toEqual({ ownerScope: scopeB, characterData: undefined });
+
+    const worldBSheet = character(7);
+    await act(async () => {
+      worldBRequest.resolve(response(worldBSheet));
+      await worldBRequest.promise;
+    });
+    expect(result.current.characterData).toBe(worldBSheet);
+
+    // World A's held response lands after the transition: released, and it
+    // never repopulates world B nor triggers another read.
+    const worldASheet = character(3);
+    await act(async () => {
+      worldARequest.resolve(response(worldASheet));
+      await worldARequest.promise;
+    });
+    expect(result.current.characterData).toBe(worldBSheet);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 });

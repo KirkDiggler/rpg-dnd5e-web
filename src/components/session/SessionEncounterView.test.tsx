@@ -199,6 +199,11 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
+import {
+  createGameIdentity,
+  GameIdentityContext,
+  resolveDevWorldSelection,
+} from '@/api/gameIdentity';
 import { SessionEncounterView } from './SessionEncounterView';
 
 function pointyAtlas(overrides: Record<string, unknown> = {}) {
@@ -5500,6 +5505,76 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+  });
+
+  it('scopes the private character cache by the shared world identity, not the player id alone', async () => {
+    readyScene();
+    const identityFor = (worldId: string, authSessionId: number) =>
+      createGameIdentity({
+        authKind: 'dev',
+        playerId: 'player-1',
+        mode: 'development',
+        authSessionId,
+        devWorld: resolveDevWorldSelection({
+          mode: 'development',
+          allowlist: '123456789012345678,223456789012345678',
+          devWorldId: '123456789012345678',
+          selectedWorldIds: [worldId],
+        }),
+      });
+
+    const view = render(
+      <GameIdentityContext.Provider
+        value={identityFor('123456789012345678', 0)}
+      >
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={() => {}}
+        />
+      </GameIdentityContext.Provider>
+    );
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    // Same player, same character, same mounted session — only the world (and
+    // credential epoch) changed. The private read must re-run under the new
+    // owner scope instead of being served from the previous world's cache.
+    view.rerender(
+      <GameIdentityContext.Provider
+        value={identityFor('223456789012345678', 0)}
+      >
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={() => {}}
+        />
+      </GameIdentityContext.Provider>
+    );
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    // A replacement credential epoch in the same world is also a new owner
+    // scope, so a token refresh can never reuse the retired session's cache.
+    view.rerender(
+      <GameIdentityContext.Provider
+        value={identityFor('223456789012345678', 1)}
+      >
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={() => {}}
+        />
+      </GameIdentityContext.Provider>
+    );
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(3)
+    );
   });
 });
 
