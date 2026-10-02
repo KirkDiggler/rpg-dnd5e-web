@@ -11,6 +11,7 @@ import { indexOccupantPassages } from './occupantPassages';
  * damage, HP, equipment, or other game rule is constructed here.
  */
 import { sessionClient } from '@/api/client';
+import { useGameIdentityScope } from '@/api/gameIdentity';
 import { useGetCharacter } from '@/api/hooks';
 import { useCharacterData } from '@/api/useCharacterData';
 import { useEquipItem } from '@/api/useEquipItem';
@@ -184,6 +185,11 @@ function SessionEncounterScope({
   compositionSource,
 }: SessionEncounterViewProps) {
   const member = characterId ?? '';
+  // The private character-data cache is scoped by the shared world/player/
+  // auth-epoch identity, not by player id alone: the same player's other
+  // world (or a replacement credential epoch) is a different owner scope, so
+  // its sheet read can never be served from — or repopulate — this one.
+  const ownerScope = useGameIdentityScope(playerId);
   // GetCharacter is the local owner's complete creation projection and the
   // only private session source that carries Appearance.hair. Peer looks stay
   // on public roster Customization and never trigger another sheet read.
@@ -246,7 +252,7 @@ function SessionEncounterScope({
     error: characterDataError,
     refetch: refetchCharacterData,
     replace: replaceCharacterData,
-  } = useCharacterData(member, playerId);
+  } = useCharacterData(member, ownerScope);
 
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();

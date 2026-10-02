@@ -6,7 +6,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { ChoiceData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { ChoiceSource } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGetNextLevel, useLevelUp } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { Button, Card, useToast } from '../../components/ui';
@@ -61,6 +61,19 @@ export function LevelUpView({
   } = useGetNextLevel(characterId);
   const { levelUp, loading: levelUpLoading } = useLevelUp();
   const { addToast } = useToast();
+
+  // A level is taken under ONE identity. The identity boundary remounts this
+  // view when that identity changes, so a held `levelUp` completion that lands
+  // afterwards belongs to a view that no longer exists: it may not add a toast,
+  // show the gained panel, or take the player anywhere under the new identity.
+  // (StrictMode's mount/cleanup/mount cycle is why the ref is set on mount too.)
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [selections, setSelections] = useState<
     Record<string, RenderedSelection>
@@ -143,6 +156,7 @@ export function LevelUpView({
           choices: packed,
         })
       );
+      if (!mountedRef.current) return;
       if (!response.gained) {
         addToast({
           type: 'error',
@@ -152,6 +166,7 @@ export function LevelUpView({
       }
       setGained(response.gained);
     } catch (err) {
+      if (!mountedRef.current) return;
       // The engine validates; the client never pre-judges a level. Whatever it
       // refused with is what the player is shown.
       addToast({
