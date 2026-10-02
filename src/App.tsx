@@ -37,6 +37,7 @@ import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
+import { clearToasts } from './components/ui/Toast';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
 import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
@@ -893,6 +894,14 @@ export function GameIdentityBoundary({ children }: GameIdentityBoundaryProps) {
   useLayoutEffect(() => {
     setDevWorldSelection(transportBinding);
   }, [transportBinding]);
+
+  // Toasts belong to the identity that raised them. `ToastProvider` mounts
+  // above this boundary (ApplicationRoot) and Toast.tsx keeps its store outside
+  // React, so the keyed remount below cannot clear visual residue by itself:
+  // drop the previous identity's toasts as one transition, before paint.
+  useLayoutEffect(() => {
+    clearToasts();
+  }, [identity.scopeKey]);
 
   return (
     <GameIdentityContext.Provider key={identity.scopeKey} value={identity}>

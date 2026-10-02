@@ -68,12 +68,21 @@ export function useMyActiveLobby(
   // response arrives.
   const firedForRef = useRef<string | null>(null);
   const resolvedForRef = useRef<string | null>(null);
+  // Generation of the newest dispatched lookup. Returning to a scope that was
+  // looked up before (A→B→A) fires a fresh lookup for it, so the older A answer
+  // must not be able to publish over the newer one when it lands late: only the
+  // newest request for the current key owns the published answer.
+  const requestRef = useRef(0);
 
   const loading = Boolean(fetchKey) && resolvedForRef.current !== fetchKey;
 
   useEffect(() => {
     if (!fetchKey || firedForRef.current === fetchKey) return;
     firedForRef.current = fetchKey;
+    const generation = requestRef.current + 1;
+    requestRef.current = generation;
+    const isCurrent = () =>
+      requestRef.current === generation && fetchKeyRef.current === fetchKey;
 
     setEntry({ key: fetchKey, data: null, error: null });
 
@@ -81,9 +90,9 @@ export function useMyActiveLobby(
       try {
         const request = create(GetMyActiveLobbyRequestSchema, {});
         const response = await lobbyClient.getMyActiveLobby(request);
-        // The identity moved on while this was in flight: release the answer
-        // rather than publishing the previous world's lobby under the new one.
-        if (fetchKeyRef.current !== fetchKey) return;
+        // The identity moved on, or this answer was superseded by a newer
+        // lookup for the same identity: release it rather than publishing.
+        if (!isCurrent()) return;
         setEntry({
           key: fetchKey,
           data: {
@@ -94,7 +103,7 @@ export function useMyActiveLobby(
           error: null,
         });
       } catch (err) {
-        if (fetchKeyRef.current !== fetchKey) return;
+        if (!isCurrent()) return;
         setEntry({
           key: fetchKey,
           data: null,
@@ -104,7 +113,7 @@ export function useMyActiveLobby(
               : new Error('GetMyActiveLobby RPC failed'),
         });
       } finally {
-        if (fetchKeyRef.current === fetchKey) resolvedForRef.current = fetchKey;
+        if (isCurrent()) resolvedForRef.current = fetchKey;
       }
     })();
   }, [fetchKey]);

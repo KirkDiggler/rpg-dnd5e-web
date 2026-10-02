@@ -20,6 +20,14 @@ beforeEach(() => {
   hoisted.getMyActiveLobbyFn.mockReset();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe('useMyActiveLobby', () => {
   it('does not call the RPC while playerId is null', () => {
     renderHook(() => useMyActiveLobby(null));
@@ -240,5 +248,119 @@ describe('useMyActiveLobby', () => {
     expect(result.current.data?.lobbyId).toBe('lobby-world-b');
     expect(result.current.data?.encounterId).toBe('');
     expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-fires when a scope is revisited after another scope (A→B→A) instead of deadlocking', async () => {
+    hoisted.getMyActiveLobbyFn
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-a1',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-b',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-a2',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: string }) => useMyActiveLobby('alice', scope),
+      { initialProps: { scope: 'game:world-a' } }
+    );
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-a1'));
+
+    rerender({ scope: 'game:world-b' });
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-b'));
+
+    rerender({ scope: 'game:world-a' });
+    // The dedupe mark holds the LAST fired key (B), so returning to A is a new
+    // lookup — not a skipped effect with `loading` stuck true forever.
+    expect(result.current.loading).toBe(true);
+    expect(result.current.data).toBeNull();
+
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-a2'));
+    expect(result.current.loading).toBe(false);
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the same-scope answer (and a settled loading) across a null readiness gap', async () => {
+    hoisted.getMyActiveLobbyFn.mockResolvedValue({
+      lobbyId: 'lobby-a1',
+      encounterId: '',
+      lobbyStatus: LobbyStatus.WAITING,
+    } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ playerId }: { playerId: string | null }) =>
+        useMyActiveLobby(playerId, 'game:world-a'),
+      { initialProps: { playerId: 'alice' as string | null } }
+    );
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-a1'));
+
+    rerender({ playerId: null });
+    expect(result.current.data).toBeNull();
+    expect(result.current.loading).toBe(false);
+
+    // Same player, same scope: the lookup is deliberately not re-fired (the
+    // documented once-per-identity behavior), and it is already settled, so
+    // there is no stuck load.
+    rerender({ playerId: 'alice' });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data?.lobbyId).toBe('lobby-a1');
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a superseded same-scope answer instead of letting it overwrite the live one', async () => {
+    const heldFirstWorldA = deferred<GetMyActiveLobbyResponse>();
+    hoisted.getMyActiveLobbyFn
+      .mockReturnValueOnce(heldFirstWorldA.promise)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-b',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-a2-live',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: string }) => useMyActiveLobby('alice', scope),
+      { initialProps: { scope: 'game:world-a' } }
+    );
+    await waitFor(() =>
+      expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(1)
+    );
+
+    rerender({ scope: 'game:world-b' });
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-b'));
+
+    // Back to A: this fires a NEW lookup for the same key, so the first A
+    // request is superseded even though it shares the key.
+    rerender({ scope: 'game:world-a' });
+    await waitFor(() =>
+      expect(result.current.data?.lobbyId).toBe('lobby-a2-live')
+    );
+
+    await act(async () => {
+      heldFirstWorldA.resolve({
+        lobbyId: 'lobby-a1-stale',
+        encounterId: 'enc-a1-stale',
+        lobbyStatus: LobbyStatus.STARTED,
+      } as GetMyActiveLobbyResponse);
+      await heldFirstWorldA.promise;
+    });
+
+    // The older same-key answer must not overwrite the live one, and it must
+    // not mark the live lookup resolved while it is still in flight.
+    expect(result.current.data?.lobbyId).toBe('lobby-a2-live');
+    expect(result.current.loading).toBe(false);
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(3);
   });
 });

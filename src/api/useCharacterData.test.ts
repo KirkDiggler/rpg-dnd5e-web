@@ -378,6 +378,32 @@ describe('useCharacterData', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
+  it('starts no read when refetch or replace is called after unmount (no stale follow-up RPC)', async () => {
+    const confirmed = character(3);
+    hoisted.getCharacterDataFn.mockResolvedValue(response(confirmed));
+
+    const { result, unmount } = renderHook(() =>
+      useCharacterData('fighter-1', 'game-scope')
+    );
+    await waitFor(() => expect(result.current.characterData).toBe(confirmed));
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+
+    // A continuation that outlives its view (a held session verb, an equip or
+    // level-up completion) keeps this closure. After the identity boundary
+    // unmounts the old tree, it must not dispatch the old character's read
+    // with the NEW identity's credentials attached by the transport.
+    const refetchAfterUnmount = result.current.refetch;
+    const replaceAfterUnmount = result.current.replace;
+    unmount();
+
+    await act(async () => {
+      await refetchAfterUnmount();
+      replaceAfterUnmount(character(9));
+    });
+
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+  });
+
   it('treats a successful response without CharacterData as an error, not an empty sheet', async () => {
     hoisted.getCharacterDataFn.mockResolvedValue(
       {} as GetCharacterDataResponse
