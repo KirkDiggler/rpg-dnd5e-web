@@ -19,7 +19,12 @@ import {
   RollWindowOpenedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  GetKnowledgeResponseSchema,
+  GetViewResponseSchema,
+  VendorStockMode,
+  type GetAtlasResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AbilityRefSchema,
   AttackRefSchema,
@@ -63,11 +68,20 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { isValidElement, StrictMode } from 'react';
+import {
+  Children,
+  isValidElement,
+  StrictMode,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildLocalWorldDieColliders } from './local-world-die/localWorldDieColliders';
 import type { LocalWorldDieCommand } from './local-world-die/localWorldDieCommand';
-import type { LocalWorldDieLayerProps } from './local-world-die/LocalWorldDieLayer';
+import {
+  LocalWorldDieLayer,
+  type LocalWorldDieLayerProps,
+} from './local-world-die/LocalWorldDieLayer';
 import * as localWorldDiePreSimulation from './local-world-die/localWorldDiePreSimulation';
 import {
   fingerprintLocalWorldDieColliders,
@@ -85,6 +99,7 @@ const hoisted = vi.hoisted(() => ({
     refetch: vi.fn(),
     applyReveal: vi.fn(),
   },
+  dungeonSceneHookFn: vi.fn(),
   dungeonSceneResult: {
     presentation: null as unknown,
     placedPropIds: new Set<string>() as ReadonlySet<string>,
@@ -117,6 +132,7 @@ const hoisted = vi.hoisted(() => ({
   publishDiceThrowFn: vi.fn(),
   getStoryFn: vi.fn(),
   getViewFn: vi.fn(),
+  getKnowledgeFn: vi.fn(),
   getRosterFn: vi.fn(),
   getDoorsFn: vi.fn(),
   openDoorFn: vi.fn(),
@@ -148,7 +164,10 @@ vi.mock('../../api/useSessionAtlas', () => ({
 }));
 
 vi.mock('./useDungeonScene', () => ({
-  useDungeonScene: () => hoisted.dungeonSceneResult,
+  useDungeonScene: (key: string) => {
+    hoisted.dungeonSceneHookFn(key);
+    return hoisted.dungeonSceneResult;
+  },
 }));
 
 vi.mock('../../api/useSessionWhere', () => ({
@@ -176,7 +195,26 @@ vi.mock('@/api/client', () => ({
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
     getStory: hoisted.getStoryFn,
-    getView: hoisted.getViewFn,
+    getKnowledge: hoisted.getKnowledgeFn,
+    getWhere: async () => {
+      await hoisted.whereResult.refetch();
+      if (hoisted.whereResult.error) throw hoisted.whereResult.error;
+      return { position: hoisted.whereResult.position };
+    },
+    getView: async (...args: unknown[]) => {
+      const view = await hoisted.getViewFn(...args);
+      const doors = await hoisted.getDoorsFn(...args);
+      return create(GetViewResponseSchema, {
+        ...view,
+        doors:
+          view.doors ??
+          (doors?.doors ?? []).map((door: object) => ({
+            door,
+            currentVia: ['sight'],
+            status: 'current',
+          })),
+      });
+    },
     getRoster: hoisted.getRosterFn,
     getDoors: hoisted.getDoorsFn,
     openDoor: hoisted.openDoorFn,
@@ -450,8 +488,24 @@ function deferredDiceStream(planCount = 1) {
   };
 }
 
+function currentLocalWorldDieLayer(): ReactElement<LocalWorldDieLayerProps> | null {
+  const find = (
+    node: ReactNode
+  ): ReactElement<LocalWorldDieLayerProps> | null => {
+    if (!isValidElement<{ children?: ReactNode }>(node)) return null;
+    if (node.type === LocalWorldDieLayer)
+      return node as ReactElement<LocalWorldDieLayerProps>;
+    for (const child of Children.toArray(node.props.children)) {
+      const found = find(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  return find(hoisted.lastCanvasProps.current?.presentationLayer);
+}
+
 function currentLocalWorldDieCommand(): LocalWorldDieCommand | undefined {
-  const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+  const layer = currentLocalWorldDieLayer();
   return isValidElement<{ command: LocalWorldDieCommand }>(layer)
     ? layer.props.command
     : undefined;
@@ -598,6 +652,8 @@ beforeEach(() => {
     hoisted.publishDiceThrowFn,
     hoisted.getStoryFn,
     hoisted.getViewFn,
+    hoisted.getKnowledgeFn,
+    hoisted.dungeonSceneHookFn,
     hoisted.getRosterFn,
     hoisted.getDoorsFn,
     hoisted.openDoorFn,
@@ -640,6 +696,32 @@ beforeEach(() => {
     ],
   });
   hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+  // Supply the coherent snapshot from the existing fixture values. Exercise
+  // the real knowledge hook rather than mocking its queue or event reducer.
+  hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+    await hoisted.atlasResult.refetch();
+    if (hoisted.atlasResult.loading || hoisted.whereResult.loading)
+      return new Promise(() => {});
+    if (hoisted.atlasResult.error) throw hoisted.atlasResult.error;
+    if (hoisted.whereResult.error) throw hoisted.whereResult.error;
+    const roster = await hoisted.getRosterFn(...args);
+    const doors = await hoisted.getDoorsFn(...args);
+    return create(GetKnowledgeResponseSchema, {
+      atlas: hoisted.atlasResult.atlas as GetAtlasResponse,
+      where: {
+        position: hoisted.whereResult.position as { x: number; y: number },
+      },
+      roster,
+      seq: 0n,
+      view: {
+        doors: (doors?.doors ?? []).map((door: object) => ({
+          door,
+          currentVia: ['sight'],
+          status: 'current',
+        })),
+      },
+    });
+  });
   hoisted.affordFn.mockResolvedValue({
     clock: ClockKind.WORLD,
     declarations: [],
@@ -718,6 +800,16 @@ const activationResult = () =>
   });
 
 describe('SessionEncounterView production combat integration', () => {
+  it('does not use the dungeon key to fetch authoring YAML during gameplay', async () => {
+    readyScene();
+    hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'authored-dungeon' });
+    renderView();
+    await screen.findByTestId('session-canvas');
+    expect(hoisted.dungeonSceneHookFn).toHaveBeenCalledWith('');
+    expect(
+      hoisted.dungeonSceneHookFn.mock.calls.every(([key]) => key === '')
+    ).toBe(true);
+  });
   it('shows a clear error when no character is bound', () => {
     renderView({ characterId: undefined });
     screen.getByText(/no character selected/i);
@@ -984,11 +1076,10 @@ describe('SessionEncounterView production combat integration', () => {
     });
     renderView();
 
-    await waitFor(() => screen.getByTestId('session-canvas'));
+    expect(screen.queryByTestId('session-canvas')).toBeNull();
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
-    expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
-    expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
-    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
+    // Initial geometry/position/identity arrive as one coherent snapshot;
+    // private sheet identity must not fill the missing public response.
 
     await act(async () => {
       rosterLoad.resolve({
@@ -2271,7 +2362,7 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(await screen.findByText('Preparing shared d20')).toBeTruthy();
     expect((endTurn as HTMLButtonElement).disabled).toBe(true);
-    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    let layer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
         layer.props.onReadyChange(true);
@@ -2358,7 +2449,7 @@ describe('SessionEncounterView production combat integration', () => {
         },
       })
     );
-    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    layer = currentLocalWorldDieLayer();
     expect(
       isValidElement<LocalWorldDieLayerProps>(layer) &&
         layer.props.authoritativeFace
@@ -2493,7 +2584,7 @@ describe('SessionEncounterView production combat integration', () => {
     fireEvent.click(manualEndTurn);
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
 
-    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    let layer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
         layer.props.onReadyChange(true);
@@ -2503,7 +2594,7 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(currentLocalWorldDieCommand()?.kind).toBe('released')
     );
-    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    layer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
         layer.props.onTerminal('off-table');
@@ -2521,7 +2612,7 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(currentLocalWorldDieCommand()?.kind).toBe('released')
     );
-    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    layer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
         layer.props.onTerminal('settled');
@@ -2871,13 +2962,9 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
-    hoisted.getDoorsFn
-      .mockResolvedValueOnce({
-        doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
-      })
-      .mockResolvedValueOnce({
-        doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
-      });
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
+    });
     const doorUpdate = deferredStream([
       event(EventKind.DOOR, {
         case: 'door',
@@ -2934,14 +3021,21 @@ describe('SessionEncounterView production combat integration', () => {
     });
 
     await screen.findByText('Preparing shared d20');
-    const preparingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const preparingLayer = currentLocalWorldDieLayer();
     expect(
       isValidElement<LocalWorldDieLayerProps>(preparingLayer) &&
         preparingLayer.props.colliders.some(({ id }) => id === 'crypt-door')
     ).toBe(true);
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
+    });
     doorUpdate.release();
-    await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
-    const refreshedLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.doors?.get('crypt-door')?.state
+      ).toBe(DoorState.OPEN)
+    );
+    const refreshedLayer = currentLocalWorldDieLayer();
     expect(
       isValidElement<LocalWorldDieLayerProps>(refreshedLayer) &&
         refreshedLayer.props.colliders.some(({ id }) => id === 'crypt-door')
@@ -2985,8 +3079,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
     expect(screen.queryByRole('group', { name: /playback mode/i })).toBeNull();
 
-    const firstAttemptLayer =
-      hoisted.lastCanvasProps.current?.presentationLayer;
+    const firstAttemptLayer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(firstAttemptLayer)) {
         firstAttemptLayer.props.onTerminal('off-table');
@@ -3000,7 +3093,7 @@ describe('SessionEncounterView production combat integration', () => {
       2
     );
 
-    const failedLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const failedLayer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(failedLayer)) {
         failedLayer.props.onTerminal('failure');
@@ -3100,7 +3193,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(screen.queryByTestId('reaction-strike')).toBeNull();
     expect(screen.queryByTestId('reaction-hold')).toBeNull();
 
-    const readyLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const readyLayer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(readyLayer)) {
         readyLayer.props.onReadyChange(true);
@@ -3110,7 +3203,7 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(currentLocalWorldDieCommand()).toMatchObject({ kind: 'released' })
     );
-    const rollingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const rollingLayer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(rollingLayer)) {
         rollingLayer.props.onTerminal('settled');
@@ -3154,7 +3247,7 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
     await screen.findByText('Preparing shared d20');
-    const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const layer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
         layer.props.onReadyChange(true);
@@ -3285,16 +3378,14 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
 
-    const firstLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const firstLayer = currentLocalWorldDieLayer();
     expect(isValidElement<LocalWorldDieLayerProps>(firstLayer)).toBe(true);
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(firstLayer)) {
         firstLayer.props.onTerminal('off-table');
       }
     });
-    await waitFor(() =>
-      expect(hoisted.lastCanvasProps.current?.presentationLayer).toBeNull()
-    );
+    await waitFor(() => expect(currentLocalWorldDieLayer()).toBeNull());
 
     const retryDraft = localWorldDieDraft({
       presentationId: 'presentation_witness-strike',
@@ -3323,15 +3414,13 @@ describe('SessionEncounterView production combat integration', () => {
       })
     );
 
-    const retryLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const retryLayer = currentLocalWorldDieLayer();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(retryLayer)) {
         retryLayer.props.onTerminal('settled');
       }
     });
-    await waitFor(() =>
-      expect(hoisted.lastCanvasProps.current?.presentationLayer).toBeNull()
-    );
+    await waitFor(() => expect(currentLocalWorldDieLayer()).toBeNull());
     expect(screen.getByText(/Lyra strikes Skeleton/i)).toBeTruthy();
   });
 
@@ -3494,7 +3583,7 @@ describe('SessionEncounterView production combat integration', () => {
         },
       })
     );
-    const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    const layer = currentLocalWorldDieLayer();
     expect(
       isValidElement<LocalWorldDieLayerProps>(layer) &&
         layer.props.authoritativeFace
@@ -3952,13 +4041,9 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
-    hoisted.getDoorsFn
-      .mockResolvedValueOnce({
-        doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
-      })
-      .mockResolvedValueOnce({
-        doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
-      });
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
+    });
     hoisted.getCharacterDataFn
       .mockResolvedValueOnce({ character: privateCharacterData() })
       .mockRejectedValueOnce(new Error('private refresh failed'));
@@ -3985,12 +4070,14 @@ describe('SessionEncounterView production combat integration', () => {
         hoisted.lastCanvasProps.current?.pathIndex?.shutDoorEdges.size
       ).toBe(1)
     );
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
+    });
     updates.release();
 
     await waitFor(() =>
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
     );
-    await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
         hoisted.lastCanvasProps.current?.pathIndex?.shutDoorEdges.size
@@ -4074,7 +4161,9 @@ describe('SessionEncounterView production combat integration', () => {
         door: 'crypt-door',
       })
     );
-    await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(1)
+    );
   });
 
   describe('vendor interaction (rpg-api#903 Phase 1)', () => {
@@ -4791,7 +4880,7 @@ describe('SessionEncounterView production combat integration', () => {
       });
     }
 
-    it('a doorRevealed event refreshes both doors and atlas — the recipient patches its cached GetDoors AND GetAtlas', async () => {
+    it('a legacy doorRevealed event restores a coherent knowledge snapshot', async () => {
       readySearchableScene();
       hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
       const reveal = deferredStream([
@@ -4803,17 +4892,14 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.streamEventsFn.mockReturnValue(reveal.stream);
       renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
-      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
-      expect(hoisted.atlasResult.refetch).not.toHaveBeenCalled();
-
+      expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(1);
       reveal.release();
-      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
       await waitFor(() =>
-        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+        expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(2)
       );
     });
 
-    it('a regionRevealed event refreshes atlas alone — no door list changed', async () => {
+    it('a legacy regionRevealed event rehydrates knowledge', async () => {
       readySearchableScene();
       hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
       const reveal = deferredStream([
@@ -4825,13 +4911,11 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.streamEventsFn.mockReturnValue(reveal.stream);
       renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
-      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
-
+      expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(1);
       reveal.release();
       await waitFor(() =>
-        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+        expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(2)
       );
-      expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1);
     });
 
     it("the search button is absent until the searcher's own region is known", async () => {
@@ -4908,10 +4992,10 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() =>
         expect(screen.queryByText('You search the area.')).toBeNull()
       );
-      // And the beat PATCHED the held atlas in the same frame (design
-      // 5.2a): the mock's presence is not what holds this test up. The
-      // hoisted mock is shared by the whole file, so count from this beat.
-      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled();
+      // Legacy concealment events recover through a coherent snapshot.
+      await waitFor(() =>
+        expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(2)
+      );
     });
   });
 
@@ -5524,17 +5608,12 @@ describe('a placed footprint on the hold beats (rpg-dnd5e-web#1182)', () => {
     await screen.findByTestId('session-canvas');
     beats.release();
     await waitFor(() =>
-      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled()
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(1)
     );
-
-    const patch = hoisted.atlasResult.applyReveal.mock
-      .calls[0][0] as (current: { props: unknown[]; placed: unknown[] }) => {
-      props: unknown[];
-      placed: unknown[];
-    };
-    const after = patch({ props: [], placed: [{ id: 'reliquary' }] });
-    expect(after.props).toHaveLength(0);
-    expect(after.placed).toHaveLength(1);
+    expect(hoisted.atlasResult.applyReveal).not.toHaveBeenCalled();
+    expect(hoisted.lastCanvasProps.current?.scene.props).toHaveLength(0);
+    // A dropped narrative beat supplies no object shape. Only an observation
+    // may introduce the footprint; no cell prop is invented from its ID.
   });
 });
 

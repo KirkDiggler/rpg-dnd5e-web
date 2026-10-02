@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-13
+updated: 2026-10-02
 confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -11,6 +11,15 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Individual dungeon knowledge (rpg-project#508)** — Uses generated protos
+  v0.1.219 and the paired API knowledge endpoint. One snapshot restores geometry,
+  observations, own position/holdings and known identities; room-revealed events
+  add fixed geometry while view reads refresh mutable observations. Remembered
+  props are display-only, not live interaction/collision authority. Gameplay
+  does not fetch World Builder YAML or widen its view by account role. The
+  operator accepted the first local pass; arbitrary authored-content support and
+  broader disclosure coverage remain separate from that walkthrough.
 
 - **Configured Discord world access (rpg-project#514, paired API #1065)** —
   Uses published protos v0.1.216. Server access is reachable before game-role

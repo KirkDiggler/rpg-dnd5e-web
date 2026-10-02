@@ -15,20 +15,16 @@ import { useGetCharacter } from '@/api/hooks';
 import { useCharacterData } from '@/api/useCharacterData';
 import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
-import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionCastAim } from '@/api/useSessionCastAim';
-import { useSessionDoors } from '@/api/useSessionDoors';
 import { useSessionHold } from '@/api/useSessionHold';
 import { useSessionInteract } from '@/api/useSessionInteract';
+import { useSessionKnowledge } from '@/api/useSessionKnowledge';
 import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
-import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
-import { useSessionView } from '@/api/useSessionView';
-import { useSessionWhere } from '@/api/useSessionWhere';
 import { useUnequipItem } from '@/api/useUnequipItem';
 import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import {
@@ -44,10 +40,7 @@ import type {
   VendorStockEntry,
   WorldNPCDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import type {
-  AtlasProp,
-  Money,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { Money } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockKind,
   DoorState,
@@ -68,8 +61,6 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
-import { applyDropped, applyHeld, heldProp } from './applyHolding';
-import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
 import { arrivingStep } from './arrivingStep';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
@@ -77,6 +68,7 @@ import {
   buildScene3D,
   hiddenPlacedPropIds,
   positionToCube,
+  propWorldPosition,
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
@@ -115,6 +107,7 @@ import type {
   LocalWorldDieWitnessPlan,
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
+import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
 import { cubeToPosition } from './positionBridge';
 import { RunEndedToast } from './RunEndedToast';
@@ -134,7 +127,6 @@ import {
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
 import { VendorPopover } from './vendor/VendorPopover';
-import { nextViewerHoldings } from './viewerHoldings';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -190,36 +182,33 @@ function SessionEncounterScope({
   const { data: ownerCharacter } = useGetCharacter(member);
   const {
     atlas,
+    snapshot,
+    view: knowledgeView,
+    holding: viewerHolding,
+    roster,
+    doors,
     loading: atlasLoading,
     error: atlasError,
     refetch: refetchAtlas,
-    applyReveal: applyAtlasReveal,
-  } = useSessionAtlas(sessionId, member);
-  // WHAT THIS ROOM LOOKS LIKE, FETCHED BY KEY. The atlas names the
-  // dungeon the session was launched from; the authored file under that
-  // key is the room's appearance, and the World Building codec is the
-  // only thing that reads it (rpg-project#479). An empty key, or a
-  // dungeonspec dungeon, answers with no room and the legacy atlas
-  // route draws exactly what it drew before.
+    refetchView,
+    refetchWhere,
+    refetchRoster,
+    acceptEvent: acceptKnowledgeEvent,
+  } = useSessionKnowledge(sessionId, member);
+  const wherePosition = snapshot?.where?.position ?? null;
+  const whereLoading = atlasLoading;
+  const whereError = atlasError;
+  const sightings = knowledgeView.sightings;
+  const sightAreas = knowledgeView.areas;
+  const refetchDoors = refetchView;
+  // Gameplay never fetches World Builder YAML, regardless of account role.
+  // This route renders only the geometry/observations supplied by the session.
   const {
     presentation: roomScene,
     placedPropIds,
     loading: roomSceneLoading,
     error: roomSceneError,
-  } = useDungeonScene(atlas?.dungeonKey ?? '');
-  const {
-    position: wherePosition,
-    loading: whereLoading,
-    error: whereError,
-    refetch: refetchWhere,
-  } = useSessionWhere(sessionId, member);
-  const {
-    sightings,
-    areas: sightAreas,
-    refetch: refetchView,
-  } = useSessionView(sessionId, member);
-  const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
-  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
+  } = useDungeonScene('');
   const { search, loading: searching } = useSessionSearch();
   const { loot, loading: looting } = useSessionLoot();
   const { hold, loading: holding } = useSessionHold();
@@ -274,27 +263,6 @@ function SessionEncounterScope({
     exit: string;
     holding: readonly string[];
   } | null>(null);
-  /** What this client removed from its atlas when a prop was picked up,
-   * kept so a later DROPPED beat can put the same thing back — `Dropped`
-   * carries the id and the cell, never the ref (`applyHolding.ts`). A
-   * plain ref, not state: nothing renders from it, it only feeds the next
-   * patch.
-   *
-   * NOT CLEARED ON THE DROP, deliberately. A beat delivered twice is the
-   * case that decides it: `applyDropped` is idempotent on the id, so a
-   * redelivered DROPPED with the memory already discarded would REPLACE
-   * the drawn prop with a bare id-and-cell entry and the reliquary would
-   * vanish into an empty ref. Keeping it costs one entry per holdable
-   * placement in one dungeon — the map is keyed by `place[].id`, so it is
-   * bounded by the file, not by the length of the session — and the whole
-   * ref dies with this scope, which remounts per session and member. A
-   * prop picked up again simply overwrites its own entry. */
-  const heldPropsRef = useRef(new Map<string, AtlasProp>());
-  /** What the local member is carrying, projected from the beats — the
-   * wire reports a member's holdings nowhere else (`viewerHoldings.ts`).
-   * Read only by the Leave button, to name what leaving from the wrong
-   * cell would drop. */
-  const [viewerHolding, setViewerHolding] = useState<readonly string[]>([]);
   const [activeVendor, setActiveVendor] = useState<{
     subject: string;
     descriptor: WorldNPCDescriptor;
@@ -376,6 +344,41 @@ function SessionEncounterScope({
     }
   }, [atlas, layoutOutcome, roomScene, roomSceneLoading, hiddenPlacedIds]);
   const scene = sceneBuild?.ok ? sceneBuild.scene : null;
+  const observationMarkers = useMemo(() => {
+    if (!scene) return [];
+    const props = knowledgeView.props.flatMap((s) => {
+      if (s.observedEmpty || !s.shape.value) return [];
+      const drawn = scene.props.find((p) => p.id === s.shape.value?.id);
+      return drawn
+        ? [
+            {
+              id: s.shape.value.id,
+              label: s.name || s.shape.value.id,
+              position: propWorldPosition(drawn, HEX_SIZE),
+              knowledge: s.currentVia.length
+                ? ('visible' as const)
+                : ('remembered' as const),
+            },
+          ]
+        : [];
+    });
+    const doorMarkers = knowledgeView.doors.flatMap((s) => {
+      const drawn = scene.doorGaps.find((d) => d.connection === s.door?.door);
+      return drawn && s.door
+        ? [
+            {
+              id: s.door.door,
+              label: `Door ${DoorState[s.door.state]}`,
+              position: drawn.position,
+              knowledge: s.currentVia.length
+                ? ('visible' as const)
+                : ('remembered' as const),
+            },
+          ]
+        : [];
+    });
+    return [...props, ...doorMarkers];
+  }, [scene, knowledgeView.props, knowledgeView.doors]);
   // An unreadable room is an integrity error, not a transient load: it
   // surfaces as a visible scene-error outcome until a later read or
   // build succeeds. A room this view could not read is the SAME kind of
@@ -1136,6 +1139,7 @@ function SessionEncounterScope({
       // Every delivered sequence advancement revokes action authority before
       // the coalesced snapshots can begin. Last-good values remain display-only.
       invalidateAuthority();
+      acceptKnowledgeEvent(event);
       scheduleRefresh([
         ...new Set<SessionRefreshKey>([
           'turn',
@@ -1158,52 +1162,12 @@ function SessionEncounterScope({
         moves.stepArrived(step.member, step.to);
       }
 
-      // A REVEAL PATCHES THE HELD ATLAS IN THE SAME FRAME (design §5.2
-      // as amended): the room, its walls and its sealed cells appear now,
-      // not a round trip later. `applyReveal.ts` holds the merge rule —
-      // segments append, sealed replaces within the revealed region's
-      // cells — and the refetch scheduled above still lands afterwards
-      // with the server's own answer, so the patch buys the frame and
-      // the server keeps the truth.
-      if (event.body.case === 'regionRevealed') {
-        const beat = event.body.value;
-        applyAtlasReveal((current) => applyRegionRevealed(current, beat));
-      }
-      if (event.body.case === 'doorRevealed') {
-        const beat = event.body.value;
-        applyAtlasReveal((current) => applyDoorRevealed(current, beat));
-      }
-      // THE SAME FRAME, THE OTHER DIRECTION. A reveal adds what a member
-      // may see; these two take a thing off the floor and put it back.
-      // The refetch scheduled above still lands afterwards with the
-      // server's own answer, so the patch buys the frame and the server
-      // keeps the truth (`applyHolding.ts`).
-      if (event.body.case === 'held') {
-        const beat = event.body.value;
-        applyAtlasReveal((current) => {
-          const removed = heldProp(current, beat);
-          if (removed) heldPropsRef.current.set(beat.prop, removed);
-          return applyHeld(current, beat);
-        });
-      }
-      if (event.body.case === 'dropped') {
-        const beat = event.body.value;
-        applyAtlasReveal((current) =>
-          applyDropped(
-            current,
-            beat,
-            heldPropsRef.current.get(beat.prop),
-            placedPropIds.has(beat.prop)
-          )
-        );
-      }
+      // Room additions and own carriage are applied by the knowledge hook
+      // after its snapshot cutoff. Mutable placements come only from GetView.
       // Remembered BEFORE the ending arrives, because the ending beat does
       // not name a carrier — see `carrier`'s own comment.
       const carried = exitCarrier(event);
       if (carried) setCarrier(carried);
-      // The reducer answers the SAME array when nothing moved, so this is
-      // a no-op re-render for every beat that is not one of the three.
-      setViewerHolding((held) => nextViewerHoldings(held, event, member));
       if (event.body.case === 'door') setDoorNotice(null);
       // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
       // "the world moved on" signal, mirroring the 'door' case above.
@@ -1222,10 +1186,9 @@ function SessionEncounterScope({
     },
     [
       acceptStreamEvent,
-      applyAtlasReveal,
+      acceptKnowledgeEvent,
       invalidateAuthority,
       member,
-      placedPropIds,
       refreshKeysForEvent,
       scheduleRefresh,
     ]
@@ -1233,15 +1196,8 @@ function SessionEncounterScope({
 
   const handleStreamAgedOut = useCallback(() => {
     invalidateAuthority();
-    scheduleRefresh(['characterData', 'turn', 'afford', 'view', 'where']);
-    // THE ONE PLACE THIS CLIENT KNOWS IT LOST BEATS, and holdings are
-    // projected from beats alone (`viewerHoldings.ts`) — nothing refetches
-    // them, because nothing on the wire reports them. A DROPPED inside the
-    // gap would leave the button warning forever about a heirloom the
-    // member is not carrying, which is the exact lie that module promises
-    // never to tell. Back to saying nothing: under-claiming is the right
-    // way round to be wrong here.
-    setViewerHolding((held) => (held.length === 0 ? held : []));
+    scheduleRefresh(['characterData', 'turn', 'afford', 'atlas']);
+    // A fresh coherent snapshot restores geometry, observations and carriage.
   }, [invalidateAuthority, scheduleRefresh]);
   const streamState = useSessionEventStream(
     sessionId,
@@ -1920,7 +1876,13 @@ function SessionEncounterScope({
                     movementBudgetFeet={movementBudgetFeet(
                       coherentDeclarations
                     )}
-                    presentationLayer={localWorldDieLayer}
+                    fitRequest={atlas?.regions.length ?? 0}
+                    presentationLayer={
+                      <>
+                        {localWorldDieLayer}
+                        <ObservationMarkers markers={observationMarkers} />
+                      </>
+                    }
                   />
                 )}
               </>

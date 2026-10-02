@@ -1432,7 +1432,11 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
   // XP added in the catalog SDK release updates private state; narration is deferred.
-  if (bodyCase === 'sighted' || bodyCase === 'experienceGained') {
+  if (
+    bodyCase === 'sighted' ||
+    bodyCase === 'roomRevealed' ||
+    bodyCase === 'experienceGained'
+  ) {
     return undefined;
   }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
