@@ -1289,6 +1289,7 @@ const EXPECTED_OTHER_KIND = {
   // kind/body mismatch would leave a goblin running out of the room with
   // nothing anywhere saying why.
   persuaded: EventKind.PERSUADED,
+  discoveryChecked: EventKind.DISCOVERY_CHECKED,
   answered: EventKind.ANSWERED,
   // The creature's table's own two (rpg-project#465). LISTED, so the
   // kind/body pairing is checked and the beat is accepted, and given no story
@@ -1614,6 +1615,16 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // would be recorded as a conflicting duplicate of the first — a fighter
     // may lean on the same goblin twice across two turns, and the numbers
     // are what differ.
+    case 'discoveryChecked':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        ability: event.body.value.ability,
+        total: event.body.value.total,
+        beaten: event.body.value.beaten,
+        calculation: event.body.value.calculation,
+      });
     case 'intimidated':
     // The appeal takes the threat's identity whole, for the threat's reason:
     // actor and target alone would hash two attempts on one creature the

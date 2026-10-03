@@ -7,10 +7,9 @@
  * resolving "which of MY atlas's regions am I standing in" reads only
  * data the member already legitimately sees — it decides nothing about
  * visibility and infers no concealed structure (mirrors `dungeonYaml.ts`'s
- * `floorOwners` on the builder side). The one caller today is the search
- * verb's region target (rpg-project#350): "the region the player stands
- * in," resolved from the searcher's own known `wherePosition`, never
- * chosen or guessed.
+ * `floorOwners` on the builder side). The game uses this to label the
+ * viewer's current chamber from their known position, never by reading
+ * an undiscovered room or assuming the reference dungeon's name.
  */
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';

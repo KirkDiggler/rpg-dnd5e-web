@@ -21,10 +21,10 @@ import { useSessionInteract } from '@/api/useSessionInteract';
 import { useSessionKnowledge } from '@/api/useSessionKnowledge';
 import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
-import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
+import { useSetDiscoverySharing } from '@/api/useSetDiscoverySharing';
 import { useUnequipItem } from '@/api/useUnequipItem';
 import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import {
@@ -111,7 +111,6 @@ import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
 import { cubeToPosition } from './positionBridge';
 import { RunEndedToast } from './RunEndedToast';
-import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
@@ -196,6 +195,13 @@ function SessionEncounterScope({
     acceptEvent: acceptKnowledgeEvent,
   } = useSessionKnowledge(sessionId, member);
   const wherePosition = snapshot?.where?.position ?? null;
+  const currentRegionName = useMemo(
+    () =>
+      atlas?.regions.find(
+        (region) => region.id === regionAt(atlas, wherePosition)
+      )?.name,
+    [atlas, wherePosition]
+  );
   const whereLoading = atlasLoading;
   const whereError = atlasError;
   const sightings = knowledgeView.sightings;
@@ -209,7 +215,11 @@ function SessionEncounterScope({
     loading: roomSceneLoading,
     error: roomSceneError,
   } = useDungeonScene('');
-  const { search, loading: searching } = useSessionSearch();
+  const {
+    setSharing,
+    loading: sharingPending,
+    error: sharingError,
+  } = useSetDiscoverySharing();
   const { loot, loading: looting } = useSessionLoot();
   const { hold, loading: holding } = useSessionHold();
   const { leave, loading: leaving } = useSessionLeave();
@@ -246,7 +256,6 @@ function SessionEncounterScope({
   const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
-  const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const [unpackNotice, setUnpackNotice] = useState<string | null>(null);
   /** The one line the loot/hold/leave verbs answer with — a refusal in the
    * server's own words, or nothing. Never an outcome: what a loot found
@@ -281,22 +290,6 @@ function SessionEncounterScope({
   // playing: a run that has ended still declares nothing, spends no turn and
   // opens no door, but it can be looked at for as long as the player likes.
 
-  // The searcher's own current region, resolved from data this member's
-  // own atlas already carries — never chosen, never guessed (the law: "a
-  // player cannot target structure they do not know exists").
-  const region = useMemo(
-    () => regionAt(atlas, wherePosition),
-    [atlas, wherePosition]
-  );
-  // "You search the area" stops describing the player's surroundings the
-  // moment those surroundings change — matches `doorNotice`'s own
-  // staleness law, just for a different trigger (a door's notice goes
-  // stale when the door's OWN state moves on; a search's notice goes
-  // stale when the SEARCHER moves on). Cosmetic only — the text is
-  // content-invariant either way, so this has no secrecy implication.
-  useEffect(() => {
-    setSearchNotice(null);
-  }, [region, member]);
   const layoutOutcome = useMemo(
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
@@ -1169,14 +1162,6 @@ function SessionEncounterScope({
       const carried = exitCarrier(event);
       if (carried) setCarrier(carried);
       if (event.body.case === 'door') setDoorNotice(null);
-      // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
-      // "the world moved on" signal, mirroring the 'door' case above.
-      if (
-        event.body.case === 'doorRevealed' ||
-        event.body.case === 'regionRevealed'
-      ) {
-        setSearchNotice(null);
-      }
       if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
         // Equipment must disappear in the same authoritative event update,
         // before the modal receives focus or can be layered over the panel.
@@ -1395,29 +1380,6 @@ function SessionEncounterScope({
     },
     [activeVendor, member, refetchCharacterData, sessionId, trade]
   );
-
-  // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
-  // carries no outcome, so this handler never reads `response` at all —
-  // only whether the call itself resolved or threw. A find or a fruitless
-  // room both land on the exact same `setSearchNotice(SEARCH_NOTICE)`
-  // call; only a genuine RPC/transport failure (a caller defect, never a
-  // check outcome) gets a different message, the same distinction
-  // `handleDoorClick` already draws. A find still reaches the searcher —
-  // later, as its own recipient-scoped DOOR_REVEALED beat on the stream,
-  // handled by `refreshKeysForEvent` — never through this call's return
-  // value, so no refresh is scheduled here.
-  const handleSearch = useCallback(() => {
-    if (!member || !region) return;
-    setSearchNotice(null);
-    void (async () => {
-      try {
-        await search({ session: sessionId, member, region });
-        setSearchNotice(SEARCH_NOTICE);
-      } catch (error) {
-        setSearchNotice(errorMessage(error));
-      }
-    })();
-  }, [member, region, search, sessionId]);
 
   // WHERE THE VIEWER STANDS, as a cube coordinate — the one input both
   // offers below need. Null until GetWhere has answered, which is what
@@ -1703,9 +1665,43 @@ function SessionEncounterScope({
             layout="fill-parent"
             actionPresentation={actionPresentation}
             navigationControls={
-              <Button variant="ghost" size="sm" onClick={onBack}>
-                Back
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={onBack}>
+                  Back
+                </Button>
+                {snapshot?.discoverySharing !== undefined && (
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label="Share discoveries with party"
+                      checked={snapshot.discoverySharing}
+                      disabled={
+                        sharingPending ||
+                        !member ||
+                        snapshot?.discoverySharing === undefined ||
+                        runEnded !== null
+                      }
+                      onChange={(event) => {
+                        if (!member) return;
+                        void setSharing({
+                          session: sessionId,
+                          member,
+                          sharing: event.target.checked,
+                        })
+                          .then(() => refetchAtlas())
+                          .catch(() => undefined);
+                      }}
+                    />
+                    Share discoveries
+                  </label>
+                )}
+              </>
             }
             sceneNotice={
               <>
@@ -1716,7 +1712,9 @@ function SessionEncounterScope({
                   </span>
                 )}
                 {doorNotice && <span>{doorNotice}</span>}
-                {searchNotice && <span>{searchNotice}</span>}
+                {sharingError && (
+                  <span role="alert">{sharingError.message}</span>
+                )}
                 {holdingNotice && <span>{holdingNotice}</span>}
                 {vendorNotice && <span>{vendorNotice}</span>}
                 {unpackNotice && <span>{unpackNotice}</span>}
@@ -1764,7 +1762,9 @@ function SessionEncounterScope({
             }
             location={{
               name:
-                snapshotScene?.roomScene?.scene.name ?? 'The Reference Tomb',
+                snapshotScene?.roomScene?.scene.name ??
+                currentRegionName ??
+                'Dungeon',
               area: snapshotScene?.roomScene
                 ? 'Authored room'
                 : 'Current chamber',
@@ -1909,8 +1909,6 @@ function SessionEncounterScope({
                 : undefined
             }
             equipmentOpen={visibleCharacterData ? equipmentOpen : false}
-            onSearch={runEnded === null && region ? handleSearch : undefined}
-            searchPending={searching}
             lootTargets={bodiesToLoot}
             onLoot={runEnded === null ? handleLoot : undefined}
             lootPending={looting}

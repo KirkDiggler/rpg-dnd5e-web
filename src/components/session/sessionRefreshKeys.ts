@@ -199,6 +199,10 @@ export function refreshKeysFor(
     // because the clock is not on this beat and guessing it from an absent
     // field is exactly the kind of local decision that goes wrong the first
     // time a rule moves. One wasted read is cheaper than a stale action bar.
+    case 'discoveryChecked':
+      return event.body.value.member === member
+        ? ['characterData', 'afford']
+        : [];
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded':

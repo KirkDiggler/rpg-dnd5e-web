@@ -181,7 +181,14 @@ export interface SiteConcealmentCheck {
  * it: the cells it hides, the placed things it hides (doors are just placed
  * ids here), and the checks that find it. `notice` is the passive tell,
  * CARRIED AND UNREAD in this engine slice. Carried here, never graded. */
+export interface SiteDiscoveryAttempts {
+  max?: number;
+  reset_hexes?: number;
+  lifetime?: 'character' | 'run';
+}
+
 export interface SiteConcealmentSpec {
+  attempts?: SiteDiscoveryAttempts;
   notice?: SiteConcealmentCheck[];
   checks: SiteConcealmentCheck[];
   cells?: SiteRoomCell[];
@@ -198,7 +205,13 @@ const REVEALS_KEYS = ['door', 'fact', 'concealment'] as const;
 const EXIT_KEYS = ['id', 'cell'] as const;
 const ENDING_KEYS = ['id', 'when'] as const;
 const CELL_KEYS = ['q', 'r'] as const;
-const CONCEALMENT_KEYS = ['notice', 'checks', 'cells', 'props'] as const;
+const CONCEALMENT_KEYS = [
+  'notice',
+  'checks',
+  'cells',
+  'props',
+  'attempts',
+] as const;
 const CHECK_KEYS = ['ability', 'dc', 'tool'] as const;
 
 /** The engine's own sentence for `reveals: { door }` in this dialect
@@ -570,6 +583,29 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
     const spec: SiteConcealmentSpec = {
       checks: validateConcealmentChecks(raw.checks, `${path} checks`),
     };
+    if (Object.hasOwn(raw, 'attempts')) {
+      const attempts = objectShape(raw.attempts, `${path} attempts`);
+      rejectUnknownKeys(
+        attempts,
+        ['max', 'reset_hexes', 'lifetime'],
+        `${path} attempts`
+      );
+      const policy: SiteDiscoveryAttempts = {};
+      for (const key of ['max', 'reset_hexes'] as const) {
+        if (Object.hasOwn(attempts, key)) {
+          const number = attempts[key];
+          if (typeof number !== 'number' || !Number.isInteger(number))
+            fail(`${path} attempts.${key}`, 'must be an integer');
+          policy[key] = number as number;
+        }
+      }
+      if (Object.hasOwn(attempts, 'lifetime')) {
+        if (attempts.lifetime !== 'character' && attempts.lifetime !== 'run')
+          fail(`${path} attempts.lifetime`, 'must be character or run');
+        policy.lifetime = attempts.lifetime as 'character' | 'run';
+      }
+      spec.attempts = policy;
+    }
     if (Object.hasOwn(raw, 'notice'))
       spec.notice = validateConcealmentChecks(raw.notice, `${path} notice`);
     if (Object.hasOwn(raw, 'cells')) {
