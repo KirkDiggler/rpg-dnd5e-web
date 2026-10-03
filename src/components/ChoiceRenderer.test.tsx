@@ -20,6 +20,23 @@ vi.mock('../api/useSpellCatalog', () => ({
   useSpellCatalog: () =>
     new Map([
       [
+        'dnd5e:spells:vicious-mockery',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:vicious-mockery',
+          name: 'Vicious Mockery',
+          description: 'Psychic damage and disadvantage on the next attack.',
+        }),
+      ],
+      [
+        'dnd5e:spells:true-strike',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:true-strike',
+          name: 'True Strike',
+          description:
+            'Advantage on your next attack against the chosen creature.',
+        }),
+      ],
+      [
         'dnd5e:spells:light',
         create(SpellInfoSchema, {
           spellRef: 'dnd5e:spells:light',
@@ -37,6 +54,79 @@ vi.mock('../api/useSpellCatalog', () => ({
       ],
     ]),
 }));
+
+describe('ChoiceRenderer - catalogue information', () => {
+  it('renders descriptions in the counted spell grid used by real class choices', () => {
+    const onSelectionChange = vi.fn();
+    const choice = create(ChoiceSchema, {
+      id: 'bard-cantrips',
+      choiceType: ChoiceCategory.CANTRIPS,
+      chooseCount: 2,
+      options: {
+        case: 'spellOptions',
+        value: create(SpellOptionsSchema, {
+          availableRefs: [
+            'dnd5e:spells:vicious-mockery',
+            'dnd5e:spells:true-strike',
+          ],
+        }),
+      },
+    });
+    render(
+      <ChoiceRenderer
+        choice={choice}
+        currentSelections={[]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+    expect(
+      screen.getByText('Psychic damage and disadvantage on the next attack.')
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Advantage on your next attack against the chosen creature.'
+      )
+    ).toBeTruthy();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps selected and unselected spell descriptions readable without changing the choice', () => {
+    const onSelectionChange = vi.fn();
+    const chosen = 'dnd5e:spells:vicious-mockery';
+    const alternative = 'dnd5e:spells:true-strike';
+    const choice = create(ChoiceSchema, {
+      id: 'catalogue-cantrip',
+      choiceType: ChoiceCategory.CANTRIPS,
+      chooseCount: 1,
+      options: {
+        case: 'spellOptions',
+        value: create(SpellOptionsSchema, {
+          availableRefs: [chosen, alternative],
+        }),
+      },
+    });
+    render(
+      <ChoiceRenderer
+        choice={choice}
+        currentSelections={[chosen]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+    expect(
+      screen.getByText('Psychic damage and disadvantage on the next attack.')
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Advantage on your next attack against the chosen creature.'
+      )
+    ).toBeTruthy();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('True Strike'));
+    expect(onSelectionChange).toHaveBeenCalledWith('catalogue-cantrip', [
+      alternative,
+    ]);
+  });
+});
 
 describe('ChoiceRenderer - EXPERTISE', () => {
   const expertiseChoice = create(ChoiceSchema, {
