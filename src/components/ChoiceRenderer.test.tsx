@@ -11,7 +11,7 @@ import {
   Skill,
   Tool,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { getToolInfo } from '../utils/enumRegistry';
 import { ChoiceRenderer } from './ChoiceRenderer';
@@ -19,6 +19,38 @@ import { ChoiceRenderer } from './ChoiceRenderer';
 vi.mock('../api/useSpellCatalog', () => ({
   useSpellCatalog: () =>
     new Map([
+      [
+        'dnd5e:spells:guidance',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:guidance',
+          name: 'Guidance',
+          description: 'Add a d4 to one ability check.',
+        }),
+      ],
+      [
+        'dnd5e:spells:bless',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:bless',
+          name: 'Bless',
+          description: 'Add a d4 to attacks and saves.',
+        }),
+      ],
+      [
+        'dnd5e:spells:cure-wounds',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:cure-wounds',
+          name: 'Cure Wounds',
+          description: 'Restore hit points by touch.',
+        }),
+      ],
+      [
+        'dnd5e:spells:melfs-acid-arrow',
+        create(SpellInfoSchema, {
+          spellRef: 'dnd5e:spells:melfs-acid-arrow',
+          name: "Melf's Acid Arrow",
+          description: 'Strike with an arrow of acid.',
+        }),
+      ],
       [
         'dnd5e:spells:vicious-mockery',
         create(SpellInfoSchema, {
@@ -401,11 +433,33 @@ function toolName(tool: Tool): string {
 
 describe('automatic spell grants', () => {
   it.each([
-    [ChoiceCategory.SPELLS, 'bless', 'Bless', 'Life Domain', 4],
-    [ChoiceCategory.SPELLS, 'cure-wounds', 'Cure Wounds', 'Life Domain', 4],
+    [
+      ChoiceCategory.SPELLS,
+      'bless',
+      'Bless',
+      'Life Domain',
+      4,
+      'Add a d4 to attacks and saves.',
+    ],
+    [
+      ChoiceCategory.SPELLS,
+      'cure-wounds',
+      'Cure Wounds',
+      'Life Domain',
+      4,
+      'Restore hit points by touch.',
+    ],
+    [
+      ChoiceCategory.SPELLS,
+      'melfs-acid-arrow',
+      "Melf's Acid Arrow",
+      'Test grant',
+      4,
+      'Strike with an arrow of acid.',
+    ],
   ] as const)(
     'locks %s grant %s without consuming choices',
-    (category, id, name, source, count) => {
+    (category, id, name, source, count, description) => {
       const onSelectionChange = vi.fn();
       const choice = create(ChoiceSchema, {
         id: 'spell-choice',
@@ -428,13 +482,14 @@ describe('automatic spell grants', () => {
         />
       );
       const granted = screen.getByRole('button', {
-        name: `${name} Granted by ${source}`,
+        name: `${name} ${description} Granted by ${source}`,
       });
+      expect(within(granted).getByText(description)).toBeTruthy();
       expect((granted as HTMLButtonElement).disabled).toBe(true);
       fireEvent.click(granted);
       expect(onSelectionChange).not.toHaveBeenCalled();
       expect(screen.getByText(`(0/${count} selected)`)).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Guidance' }));
+      fireEvent.click(screen.getByText('Guidance'));
       expect(onSelectionChange).toHaveBeenCalledWith('spell-choice', [
         'dnd5e:spells:guidance',
       ]);
@@ -458,7 +513,9 @@ describe('automatic spell grants', () => {
       expect(
         (
           screen.getByRole('button', {
-            name,
+            name: (accessibleName) =>
+              accessibleName.includes(name) &&
+              accessibleName.includes(description),
           }) as HTMLButtonElement
         ).disabled
       ).toBe(false);
@@ -521,8 +578,11 @@ it('keeps shared cantrips visible but locked until the other choice releases the
     />
   );
   const locked = screen.getByRole('button', {
-    name: /Guidance Already selected/,
+    name: 'Guidance Add a d4 to one ability check. Already selected in another cantrip choice',
   });
+  expect(
+    within(locked).getByText('Add a d4 to one ability check.')
+  ).toBeTruthy();
   expect((locked as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(locked);
   expect(onSelectionChange).not.toHaveBeenCalled();

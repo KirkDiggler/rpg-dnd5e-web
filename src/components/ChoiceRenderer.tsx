@@ -218,7 +218,13 @@ export function ChoiceRenderer({
         {lockedRefs.map((ref) => (
           <button
             key={ref}
-            aria-label={`${spellCatalog.get(ref)?.name || spellRefLabel(ref)} Already selected in another cantrip choice`}
+            aria-label={[
+              spellCatalog.get(ref)?.name || spellRefLabel(ref),
+              spellCatalog.get(ref)?.description,
+              'Already selected in another cantrip choice',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             type="button"
             disabled
             className="rounded-lg border p-3 text-left cursor-not-allowed"
@@ -241,7 +247,14 @@ export function ChoiceRenderer({
             {visibleGrants.map((grant) => (
               <button
                 key={grant.spellRef}
-                aria-label={`${spellRefLabel(grant.spellRef)} Granted by ${grant.sourceName}`}
+                aria-label={[
+                  spellCatalog.get(grant.spellRef)?.name ||
+                    spellRefLabel(grant.spellRef),
+                  spellCatalog.get(grant.spellRef)?.description,
+                  `Granted by ${grant.sourceName}`,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 type="button"
                 disabled
                 className="rounded-lg border p-3 text-left cursor-not-allowed"
