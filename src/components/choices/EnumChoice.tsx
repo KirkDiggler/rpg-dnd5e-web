@@ -243,7 +243,14 @@ export function EnumChoice<T extends EnumChoiceValue>({
                         isSelected={isSelected}
                         replaces={replaces}
                       />
-                      <span>{info.name}</span>
+                      <span className="flex flex-col gap-1">
+                        <span>{info.name}</span>
+                        {info.description && (
+                          <span className="text-xs opacity-80">
+                            {info.description}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
