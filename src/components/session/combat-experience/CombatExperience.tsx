@@ -176,6 +176,7 @@ export function CombatExperience({
   sceneNotice,
   pacingNotice,
   renderMap,
+  hoveredTarget,
   onSelectDeclaration,
   onSelectCastOption,
   onCancelCastOption,
@@ -406,6 +407,7 @@ export function CombatExperience({
             location={location}
             navigationControls={navigationControls}
             renderMap={renderMap}
+            hoveredTarget={hoveredTarget}
             onTargetClick={onTargetClick}
             onConfirmTargets={onConfirmTargets}
             onCancelSelection={

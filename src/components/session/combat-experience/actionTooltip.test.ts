@@ -1,12 +1,25 @@
 // @vitest-environment node
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
   DamageType,
+  DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   Slot,
+  TargetCandidateSchema,
+  TargetEffectSchema,
+  TargetKind,
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
-import { actionTooltipText, buildActionTooltip } from './actionTooltip';
+import {
+  actionTooltipText,
+  buildActionTooltip,
+  effectLinesFor,
+  effectStateWord,
+} from './actionTooltip';
 
 function declaration(overrides: Partial<Declaration> = {}): Declaration {
   return {
@@ -203,6 +216,170 @@ describe('the social verbs in the tooltip', () => {
     );
     expect(tooltip.lines.find((line) => line.label === 'Costs')?.value).toBe(
       '1 Bardic Inspiration'
+    );
+  });
+});
+
+// Every string below is a fixture, not a feature name the client knows: the
+// projection must carry whatever the server wrote and branch on none of it.
+const alpha = create(EffectRowSchema, {
+  id: 'row-a@src-1',
+  ref: 'fixture:effects:alpha',
+  name: 'Alpha Effect',
+  description: 'What alpha does, authored beside its rule.',
+  state: EffectState.DEPENDS,
+  reason: 'Depends on the target',
+  participation: EffectParticipation.CONTRIBUTES_NOW,
+});
+const beta = create(EffectRowSchema, {
+  id: 'row-b',
+  ref: 'fixture:effects:beta',
+  name: 'Beta Effect',
+  description: 'What beta does.',
+  state: EffectState.APPLIES,
+  reason: 'The holder is attacking',
+  participation: EffectParticipation.LATER_CHOICE,
+  benefit: 'May add 1d6 after seeing the roll',
+});
+const withEffects = (
+  overrides: MessageInitShape<typeof DeclarationSchema> = {}
+) =>
+  create(DeclarationSchema, {
+    id: 'v1.attack',
+    verb: Verb.ATTACK,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    effects: [alpha, beta],
+    candidates: [
+      create(TargetCandidateSchema, {
+        member: 'g1',
+        available: true,
+        effects: [
+          create(TargetEffectSchema, {
+            id: 'row-a@src-1',
+            state: EffectState.APPLIES,
+            reason: 'Another enemy of the target is within 5 feet',
+            benefit: '+1d6 damage',
+          }),
+          create(TargetEffectSchema, {
+            id: 'not-a-row',
+            state: EffectState.APPLIES,
+            reason: 'should never show',
+            benefit: 'should never show',
+          }),
+        ],
+      }),
+      create(TargetCandidateSchema, { member: 'g2', available: true }),
+    ],
+    ...overrides,
+  });
+
+describe('effect rows', () => {
+  it('projects effect rows verbatim', () => {
+    const tooltip = buildActionTooltip(withEffects());
+    expect(tooltip.effects).toEqual([
+      {
+        id: 'row-a@src-1',
+        name: 'Alpha Effect',
+        description: 'What alpha does, authored beside its rule.',
+        state: EffectState.DEPENDS,
+        tone: 'depends',
+        stateWord: 'Depends',
+        reason: 'Depends on the target',
+        benefit: '',
+      },
+      {
+        id: 'row-b',
+        name: 'Beta Effect',
+        description: 'What beta does.',
+        state: EffectState.APPLIES,
+        tone: 'later',
+        stateWord: 'Available after the roll',
+        reason: 'The holder is attacking',
+        benefit: 'May add 1d6 after seeing the roll',
+      },
+    ]);
+  });
+
+  it('overlays candidate answers by id', () => {
+    const [alpha, beta] = effectLinesFor(withEffects(), 'g1');
+    expect(alpha).toMatchObject({
+      id: 'row-a@src-1',
+      state: EffectState.APPLIES,
+      stateWord: 'Applies',
+      reason: 'Another enemy of the target is within 5 feet',
+      benefit: '+1d6 damage',
+      // Description and participation stay the declaration's.
+      description: 'What alpha does, authored beside its rule.',
+      name: 'Alpha Effect',
+    });
+    expect(beta?.tone).toBe('later');
+  });
+
+  it('keeps the declaration row for a candidate with no answer of its own', () => {
+    expect(effectLinesFor(withEffects(), 'g2')).toEqual(
+      effectLinesFor(withEffects())
+    );
+    expect(effectLinesFor(withEffects(), 'nobody')).toEqual(
+      effectLinesFor(withEffects())
+    );
+  });
+
+  it('ignores candidate answers for unknown ids', () => {
+    const lines = effectLinesFor(withEffects(), 'g1');
+    expect(lines.map((line) => line.id)).toEqual(['row-a@src-1', 'row-b']);
+    expect(JSON.stringify(lines)).not.toContain('should never show');
+  });
+
+  it('later choice reads as available, not added', () => {
+    const [, beta] = effectLinesFor(withEffects());
+    expect(beta?.stateWord).toBe('Available after the roll');
+    expect(beta?.stateWord).not.toBe('Applies');
+    // A later choice that does NOT apply reads as plainly not applying.
+    const [notYours] = effectLinesFor(
+      withEffects({
+        effects: [
+          create(EffectRowSchema, {
+            ...beta,
+            state: EffectState.DOES_NOT_APPLY,
+            reason: 'Another creature is attacking',
+            benefit: '',
+          }),
+        ],
+      })
+    );
+    expect(notYours?.stateWord).toBe('Does not apply');
+    expect(notYours?.reason).toBe('Another creature is attacking');
+  });
+
+  it('names an unspecified state as unknown instead of hiding or guessing', () => {
+    const [row] = effectLinesFor(
+      withEffects({
+        effects: [create(EffectRowSchema, { ...alpha, state: 0 })],
+      })
+    );
+    expect(row?.tone).toBe('unknown');
+    expect(row?.stateWord).toBe('State unknown');
+    expect(effectStateWord(EffectState.UNSPECIFIED)).toBe('State unknown');
+  });
+
+  it('words every state', () => {
+    expect(effectStateWord(EffectState.APPLIES)).toBe('Applies');
+    expect(effectStateWord(EffectState.DOES_NOT_APPLY)).toBe('Does not apply');
+    expect(effectStateWord(EffectState.DEPENDS)).toBe('Depends');
+    expect(effectStateWord(EffectState.UNAVAILABLE)).toBe('Unavailable');
+  });
+
+  it('adds nothing when the declaration carries no rows', () => {
+    const tooltip = buildActionTooltip(withEffects({ effects: [] }));
+    expect(tooltip.effects).toEqual([]);
+    expect(actionTooltipText(tooltip)).not.toContain('Effect');
+  });
+
+  it('flattens rows into the one-line text', () => {
+    expect(actionTooltipText(buildActionTooltip(withEffects()))).toContain(
+      'Alpha Effect: Depends — Depends on the target'
     );
   });
 });
