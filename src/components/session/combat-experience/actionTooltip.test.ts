@@ -326,6 +326,57 @@ describe('effect rows', () => {
     );
   });
 
+  it('replaces reason and benefit wholesale, even with empty answers', () => {
+    const declared = create(EffectRowSchema, {
+      id: 'row-w',
+      name: 'Wholesale Effect',
+      description: 'Kept from the declaration.',
+      state: EffectState.APPLIES,
+      reason: 'The declaration reason',
+      participation: EffectParticipation.CONTRIBUTES_NOW,
+      benefit: '+2 damage',
+    });
+    const decl = withEffects({
+      effects: [declared],
+      candidates: [
+        create(TargetCandidateSchema, {
+          member: 'empty',
+          available: true,
+          effects: [
+            create(TargetEffectSchema, {
+              id: 'row-w',
+              state: EffectState.DOES_NOT_APPLY,
+              reason: '',
+              benefit: '',
+            }),
+          ],
+        }),
+        create(TargetCandidateSchema, {
+          member: 'other',
+          available: true,
+          effects: [
+            create(TargetEffectSchema, {
+              id: 'row-w',
+              state: EffectState.APPLIES,
+              reason: 'The answer reason',
+              benefit: '+3 damage',
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(effectLinesFor(decl, 'empty')[0]).toMatchObject({
+      stateWord: 'Does not apply',
+      reason: '',
+      benefit: '',
+      description: 'Kept from the declaration.',
+    });
+    expect(effectLinesFor(decl, 'other')[0]).toMatchObject({
+      reason: 'The answer reason',
+      benefit: '+3 damage',
+    });
+  });
+
   it('ignores candidate answers for unknown ids', () => {
     const lines = effectLinesFor(withEffects(), 'g1');
     expect(lines.map((line) => line.id)).toEqual(['row-a@src-1', 'row-b']);
@@ -362,6 +413,53 @@ describe('effect rows', () => {
     expect(row?.tone).toBe('unknown');
     expect(row?.stateWord).toBe('State unknown');
     expect(effectStateWord(EffectState.UNSPECIFIED)).toBe('State unknown');
+  });
+
+  it('never reads an applying row with unspecified participation as added', () => {
+    const [row] = effectLinesFor(
+      withEffects({
+        effects: [
+          create(EffectRowSchema, {
+            ...beta,
+            participation: EffectParticipation.UNSPECIFIED,
+          }),
+        ],
+      })
+    );
+    expect(row?.tone).toBe('unknown');
+    expect(row?.stateWord).toBe('Applies, timing unknown');
+    expect(row?.stateWord).not.toBe('Applies');
+    // Shown, not hidden: the producer's benefit line is still verbatim.
+    expect(row?.benefit).toBe('May add 1d6 after seeing the roll');
+  });
+
+  it('treats an unrecognised participation like an unspecified one', () => {
+    const [row] = effectLinesFor(
+      withEffects({
+        effects: [
+          create(EffectRowSchema, {
+            ...beta,
+            participation: 99 as EffectParticipation,
+          }),
+        ],
+      })
+    );
+    expect(row?.tone).toBe('unknown');
+  });
+
+  it('leaves non-applying words alone when participation is unspecified', () => {
+    const [row] = effectLinesFor(
+      withEffects({
+        effects: [
+          create(EffectRowSchema, {
+            ...alpha,
+            participation: EffectParticipation.UNSPECIFIED,
+          }),
+        ],
+      })
+    );
+    expect(row?.tone).toBe('depends');
+    expect(row?.stateWord).toBe('Depends');
   });
 
   it('words every state', () => {

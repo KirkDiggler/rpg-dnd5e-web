@@ -2710,9 +2710,15 @@ button.diceDrawerCue:focus-visible {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.targetEffectsToggle[aria-expanded='true'] {
+/* Pinned: filled, with a glyph, so the press reads without colour alone. */
+.targetEffectsToggle[aria-pressed='true'] {
   border-color: rgba(232, 183, 95, 0.5);
   color: var(--sc-gold-bright);
+  background: rgba(232, 183, 95, 0.18);
+}
+.targetEffectsToggle[aria-pressed='true']::before {
+  content: '●' / '';
+  margin-right: 4px;
 }
 .targetEffects {
   position: absolute;

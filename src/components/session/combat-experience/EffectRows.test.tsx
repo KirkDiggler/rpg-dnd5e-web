@@ -88,6 +88,25 @@ describe('EffectRows', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('State unknown');
   });
 
+  it('flags an applying row of unknown timing instead of showing it as added', () => {
+    render(
+      <EffectRows
+        lines={[
+          line({
+            tone: 'unknown',
+            stateWord: 'Applies, timing unknown',
+            benefit: '+1d6 after the roll',
+          }),
+        ]}
+      />
+    );
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('data-effect-tone', 'unknown');
+    expect(row).toHaveTextContent('Applies, timing unknown');
+    expect(row).toHaveTextContent('+1d6 after the roll');
+    expect(row.textContent).not.toMatch(/✓/);
+  });
+
   it('renders nothing for no rows', () => {
     const { container } = render(<EffectRows lines={[]} />);
     expect(container).toBeEmptyDOMElement();

@@ -148,17 +148,17 @@ describe('TargetSurface effect rows', () => {
     const toggle = screen.getByRole('button', {
       name: 'Effects against Goblin A',
     });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(panel()).toHaveTextContent('+1d6 damage');
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(panel()).toHaveTextContent('Depends on the target');
     // The panel's own Close returns to the declaration's rows.
     fireEvent.click(toggle);
     fireEvent.click(within(panel()).getByRole('button', { name: 'Close' }));
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     // An unavailable candidate's rows are readable too.
     const unavailable = screen.getByRole('button', {
       name: 'Effects against Goblin C',
@@ -177,11 +177,13 @@ describe('TargetSurface effect rows', () => {
     const toggle = screen.getByRole('button', {
       name: 'Effects against Goblin A',
     });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     mouse(row, 'pointerover');
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    // Hover previews the rows; only the press pins.
+    expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
     expect(panel()).toHaveTextContent('+1d6 damage');
     // Pinned wins over hover until it is closed.
@@ -194,12 +196,52 @@ describe('TargetSurface effect rows', () => {
     expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
     expect(
       screen.getByRole('button', { name: 'Effects against Goblin B' })
-    ).toHaveAttribute('aria-expanded', 'false');
+    ).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(panel()).toHaveAccessibleName('Attack effects');
     expect(panel()).toHaveTextContent('Depends on the target');
     expect(onTargetClick).not.toHaveBeenCalled();
+  });
+
+  it('a keyboard press on Effects changes the pinned state a screen reader hears', () => {
+    const { onTargetClick } = renderSurface();
+    const toggleA = screen.getByRole('button', {
+      name: 'Effects against Goblin A',
+    });
+    act(() => toggleA.focus());
+    // Focus previews the rows, but the toggle is not pressed until pressed.
+    expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+    expect(toggleA).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.keyDown(toggleA, { key: 'Enter' });
+    fireEvent.click(toggleA);
+    expect(toggleA).toHaveAttribute('aria-pressed', 'true');
+    // The pin holds while focus moves on to another candidate.
+    act(() =>
+      screen.getByRole('button', { name: /Goblin B: Available/ }).focus()
+    );
+    expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+    expect(toggleA).toHaveAttribute('aria-pressed', 'true');
+    act(() => toggleA.focus());
+    fireEvent.click(toggleA);
+    expect(toggleA).toHaveAttribute('aria-pressed', 'false');
+    expect(onTargetClick).not.toHaveBeenCalled();
+  });
+
+  it('a touch pointer entering a candidate does not preview it', () => {
+    renderSurface();
+    const row = screen
+      .getByRole('button', { name: /Goblin A: Available/ })
+      .closest('li')!;
+    fireEvent(
+      row,
+      Object.assign(new Event('pointerover', { bubbles: true }), {
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true,
+      })
+    );
+    expect(panel()).toHaveAccessibleName('Attack effects');
   });
 
   it('candidate click calls onTargetClick unchanged', () => {

@@ -47,8 +47,11 @@ export interface ActionTooltipLine {
 
 /**
  * How a row reads. `later` is an applying later choice: available after the
- * roll, never already added. `unknown` is an UNSPECIFIED (or unrecognised)
- * state — a producer defect, shown as such rather than hidden or guessed.
+ * roll, never already added. `unknown` is a producer defect, shown as such
+ * rather than hidden or guessed: an UNSPECIFIED (or unrecognised) state, or
+ * an applying row whose participation is UNSPECIFIED (or unrecognised) — the
+ * rule said it applies but not whether now or later, so it must not read as
+ * already added.
  */
 export type EffectTone =
   | 'applies'
@@ -100,9 +103,14 @@ function effectTone(
 ): EffectTone {
   switch (state) {
     case EffectState.APPLIES:
-      return participation === EffectParticipation.LATER_CHOICE
-        ? 'later'
-        : 'applies';
+      switch (participation) {
+        case EffectParticipation.CONTRIBUTES_NOW:
+          return 'applies';
+        case EffectParticipation.LATER_CHOICE:
+          return 'later';
+        default:
+          return 'unknown';
+      }
     case EffectState.DOES_NOT_APPLY:
       return 'does-not-apply';
     case EffectState.DEPENDS:
@@ -140,7 +148,11 @@ export function effectLinesFor(
       state,
       tone,
       stateWord:
-        tone === 'later' ? 'Available after the roll' : effectStateWord(state),
+        tone === 'later'
+          ? 'Available after the roll'
+          : tone === 'unknown' && state === EffectState.APPLIES
+            ? 'Applies, timing unknown'
+            : effectStateWord(state),
       reason: answer ? answer.reason : row.reason,
       benefit: answer ? answer.benefit : row.benefit,
     };

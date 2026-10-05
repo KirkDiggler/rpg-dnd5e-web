@@ -323,10 +323,14 @@ export function TargetSurface({
                   </button>
                   {hasEffects && (
                     // Read-only: shows this candidate's rows, never chooses it.
+                    // A toggle button whose state IS the pin (`aria-pressed`):
+                    // focus or hover may already preview the rows, so the
+                    // press must change something a screen reader announces.
+                    // The panel it controls names whose rows it shows.
                     <button
                       type="button"
                       className={styles.targetEffectsToggle}
-                      aria-expanded={inspectedMember === candidate.member}
+                      aria-pressed={current?.pinned === candidate.member}
                       aria-controls={effectsPanelId}
                       aria-label={`Effects against ${name}`}
                       onClick={(event) => {
