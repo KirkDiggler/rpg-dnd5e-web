@@ -27,6 +27,7 @@ export function OrganizedHudConcept() {
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
   const [crowdedInitiative, setCrowdedInitiative] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
+  const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(
     Boolean(document.fullscreenElement)
   );
@@ -272,10 +273,12 @@ export function OrganizedHudConcept() {
           debug={fixture.debug}
           diceEvents={[]}
           location={{ name: 'Reference Tomb', area: 'South reliquary' }}
+          hoveredTarget={hoveredTarget}
           renderMap={({ attackableTargets, onTargetClick }) => (
             <SessionCombatMap
               attackableTargets={attackableTargets}
               onTargetClick={onTargetClick}
+              onHoverTarget={setHoveredTarget}
               touchPanEnabled
               touchPinchEnabled
               touchRotateEnabled
