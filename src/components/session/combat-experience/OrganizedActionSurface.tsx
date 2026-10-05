@@ -18,6 +18,7 @@ import {
 } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
+import { EffectRows } from './EffectRows';
 import { bindOfferPress, type OfferPressBinding } from './offerPress';
 import {
   currentExecutableDeclaration,
@@ -103,6 +104,7 @@ function Inspection({
           {line.value}
         </span>
       ))}
+      <EffectRows lines={tooltip.effects} />
       {unavailable && <p>Unavailable: {unavailable}</p>}
     </div>
   );

@@ -1432,10 +1432,13 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
   // XP added in the catalog SDK release updates private state; narration is deferred.
+  // DISCOVERY_CHECKED arrives with protos v0.1.220; its story is
+  // rpg-dnd5e-web#1219's to write. Accepted silently until that lands.
   if (
     bodyCase === 'sighted' ||
     bodyCase === 'roomRevealed' ||
-    bodyCase === 'experienceGained'
+    bodyCase === 'experienceGained' ||
+    bodyCase === 'discoveryChecked'
   ) {
     return undefined;
   }
