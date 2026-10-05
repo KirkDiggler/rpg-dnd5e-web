@@ -587,6 +587,10 @@ function SessionEncounterScope({
     refreshCallbacks
   );
 
+  // The canvas's hovered member, for the target panel's effect rows only
+  // (rpg-project#520). Presentation: it never reaches a command.
+  const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
+
   const combat = useSessionCombatExperience({
     session: sessionId,
     member,
@@ -1770,6 +1774,7 @@ function SessionEncounterScope({
                 : 'Current chamber',
             }}
             pacingNotice={combat.pacingNotice}
+            hoveredTarget={hoveredTarget}
             renderMap={({ attackableTargets, onTargetClick }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
@@ -1843,6 +1848,7 @@ function SessionEncounterScope({
                     onEntityClick={
                       runEnded === null ? onTargetClick : undefined
                     }
+                    onHoverEntity={setHoveredTarget}
                     cellAimEnabled={
                       runEnded === null ? combat.cellCastArmed : false
                     }

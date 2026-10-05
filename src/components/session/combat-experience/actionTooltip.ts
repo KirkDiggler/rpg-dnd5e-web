@@ -19,8 +19,20 @@
  * So this shows the damage type it does have. Carrying the number across the
  * seam is rpg-project#307 (deferred, deliberately): when that lands,
  * `damageLine` is the one place that changes.
+ *
+ * # Effect rows are drawn, never recognised (rpg-project#520)
+ *
+ * `Declaration.effects` lists the acting member's effects bearing on this
+ * action, each with the rule's own answer. Every field is shown as written:
+ * nothing here knows which effect a row is (no branch on `ref` or `name`, no
+ * ref-to-name or description table), sums a `benefit`, or lets a row touch
+ * `available`. A target's answers ride its candidate and replace state, reason
+ * and benefit for the row with the same `id`; the declaration keeps the
+ * description and participation.
  */
 import {
+  EffectParticipation,
+  EffectState,
   Slot,
   Verb,
   type Declaration,
@@ -33,11 +45,118 @@ export interface ActionTooltipLine {
   value: string;
 }
 
+/**
+ * How a row reads. `later` is an applying later choice: available after the
+ * roll, never already added. `unknown` is a producer defect, shown as such
+ * rather than hidden or guessed: an UNSPECIFIED (or unrecognised) state, or
+ * an applying row whose participation is UNSPECIFIED (or unrecognised) — the
+ * rule said it applies but not whether now or later, so it must not read as
+ * already added.
+ */
+export type EffectTone =
+  | 'applies'
+  | 'later'
+  | 'does-not-apply'
+  | 'depends'
+  | 'unavailable'
+  | 'unknown';
+
+export interface ActionEffectLine {
+  id: string;
+  name: string;
+  description: string;
+  state: EffectState;
+  tone: EffectTone;
+  stateWord: string;
+  reason: string;
+  /** Rule-authored, verbatim; empty when the rule wrote none. */
+  benefit: string;
+}
+
 export interface ActionTooltip {
   title: string;
   lines: readonly ActionTooltipLine[];
+  /** The declaration's own rows, before any target is considered. */
+  effects: readonly ActionEffectLine[];
   /** Provider-authored refusal copy; present iff the offer is unavailable. */
   refusal?: string;
+}
+
+export function effectStateWord(state: EffectState): string {
+  switch (state) {
+    case EffectState.APPLIES:
+      return 'Applies';
+    case EffectState.DOES_NOT_APPLY:
+      return 'Does not apply';
+    case EffectState.DEPENDS:
+      return 'Depends';
+    case EffectState.UNAVAILABLE:
+      return 'Unavailable';
+    default:
+      return 'State unknown';
+  }
+}
+
+function effectTone(
+  state: EffectState,
+  participation: EffectParticipation
+): EffectTone {
+  switch (state) {
+    case EffectState.APPLIES:
+      switch (participation) {
+        case EffectParticipation.CONTRIBUTES_NOW:
+          return 'applies';
+        case EffectParticipation.LATER_CHOICE:
+          return 'later';
+        default:
+          return 'unknown';
+      }
+    case EffectState.DOES_NOT_APPLY:
+      return 'does-not-apply';
+    case EffectState.DEPENDS:
+      return 'depends';
+    case EffectState.UNAVAILABLE:
+      return 'unavailable';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * The rows bearing on `declaration`, with `candidateMember`'s answers laid
+ * over the declaration's by `id`. An answer whose id names no declaration row
+ * is ignored; a candidate with no answer of its own reads the declaration's.
+ */
+export function effectLinesFor(
+  declaration: Declaration,
+  candidateMember?: string | null
+): ActionEffectLine[] {
+  const candidate = candidateMember
+    ? declaration.candidates.find((item) => item.member === candidateMember)
+    : undefined;
+  const answers = new Map(
+    (candidate?.effects ?? []).map((answer) => [answer.id, answer])
+  );
+  return (declaration.effects ?? []).map((row) => {
+    const answer = answers.get(row.id);
+    const state = answer ? answer.state : row.state;
+    const tone = effectTone(state, row.participation);
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      state,
+      tone,
+      stateWord:
+        tone === 'later'
+          ? 'Available after the roll'
+          : tone === 'unknown' && state === EffectState.APPLIES
+            ? 'Applies, timing unknown'
+            : effectStateWord(state),
+      reason: answer ? answer.reason : row.reason,
+      benefit: answer ? answer.benefit : row.benefit,
+    };
+  });
 }
 
 export function slotLabel(slot: Slot): string {
@@ -154,6 +273,7 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
   return {
     title,
     lines,
+    effects: effectLinesFor(declaration),
     refusal: declaration.available
       ? undefined
       : declaration.why?.text || 'Unavailable',
@@ -163,6 +283,11 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
 /** Flattened one-line form, for a native `title` or an aria description. */
 export function actionTooltipText(tooltip: ActionTooltip): string {
   const parts = tooltip.lines.map((line) => `${line.label}: ${line.value}`);
+  for (const effect of tooltip.effects) {
+    parts.push(
+      `${effect.name}: ${effect.stateWord}${effect.reason ? ` — ${effect.reason}` : ''}${effect.benefit ? ` (${effect.benefit})` : ''}`
+    );
+  }
   if (tooltip.refusal) parts.push(`Unavailable — ${tooltip.refusal}`);
   return [tooltip.title, ...parts].join(' · ');
 }

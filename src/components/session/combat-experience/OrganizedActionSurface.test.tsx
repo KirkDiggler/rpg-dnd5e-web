@@ -2,6 +2,9 @@ import { create } from '@bufbuild/protobuf';
 import {
   AbilityRefSchema,
   DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   ShortfallReason,
   ShortfallSchema,
   Slot,
@@ -375,5 +378,102 @@ describe('OrganizedActionSurface', () => {
     expect(
       screen.queryByRole('region', { name: 'Abilities collection' })
     ).toBeNull();
+  });
+});
+
+describe('OrganizedActionSurface effect rows', () => {
+  const rows = [
+    create(EffectRowSchema, {
+      id: 'a',
+      ref: 'fixture:a',
+      name: 'Alpha Effect',
+      description: 'Alpha, authored beside its rule.',
+      state: EffectState.DEPENDS,
+      reason: 'Depends on the target',
+      participation: EffectParticipation.CONTRIBUTES_NOW,
+    }),
+    create(EffectRowSchema, {
+      id: 'b',
+      ref: 'fixture:b',
+      name: 'Beta Effect',
+      description: 'Beta.',
+      state: EffectState.APPLIES,
+      reason: 'The holder is attacking',
+      participation: EffectParticipation.LATER_CHOICE,
+      benefit: 'May add 1d6 after seeing the roll',
+    }),
+  ];
+  const attack = (available = true) =>
+    create(DeclarationSchema, {
+      ...offer('attack', Verb.ATTACK, available),
+      effects: rows,
+    });
+  function renderAttack(available = true) {
+    const onSelect = vi.fn();
+    render(
+      <OrganizedActionSurface
+        declarations={[attack(available)]}
+        authorityFresh
+        presentation={{ quickDeclarationIds: ['attack'] }}
+        onSelectDeclaration={onSelect}
+      />
+    );
+    return onSelect;
+  }
+  const expectRows = (card: HTMLElement) => {
+    const list = within(card).getByRole('list', { name: 'Effects' });
+    expect(list).toHaveTextContent('Alpha Effect');
+    expect(list).toHaveTextContent('Depends on the target');
+    expect(list).toHaveTextContent('Alpha, authored beside its rule.');
+    expect(list).toHaveTextContent('Available after the roll');
+    expect(list).toHaveTextContent('May add 1d6 after seeing the roll');
+  };
+
+  it('hover shows effect rows', () => {
+    const onSelect = renderAttack();
+    pointer(
+      screen.getByRole('button', { name: /^Attack\./ }),
+      'pointerover',
+      'mouse'
+    );
+    expectRows(screen.getByRole('tooltip', { name: 'Attack details' }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('keyboard focus shows effect rows', () => {
+    const onSelect = renderAttack();
+    act(() => screen.getByRole('button', { name: /^Attack\./ }).focus());
+    expectRows(screen.getByRole('tooltip', { name: 'Attack details' }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('touch long-press shows the same rows read-only', () => {
+    vi.useFakeTimers();
+    const onSelect = renderAttack();
+    hold(screen.getByRole('button', { name: /^Attack\./ }));
+    expectRows(screen.getByRole('region', { name: 'Attack details' }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('shows rows on an unavailable offer, which stays unavailable', () => {
+    const onSelect = renderAttack(false);
+    const focusTarget = screen.getByRole('group', { name: /^Attack\./ });
+    act(() => focusTarget.focus());
+    const card = screen.getByRole('tooltip', { name: 'Attack details' });
+    expectRows(card);
+    expect(card).toHaveTextContent('Unavailable: Action spent.');
+    expect(screen.getByRole('button', { name: /^Attack\./ })).toBeDisabled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('click still selects the declaration once', () => {
+    const onSelect = renderAttack();
+    const button = screen.getByRole('button', { name: /^Attack\./ });
+    pointer(button, 'pointerover', 'mouse');
+    fireEvent.click(button, { detail: 1 });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'attack' })
+    );
   });
 });

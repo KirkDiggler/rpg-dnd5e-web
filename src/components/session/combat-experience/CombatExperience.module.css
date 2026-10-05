@@ -2563,3 +2563,226 @@ button.diceDrawerCue:focus-visible {
     pointer-events: auto;
   }
 }
+
+/* Effect rows (rpg-project#520). One renderer, every detail surface. The tone
+   is told three ways — the printed word, a glyph, and the rule's line style —
+   so no state depends on colour alone. Only existing tokens. */
+.effectRows {
+  display: grid;
+  gap: 5px;
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--sc-line);
+  text-align: left;
+}
+/* The detail cards lay their direct children out as label/value pairs. */
+.organizedInspection > .effectRows,
+.actionTooltip > .effectRows {
+  display: grid;
+}
+.effectRow {
+  display: grid;
+  gap: 1px;
+  padding: 2px 0 2px 7px;
+  border-left: 2px solid var(--sc-line);
+  line-height: 1.35;
+}
+.effectRowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.effectName {
+  color: var(--sc-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+.effectState {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.effectReason {
+  color: var(--sc-ink);
+}
+.effectBenefit {
+  color: var(--sc-gold-bright);
+  font-weight: 700;
+}
+.effectDescription {
+  color: var(--sc-muted);
+  font-size: 9px;
+}
+.effectRow[data-effect-tone='applies'] {
+  border-left-color: var(--sc-green);
+}
+.effectRow[data-effect-tone='applies'] .effectState {
+  color: var(--sc-green);
+}
+.effectRow[data-effect-tone='later'] {
+  border-left-color: var(--sc-gold);
+  border-left-style: double;
+  border-left-width: 3px;
+}
+.effectRow[data-effect-tone='later'] .effectState {
+  color: var(--sc-gold);
+}
+.effectRow[data-effect-tone='depends'] {
+  border-left-color: var(--sc-blue);
+  border-left-style: dashed;
+}
+.effectRow[data-effect-tone='depends'] .effectState {
+  color: var(--sc-blue);
+}
+/* Quieter, never hidden: the reason is the point of the row. */
+.effectRow[data-effect-tone='does-not-apply'] .effectName,
+.effectRow[data-effect-tone='does-not-apply'] .effectReason,
+.effectRow[data-effect-tone='does-not-apply'] .effectState {
+  color: var(--sc-muted);
+}
+.effectRow[data-effect-tone='does-not-apply'] .effectName {
+  font-weight: 600;
+}
+.effectRow[data-effect-tone='unavailable'] {
+  border-left-style: dotted;
+}
+.effectRow[data-effect-tone='unavailable'] .effectState {
+  color: var(--sc-muted);
+}
+/* A producer defect, said out loud rather than dressed as a real state. */
+.effectRow[data-effect-tone='unknown'] {
+  border-left-color: var(--sc-red);
+  border-left-style: dashed;
+}
+.effectRow[data-effect-tone='unknown'] .effectState {
+  color: var(--sc-red);
+}
+.actionTooltip:has(.effectRows) {
+  max-width: 280px;
+}
+/* A hover card takes no pointer, so it cannot be scrolled: give the rows the
+   room to be read whole rather than clipped. */
+.organizedInspection:has(.effectRows) {
+  width: min(360px, calc(100vw - 28px));
+  max-height: min(600px, calc(100dvh - 160px));
+}
+/* Rows are prose to be read; the overlay's map-through translucency would
+   bleed the scene into their descriptions. */
+.organizedActions .organizedInspection:has(.effectRows) {
+  background: rgba(7, 13, 15, 0.92);
+}
+@container organized-hud (max-width: 800px) or (max-height: 500px) {
+  .organizedInspection:has(.effectRows) {
+    max-height: calc(100dvh - 186px);
+  }
+}
+
+/* Target effects: a candidate's answers, beside the target list so hovering
+   between targets rewrites text in place and moves nothing. The last target
+   inspected stays shown, so the pointer can travel to the rows. */
+.targetChoiceRow {
+  display: flex;
+  gap: 4px;
+}
+.targetChoiceRow > .targetChoice {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.targetChoiceRow[data-inspected='true'] > .targetChoice {
+  box-shadow: inset 2px 0 0 var(--sc-gold);
+}
+.targetEffectsToggle {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--sc-line);
+  border-radius: 5px;
+  color: var(--sc-muted);
+  background: rgba(0, 0, 0, 0.18);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Pinned: filled, with a glyph, so the press reads without colour alone. */
+.targetEffectsToggle[aria-pressed='true'] {
+  border-color: rgba(232, 183, 95, 0.5);
+  color: var(--sc-gold-bright);
+  background: rgba(232, 183, 95, 0.18);
+}
+.targetEffectsToggle[aria-pressed='true']::before {
+  content: '●' / '';
+  margin-right: 4px;
+}
+.targetEffects {
+  position: absolute;
+  z-index: 8;
+  top: 136px;
+  left: calc(24px + min(300px, calc(100% - 48px)) + 8px);
+  display: grid;
+  width: min(320px, calc(100% - 356px));
+  min-width: 220px;
+  max-height: min(600px, calc(100% - 152px));
+  gap: 2px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px 10px;
+  border: 1px solid var(--sc-line);
+  border-left: 2px solid var(--sc-gold);
+  border-radius: 0 7px 7px 0;
+  color: var(--sc-ink);
+  background: rgba(7, 13, 15, 0.9);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  font-size: 10px;
+  pointer-events: auto;
+  backdrop-filter: blur(5px);
+}
+.targetEffects > strong {
+  font:
+    700 13px Cinzel,
+    serif;
+}
+.targetEffectsHint {
+  color: var(--sc-muted);
+  font-size: 9px;
+}
+.targetEffectsHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* Small frames: beside the fixed target prompt, short of the log column, and
+   only once a target is inspected (hover, focus, or the Effects toggle). */
+@container organized-hud (max-width: 800px) or (max-height: 500px) {
+  .targetEffects {
+    position: fixed;
+    z-index: 100;
+    top: 62px;
+    left: calc(16px + min(300px, calc(100vw - 48px)));
+    width: max(
+      200px,
+      min(320px, calc(100vw - 344px - var(--organized-log-width, 280px)))
+    );
+    min-width: 0;
+    max-height: calc(100dvh - 186px);
+  }
+  .targetEffects:not([data-inspecting]) {
+    display: none;
+  }
+}
+@container organized-hud (max-width: 600px) {
+  .targetEffects {
+    top: auto;
+    bottom: 124px;
+    left: 8px;
+    width: calc(100vw - 16px);
+    max-height: min(220px, calc(100dvh - 300px));
+  }
+}

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Linter } from 'eslint';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -159,6 +160,33 @@ describe('world asset catalog generator', () => {
     expect(first).toContain(fixture.catalog.recipes[0]!.sha256);
     expect(first).not.toContain(fixture.provider);
     expect(first).not.toMatch(/harness\/|sourcePath|packSlug|licensed/i);
+  });
+
+  it('emits exact round-tripping bounds without numeric-literal precision errors', () => {
+    const fixture = makeFixture();
+    const dimensions = [Number('1.4928359985351562'), 0.1, 0.000000000000001];
+    fixture.catalog.assets[0]!.boundsMeters = dimensions;
+    rewriteCatalog(fixture);
+    generateWorldAssetCatalog({
+      providerRoot: fixture.provider,
+      runtimeRoot: fixture.runtime,
+      outputPath: fixture.output,
+    });
+    const generated = readFileSync(fixture.output, 'utf8');
+    const values = generated
+      .match(/boundsMeters:\s*\[([\d.eE+,\s-]+)\]/)![1]!
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    expect(values.map(Number)).toEqual(dimensions);
+    const messages = new Linter().verify(
+      `const bounds = [${values.join(',')}];`,
+      {
+        languageOptions: { ecmaVersion: 2022 },
+        rules: { 'no-loss-of-precision': 'error' },
+      }
+    );
+    expect(messages).toEqual([]);
   });
 
   it('emits optional ordered roles and leaves absent roles legal', () => {
