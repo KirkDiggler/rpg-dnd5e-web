@@ -169,6 +169,39 @@ describe('TargetSurface effect rows', () => {
     expect(onTargetClick).not.toHaveBeenCalled();
   });
 
+  it('a mouse click on Effects pins the hovered candidate open, and a second click closes it', () => {
+    const { onTargetClick } = renderSurface();
+    const row = screen
+      .getByRole('button', { name: /Goblin A: Available/ })
+      .closest('li')!;
+    const toggle = screen.getByRole('button', {
+      name: 'Effects against Goblin A',
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    mouse(row, 'pointerover');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+    expect(panel()).toHaveTextContent('+1d6 damage');
+    // Pinned wins over hover until it is closed.
+    mouse(
+      screen
+        .getByRole('button', { name: /Goblin B: Available/ })
+        .closest('li')!,
+      'pointerover'
+    );
+    expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+    expect(
+      screen.getByRole('button', { name: 'Effects against Goblin B' })
+    ).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(panel()).toHaveAccessibleName('Attack effects');
+    expect(panel()).toHaveTextContent('Depends on the target');
+    expect(onTargetClick).not.toHaveBeenCalled();
+  });
+
   it('candidate click calls onTargetClick unchanged', () => {
     const { onTargetClick } = renderSurface();
     const button = screen.getByRole('button', { name: /Goblin A: Available/ });

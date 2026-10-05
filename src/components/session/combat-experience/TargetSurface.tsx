@@ -57,21 +57,47 @@ export function TargetSurface({
   hoveredTarget,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
-  // WHOSE EFFECT ROWS ARE SHOWN (rpg-project#520). The last candidate hovered,
-  // focused or toggled — in the list or on the canvas — stays inspected until
-  // another is, so the pointer can travel to the rows and the panel never
-  // flickers back between targets. Keyed by declaration so a new armed offer
-  // starts from its own rows. Reading never reaches `onTargetClick`.
-  const [inspected, setInspected] = useState<{
+  // WHOSE EFFECT ROWS ARE SHOWN (rpg-project#520). Two sources, kept apart
+  // so they never fight:
+  // - PREVIEW: the last candidate hovered or focused, in the list or on the
+  //   canvas. Sticky, so the pointer can travel to the rows and the panel
+  //   never flickers back between targets.
+  // - PINNED: the candidate whose Effects toggle was pressed. Pinned wins over
+  //   any preview until it is closed (by its toggle or the panel's Close),
+  //   which is what a touch user needs; closing clears both and the panel
+  //   returns to the declaration's own rows.
+  // Keyed by declaration so a new armed offer starts from its own rows.
+  // Reading never reaches `onTargetClick`.
+  const [inspection, setInspection] = useState<{
     declarationId: string;
-    member: string;
+    preview: string | null;
+    pinned: string | null;
   } | null>(null);
-  const inspect = (member: string | null) => {
-    if (declaration) {
-      setInspected(member ? { declarationId: declaration.id, member } : null);
+  const declarationId = declaration?.id;
+  const current =
+    inspection && inspection.declarationId === declarationId
+      ? inspection
+      : null;
+  const preview = (member: string) => {
+    if (declarationId) {
+      setInspection((prior) => ({
+        declarationId,
+        pinned:
+          prior && prior.declarationId === declarationId ? prior.pinned : null,
+        preview: member,
+      }));
     }
   };
-  const declarationId = declaration?.id;
+  const togglePin = (member: string) => {
+    if (declarationId) {
+      setInspection(
+        current?.pinned === member
+          ? null
+          : { declarationId, preview: member, pinned: member }
+      );
+    }
+  };
+  const closeInspection = () => setInspection(null);
   const hoveredIsCandidate = Boolean(
     hoveredTarget &&
     declaration?.candidates.some(
@@ -80,13 +106,15 @@ export function TargetSurface({
   );
   useEffect(() => {
     if (declarationId && hoveredTarget && hoveredIsCandidate) {
-      setInspected({ declarationId, member: hoveredTarget });
+      setInspection((prior) => ({
+        declarationId,
+        pinned:
+          prior && prior.declarationId === declarationId ? prior.pinned : null,
+        preview: hoveredTarget,
+      }));
     }
   }, [declarationId, hoveredTarget, hoveredIsCandidate]);
-  const inspectedMember =
-    inspected && inspected.declarationId === declaration?.id
-      ? inspected.member
-      : null;
+  const inspectedMember = current?.pinned ?? current?.preview ?? null;
   const effectsPanelId = useId();
   // WHICH SIDE A CANDIDATE IS ON IS NOT A QUESTION ASKED HERE. Afford already
   // ruled who may be chosen, and it offers allies for Bardic Inspiration and
@@ -268,13 +296,13 @@ export function TargetSurface({
                             event.pointerType === 'mouse' ||
                             event.pointerType === 'pen'
                           ) {
-                            inspect(candidate.member);
+                            preview(candidate.member);
                           }
                         }
                       : undefined
                   }
                   onFocus={
-                    hasEffects ? () => inspect(candidate.member) : undefined
+                    hasEffects ? () => preview(candidate.member) : undefined
                   }
                 >
                   <button
@@ -303,11 +331,7 @@ export function TargetSurface({
                       aria-label={`Effects against ${name}`}
                       onClick={(event) => {
                         event.stopPropagation();
-                        inspect(
-                          inspectedMember === candidate.member
-                            ? null
-                            : candidate.member
-                        );
+                        togglePin(candidate.member);
                       }}
                     >
                       Effects
@@ -360,7 +384,7 @@ export function TargetSurface({
               <button
                 type="button"
                 className={styles.targetEffectsToggle}
-                onClick={() => inspect(null)}
+                onClick={closeInspection}
               >
                 Close
               </button>
