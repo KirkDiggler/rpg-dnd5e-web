@@ -19,6 +19,7 @@ import {
   buildActionTooltip,
   effectLinesFor,
   effectStateWord,
+  heldEffectLinesFor,
 } from './actionTooltip';
 
 function declaration(overrides: Partial<Declaration> = {}): Declaration {
@@ -479,5 +480,85 @@ describe('effect rows', () => {
     expect(actionTooltipText(buildActionTooltip(withEffects()))).toContain(
       'Alpha Effect: Depends — Depends on the target'
     );
+  });
+});
+
+// A row the TARGET holds, deliberately sharing the declaration row's id so a
+// join by id would show: the wire promises they never collide, and the
+// projection must not rely on it.
+const held = create(EffectRowSchema, {
+  id: 'row-a@src-1',
+  ref: 'fixture:effects:gamma',
+  name: 'Gamma Effect',
+  description: 'What gamma, held by the target, does.',
+  state: EffectState.APPLIES,
+  reason: 'The target holds gamma',
+  participation: EffectParticipation.CONTRIBUTES_NOW,
+  benefit: 'Advantage on the attack roll',
+});
+const withHeld = () =>
+  withEffects({
+    candidates: [
+      create(TargetCandidateSchema, {
+        member: 'g1',
+        available: true,
+        effects: [
+          create(TargetEffectSchema, {
+            id: 'row-a@src-1',
+            state: EffectState.DOES_NOT_APPLY,
+            reason: 'The answer for the actor row',
+          }),
+        ],
+        heldEffects: [held],
+      }),
+      create(TargetCandidateSchema, { member: 'g2', available: true }),
+    ],
+  });
+
+describe('held rows', () => {
+  it('reads the candidate’s held rows verbatim, through the same state words', () => {
+    expect(heldEffectLinesFor(withHeld(), 'g1')).toEqual([
+      {
+        id: 'row-a@src-1',
+        name: 'Gamma Effect',
+        description: 'What gamma, held by the target, does.',
+        state: EffectState.APPLIES,
+        tone: 'applies',
+        stateWord: 'Applies',
+        reason: 'The target holds gamma',
+        benefit: 'Advantage on the attack roll',
+      },
+    ]);
+  });
+
+  it('held rows are absent without a candidate, or for one holding none', () => {
+    expect(heldEffectLinesFor(withHeld())).toEqual([]);
+    expect(heldEffectLinesFor(withHeld(), null)).toEqual([]);
+    expect(heldEffectLinesFor(withHeld(), 'g2')).toEqual([]);
+    expect(heldEffectLinesFor(withHeld(), 'nobody')).toEqual([]);
+    expect(buildActionTooltip(withHeld()).effects.map((e) => e.name)).toEqual([
+      'Alpha Effect',
+      'Beta Effect',
+    ]);
+  });
+
+  it('held rows keep their own ids and are never matched against declaration rows', () => {
+    // The actor row still reads the candidate's answer for it, not the held
+    // row that shares its id.
+    const [actor, ...rest] = effectLinesFor(withHeld(), 'g1');
+    expect(actor).toMatchObject({
+      name: 'Alpha Effect',
+      state: EffectState.DOES_NOT_APPLY,
+      reason: 'The answer for the actor row',
+      description: 'What alpha does, authored beside its rule.',
+    });
+    expect(rest.map((line) => line.name)).toEqual(['Beta Effect']);
+    // And the held row is not overlaid by the candidate's answer either.
+    const [own] = heldEffectLinesFor(withHeld(), 'g1');
+    expect(own).toMatchObject({
+      id: 'row-a@src-1',
+      state: EffectState.APPLIES,
+      reason: 'The target holds gamma',
+    });
   });
 });

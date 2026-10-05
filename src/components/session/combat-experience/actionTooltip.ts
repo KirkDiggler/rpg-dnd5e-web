@@ -29,6 +29,11 @@
  * `available`. A target's answers ride its candidate and replace state, reason
  * and benefit for the row with the same `id`; the declaration keeps the
  * description and participation.
+ *
+ * A candidate's `heldEffects` are a third thing: full rows for effects THAT
+ * TARGET holds (Faerie Fire on the goblin). They are the target's, not the
+ * actor's, so they are drawn as their own list and never overlaid onto,
+ * matched against, or merged with the declaration's rows, whatever their ids.
  */
 import {
   EffectParticipation,
@@ -36,6 +41,8 @@ import {
   Slot,
   Verb,
   type Declaration,
+  type EffectRow,
+  type TargetEffect,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
 import { castLabel } from './castLabel';
@@ -123,9 +130,35 @@ function effectTone(
 }
 
 /**
+ * One row read through the tone and state-word path. With `answer`, the
+ * target's state, reason and benefit replace the row's; description and
+ * participation stay the row's own.
+ */
+function effectLine(row: EffectRow, answer?: TargetEffect): ActionEffectLine {
+  const state = answer ? answer.state : row.state;
+  const tone = effectTone(state, row.participation);
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    state,
+    tone,
+    stateWord:
+      tone === 'later'
+        ? 'Available after the roll'
+        : tone === 'unknown' && state === EffectState.APPLIES
+          ? 'Applies, timing unknown'
+          : effectStateWord(state),
+    reason: answer ? answer.reason : row.reason,
+    benefit: answer ? answer.benefit : row.benefit,
+  };
+}
+
+/**
  * The rows bearing on `declaration`, with `candidateMember`'s answers laid
  * over the declaration's by `id`. An answer whose id names no declaration row
  * is ignored; a candidate with no answer of its own reads the declaration's.
+ * The candidate's held rows are not here: see `heldEffectLinesFor`.
  */
 export function effectLinesFor(
   declaration: Declaration,
@@ -137,26 +170,25 @@ export function effectLinesFor(
   const answers = new Map(
     (candidate?.effects ?? []).map((answer) => [answer.id, answer])
   );
-  return (declaration.effects ?? []).map((row) => {
-    const answer = answers.get(row.id);
-    const state = answer ? answer.state : row.state;
-    const tone = effectTone(state, row.participation);
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      state,
-      tone,
-      stateWord:
-        tone === 'later'
-          ? 'Available after the roll'
-          : tone === 'unknown' && state === EffectState.APPLIES
-            ? 'Applies, timing unknown'
-            : effectStateWord(state),
-      reason: answer ? answer.reason : row.reason,
-      benefit: answer ? answer.benefit : row.benefit,
-    };
-  });
+  return (declaration.effects ?? []).map((row) =>
+    effectLine(row, answers.get(row.id))
+  );
+}
+
+/**
+ * The rows `candidateMember` itself holds that bear on `declaration`, each
+ * read as written. Empty without a candidate, and for a candidate that holds
+ * nothing that bears (or whose holdings are not known — the wire does not say
+ * which, so neither does this).
+ */
+export function heldEffectLinesFor(
+  declaration: Declaration,
+  candidateMember?: string | null
+): ActionEffectLine[] {
+  const candidate = candidateMember
+    ? declaration.candidates.find((item) => item.member === candidateMember)
+    : undefined;
+  return (candidate?.heldEffects ?? []).map((row) => effectLine(row));
 }
 
 export function slotLabel(slot: Slot): string {

@@ -18,6 +18,7 @@ import {
   TargetKind,
   Verb,
   type Declaration,
+  type EffectRow,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   CharacterDataSchema,
@@ -32,7 +33,9 @@ const base = SESSION_COMBAT_FIXTURES[0]!;
  * inspection and target panel can be looked at without a server. Every string
  * is fixture content standing in for what the toolkit authors; the shared UI
  * renders it verbatim and recognises none of it. One row per tone, and one
- * row whose answer changes per target.
+ * row whose answer changes per target. The skeleton guard also holds an
+ * effect of its own, carried as a full row on its candidate; the archer holds
+ * none, so the panel shows no target group for it.
  */
 const LONGSWORD_ID = 'offer:aldric:longsword:action';
 const longswordEffects = [
@@ -113,6 +116,21 @@ const targetAnswers: Record<string, ReturnType<typeof answer>[]> = {
     ),
   ],
 };
+const heldByTarget: Record<string, EffectRow[]> = {
+  'skeleton-guard': [
+    create(EffectRowSchema, {
+      id: 'dnd5e:conditions:faerie_fire@brother-ansel',
+      ref: 'dnd5e:conditions:faerie_fire',
+      name: 'Faerie Fire',
+      description:
+        'Each affected creature sheds dim light, can’t benefit from being invisible, and attack rolls against it have advantage if the attacker can see it.',
+      state: EffectState.APPLIES,
+      reason: 'You can see the target',
+      participation: EffectParticipation.CONTRIBUTES_NOW,
+      benefit: 'Advantage on the attack roll',
+    }),
+  ],
+};
 function answer(state: EffectState, reason: string, benefit = '') {
   return create(TargetEffectSchema, {
     id: 'dnd5e:features:sneak_attack',
@@ -130,6 +148,7 @@ const withEffectRows = (declaration: Declaration): Declaration =>
           create(TargetCandidateSchema, {
             ...candidate,
             effects: targetAnswers[candidate.member] ?? [],
+            heldEffects: heldByTarget[candidate.member] ?? [],
           })
         ),
       })
