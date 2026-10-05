@@ -1093,6 +1093,66 @@ describe('room draft v3 migration and structural exactness', () => {
     });
   });
 
+  it('keeps a bound door\u2019s state on unrelated scene edits and drops it with its opening', () => {
+    const draft = createRoomDraft(
+      createEmptyScene('scene-bound-door'),
+      'room-bound-door'
+    );
+    draft.room.walls = [
+      {
+        id: 'wall-1',
+        label: 'North wall',
+        line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
+        openings: [
+          {
+            id: 'opening-1',
+            position: 7,
+            width: 2,
+            door: {
+              id: 'door-1',
+              assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+            },
+          },
+        ],
+        appearance: {
+          assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+          height: 3,
+          thickness: 0.3,
+          elevation: 0,
+        },
+        blocker: {
+          footprint: { width: 12, depth: 0.5, offsetX: 0, offsetZ: 0 },
+          blocksMovement: false,
+          blocksLineOfSight: false,
+        },
+      },
+    ];
+    draft.room.doorBindings = { 'door-1': { closed: true } };
+
+    // An unrelated scene edit (no items) must NOT delete the bound door's
+    // state; the door has no scene item, but its OPENING owns it.
+    const kept = reconcileRoomDraft(draft, draft.scene);
+    expect(kept.room.doorBindings).toEqual({ 'door-1': { closed: true } });
+    // A bound door is never a prop declaration; declarations follow scene
+    // items only.
+    expect(kept.room.propDeclarations).toEqual({});
+
+    // Removing the opening removes the door, and its binding in the same
+    // reconcile pass.
+    const walls = kept.room.walls!;
+    const withoutOpening = {
+      ...kept,
+      room: {
+        ...kept.room,
+        walls: [{ ...walls[0]!, openings: [] }],
+      },
+    };
+    expect(
+      'doorBindings' in
+        reconcileRoomDraft(withoutOpening, withoutOpening.scene).room
+    ).toBe(false);
+  });
+
   it('refuses a faction id that is not a faction id', () => {
     const draft = createRoomDraft(
       createEmptyScene('scene-bad-faction'),

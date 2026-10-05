@@ -33,6 +33,7 @@ import {
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
 import type { SiteScope } from './siteScope';
+import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -209,6 +210,14 @@ vi.mock('./WorldBuildingViewport', () => ({
       onMoveMonster?: (id: string, cell: { q: number; r: number }) => void;
       onStartGesture?: (cell: { q: number; r: number }) => void;
       onSelectActor?: (actor: string | null) => void;
+      walls?: Array<{ id: string; label: string }>;
+      selectedWallId?: string | null;
+      wallSnapEnabled?: boolean;
+      onWallGesture?: (line: {
+        start: { x: number; z: number };
+        end: { x: number; z: number };
+      }) => void;
+      onSelectWall?: (id: string | null) => void;
     };
   }) => {
     const readPayload = (event: React.DragEvent) => {
@@ -244,6 +253,12 @@ vi.mock('./WorldBuildingViewport', () => ({
         <output data-testid="viewport-tool">{props.tool}</output>
         <output data-testid="viewport-room-tool">
           {props.roomAuthoring?.tool ?? ''}
+        </output>
+        <output data-testid="viewport-walls">
+          {JSON.stringify(props.roomAuthoring?.walls ?? [])}
+        </output>
+        <output data-testid="viewport-selected-wall">
+          {props.roomAuthoring?.selectedWallId ?? ''}
         </output>
         <div
           data-testid="canvas-ground"
@@ -351,6 +366,20 @@ vi.mock('./WorldBuildingViewport', () => ({
             </button>
             <button
               onClick={() =>
+                props.roomAuthoring?.onConcealmentPropPick?.('wall-seeded')
+              }
+            >
+              Pick concealment wall
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onConcealmentPropPick?.('bound-door')
+              }
+            >
+              Pick concealment bound door
+            </button>
+            <button
+              onClick={() =>
                 props.roomAuthoring?.onPlaceMonster?.({ q: 1, r: 0 })
               }
             >
@@ -374,6 +403,24 @@ vi.mock('./WorldBuildingViewport', () => ({
               }
             >
               Commit start gesture
+            </button>
+            <button
+              onClick={() =>
+                props.roomAuthoring?.onWallGesture?.({
+                  start: { x: -3, z: -1 },
+                  end: { x: 4, z: 2 },
+                })
+              }
+            >
+              Commit wall gesture
+            </button>
+            <button
+              onClick={() => {
+                const wall = props.roomAuthoring?.walls?.[0];
+                if (wall) props.roomAuthoring?.onSelectWall?.(wall.id);
+              }}
+            >
+              Select first wall
             </button>
             <output data-testid="viewport-actors">
               {JSON.stringify({
@@ -3652,5 +3699,531 @@ describe('per-prop options belong to the selection (web#1178)', () => {
       firstPropId()
     );
     expect(screen.queryByTestId('option-sections-multi')).toBeNull();
+  });
+});
+
+describe('structural wall authoring (Task 3)', () => {
+  const WALL_ASSET = 'dnd5e:env:dark-fortress:45_wall_01';
+  const DOOR_ASSET = 'dnd5e:env:dark-fortress:wall_door_double_01';
+  afterEach(() => publishRpc.reset());
+
+  function openWalls() {
+    const summary = screen.getByLabelText('Walls');
+    const details = summary.closest('details') as HTMLDetailsElement | null;
+    if (details && !details.open) fireEvent.click(summary);
+  }
+
+  function draftWalls(): StructuralWall[] {
+    return publishedDraft().room.walls ?? [];
+  }
+
+  function seededWall(): StructuralWall {
+    return {
+      id: 'wall-seeded',
+      label: 'Seeded wall',
+      line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
+      openings: [{ id: 'opening-1', position: 7, width: 2 }],
+      appearance: {
+        assetRef: WALL_ASSET,
+        height: 3,
+        thickness: 0.3,
+        elevation: 0,
+      },
+      blocker: {
+        footprint: { width: 20, depth: 0.5, offsetX: 1, offsetZ: -0.2 },
+        blocksMovement: false,
+        blocksLineOfSight: true,
+      },
+    };
+  }
+
+  function seedRoomWithWall(storage: MemoryStorage): RoomDraft {
+    const draft = createRoomDraft(createEmptyScene('wall-scene'), 'wall-room');
+    draft.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ];
+    draft.room.walls = [seededWall()];
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    return draft;
+  }
+
+  it('explicitly picks a wall and attached door independently without inventing declarations', () => {
+    const storage = new MemoryStorage();
+    const source = seedRoomWithWall(storage);
+    source.room.walls![0].openings = [
+      {
+        id: 'opening-1',
+        position: 7,
+        width: 2,
+        door: { id: 'bound-door', assetRef: DOOR_ASSET },
+      },
+    ];
+    source.room.doorBindings = { 'bound-door': { closed: true } };
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(source));
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Concealments'));
+    fireEvent.click(screen.getByRole('button', { name: 'New concealment' }));
+    fireEvent.click(screen.getByLabelText('Add members to secret-1'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment wall' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment wall' })
+    );
+    const stored = () =>
+      JSON.parse(storage.values.get(ROOM_DRAFT_STORAGE_KEY)!);
+    expect(stored().scope.concealments['secret-1'].props).toEqual([
+      'wall-seeded',
+    ]);
+    expect(stored().draft.room).toEqual(source.room);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pick concealment bound door' })
+    );
+    expect(stored().scope.concealments['secret-1'].props).toEqual([
+      'wall-seeded',
+      'bound-door',
+    ]);
+    expect(stored().draft.room).toEqual(source.room);
+    expect(stored().scope.concealments['secret-1'].cells).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(stored().scope.concealments['secret-1'].props).toEqual([
+      'wall-seeded',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(stored().scope.concealments['secret-1'].props).toBeUndefined();
+  });
+
+  // Mocked viewport R3F, then the real concept commit/history/storage path:
+  // this is NOT a browser or real-GLB walk.
+  it('draws, undoes and redoes as one transaction, persists it, and reloads the exact wall', () => {
+    const storage = new MemoryStorage();
+    const draft = createRoomDraft(createEmptyScene('wall-scene'), 'wall-room');
+    draft.room.walkableHexes = [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ];
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    const { unmount } = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openWalls();
+    fireEvent.change(screen.getByLabelText('Drawing appearance asset'), {
+      target: { value: WALL_ASSET },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Wall' }));
+    expect(screen.getByTestId('viewport-room-tool').textContent).toBe('wall');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit wall gesture' })
+    );
+
+    const drawn = draftWalls();
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]!.appearance.assetRef).toBe(WALL_ASSET);
+    // Catalog bounds already include the runtime scale: default visual size
+    // must not apply 0.75 again, and blocker depth remains independently 0.25.
+    expect(drawn[0]!.appearance.height).toBeCloseTo(2.258652985095978);
+    expect(drawn[0]!.appearance.thickness).toBeCloseTo(0.2477882355451584);
+    expect(drawn[0]!.blocker.footprint.depth).toBe(0.25);
+    // Independent blocker, both flags false: appearance never infers blocking.
+    expect(drawn[0]!.blocker.blocksMovement).toBe(false);
+    expect(drawn[0]!.blocker.blocksLineOfSight).toBe(false);
+    expect(drawn[0]!.blocker.footprint.width).toBeCloseTo(Math.hypot(7, 3));
+    expect(drawn[0]!.blocker.footprint.offsetX).toBe(0);
+    expect(screen.getByTestId('viewport-selected-wall').textContent).toBe(
+      drawn[0]!.id
+    );
+    expect(publishedDraft().room.walkableHexes).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+
+    // One Undo removes the whole draw; Redo restores it exactly.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(draftWalls()).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(draftWalls()).toEqual(drawn);
+
+    // The existing room save path persisted the redone wall byte-for-byte.
+    const persisted = JSON.parse(
+      storage.values.get(ROOM_DRAFT_STORAGE_KEY) ?? '{}'
+    ) as { draft: RoomDraft };
+    expect(persisted.draft.room.walls).toEqual(drawn);
+
+    // A fresh mount reads the exact wall back; walkability is untouched.
+    unmount();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(draftWalls()).toEqual(drawn);
+    expect(publishedDraft().room.walkableHexes).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+  });
+
+  it('edits openings and swaps the asset without changing the independent blocker or walkability', () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    const before = draftWalls()[0]!;
+    expect(before.blocker.footprint).toEqual({
+      width: 20,
+      depth: 0.5,
+      offsetX: 1,
+      offsetZ: -0.2,
+    });
+
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.change(screen.getByLabelText('New opening id'), {
+      target: { value: 'window' },
+    });
+    fireEvent.change(screen.getByLabelText('New opening position'), {
+      target: { value: '3' },
+    });
+    fireEvent.change(screen.getByLabelText('New opening width'), {
+      target: { value: '1.5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add opening' }));
+    let after = draftWalls()[0]!;
+    expect(after.openings.map((opening) => opening.id)).toEqual([
+      'opening-1',
+      'window',
+    ]);
+    expect(after.blocker).toEqual(before.blocker);
+
+    // Asset swap: appearance changes, blocker and openings are untouched.
+    fireEvent.change(screen.getByLabelText('Wall appearance asset'), {
+      target: { value: 'dnd5e:env:dark-fantasy:pillar_01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply appearance' }));
+    after = draftWalls()[0]!;
+    expect(after.appearance.assetRef).toBe('dnd5e:env:dark-fantasy:pillar_01');
+    expect(after.blocker).toEqual(before.blocker);
+    expect(after.openings.map((opening) => opening.id)).toEqual([
+      'opening-1',
+      'window',
+    ]);
+    expect(publishedDraft().room.walkableHexes).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+  });
+
+  it('refuses wall drawing and panel edits while a publishing transaction holds the lock', async () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    const onPlay = vi.fn();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.change(screen.getByLabelText('Drawing appearance asset'), {
+      target: { value: WALL_ASSET },
+    });
+
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    publishRpc.gets[0]!.deferred.reject(
+      new (await import('@connectrpc/connect')).ConnectError(
+        'no such key',
+        (await import('@connectrpc/connect')).Code.NotFound
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+
+    openWalls();
+    const before = screen.getByTestId('room-draft-json').textContent;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Commit wall gesture' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+    // A panel Apply is refused by the same commit guard, and the refusal
+    // notice STAYS VISIBLE: a guard that returns rather than throws must not
+    // be reported as a successful apply.
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply appearance' }));
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(draftWalls()[0]!.appearance.height).toBe(3);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
+    publishRpc.puts
+      .find((put) => !put.request.validateOnly)!
+      .deferred.resolve({ errors: [] } as never);
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
+  });
+
+  it('attaches one door with an opening-owned pose and restores it through state, undo, reload and opening removal', () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    const { unmount } = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.change(
+      screen.getByLabelText('Door asset for opening opening-1'),
+      { target: { value: DOOR_ASSET } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Attach door' }));
+
+    const opening = draftWalls()[0]!.openings[0]!;
+    expect(opening.door?.assetRef).toBe(DOOR_ASSET);
+    const doorId = opening.door!.id;
+    // The authored pose is NOT stored and there is NO scene.items duplicate.
+    expect(opening).toEqual({
+      id: 'opening-1',
+      position: 7,
+      width: 2,
+      door: { id: doorId, assetRef: DOOR_ASSET },
+    });
+    expect(
+      publishedDraft().scene.items.some((item) => item.id === doorId)
+    ).toBe(false);
+    // A fresh attachment is one closed binding at the EXISTING key.
+    expect(publishedDraft().room.doorBindings).toEqual({
+      [doorId]: { closed: true },
+    });
+
+    // Opening width edit retains the door identity and its binding.
+    fireEvent.change(screen.getByLabelText('Opening width opening-1'), {
+      target: { value: '2.5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply opening' }));
+    expect(draftWalls()[0]!.openings[0]!.door).toEqual({
+      id: doorId,
+      assetRef: DOOR_ASSET,
+    });
+    expect(publishedDraft().room.doorBindings).toEqual({
+      [doorId]: { closed: true },
+    });
+
+    // State edit uses the engine's grammar: open is the empty binding.
+    fireEvent.change(
+      screen.getByLabelText('Door state for opening opening-1'),
+      { target: { value: 'open' } }
+    );
+    expect(publishedDraft().room.doorBindings).toEqual({ [doorId]: {} });
+
+    // Undo restores the closed state; redo restores the open one.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(publishedDraft().room.doorBindings).toEqual({
+      [doorId]: { closed: true },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(publishedDraft().room.doorBindings).toEqual({ [doorId]: {} });
+
+    // Persisted and reloaded exactly, attachment and state together.
+    const persisted = JSON.parse(
+      storage.values.get(ROOM_DRAFT_STORAGE_KEY)!
+    ) as { draft: RoomDraft };
+    expect(persisted.draft.room.walls?.[0]?.openings[0]?.door).toEqual({
+      id: doorId,
+      assetRef: DOOR_ASSET,
+    });
+    unmount();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(draftWalls()[0]!.openings[0]!.door).toEqual({
+      id: doorId,
+      assetRef: DOOR_ASSET,
+    });
+    expect(publishedDraft().room.doorBindings).toEqual({ [doorId]: {} });
+
+    // Removing the opening removes its owned door and binding in one entry.
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove opening opening-1' })
+    );
+    expect(draftWalls()[0]!.openings).toHaveLength(0);
+    expect(publishedDraft().room.doorBindings).toBeUndefined();
+  });
+
+  it('removes a door while keeping the gap, and a removed wall cleans its binding', () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.change(
+      screen.getByLabelText('Door asset for opening opening-1'),
+      { target: { value: DOOR_ASSET } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Attach door' }));
+    expect(Object.keys(publishedDraft().room.doorBindings ?? {})).toHaveLength(
+      1
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Remove door from opening opening-1',
+      })
+    );
+    expect(draftWalls()[0]!.openings[0]!.door).toBeUndefined();
+    // The gap stays authored; the binding goes with the attachment.
+    expect(draftWalls()[0]!.openings[0]!.position).toBe(7);
+    expect(draftWalls()[0]!.openings[0]!.width).toBe(2);
+    expect(publishedDraft().room.doorBindings).toBeUndefined();
+
+    // Re-attach, then remove the whole wall: its owned binding is cleaned in
+    // the same undoable entry.
+    fireEvent.change(
+      screen.getByLabelText('Door asset for opening opening-1'),
+      { target: { value: DOOR_ASSET } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Attach door' }));
+    expect(Object.keys(publishedDraft().room.doorBindings ?? {})).toHaveLength(
+      1
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove wall wall-seeded' })
+    );
+    expect(draftWalls()).toHaveLength(0);
+    expect(publishedDraft().room.doorBindings).toBeUndefined();
+  });
+
+  it('refuses door attach, state and remove during a publishing lock without clearing the refusal notice', async () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    const onPlay = vi.fn();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.change(
+      screen.getByLabelText('Door asset for opening opening-1'),
+      { target: { value: DOOR_ASSET } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Attach door' }));
+    const doorId = draftWalls()[0]!.openings[0]!.door!.id;
+
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    publishRpc.gets[0]!.deferred.reject(
+      new (await import('@connectrpc/connect')).ConnectError(
+        'no such key',
+        (await import('@connectrpc/connect')).Code.NotFound
+      )
+    );
+    await waitFor(() =>
+      expect(
+        publishRpc.puts.filter((put) => !put.request.validateOnly)
+      ).toHaveLength(1)
+    );
+
+    const before = screen.getByTestId('room-draft-json').textContent;
+    fireEvent.change(
+      screen.getByLabelText('Door state for opening opening-1'),
+      { target: { value: 'open' } }
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(publishedDraft().room.doorBindings).toEqual({
+      [doorId]: { closed: true },
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Remove door from opening opening-1',
+      })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(draftWalls()[0]!.openings[0]!.door).toBeDefined();
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
+    publishRpc.puts
+      .find((put) => !put.request.validateOnly)!
+      .deferred.resolve({ errors: [] } as never);
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
   });
 });

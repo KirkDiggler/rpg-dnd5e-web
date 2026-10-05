@@ -64,6 +64,8 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
 
 import type { RoomHexCell } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
+import { snapWallPoint } from './structuralWallEditing';
+import type { StructuralWall } from './structuralWalls';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
 import {
   WorldBuildingFog,
@@ -1428,5 +1430,371 @@ describe('room actor markers and snapped setup gestures', () => {
       'pointerMiss',
       {}
     );
+  });
+});
+
+const WALL_ASSET = 'dnd5e:env:dark-fortress:45_wall_01';
+
+function wallFixture(overrides: Partial<StructuralWall> = {}): StructuralWall {
+  return {
+    id: 'wall-1',
+    label: 'North wall',
+    line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
+    openings: [{ id: 'opening-1', position: 7, width: 2 }],
+    appearance: {
+      assetRef: WALL_ASSET,
+      height: 3,
+      thickness: 0.3,
+      elevation: 0,
+    },
+    blocker: {
+      footprint: { width: 12, depth: 0.4, offsetX: 1, offsetZ: 0 },
+      blocksMovement: false,
+      blocksLineOfSight: true,
+    },
+    ...overrides,
+  };
+}
+
+describe('room wall pointer ownership', () => {
+  it('previews during the drag, commits one line on release, ignores a second pointer and treats zero length as a no-op', async () => {
+    const onWallGesture = vi.fn();
+    const baseProps = {
+      scene: {
+        version: 1 as const,
+        id: 'scene',
+        name: 'Room',
+        items: [],
+        groups: [],
+      },
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select' as const,
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+      roomAuthoring: {
+        tool: 'wall' as const,
+        workspace: { hexRadius: 6, horizontalLimit: 12 },
+        walkableHexes: [],
+        propDeclarations: {},
+        onWalkableGesture: vi.fn(),
+        wallSnapEnabled: false,
+        onWallGesture,
+      },
+      showCompositionBounds: false,
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents {...baseProps} />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const secondTarget = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const event = (
+      pointerId: number,
+      x: number,
+      z = 0,
+      eventTarget = target
+    ) => ({
+      button: 0,
+      buttons: 1,
+      pointerId,
+      point: new THREE.Vector3(x, 0, z),
+      target: eventTarget,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 0));
+    expect(target.setPointerCapture).toHaveBeenCalledWith(7);
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-draw-preview' }).props
+        .userData.length
+    ).toBe(0);
+    await renderer.fireEvent(
+      ground,
+      'pointerDown',
+      event(8, 5, 0, secondTarget)
+    );
+    expect(secondTarget.setPointerCapture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerMove', event(8, 50));
+    expect(onWallGesture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerUp', event(8, 50));
+    expect(onWallGesture).not.toHaveBeenCalled();
+    await renderer.fireEvent(ground, 'pointerMove', event(7, 5));
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-draw-preview' }).props
+        .userData.length
+    ).toBeCloseTo(5);
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 5));
+    expect(onWallGesture).toHaveBeenCalledTimes(1);
+    expect(onWallGesture.mock.calls[0]![0]).toEqual({
+      start: { x: 0, z: 0 },
+      end: { x: 5, z: 0 },
+    });
+    expect(target.releasePointerCapture).toHaveBeenCalledWith(7);
+    expect(
+      renderer.scene.findAllByProps({ name: 'structural-wall-draw-preview' })
+    ).toHaveLength(0);
+
+    await renderer.fireEvent(ground, 'pointerDown', event(7, 3, 2));
+    await renderer.fireEvent(ground, 'pointerUp', event(7, 3, 2));
+    expect(onWallGesture).toHaveBeenCalledTimes(1);
+  });
+
+  it('never starts a wall from a non-primary button', async () => {
+    const onWallGesture = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'wall',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          onWallGesture,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const event = (button: number) => ({
+      button,
+      buttons: button === 1 ? 4 : 1,
+      pointerId: 7,
+      point: new THREE.Vector3(2, 0, 2),
+      target: { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() },
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+    await renderer.fireEvent(ground, 'pointerDown', event(2));
+    await renderer.fireEvent(ground, 'pointerMove', event(2));
+    await renderer.fireEvent(ground, 'pointerUp', event(2));
+    expect(onWallGesture).not.toHaveBeenCalled();
+  });
+
+  it('cancels a wall drag on pointercancel and Escape without history', async () => {
+    const onWallGesture = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'wall',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          onWallGesture,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const event = (x: number) => ({
+      button: 0,
+      buttons: 1,
+      pointerId: 7,
+      point: new THREE.Vector3(x, 0, 0),
+      target,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+    await renderer.fireEvent(ground, 'pointerDown', event(0));
+    await renderer.fireEvent(ground, 'pointerMove', event(5));
+    await renderer.fireEvent(ground, 'pointerCancel', event(5));
+    expect(
+      renderer.scene.findAllByProps({ name: 'structural-wall-draw-preview' })
+    ).toHaveLength(0);
+    await renderer.fireEvent(ground, 'pointerUp', event(5));
+    expect(onWallGesture).not.toHaveBeenCalled();
+
+    await renderer.fireEvent(ground, 'pointerDown', event(0));
+    await renderer.fireEvent(ground, 'pointerMove', event(5));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await renderer.fireEvent(ground, 'pointerUp', event(5));
+    expect(onWallGesture).not.toHaveBeenCalled();
+    expect(
+      renderer.scene.findAllByProps({ name: 'structural-wall-draw-preview' })
+    ).toHaveLength(0);
+  });
+
+  it('snaps the preview and the committed line to the same shared helper', async () => {
+    const onWallGesture = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        roomAuthoring={{
+          tool: 'wall',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          wallSnapEnabled: true,
+          onWallGesture,
+        }}
+        showCompositionBounds={false}
+      />
+    );
+    const ground = renderer.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    const event = (x: number, z: number) => ({
+      button: 0,
+      buttons: 1,
+      pointerId: 7,
+      point: new THREE.Vector3(x, 0, z),
+      target,
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+    });
+    await renderer.fireEvent(ground, 'pointerDown', event(0.31, -0.22));
+    await renderer.fireEvent(ground, 'pointerMove', event(2.37, 0.9));
+    await renderer.fireEvent(ground, 'pointerUp', event(2.37, 0.9));
+    const start = snapWallPoint({
+      point: { x: 0.31, z: -0.22 },
+      enabled: true,
+    }).point;
+    const end = snapWallPoint({
+      point: { x: 2.37, z: 0.9 },
+      enabled: true,
+    }).point;
+    expect(onWallGesture).toHaveBeenCalledTimes(1);
+    expect(onWallGesture.mock.calls[0]![0]).toEqual({ start, end });
+  });
+});
+
+describe('structural wall visual hit ownership', () => {
+  const walls = [wallFixture()];
+  const baseProps = {
+    scene: {
+      version: 1 as const,
+      id: 'scene',
+      name: 'Room',
+      items: [],
+      groups: [],
+    },
+    previewScene: null,
+    selectedIds: [],
+    tool: 'select' as const,
+    activeDrag: null,
+    onSelect: vi.fn(),
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+  };
+
+  it('renders the wall hit box only while Select owns the canvas', async () => {
+    const onSelectWall = vi.fn();
+    const paint = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...baseProps}
+        roomAuthoring={{
+          tool: 'paint',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          walls,
+          selectedWallId: null,
+          onWallGesture: vi.fn(),
+          onWalkableGesture: vi.fn(),
+          onSelectWall,
+        }}
+      />
+    );
+    expect(
+      paint.scene.findAllByProps({ name: 'structural-wall-hit-wall-1' })
+    ).toHaveLength(0);
+    await paint.unmount();
+
+    const select = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...baseProps}
+        roomAuthoring={{
+          tool: 'select',
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          walls,
+          selectedWallId: 'wall-1',
+          onWallGesture: vi.fn(),
+          onWalkableGesture: vi.fn(),
+          onSelectWall,
+        }}
+      />
+    );
+    const hit = select.scene.findByProps({
+      name: 'structural-wall-hit-wall-1',
+    });
+    await select.fireEvent(hit, 'pointerDown', {
+      button: 0,
+      stopPropagation: vi.fn(),
+    });
+    expect(onSelectWall).toHaveBeenCalledWith('wall-1');
+    expect(
+      select.scene.findByProps({ name: 'structural-wall-blocker-wall-1' })
+    ).toBeTruthy();
   });
 });

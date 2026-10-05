@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 const SECTIONS = [
   ['monsters', 'Monsters'],
+  ['walls', 'Walls'],
   ['factions', 'Factions'],
   ['dispositions', 'Dispositions'],
   ['concealments', 'Concealments'],
@@ -16,9 +17,11 @@ type Section = (typeof SECTIONS)[number][0];
  * inspector away cannot discard in-progress input or change document state. */
 export function WorldBuilderInspector({
   selectionKey,
+  selectionSection = 'selection',
   children,
 }: {
   selectionKey: string;
+  selectionSection?: 'selection' | 'walls';
   children: ReactNode;
 }) {
   const contentId = useId();
@@ -33,11 +36,11 @@ export function WorldBuilderInspector({
       previousSelection.current = selectionKey;
       if (selectionKey) {
         setCollapsed(false);
-        setActive('selection');
+        setActive(selectionSection);
         setNavigation((value) => value + 1);
       }
     }
-  }, [selectionKey]);
+  }, [selectionKey, selectionSection]);
 
   useEffect(() => {
     if (collapsed || navigation === 0) return;
@@ -98,7 +101,10 @@ export function WorldBuilderInspector({
             aria-label={`Configure ${label}`}
             aria-pressed={!collapsed && active === id}
             aria-controls={contentId}
-            disabled={id === 'selection' && !selectionKey}
+            disabled={
+              id === 'selection' &&
+              (!selectionKey || selectionSection === 'walls')
+            }
             onClick={() => {
               setCollapsed(false);
               setActive(id);

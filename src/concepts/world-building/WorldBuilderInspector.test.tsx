@@ -5,6 +5,9 @@ import { WorldBuilderInspector } from './WorldBuilderInspector';
 function panels() {
   return (
     <>
+      <details data-inspector-section="walls">
+        <summary>Walls panel</summary>
+      </details>
       <details data-inspector-section="tables">
         <summary>Tables panel</summary>
         <input aria-label="Table name" defaultValue="watch" />
@@ -17,6 +20,44 @@ function panels() {
 }
 
 describe('World Builder inspector navigation', () => {
+  it('reaches walls from a collapsed inspector and opens their selection in the wall panel', () => {
+    const view = render(
+      <WorldBuilderInspector selectionKey="">{panels()}</WorldBuilderInspector>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse inspector' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Walls' }));
+    expect(screen.getByText('Walls panel').closest('details')?.open).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse inspector' }));
+    view.rerender(
+      <WorldBuilderInspector selectionKey="wall-1" selectionSection="walls">
+        {panels()}
+      </WorldBuilderInspector>
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Configure Walls' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Configure Selection',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse inspector' }));
+    view.rerender(
+      <WorldBuilderInspector selectionKey="wall-1" selectionSection="walls">
+        {panels()}
+      </WorldBuilderInspector>
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Expand inspector' })
+        .getAttribute('aria-expanded')
+    ).toBe('false');
+  });
+
   it('tracks a root summary opened directly, not just navigation buttons', () => {
     render(
       <WorldBuilderInspector selectionKey="">{panels()}</WorldBuilderInspector>

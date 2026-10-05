@@ -3,6 +3,116 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
+## Structural-wall authoring (#527 in rpg-project)
+
+The room document optionally carries `room.walls`. Each wall owns a stable id,
+label, continuous start/end line, openings, appearance and an independent blocking
+rectangle. It is not a collection of repeated prop instances. The appearance
+names a catalog asset, height, thickness and elevation; the blocker keeps width,
+depth, both local offsets and independent movement/LOS flags. Blocker coordinates
+are relative to the wall midpoint, with local +X along the line and +Z its
+perpendicular in the XZ plane. The per-prop 12-unit clamp does not truncate walls.
+
+Openings have stable identities, local center distances and widths. A doorless
+opening carries no state; an opening's optional attached door is documented in
+**Attached-door editor** below. Existing placed doors are unchanged.
+No stored/generated spans or second door pose are introduced. Import refuses
+unsupported fields instead of silently dropping them.
+
+Walls use the existing JSON save/reload and YAML encode/decode paths. Empty walls
+normalize to absence; documents without walls retain their previous output.
+Documents with walls emit root v4 and embedded room draft v3. Floor walkability,
+scene items and existing declarations are unaffected.
+
+This is an authoring extension, not a claim of playable support. The shared
+concept draws walls, edits dimensions and openings, attaches doors, previews
+starting state and selects explicit concealment members. Toolkit owns gameplay
+and the existing room-revealed delivery; this slice does not replace them.
+Floor surfaces and a Publish & Play proof are not delivered by this extension.
+No protocol change is implied by the YAML shape.
+
+## Structural wall editor
+
+The room/site tool strip gains a `Wall` tool, available only when a repeatable
+generated catalog asset with measured dimensions and no door leaf role is
+selected. A wall drag previews on the finite ground and commits exactly one
+line on release; zero length is a no-op. Escape, right-click, pointer cancel,
+lost capture, a tool change and unmount all cancel without history, and a
+middle-button camera motion never draws. Both the preview and the commit use one
+pure snap helper over the existing `hexMath` centres, corners and side
+midpoints; snapping is optional and its setting is explicit. A final line whose
+endpoints leave the authoring workspace is refused with a visible message and
+no data loss.
+
+Walls have their own selection, distinct from scene prop ids. The wall panel
+lists and selects walls and edits label, appearance, exact length, whole-wall
+translation/rotation, the independent blocker rectangle/flags and doorless
+openings. Every Apply is one undoable room-history transaction — the same
+validated `commit`, save and reload path the rest of the room uses, refused
+while a Save & Play transaction holds the publishing lock. An appearance change
+never alters blocker data; an exact-length resize preserves the doorway's world
+position, stops at the closest opening edge, and preserves the blocker's end
+margins by changing its width by the same signed delta, refusing a nonpositive
+result. A whole-wall move or rotation carries its openings and local blocker
+offsets as one structure. Opening add/edit/remove require explicit values and
+refuse overlap, out-of-extent or duplicate identities without modifying the
+draft.
+
+Visible spans are cut from the authored openings and filled by repeating the
+selected asset through the shared `WorldPropModel` leaf; the derived pieces are
+presentation, never scene props. The repeat count divides the span by the
+asset's catalog width, which already includes the shared runtime scale, and the
+parent transform owns the span pose and the full exact fit scale — including
+authored heights outside the shared model's own prop clamp. The shared model's
+single floor lift is applied exactly once at the authored elevation and is
+never scaled by that fit. Loading, error and refusal markers are explicit,
+named, non-raycasting, and anchored at the wall or piece they describe rather
+than the world origin; a derivation past the explicit piece cap, or a wall whose
+appearance asset is missing or not repeatable, renders such a marker instead of
+allocating unboundedly or dressing itself up as the selected asset. Derived
+meshes stay non-raycasting as the wall list, asset, loading and error state
+change. The selected authored blocker is an editor-only wireframe guide, not a
+sight calculation, and no wall mesh raycasts for paint, erase, actor,
+concealment or wall-drawing gestures.
+
+In Add members mode, dedicated guides pick solid wall spans or attached door
+openings by their distinct source ids. Picking a wall never implicitly picks its
+door, floor cells or overlapping props. Membership uses the existing
+`concealments.<id>.props` list and the same undo/save path. These guides do not
+intercept other floor-owned tools; the underlying asset meshes stay non-raycasting.
+
+## Attached-door editor
+
+A wall opening may carry one optional `door: { id, assetRef }`. The opening OWNS
+the door's single pose: there is no stored transform and no `scene.items` entry.
+The bound door's state lives ONLY at the existing `room.doorBindings[id]` with
+its unchanged grammar (`{}` is open, `{closed:true}`, `{locked:[...]}`); a present
+door requires a binding, and absence is a bare opening — never a hidden or open
+door. Door ids are unique across walls, openings, scene items and other doors,
+and the asset must be a known catalog entry whose generated model declares a
+`leaf`. Existing standalone prop doors and their state are untouched; no
+attachment-to-standalone conversion or automatic migration is offered.
+
+Attach mints one id and one closed binding; swap retains id and state. Removing
+the attachment clears its state while keeping the gap. Deleting an
+owning opening or wall removes its doors and bindings in the same history entry,
+and unrelated scene edits cannot delete a bound door's state. Undo, redo and
+reload restore identity, state and attachment together. Every mutation is one
+undoable room commit behind the publishing lock; a refused edit preserves the
+document and leaves its refusal notice visible.
+
+The editor previews the authored INITIAL state at the shared leaf (explicitly
+NOT a live gameplay `OpenDoor`), fits the full existing door assembly to the
+opening width and the wall's authored height/thickness with the same
+structural-parent scale and single unscaled floor lift used by wall pieces, and
+names a missing asset at the opening. Catalog dimensions already include the
+shared runtime scale; fitting must not apply that scale a second time. Door
+meshes never raycast, so floor tools are unaffected. The fit targets the full
+assembly's outer bounds, not a separately declared clear aperture. Existing
+assets may retain bundled masonry or different reverse-face trim; asset cleanup
+must not alter authored openings or blockers. This slice does not change session
+rendering or toolkit-owned reveal/visibility behavior.
+
 ## Current room-mode promotion (#1112)
 
 Room mode now supports complete RoomDraft v3 with optional party start and stable
