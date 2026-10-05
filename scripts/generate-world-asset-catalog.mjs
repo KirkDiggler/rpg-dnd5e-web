@@ -357,7 +357,14 @@ export function renderWorldAssetCatalogModule({ commit, catalog }) {
               : key === 'roles'
                 ? " as GeneratedWorldAsset['roles']"
                 : '';
-          return `    ${key}: ${q(value)}${assertion},`;
+          // Preserve the exact parsed IEEE-754 value. Seventeen significant
+          // digits also avoid lint false positives on shortest decimal ties
+          // such as 1.4928359985351562 (same double as ...563).
+          const literal =
+            key === 'boundsMeters'
+              ? `[${value.map((dimension) => dimension.toPrecision(17)).join(', ')}]`
+              : q(value);
+          return `    ${key}: ${literal}${assertion},`;
         })
         .join('\n')}\n  }),`;
     })
