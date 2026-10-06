@@ -215,6 +215,12 @@ interface CombatExperienceBaseProps {
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
+  /**
+   * The member under the pointer on the canvas (`SessionCanvas.onHoverEntity`),
+   * or null. Presentation only: it picks whose effect rows the target panel
+   * shows while aiming, and never what a click does.
+   */
+  hoveredTarget?: string | null;
   /** `choice` rides only a VERB_REACT declaration — the answer to an open
    * reaction window, which the verb implies rather than the server offering
    * it as a candidate. */

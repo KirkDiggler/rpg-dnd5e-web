@@ -112,6 +112,13 @@ describe('World Builder generated asset thumbnails', () => {
   it('serially captures every generated catalog entry and releases its one worker', () => {
     render(<WorldBuildingConcept storage={new MemoryStorage()} />);
     const generatedCount = Object.keys(GENERATED_WORLD_ASSETS).length;
+    // Capture the real, complete catalog without reconciling every card on
+    // each completion (quadratic DOM work as content packs grow). Filtering
+    // must not stop the queue; restore every card to assert all results below.
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: 'no-matching-thumbnail-test-asset' },
+    });
+    expect(document.querySelectorAll('[data-asset-ref]')).toHaveLength(0);
 
     for (let index = 0; index < generatedCount; index += 1) {
       expect(screen.getAllByTestId('thumbnail-worker')).toHaveLength(1);
@@ -126,7 +133,15 @@ describe('World Builder generated asset thumbnails', () => {
     }
 
     expect(worker.requests).toHaveLength(generatedCount);
+    expect(
+      new Set(worker.requests.map((request) => request.requestKey))
+    ).toEqual(
+      new Set(Object.values(GENERATED_WORLD_ASSETS).map(worldAssetThumbnailKey))
+    );
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: '' },
+    });
     const ready = document.querySelectorAll(
       '[data-thumbnail-state="ready"] img'
     );

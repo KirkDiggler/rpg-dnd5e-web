@@ -64,7 +64,9 @@ export function refreshKeysFor(
     case 'joined':
       return ['roster'];
     case 'door':
-      return ['doors'];
+      return ['view'];
+    case 'roomRevealed':
+      return ['view', 'roster'];
     // DOOR_REVEALED / REGION_REVEALED patch this recipient's cached
     // GetDoors / GetAtlas views in place, per the protos' own doc
     // comment on both messages. Chosen refresh path (deliberate, per
@@ -108,13 +110,13 @@ export function refreshKeysFor(
     // it — and GetView still serves them. Refetching is the whole response;
     // there is deliberately no local pruning here to go out of step with it.
     case 'sighted':
-      return ['view'];
+      return ['view', 'roster'];
     // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
     // held atlas in the same frame in the view; this refetch is the
     // server's own answer landing behind it, exactly as the reveal beats do.
     case 'held':
     case 'dropped':
-      return ['atlas'];
+      return ['view'];
     // THE STANCE FOLDED: what the viewer may attack and what they see
     // changed; the fight that dissolves because of it has its own row.
     case 'stanceChanged':
@@ -154,7 +156,7 @@ export function refreshKeysFor(
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.
     case 'arrived':
       return event.body.value.kind === PlacementKind.PROP
-        ? ['atlas', 'view']
+        ? ['view']
         : ['roster', 'view'];
     // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
     // table: a body with nothing to give must be indistinguishable
@@ -197,6 +199,10 @@ export function refreshKeysFor(
     // because the clock is not on this beat and guessing it from an absent
     // field is exactly the kind of local decision that goes wrong the first
     // time a rule moves. One wasted read is cheaper than a stale action bar.
+    case 'discoveryChecked':
+      return event.body.value.member === member
+        ? ['characterData', 'afford']
+        : [];
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded':

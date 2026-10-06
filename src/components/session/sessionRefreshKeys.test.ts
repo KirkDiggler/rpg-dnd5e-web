@@ -10,6 +10,7 @@ import {
   JoinedSchema,
   MovedSchema,
   PersuadedSchema,
+  RegionRevealedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
   SightedSchema,
@@ -101,7 +102,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
   });
 
-  it('ARRIVED re-pulls the roster for a monster, the atlas for a prop — the first the client hears of a reserved placement', () => {
+  it('ARRIVED refreshes observations, plus the roster for a monster', () => {
     const monster = create(EventSchema, {
       kind: EventKind.ARRIVED,
       body: {
@@ -125,7 +126,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
       },
     });
     expect(refreshKeysFor(monster, VIEWER)).toEqual(['roster', 'view']);
-    expect(refreshKeysFor(prop, VIEWER)).toEqual(['atlas', 'view']);
+    expect(refreshKeysFor(prop, VIEWER)).toEqual(['view']);
   });
 });
 
@@ -221,17 +222,35 @@ describe('the sighting row (perception stream, slice 1)', () => {
       },
     });
 
-  it('refetches the scene and nothing else — nobody moved and nothing was spent', () => {
-    expect(refreshKeysFor(sighted(['goblin-2']), VIEWER)).toEqual(['view']);
+  it('refreshes observations and newly known public identities', () => {
+    expect(refreshKeysFor(sighted(['goblin-2']), VIEWER)).toEqual([
+      'view',
+      'roster',
+    ]);
+  });
+
+  it('room revelation adds fixed data without requesting another atlas', () => {
+    const revealed = create(EventSchema, {
+      kind: EventKind.ROOM_REVEALED,
+      body: {
+        case: 'roomRevealed',
+        value: create(RegionRevealedSchema, { region: { id: 'room-2' } }),
+      },
+    });
+    expect(refreshKeysFor(revealed, VIEWER)).toEqual(['view', 'roster']);
   });
 
   it('reads the same whichever way perception went', () => {
     // Somebody arriving and somebody leaving are one question to this
     // client: what do I perceive now? Both answers come from GetView, so
     // both rows are the same row.
-    expect(refreshKeysFor(sighted([], ['wolf-3']), VIEWER)).toEqual(['view']);
+    expect(refreshKeysFor(sighted([], ['wolf-3']), VIEWER)).toEqual([
+      'view',
+      'roster',
+    ]);
     expect(refreshKeysFor(sighted(['orc-1'], ['wolf-3']), VIEWER)).toEqual([
       'view',
+      'roster',
     ]);
   });
 
@@ -242,10 +261,11 @@ describe('the sighting row (perception stream, slice 1)', () => {
     // view we are about to re-read.
     expect(refreshKeysFor(sighted([], [], ['goblin-2']), VIEWER)).toEqual([
       'view',
+      'roster',
     ]);
     expect(
       refreshKeysFor(sighted(['orc-1'], ['wolf-3'], ['goblin-2']), VIEWER)
-    ).toEqual(['view']);
+    ).toEqual(['view', 'roster']);
   });
 
   it('does not pull the card, the turn or what is affordable', () => {
@@ -259,7 +279,8 @@ describe('the sighting row (perception stream, slice 1)', () => {
     expect(keys).not.toContain('characterData');
     expect(keys).not.toContain('afford');
     expect(keys).not.toContain('turn');
-    expect(keys).not.toContain('roster');
+    expect(keys).toContain('roster');
+    expect(keys).not.toContain('atlas');
   });
 });
 

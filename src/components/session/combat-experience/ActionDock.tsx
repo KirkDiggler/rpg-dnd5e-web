@@ -18,6 +18,7 @@ import {
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import { EffectRows } from './EffectRows';
 import { OrganizedActionSurface } from './OrganizedActionSurface';
 import {
   reactionWindowAnswers,
@@ -157,6 +158,7 @@ function ActionTooltipCard({ tooltip }: { tooltip: ActionTooltip }) {
           {line.value}
         </span>
       ))}
+      <EffectRows lines={tooltip.effects} />
       {tooltip.refusal && (
         <span className={styles.actionTooltipRefusal}>{tooltip.refusal}</span>
       )}
