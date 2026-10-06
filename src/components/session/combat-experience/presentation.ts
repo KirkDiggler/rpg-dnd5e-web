@@ -1289,12 +1289,6 @@ const EXPECTED_OTHER_KIND = {
   // kind/body mismatch would leave a goblin running out of the room with
   // nothing anywhere saying why.
   persuaded: EventKind.PERSUADED,
-  // AN AUTOMATIC DISCOVERY CHECK WAS RESOLVED (rpg-project#523, proto
-  // v0.1.220). It has to be here or the beat never reaches the log at all: a
-  // body with no row is discarded as a "typed event kind/body mismatch",
-  // which is the exact gap `saved` and `concentrationEnded` fell into. The
-  // body deliberately omits the hidden check/subject id, location and DC, so
-  // no client can identify the secret from a failure alone.
   discoveryChecked: EventKind.DISCOVERY_CHECKED,
   answered: EventKind.ANSWERED,
   // The creature's table's own two (rpg-project#465). LISTED, so the
@@ -1621,11 +1615,6 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // would be recorded as a conflicting duplicate of the first — a fighter
     // may lean on the same goblin twice across two turns, and the numbers
     // are what differ.
-    // THE RESOLVED AUTOMATIC DISCOVERY CHECK (rpg-project#523). The member,
-    // skill and full roll identity are preserved so two checks that differ
-    // only in their die are different beats, not a conflicting duplicate —
-    // the same whole-roll identity the threat/appeal pair uses. The body
-    // carries no hidden subject, so this layer cannot and does not name one.
     case 'discoveryChecked':
       return Object.freeze({
         kind: event.kind,

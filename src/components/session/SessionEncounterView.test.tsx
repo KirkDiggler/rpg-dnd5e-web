@@ -139,6 +139,8 @@ const hoisted = vi.hoisted(() => ({
   closeDoorFn: vi.fn(),
   unlockFn: vi.fn(),
   searchFn: vi.fn(),
+  setDiscoverySharingFn: vi.fn(),
+  discoverySharing: undefined as boolean | undefined,
   interactFn: vi.fn(),
   tradeFn: vi.fn(),
   unpackFn: vi.fn(),
@@ -222,6 +224,7 @@ vi.mock('@/api/client', () => ({
     closeDoor: hoisted.closeDoorFn,
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
+    setDiscoverySharing: hoisted.setDiscoverySharingFn,
     interact: hoisted.interactFn,
     trade: hoisted.tradeFn,
     unpack: hoisted.unpackFn,
@@ -699,6 +702,14 @@ beforeEach(() => {
     ],
   });
   hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+  hoisted.discoverySharing = undefined;
+  hoisted.setDiscoverySharingFn.mockReset();
+  hoisted.setDiscoverySharingFn.mockImplementation(
+    async (input: { sharing: boolean }) => {
+      hoisted.discoverySharing = input.sharing;
+      return { sharing: input.sharing };
+    }
+  );
   // Supply the coherent snapshot from the existing fixture values. Exercise
   // the real knowledge hook rather than mocking its queue or event reducer.
   hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
@@ -710,6 +721,7 @@ beforeEach(() => {
     const roster = await hoisted.getRosterFn(...args);
     const doors = await hoisted.getDoorsFn(...args);
     return create(GetKnowledgeResponseSchema, {
+      discoverySharing: hoisted.discoverySharing,
       atlas: hoisted.atlasResult.atlas as GetAtlasResponse,
       where: {
         position: hoisted.whereResult.position as { x: number; y: number },
@@ -1491,9 +1503,7 @@ describe('SessionEncounterView production combat integration', () => {
       renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
       expect(hoisted.lastCanvasProps.current?.scene?.roomScene).toBeUndefined();
-      expect(
-        screen.getByText('The Reference Tomb', { exact: true })
-      ).toBeTruthy();
+      expect(screen.getByText('Dungeon', { exact: true })).toBeTruthy();
     });
 
     it('waits for the room rather than drawing the legacy one first', async () => {
@@ -4957,10 +4967,8 @@ describe('SessionEncounterView production combat integration', () => {
   });
 
   describe('concealed-door reveal wiring (rpg-project#886)', () => {
-    // A member-scoped atlas whose one region claims the searcher's own
-    // resting cell — `readyScene()`'s default atlas authors NO regions,
-    // so the search button (gated on a resolved region) never appears
-    // there. This is the fixture every test below needs to see it.
+    // A known region containing the viewer. The old Search action was offered
+    // here; now it must stay absent while the known region names the HUD.
     function readySearchableScene() {
       readyScene();
       hoisted.atlasResult.atlas = pointyAtlas({
@@ -5014,7 +5022,7 @@ describe('SessionEncounterView production combat integration', () => {
       );
     });
 
-    it("the search button is absent until the searcher's own region is known", async () => {
+    it('Search and unsupported sharing controls are absent without known capability data', async () => {
       readyScene(); // default atlas authors no regions
       hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
       renderView();
@@ -5022,76 +5030,82 @@ describe('SessionEncounterView production combat integration', () => {
       expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
     });
 
-    it('clicking Search sends session/member/region and shows the same notice regardless of what the response carries — the secrecy law (rpg-project#886)', async () => {
+    it('does not offer Search even in a known region and uses its actual name', async () => {
       readySearchableScene();
-      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
-      // Two structurally different resolved values: an outcome-carrying
-      // reader would have to pick a different message for one of them.
-      // This assertion is the point — see searchNotice.ts.
-      hoisted.searchFn.mockResolvedValueOnce({
-        saved: { ok: true },
-      } as never);
       renderView();
-      await waitFor(() => screen.getByTestId('session-canvas'));
+      await screen.findByTestId('session-canvas');
+      expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
+      expect(
+        screen.queryByLabelText('Share discoveries with party')
+      ).toBeNull();
+      expect(screen.getByText('Entrance Hall', { exact: true })).toBeTruthy();
+      expect(hoisted.searchFn).not.toHaveBeenCalled();
+    });
 
-      const button = await screen.findByTestId('session-combat-search-button');
-      fireEvent.click(button);
+    it('sends explicit false for the seated character and refreshes the sharing preference', async () => {
+      readySearchableScene();
+      hoisted.discoverySharing = true;
+      renderView();
+      const checkbox = await screen.findByLabelText(
+        'Share discoveries with party'
+      );
+      expect((checkbox as HTMLInputElement).checked).toBe(true);
+      fireEvent.click(checkbox);
       await waitFor(() =>
-        expect(hoisted.searchFn).toHaveBeenCalledWith({
+        expect(hoisted.setDiscoverySharingFn).toHaveBeenCalledWith({
           session: 'enc-1',
           member: 'char-1',
-          region: 'entrance-hall',
+          sharing: false,
         })
       );
-      const firstNotice = await screen.findByText('You search the area.');
-      expect(firstNotice).toBeTruthy();
-
-      hoisted.searchFn.mockResolvedValueOnce({} as never);
-      fireEvent.click(button);
-      await waitFor(() => expect(hoisted.searchFn).toHaveBeenCalledTimes(2));
-      expect(await screen.findByText('You search the area.')).toBeTruthy();
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByLabelText(
+              'Share discoveries with party'
+            ) as HTMLInputElement
+          ).checked
+        ).toBe(false)
+      );
+      expect(hoisted.getKnowledgeFn.mock.calls.length).toBeGreaterThan(1);
+      expect(hoisted.searchFn).not.toHaveBeenCalled();
     });
 
-    it('a transport failure shows the error, not the search notice — a real RPC failure is not a check outcome', async () => {
+    it('shows a sharing failure without claiming the preference changed', async () => {
       readySearchableScene();
-      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
-      hoisted.searchFn.mockRejectedValue(new Error('session not found'));
+      hoisted.discoverySharing = true;
+      hoisted.setDiscoverySharingFn.mockRejectedValue(
+        new Error('preference unavailable')
+      );
       renderView();
-      await waitFor(() => screen.getByTestId('session-canvas'));
-
-      const button = await screen.findByTestId('session-combat-search-button');
-      fireEvent.click(button);
-      await waitFor(() => screen.getByText('session not found'));
-      expect(screen.queryByText('You search the area.')).toBeNull();
+      const checkbox = await screen.findByLabelText(
+        'Share discoveries with party'
+      );
+      fireEvent.click(checkbox);
+      expect(await screen.findByText('preference unavailable')).toBeTruthy();
+      expect((checkbox as HTMLInputElement).checked).toBe(true);
     });
 
-    it("a doorRevealed/regionRevealed beat clears a standing search notice — matches doorNotice's own staleness reset on the 'door' case", async () => {
-      hoisted.atlasResult.applyReveal.mockClear();
+    it('renders an automatic failure from the event without a Search RPC', async () => {
       readySearchableScene();
-      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
-      hoisted.searchFn.mockResolvedValue({} as never);
-      const reveal = deferredStream([
-        event(EventKind.DOOR_REVEALED, {
-          case: 'doorRevealed',
-          value: {},
+      const result = deferredStream([
+        event(EventKind.DISCOVERY_CHECKED, {
+          case: 'discoveryChecked',
+          value: {
+            member: 'char-1',
+            ability: 'perception',
+            total: 8,
+            beaten: false,
+          },
         } as SessionEvent['body']),
       ]);
-      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      hoisted.streamEventsFn.mockReturnValue(result.stream);
       renderView();
-      await waitFor(() => screen.getByTestId('session-canvas'));
-
-      const button = await screen.findByTestId('session-combat-search-button');
-      fireEvent.click(button);
-      await screen.findByText('You search the area.');
-
-      reveal.release();
-      await waitFor(() =>
-        expect(screen.queryByText('You search the area.')).toBeNull()
-      );
-      // Legacy concealment events recover through a coherent snapshot.
-      await waitFor(() =>
-        expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(2)
-      );
+      await screen.findByTestId('session-canvas');
+      result.release();
+      expect(await screen.findByText(/Failed Perception check/)).toBeTruthy();
+      expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
+      expect(hoisted.searchFn).not.toHaveBeenCalled();
     });
   });
 

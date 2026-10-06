@@ -45,4 +45,32 @@ describe('organized HUD fixtures', () => {
       'Flee',
     ]);
   });
+
+  it('carries Afford-shaped effect rows on the longsword, with per-target answers', () => {
+    const longsword = ORGANIZED_HUD_FIXTURES[0]!.declarations.find(
+      (declaration) => declaration.id === 'offer:aldric:longsword:action'
+    );
+    expect(longsword?.effects.length).toBeGreaterThan(0);
+    const ids = new Set(longsword?.effects.map((row) => row.id));
+    expect(ids.size).toBe(longsword?.effects.length);
+    for (const candidate of longsword?.candidates ?? []) {
+      for (const answer of candidate.effects)
+        expect(ids.has(answer.id)).toBe(true);
+    }
+  });
+
+  it('gives one longsword candidate held rows of its own, never sharing an actor row id', () => {
+    const longsword = ORGANIZED_HUD_FIXTURES[0]!.declarations.find(
+      (declaration) => declaration.id === 'offer:aldric:longsword:action'
+    );
+    const ids = new Set(longsword?.effects.map((row) => row.id));
+    const holding = longsword?.candidates.filter(
+      (candidate) => candidate.heldEffects.length > 0
+    );
+    expect(holding?.map((candidate) => candidate.member)).toEqual([
+      'skeleton-guard',
+    ]);
+    for (const row of holding?.[0]?.heldEffects ?? [])
+      expect(ids.has(row.id)).toBe(false);
+  });
 });

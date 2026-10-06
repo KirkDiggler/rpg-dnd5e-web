@@ -60,6 +60,30 @@ const openProps = () => {
   if (details && !details.open) fireEvent.click(summary);
 };
 
+// Editor workflows need representative props, not a DOM proportional to every
+// content pack shipped. Keep the real entries used by drag, repeat, height and door
+// tests; WorldBuildingThumbnails and the catalog tests cover the full registry.
+vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/generated/worldAssetCatalog')>();
+  const refs = [
+    'dnd5e:props:dark-fortress:alchemy_tools_01',
+    'dnd5e:props:dark-fortress:barricade_02',
+    'dnd5e:env:dark-fortress:wall_door_double_01',
+    'dnd5e:env:dark-fortress:45_wall_01',
+  ];
+  return {
+    ...actual,
+    GENERATED_WORLD_ASSETS: Object.fromEntries(
+      refs.map((ref) => {
+        const asset = actual.GENERATED_WORLD_ASSETS[ref];
+        if (!asset) throw new Error(`Missing editor fixture asset: ${ref}`);
+        return [ref, asset];
+      })
+    ),
+  };
+});
+
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
 }));

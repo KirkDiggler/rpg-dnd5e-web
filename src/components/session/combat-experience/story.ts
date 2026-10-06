@@ -614,6 +614,24 @@ function buildOtherStory(
         detail: event.body.value.ending,
         tone: 'turn',
       });
+    case 'discoveryChecked': {
+      const check = event.body.value;
+      const actor = memberName(check.member, context);
+      const skill = check.ability
+        .replace(/[_-]/g, ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Discovery',
+        headline: `${actor}: ${check.beaten ? 'Passed' : 'Failed'} ${skill} check`,
+        detail: check.calculation
+          ? (formatRollCalculation(check.calculation, (id) =>
+              memberName(id, context)
+            ) ?? `Total ${check.total}`)
+          : `Total ${check.total}`,
+        tone: check.beaten ? 'success' : 'neutral',
+      });
+    }
     case 'intimidated': {
       // The first shenanigan (rpg-project#454), narrated like the door's own
       // check one case down: the numbers, and the SERVER'S reading of them.

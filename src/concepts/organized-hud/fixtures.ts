@@ -6,14 +6,19 @@ import {
   CostComponentSchema,
   Currency,
   DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   ShortfallReason,
   ShortfallSchema,
   Slot,
   SpellRefSchema,
   TargetCandidateSchema,
+  TargetEffectSchema,
   TargetKind,
   Verb,
   type Declaration,
+  type EffectRow,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   CharacterDataSchema,
@@ -22,6 +27,133 @@ import {
 import { SESSION_COMBAT_FIXTURES } from '../session-combat/fixtures';
 
 const base = SESSION_COMBAT_FIXTURES[0]!;
+
+/**
+ * Afford-shaped effect rows (rpg-project#520) for the longsword, so the action
+ * inspection and target panel can be looked at without a server. Every string
+ * is fixture content standing in for what the toolkit authors; the shared UI
+ * renders it verbatim and recognises none of it. One row per tone, and one
+ * row whose answer changes per target. The skeleton guard also holds an
+ * effect of its own, carried as a full row on its candidate; the archer holds
+ * none, so the panel shows no target group for it.
+ */
+const LONGSWORD_ID = 'offer:aldric:longsword:action';
+const longswordEffects = [
+  create(EffectRowSchema, {
+    id: 'dnd5e:features:sneak_attack',
+    ref: 'dnd5e:features:sneak_attack',
+    name: 'Sneak Attack',
+    description:
+      'Once per turn, deal extra damage to a creature you hit with a finesse or ranged weapon when you have advantage or another enemy of the target is within 5 feet of it.',
+    state: EffectState.DEPENDS,
+    reason: 'Depends on the target',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+  }),
+  create(EffectRowSchema, {
+    id: 'dnd5e:conditions:raging',
+    ref: 'dnd5e:conditions:raging',
+    name: 'Raging',
+    description:
+      'While raging, melee weapon attacks using Strength deal extra damage.',
+    state: EffectState.APPLIES,
+    reason: 'The melee weapon attack uses Strength',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+    benefit: '+2 damage',
+  }),
+  create(EffectRowSchema, {
+    id: 'dnd5e:conditions:blessed@mira',
+    ref: 'dnd5e:conditions:blessed',
+    name: 'Bless',
+    description: 'Add 1d4 to attack rolls and saving throws.',
+    state: EffectState.APPLIES,
+    reason: 'Adds to the attack roll',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+    benefit: '+1d4 to the attack roll',
+  }),
+  create(EffectRowSchema, {
+    id: 'dnd5e:conditions:blessed@brother-ansel',
+    ref: 'dnd5e:conditions:blessed',
+    name: 'Bless',
+    description: 'Add 1d4 to attack rolls and saving throws.',
+    state: EffectState.DOES_NOT_APPLY,
+    reason: 'Another Bless already adds to this roll',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+  }),
+  create(EffectRowSchema, {
+    id: 'dnd5e:conditions:inspired@lyra',
+    ref: 'dnd5e:conditions:inspired',
+    name: 'Bardic Inspiration',
+    description:
+      'Once, add the inspiration die to an attack roll, ability check or saving throw after seeing the roll.',
+    state: EffectState.APPLIES,
+    reason: 'The holder is making an attack roll',
+    participation: EffectParticipation.LATER_CHOICE,
+    benefit: 'May add 1d6 after seeing the roll',
+  }),
+  create(EffectRowSchema, {
+    id: 'dnd5e:conditions:fighting_style_dueling',
+    ref: 'dnd5e:conditions:fighting_style_dueling',
+    name: 'Fighting Style: Dueling',
+    description:
+      'Wielding a melee weapon in one hand and no other weapon, gain +2 to damage rolls with it.',
+    state: EffectState.UNAVAILABLE,
+    reason: 'This effect cannot yet say whether it applies to this action',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+  }),
+];
+const targetAnswers: Record<string, ReturnType<typeof answer>[]> = {
+  'skeleton-guard': [
+    answer(
+      EffectState.APPLIES,
+      'Another enemy of the target is within 5 feet',
+      '+1d6 damage'
+    ),
+  ],
+  'skeleton-archer': [
+    answer(
+      EffectState.DEPENDS,
+      'Needs advantage or another enemy of the target within 5 feet'
+    ),
+  ],
+};
+const heldByTarget: Record<string, EffectRow[]> = {
+  'skeleton-guard': [
+    create(EffectRowSchema, {
+      id: 'dnd5e:conditions:faerie_fire@brother-ansel',
+      ref: 'dnd5e:conditions:faerie_fire',
+      name: 'Faerie Fire',
+      description:
+        'Each affected creature sheds dim light, can’t benefit from being invisible, and attack rolls against it have advantage if the attacker can see it.',
+      state: EffectState.APPLIES,
+      reason: 'You can see the target',
+      participation: EffectParticipation.CONTRIBUTES_NOW,
+      benefit: 'Advantage on the attack roll',
+    }),
+  ],
+};
+function answer(state: EffectState, reason: string, benefit = '') {
+  return create(TargetEffectSchema, {
+    id: 'dnd5e:features:sneak_attack',
+    state,
+    reason,
+    benefit,
+  });
+}
+const withEffectRows = (declaration: Declaration): Declaration =>
+  declaration.id === LONGSWORD_ID
+    ? create(DeclarationSchema, {
+        ...declaration,
+        effects: longswordEffects,
+        candidates: declaration.candidates.map((candidate) =>
+          create(TargetCandidateSchema, {
+            ...candidate,
+            effects: targetAnswers[candidate.member] ?? [],
+            heldEffects: heldByTarget[candidate.member] ?? [],
+          })
+        ),
+      })
+    : declaration;
+const baseDeclarations = base.declarations.map(withEffectRows);
 const refused = (text: string) =>
   create(ShortfallSchema, { reason: ShortfallReason.NO_BUDGET, text });
 const targets = [
@@ -90,7 +222,7 @@ const command = create(DeclarationSchema, {
   ],
 });
 const crowded = [
-  ...base.declarations,
+  ...baseDeclarations,
   secondWeapon,
   ability('dash', 'Dash'),
   ability('dodge', 'Dodge'),
@@ -176,7 +308,7 @@ const secondWind = create(DeclarationSchema, {
   slot: Slot.BONUS,
 });
 const martialDeclarations = [
-  ...base.declarations,
+  ...baseDeclarations,
   secondWeapon,
   ability('dash', 'Dash'),
   ability('dodge', 'Dodge'),

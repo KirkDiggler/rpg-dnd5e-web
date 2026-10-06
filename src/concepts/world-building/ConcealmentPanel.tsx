@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckApproachRows } from './CheckApproachRows';
+import { DiscoveryCheckPolicy } from './DiscoveryCheckPolicy';
 import {
   addConcealment,
   paintConcealmentCells,
@@ -78,6 +79,11 @@ function ConcealmentRow({
             Renaming changes this declaration only. The server names any intel
             reference that no longer resolves.
           </p>
+          <DiscoveryCheckPolicy
+            id={id}
+            value={spec.attempts}
+            onChange={(attempts) => patch({ ...spec, attempts })}
+          />
           {(['checks', 'notice'] as const).map((field) => {
             const rows = spec[field] ?? [];
             const setRows = (nextRows: typeof rows) => {
@@ -90,8 +96,8 @@ function ConcealmentRow({
               <fieldset key={field}>
                 <legend>
                   {field === 'checks'
-                    ? 'Search checks (required)'
-                    : 'Notice (optional, passive)'}
+                    ? 'Automatic discovery check — accepted approaches'
+                    : 'Passive score tell (reserved; not evaluated)'}
                 </legend>
                 <CheckApproachRows
                   id={`${id} ${field}`}
