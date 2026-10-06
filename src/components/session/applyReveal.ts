@@ -43,6 +43,7 @@
 
 import { clone } from '@bufbuild/protobuf';
 import type {
+  ConcealmentRevealed,
   DoorRevealed,
   RegionRevealed,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -52,20 +53,81 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasSegment,
+  AtlasStructuralDoor,
+  AtlasStructuralWall,
   Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
-/** The two slice-2 fields on `RegionRevealed`, present since the protos
- * generated-branch commit 883dd221a6cd (rpg-api-protos#285). */
+/**
+ * Upsert COMPLETE structural records by id and restore canonical identity
+ * order. A reveal carries newly permitted OR CHANGED records (a formerly
+ * concealed cut becoming known), so an already-known wall id is REPLACED
+ * whole — never appended beside its stale twin and never merged only into its
+ * opening list. The sort matches the toolkit's own identity order, so a
+ * patched atlas equals a fresh snapshot. Empty inputs are a NO-OP that returns
+ * the caller's array unchanged, preserving legacy payload bytes.
+ */
+function upsertStructuralById<T extends { id: string }>(
+  have: readonly T[],
+  changed: readonly T[]
+): readonly T[] {
+  if (changed.length === 0) return have;
+  const byId = new Map(have.map((row) => [row.id, row]));
+  for (const row of changed) byId.set(row.id, row);
+  return [...byId.values()].sort((left, right) =>
+    left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+  );
+}
+
+/**
+ * Apply the structural wall/door delta a room or concealment reveal carries.
+ * Doors are one flat collection keyed by canonical gameplay DoorID and are
+ * never nested under a parent wall; walls are upserted by raw id so a wall
+ * that gained a newly permitted cut is updated in place.
+ */
+export function applyStructuralRecords(
+  atlas: GetAtlasResponse,
+  walls: readonly AtlasStructuralWall[] | undefined,
+  doors: readonly AtlasStructuralDoor[] | undefined
+): GetAtlasResponse {
+  const nextWalls = upsertStructuralById(atlas.structuralWalls, walls ?? []);
+  const nextDoors = upsertStructuralById(atlas.structuralDoors, doors ?? []);
+  if (
+    nextWalls === atlas.structuralWalls &&
+    nextDoors === atlas.structuralDoors
+  ) {
+    return atlas;
+  }
+  const next = clone(GetAtlasResponseSchema, atlas);
+  next.structuralWalls = [...nextWalls];
+  next.structuralDoors = [...nextDoors];
+  return next;
+}
+
+/**
+ * The atlas after a concealment reveal. Applying the SAME fixed structural
+ * records the room-revealed path carries keeps the two reveal routes
+ * equivalent; every other concealment field continues to arrive through the
+ * existing authoritative GetAtlas/GetDoors refresh, so no second ordering or
+ * merge system is introduced here.
+ */
+export function applyConcealmentRevealed(
+  atlas: GetAtlasResponse,
+  event: ConcealmentRevealed
+): GetAtlasResponse {
+  return applyStructuralRecords(
+    atlas,
+    event.structuralWalls,
+    event.structuralDoors
+  );
+}
 function revealAdditions(event: RegionRevealed): {
   segments: AtlasSegment[];
   sealed: Position[];
 } {
   return { segments: event.segments, sealed: event.sealed };
 }
-
 const cellKey = (p: Position): string => `${p.x},${p.y}`;
-
 /** Concatenate, dropping anything already present under `key`. */
 function appendNew<T>(
   have: readonly T[],
@@ -135,6 +197,16 @@ export function applyRegionRevealed(
     pairKey(b.from, b.to)
   );
   next.segments = appendNew(next.segments, segments, segmentKey);
+
+  // THE FIXED STRUCTURAL RECORDS UPSERT BY ID, not append. A known wall can
+  // gain a newly revealed cut, so its whole record is replaced.
+  const structured = applyStructuralRecords(
+    next,
+    event.structuralWalls,
+    event.structuralDoors
+  );
+  next.structuralWalls = structured.structuralWalls;
+  next.structuralDoors = structured.structuralDoors;
 
   // THE ONE FIELD THAT IS NOT AN APPEND. Every cell of the revealed
   // region drops out of `sealed` first — it was footing under a wall

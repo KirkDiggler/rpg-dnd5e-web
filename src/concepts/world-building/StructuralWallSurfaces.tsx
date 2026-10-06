@@ -27,8 +27,8 @@ import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import {
-  attachedDoorPlacement,
   isAttachableDoorAsset,
+  type FittedDoorPose,
 } from './structuralDoorEditing';
 import {
   isRepeatableWallAsset,
@@ -36,11 +36,7 @@ import {
   wallDirectionYaw,
   wallMidpoint,
 } from './structuralWallEditing';
-import { wallOpeningPoint } from './structuralWallGeometry';
-import type {
-  StructuralWallOpening,
-  StructuralWallSurface,
-} from './structuralWalls';
+import type { StructuralWallSurface } from './structuralWalls';
 import { WorldPropModel } from './WorldPropModel';
 
 /** Where a wall's named marker belongs: at the wall itself, not the origin. A
@@ -62,27 +58,6 @@ function wallAnchor(wall: StructuralWallSurface): {
     };
   } catch {
     return { position: [0, DUNGEON_SURFACE_Y + 0.35, 0], rotationY: 0 };
-  }
-}
-
-/** Where an attached door's named marker belongs: at the opening, not at the
- * wall midpoint and never at the origin. */
-function openingAnchor(
-  wall: StructuralWallSurface,
-  openingId: string
-): { position: [number, number, number]; rotationY: number } {
-  try {
-    const point = wallOpeningPoint({ wall, openingId });
-    return {
-      position: [
-        point.x,
-        DUNGEON_SURFACE_Y + wall.appearance.elevation + 0.35,
-        point.z,
-      ],
-      rotationY: wallDirectionYaw(wall),
-    };
-  } catch {
-    return wallAnchor(wall);
   }
 }
 
@@ -251,94 +226,172 @@ export function StructuralWallSurfacePieces({
   );
 }
 
+/** A door's mutable state, as the caller resolved it. `unknown` is a real
+ * answer, not a synonym for closed: the leaf draws an explicit neutral
+ * representation for it and never invents open/closed or substitutes an
+ * opaque wall. */
+export type FittedDoorState = 'open' | 'closed' | 'unknown';
+
+/** A named, non-raycasting, neutral marker signalling that a door's mutable
+ * state has not been observed. It is deliberately NOT the asset's own leaf
+ * pose: an unknown doorway must not read as an invented open or closed door. */
+function StructuralDoorUnknownMarker({
+  doorId,
+  position,
+  rotationY,
+  width,
+  height,
+  thickness,
+}: {
+  doorId: string;
+  position: [number, number, number];
+  rotationY: number;
+  width: number;
+  height: number;
+  thickness: number;
+}) {
+  return (
+    <mesh
+      name={`structural-door-unknown-${doorId}`}
+      userData={{ doorId, status: 'unknown' }}
+      position={position}
+      rotation={[0, rotationY, 0]}
+      raycast={() => null}
+    >
+      <boxGeometry
+        args={[
+          Math.max(width, 0.05),
+          Math.max(height, 0.05),
+          Math.max(thickness, 0.02),
+        ]}
+      />
+      <meshBasicMaterial
+        color="#94a3b8"
+        wireframe
+        depthTest={false}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
 /**
  * One attached door, fitted to its opening and the wall's appearance through
- * the shared structural-parent technique. The caller owns the state ADAPTER
- * (`open`) and click callback (`onClick`): the editor passes the authored
- * initial preview with no click. This leaf neither queries nor interprets
- * gameplay state. A missing/ungenerated/non-leaf asset or a
- * refused fit is a named marker at the opening, never a substitute model.
+ * the shared structural-parent technique. The caller supplies a RESOLVED
+ * VISUAL POSE — the editor derives it from the owning opening
+ * (`attachedDoorVisualPose`), the runtime derives it from the supplied door
+ * endpoints (`structuralLayout.structuralDoorPose`). The caller also owns the
+ * state ADAPTER (`state`) and click callback (`onClick`): the editor passes
+ * the authored initial preview with no click, while the runtime passes the
+ * observed state (or `unknown`) and a click only for a supplied known state.
+ * This leaf neither queries nor interprets gameplay state. A
+ * missing/ungenerated/non-leaf asset or unmeasured asset is a named marker at
+ * the pose, never a substitute model.
  */
 export function FittedDoorSurface({
-  wall,
-  opening,
-  open,
+  doorId,
+  assetRef,
+  pose,
+  state,
   onMeasured,
   onClick,
 }: {
-  wall: StructuralWallSurface;
-  opening: StructuralWallOpening;
-  /** TRUE swings the leaf open; FALSE and ABSENT both render the asset's own
-   * rest pose. The runtime passes ABSENT when no live state exists, exactly as
-   * a standalone door with no observed state does. */
-  open?: boolean;
+  /** The door's canonical identity — the runtime joins observed state by it
+   * and the editor carries the authored opening's door id. */
+  doorId: string;
+  /** The door's opaque appearance content ref (`AtlasStructuralDoor.ref`, or
+   * an opening's authored `assetRef`). */
+  assetRef: string;
+  /** The resolved visual pose, scene units. */
+  pose: FittedDoorPose;
+  /** The authored/observed state. `unknown` draws an explicit neutral
+   * representation; it is never an invented open/closed pose. */
+  state: FittedDoorState;
   onMeasured?: () => void;
   onClick?: () => void;
 }) {
-  const door = opening.door;
-  if (!door) return null;
-  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(door.assetRef);
-  const anchor = openingAnchor(wall, opening.id);
+  if (state === 'unknown') {
+    // The model's absent `open` prop is a closed rest pose, not an unknown
+    // state. Render only the neutral supplied-layout marker until observed.
+    return (
+      <StructuralDoorUnknownMarker
+        doorId={doorId}
+        position={[
+          pose.point.x,
+          DUNGEON_SURFACE_Y + pose.y + pose.height / 2,
+          pose.point.z,
+        ]}
+        rotationY={pose.rotationY}
+        width={pose.width}
+        height={pose.height}
+        thickness={pose.thickness}
+      />
+    );
+  }
+  const entry = WORLD_BUILDING_CATALOG_BY_REF.get(assetRef);
+  const anchor = {
+    position: [
+      pose.point.x,
+      DUNGEON_SURFACE_Y + pose.y + 0.35,
+      pose.point.z,
+    ] as [number, number, number],
+    rotationY: pose.rotationY,
+  };
   if (
     !entry ||
     entry.source !== 'generated' ||
-    !isAttachableDoorAsset(door.assetRef)
+    !isAttachableDoorAsset(assetRef)
   ) {
     return (
       <WallMarker
-        wallId={`${wall.id}/${opening.id}`}
+        wallId={doorId}
         tone="error"
-        reason={`no door asset ${door.assetRef}`}
+        reason={`no door asset ${assetRef}`}
         position={anchor.position}
         rotationY={anchor.rotationY}
       />
     );
   }
   const [widthMeters, heightMeters, depthMeters] = entry.asset.boundsMeters;
-  let placement;
-  try {
-    placement = attachedDoorPlacement({
-      wall,
-      openingId: opening.id,
-      assetWidthMeters: widthMeters,
-      assetHeightMeters: heightMeters,
-      assetDepthMeters: depthMeters,
-      // Geometry does not depend on `open`; unknown state rests closed for the
-      // named parent record, while the leaf below keeps the ABSENT rest pose.
-      open: open ?? false,
-    });
-  } catch (error) {
+  if (
+    ![widthMeters, heightMeters, depthMeters].every(
+      (value) => Number.isFinite(value) && value > 0
+    )
+  ) {
     return (
       <WallMarker
-        wallId={`${wall.id}/${opening.id}`}
-        tone="refusal"
-        reason={error instanceof Error ? error.message : String(error)}
+        wallId={doorId}
+        tone="error"
+        reason={`door asset ${assetRef} has no measured dimensions`}
         position={anchor.position}
         rotationY={anchor.rotationY}
       />
     );
   }
+  // Catalog bounds already include the shared model scale; fit against the
+  // rendered dimensions. Geometry does not depend on `state`.
+  const widthScale = pose.width / widthMeters;
+  const heightScale = pose.height / heightMeters;
+  const depthScale = pose.thickness / depthMeters;
+  const open = state === 'open';
   // Same structural-parent technique as the wall pieces: the parent owns the
   // exact fit and compensates the shared leaf's single, unscaled floor lift so
   // it is never multiplied by the fit scale.
-  const baseY = placement.y + DUNGEON_SURFACE_Y * (1 - placement.heightScale);
+  const baseY = pose.y + DUNGEON_SURFACE_Y * (1 - heightScale);
   return (
     <group
-      name={`structural-wall-door-${wall.id}-${opening.id}`}
+      name={`structural-wall-door-${doorId}`}
       userData={{
-        wallId: wall.id,
-        doorId: door.id,
-        open: placement.open,
+        doorId,
+        assetRef,
+        state,
+        open,
         baseY,
-        heightScale: placement.heightScale,
+        heightScale,
       }}
-      position={[placement.point.x, baseY, placement.point.z]}
-      rotation={[0, placement.rotationY, 0]}
-      scale={[
-        placement.widthScale,
-        placement.heightScale,
-        placement.depthScale,
-      ]}
+      position={[pose.point.x, baseY, pose.point.z]}
+      rotation={[0, pose.rotationY, 0]}
+      scale={[widthScale, heightScale, depthScale]}
     >
       <WorldPropModel
         entry={entry}

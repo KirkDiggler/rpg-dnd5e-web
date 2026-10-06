@@ -2,11 +2,12 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { attachedDoorVisualPose } from './structuralDoorEditing';
+import type { StructuralWallSurface } from './structuralWalls';
 import {
   FittedDoorSurface,
   StructuralWallSurfacePieces,
 } from './StructuralWallSurfaces';
-import type { StructuralWallSurface } from './structuralWalls';
 
 // Synthetic boxes with dimensions measured from the promoted GLBs, BEFORE
 // WorldAssetModel applies its shared 0.75 scale. No licensed mesh data.
@@ -98,16 +99,20 @@ describe('structural fit uses catalog runtime dimensions exactly once', () => {
         assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
       },
     };
+    const wallWithOpening = { ...wall, openings: [opening] };
     const view = await ReactThreeTestRenderer.create(
       <FittedDoorSurface
-        wall={{ ...wall, openings: [opening] }}
-        opening={opening}
-        open={false}
+        doorId={opening.door.id}
+        assetRef={opening.door.assetRef}
+        pose={attachedDoorVisualPose({
+          wall: wallWithOpening,
+          openingId: opening.id,
+        })}
+        state="closed"
       />
     );
     const measured = bounds(
-      view.scene.findByProps({ name: 'structural-wall-door-fit-wall-gap' })
-        .instance
+      view.scene.findByProps({ name: 'structural-wall-door-door' }).instance
     );
     const size = measured.getSize(new THREE.Vector3());
     expect(size.x).toBeCloseTo(2, 5);

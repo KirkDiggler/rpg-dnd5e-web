@@ -136,6 +136,7 @@ const hoisted = vi.hoisted(() => ({
   getRosterFn: vi.fn(),
   getDoorsFn: vi.fn(),
   openDoorFn: vi.fn(),
+  closeDoorFn: vi.fn(),
   unlockFn: vi.fn(),
   searchFn: vi.fn(),
   interactFn: vi.fn(),
@@ -218,6 +219,7 @@ vi.mock('@/api/client', () => ({
     getRoster: hoisted.getRosterFn,
     getDoors: hoisted.getDoorsFn,
     openDoor: hoisted.openDoorFn,
+    closeDoor: hoisted.closeDoorFn,
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
     interact: hoisted.interactFn,
@@ -657,6 +659,7 @@ beforeEach(() => {
     hoisted.getRosterFn,
     hoisted.getDoorsFn,
     hoisted.openDoorFn,
+    hoisted.closeDoorFn,
     hoisted.unlockFn,
     hoisted.affordFn,
     hoisted.turnFn,
@@ -810,6 +813,64 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.dungeonSceneHookFn.mock.calls.every(([key]) => key === '')
     ).toBe(true);
   });
+
+  it('draws the session atlas’s supplied structural layout from the real knowledge hook, with no builder fetch', async () => {
+    // The wall/door records arrive on the SESSION atlas (canonical feet) and
+    // reach the real scene builder through the real `useSessionKnowledge`
+    // hook — never a GetDungeon/authoring read. The numeric witness applies:
+    // canonical 10k draws as 10 scene units at HEX_SIZE 1.
+    const K = 5 / Math.sqrt(3);
+    readyScene();
+    hoisted.atlasResult.atlas = pointyAtlas({
+      dungeonKey: 'authored-dungeon',
+      structuralWalls: [
+        {
+          id: 'w',
+          ref: 'dnd5e:env:dark-fortress:45_wall_01',
+          from: { x: 0, y: 0 },
+          to: { x: 10 * K, y: 0 },
+          height: 3 * K,
+          thickness: 0.3 * K,
+          elevation: 0,
+          openings: [{ id: 'cut', position: 7 * K, width: 2 * K }],
+        },
+      ],
+      structuralDoors: [
+        {
+          id: 'dungeon/gate',
+          ref: 'dnd5e:env:dark-fortress:wall_door_double_01',
+          from: { x: 6 * K, y: 0 },
+          to: { x: 8 * K, y: 0 },
+          height: 3 * K,
+          thickness: 0.3 * K,
+          elevation: 0,
+        },
+      ],
+    });
+    renderView();
+    await screen.findByTestId('session-canvas');
+    const scene = hoisted.lastCanvasProps.current?.scene;
+    expect(scene?.structuralWalls).toHaveLength(1);
+    expect(scene?.structuralWalls?.[0]!.surface.line.end.x).toBeCloseTo(10, 8);
+    expect(
+      scene?.structuralWalls?.[0]!.surface.openings[0]!.position
+    ).toBeCloseTo(7, 8);
+    expect(scene?.structuralDoors?.[0]!.id).toBe('dungeon/gate');
+    expect(scene?.structuralDoors?.[0]!.pose.point.x).toBeCloseTo(7, 8);
+    expect(hoisted.dungeonSceneHookFn).toHaveBeenCalledWith('');
+  });
+  it('surfaces a malformed structural record instead of drawing a partial world', async () => {
+    readyScene();
+    hoisted.atlasResult.atlas = pointyAtlas({
+      structuralWalls: [{ id: 'broken', ref: 'content:wall' }],
+    });
+    renderView();
+    await screen.findByRole('heading', { name: "Can't draw this room" });
+    expect(screen.getByText(/wall broken.from/)).toBeTruthy();
+    expect(screen.queryByTestId('session-canvas')).toBeNull();
+    expect(hoisted.dungeonSceneHookFn).toHaveBeenCalledWith('');
+  });
+
   it('shows a clear error when no character is bound', () => {
     renderView({ characterId: undefined });
     screen.getByText(/no character selected/i);
@@ -4164,6 +4225,41 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(1)
     );
+  });
+
+  it('sends CloseDoor for an observed open door and refreshes provider state', async () => {
+    readyScene();
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
+    });
+    hoisted.closeDoorFn.mockResolvedValue({});
+    renderView();
+    await screen.findByTestId('session-canvas');
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.doors?.get('crypt-door')?.state
+      ).toBe(DoorState.OPEN)
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onDoorClick?.('crypt-door');
+    });
+    await waitFor(() =>
+      expect(hoisted.closeDoorFn).toHaveBeenCalledWith({
+        session: 'enc-1',
+        member: 'char-1',
+        door: 'crypt-door',
+      })
+    );
+    expect(hoisted.openDoorFn).not.toHaveBeenCalled();
+    expect(hoisted.unlockFn).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(1)
+    );
+    // A successful command is not a locally invented state update. This
+    // fixture still supplies OPEN until the next authoritative observation.
+    expect(
+      hoisted.lastCanvasProps.current?.doors?.get('crypt-door')?.state
+    ).toBe(DoorState.OPEN);
   });
 
   describe('vendor interaction (rpg-api#903 Phase 1)', () => {

@@ -30,6 +30,7 @@ import {
 } from 'react';
 import * as THREE from 'three';
 import { doorBindingState, type DoorBindings } from './doorBindingEdits';
+import { attachedDoorVisualPose } from './structuralDoorEditing';
 import {
   wallDirectionYaw,
   wallLength,
@@ -71,17 +72,42 @@ function AttachedDoors({
   if (doors.length === 0) return null;
   return (
     <>
-      {doors.map((opening) => (
-        <FittedDoorSurface
-          key={opening.id}
-          wall={wall}
-          opening={opening}
-          // The AUTHORED INITIAL state preview only; it is never a live
-          // engine operation.
-          open={doorBindingState(doorBindings?.[opening.door!.id]) === 'open'}
-          onMeasured={onMeasured}
-        />
-      ))}
+      {doors.map((opening) => {
+        // The EDITOR ADAPTER: the door's single pose is derived from its
+        // owning opening, never stored a second time.
+        let pose;
+        try {
+          pose = attachedDoorVisualPose({
+            wall,
+            openingId: opening.id,
+          });
+        } catch {
+          return (
+            <StructuralWallFallbackMarker
+              key={opening.id}
+              wall={wall}
+              tone="error"
+            />
+          );
+        }
+        return (
+          <FittedDoorSurface
+            key={opening.id}
+            doorId={opening.door!.id}
+            assetRef={opening.door!.assetRef}
+            pose={pose}
+            // The AUTHORED INITIAL state preview only; it is never a live
+            // engine operation. A missing binding reads as the asset's rest
+            // pose, exactly as it did before.
+            state={
+              doorBindingState(doorBindings?.[opening.door!.id]) === 'open'
+                ? 'open'
+                : 'closed'
+            }
+            onMeasured={onMeasured}
+          />
+        );
+      })}
     </>
   );
 }

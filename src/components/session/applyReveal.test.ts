@@ -2,6 +2,7 @@
 import type { MessageInitShape } from '@bufbuild/protobuf';
 import { create } from '@bufbuild/protobuf';
 import {
+  ConcealmentRevealedSchema,
   DoorRevealedSchema,
   RegionRevealedSchema,
   type DoorRevealed,
@@ -11,8 +12,17 @@ import {
   GetAtlasResponseSchema,
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  AtlasStructuralDoorSchema,
+  AtlasStructuralWallSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
-import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
+import {
+  applyConcealmentRevealed,
+  applyDoorRevealed,
+  applyRegionRevealed,
+  applyStructuralRecords,
+} from './applyReveal';
 import { segmentsToWallRuns } from './atlasWallRuns';
 
 const cell = (x: number, y: number) => ({ x, y });
@@ -166,5 +176,136 @@ describe('a door reveal', () => {
     expect(scene.doorGaps[0].connection).toBe('tomb/secret');
     // The whole wall became two pieces either side of the gap.
     expect(scene.wallRuns).toHaveLength(2);
+  });
+});
+
+/** A minimal fixed wall record; the field values are irrelevant here — the
+ * module under test only upserts/sorts by id. */
+const structuralWall = (id: string, openingIds: string[] = []) =>
+  create(AtlasStructuralWallSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 1, y: 0 },
+    height: 1,
+    thickness: 1,
+    elevation: 0,
+    openings: openingIds.map((openingId, index) => ({
+      id: openingId,
+      position: index + 1,
+      width: 0.5,
+    })),
+  });
+const structuralDoor = (id: string) =>
+  create(AtlasStructuralDoorSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 1, y: 0 },
+    height: 1,
+    thickness: 1,
+    elevation: 0,
+  });
+
+function withStructure(
+  walls: ReturnType<typeof structuralWall>[],
+  doors: ReturnType<typeof structuralDoor>[] = []
+): GetAtlasResponse {
+  return create(GetAtlasResponseSchema, {
+    structuralWalls: walls,
+    structuralDoors: doors,
+  });
+}
+
+describe('fixed structural records', () => {
+  it('upserts the COMPLETE changed wall by id rather than appending a twin', () => {
+    const before = withStructure([structuralWall('w', ['cut-1'])]);
+    const after = applyStructuralRecords(
+      before,
+      [structuralWall('w', ['cut-1', 'cut-2'])],
+      []
+    );
+    expect(after.structuralWalls).toHaveLength(1);
+    expect(after.structuralWalls[0]!.openings.map((o) => o.id)).toEqual([
+      'cut-1',
+      'cut-2',
+    ]);
+  });
+
+  it('restores canonical identity order for walls and doors', () => {
+    const after = applyStructuralRecords(
+      create(GetAtlasResponseSchema),
+      [structuralWall('w2'), structuralWall('w1')],
+      [structuralDoor('d2'), structuralDoor('d1')]
+    );
+    expect(after.structuralWalls.map((w) => w.id)).toEqual(['w1', 'w2']);
+    expect(after.structuralDoors.map((d) => d.id)).toEqual(['d1', 'd2']);
+  });
+
+  it('is a NO-OP for empty legacy arrays — the same atlas object comes back', () => {
+    const before = withStructure([structuralWall('w', ['cut-1'])]);
+    expect(applyStructuralRecords(before, [], [])).toBe(before);
+    expect(applyStructuralRecords(before, undefined, undefined)).toBe(before);
+  });
+
+  it('cannot be reverted by a later no-change reveal', () => {
+    const before = withStructure([structuralWall('w', ['cut-1'])]);
+    const revealed = applyStructuralRecords(
+      before,
+      [structuralWall('w', ['cut-1', 'cut-2'])],
+      []
+    );
+    const later = applyStructuralRecords(revealed, [], []);
+    expect(later.structuralWalls[0]!.openings.map((o) => o.id)).toEqual([
+      'cut-1',
+      'cut-2',
+    ]);
+  });
+
+  it('is idempotent under double application', () => {
+    const before = withStructure([]);
+    const once = applyStructuralRecords(
+      before,
+      [structuralWall('w', ['cut-1'])],
+      [structuralDoor('d')]
+    );
+    const twice = applyStructuralRecords(
+      once,
+      [structuralWall('w', ['cut-1'])],
+      [structuralDoor('d')]
+    );
+    expect(twice.structuralWalls).toEqual(once.structuralWalls);
+    expect(twice.structuralDoors).toEqual(once.structuralDoors);
+  });
+
+  it('rides the EXISTING region-reveal route', () => {
+    const after = applyRegionRevealed(
+      create(GetAtlasResponseSchema),
+      create(RegionRevealedSchema, {
+        region: { id: 'crypt', cells: [cell(2, 0)] },
+        structuralWalls: [structuralWall('w', ['cut-1'])],
+        structuralDoors: [structuralDoor('d')],
+      })
+    );
+    expect(after.structuralWalls.map((w) => w.id)).toEqual(['w']);
+    expect(after.structuralDoors.map((d) => d.id)).toEqual(['d']);
+  });
+
+  it('carries the same delta on concealment reveal', () => {
+    const before = withStructure([structuralWall('parent')]);
+    const after = applyConcealmentRevealed(
+      before,
+      create(ConcealmentRevealedSchema, {
+        concealment: 'hidden-door',
+        structuralWalls: [structuralWall('parent', ['cut-2'])],
+        structuralDoors: [structuralDoor('hidden')],
+      })
+    );
+    // The parent wall is UPDATED with its newly known cut, and the door is an
+    // independent row — never nested under the wall.
+    expect(after.structuralWalls[0]!.openings.map((o) => o.id)).toEqual([
+      'cut-2',
+    ]);
+    expect(after.structuralDoors.map((d) => d.id)).toEqual(['hidden']);
   });
 });

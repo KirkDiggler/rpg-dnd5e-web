@@ -192,6 +192,18 @@ export function refreshKeysFor(
     // arrives as its next turn, on that turn's own beats. There is nothing
     // to re-read here because nothing has been decided yet.
     //
+    // AN AUTOMATIC DISCOVERY CHECK WAS RESOLVED (rpg-project#523, consuming
+    // proto v0.1.220). SCOPED TO THE CHECKED MEMBER: the result is theirs and
+    // only their own card and what they may still declare re-read. Nobody
+    // else's cached read moved, so nobody else refetches. No discovery roll
+    // and no discovery decision happens in web — the server resolved the
+    // check; this row is the mechanical invalidation of that member's own
+    // read, exactly as `intimidated`/`persuaded` below are scoped to the
+    // actor.
+    case 'discoveryChecked':
+      return event.body.value.member === member
+        ? ['characterData', 'afford']
+        : [];
     // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
     // shares this row, with ONE correction the threat's comment above did not
     // have to make: on the WORLD clock a social verb costs nothing at all (R3),

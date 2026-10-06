@@ -20,6 +20,7 @@ import {
 import { DungeonSceneLights } from './DungeonSceneLights';
 import { DungeonShell, type ShellFallbackReason } from './DungeonShell';
 import { RoomSceneEnvironment } from './RoomSceneEnvironment';
+import { StructuralLayoutEnvironment } from './StructuralLayoutEnvironment';
 import { useDungeonCompositions } from './useDungeonCompositions';
 
 export interface DungeonEnvironmentProps {
@@ -195,6 +196,17 @@ export function DungeonEnvironment({
           onDoorClick={onDoorClick}
           hiddenPlacedIds={scene.hiddenPlacedIds}
         />
+        {/* The supplied structural layout renders in BOTH branches. It is
+            independent of the authored room presentation and of the legacy
+            atlas props: it is the toolkit's own permitted wall/door records,
+            drawn through the shared World Building leaves. */}
+        <StructuralLayoutEnvironment
+          walls={scene.structuralWalls ?? []}
+          doors={scene.structuralDoors ?? []}
+          diagnostics={scene.structuralDiagnostics ?? []}
+          observedDoors={doors}
+          onDoorClick={onDoorClick}
+        />
       </>
     );
   }
@@ -228,6 +240,13 @@ export function DungeonEnvironment({
           />
         );
       })}
+      <StructuralLayoutEnvironment
+        walls={scene.structuralWalls ?? []}
+        doors={scene.structuralDoors ?? []}
+        diagnostics={scene.structuralDiagnostics ?? []}
+        observedDoors={doors}
+        onDoorClick={onDoorClick}
+      />
     </>
   );
 }

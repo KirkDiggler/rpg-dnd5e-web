@@ -1,4 +1,7 @@
-import { applyRegionRevealed } from '@/components/session/applyReveal';
+import {
+  applyConcealmentRevealed,
+  applyRegionRevealed,
+} from '@/components/session/applyReveal';
 import { nextViewerHoldings } from '@/components/session/viewerHoldings';
 import { create } from '@bufbuild/protobuf';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -56,10 +59,20 @@ export function useSessionKnowledge(session: string, member: string) {
   const applyEvent = useCallback(
     (state: GetKnowledgeResponse, event: Event): GetKnowledgeResponse => {
       if (event.seq <= state.seq) return state;
-      const atlas =
+      // BOTH reveal routes carry the SAME fixed structural records (upsert by
+      // id, canonical order). Room reveal already patches the cached atlas in
+      // place; concealment reveal does the same for the structural rows while
+      // its other fields continue to arrive through the existing authoritative
+      // GetAtlas/GetDoors refresh. A replayed or late event is fenced by the
+      // seq guard above, so a known cut cannot be reverted. Empty legacy
+      // arrays are a no-op.
+      let atlas =
         event.body.case === 'roomRevealed' && state.atlas
           ? applyRegionRevealed(state.atlas, event.body.value)
           : state.atlas;
+      if (event.body.case === 'concealmentRevealed' && atlas) {
+        atlas = applyConcealmentRevealed(atlas, event.body.value);
+      }
       return {
         ...state,
         atlas,

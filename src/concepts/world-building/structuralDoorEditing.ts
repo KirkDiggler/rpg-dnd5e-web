@@ -153,20 +153,65 @@ export function removeDoorFromOpening(
   return next;
 }
 
-/** One attached door's resolved placement. Every consumer derives it from the
- * opening; nothing here is written back into the document. */
-export interface AttachedDoorPlacement {
+/** One attached door's resolved visual pose, in scene units. It carries the
+ * opening's world XZ center, its yaw, its authored elevation and the TARGET
+ * assembly dimensions the shared leaf fits to. THERE IS NO SECOND PERSISTED
+ * POSE: the editor derives this from the owning opening, and the runtime
+ * derives the same shape from the door record's supplied endpoints. */
+export interface FittedDoorPose {
   /** Opening center in world XZ. */
   point: WorldPoint;
   /** Wall direction yaw, the shared `atan2(-dz, dx)` convention. */
   rotationY: number;
   /** Authored elevation, BEFORE the shared leaf's single floor lift. */
   y: number;
+  /** Target assembly width (the opening width), scene units. */
+  width: number;
+  /** Target assembly height, scene units. */
+  height: number;
+  /** Target assembly thickness, scene units. */
+  thickness: number;
+}
+
+/** One attached door's resolved placement. Every consumer derives it from the
+ * opening; nothing here is written back into the document. */
+export interface AttachedDoorPlacement extends FittedDoorPose {
   widthScale: number;
   heightScale: number;
   depthScale: number;
   /** Authored INITIAL state preview — not a live engine operation. */
   open: boolean;
+}
+
+/**
+ * Resolve one attached door's visual pose from its owning opening — the editor
+ * adapter. It validates the authored opening/appearance and refuses by name
+ * rather than returning a plausible pose. No asset lookup and no fit scale
+ * live here; the shared leaf owns that. The runtime uses the identical shape
+ * derived from the supplied door endpoints (`structuralLayout.ts`).
+ */
+export function attachedDoorVisualPose(input: {
+  wall: StructuralWallSurface;
+  openingId: string;
+}): FittedDoorPose {
+  const opening = requireOpening(input.wall, input.openingId);
+  if (!opening.door) fail(`opening ${input.openingId} has no door.`);
+  finitePositive(opening.width, `opening ${input.openingId} width`);
+  finitePositive(input.wall.appearance.height, 'appearance.height');
+  finitePositive(input.wall.appearance.thickness, 'appearance.thickness');
+  if (!Number.isFinite(input.wall.appearance.elevation))
+    fail('appearance.elevation must be finite.');
+  return {
+    point: wallOpeningPoint({
+      wall: input.wall,
+      openingId: input.openingId,
+    }),
+    rotationY: wallDirectionYaw(input.wall),
+    y: input.wall.appearance.elevation,
+    width: opening.width,
+    height: input.wall.appearance.height,
+    thickness: input.wall.appearance.thickness,
+  };
 }
 
 /**
@@ -184,29 +229,20 @@ export function attachedDoorPlacement(input: {
   assetDepthMeters: number;
   open: boolean;
 }): AttachedDoorPlacement {
-  const opening = requireOpening(input.wall, input.openingId);
-  if (!opening.door) fail(`opening ${input.openingId} has no door.`);
   finitePositive(input.assetWidthMeters, 'assetWidthMeters');
   finitePositive(input.assetHeightMeters, 'assetHeightMeters');
   finitePositive(input.assetDepthMeters, 'assetDepthMeters');
-  finitePositive(opening.width, `opening ${input.openingId} width`);
-  finitePositive(input.wall.appearance.height, 'appearance.height');
-  finitePositive(input.wall.appearance.thickness, 'appearance.thickness');
-  if (!Number.isFinite(input.wall.appearance.elevation))
-    fail('appearance.elevation must be finite.');
-  const point = wallOpeningPoint({
+  const pose = attachedDoorVisualPose({
     wall: input.wall,
     openingId: input.openingId,
   });
   return {
-    point,
-    rotationY: wallDirectionYaw(input.wall),
-    y: input.wall.appearance.elevation,
+    ...pose,
     // Catalog bounds already include the shared model scale. Fit against the
     // rendered dimensions, not another 0.75-scaled copy of those dimensions.
-    widthScale: opening.width / input.assetWidthMeters,
-    heightScale: input.wall.appearance.height / input.assetHeightMeters,
-    depthScale: input.wall.appearance.thickness / input.assetDepthMeters,
+    widthScale: pose.width / input.assetWidthMeters,
+    heightScale: pose.height / input.assetHeightMeters,
+    depthScale: pose.thickness / input.assetDepthMeters,
     open: input.open,
   };
 }

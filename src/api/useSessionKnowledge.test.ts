@@ -8,6 +8,10 @@ import {
   GetViewResponseSchema,
   type GetKnowledgeResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  AtlasStructuralDoorSchema,
+  AtlasStructuralWallSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionKnowledge } from './useSessionKnowledge';
@@ -36,10 +40,219 @@ function snapshot(seq = 10n) {
   });
 }
 
+const wallRecord = (id: string, openingIds: string[]) =>
+  create(AtlasStructuralWallSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 10, y: 0 },
+    height: 3,
+    thickness: 0.3,
+    elevation: 0,
+    openings: openingIds.map((openingId, index) => ({
+      id: openingId,
+      position: index + 1,
+      width: 0.5,
+    })),
+  });
+const doorRecord = (id: string) =>
+  create(AtlasStructuralDoorSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 2, y: 0 },
+    height: 3,
+    thickness: 0.3,
+    elevation: 0,
+  });
+
+function structuralSnapshot(
+  seq: bigint,
+  walls: ReturnType<typeof wallRecord>[],
+  doors: ReturnType<typeof doorRecord>[] = []
+) {
+  return create(GetKnowledgeResponseSchema, {
+    seq,
+    atlas: {
+      cells: [{ x: 0, y: 0 }],
+      regions: [{ id: 'entry', cells: [{ x: 0, y: 0 }] }],
+      structuralWalls: walls,
+      structuralDoors: doors,
+    },
+    view: {},
+    where: { position: { x: 0, y: 0 } },
+    roster: { members: [{ id: 'a' }] },
+  });
+}
+
 beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
   client.getKnowledge.mockResolvedValue(snapshot());
   client.getView.mockResolvedValue(create(GetViewResponseSchema));
+});
+
+describe('supplied structural layout', () => {
+  it('carries the snapshot’s permitted walls and independent doors', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(7n, [wallRecord('w', ['cut-1'])], [doorRecord('d')])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'w',
+    ]);
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('upserts a CHANGED wall on room reveal — the known cut is updated, not appended', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.atlas?.structuralWalls).toHaveLength(1);
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1', 'cut-2']);
+  });
+
+  it('upserts an independent door on concealment reveal without a parent wall', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.CONCEALMENT_REVEALED,
+          body: {
+            case: 'concealmentRevealed',
+            value: {
+              concealment: 'hidden',
+              cells: [{ x: 1, y: 0 }],
+              structuralDoors: [doorRecord('hidden-door')],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'hidden-door',
+    ]);
+  });
+
+  it('fences a REPLAYED event below the snapshot cutoff, so a known cut cannot be reverted', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1', 'cut-2'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      // An old event (below the snapshot seq) that names only the earlier cut.
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 9n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1'])],
+            },
+          },
+        })
+      );
+    });
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1', 'cut-2']);
+  });
+
+  it('duplicate application is idempotent', async () => {
+    client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const event = create(EventSchema, {
+      seq: 11n,
+      kind: EventKind.ROOM_REVEALED,
+      body: {
+        case: 'roomRevealed',
+        value: {
+          region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+          structuralWalls: [wallRecord('w', ['cut-1'])],
+        },
+      },
+    });
+    act(() => {
+      result.current.acceptEvent(event);
+      result.current.acceptEvent(event);
+    });
+    expect(result.current.atlas?.structuralWalls).toHaveLength(1);
+  });
+
+  it('event-applied state equals a fresh reload of the same world', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
+              structuralDoors: [doorRecord('d')],
+            },
+          },
+        })
+      );
+    });
+    const applied = result.current.atlas;
+    // The server's fresh answer for the same world carries the same records.
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(
+        11n,
+        [wallRecord('w', ['cut-1', 'cut-2'])],
+        [doorRecord('d')]
+      )
+    );
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.atlas?.structuralWalls).toEqual(
+      applied?.structuralWalls
+    );
+    expect(result.current.atlas?.structuralDoors).toEqual(
+      applied?.structuralDoors
+    );
+  });
 });
 
 describe('session knowledge delivery', () => {

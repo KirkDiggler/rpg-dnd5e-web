@@ -2,9 +2,10 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
+import { attachedDoorVisualPose } from './structuralDoorEditing';
+import type { StructuralWall } from './structuralWalls';
 import { FittedDoorSurface } from './StructuralWallSurfaces';
 import { StructuralWallVisual } from './StructuralWallVisual';
-import type { StructuralWall } from './structuralWalls';
 
 const modelState = vi.hoisted(() => ({
   mode: 'loaded' as 'loaded' | 'pending',
@@ -319,7 +320,7 @@ describe('StructuralWallVisual', () => {
       />
     );
     const doorGroup = renderer.scene.findByProps({
-      name: 'structural-wall-door-wall-1-opening-1',
+      name: 'structural-wall-door-door-1',
     });
     expect(doorGroup).toBeTruthy();
     expect(doorGroup.props.position[0]).toBeCloseTo(7);
@@ -366,14 +367,14 @@ describe('StructuralWallVisual', () => {
     );
     expect(
       openRenderer.scene.findByProps({
-        name: 'structural-wall-door-wall-1-opening-1',
+        name: 'structural-wall-door-door-1',
       }).props.userData.open
     ).toBe(true);
     const openDoor = openRenderer.scene.findByProps({
-      name: 'structural-wall-door-wall-1-opening-1',
+      name: 'structural-wall-door-door-1',
     }).instance as THREE.Object3D;
     const closedDoor = closedRenderer.scene.findByProps({
-      name: 'structural-wall-door-wall-1-opening-1',
+      name: 'structural-wall-door-door-1',
     }).instance as THREE.Object3D;
     const openLeaf = openDoor.getObjectByName('Door_Left')!;
     const closedLeaf = closedDoor.getObjectByName('Door_Left')!;
@@ -410,7 +411,7 @@ describe('StructuralWallVisual', () => {
       />
     );
     const marker = renderer.scene.findByProps({
-      name: 'structural-wall-error-wall-1/opening-1',
+      name: 'structural-wall-error-door-1',
     });
     expect(marker.props.userData.reason).toMatch(/no door asset/);
     expect(marker.props.position[0]).toBeCloseTo(7);
@@ -431,9 +432,10 @@ describe('StructuralWallVisual', () => {
     const onClick = vi.fn();
     const clickable = await ReactThreeTestRenderer.create(
       <FittedDoorSurface
-        wall={target}
-        opening={target.openings[0]!}
-        open={false}
+        doorId={target.openings[0]!.door!.id}
+        assetRef={target.openings[0]!.door!.assetRef}
+        pose={attachedDoorVisualPose({ wall: target, openingId: 'opening-1' })}
+        state="closed"
         onClick={onClick}
       />
     );
@@ -448,9 +450,10 @@ describe('StructuralWallVisual', () => {
     // unclickable — an editor preview can never steal a floor gesture.
     const inert = await ReactThreeTestRenderer.create(
       <FittedDoorSurface
-        wall={target}
-        opening={target.openings[0]!}
-        open={false}
+        doorId={target.openings[0]!.door!.id}
+        assetRef={target.openings[0]!.door!.assetRef}
+        pose={attachedDoorVisualPose({ wall: target, openingId: 'opening-1' })}
+        state="closed"
       />
     );
     const inertLeaf = inert.scene.findByProps({ name: 'world-asset-model' });

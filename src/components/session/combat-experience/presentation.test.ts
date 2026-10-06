@@ -7,6 +7,7 @@ import { createDicePresentationRelease } from '@/components/ui/dice/dicePresenta
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
 import {
+  DiscoveryCheckedSchema,
   DownedSchema,
   EventKind,
   EventSchema,
@@ -1065,5 +1066,60 @@ describe('stream-delivered spell attacks', () => {
     expect(resolved.pendingLocalKeys).toEqual([]);
     expect(resolved.presentations[0]?.settlement).toBe('auto');
     expect(selectVisibleStory(resolved)).toHaveLength(1);
+  });
+});
+
+/**
+ * The v0.1.222 pin's already-upstream `discoveryChecked` body. This layer
+ * must ACCEPT it (never a "typed event kind/body mismatch" diagnostic) and
+ * record its whole-roll identity; it deliberately adds no story narration and
+ * makes no discovery decision — that is rpg-project#523's own UI, not this
+ * promotion.
+ */
+describe('the resolved automatic discovery check (rpg-project#523)', () => {
+  const fact = (total: number, seq = 41n) => ({
+    type: 'stream-event' as const,
+    event: create(EventSchema, {
+      session: 'crypt-run',
+      seq,
+      kind: EventKind.DISCOVERY_CHECKED,
+      recipient: 'aldric',
+      body: {
+        case: 'discoveryChecked' as const,
+        value: create(DiscoveryCheckedSchema, {
+          member: 'aldric',
+          ability: 'perception',
+          beaten: false,
+          total,
+        }),
+      },
+    }),
+    metadata: { source: 'live' as const },
+  });
+
+  it('is accepted rather than accused as a kind/body mismatch', () => {
+    const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
+    expect(
+      state.diagnostics.filter((line) => line.includes('mismatch'))
+    ).toEqual([]);
+    // Recorded as an accepted other-event with its own identity.
+    expect(state.otherStory).toHaveLength(1);
+  });
+
+  it('keeps two checks that differ only in the die as distinct beats', () => {
+    // The whole roll is the identity, the same law the threat/appeal beats
+    // use: the SAME member may be checked twice, and it is the numbers that
+    // tell the beats apart. Reusing the previous result must be a conflict.
+    const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
+    const repeated = reduceCombatPresentation(state, fact(12));
+    expect(repeated.otherStory).toHaveLength(1);
+    expect(repeated.otherStory[0]?.conflicted).toBe(false);
+    const changed = reduceCombatPresentation(state, fact(18));
+    expect(changed.otherStory[0]?.conflicted).toBe(true);
+  });
+
+  it('adds no discovery story row of its own', () => {
+    const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
+    expect(selectVisibleStory(state)).toEqual([]);
   });
 });

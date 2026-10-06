@@ -1227,11 +1227,15 @@ function SessionEncounterScope({
   const handleDoorClick = useCallback(
     (door: string) => {
       const state = doors.get(door)?.state;
-      if (!member || state === undefined || state === DoorState.OPEN) return;
+      if (!member || state === undefined || state === DoorState.UNSPECIFIED)
+        return;
       setDoorNotice(null);
       void (async () => {
         try {
-          if (state === DoorState.LOCKED) {
+          if (state === DoorState.OPEN) {
+            await sessionClient.closeDoor({ session: sessionId, member, door });
+            setDoorNotice('The door closes.');
+          } else if (state === DoorState.LOCKED) {
             const response = await sessionClient.unlock({
               session: sessionId,
               member,

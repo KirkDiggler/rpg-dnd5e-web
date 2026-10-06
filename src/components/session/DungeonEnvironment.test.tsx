@@ -9,6 +9,13 @@ import {
   CompositionSchema,
   type Composition,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import {
+  AtlasStructuralDoorSchema,
+  AtlasStructuralWallSchema,
+  DoorInfoSchema,
+  DoorState,
+  FootprintPointSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -17,6 +24,7 @@ import {
 } from '../../rendering/dungeonLighting';
 import type { DungeonFloorLighting } from '../hex-grid/syntyHexFloorHelpers';
 import type { Scene3D, SceneProp3D } from './atlasToScene3D';
+import { structuralLayoutRender } from './structuralLayout';
 
 vi.mock('./DungeonShell', () => ({
   DungeonShell: ({
@@ -680,5 +688,128 @@ describe('DungeonEnvironment', () => {
     expect(position[2]).toBeCloseTo(1.25, 9);
     expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.8);
     expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.4);
+  });
+
+  /**
+   * The supplied structural layout is authored room content, so it must draw
+   * in BOTH environment branches: the canonical branch renders the authored
+   * room alongside it, and the legacy branch renders the atlas props alongside
+   * it. A door with no observation is unknown, not closed.
+   */
+  it('mounts the supplied structural layout in the LEGACY branch', async () => {
+    const K = 5 / Math.sqrt(3);
+    const feet = (x: number, y: number) =>
+      create(FootprintPointSchema, { x, y });
+    const built = structuralLayoutRender(
+      [
+        create(AtlasStructuralWallSchema, {
+          id: 'w',
+          ref: 'dnd5e:env:dark-fortress:45_wall_01',
+          from: feet(0, 0),
+          to: feet(10 * K, 0),
+          height: 3 * K,
+          thickness: 0.3 * K,
+          elevation: 0,
+          openings: [{ id: 'cut', position: 5 * K, width: 2 * K }],
+        }),
+      ],
+      [
+        create(AtlasStructuralDoorSchema, {
+          id: 'dungeon/gate',
+          ref: 'dnd5e:env:dark-fortress:wall_door_double_01',
+          from: feet(4 * K, 0),
+          to: feet(6 * K, 0),
+          height: 3 * K,
+          thickness: 0.3 * K,
+          elevation: 0,
+        }),
+      ],
+      1
+    );
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment
+        scene={{
+          ...sceneWith(buildDungeonLightingFacts([], [], [])),
+          structuralWalls: built.walls,
+          structuralDoors: built.doors,
+          structuralDiagnostics: built.diagnostics,
+        }}
+        focus={{ x: 0, z: 0 }}
+        hexSize={1}
+      />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'structural-wall-pieces-w' })
+    ).toHaveLength(1);
+    expect(
+      renderer.scene.findAllByProps({
+        name: 'structural-wall-door-dungeon/gate',
+      })
+    ).toHaveLength(1);
+    // No observation supplied ⇒ unknown, not an invented closed door.
+    expect(
+      (
+        renderer.scene.findByProps({
+          name: 'structural-wall-door-dungeon/gate',
+        }).props.userData as { state: string }
+      ).state
+    ).toBe('unknown');
+  });
+
+  it('mounts the supplied structural layout in the CANONICAL branch and joins known state by canonical id', async () => {
+    const K = 5 / Math.sqrt(3);
+    const feet = (x: number, y: number) =>
+      create(FootprintPointSchema, { x, y });
+    const built = structuralLayoutRender(
+      [],
+      [
+        create(AtlasStructuralDoorSchema, {
+          id: 'dungeon/gate',
+          ref: 'dnd5e:env:dark-fortress:wall_door_double_01',
+          from: feet(4 * K, 0),
+          to: feet(6 * K, 0),
+          height: 3 * K,
+          thickness: 0.3 * K,
+          elevation: 0,
+        }),
+      ],
+      1
+    );
+    const observed = new Map([
+      [
+        'dungeon/gate',
+        create(DoorInfoSchema, {
+          door: 'dungeon/gate',
+          state: DoorState.CLOSED,
+        }),
+      ],
+    ]);
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment
+        scene={{
+          ...sceneWith(
+            buildDungeonLightingFacts([], [], []),
+            [],
+            roomPresentation
+          ),
+          structuralWalls: built.walls,
+          structuralDoors: built.doors,
+          structuralDiagnostics: built.diagnostics,
+        }}
+        focus={{ x: 0, z: 0 }}
+        hexSize={1}
+        doors={observed}
+      />
+    );
+    const doorGroup = renderer.scene.findByProps({
+      name: 'structural-wall-door-dungeon/gate',
+    });
+    expect(doorGroup).toBeTruthy();
+    expect((doorGroup.props.userData as { state: string }).state).toBe(
+      'closed'
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'environment-shell' })
+    ).toHaveLength(1);
   });
 });

@@ -72,7 +72,19 @@ describe('useAuthoringGate — probe classification', () => {
     await waitFor(() => expect(result.current.state).toBe('unreachable'));
   });
 
-  it('GetDungeon("reference-tomb") succeeding -> live', async () => {
+  it('probes service availability without requesting an authored dungeon', async () => {
+    hoisted.getDungeonFn.mockRejectedValue(
+      new ConnectError('key is required', Code.InvalidArgument)
+    );
+    const { probeAuthoringGate } = await import('./useAuthoringGate');
+    expect(await probeAuthoringGate()).toBe('live');
+    expect(hoisted.getDungeonFn).toHaveBeenCalledOnce();
+    expect(hoisted.getDungeonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ key: '' })
+    );
+  });
+
+  it('a successful service response also classifies as live', async () => {
     hoisted.getDungeonFn.mockResolvedValue({ yaml: 'version: 2\n' } as never);
     const { useAuthoringGate } = await import('./useAuthoringGate');
 
