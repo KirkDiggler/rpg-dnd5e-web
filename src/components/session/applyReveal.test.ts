@@ -179,14 +179,14 @@ describe('a door reveal', () => {
   });
 });
 
-/** A minimal fixed wall record; the field values are irrelevant here — the
- * module under test only upserts/sorts by id. */
+/** A valid fixed wall record. Updates retain identity/order and pass the same
+ * assembled-geometry validation as snapshots before reaching the renderer. */
 const structuralWall = (id: string, openingIds: string[] = []) =>
   create(AtlasStructuralWallSchema, {
     id,
     ref: `ref:${id}`,
     from: { x: 0, y: 0 },
-    to: { x: 1, y: 0 },
+    to: { x: 10, y: 0 },
     height: 1,
     thickness: 1,
     elevation: 0,

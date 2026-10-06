@@ -31,7 +31,7 @@
  * (Measured by the toolkit builder and pinned in their test; ruled on
  * rpg-project#360, 2026-09-03, correcting an earlier "append both".)
  *
- * # The door's gap needs nothing new
+ * # Legacy segment/doorway rendering
  *
  * No doorway rides `RegionRevealed`. A concealed door arrives on
  * `DoorRevealed`, and the segment through it was already presented
@@ -56,7 +56,18 @@ import type {
   AtlasStructuralDoor,
   AtlasStructuralWall,
   Position,
+  StructuralWallOpeningsReplacement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { assertStructuralLayoutIntegrity } from './structuralLayout';
+
+/** An otherwise meaningful patch cannot be applied without its known wall.
+ * The knowledge hook recovers via a snapshot; no partial event is installed. */
+export class MissingStructuralWallError extends Error {
+  constructor(wallId: string) {
+    super(`structural layout: missing baseline wall ${wallId}`);
+    this.name = 'MissingStructuralWallError';
+  }
+}
 
 /**
  * Upsert COMPLETE structural records by id and restore canonical identity
@@ -88,20 +99,61 @@ function upsertStructuralById<T extends { id: string }>(
 export function applyStructuralRecords(
   atlas: GetAtlasResponse,
   walls: readonly AtlasStructuralWall[] | undefined,
-  doors: readonly AtlasStructuralDoor[] | undefined
+  doors: readonly AtlasStructuralDoor[] | undefined,
+  replacements: readonly StructuralWallOpeningsReplacement[] = []
 ): GetAtlasResponse {
-  const nextWalls = upsertStructuralById(atlas.structuralWalls, walls ?? []);
-  const nextDoors = upsertStructuralById(atlas.structuralDoors, doors ?? []);
-  if (
-    nextWalls === atlas.structuralWalls &&
-    nextDoors === atlas.structuralDoors
-  ) {
+  if (!walls?.length && !doors?.length && replacements.length === 0)
     return atlas;
+  assertStructuralLayoutIntegrity({
+    walls: atlas.structuralWalls,
+    doors: atlas.structuralDoors,
+  });
+
+  const changedWalls = new Set<string>();
+  for (const wall of walls ?? []) {
+    if (!wall.id || changedWalls.has(wall.id))
+      throw new Error('structural layout: empty or duplicate full wall id');
+    changedWalls.add(wall.id);
   }
-  const next = clone(GetAtlasResponseSchema, atlas);
-  next.structuralWalls = [...nextWalls];
-  next.structuralDoors = [...nextDoors];
-  return next;
+  const baseline = new Set(atlas.structuralWalls.map((wall) => wall.id));
+  for (const patch of replacements) {
+    if (!patch.wallId || changedWalls.has(patch.wallId))
+      throw new Error(
+        'structural layout: empty wall id or full-row/patch collision or duplicate patch'
+      );
+    changedWalls.add(patch.wallId);
+    if (!baseline.has(patch.wallId))
+      throw new MissingStructuralWallError(patch.wallId);
+  }
+  const changedDoors = new Set<string>();
+  for (const door of doors ?? []) {
+    if (!door.id || changedDoors.has(door.id))
+      throw new Error('structural layout: empty or duplicate door id');
+    changedDoors.add(door.id);
+  }
+
+  const byWall = new Map(
+    upsertStructuralById(atlas.structuralWalls, walls ?? []).map((wall) => [
+      wall.id,
+      wall,
+    ])
+  );
+  for (const patch of replacements) {
+    const wall = byWall.get(patch.wallId)!; // baseline was checked before any update
+    byWall.set(patch.wallId, { ...wall, openings: [...patch.openings] });
+  }
+  const nextWalls = [...byWall.values()].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+  const nextDoors = upsertStructuralById(atlas.structuralDoors, doors ?? []);
+  assertStructuralLayoutIntegrity({ walls: nextWalls, doors: nextDoors });
+  // Clone at the commit boundary, including newly supplied event rows. Neither
+  // the baseline nor the event can subsequently mutate the returned cache.
+  return clone(GetAtlasResponseSchema, {
+    ...atlas,
+    structuralWalls: nextWalls,
+    structuralDoors: [...nextDoors],
+  });
 }
 
 /**
@@ -118,7 +170,8 @@ export function applyConcealmentRevealed(
   return applyStructuralRecords(
     atlas,
     event.structuralWalls,
-    event.structuralDoors
+    event.structuralDoors,
+    event.structuralWallOpeningsReplacements
   );
 }
 function revealAdditions(event: RegionRevealed): {
@@ -203,7 +256,8 @@ export function applyRegionRevealed(
   const structured = applyStructuralRecords(
     next,
     event.structuralWalls,
-    event.structuralDoors
+    event.structuralDoors,
+    event.structuralWallOpeningsReplacements
   );
   next.structuralWalls = structured.structuralWalls;
   next.structuralDoors = structured.structuralDoors;

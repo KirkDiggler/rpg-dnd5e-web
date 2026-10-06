@@ -1118,8 +1118,14 @@ describe('the resolved automatic discovery check (rpg-project#523)', () => {
     expect(changed.otherStory[0]?.conflicted).toBe(true);
   });
 
-  it('adds no discovery story row of its own', () => {
+  it('retains the upstream automatic-discovery story presentation', () => {
     const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
-    expect(selectVisibleStory(state)).toEqual([]);
+    expect(selectVisibleStory(state)).toMatchObject([
+      {
+        eyebrow: 'Discovery',
+        headline: 'Aldric: Failed Perception check',
+        detail: 'Total 12',
+      },
+    ]);
   });
 });

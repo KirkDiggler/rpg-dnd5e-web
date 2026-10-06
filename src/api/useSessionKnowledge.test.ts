@@ -85,6 +85,40 @@ function structuralSnapshot(
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+function openingPatch(
+  seq: bigint,
+  ids: string[],
+  wallId = 'w',
+  doors: ReturnType<typeof doorRecord>[] = []
+) {
+  return create(EventSchema, {
+    session: 'run',
+    recipient: 'a',
+    seq,
+    kind: EventKind.CONCEALMENT_REVEALED,
+    body: {
+      case: 'concealmentRevealed',
+      value: {
+        concealment: 'secret',
+        structuralDoors: doors,
+        structuralWallOpeningsReplacements: [
+          { wallId, openings: wallRecord(wallId, ids).openings },
+        ],
+      },
+    },
+  });
+}
+
 beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
   client.getKnowledge.mockResolvedValue(snapshot());
@@ -252,6 +286,209 @@ describe('supplied structural layout', () => {
     expect(result.current.atlas?.structuralDoors).toEqual(
       applied?.structuralDoors
     );
+  });
+});
+
+describe('component patch ordering and recovery', () => {
+  it('advances the applied sequence and ignores duplicate/older replacements', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', [])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(openingPatch(11n, ['one']));
+      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
+      result.current.acceptEvent(openingPatch(11n, ['one']));
+      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
+    });
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one', 'two']);
+    expect(result.current.snapshot?.seq).toBe(12n);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('buffers component patches during initial hydration above the snapshot cutoff', async () => {
+    const hydration = deferred<GetKnowledgeResponse>();
+    client.getKnowledge.mockReturnValueOnce(hydration.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledOnce());
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
+      )
+    );
+    await act(async () =>
+      hydration.resolve(structuralSnapshot(10n, [wallRecord('w', [])]))
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.snapshot?.seq).toBe(11n);
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('coalesces missing-baseline recovery and atomically preserves subsequent events', async () => {
+    const recovery = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, []))
+      .mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d1')])
+      )
+    );
+    expect(result.current.atlas?.structuralWalls).toEqual([]);
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    act(() => {
+      result.current.acceptEvent(
+        openingPatch(12n, ['one', 'two'], 'w', [doorRecord('d2')])
+      );
+      void result.current.refetch();
+      void result.current.refetch();
+    });
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      recovery.resolve(
+        structuralSnapshot(11n, [wallRecord('w', ['one'])], [doorRecord('d1')])
+      )
+    );
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one', 'two']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd1',
+      'd2',
+    ]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('keeps failed recovery visible without automatic retry loops, then permits explicit retry', async () => {
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, []))
+      .mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
+      )
+    );
+    await waitFor(() =>
+      expect(result.current.error?.message).toContain('offline')
+    );
+    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error?.message).toContain('offline');
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+    client.getKnowledge.mockResolvedValueOnce(
+      structuralSnapshot(
+        12n,
+        [wallRecord('w', ['one', 'two'])],
+        [doorRecord('d')]
+      )
+    );
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.snapshot?.seq).toBe(12n);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('rejects malformed geometry atomically and does not erase its error on a mutable refresh', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', [])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const bad = openingPatch(11n, ['bad'], 'w', [doorRecord('d')]);
+    if (bad.body.case !== 'concealmentRevealed') throw new Error('fixture');
+    bad.body.value.structuralWallOpeningsReplacements[0].openings[0].width = -1;
+    act(() => result.current.acceptEvent(bad));
+    expect(result.current.error).not.toBeNull();
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    expect(result.current.snapshot?.seq).toBe(10n);
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error).not.toBeNull();
+    expect(client.getKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers a delivery gap through Knowledge rather than applying an incomplete event history', async () => {
+    const recovery = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, [wallRecord('w', [])]))
+      .mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
+    expect(result.current.snapshot?.seq).toBe(10n);
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    await act(async () =>
+      recovery.resolve(
+        structuralSnapshot(12n, [wallRecord('w', ['one', 'two'])])
+      )
+    );
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports a recovery snapshot that still lacks the baseline without looping', async () => {
+    client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.acceptEvent(openingPatch(11n, ['one'])));
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(result.current.error?.message).toContain('missing baseline wall')
+    );
+    expect(result.current.atlas?.structuralWalls).toEqual([]);
+    expect(result.current.snapshot?.seq).toBe(10n);
+  });
+
+  it('fences a late snapshot from the previous member without blocking the new scope', async () => {
+    const old = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(
+        structuralSnapshot(50n, [wallRecord('b-wall', [])])
+      );
+    const { result, rerender } = renderHook(
+      ({ member }) => useSessionKnowledge('run', member),
+      { initialProps: { member: 'a' } }
+    );
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(1));
+    rerender({ member: 'b' });
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(50n));
+    await act(async () =>
+      old.resolve(structuralSnapshot(100n, [wallRecord('a-wall', [])]))
+    );
+    expect(result.current.snapshot?.seq).toBe(50n);
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'b-wall',
+    ]);
+    act(() =>
+      result.current.acceptEvent(openingPatch(101n, ['old'], 'a-wall'))
+    );
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'b-wall',
+    ]);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
   });
 });
 

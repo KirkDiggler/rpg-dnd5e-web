@@ -71,6 +71,7 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
     'dnd5e:props:dark-fortress:barricade_02',
     'dnd5e:env:dark-fortress:wall_door_double_01',
     'dnd5e:env:dark-fortress:45_wall_01',
+    'dnd5e:env:fantasy-kingdom:castle_wall_01',
   ];
   return {
     ...actual,
@@ -3942,12 +3943,19 @@ describe('structural wall authoring (Task 3)', () => {
     expect(after.blocker).toEqual(before.blocker);
 
     // Asset swap: appearance changes, blocker and openings are untouched.
-    fireEvent.change(screen.getByLabelText('Wall appearance asset'), {
-      target: { value: 'dnd5e:env:dark-fantasy:pillar_01' },
-    });
+    const appearanceSelect = screen.getByLabelText(
+      'Wall appearance asset'
+    ) as HTMLSelectElement;
+    const replacementRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
+    expect(
+      [...appearanceSelect.options].some(
+        (option) => option.value === replacementRef
+      )
+    ).toBe(true);
+    fireEvent.change(appearanceSelect, { target: { value: replacementRef } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply appearance' }));
     after = draftWalls()[0]!;
-    expect(after.appearance.assetRef).toBe('dnd5e:env:dark-fantasy:pillar_01');
+    expect(after.appearance.assetRef).toBe(replacementRef);
     expect(after.blocker).toEqual(before.blocker);
     expect(after.openings.map((opening) => opening.id)).toEqual([
       'opening-1',

@@ -871,13 +871,13 @@ describe('SessionEncounterView production combat integration', () => {
     expect(scene?.structuralDoors?.[0]!.pose.point.x).toBeCloseTo(7, 8);
     expect(hoisted.dungeonSceneHookFn).toHaveBeenCalledWith('');
   });
-  it('surfaces a malformed structural record instead of drawing a partial world', async () => {
+  it('refuses a malformed structural snapshot before drawing a partial world', async () => {
     readyScene();
     hoisted.atlasResult.atlas = pointyAtlas({
       structuralWalls: [{ id: 'broken', ref: 'content:wall' }],
     });
     renderView();
-    await screen.findByRole('heading', { name: "Can't draw this room" });
+    await screen.findByRole('heading', { name: "Couldn't load the session" });
     expect(screen.getByText(/wall broken.from/)).toBeTruthy();
     expect(screen.queryByTestId('session-canvas')).toBeNull();
     expect(hoisted.dungeonSceneHookFn).toHaveBeenCalledWith('');

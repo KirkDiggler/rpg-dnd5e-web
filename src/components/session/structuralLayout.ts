@@ -30,6 +30,7 @@
  */
 
 import type { FittedDoorPose } from '@/concepts/world-building/structuralDoorEditing';
+import { wallSolidIntervals } from '@/concepts/world-building/structuralWallGeometry';
 import type {
   StructuralWallOpening,
   StructuralWallSurface,
@@ -158,6 +159,12 @@ export function structuralWallSurfaceFromAtlas(
       };
     }
   );
+  // Use the same opening bounds/overlap validation as the shared wall geometry.
+  // This validates presentation data, not collision or disclosure policy.
+  wallSolidIntervals({
+    wall: { line: { start, end }, openings },
+    extent: { start: 0, end: length },
+  });
   return {
     id: wall.id,
     label: wall.ref || wall.id,
@@ -201,6 +208,35 @@ export function structuralDoorPoseFromAtlas(
     height: sceneFeet(door.height, `${path}.height`, scale, true),
     thickness: sceneFeet(door.thickness, `${path}.thickness`, scale, true),
   };
+}
+
+/** Validate a complete supplied layout before installing a snapshot or atomic
+ * update. Canonical feet are retained (scale 1); no asset lookup, blocker or
+ * visibility inference is involved. Rendering uses the same record adapters. */
+export function assertStructuralLayoutIntegrity(input: {
+  walls: readonly AtlasStructuralWall[];
+  doors: readonly AtlasStructuralDoor[];
+}): void {
+  const walls = new Set<string>();
+  const doors = new Set<string>();
+  const openings = new Set<string>();
+  for (const wall of input.walls) {
+    if (walls.has(wall.id))
+      throw new Error(`structural layout: duplicate wall ${wall.id}`);
+    walls.add(wall.id);
+    structuralWallSurfaceFromAtlas(wall, 1);
+    for (const opening of wall.openings) {
+      if (openings.has(opening.id))
+        throw new Error(`structural layout: duplicate opening ${opening.id}`);
+      openings.add(opening.id);
+    }
+  }
+  for (const door of input.doors) {
+    if (doors.has(door.id))
+      throw new Error(`structural layout: duplicate door ${door.id}`);
+    doors.add(door.id);
+    structuralDoorPoseFromAtlas(door, 1);
+  }
 }
 
 /** Convert every supplied record. A malformed record is REFUSED BY NAME into

@@ -741,19 +741,17 @@ describe('DungeonEnvironment', () => {
     expect(
       renderer.scene.findAllByProps({ name: 'structural-wall-pieces-w' })
     ).toHaveLength(1);
+    // No observation supplied ⇒ marker only, never the asset's closed rest pose.
     expect(
       renderer.scene.findAllByProps({
         name: 'structural-wall-door-dungeon/gate',
       })
-    ).toHaveLength(1);
-    // No observation supplied ⇒ unknown, not an invented closed door.
+    ).toHaveLength(0);
     expect(
-      (
-        renderer.scene.findByProps({
-          name: 'structural-wall-door-dungeon/gate',
-        }).props.userData as { state: string }
-      ).state
-    ).toBe('unknown');
+      renderer.scene.findByProps({
+        name: 'structural-door-unknown-dungeon/gate',
+      }).props.userData
+    ).toMatchObject({ doorId: 'dungeon/gate', status: 'unknown' });
   });
 
   it('mounts the supplied structural layout in the CANONICAL branch and joins known state by canonical id', async () => {
