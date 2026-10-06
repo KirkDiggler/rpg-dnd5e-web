@@ -3,9 +3,10 @@ import {
   FootprintShape,
   TargetKind,
   Verb,
+  type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useEffect, useId, useState } from 'react';
-import { effectLinesFor } from './actionTooltip';
+import { effectLinesFor, heldEffectLinesFor } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { EffectRows } from './EffectRows';
@@ -15,6 +16,9 @@ import type {
   CombatExperiencePhase,
 } from './types';
 import { promptsForMember } from './verbRegistry';
+
+/** Heads the inspected candidate's held rows, visibly and for the list. */
+const HELD_HEADING = 'On this target';
 
 export interface TargetSurfaceProps {
   phase: CombatExperiencePhase;
@@ -98,10 +102,19 @@ export function TargetSurface({
     }
   };
   const closeInspection = () => setInspection(null);
+  // WHO HAS ROWS TO INSPECT. The actor's rows bear against every candidate;
+  // a target's held rows only against itself. So with no actor rows, only a
+  // candidate holding something offers the panel: inspecting one that holds
+  // nothing would open an empty panel, and claim nothing bears on it.
+  const hasActorEffects = (declaration?.effects.length ?? 0) > 0;
+  const candidateHasRows = (candidate: TargetCandidate) =>
+    hasActorEffects || candidate.heldEffects.length > 0;
+  const hasEffects = Boolean(declaration?.candidates.some(candidateHasRows));
   const hoveredIsCandidate = Boolean(
     hoveredTarget &&
     declaration?.candidates.some(
-      (candidate) => candidate.member === hoveredTarget
+      (candidate) =>
+        candidate.member === hoveredTarget && candidateHasRows(candidate)
     )
   );
   useEffect(() => {
@@ -174,10 +187,12 @@ export function TargetSurface({
   const selectedTargets = selection?.selectedCandidates ?? [];
   const isMultiTargetCast =
     declaration?.verb === Verb.CAST && declaration.maxTargets > 1;
-  const hasEffects = (declaration?.effects.length ?? 0) > 0;
   const inspectedName = inspectedMember
     ? memberNames.get(inspectedMember) || inspectedMember
     : null;
+  const heldLines = declaration
+    ? heldEffectLinesFor(declaration, inspectedMember)
+    : [];
   const castCost = declaration?.cost
     .filter((component) => component.needed > 0 && component.label)
     .map((component) => `${component.needed} ${component.label}`)
@@ -263,6 +278,7 @@ export function TargetSurface({
             {declaration.candidates.map((candidate, index) => {
               const name =
                 memberNames.get(candidate.member) || candidate.member;
+              const hasRows = candidateHasRows(candidate);
               const selectedIndex = selectedTargets.findIndex(
                 (selected) => selected.member === candidate.member
               );
@@ -281,16 +297,16 @@ export function TargetSurface({
               return (
                 <li
                   key={`${candidate.member}:${index}`}
-                  className={hasEffects ? styles.targetChoiceRow : undefined}
+                  className={hasRows ? styles.targetChoiceRow : undefined}
                   data-inspected={
-                    hasEffects && inspectedMember === candidate.member
+                    hasRows && inspectedMember === candidate.member
                       ? 'true'
                       : undefined
                   }
                   // Mouse and pen only; a touch tap is a choice, and touch
                   // reads rows through the Effects toggle instead.
                   onPointerEnter={
-                    hasEffects
+                    hasRows
                       ? (event) => {
                           if (
                             event.pointerType === 'mouse' ||
@@ -302,7 +318,7 @@ export function TargetSurface({
                       : undefined
                   }
                   onFocus={
-                    hasEffects ? () => preview(candidate.member) : undefined
+                    hasRows ? () => preview(candidate.member) : undefined
                   }
                 >
                   <button
@@ -321,7 +337,7 @@ export function TargetSurface({
                   >
                     {name}: {status}
                   </button>
-                  {hasEffects && (
+                  {hasRows && (
                     // Read-only: shows this candidate's rows, never chooses it.
                     // A toggle button whose state IS the pin (`aria-pressed`):
                     // focus or hover may already preview the rows, so the
@@ -403,6 +419,16 @@ export function TargetSurface({
             </span>
           )}
           <EffectRows lines={effectLinesFor(declaration, inspectedMember)} />
+          {heldLines.length > 0 && (
+            // The target's own effects, after the actor's and apart from
+            // them: never folded into, or matched against, the rows above.
+            <>
+              <span className={styles.targetEffectsGroup} aria-hidden="true">
+                {HELD_HEADING}
+              </span>
+              <EffectRows lines={heldLines} label={HELD_HEADING} />
+            </>
+          )}
         </section>
       )}
       {phase === 'awaiting-roll' && targetName && (
