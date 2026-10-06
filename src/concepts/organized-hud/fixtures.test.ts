@@ -58,4 +58,19 @@ describe('organized HUD fixtures', () => {
         expect(ids.has(answer.id)).toBe(true);
     }
   });
+
+  it('gives one longsword candidate held rows of its own, never sharing an actor row id', () => {
+    const longsword = ORGANIZED_HUD_FIXTURES[0]!.declarations.find(
+      (declaration) => declaration.id === 'offer:aldric:longsword:action'
+    );
+    const ids = new Set(longsword?.effects.map((row) => row.id));
+    const holding = longsword?.candidates.filter(
+      (candidate) => candidate.heldEffects.length > 0
+    );
+    expect(holding?.map((candidate) => candidate.member)).toEqual([
+      'skeleton-guard',
+    ]);
+    for (const row of holding?.[0]?.heldEffects ?? [])
+      expect(ids.has(row.id)).toBe(false);
+  });
 });

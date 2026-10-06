@@ -2752,6 +2752,15 @@ button.diceDrawerCue:focus-visible {
   color: var(--sc-muted);
   font-size: 9px;
 }
+/* The inspected target's own effects, after the actor's rows. */
+.targetEffectsGroup {
+  margin-top: 6px;
+  color: var(--sc-gold);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
 .targetEffectsHeading {
   display: flex;
   align-items: center;

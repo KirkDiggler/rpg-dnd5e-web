@@ -70,6 +70,36 @@ const attack = (effects = true): Declaration =>
     ],
   });
 
+// A row Goblin A itself holds. Its id deliberately matches the actor row's,
+// so a join by id would show on screen.
+const faerie = (overrides: Partial<{ name: string; reason: string }> = {}) =>
+  create(EffectRowSchema, {
+    id: ROW_ID,
+    ref: 'fixture:held',
+    name: overrides.name ?? 'Held Effect',
+    description: 'Held, authored beside its rule.',
+    state: EffectState.APPLIES,
+    reason: overrides.reason ?? 'The target is outlined',
+    participation: EffectParticipation.CONTRIBUTES_NOW,
+    benefit: 'Advantage on the attack roll',
+  });
+const holding = (
+  declaration: Declaration,
+  member: string,
+  rows: ReturnType<typeof faerie>[]
+): Declaration =>
+  create(DeclarationSchema, {
+    ...declaration,
+    candidates: declaration.candidates.map((candidate) =>
+      candidate.member === member
+        ? create(TargetCandidateSchema, { ...candidate, heldEffects: rows })
+        : candidate
+    ),
+  });
+const select = (declaration: Declaration) => ({
+  selection: { declaration, candidate: null, whyText: null },
+});
+
 function renderSurface(overrides: Partial<TargetSurfaceProps> = {}) {
   const onTargetClick = vi.fn();
   const declaration = overrides.selection?.declaration ?? attack();
@@ -274,5 +304,136 @@ describe('TargetSurface effect rows', () => {
     expect(screen.queryByRole('region', { name: /effects/ })).toBeNull();
     const list = screen.getByRole('list', { name: 'Attack targets' });
     expect(within(list).getAllByRole('button')).toHaveLength(3);
+  });
+
+  describe('the target’s held rows', () => {
+    const heading = () => within(panel()).queryByText('On this target');
+    const heldList = () =>
+      within(panel()).queryByRole('list', { name: 'On this target' });
+
+    it('candidate hover shows that target’s held rows after the actor’s, under their heading', () => {
+      const { onTargetClick } = renderSurface(
+        select(holding(attack(), 'g1', [faerie()]))
+      );
+      // Nothing is inspected yet: no held rows, no heading.
+      expect(heading()).toBeNull();
+      mouse(
+        screen.getByRole('button', { name: /Goblin A: Available/ }),
+        'pointerover'
+      );
+      expect(heading()).toBeVisible();
+      const lists = within(panel()).getAllByRole('list');
+      expect(lists.map((list) => list.getAttribute('aria-label'))).toEqual([
+        'Effects',
+        'On this target',
+      ]);
+      // The heading sits between the actor's rows and the target's.
+      expect(
+        lists[0]!.compareDocumentPosition(heading()!) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(
+        heading()!.compareDocumentPosition(lists[1]!) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      const held = within(lists[1]!).getByRole('listitem');
+      expect(held).toHaveTextContent('Held Effect');
+      expect(held).toHaveTextContent('Applies');
+      expect(held).toHaveTextContent('The target is outlined');
+      expect(held).toHaveTextContent('Advantage on the attack roll');
+      expect(held).toHaveTextContent('Held, authored beside its rule.');
+      expect(onTargetClick).not.toHaveBeenCalled();
+    });
+
+    it('shows no heading for a candidate holding nothing', () => {
+      renderSurface(select(holding(attack(), 'g1', [faerie()])));
+      mouse(
+        screen.getByRole('button', { name: /Goblin B: Available/ }),
+        'pointerover'
+      );
+      expect(panel()).toHaveAccessibleName('Attack effects against Goblin B');
+      expect(heading()).toBeNull();
+      expect(heldList()).toBeNull();
+      expect(panel()).not.toHaveTextContent('Held Effect');
+    });
+
+    it('never merges a held row into the actor row that shares its id', () => {
+      renderSurface(select(holding(attack(), 'g1', [faerie()])));
+      mouse(
+        screen.getByRole('button', { name: /Goblin A: Available/ }),
+        'pointerover'
+      );
+      const [actor, held] = within(panel()).getAllByRole('list');
+      // The actor row reads the candidate's answer for it, untouched.
+      const actorRow = within(actor!).getByRole('listitem');
+      expect(actorRow).toHaveTextContent('Alpha Effect');
+      expect(actorRow).toHaveTextContent('+1d6 damage');
+      expect(actorRow).not.toHaveTextContent('Held Effect');
+      expect(actorRow).not.toHaveTextContent('outlined');
+      // The held row is its own row, not overlaid by that answer.
+      const heldRow = within(held!).getByRole('listitem');
+      expect(heldRow).toHaveTextContent('The target is outlined');
+      expect(heldRow).not.toHaveTextContent('+1d6 damage');
+    });
+
+    it('a refreshed declaration replaces the held rows wholesale', () => {
+      const first = holding(attack(), 'g1', [faerie()]);
+      const { props, view } = renderSurface(select(first));
+      const toggle = screen.getByRole('button', {
+        name: 'Effects against Goblin A',
+      });
+      fireEvent.click(toggle);
+      expect(heldList()).toHaveTextContent('Held Effect');
+      // Same declaration id, new answer from the server.
+      view.rerender(
+        <TargetSurface
+          {...props}
+          {...select(
+            holding(attack(), 'g1', [
+              faerie({ name: 'Other Effect', reason: 'Something else' }),
+            ])
+          )}
+        />
+      );
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(within(heldList()!).getAllByRole('listitem')).toHaveLength(1);
+      expect(heldList()).toHaveTextContent('Other Effect');
+      expect(panel()).not.toHaveTextContent('Held Effect');
+      // A refresh that holds nothing drops the group, heading and all.
+      view.rerender(<TargetSurface {...props} {...select(attack())} />);
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(heading()).toBeNull();
+      expect(heldList()).toBeNull();
+    });
+
+    it('offers the panel for a holding target when the actor has no rows', () => {
+      const { onTargetClick, props, view } = renderSurface(
+        select(holding(attack(false), 'g1', [faerie()]))
+      );
+      // Only the target holding something can be inspected.
+      expect(
+        screen.getByRole('button', { name: 'Effects against Goblin A' })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Effects against Goblin B' })
+      ).toBeNull();
+      expect(panel()).toHaveAccessibleName('Attack effects');
+      expect(heading()).toBeNull();
+      // Keyboard focus previews it; the actor list is simply absent.
+      act(() =>
+        screen.getByRole('button', { name: /Goblin A: Available/ }).focus()
+      );
+      expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+      expect(within(panel()).getAllByRole('list')).toHaveLength(1);
+      expect(heldList()).toHaveTextContent('Advantage on the attack roll');
+      // A canvas hover on a target holding nothing keeps the last inspected.
+      view.rerender(<TargetSurface {...props} hoveredTarget="g2" />);
+      expect(panel()).toHaveAccessibleName('Attack effects against Goblin A');
+      // Click still acts, unchanged.
+      fireEvent.click(
+        screen.getByRole('button', { name: /Goblin A: Available/ })
+      );
+      expect(onTargetClick).toHaveBeenCalledWith('g1');
+    });
   });
 });
