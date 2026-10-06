@@ -48,5 +48,5 @@ export * from './Form';
 export * from './Feedback';
 
 // Toast notifications
-export { ToastProvider, useToast } from './Toast';
+export { ToastProvider, clearToasts, useToast } from './Toast';
 export type { Toast } from './Toast';

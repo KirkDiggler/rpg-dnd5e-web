@@ -4,10 +4,22 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import { getAuthDecision, getPlayerId } from './api/auth';
+import {
+  createGameIdentity,
+  GameIdentityContext,
+  NO_DEV_WORLD_SELECTION,
+  readWorldIdSelections,
+  resolveDevWorldSelection,
+  setDevWorldSelection,
+  type GameIdentity,
+} from './api/gameIdentity';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useLobbyCharacterId } from './api/useLobbyCharacterId';
@@ -25,12 +37,17 @@ import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
+import { clearToasts } from './components/ui/Toast';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
 import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
+import {
+  DevWorldIdentityBadge,
+  DevWorldSelectionRefusal,
+} from './dev/DevWorldIdentity';
 import { isPropCalibrationRoute } from './dev/prop-calibration/route';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { useDiscord } from './discord';
@@ -84,20 +101,14 @@ const hasConceptDeepLink = (): boolean =>
   typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).has('concept');
 
-function AppContent() {
+function AppContent({ identity }: { identity: GameIdentity }) {
   const discord = useDiscord();
-  const authDecision = getAuthDecision();
-  const authKind = authDecision.kind;
-  const authPlayerId =
-    authDecision.kind === 'unauthenticated' ? null : authDecision.playerId;
-  const authGuildId =
-    authDecision.kind === 'discord' ? authDecision.guildId : null;
-  const {
-    authSessionId,
-    clearAuthenticationForSession,
-    isAuthenticationSessionCurrent,
-  } = discord;
-  const compositionIdentity = `${authSessionId}:${authKind}:${authGuildId ?? ''}`;
+  const { clearAuthenticationForSession, isAuthenticationSessionCurrent } =
+    discord;
+  // Every stateful/private thing below belongs to exactly one identity. The
+  // boundary remounts this subtree whenever scopeKey changes, so this value is
+  // constant for the life of the mounted component.
+  const compositionIdentity = identity.scopeKey;
   const [compositionState, setCompositionState] = useState<{
     identity: string;
     source: CompositionSource | undefined;
@@ -113,17 +124,17 @@ function AppContent() {
     let current = true;
     setCompositionState({ identity: compositionIdentity, source: undefined });
     const effectAuthDecision =
-      authKind === 'discord'
+      identity.kind === 'discord'
         ? {
             kind: 'discord' as const,
-            playerId: authPlayerId,
-            guildId: authGuildId,
+            playerId: identity.playerId,
+            guildId: identity.worldId,
           }
-        : authKind === 'dev' && authPlayerId
-          ? { kind: 'dev' as const, playerId: authPlayerId }
+        : identity.kind === 'dev' && identity.playerId
+          ? { kind: 'dev' as const, playerId: identity.playerId }
           : { kind: 'unauthenticated' as const };
     const fixedFixture =
-      authKind === 'dev' &&
+      identity.kind === 'dev' &&
       import.meta.env.MODE === 'development' &&
       import.meta.env.VITE_ENABLE_DEVELOPMENT_COMPOSITIONS === '1';
     const load = fixedFixture
@@ -135,8 +146,10 @@ function AppContent() {
           ({ createRpcCompositionSource }) =>
             createRpcCompositionSource({
               mode: import.meta.env.MODE,
-              devWorldId: import.meta.env.VITE_DEV_WORLD_ID,
-              authSessionId,
+              // The one selected world, shared with GameIdentity and the
+              // Server access settings below — never a second derivation.
+              devWorldId: identity.worldId ?? undefined,
+              authSessionId: identity.authSessionId,
               auth: effectAuthDecision,
               onUnauthenticated: (expiredSessionId) =>
                 clearAuthenticationForSession(
@@ -156,12 +169,9 @@ function AppContent() {
     };
   }, [
     compositionIdentity,
-    authSessionId,
+    identity,
     clearAuthenticationForSession,
     isAuthenticationSessionCurrent,
-    authKind,
-    authPlayerId,
-    authGuildId,
   ]);
   const invalidateCompositionResolutions = useCallback(() => {
     // Existing composition resolution caches reset on source identity. Keep
@@ -230,13 +240,11 @@ function AppContent() {
     shouldRenderGlobalDevTools(import.meta.env.MODE, currentView) ||
     import.meta.env.VITE_FEEL_LAB === '1';
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
-  // without Discord (slice 2 playtest infrastructure)
+  // without Discord (slice 2 playtest infrastructure). The auth store is
+  // already synced by the identity boundary above this component.
   const devPlayerIdOverride = isDevelopment
     ? new URLSearchParams(window.location.search).get('playerId')
     : null;
-  // Sync dev override into gRPC auth store so outbound RPCs carry the right
-  // player ID. useLayoutEffect fires before child effects, preventing races.
-  useDevPlayerIdAuth(devPlayerIdOverride);
   // The UI's identity must be the SAME id the auth interceptor sends, or the
   // lobby roster can't find "me": the server stamps members with the header
   // id, and a UI that believes it is someone else hides Ready state and the
@@ -256,7 +264,7 @@ function AppContent() {
   // actionable — see its doc comment) and routes straight into GameView,
   // mirroring /playtest's dev-only ?encounterId= gate but server-driven and
   // available for real players.
-  const myActiveLobby = useMyActiveLobby(playerId);
+  const myActiveLobby = useMyActiveLobby(playerId, identity.scopeKey);
   const resumedLobbyCharacter = useLobbyCharacterId(
     myActiveLobby.data?.encounterId ? myActiveLobby.data.lobbyId : '',
     playerId ?? ''
@@ -552,11 +560,7 @@ function AppContent() {
         ) : currentView === 'world-settings' ? (
           <WorldAccessSettings
             key={`${compositionIdentity}:${playerId}`}
-            worldId={
-              authKind === 'discord'
-                ? authGuildId
-                : (import.meta.env.VITE_DEV_WORLD_ID ?? null)
-            }
+            worldId={identity.worldId}
             onBack={handleBackToHome}
           />
         ) : currentView === 'concepts' ? (
@@ -618,7 +622,7 @@ function AppContent() {
             onOpenWorldBuilder={handleOpenWorldBuilder}
             worldBuilderAvailable={compositionSource !== undefined}
             worldBuilderUnavailableMessage={
-              authDecision.kind === 'discord' && !authDecision.guildId
+              identity.kind === 'discord' && !identity.worldId
                 ? 'Open this Activity in a server to access its world'
                 : undefined
             }
@@ -793,6 +797,120 @@ function HomeView({
   );
 }
 
+const isDevelopmentMode = (): boolean => import.meta.env.MODE === 'development';
+
+export interface GameIdentityBoundaryProps {
+  children: (identity: GameIdentity) => ReactNode;
+}
+
+/**
+ * THE identity boundary (web#522 / S6a).
+ *
+ * Everything identity-scoped renders inside this component, so there is one
+ * place that:
+ *
+ * 1. resolves the single GameIdentity from the same non-secret auth decision
+ *    the transport uses (plus the explicit development world selection);
+ * 2. binds that Dev selection for the auth interceptor BEFORE any child effect
+ *    can dispatch a request;
+ * 3. remounts the whole stateful subtree when the identity changes, because the
+ *    context provider is keyed by the identity's opaque scopeKey. That makes
+ *    clearing synchronous: the first render for a new world/player/credential
+ *    epoch is a fresh mount, so no old selection, draft, creation roll, lobby
+ *    id, resume target or private cache can render under the new identity, and
+ *    a late response from the old one only ever targets an unmounted tree.
+ *
+ * Immutable rule catalogs and theme preferences are intentionally not part of
+ * this boundary; durable local drafts are scoped separately (S6c).
+ */
+export function GameIdentityBoundary({ children }: GameIdentityBoundaryProps) {
+  const discord = useDiscord();
+  // Read at render (not import) so the boundary always agrees with the mode
+  // this render is actually running under.
+  const development = isDevelopmentMode();
+  // The transport attributes Dev requests to `?playerId=`; the identity has to
+  // name the same player, so the override is resolved here and synced before
+  // any child effect can send a request.
+  const devPlayerIdOverride = development
+    ? new URLSearchParams(window.location.search).get('playerId')
+    : null;
+  useDevPlayerIdAuth(devPlayerIdOverride);
+
+  const auth = getAuthDecision();
+  // A `?playerId=` override is itself a development identity statement: the
+  // transport is about to be told to attribute Dev requests to it. Resolve it
+  // as a Dev identity here so the very first render already names the same
+  // player the first request will carry. A real Discord credential still wins.
+  const devOverrideApplies = development && Boolean(devPlayerIdOverride);
+  const authKind =
+    auth.kind === 'discord'
+      ? 'discord'
+      : devOverrideApplies
+        ? 'dev'
+        : auth.kind;
+  const authPlayerId = auth.kind === 'unauthenticated' ? null : auth.playerId;
+  const authGuildId = auth.kind === 'discord' ? auth.guildId : null;
+  const search = development ? window.location.search : '';
+  const allowlist = import.meta.env.VITE_DEV_WORLD_IDS;
+  const configuredDevWorldId = import.meta.env.VITE_DEV_WORLD_ID;
+
+  const devWorld = useMemo(
+    () =>
+      resolveDevWorldSelection({
+        mode: import.meta.env.MODE,
+        allowlist,
+        devWorldId: configuredDevWorldId,
+        selectedWorldIds: readWorldIdSelections(search),
+      }),
+    [allowlist, configuredDevWorldId, search]
+  );
+  const identity = useMemo(
+    () =>
+      createGameIdentity({
+        authKind,
+        playerId: authPlayerId,
+        guildId: authGuildId,
+        mode: import.meta.env.MODE,
+        authSessionId: discord.authSessionId,
+        devPlayerIdOverride,
+        devWorld,
+      }),
+    [
+      authKind,
+      authPlayerId,
+      authGuildId,
+      discord.authSessionId,
+      devPlayerIdOverride,
+      devWorld,
+    ]
+  );
+
+  // The transport binding follows the EFFECTIVE identity: a refused Dev
+  // selection must reach the transport before the subtree could ask for
+  // anything (no request may leave under the default world instead), and a
+  // real Discord credential never carries a Dev selector at all.
+  const transportBinding =
+    identity.kind === 'dev' ? devWorld : NO_DEV_WORLD_SELECTION;
+  useLayoutEffect(() => {
+    setDevWorldSelection(transportBinding);
+  }, [transportBinding]);
+
+  // Toasts belong to the identity that raised them. `ToastProvider` mounts
+  // above this boundary (ApplicationRoot) and Toast.tsx keeps its store outside
+  // React, so the keyed remount below cannot clear visual residue by itself:
+  // drop the previous identity's toasts as one transition, before paint.
+  useLayoutEffect(() => {
+    clearToasts();
+  }, [identity.scopeKey]);
+
+  return (
+    <GameIdentityContext.Provider key={identity.scopeKey} value={identity}>
+      {children(identity)}
+      {development && <DevWorldIdentityBadge identity={identity} />}
+    </GameIdentityContext.Provider>
+  );
+}
+
 function App() {
   if (
     isPropCalibrationRoute(
@@ -839,9 +957,17 @@ function App() {
   }
 
   return (
-    <CharacterDraftProvider>
-      <AppContent />
-    </CharacterDraftProvider>
+    <GameIdentityBoundary>
+      {(identity) =>
+        identity.worldSelectionError ? (
+          <DevWorldSelectionRefusal identity={identity} />
+        ) : (
+          <CharacterDraftProvider>
+            <AppContent identity={identity} />
+          </CharacterDraftProvider>
+        )
+      }
+    </GameIdentityBoundary>
   );
 }
 

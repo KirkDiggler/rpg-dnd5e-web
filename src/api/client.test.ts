@@ -1,9 +1,16 @@
 import type { StreamResponse, UnaryResponse } from '@connectrpc/connect';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuth, setAuth } from './auth';
 import { authInterceptor, loggingInterceptor } from './client';
+import {
+  resetDevWorldSelection,
+  resolveDevWorldSelection,
+  setDevWorldSelection,
+  type DevWorldSelection,
+} from './gameIdentity';
 
 /** Minimal fake req satisfying what loggingInterceptor actually reads
  * (service.typeName, method.name, message) — cast past the rest of
@@ -35,6 +42,7 @@ function makeAuthReq(service: { typeName: string }) {
 describe('authInterceptor', () => {
   afterEach(() => {
     clearAuth();
+    resetDevWorldSelection();
     vi.unstubAllEnvs();
   });
 
@@ -70,6 +78,111 @@ describe('authInterceptor', () => {
 
     expect(request.header.get('authorization')).toBe('Dev dev-player');
     expect(request.header.has('x-rpg-guild-id')).toBe(false);
+  });
+
+  const devSelection = (input: {
+    allowlist?: string;
+    devWorldId?: string;
+    selected?: readonly string[];
+  }): DevWorldSelection =>
+    resolveDevWorldSelection({
+      mode: 'development',
+      allowlist: input.allowlist,
+      devWorldId: input.devWorldId,
+      selectedWorldIds: input.selected,
+    });
+
+  it('sends the explicitly selected Dev world on Dev requests', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    setDevWorldSelection(
+      devSelection({
+        allowlist: '123456789012345678,223456789012345678',
+        devWorldId: '123456789012345678',
+        selected: ['223456789012345678'],
+      })
+    );
+    const request = makeAuthReq(CharacterService);
+
+    await authInterceptor(async (req) => req as never)(request);
+
+    expect(request.header.get('authorization')).toBe('Dev dev-player');
+    expect(request.header.get('x-rpg-guild-id')).toBe('223456789012345678');
+  });
+
+  it('never sends a client-chosen selector without the allowlist', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    setDevWorldSelection(
+      devSelection({
+        devWorldId: 'test-world',
+        selected: ['223456789012345678'],
+      })
+    );
+    const request = makeAuthReq(CharacterService);
+
+    await authInterceptor(async (req) => req as never)(request);
+
+    expect(request.header.get('authorization')).toBe('Dev dev-player');
+    expect(request.header.has('x-rpg-guild-id')).toBe(false);
+  });
+
+  it('refuses at the transport when the Dev selection is invalid', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    setDevWorldSelection(
+      devSelection({
+        allowlist: '123456789012345678',
+        devWorldId: '123456789012345678',
+        selected: ['999999999999999999'],
+      })
+    );
+    const request = makeAuthReq(CharacterService);
+    const next = vi.fn(async (req) => req as never);
+
+    await expect(authInterceptor(next)(request)).rejects.toMatchObject({
+      code: Code.FailedPrecondition,
+    });
+    // No request may leave and fall back to the default world.
+    expect(next).not.toHaveBeenCalled();
+    expect(request.header.has('authorization')).toBe(false);
+  });
+
+  it('lets real Discord credentials win over a Dev selection, including a refusal', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    // A refused Dev selection is irrelevant once a real credential exists.
+    setDevWorldSelection({
+      worldId: null,
+      sendsGuildSelector: false,
+      refusal: 'misconfigured Dev world',
+    });
+    setAuth('private-token', 'player-1', '123456789012345678');
+    const request = makeAuthReq(CharacterService);
+
+    await authInterceptor(async (req) => req as never)(request);
+
+    expect(request.header.get('authorization')).toBe('Discord private-token');
+    expect(request.header.get('x-rpg-guild-id')).toBe('123456789012345678');
+  });
+
+  it('rejects a refused Dev selection with a ConnectError callers can read', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    setDevWorldSelection({
+      worldId: null,
+      sendsGuildSelector: false,
+      refusal: 'misconfigured Dev world',
+    });
+
+    const failure = await authInterceptor(async (req) => req as never)(
+      makeAuthReq(CharacterService)
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ConnectError);
+    expect((failure as ConnectError).rawMessage).toBe(
+      'misconfigured Dev world'
+    );
   });
 });
 

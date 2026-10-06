@@ -240,6 +240,11 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
+import {
+  createGameIdentity,
+  GameIdentityContext,
+  resolveDevWorldSelection,
+} from '@/api/gameIdentity';
 import { SessionEncounterView } from './SessionEncounterView';
 
 function pointyAtlas(overrides: Record<string, unknown> = {}) {
@@ -512,6 +517,38 @@ function currentLocalWorldDieCommand(): LocalWorldDieCommand | undefined {
   return isValidElement<{ command: LocalWorldDieCommand }>(layer)
     ? layer.props.command
     : undefined;
+}
+
+const S6A_WORLD_A = '123456789012345678';
+const S6A_WORLD_B = '223456789012345678';
+
+/** Dev identity for one explicit local world (web#522 / S6a). */
+function devIdentity(worldId: string, authSessionId = 0) {
+  return createGameIdentity({
+    authKind: 'dev',
+    playerId: 'player-1',
+    mode: 'development',
+    authSessionId,
+    devWorld: resolveDevWorldSelection({
+      mode: 'development',
+      allowlist: `${S6A_WORLD_A},${S6A_WORLD_B}`,
+      devWorldId: S6A_WORLD_A,
+      selectedWorldIds: [worldId],
+    }),
+  });
+}
+
+function identityScopedView(worldId: string, authSessionId = 0) {
+  return (
+    <GameIdentityContext.Provider value={devIdentity(worldId, authSessionId)}>
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={() => {}}
+      />
+    </GameIdentityContext.Provider>
+  );
 }
 
 function deferredStream(events: SessionEvent[]) {
@@ -5598,6 +5635,163 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+  });
+
+  it('scopes the private character cache by the shared world identity, not the player id alone', async () => {
+    readyScene();
+    const view = render(identityScopedView(S6A_WORLD_A));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    // Same player, same character, same mounted session — only the world (and
+    // credential epoch) changed. The private read must re-run under the new
+    // owner scope instead of being served from the previous world's cache.
+    view.rerender(identityScopedView(S6A_WORLD_B));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    // A replacement credential epoch in the same world is also a new owner
+    // scope, so a token refresh can never reuse the retired session's cache.
+    view.rerender(identityScopedView(S6A_WORLD_B, 1));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(3)
+    );
+  });
+
+  it('holds a world-A equip completion across an identity change without writing world B state or reading again', async () => {
+    readyScene();
+    const greatsword = { module: 'dnd5e', type: 'item', id: 'greatsword' };
+    const inventory = [
+      {
+        ref: greatsword,
+        name: 'Greatsword',
+        statLine: '2d6 slashing',
+        iconKey: '',
+        kind: 'weapon',
+        equipmentType: 'weapon',
+        slotKeys: ['main_hand'],
+      },
+    ];
+    const slots = [
+      { key: 'main_hand', displayLabel: 'Main Hand', accepts: ['weapon'] },
+    ];
+    const worldBData = privateCharacterData({ equipped: {}, inventory, slots });
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce({
+        character: privateCharacterData({ equipped: {}, inventory, slots }),
+      })
+      .mockResolvedValueOnce({ character: worldBData });
+    const heldEquip = deferred<{
+      character: ReturnType<typeof privateCharacterData>;
+    }>();
+    hoisted.equipItemFn.mockReturnValueOnce(heldEquip.promise);
+
+    const view = render(identityScopedView(S6A_WORLD_A));
+    await screen.findByTestId('session-combat-equipment-button');
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Greatsword — equip to Main Hand',
+      })
+    );
+    await waitFor(() => expect(hoisted.equipItemFn).toHaveBeenCalledTimes(1));
+
+    // The identity changes while the equip is in flight. Same session,
+    // character and player — only the world moved.
+    view.rerender(identityScopedView(S6A_WORLD_B));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    await act(async () => {
+      heldEquip.resolve({
+        character: privateCharacterData({
+          equipped: { main_hand: greatsword },
+          inventory,
+          slots,
+          mainHandDamage: '2d6 slashing',
+        }),
+      });
+      await heldEquip.promise;
+    });
+
+    // World A's authoritative replacement may not become world B's private
+    // state, and the old continuation may not trigger another read under B.
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.equipItemFn).toHaveBeenCalledTimes(1);
+    expect(
+      hoisted.lastCanvasProps.current?.mainHandPresentation
+    ).toBeUndefined();
+  });
+
+  it('holds a world-A unequip completion across an identity change without dropping world B equipment state', async () => {
+    readyScene();
+    const sword = { module: 'dnd5e', type: 'item', id: 'longsword' };
+    const inventory = [
+      {
+        ref: sword,
+        name: 'Longsword',
+        statLine: '1d8 slashing',
+        iconKey: '',
+        kind: 'weapon',
+        equipmentType: 'weapon',
+        slotKeys: ['main_hand'],
+      },
+    ];
+    const slots = [
+      { key: 'main_hand', displayLabel: 'Main Hand', accepts: ['weapon'] },
+    ];
+    const equippedData = privateCharacterData({
+      equipped: { main_hand: sword },
+      inventory,
+      slots,
+    });
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce({ character: equippedData })
+      .mockResolvedValueOnce({ character: equippedData });
+    const heldUnequip = deferred<{
+      character: ReturnType<typeof privateCharacterData>;
+    }>();
+    hoisted.unequipItemFn.mockReturnValueOnce(heldUnequip.promise);
+
+    const view = render(identityScopedView(S6A_WORLD_A));
+    await screen.findByTestId('session-combat-equipment-button');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+        'dnd5e:item:longsword'
+      )
+    );
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    await screen.findByTestId('equipment-popover');
+    fireEvent.click(screen.getByTestId('equip-socket-main_hand'));
+    await waitFor(() => expect(hoisted.unequipItemFn).toHaveBeenCalledTimes(1));
+
+    view.rerender(identityScopedView(S6A_WORLD_B));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    await act(async () => {
+      heldUnequip.resolve({
+        character: privateCharacterData({
+          equipped: {},
+          inventory,
+          slots,
+          armorClassDetail: { total: 11, note: 'world A authoritative' },
+          mainHandDamage: '',
+        }),
+      });
+      await heldUnequip.promise;
+    });
+
+    // World B still sees its own equipment state, no extra read, no error.
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.unequipItemFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+      'dnd5e:item:longsword'
+    );
   });
 });
 
