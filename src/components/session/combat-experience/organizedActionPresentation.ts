@@ -11,7 +11,15 @@ import { isExecutableVerb } from './verbRegistry';
  * future caller), never derived from game refs, class, costs, or resources.
  * The server remains the source of membership and availability.
  */
+export interface ActionIconPresentation {
+  src: string;
+  fallback: string;
+  tone: 'gold' | 'green' | 'blue' | 'violet';
+}
+
 export interface OrganizedActionPresentation {
+  /** Explicit desktop experiment opt-in. Artwork never supplies game facts. */
+  desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
   /** Declaration ids to place in the compact quick row, in this exact order. */
   quickDeclarationIds?: readonly string[];
   /** Explicit group facts for width-driven overflow; unknown offers are not guessed. */

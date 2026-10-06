@@ -1,4 +1,8 @@
 import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
+import type {
+  ActionIconPresentation,
+  OrganizedActionPresentation,
+} from '@/components/session/combat-experience/organizedActionPresentation';
 import type { CombatExperiencePresentationState } from '@/components/session/combat-experience/types';
 import { create } from '@bufbuild/protobuf';
 import {
@@ -6,8 +10,9 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
+import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
 import { ORGANIZED_HUD_PROFILES } from './fixtures';
 import './organizedHud.css';
 
@@ -17,13 +22,49 @@ const EMPTY: CombatExperiencePresentationState = {
   changedOptionNotice: null,
 };
 
+export interface HudConceptProfile {
+  id: string;
+  label: string;
+  presentation: OrganizedActionPresentation;
+  desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
+  fixtures: readonly (SessionCombatFixture & { authorityFresh?: boolean })[];
+}
+
 /** Fixture-only composition: real CombatExperience + action organizer, no RPC writes. */
-export function OrganizedHudConcept() {
-  const [scenarioId, setScenarioId] = useState('full-slots');
-  const [profileId, setProfileId] = useState('caster');
+export function OrganizedHudConcept({
+  profiles = ORGANIZED_HUD_PROFILES,
+  title = 'Organized HUD',
+  conceptId = 'organized-hud',
+  iconExperiment = false,
+}: {
+  profiles?: readonly HudConceptProfile[];
+  title?: string;
+  conceptId?: string;
+  iconExperiment?: boolean;
+} = {}) {
+  const [scenarioId, setScenarioId] = useState(profiles[0]!.fixtures[0]!.id);
+  const [profileId, setProfileId] = useState(profiles[0]!.id);
   const profile =
-    ORGANIZED_HUD_PROFILES.find((item) => item.id === profileId) ??
-    ORGANIZED_HUD_PROFILES[0];
+    profiles.find((item) => item.id === profileId) ?? profiles[0]!;
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [desktopFrame, setDesktopFrame] = useState(false);
+  const [iconsEnabled, setIconsEnabled] = useState(true);
+  useEffect(() => {
+    if (
+      !iconExperiment ||
+      !frameRef.current ||
+      typeof ResizeObserver === 'undefined'
+    )
+      return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry)
+        setDesktopFrame(
+          entry.contentRect.width >= 1000 && entry.contentRect.height > 500
+        );
+    });
+    observer.observe(frameRef.current);
+    return () => observer.disconnect();
+  }, [iconExperiment]);
   const [frame, setFrame] = useState<'pc' | 'phone'>('pc');
   const [crowdedInitiative, setCrowdedInitiative] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
@@ -36,7 +77,10 @@ export function OrganizedHudConcept() {
     typeof document.documentElement.requestFullscreen === 'function';
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'RPG — HUD Preview';
+    document.title =
+      title === 'Organized HUD'
+        ? 'RPG — HUD Preview'
+        : `RPG — ${title} Preview`;
     const updateFullscreen = () =>
       setFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', updateFullscreen);
@@ -44,7 +88,7 @@ export function OrganizedHudConcept() {
       document.title = previousTitle;
       document.removeEventListener('fullscreenchange', updateFullscreen);
     };
-  }, []);
+  }, [title]);
   const toggleFullscreen = async () => {
     setFullscreenError('');
     try {
@@ -148,8 +192,8 @@ export function OrganizedHudConcept() {
     >
       <header>
         <div className="organizedHudTitle">
-          <span>Concept #1054 · real shared shell</span>
-          <h2 id="organized-hud-title">Organized HUD</h2>
+          <span>Concept · real shared shell · fixture data</span>
+          <h2 id="organized-hud-title">{title}</h2>
           <p>{fixture.description}</p>
         </div>
         <details className="organizedHudControls" open={!preview}>
@@ -157,14 +201,14 @@ export function OrganizedHudConcept() {
             Controls · {profile.label} · {frame === 'pc' ? 'PC' : 'Phone'}
           </summary>
           <div role="group" aria-label="Character profile">
-            {ORGANIZED_HUD_PROFILES.map((item) => (
+            {profiles.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 aria-pressed={item.id === profileId}
                 onClick={() => {
                   setProfileId(item.id);
-                  reset('full-slots');
+                  reset(item.fixtures[0]!.id);
                 }}
               >
                 {item.label}
@@ -183,6 +227,29 @@ export function OrganizedHudConcept() {
               </button>
             ))}
           </div>
+          {iconExperiment && (
+            <div role="group" aria-label="Layout comparison">
+              <button
+                type="button"
+                aria-pressed={iconsEnabled}
+                onClick={() => setIconsEnabled(true)}
+              >
+                Icon hotbar
+              </button>
+              <button
+                type="button"
+                aria-pressed={!iconsEnabled}
+                onClick={() => setIconsEnabled(false)}
+              >
+                Current layout
+              </button>
+              <small>
+                {desktopFrame
+                  ? 'Desktop frame'
+                  : 'Compact frame — existing touch layout'}
+              </small>
+            </div>
+          )}
           <div role="group" aria-label="Frame controls">
             <button
               type="button"
@@ -222,7 +289,7 @@ export function OrganizedHudConcept() {
           {!preview && (
             <a
               className="organizedHudPreviewLink"
-              href="?concept=organized-hud&preview=1"
+              href={`?concept=${conceptId}&preview=1`}
             >
               Open viewport preview
             </a>
@@ -235,6 +302,7 @@ export function OrganizedHudConcept() {
         </p>
       )}
       <div
+        ref={frameRef}
         className={`organizedHudFrame organizedHudFrame_${frame}`}
         data-testid="organized-hud-frame"
       >
@@ -243,6 +311,10 @@ export function OrganizedHudConcept() {
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,
+            desktopIcons:
+              iconExperiment && iconsEnabled && desktopFrame
+                ? profile.desktopIcons
+                : undefined,
             // The same offers feed every frame; measured space owns overflow.
             quickDeclarationIds: profile.presentation.quickDeclarationIds,
           }}

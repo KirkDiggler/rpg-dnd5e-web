@@ -18,6 +18,7 @@ import {
 } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
+import { DesktopActionSurface } from './DesktopActionSurface';
 import { EffectRows } from './EffectRows';
 import { bindOfferPress, type OfferPressBinding } from './offerPress';
 import {
@@ -172,16 +173,7 @@ const sectionTitle: Record<
 };
 type Menu = keyof typeof sectionTitle;
 
-/** Current offers only. Input and measured overflow change presentation, not authority. */
-export function OrganizedActionSurface({
-  declarations,
-  authorityFresh,
-  presentation,
-  armedDeclarationId,
-  onSelectDeclaration,
-  onCancelSelection,
-  secondaryControls,
-}: {
+export interface OrganizedActionSurfaceProps {
   declarations: readonly Declaration[];
   authorityFresh: boolean;
   presentation?: OrganizedActionPresentation;
@@ -189,7 +181,27 @@ export function OrganizedActionSurface({
   onSelectDeclaration: (declaration: Declaration) => void;
   onCancelSelection?: () => void;
   secondaryControls?: ReactNode;
-}) {
+}
+
+/** Opt-in only: existing callers retain the original input and layout surface. */
+export function OrganizedActionSurface(props: OrganizedActionSurfaceProps) {
+  return props.presentation?.desktopIcons ? (
+    <DesktopActionSurface {...props} />
+  ) : (
+    <CollectionActionSurface {...props} />
+  );
+}
+
+/** Current offers only. Input and measured overflow change presentation, not authority. */
+function CollectionActionSurface({
+  declarations,
+  authorityFresh,
+  presentation,
+  armedDeclarationId,
+  onSelectDeclaration,
+  onCancelSelection,
+  secondaryControls,
+}: OrganizedActionSurfaceProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const pressRef = useRef<OfferPressBinding | null>(null);
