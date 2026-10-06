@@ -41,6 +41,6 @@ Checked task contracts and requirement/seam coverage: [PLAN.md](PLAN.md).
 - 844×390 and 393×852: original organizer restored, spell collection visible, no document overflow. Screenshots inspected after rendering. This is responsive browser evidence, not an Android/Discord touch walkthrough.
 - Local evidence: ignored `evidence/desktop-hotbar/verification.json`, `verify.mjs`, and screenshots. No browser page errors during the walkthrough.
 
-Initial dependency reuse found the root checkout's node_modules out of sync with its tracked lockfile; `npm ci --ignore-scripts` in this isolated worktree restored the declared versions without changing dependency files.
+Initial dependency reuse found the root checkout's node_modules out of sync with its tracked lockfile; `npm ci --ignore-scripts` in this isolated worktree restored the declared versions without changing dependency files. That also left this new worktree without Husky's generated hook shim, so the first commit did not execute pre-commit. `npm run prepare` restored the shim; `npx lint-staged --diff HEAD^..HEAD` then checked the entire first commit's changed files, and the documentation follow-up runs the installed hook normally.
 
 Operator visual acceptance, full PR-boundary CI, independent review and live promotion remain outstanding. The running preview is for collaborative iteration, not a merge-ready claim.

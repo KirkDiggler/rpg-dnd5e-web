@@ -57,24 +57,24 @@ Implementation detail correction: frame measurement and comparison fit inside th
 
 ## Requirement coverage
 
-| Requirement / acceptance | Task | Concrete proof |
-|---|---|---|
-| R1 Browse without opening menu | 1,2 | all cleric spells visible on initial desktop render |
-| R2 Hover/focus inspection, opaque above bar | 1,3 | no-dispatch tests; screenshot and geometry/opacity probe |
-| R3 Unavailable inspection, current identity | 1,2 | spent action/slots/stale/replacement/withdrawal assertions |
-| R4 Same real shell, no live changes | 2 | shared TargetSurface and cast options tests; default regression tests |
-| R5 Mobile unchanged | 2,3 | frame observer + original surface; 844x390 / 393x852 screenshots |
-| R6 Synty local sample | 2,3 | images loaded, fallbacks, git ignored-path check |
+| Requirement / acceptance                    | Task | Concrete proof                                                        |
+| ------------------------------------------- | ---- | --------------------------------------------------------------------- |
+| R1 Browse without opening menu              | 1,2  | all cleric spells visible on initial desktop render                   |
+| R2 Hover/focus inspection, opaque above bar | 1,3  | no-dispatch tests; screenshot and geometry/opacity probe              |
+| R3 Unavailable inspection, current identity | 1,2  | spent action/slots/stale/replacement/withdrawal assertions            |
+| R4 Same real shell, no live changes         | 2    | shared TargetSurface and cast options tests; default regression tests |
+| R5 Mobile unchanged                         | 2,3  | frame observer + original surface; 844x390 / 393x852 screenshots      |
+| R6 Synty local sample                       | 2,3  | images loaded, fallbacks, git ignored-path check                      |
 
 ## Provider/consumer seams
 
-| Provider | Consumer | Produced vs consumed | Availability | Proof |
-|---|---|---|---|---|
-| generated Declaration + actionTooltip | DesktopActionSurface | exact names/costs/refusals; no description invented | existing installed protos | tooltip and refusal assertions |
-| organizer/currentExecutableDeclaration | DesktopActionSurface | executable membership and current available row | existing | end-turn exclusion, replacement/stale tests |
-| desktopIcons fixture | organizer wrapper | optional id-keyed art metadata only | Task 2 after Task 1 type | defaults unchanged; missing art test |
-| parameterized OrganizedHudConcept | DesktopHotbarConcept | same state/callbacks/real CombatExperience | Task 2 | cast target/option/cancel tests |
-| frame ResizeObserver | desktopIcons opt-in | >=1000 width and >500 height; otherwise absent | browser; mocked bounds in test | desktop/mobile browser matrix |
-| local licensed sprites | icon image | named ignored URLs; fallback if load fails | local only | load verification and git check |
+| Provider                               | Consumer             | Produced vs consumed                                | Availability                   | Proof                                       |
+| -------------------------------------- | -------------------- | --------------------------------------------------- | ------------------------------ | ------------------------------------------- |
+| generated Declaration + actionTooltip  | DesktopActionSurface | exact names/costs/refusals; no description invented | existing installed protos      | tooltip and refusal assertions              |
+| organizer/currentExecutableDeclaration | DesktopActionSurface | executable membership and current available row     | existing                       | end-turn exclusion, replacement/stale tests |
+| desktopIcons fixture                   | organizer wrapper    | optional id-keyed art metadata only                 | Task 2 after Task 1 type       | defaults unchanged; missing art test        |
+| parameterized OrganizedHudConcept      | DesktopHotbarConcept | same state/callbacks/real CombatExperience          | Task 2                         | cast target/option/cancel tests             |
+| frame ResizeObserver                   | desktopIcons opt-in  | >=1000 width and >500 height; otherwise absent      | browser; mocked bounds in test | desktop/mobile browser matrix               |
+| local licensed sprites                 | icon image           | named ignored URLs; fallback if load fails          | local only                     | load verification and git check             |
 
 Plan checks: no changed wire, persistence, events or package pins. Full spell descriptions are absent at the inspected seam; tooltip keeps available facts rather than inventing mechanics. Layout threshold is local experiment sizing, not a production device policy. Existing accepted mobile behavior remains the fallback. No required architectural decision left open for this bounded concept.
