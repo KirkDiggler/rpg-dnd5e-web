@@ -432,6 +432,14 @@ export function formatDebugLine(
     // puts THE DIE HERE and nowhere else: the story log shows the outcome and
     // the creature's line, and this is where a builder reads what was
     // actually rolled against what.
+    case 'discoveryChecked': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text: `${prefix} ${name(b.member)} ${b.beaten ? 'passed' : 'failed'} ${b.ability} check · ${b.total}${checkCalculationText(b.calculation)}`,
+      };
+    }
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded': {
