@@ -109,7 +109,12 @@ describe('Sanctuary ward results', () => {
     expect(selectVisibleStory(live)[0]?.detail).toContain('= 17');
     expect(selectVisibleStory(live)[0]?.detail).toContain('Wisdom');
     expect(selectVisibleStory(live)[0]?.detail).toContain('failed');
-    expect(selectVisibleStory(live)).toEqual(
+    expect(
+      selectVisibleStory(live).map((entry) => ({
+        ...entry,
+        deliverySource: 'catchup',
+      }))
+    ).toEqual(
       selectVisibleStory(
         feed([fromBinary(EventSchema, toBinary(EventSchema, event))], 'catchup')
       )
@@ -126,7 +131,12 @@ describe('Sanctuary ward results', () => {
         [fromBinary(EventSchema, toBinary(EventSchema, event))],
         'catchup'
       );
-      expect(selectVisibleStory(live)).toEqual(selectVisibleStory(replay));
+      expect(selectVisibleStory(replay)).toEqual(
+        selectVisibleStory(live).map((entry) => ({
+          ...entry,
+          deliverySource: 'catchup',
+        }))
+      );
       const [entry] = selectVisibleStory(live);
       expect(entry?.headline).toContain("Mercy's ward blocks Robin's");
       expect(entry?.detail).toBe(

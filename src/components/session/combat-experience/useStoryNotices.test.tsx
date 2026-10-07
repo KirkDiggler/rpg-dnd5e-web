@@ -9,6 +9,7 @@ import { STORY_NOTICE_TTL_MS, useStoryNotices } from './useStoryNotices';
 
 const entry = (id: string): CombatExperienceStoryExchange => ({
   id,
+  deliverySource: 'live',
   eyebrow: 'Mira · Move',
   headline: `Mira moves ${id}`,
   detail: 'Reaches the southern aisle.',
@@ -31,6 +32,31 @@ afterEach(() => {
 });
 
 describe('useStoryNotices', () => {
+  it('keeps background catch-up and unknown provenance quiet even while the stream is live', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const history = [
+      old,
+      { ...entry('recovered'), deliverySource: 'catchup' as const },
+      { ...entry('unknown'), deliverySource: undefined },
+    ];
+    view.rerender({ ...props, story: history });
+    expect(view.result.current).toEqual([]);
+    view.rerender({
+      ...props,
+      story: [old, entry('recovered'), entry('unknown'), entry('new')],
+    });
+    expect(view.result.current.map(({ id }) => id)).toEqual(['new']);
+  });
+
+  it('starts the lifetime at released visibility, not arrival of a withheld live event', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    act(() => vi.advanceTimersByTime(20000));
+    view.rerender({ ...props, story: [old, entry('released')] });
+    expect(view.result.current.map(({ id }) => id)).toEqual(['released']);
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    expect(view.result.current).toEqual([]);
+  });
+
   it('baselines history and expires only the temporary view, not the source entries', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     expect(view.result.current).toEqual([]);

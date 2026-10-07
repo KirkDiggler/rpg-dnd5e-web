@@ -1051,7 +1051,7 @@ export function buildCombatStory(
       const entry =
         buildAttackStory(fact.event, withCasts) ??
         buildOtherStory(fact.event, withCasts);
-      if (entry) story.push(entry);
+      if (entry) story.push({ ...entry, deliverySource: fact.source });
     }
     const body = fact.event.body;
     if (body.case === 'cast' && fact.event.kind === EventKind.CAST) {

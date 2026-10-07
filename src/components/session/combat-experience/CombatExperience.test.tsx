@@ -264,6 +264,7 @@ describe('CombatExperience shared production shell', () => {
       ...fresh.story,
       {
         id: 'notice-held',
+        deliverySource: 'live' as const,
         eyebrow: 'Mira · Bless',
         headline: 'Mira casts Bless',
         detail: 'The result waits for the shared presentation gate.',

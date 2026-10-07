@@ -46,7 +46,8 @@ export function useStoryNotices({
     }
     const fresh: CombatExperienceStoryExchange[] = [];
     for (const entry of story) {
-      if (!previous.seen.has(entry.id)) fresh.push(entry);
+      if (!previous.seen.has(entry.id) && entry.deliverySource === 'live')
+        fresh.push(entry);
       previous.seen.add(entry.id);
     }
     const currentIds = new Set(story.map((entry) => entry.id));

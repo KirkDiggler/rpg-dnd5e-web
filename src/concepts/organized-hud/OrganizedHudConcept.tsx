@@ -162,7 +162,10 @@ export function OrganizedHudConcept({
       const samples = profile.storySamples ?? [];
       const sample = samples[entries.length % samples.length];
       return sample
-        ? { scope: storyScope, entries: [...entries, { ...sample, id }] }
+        ? {
+            scope: storyScope,
+            entries: [...entries, { ...sample, id, deliverySource: 'live' }],
+          }
         : current;
     });
   };

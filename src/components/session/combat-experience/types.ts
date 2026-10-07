@@ -72,6 +72,8 @@ export type CombatExperienceStreamState =
 
 export interface CombatExperienceStoryExchange {
   id: string;
+  /** Missing provenance is history-only, never a fresh announcement. */
+  deliverySource?: 'live' | 'catchup';
   round?: number;
   eyebrow: string;
   headline: string;
