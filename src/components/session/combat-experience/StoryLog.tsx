@@ -24,6 +24,10 @@ export interface StoryLogProps {
   result?: CombatExperienceAttackOutcome;
   /** Explicit diagnostic surface (for example the Concepts contract view). */
   diagnosticsEnabled?: boolean;
+  /** Initial presentation only; the player's expand/collapse choice owns it afterward. */
+  initialCollapsed?: boolean;
+  /** Avoid duplicate speech when the same released rows have a live notice surface. */
+  announceUpdates?: boolean;
 }
 
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
@@ -98,6 +102,8 @@ export function StoryLog({
   onModeChange,
   result,
   diagnosticsEnabled = false,
+  initialCollapsed = false,
+  announceUpdates = true,
 }: StoryLogProps) {
   const debugEnabled = isCombatDebugEnabled(
     diagnosticsEnabled,
@@ -118,7 +124,7 @@ export function StoryLog({
   // dependency so switching feeds re-pins the newly mounted one.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [jsonWide, setJsonWide] = useState(false);
   const wideDebug = visibleMode === 'debug' && jsonWide && !collapsed;
   const savedScrollTop = useRef<number | undefined>(undefined);
@@ -245,7 +251,7 @@ export function StoryLog({
           id={feedId}
           hidden={collapsed}
           role="log"
-          aria-live="polite"
+          aria-live={announceUpdates ? 'polite' : 'off'}
           aria-relevant="additions"
         >
           {story.map((entry) =>

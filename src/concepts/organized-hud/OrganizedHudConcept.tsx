@@ -10,6 +10,7 @@ import type {
 import type {
   CombatExperienceLogMode,
   CombatExperiencePresentationState,
+  CombatExperienceStoryExchange,
 } from '@/components/session/combat-experience/types';
 import type { DebugFeedEntry } from '@/components/session/debugLogLine';
 import { create } from '@bufbuild/protobuf';
@@ -35,6 +36,7 @@ export interface HudConceptProfile {
   label: string;
   presentation: OrganizedActionPresentation;
   desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
+  storySamples?: readonly Omit<CombatExperienceStoryExchange, 'id'>[];
   fixtures: readonly (Omit<SessionCombatFixture, 'debug'> & {
     authorityFresh?: boolean;
     debug: readonly DebugFeedEntry[];
@@ -65,6 +67,11 @@ export function OrganizedHudConcept({
     Record<string, DesktopHotbarLayout['orderBySection']>
   >({});
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
+  const demoSequence = useRef(0);
+  const [demoStory, setDemoStory] = useState<{
+    scope: string;
+    entries: readonly CombatExperienceStoryExchange[];
+  }>({ scope: '', entries: [] });
   useEffect(() => {
     if (
       !iconExperiment ||
@@ -126,6 +133,19 @@ export function OrganizedHudConcept({
   const fixture =
     profile.fixtures.find((item) => item.id === scenarioId) ??
     profile.fixtures[0]!;
+  const storyScope = `${profile.id}:${fixture.id}`;
+  const demoEntries = demoStory.scope === storyScope ? demoStory.entries : [];
+  const nextEvent = (): void => {
+    const id = `hotbar-demo:${++demoSequence.current}`;
+    setDemoStory((current) => {
+      const entries = current.scope === storyScope ? current.entries : [];
+      const samples = profile.storySamples ?? [];
+      const sample = samples[entries.length % samples.length];
+      return sample
+        ? { scope: storyScope, entries: [...entries, { ...sample, id }] }
+        : current;
+    });
+  };
   // Tracker-only stress fixture; these extras do not create map actors or actions.
   const participants = crowdedInitiative
     ? [
@@ -266,6 +286,16 @@ export function OrganizedHudConcept({
               </small>
             </div>
           )}
+          {iconExperiment && profile.storySamples?.length ? (
+            <div role="group" aria-label="Activity preview">
+              <button type="button" onClick={nextEvent}>
+                Next event
+              </button>
+              <small>
+                Sample narration only · six seconds on screen, retained in Log.
+              </small>
+            </div>
+          ) : null}
           <div role="group" aria-label="Frame controls">
             <button
               type="button"
@@ -373,7 +403,10 @@ export function OrganizedHudConcept({
           logMode={iconExperiment ? logMode : 'story'}
           diagnosticsEnabled={iconExperiment}
           streamState={fixture.streamState}
-          story={fixture.story}
+          story={
+            iconExperiment ? [...fixture.story, ...demoEntries] : fixture.story
+          }
+          storyFeedback={iconExperiment ? { scopeKey: storyScope } : undefined}
           debug={fixture.debug}
           diceEvents={[]}
           location={{ name: 'Reference Tomb', area: 'South reliquary' }}

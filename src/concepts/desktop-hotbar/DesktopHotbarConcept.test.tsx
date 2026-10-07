@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopHotbarConcept } from './DesktopHotbarConcept';
@@ -136,6 +137,7 @@ describe('DesktopHotbarConcept', () => {
 
   it('offers a real retained debug event and expands its formatted JSON', async () => {
     render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
     fireEvent.click(
       screen.getByRole('button', { name: /Inspect event Fixture turn ended/ })
@@ -148,6 +150,41 @@ describe('DesktopHotbarConcept', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('desktop-action-surface')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
+  });
+
+  it('shows who acted temporarily, then keeps the same entry in optional history', () => {
+    vi.useFakeTimers();
+    try {
+      render(<DesktopHotbarConcept />);
+      const notices = screen.getByTestId('story-notices');
+      expect(notices).toBeEmptyDOMElement();
+      expect(
+        screen.getByRole('button', { name: 'Expand combat log' })
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Next event' }));
+      expect(
+        within(notices).getByText('Skeleton Guard attacks Aldric')
+      ).toBeInTheDocument();
+      expect(notices).toHaveTextContent('Aldric turns the blow aside. Miss.');
+      act(() => vi.advanceTimersByTime(6000));
+      expect(notices).toBeEmptyDOMElement();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Expand combat log' })
+      );
+      const history = screen.getByTestId('session-combat-log');
+      expect(
+        within(history).getByText('Skeleton Guard attacks Aldric')
+      ).toBeInTheDocument();
+      expect(within(history).getByRole('log')).toHaveAttribute(
+        'aria-live',
+        'off'
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));
+      expect(notices).toBeEmptyDOMElement();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it('routes Command through shared cast options and then targeting', () => {

@@ -193,6 +193,8 @@ interface CombatExperienceBaseProps {
   logMode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   story: readonly CombatExperienceStoryExchange[];
+  /** Explicit concept opt-in: temporary released narration, optional history. */
+  storyFeedback?: { scopeKey: string };
   debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll reaction window is asking about. Null when no

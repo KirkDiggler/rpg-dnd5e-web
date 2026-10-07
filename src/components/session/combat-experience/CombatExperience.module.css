@@ -2801,14 +2801,17 @@ button.diceDrawerCue:focus-visible {
 .combatExperience[data-desktop-hotbar='true'] .gameFrame,
 .combatExperience[data-desktop-hotbar='true']
   .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
-  grid-template-columns: minmax(0, 1fr) 64px 140px;
+  grid-template-columns: minmax(0, 1fr) 64px 164px;
 }
 .combatExperience[data-desktop-hotbar='true'] .actionRow {
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr);
   justify-content: stretch;
+  padding-right: 24px;
+  padding-left: 24px;
 }
 .combatExperience[data-desktop-hotbar='true'] .organizedEndTurnSlot {
+  padding-right: 30px;
   padding-bottom: 18px;
 }
 .combatExperience[data-desktop-hotbar='true'] .organizedEndTurnSlot .endTurn,
@@ -2824,7 +2827,7 @@ button.diceDrawerCue:focus-visible {
   position: absolute;
   z-index: 20;
   top: calc(var(--organized-header-height, 80px) + 8px);
-  right: 12px;
+  right: 24px;
   bottom: 76px;
   grid-row: auto;
   grid-column: auto;

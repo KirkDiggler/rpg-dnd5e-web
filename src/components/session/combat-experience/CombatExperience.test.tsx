@@ -137,6 +137,42 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('holds new notices behind the same roll-window release gate as story history', () => {
+    const base = rollWindowExperienceProps({
+      actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+      storyFeedback: { scopeKey: 'notice-gate' },
+    });
+    const pending = {
+      ...base,
+      rollWindow: { ...base.rollWindow!, storyId: 'notice-held' },
+    };
+    const view = render(<CombatExperience {...pending} />);
+    const story = [
+      ...fresh.story,
+      {
+        id: 'notice-held',
+        eyebrow: 'Mira · Bless',
+        headline: 'Mira casts Bless',
+        detail: 'The result waits for the shared presentation gate.',
+        tone: 'success' as const,
+      },
+    ];
+    view.rerender(<CombatExperience {...pending} story={story} />);
+    expect(screen.getByTestId('story-notices').textContent).not.toContain(
+      'Mira casts Bless'
+    );
+    view.rerender(
+      <CombatExperience
+        {...pending}
+        story={story}
+        localWorldDieSettled
+        localWorldDieSettledPresentationId={ROLL_WINDOW_PRESENTATION_ID}
+      />
+    );
+    expect(screen.getByTestId('story-notices').textContent).toContain(
+      'Mira casts Bless'
+    );
+  });
   it('uses the organized surface only for its explicit action presentation mode', () => {
     const standard = render(<CombatExperience {...propsFor()} />);
     expect(standard.queryByTestId('organized-action-surface')).toBeNull();

@@ -183,11 +183,32 @@ export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
   // This is an explicit art choice, not a semantic fact inferred by the UI.
   dodge: art('Status', 'Stealthy_01', 'Do', 'gold'),
 };
+const STORY_SAMPLES: NonNullable<HudConceptProfile['storySamples']> = [
+  {
+    eyebrow: 'Skeleton Guard · Attack',
+    headline: 'Skeleton Guard attacks Aldric',
+    detail: 'Aldric turns the blow aside. Miss.',
+    tone: 'neutral',
+  },
+  {
+    eyebrow: 'Mira · Movement',
+    headline: 'Mira moves into position',
+    detail: 'Mira reaches the southern aisle.',
+    tone: 'neutral',
+  },
+  {
+    eyebrow: 'Aldric · Healing Word',
+    headline: 'Aldric casts Healing Word on Mira',
+    detail: 'Mira regains 5 hit points.',
+    tone: 'success',
+  },
+];
 const martial = ORGANIZED_HUD_PROFILES[1];
 export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
   {
     id: 'cleric',
     label: 'Cleric',
+    storySamples: STORY_SAMPLES,
     presentation: {
       quickDeclarationIds: [
         'mace',
@@ -286,6 +307,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
   },
   {
     ...martial,
+    storySamples: STORY_SAMPLES,
     desktopIcons: {
       'offer:aldric:move': CLERIC_ICONS['offer:aldric:move']!,
       'offer:aldric:longsword:action': art(

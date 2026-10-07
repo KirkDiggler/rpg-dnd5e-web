@@ -21,6 +21,7 @@ import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
+import { StoryNotices } from './StoryNotices';
 import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
@@ -30,6 +31,7 @@ import {
   useDiceSettleGate,
 } from './useDiceSettleGate';
 import { useRollFlash } from './useRollFlash';
+import { useStoryNotices } from './useStoryNotices';
 
 function portraitOf(name: string): string {
   return name
@@ -162,6 +164,7 @@ export function CombatExperience({
   logMode,
   streamState,
   story,
+  storyFeedback,
   debug,
   result,
   rollWindow,
@@ -271,6 +274,15 @@ export function CombatExperience({
     ),
     rollWindowReady ? undefined : rollWindow?.storyId
   );
+  const noticesEnabled = Boolean(
+    storyFeedback && actionPresentation?.desktopIcons
+  );
+  const storyNotices = useStoryNotices({
+    story: revealedStory,
+    scope: storyFeedback?.scopeKey ?? '',
+    enabled: noticesEnabled,
+    streamState,
+  });
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -504,8 +516,14 @@ export function CombatExperience({
           </div>
         )}
 
-        <DamageToasts toasts={damageToasts} />
-        <RollFlashToasts flashes={rollFlashes} />
+        {noticesEnabled ? (
+          <StoryNotices entries={storyNotices} />
+        ) : (
+          <>
+            <DamageToasts toasts={damageToasts} />
+            <RollFlashToasts flashes={rollFlashes} />
+          </>
+        )}
 
         <StoryLog
           story={revealedStory}
@@ -515,6 +533,8 @@ export function CombatExperience({
           onModeChange={onLogModeChange}
           result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
+          initialCollapsed={Boolean(storyFeedback)}
+          announceUpdates={!noticesEnabled}
         />
 
         {diceWitnessRole === 'roller' &&
