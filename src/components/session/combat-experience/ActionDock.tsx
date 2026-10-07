@@ -705,34 +705,56 @@ function ActionDockContents({
             reason one step smaller: a group that came and went would shift
             nothing now, but would the moment anything followed it. */}
         <div
-          className={styles.actionGroup}
+          className={
+            actionPresentation?.desktopIcons ? undefined : styles.actionGroup
+          }
+          style={
+            actionPresentation?.desktopIcons
+              ? { flex: '1 1 100%', minWidth: 0 }
+              : undefined
+          }
           data-testid="world-clock-actions"
           role="group"
           aria-label="Actions"
         >
-          {worldClockDeclarations.length > 0 && (
-            <span className={styles.groupLabel}>Actions</span>
-          )}
-          {worldClockDeclarations.map((declaration, index) => (
-            <ActionDeclaration
-              key={`${declaration.id}-${index}`}
-              declaration={declaration}
-              armed={declaration.id === armedDeclarationId}
+          {actionPresentation?.desktopIcons ? (
+            <OrganizedActionSurface
+              declarations={worldClockDeclarations}
               authorityFresh={authorityFresh}
-              index={index}
-              // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
-              // Slot.NONE because the world clock has no economy to charge
-              // against, so a badge here would invent a price the server said
-              // there is none of. A row that DOES arrive priced still draws
-              // its badge, so this reads what the server sent rather than
-              // applying a blanket rule about the clock.
-              showCost={
-                declaration.slot !== Slot.NONE &&
-                declaration.slot !== Slot.UNSPECIFIED
-              }
-              onSelect={onSelectDeclaration}
+              presentation={actionPresentation}
+              armedDeclarationId={armedDeclarationId}
+              onSelectDeclaration={onSelectDeclaration}
+              onCancelSelection={onCancelSelection}
+              embedded={Boolean(desktopStatus)}
+              externalCancel={targetingControlsActive}
             />
-          ))}
+          ) : (
+            <>
+              {worldClockDeclarations.length > 0 && (
+                <span className={styles.groupLabel}>Actions</span>
+              )}
+              {worldClockDeclarations.map((declaration, index) => (
+                <ActionDeclaration
+                  key={`${declaration.id}-${index}`}
+                  declaration={declaration}
+                  armed={declaration.id === armedDeclarationId}
+                  authorityFresh={authorityFresh}
+                  index={index}
+                  // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
+                  // Slot.NONE because the world clock has no economy to charge
+                  // against, so a badge here would invent a price the server said
+                  // there is none of. A row that DOES arrive priced still draws
+                  // its badge, so this reads what the server sent rather than
+                  // applying a blanket rule about the clock.
+                  showCost={
+                    declaration.slot !== Slot.NONE &&
+                    declaration.slot !== Slot.UNSPECIFIED
+                  }
+                  onSelect={onSelectDeclaration}
+                />
+              ))}
+            </>
+          )}
         </div>
       </div>
     );

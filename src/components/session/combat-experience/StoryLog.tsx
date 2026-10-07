@@ -24,7 +24,7 @@ export interface StoryLogProps {
   result?: CombatExperienceAttackOutcome;
   /** Explicit diagnostic surface (for example the Concepts contract view). */
   diagnosticsEnabled?: boolean;
-  /** Initial presentation only; the player's expand/collapse choice owns it afterward. */
+  /** Responsive default until the player's first explicit expand/collapse choice. */
   initialCollapsed?: boolean;
   /** Avoid duplicate speech when the same released rows have a live notice surface. */
   announceUpdates?: boolean;
@@ -124,7 +124,10 @@ export function StoryLog({
   // dependency so switching feeds re-pins the newly mounted one.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
-  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [collapsedChoice, setCollapsed] = useState<boolean | null>(null);
+  // Container measurement may enable desktop after mount. Follow its default
+  // until the player chooses; subsequent resize never overrides that choice.
+  const collapsed = collapsedChoice ?? initialCollapsed;
   const [jsonWide, setJsonWide] = useState(false);
   const wideDebug = visibleMode === 'debug' && jsonWide && !collapsed;
   const savedScrollTop = useRef<number | undefined>(undefined);

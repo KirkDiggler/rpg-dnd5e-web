@@ -72,6 +72,11 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import {
+  type DesktopHotbarLayout,
+  hotbarRows,
+  type HotbarRows,
+} from './combat-experience/desktopHotbarLayout';
 import { liveActionPresentation } from './combat-experience/liveActionPresentation';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import {
@@ -79,6 +84,7 @@ import {
   reactionWindowMover,
 } from './combat-experience/reactionWindow';
 import { movementBudgetFeet } from './combat-experience/selection';
+import { useDesktopHotbarFrame } from './combat-experience/useDesktopHotbarFrame';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { useDeathSaveTruthHold } from './deathSaveTruthHold';
 import { holdDownedReveal } from './downedReveal';
@@ -277,7 +283,20 @@ function SessionEncounterScope({
     descriptor: WorldNPCDescriptor;
   } | null>(null);
   const [vendorNotice, setVendorNotice] = useState<string | null>(null);
-  const encounterContentRef = useRef<HTMLDivElement>(null);
+  const [encounterContent, setEncounterContent] =
+    useState<HTMLDivElement | null>(null);
+  const desktopHotbar = useDesktopHotbarFrame(encounterContent);
+  // Session-local rows outlive turn/spectator dock mounts. This is not durable
+  // preference storage and intentionally carries no favorite identities.
+  const [desktopRows, setDesktopRows] = useState<HotbarRows>(1);
+  const desktopCustomization = useMemo(
+    () => ({
+      layout: { rows: desktopRows, favoriteIdsBySection: {} },
+      onChange: ({ rows }: DesktopHotbarLayout): void =>
+        setDesktopRows(hotbarRows(rows)),
+    }),
+    [desktopRows]
+  );
 
   // THE RUN ENDING NO LONGER TAKES THE SCREEN AWAY (rpg-dnd5e-web#999). What
   // used to live here — `inert` on the whole scene, `aria-hidden` over it, and
@@ -592,6 +611,7 @@ function SessionEncounterScope({
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
 
   const combat = useSessionCombatExperience({
+    memberTargetingMode: desktopHotbar ? 'map-first' : 'legacy',
     session: sessionId,
     member,
     clock: experienceClock,
@@ -1625,15 +1645,20 @@ function SessionEncounterScope({
     ) : null;
 
   const actionPresentation = useMemo(
-    () =>
-      liveActionPresentation({
+    () => ({
+      ...liveActionPresentation({
+        desktop: desktopHotbar,
         declarations: coherentDeclarations,
         knownCantrips: ownerCharacter?.knownCantrips,
         knownSpells: ownerCharacter?.knownSpells,
         features: visibleCharacterData?.features,
       }),
+      ...(desktopHotbar ? { desktopCustomization } : {}),
+    }),
     [
       coherentDeclarations,
+      desktopHotbar,
+      desktopCustomization,
       ownerCharacter?.knownCantrips,
       ownerCharacter?.knownSpells,
       visibleCharacterData?.features,
@@ -1657,7 +1682,7 @@ function SessionEncounterScope({
     content = (
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <div
-          ref={encounterContentRef}
+          ref={setEncounterContent}
           data-testid="session-encounter-content"
           style={{
             position: 'absolute',
@@ -1753,6 +1778,11 @@ function SessionEncounterScope({
             logMode={combat.logMode}
             streamState={streamState}
             story={combat.story}
+            storyFeedback={
+              desktopHotbar
+                ? { scopeKey: `${sessionId}\u0000${member}` }
+                : undefined
+            }
             debug={combat.debug}
             result={combat.result}
             rollWindow={combat.rollWindow}
@@ -1775,7 +1805,11 @@ function SessionEncounterScope({
             }}
             pacingNotice={combat.pacingNotice}
             hoveredTarget={hoveredTarget}
-            renderMap={({ attackableTargets, onTargetClick }) => (
+            renderMap={({
+              attackableTargets,
+              selectedTargets,
+              onTargetClick,
+            }) => (
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
                     nothing until a declared faction is on the roster. */}
@@ -1858,6 +1892,9 @@ function SessionEncounterScope({
                     otherMembers={revealedMembers}
                     attackableTargets={
                       runEnded === null ? [...attackableTargets] : []
+                    }
+                    selectedTargets={
+                      runEnded === null ? selectedTargets : undefined
                     }
                     reactionMover={
                       runEnded === null ? reactionMover : undefined

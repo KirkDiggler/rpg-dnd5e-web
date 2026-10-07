@@ -13,8 +13,10 @@
  * assertion downstream still passes against a dock that draws nothing.
  */
 import { SESSION_COMBAT_FIXTURES } from '@/concepts/session-combat/fixtures';
+import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
+  DeclarationSchema,
   Slot,
   TargetKind,
   Verb,
@@ -58,6 +60,29 @@ function worldDock(declarations: Declaration[], onSelect = vi.fn()) {
 }
 
 describe('the dock outside a fight', () => {
+  it('uses desktop icons for the same world offers without adding Move or favorites', () => {
+    const offered = create(DeclarationSchema, socialRow(Verb.PERSUADE));
+    const select = vi.fn();
+    render(
+      <ActionDock
+        clock={ClockKind.WORLD}
+        viewerMember={fixture.viewerMember}
+        participants={fixture.participants}
+        declarations={[offered]}
+        authorityFresh
+        actionPresentation={{ mode: 'organized-hud', desktopIcons: {} }}
+        onSelectDeclaration={select}
+        onEndTurn={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('desktop-action-surface')).toBeTruthy();
+    expect(screen.getByText('Click the floor to move')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Move/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Persuade' }));
+    expect(select).toHaveBeenCalledWith(offered);
+  });
+
   it('draws both social rows the server sent', () => {
     worldDock([socialRow(Verb.INTIMIDATE), socialRow(Verb.PERSUADE)]);
 

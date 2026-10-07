@@ -197,7 +197,7 @@ interface CombatExperienceBaseProps {
   logMode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   story: readonly CombatExperienceStoryExchange[];
-  /** Explicit concept opt-in: temporary released narration, optional history. */
+  /** Desktop opt-in: temporary released narration and optional history, scoped by caller. */
   storyFeedback?: { scopeKey: string };
   debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;

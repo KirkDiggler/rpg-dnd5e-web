@@ -812,6 +812,114 @@ const activationResult = () =>
   });
 
 describe('SessionEncounterView production combat integration', () => {
+  it('joins responsive desktop categories, map picks and explicit CAST confirmation without remounting the map', async () => {
+    let resizeEncounter: ((width: number, height: number) => void) | undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private callback: ResizeObserverCallback) {}
+        observe(target: HTMLElement) {
+          if (target.dataset.testid !== 'session-encounter-content') return;
+          resizeEncounter = (width, height) =>
+            this.callback(
+              [
+                {
+                  target,
+                  contentRect: { width, height },
+                } as unknown as ResizeObserverEntry,
+              ],
+              this as unknown as ResizeObserver
+            );
+          resizeEncounter(1280, 900);
+        }
+        disconnect() {}
+      }
+    );
+    try {
+      const spell = create(DeclarationSchema, {
+        id: 'live-cast',
+        verb: Verb.CAST,
+        slot: Slot.ACTION,
+        targetKind: TargetKind.MEMBER,
+        available: true,
+        minTargets: 1,
+        maxTargets: 2,
+        spell: { ref: 'dnd5e:spells:bless', name: 'Bless' },
+        candidates: ['char-1', 'skeleton-1'].map((member) => ({
+          member,
+          available: true,
+        })),
+      });
+      readyTurn([spell, endTurnDeclaration()]);
+      hoisted.characterResult.data = {
+        knownSpells: ['dnd5e:spells:bless'],
+        knownCantrips: [],
+      };
+      hoisted.castFn.mockResolvedValue({ caught: [], wardedTargets: [] });
+      const view = renderView();
+      await waitFor(() =>
+        expect(screen.queryByTestId('desktop-action-surface')).not.toBeNull()
+      );
+      const canvas = screen.getByTestId('session-canvas');
+      expect(
+        screen.getByRole('button', { name: 'Expand combat log' })
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
+      expect(screen.getByText('Leveled spells')).toBeTruthy();
+      expect(screen.queryByRole('region', { name: 'Items' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
+      });
+      act(() => {
+        hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      });
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toEqual([
+        'char-1',
+        'skeleton-1',
+      ]);
+      act(() => {
+        hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      });
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toEqual([
+        'char-1',
+      ]);
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+        target: { value: '4' },
+      });
+      act(() => resizeEncounter!(393, 844));
+      expect(screen.queryByTestId('desktop-action-surface')).toBeNull();
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toBeUndefined();
+      expect(screen.getByTestId('session-canvas')).toBe(canvas);
+      act(() => resizeEncounter!(1280, 900));
+      expect(
+        (
+          screen.getByRole('combobox', {
+            name: 'Hotbar rows',
+          }) as HTMLSelectElement
+        ).value
+      ).toBe('4');
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toBeUndefined();
+      fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Cast Bless' }));
+      await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+      expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
+        session: 'enc-1',
+        member: 'char-1',
+        declarationId: 'live-cast',
+        targets: ['char-1'],
+      });
+      expect(screen.getByTestId('session-canvas')).toBe(canvas);
+      view.unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('does not use the dungeon key to fetch authoring YAML during gameplay', async () => {
     readyScene();
     hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'authored-dungeon' });

@@ -22,6 +22,36 @@ This supersedes two older surfaces:
   its `DeclarationRow` expansion shim, direct-floor Attack flow, old TurnHud,
   and separate DebugCombatLog. Those files are deleted in #817.
 
+## Responsive desktop bar
+
+`SessionEncounterView` measures its actual content container through
+`useDesktopHotbarFrame`: width at least 1000px and height above 500px selects
+one shared desktop opt-in for the adapter, controller and feedback. Smaller or
+unmeasured containers retain the compact organizer. The canvas stays at the same
+React position; changing interaction mode cancels pending selection without an
+RPC or scene remount.
+
+`liveActionPresentation` joins exact known-spell and feature refs to current
+provider declarations. Unclassified offers stay visible; unknown spell kinds
+stay in Other spells. Empty categories do not mount, while unavailable offers
+remain. Artwork is an independent exact-ref/verb presentation lookup; runtime
+PNG bytes come from private `rpg-game-assets`, never the public web repository.
+No inventory entry or class/level inference mints an action.
+
+`DesktopActionSurface` keeps 1–4 balanced rows and overlapping final pages.
+Favorites are disabled unless a concept explicitly supplies `desktopFavorites`;
+the live slice has no stars, edit mode or preference storage. The fixed Status
+area keeps private-state absence/freshness explicit. Action inspection renders
+provider base information even with no effects and adds contextual effect rows
+when present. No unrelated attack supplies an idle inspection context.
+
+`CombatExperienceStoryExchange.deliverySource` carries live/catch-up provenance
+through the existing story/pacing projection. Temporary desktop notices consume
+only newly released live entries; initial/recovered/unknown-provenance entries
+remain history-only. The log starts closed on desktop. Notice expiry never
+removes retained history, and a stream-state flag cannot turn background
+recovery into a new announcement.
+
 ## Authority and actions
 
 `useSessionAfford` retains generated nested `Declaration[]` unchanged. An
@@ -29,19 +59,24 @@ Attack declaration carries its full `AttackRef`, `target_kind`, candidate rows,
 independent declaration/candidate availability, provider `why.text`, and opaque
 `id`.
 
-Attack is panel-first in the first production cut:
+Selection and dispatch share one current-offer boundary:
 
 1. the player selects an available authored Attack;
 2. that exact declaration becomes armed;
 3. `SessionCanvas` receives rings/click routing for only that declaration's
-   available candidates, while `TargetSurface` renders the equivalent semantic
-   list of native target buttons using public-roster names;
+   available candidates, while `TargetSurface` supplies equivalent semantic
+   target controls using public-roster names (an optional synchronized list on desktop);
 4. either an available canvas ring or target button echoes the exact declaration
    ID and member target.
 
-The targeting availability panel sits at the upper-left below the room label,
-not over the lower-map click area. Its height is capped and long candidate lists
-scroll internally; other context notices keep their existing positions.
+The compact targeting panel sits below the room label. Desktop targeting uses
+a strip above the toolbar, with selected-member chips and an optional list.
+Both cap long content and keep inspection separate from command execution.
+Desktop multi-member CAST selection toggles map/list/chip picks; reaching the
+provider maximum never casts. Separate confirmation echoes the ordered members
+and chosen option. Scalar verbs retain their scalar protocol; unsupported list
+shapes fail closed. The controller fences callbacks by selection epoch and
+session/member/mode so cancellation or replacement cannot resurrect old intent.
 
 Unavailable candidate buttons are disabled, stay readable with provider
 `why.text`, and remain absent from canvas rings. Keyboard and screen-reader
