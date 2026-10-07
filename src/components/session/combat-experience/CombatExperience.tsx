@@ -388,6 +388,9 @@ export function CombatExperience({
       className={`${styles.combatExperience} ${layout === 'fill-parent' ? styles.combatExperienceFillParent : ''}`}
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
+      data-desktop-hotbar={
+        actionPresentation?.desktopIcons ? 'true' : undefined
+      }
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div

@@ -3,6 +3,7 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import type { DesktopHotbarCustomization } from './desktopHotbarLayout';
 import type { QuickOverflowGroup } from './quickOverflow';
 import { isExecutableVerb } from './verbRegistry';
 
@@ -20,6 +21,8 @@ export interface ActionIconPresentation {
 export interface OrganizedActionPresentation {
   /** Explicit desktop experiment opt-in. Artwork never supplies game facts. */
   desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
+  /** Optional controlled preview preferences; never a gameplay authority. */
+  desktopCustomization?: DesktopHotbarCustomization;
   /** Declaration ids to place in the compact quick row, in this exact order. */
   quickDeclarationIds?: readonly string[];
   /** Explicit group facts for width-driven overflow; unknown offers are not guessed. */

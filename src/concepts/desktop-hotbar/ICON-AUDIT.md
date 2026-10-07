@@ -24,15 +24,15 @@ The contact sheets are private/local evidence (`/tmp/hotbar-pack-survey.png`, `/
 
 - **Weapons, equipment, navigation and broad status families:** plentiful choices for this prototype.
 - **Elemental and broad magical families:** usable building blocks (fire, ice, air, earth, eyes, minds, skulls, hearts, crosses, runes). They are not a complete spell illustration library.
-- **Related spells:** need deliberate selection. A curse glyph for Bane is a proposal, not a canonical mapping. Several healing/protection icons differ only by an enclosing shape; inspect them at the actual 24px glyph size.
-- **Dodge:** no dedicated Dodge/Evade/Agility glyph was found by filename or in the inspected stat/status sets. The hood used in the first pass is explicitly `Status_Stealthy_01`, and reads as stealth. The concept now uses **Do** as an honest labeled placeholder; a dedicated evasion silhouette remains an artwork gap, not something color fixes.
+- **Related spells:** need deliberate selection. A curse glyph for Bane is a proposal, not a canonical mapping. Several healing/protection icons differ only by an enclosing shape; inspect them at the current 22px glyph size.
+- **Dodge:** no dedicated Dodge/Evade/Agility glyph was found by filename or in the inspected stat/status sets. The hood is explicitly `Status_Stealthy_01`. The density pass substituted a **Do** placeholder after interpreting the operator's comment as rejecting the silhouette; the operator clarified that a differently colored hood was the intended experiment. The current preview restores it in **gold** for Dodge, versus **blue** for the Stealth sample. Whether that distinction reads well remains a walkthrough question, not a settled game-wide icon rule.
 - **Full D&D spell/ability coverage:** unproven. We have enough raw material for dozens of differentiated prototype slots, but not evidence of a correct, distinct glyph for every eventual action. A production catalog needs explicit mappings and a named missing-art list, not an automatic nearest-looking fallback.
 
 ## Color experiment
 
 The preview now tints each clean glyph's alpha using its existing explicit visual hint: gold, green, blue or violet. These are experimental visual families, not inferred schools, damage types, resource rules or legality. The same source supplies the small button and larger tooltip glyph. Color reinforces shape; the tooltip name and accessible name remain authoritative. Unavailable state still has an × and dashed border rather than relying on tint.
 
-The **36 icons (layout only)** scenario combines the existing 11 visible cleric-style offers with 25 clearly labeled artificial samples. It deliberately includes the hood as **Layout sample 25 — Stealth**, not Dodge. This tests density and glyph recognition, not a real cleric loadout or spell implementation.
+The **36 icons (layout only)** scenario combines the existing 11 visible cleric-style offers with 25 clearly labeled artificial samples. It includes **Layout sample 25 — Stealth** in blue and Dodge in gold; both use the hood silhouette per the operator's requested comparison. This tests density and glyph recognition, not a real cleric loadout or spell implementation.
 
 ## Promotion boundary
 

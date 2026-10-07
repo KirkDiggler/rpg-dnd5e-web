@@ -1,6 +1,10 @@
 import type { ActionIconPresentation } from '@/components/session/combat-experience/organizedActionPresentation';
 import { create } from '@bufbuild/protobuf';
 import {
+  EventKind,
+  EventSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
   AbilityRefSchema,
   AttackRefSchema,
   CastOptionSchema,
@@ -175,9 +179,9 @@ export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
   'cure-wounds': art('Status', 'Health_02', 'Cw', 'green'),
   'healing-word': art('Status', 'FortifiedHealth_01', 'Hw', 'green'),
   dash: art('Status', 'SpeedUp_01', 'Da', 'blue'),
-  // Coverage gap: a stealth hood is NOT an evasion symbol. Keep an honest
-  // labeled placeholder until Dodge has appropriate dedicated artwork.
-  dodge: { src: '', fallback: 'Do', tone: 'blue' },
+  // Operator-proposed experiment: the same silhouette, distinguished by tint.
+  // This is an explicit art choice, not a semantic fact inferred by the UI.
+  dodge: art('Status', 'Stealthy_01', 'Do', 'gold'),
 };
 const martial = ORGANIZED_HUD_PROFILES[1];
 export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
@@ -223,6 +227,22 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       viewerName: 'Cleric fixture',
       viewerClassRefId: undefined,
       authorityFresh: id !== 'stale-authority',
+      debug: [
+        {
+          id: 1,
+          summary: 'Fixture turn ended · inspect JSON',
+          text: 'Fixture-only retained event; no live stream or game execution.',
+          event: create(EventSchema, {
+            seq: 1n,
+            at: 40n,
+            kind: EventKind.TURN_ENDED,
+            body: {
+              case: 'turnEnded',
+              value: { member: 'aldric', next: 'skeleton-archer' },
+            },
+          }),
+        },
+      ],
       participants: base.participants.map((participant) => ({
         ...participant,
         active:

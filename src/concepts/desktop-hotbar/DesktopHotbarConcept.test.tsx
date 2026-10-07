@@ -27,6 +27,11 @@ beforeEach(() => {
               this as unknown as ResizeObserver
             );
           resize(1600, 900);
+        } else if (target.hasAttribute('data-section-grid')) {
+          this.callback(
+            [{ contentRect: { width: 396 } } as ResizeObserverEntry],
+            this as unknown as ResizeObserver
+          );
         }
       }
       unobserve(): void {}
@@ -50,29 +55,99 @@ describe('DesktopHotbarConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel action' }));
     expect(screen.queryByText('Choose 1–2 targets')).not.toBeInTheDocument();
   });
-  it('shows 36 distinct offers in the density fixture without a collection click', () => {
+  it('defaults to one row with paging, and exposes all 36 distinct offers at four rows', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(
       screen.getByRole('button', { name: '36 icons (layout only)' })
     );
     const surface = screen.getByTestId('desktop-action-surface');
+    expect(surface).toHaveAttribute('data-rows', '1');
+    expect(
+      screen.getByRole('button', { name: 'Next Spells page' })
+    ).toBeEnabled();
+    expect(surface.querySelectorAll('[data-offer-id]').length).toBeLessThan(36);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '4' },
+    });
     const offers = Array.from(surface.querySelectorAll('[data-offer-id]'));
     expect(offers).toHaveLength(36);
     expect(
       new Set(offers.map((offer) => offer.getAttribute('data-offer-id'))).size
     ).toBe(36);
-    expect(surface).toHaveAttribute('data-crowded', 'true');
+    expect(surface).toHaveAttribute('data-rows', '4');
     fireEvent.focus(
       screen.getByRole('button', { name: 'Layout sample 25 — Stealth' })
     );
     expect(screen.getByRole('tooltip')).toHaveTextContent('Layout sample 25');
     expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
-    expect(screen.getByRole('button', { name: 'Dodge' })).toHaveTextContent(
-      'Do'
+    expect(screen.getByRole('button', { name: 'Dodge' })).toHaveAttribute(
+      'data-tone',
+      'gold'
     );
     expect(
       screen.getByRole('button', { name: 'Dodge' }).querySelector('img')
-    ).toBeNull();
+    ).toHaveAttribute('src', expect.stringContaining('Stealthy_01'));
+  });
+
+  it('retains row count and profile-local ordering across scenarios, compact fallback and comparison', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done editing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    act(() => resize!(844, 390));
+    expect(
+      screen.queryByTestId('desktop-action-surface')
+    ).not.toBeInTheDocument();
+    act(() => resize!(1280, 720));
+    fireEvent.click(screen.getByRole('button', { name: 'Current layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Icon hotbar' }));
+    expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
+      '3'
+    );
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    fireEvent.click(screen.getByRole('button', { name: 'Martial' }));
+    expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
+      '3'
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Cure Wounds' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cleric' }));
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+  });
+
+  it('offers a real retained debug event and expands its formatted JSON', async () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Inspect event Fixture turn ended/ })
+    );
+    const json = await screen.findByLabelText('Formatted event JSON');
+    expect(json).toHaveTextContent('skeleton-archer');
+    fireEvent.focus(json);
+    expect(
+      screen.getByRole('button', { name: 'Narrow debug panel' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('desktop-action-surface')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
   });
 
   it('routes Command through shared cast options and then targeting', () => {

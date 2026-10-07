@@ -9,7 +9,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopActionSurface } from './DesktopActionSurface';
 
 const profile = DESKTOP_HOTBAR_PROFILES[0]!;
@@ -24,7 +24,25 @@ const defaults = {
   presentation,
   onSelectDeclaration: vi.fn(),
 };
-afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(): void {
+        this.callback(
+          [{ contentRect: { width: 236 } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver
+        );
+      }
+      disconnect(): void {}
+    }
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('DesktopActionSurface', () => {
   it('exposes every spell without opening a collection; artwork cannot create offers', () => {
@@ -159,6 +177,126 @@ describe('DesktopActionSurface', () => {
     });
     fireEvent.error(button.querySelector('img')!);
     expect(within(button).getByText('Cw')).toBeVisible();
+  });
+
+  it('defaults to one row and pages spells independently of the at-hand section', () => {
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={
+          profile.fixtures.find((f) => f.id === 'crowded')!.declarations
+        }
+      />
+    );
+    expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
+      '1'
+    );
+    const quickBefore = Array.from(
+      screen
+        .getByRole('region', { name: 'At hand' })
+        .querySelectorAll('[data-offer-id]')
+    ).map((n) => n.getAttribute('data-offer-id'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next Spells page' }));
+    expect(
+      screen.queryByRole('button', { name: 'Bane' })
+    ).not.toBeInTheDocument();
+    expect(
+      Array.from(
+        screen
+          .getByRole('region', { name: 'At hand' })
+          .querySelectorAll('[data-offer-id]')
+      ).map((n) => n.getAttribute('data-offer-id'))
+    ).toEqual(quickBefore);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '4' },
+    });
+    expect(screen.getByTestId('desktop-action-surface')).toHaveAttribute(
+      'data-rows',
+      '4'
+    );
+  });
+
+  it('requires Edit before arranging; move-first and Escape never dispatch and play resumes afterward', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        armedDeclarationId="bane"
+        onCancelSelection={cancel}
+        onSelectDeclaration={select}
+      />
+    );
+    const cure = screen.getByRole('button', { name: 'Cure Wounds' });
+    expect(cure).toHaveAttribute('draggable', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(cure).toHaveAttribute('draggable', 'true');
+    fireEvent.click(cure);
+    fireEvent.click(screen.getByRole('button', { name: 'Move first' }));
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    expect(select).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Done editing' }), {
+      key: 'Escape',
+    });
+    expect(
+      screen.getByRole('button', { name: 'Edit bar' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
+    expect(select).toHaveBeenCalledWith(
+      ready.declarations.find((d) => d.id === 'cure-wounds')
+    );
+  });
+
+  it('accepts internal same-section drops only, including unavailable actions', () => {
+    const select = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        authorityFresh={false}
+        onSelectDeclaration={select}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+    const cure = screen.getByRole('button', { name: 'Cure Wounds' });
+    fireEvent.dragStart(cure, { dataTransfer });
+    fireEvent.drop(screen.getByRole('button', { name: 'Mace' }), {
+      dataTransfer,
+    });
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'bane');
+    fireEvent.drop(screen.getByRole('button', { name: 'Bane' }), {
+      dataTransfer,
+    });
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'bane');
+    fireEvent.dragStart(cure, { dataTransfer });
+    fireEvent.drop(screen.getByRole('button', { name: 'Bane' }), {
+      dataTransfer,
+    });
+    expect(
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-offer-id]')
+    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    fireEvent.click(screen.getByRole('button', { name: 'Done editing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
+    expect(select).not.toHaveBeenCalled();
   });
 
   it('shows selected state and routes cancellation without executing another declaration', () => {

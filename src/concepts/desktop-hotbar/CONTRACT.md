@@ -2,49 +2,56 @@
 
 Issue: https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1225
 
-Open the development app at `?concept=desktop-hotbar&preview=1`, or select **Desktop Hotbar** in Concepts Lab. Expand **Controls** to compare **Icon hotbar** with **Current layout** on identical fixtures, switch Cleric/Martial, or exercise spent/stale/spectator states.
+Open `?concept=desktop-hotbar&preview=1` in the development app, or select **Desktop Hotbar** in Concepts Lab. Expand **Controls** for Cleric/Martial, layout comparison, and fixture scenarios. This is a local interactive concept, not a live-game change.
 
 ## Walkthrough
 
-- Hover or keyboard-focus Bane, Bless, Command, Cure Wounds and Healing Word without opening any collection. Inspection does not select or dispatch.
-- Click Bane to open the shared multi-target surface; Cancel action resets selection.
-- Click Command, then Grovel/Flee to exercise the shared cast-option path.
-- Select **Action spent** and inspect Cure Wounds: its refusal remains visible and it cannot select. Healing Word stays available in this explicit fixture.
-- Select **Slots spent**: limited-use spells remain in place, unavailable. Cantrips remain available in this fixture.
-- Select **36 icons (layout only)**: 25 explicitly artificial samples join the 11 normal offers. Every icon stays directly inspectable. This is a density stress fixture, not a real cleric repertoire.
-- Open/close the existing log while browsing. The opaque inspection card remains above the hotbar, outside wrapping groups. Its contents are scrollable and keyboard-focusable; Escape dismisses it.
-- Shrink the actual preview frame below 1000px wide or to 500px high or less. The existing organizer, collections and touch handling return. The **Landscape phone** control exercises that same fallback.
+- The bar spans the frame, with **36px buttons / 22px tinted glyphs**. End Turn remains explicit at the right. **Rows** selects 1–4 rows for the whole bar; the default is one.
+- Each section pages independently when it has more offers than fit. Arrows and `1/2` indicators appear only when needed. Paging Spells does not page At hand. Wider windows or additional rows expose more offers; no action disappears from the section.
+- Hover/focus inspects without executing. Click selects through the existing shared action path. Tooltips are opaque, above the entire bar, and scroll within the available viewport height.
+- Click **Edit bar** before arranging. Drag within a section, or select an icon and use **Move first / Move earlier / Move later**. A favorite on a later page can move first. Action icons cannot execute while editing, including unavailable ones; existing armed selection is cancelled on entry. Cross-section/external/withdrawn drops are ignored. **Done editing** or Escape exits edit. Edits take effect immediately in this preview; Escape is not a discard operation. Artwork and colors are not player editable.
+- Select **36 icons (layout only)** to test paging or extra rows. It adds 25 explicitly artificial samples to 11 normal offers, not a real expanded cleric repertoire.
+- Select **Action spent**: Cure Wounds remains inspectable and cannot execute; Healing Word remains available in this explicit fixture. **Slots spent** disables limited-use spells, not the cantrip fixtures. Unavailable actions retain their ordering.
+- Click Bane to exercise the shared multi-target surface; Command opens the shared Grovel/Flee option path. Cancel returns without an RPC.
+- Open **Debug**, expand **Fixture turn ended · inspect JSON**, then click/focus the JSON. The real log widens to 640px above the bar, captures pointer input and does not reflow its icons. Collapse it to reach covered actions. End Turn remains accessible. The fixture retains a real generated Event for JSON formatting, not a hard-coded JSON picture.
+- Frames narrower than 1000px or no taller than 500px use the existing organizer and touch handling. The **Landscape phone** control exercises this fallback.
 
-## Boundaries
+## State and authority boundaries
 
-`DesktopActionSurface` is a shared, explicitly opt-in presentation component. `OrganizedActionPresentation.desktopIcons` supplies artwork hints only; absence preserves the original organizer. Membership and availability come from current generated declarations, selected by the existing registry/organizer. Names, costs, targets, effects and refusals come from `buildActionTooltip`; artwork cannot create offers or change game facts. Missing artwork falls back to lettering plus the full accessible name.
+`DesktopActionSurface` is a shared opt-in presentation component. `OrganizedActionPresentation.desktopIcons` supplies art only; absent keeps the original organizer and shell. Membership/availability remain current generated declarations through the existing registry and organizer. Names, costs, targets, effects and refusals come from `buildActionTooltip`. Art and order hints cannot mint actions or change game facts. Missing/broken art falls back to lettering and its accessible full name.
 
-`OrganizedHudConcept` owns fixture state and frame measurement. The new concept parameterizes that existing harness rather than duplicating its controller. `ActionDock` retains reaction, spectator, cast-option, death-save and End Turn gates. `CombatExperience`, `TargetSurface`, `SessionCombatMap` and the existing log remain shared. No live caller supplies the icon opt-in. Current production desktop and mobile layouts are not modified by this experiment.
+`desktopHotbarLayout.ts` owns presentation-only ordering, row limits and page arithmetic. Unknown/duplicate order hints are ignored and newly offered members append. Section width is measured from the rendered grid; 36px icons and 4px gaps determine columns. Page count depends on columns and selected rows. Pages are independently clamped after resize/withdrawal; availability never changes capacity or sorting.
 
-Cleric-style and martial fixtures are layout samples, not legal build recommendations or live character snapshots. Availability, targets and resource costs are authored fixture states. Callbacks record fixture intentions only; no RPC or rules execution occurs. The cleric uses the existing reference scene and character models, not a new cleric model.
+`desktopCustomization` optionally controls `{ rows, orderBySection }` with an onChange callback. The concept harness owns an in-memory row count shared across profiles and section order per profile. These survive scenarios, current-layout comparison, compact fallback and cast-options remounts. Page position and edit mode are transient. Reloading/leaving this concept resets preferences: no localStorage, RPC, durable user settings or provider contract exists.
+
+Order keys are fixture-local declaration IDs. They are **not a proposed durable production identity** for signed live declarations. Saved player/character layouts need an explicit identity and persistence design before promotion.
+
+`ActionDock` retains reaction, spectator, cast-option, death-save and End Turn gates. `CombatExperience`, `TargetSurface`, `SessionCombatMap` and `StoryLog` remain shared. Only the icon opt-in adds the full-width shell attribute; open log/JSON width does not participate in its layout. Live callers and the existing compact/mobile presentation are unchanged.
+
+Fixtures author costs, availability and targets explicitly; callbacks record intentions without rules execution. The cleric still uses the existing reference scene and character models, not a new model.
 
 ## Art and content limits
 
-All five distinct INTERFACE archives in Downloads were surveyed. This iteration samples clean glyphs from `INTERFACE_Dark_Fantasy_HUD_SourceSprites_v3.zip`; frames are CSS, not copied Synty artwork. The selected sprites are locally staged under ignored `public/models/synty/interface-preview/`, named by `fixtures.ts`. A local `provenance.txt` accompanies them. No licensed bytes or screenshots are tracked. This is not canonical asset promotion; that belongs in private rpg-game-assets if the concept is accepted.
+Five distinct INTERFACE archives were surveyed. The preview uses clean glyphs from `INTERFACE_Dark_Fantasy_HUD_SourceSprites_v3.zip` and CSS framing. Licensed sprites remain in ignored local `public/models/synty/interface-preview/`, named in `fixtures.ts`, with local provenance. No PNGs, archives or screenshots are tracked. Canonical asset promotion belongs in private rpg-game-assets after acceptance.
 
-On a fresh checkout, copy the referenced `ICON_DarkFantasy_*_Clean.png` files from that archive to the ignored directory. The component remains usable with lettering if those local files are absent. Existing reference-scene models must also be locally synced for the 3D scene.
+On a fresh checkout, copy the referenced clean PNG filenames from the archive to that ignored directory; lettering remains usable when images are absent. Reference-scene models must also be synced locally.
 
-The density iteration uses 40px buttons and 24px tinted glyphs (previously 58px/34px), one combined utility/cancel row, and no permanent tutorial row. At 1600×900 and 1280×720 the regular bar is 112px high; all 36 stress icons fit inside a 156px bar with the log open. Tint comes from explicit fixture metadata, not inferred game rules. Dodge uses a temporary **Do** placeholder rather than a stealth glyph. Full pack counts, overlap and semantic coverage gaps are in [ICON-AUDIT.md](ICON-AUDIT.md).
+Dodge now uses the hood in **gold**, while the artificial Stealth sample uses the same silhouette in **blue**, following the operator's clarification. This tests an explicit art choice, not inferred mechanics. Players can rearrange actions, not choose their artwork. Full counts and semantic coverage limits: [ICON-AUDIT.md](ICON-AUDIT.md).
 
-The inspected session declaration seam does not carry full spell descriptions or weapon damage dice. The tooltip renders the facts it has; it does not invent those mechanics. Adding catalog-backed descriptions is not claimed by this layout prototype. Wider repertoire paging/filtering and a redesigned status/log layout are also not part of this first slice.
+The session declaration seam does not supply full spell descriptions or weapon damage dice. Tooltips do not invent them. Catalog-backed descriptions, durable player settings, filters, cross-section moves, freely assigned empty slots and a redesigned status display are not claimed here.
 
 ## Verification
 
-Checked task contracts and requirement/seam coverage: [PLAN.md](PLAN.md).
+Checked task contracts and coverage: [PLAN.md](PLAN.md), iteration 3.
 
-- `npm run typecheck` — passed with dependencies installed from the existing lockfile.
-- Focused new surface/concept and existing organizer/concept tests — 40 passed.
-- Changed-file ESLint and Prettier — passed.
-- Native Chrome/Playwright density probe: all 36 distinct offers are 40×40px, inside the surface/viewport, non-overlapping and loaded; opaque tooltip above bar, no hover dispatch; ready/crowded heights 112px/156px at both desktop sizes. Screenshots inspected. One combined browser command timed out; the standalone regression rerun passed.
-- Native Chrome/Playwright: 1600×900 and 1280×720, all five spell icons visible before clicks; hover dispatches nothing; icon bounds unchanged; tooltip opaque and above bar/in viewport; refused click blocked; available bonus action selects; Command options and keyboard focus/Escape/Enter exercised.
-- 844×390 and 393×852: original organizer restored, spell collection visible, no document overflow. Screenshots inspected after rendering. This is responsive browser evidence, not an Android/Discord touch walkthrough.
-- Local evidence: ignored `evidence/desktop-hotbar/verification.json`, `verify.mjs`, and screenshots. No browser page errors during the walkthrough.
+- `npm run typecheck` and changed-file ESLint/Prettier passed.
+- 73 focused layout/surface/concept/organizer/log tests passed; 48 additional CombatExperience/death-save regression tests passed (121 total).
+- Native Chrome/Playwright `paging.mjs`: full-width bar at 1280×720 and 1600×900, 36px icons, default one-row height113px; all36 offers reachable through independent pages, all36 visible at four rows; native drag and moving a later-page favorite first execute no actions; order retained across scenario/comparison/compact changes.
+- Actual formatted event JSON widened to640px; icon rectangles unchanged, log wins hit testing over an underlying icon, coordinate click does not dispatch, End Turn stays accessible.
+- The additional `verify.mjs` hover/refusal/bonus-action/Command/keyboard/mobile regression passed using Chrome's SwiftShader renderer. Default-renderer runs stalled during repeated viewport transitions; a fixed500ms mobile wait also proved brittle and was replaced with waiting for actual desktop-surface detachment. A minimal native-renderer spent-action probe passed. These are recorded harness observations, not a diagnosed application defect.
+- 844×390 / 393×852 retain the original organizer with no document overflow. 1000×501 with four rows plus Edit keeps inspection within the frame; 1000×500 returns to compact layout. Screenshots read after rendering. This is browser evidence, not Android/Discord touch acceptance.
+- Evidence is local/ignored: `evidence/desktop-hotbar/paging.mjs`, `paging.json`, full-width/four-rows/edit/JSON/compact screenshots. No browser page errors in the walk. Earlier `density.mjs` assumes the superseded always-visible layout and is not the current acceptance script.
 
-Initial dependency reuse found the root checkout's node_modules out of sync with its tracked lockfile; `npm ci --ignore-scripts` in this isolated worktree restored the declared versions without changing dependency files. That also left this new worktree without Husky's generated hook shim, so the first commit did not execute pre-commit. `npm run prepare` restored the shim; `npx lint-staged --diff HEAD^..HEAD` then checked the entire first commit's changed files, and the documentation follow-up runs the installed hook normally.
+Earlier setup correction: root node_modules was stale; the isolated lockfile install restored dependencies without changing pins but left Husky's generated shim absent. `npm run prepare` restored it and `lint-staged --diff` checked the first commit; later commits run the installed pre-commit hook normally. The original evidence remains in git and the issue trail.
 
-The operator liked the first preview and requested this density/artwork iteration. Walkthrough of the revised density, full PR-boundary CI, independent review and live promotion remain outstanding. The running preview is for collaborative iteration, not a merge-ready claim.
+The operator approved the design direction, not live promotion. Revised walkthrough, full PR-boundary CI and independent review remain outstanding. No merge-ready claim.

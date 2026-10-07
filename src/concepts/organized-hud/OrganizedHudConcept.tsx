@@ -1,9 +1,17 @@
 import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
 import type {
+  DesktopHotbarLayout,
+  HotbarRows,
+} from '@/components/session/combat-experience/desktopHotbarLayout';
+import type {
   ActionIconPresentation,
   OrganizedActionPresentation,
 } from '@/components/session/combat-experience/organizedActionPresentation';
-import type { CombatExperiencePresentationState } from '@/components/session/combat-experience/types';
+import type {
+  CombatExperienceLogMode,
+  CombatExperiencePresentationState,
+} from '@/components/session/combat-experience/types';
+import type { DebugFeedEntry } from '@/components/session/debugLogLine';
 import { create } from '@bufbuild/protobuf';
 import {
   ParticipantSchema,
@@ -27,7 +35,10 @@ export interface HudConceptProfile {
   label: string;
   presentation: OrganizedActionPresentation;
   desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
-  fixtures: readonly (SessionCombatFixture & { authorityFresh?: boolean })[];
+  fixtures: readonly (Omit<SessionCombatFixture, 'debug'> & {
+    authorityFresh?: boolean;
+    debug: readonly DebugFeedEntry[];
+  })[];
 }
 
 /** Fixture-only composition: real CombatExperience + action organizer, no RPC writes. */
@@ -49,6 +60,11 @@ export function OrganizedHudConcept({
   const frameRef = useRef<HTMLDivElement>(null);
   const [desktopFrame, setDesktopFrame] = useState(false);
   const [iconsEnabled, setIconsEnabled] = useState(true);
+  const [barRows, setBarRows] = useState<HotbarRows>(1);
+  const [barOrders, setBarOrders] = useState<
+    Record<string, DesktopHotbarLayout['orderBySection']>
+  >({});
+  const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   useEffect(() => {
     if (
       !iconExperiment ||
@@ -315,6 +331,21 @@ export function OrganizedHudConcept({
               iconExperiment && iconsEnabled && desktopFrame
                 ? profile.desktopIcons
                 : undefined,
+            desktopCustomization: iconExperiment
+              ? {
+                  layout: {
+                    rows: barRows,
+                    orderBySection: barOrders[profile.id] ?? {},
+                  },
+                  onChange: (next) => {
+                    setBarRows(next.rows);
+                    setBarOrders((current) => ({
+                      ...current,
+                      [profile.id]: next.orderBySection,
+                    }));
+                  },
+                }
+              : undefined,
             // The same offers feed every frame; measured space owns overflow.
             quickDeclarationIds: profile.presentation.quickDeclarationIds,
           }}
@@ -339,7 +370,8 @@ export function OrganizedHudConcept({
           presentationState={state}
           phase={state.armedDeclarationId ? 'targeting' : 'fresh'}
           showTurnNotice={false}
-          logMode="story"
+          logMode={iconExperiment ? logMode : 'story'}
+          diagnosticsEnabled={iconExperiment}
           streamState={fixture.streamState}
           story={fixture.story}
           debug={fixture.debug}
@@ -385,7 +417,7 @@ export function OrganizedHudConcept({
               `Fixture-only End Turn ${declaration.id}; no RPC or rule execution was sent.`
             )
           }
-          onLogModeChange={() => {}}
+          onLogModeChange={iconExperiment ? setLogMode : () => {}}
           onCenterView={() => setFocusRequest((request) => request + 1)}
           onOpenEquipment={() =>
             setIntent(

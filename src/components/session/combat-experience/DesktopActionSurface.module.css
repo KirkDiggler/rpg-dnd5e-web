@@ -1,6 +1,7 @@
 .surface {
   position: relative;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
   padding: 6px 8px;
   border: 1px solid #746044;
@@ -14,26 +15,44 @@
 }
 .groups {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+  flex-wrap: nowrap;
+  gap: 14px;
   align-items: flex-start;
 }
 .group {
-  min-width: 64px;
-}
-/* Share width by offer count only in the density fixture; do not collapse
-   collections or make rows disappear just because they are unavailable. */
-.surface[data-crowded='true'] {
-  width: 1120px;
-}
-.surface[data-crowded='true'] .groups {
-  flex-wrap: nowrap;
-}
-.surface[data-crowded='true'] .group {
+  min-width: 132px;
   flex-basis: 0;
 }
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  margin-bottom: 2px;
+  gap: 4px;
+}
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #d4c8ab;
+}
+.pager button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #766747;
+  border-radius: 3px;
+  background: #20272c;
+  color: #f0d99f;
+  font-size: 17px;
+  line-height: 1;
+}
+.pager button:disabled {
+  opacity: 0.3;
+}
 .group h3 {
-  margin: 0 0 4px;
+  margin: 0;
   color: #c7b68f;
   font-size: 10px;
   font-weight: 600;
@@ -41,8 +60,11 @@
   text-transform: uppercase;
 }
 .offers {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  grid-auto-rows: 36px;
+  align-content: start;
+  height: calc(var(--hotbar-rows, 1) * 40px - 4px);
   gap: 4px;
 }
 .offerSlot {
@@ -52,8 +74,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border: 1px solid color-mix(in srgb, var(--icon-color) 55%, #30363a);
   border-radius: 4px;
   background: radial-gradient(
@@ -67,8 +89,8 @@
 }
 .art {
   display: inline-block;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   background: var(--icon-color);
   mask-size: contain;
   mask-repeat: no-repeat;
@@ -141,10 +163,47 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 4px;
   padding-top: 5px;
+  padding-right: 216px;
+  min-height: 36px;
   border-top: 1px solid #ffffff12;
 }
+.editControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  color: #f0d99f;
+  font-size: 11px;
+}
+.editControls small {
+  color: #c0c6c8;
+}
+.surface[data-editing='true'] {
+  border-color: #f0d99f;
+}
+.surface[data-editing='true'] .offer {
+  cursor: grab;
+  border-style: dashed;
+}
+.rows {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #c7b68f;
+  font-size: 11px;
+}
+.rows select {
+  padding: 3px;
+  background: #20272c;
+  color: #f0d99f;
+  border: 1px solid #766747;
+  border-radius: 3px;
+}
+.editControls button,
+.editButton,
 .cancel {
   min-height: 26px;
   padding: 3px 6px;
@@ -153,6 +212,9 @@
   border-radius: 3px;
   background: #20272c;
   font-size: 11px;
+}
+.editControls button:disabled {
+  opacity: 0.4;
 }
 .utilities {
   flex: 1;
@@ -175,7 +237,10 @@
   padding-bottom: 10px;
 }
 .inspection {
-  max-height: min(440px, 48cqh);
+  max-height: min(
+    440px,
+    calc(100cqh - var(--hotbar-surface-height, 280px) - 36px)
+  );
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 18px;

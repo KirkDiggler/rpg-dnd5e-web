@@ -109,3 +109,61 @@ Authority: operator liked the first preview and requested less vertical space, s
 Plan check: smaller controls apply only to opt-in desktop experiment; mobile untouched. Color conveys no new rules or availability. No claim that file count proves full D&D coverage. Glyph authoring/selection for semantic gaps remains operator iteration, not guessed by the renderer.
 
 Task 4 completion: 40 focused tests and typecheck passed. Browser `density.mjs` measures 112px ready / 156px crowded at both 1600×900 and 1280×720, 36 distinct 40px offers in bounds with no overlap and a separate opaque inspection card. Screenshots read after rendering. Existing `verify.mjs` regression passed, including 844×390 / 393×852 fallback; its first combined invocation timed out and the standalone rerun passed. Audit result: 611 clean files, 457 byte-distinct normalized alpha masks, no claim of complete semantic coverage. Dodge remains a named art gap with a labeled fallback. New files are text/code only; licensed sprites stay ignored.
+
+## Iteration 3 — player arrangement, rows, paging and log overlay
+
+Authority: operator confirmed full width, one row by default with 1–4 rows for the whole bar, independent section paging for players keeping fewer rows, and player ordering within sections behind an explicit Edit button. Artwork/color is NOT player editable. Log/debug JSON must overlay the bar without reflow or click-through. Baseline `fccf0d79`; inspected CombatExperience, StoryLog/DebugEventRow, ActionDock, organizer, DesktopActionSurface and the concept harness. Desktop-only concept; no persistence, live caller, provider change or server preference contract.
+
+```mermaid
+flowchart LR
+  F[Current fixture declarations] --> O[Existing organizer]
+  L[Concept-session row count + per-profile section order] --> B[Desktop bar]
+  O --> B
+  B --> P[Independent section pages]
+  B --> E[Edit mode: reorder only]
+  P --> A[Play mode: shared action selection]
+  G[Story / wide JSON log] --> V[Overlay above bar; no reflow]
+```
+
+### Task 5: Bounded layout model and editable paged surface
+
+**Owner/files:** combat-experience; new `desktopHotbarLayout.ts`/`.test.ts`; modify DesktopActionSurface TSX/CSS/tests and organizedActionPresentation.ts.
+**Interfaces:** `DesktopHotbarLayout { rows: 1|2|3|4; orderBySection: Partial<Record<DesktopHotbarSection, readonly string[]>> }`; section keys quick/spells/abilities/items/actions. Optional `desktopCustomization: { layout; onChange(layout): void }` on presentation; absent uses component-local default for standalone callers. IDs are explicitly fixture-local declaration IDs, NOT a proposed durable production identity. Helpers order only current members (ignore duplicate/unknown hints, append new offers), clamp rows/pages, calculate capacity from 36px buttons +4px gaps, and move a current ID to a current index inside one section.
+**Behavior:** measured section width defines columns, rows defines height, page size=columns\*rows. Rows default1, max4; pages independent and clamped after resize/withdrawal. Empty sections absent; offers never invented or discarded, availability does not affect ordering. Section widths do not vary with row count, page or log state. 36px buttons/22px glyphs. Edit bar enters an explicit non-executing arrangement mode and cancels any armed selection. Drag/drop within a section, or select an icon then Move first/earlier/later; cross-section/external/withdrawn drops ignored. Paging remains available while editing so a later-page favorite can move first. Done/Escape exits edit and clears drag/inspection without executing an action; edits apply locally immediately. No artwork picker.
+**Tests:** order dedupe/unknown/new membership; move boundaries/cross-section refusals; rows1..4 and capacity/page clamp; default one row and per-section page independence; editing cannot dispatch even disabled icons; reorder by keyboard controls and drag; normal play cannot drag; exit restores exact current declaration selection; stale/withdrawn identity behavior preserved.
+**Verification:** focused helper/surface tests, typecheck/lint, browser resize/page/edit interactions. Geometry is browser proof, not jsdom.
+
+### Task 6: Full-width shell, retained concept preferences, real debug fixture
+
+**Owner/files:** CombatExperience.tsx/module.css; OrganizedHudConcept.tsx; desktop-hotbar fixtures/tests/CONTRACT.
+**Prerequisites:** Task5 types and component contract.
+**Interfaces:** root `data-desktop-hotbar` only when desktopIcons opt-in exists. Concept owns session-only rows and order per profile; supplies controlled customization, preserving choices through compact fallback, comparison, scenarios and options remounts. Log mode state enabled only for icon experiment; fixture debug accepts existing DebugFeedEntry and includes generated Event for real JSON inspection.
+**Behavior:** bar spans the available frame width, with bottom utility space reserved for existing End Turn/collapsed Log controls. Open log is absolutely overlaid above the icon region, stopping short of turn controls; wide JSON changes only its width, never the bar. Log receives pointer input above icons and their tooltip. No edits to default/mobile shell selectors or action authority gates. Restore Dodge hood with a distinct tint as clarified by operator; it remains an explicit prototype mapping, not inferred rules or user-customizable art.
+**Tests:** preference survives scenario and compact/current-layout roundtrips, rows shared across profiles but ordering profile-local; Debug tab and actual formatted event JSON work; legacy organized concept tests unchanged. Browser: bar spans frame at1600/1280; debug JSON overlap is topmost at elementFromPoint and clicking it does not select underlying action; log changes leave icon bounds unchanged; End Turn stays accessible.
+**Verification:** targeted concept/StoryLog tests plus browser screenshots. No production/persistence dependency or merge/release wave.
+
+### Task 7: Acceptance walkthrough and records
+
+**Files:** ignored evidence/desktop-hotbar/paging.mjs, screenshots/JSON; update CONTRACT/PLAN and issue1225.
+**Proof:** default1 row; all36 offers reachable by section paging; four rows expose more icons without changing order; promote sample25 first in Edit without dispatch and retain after Done/scenario switch; native drag reorder; no normal-mode drag; log/JSON overlap captures input; compact844x390/393x852 unchanged; screenshots read. Full PR-boundary CI/review remain deferred, no promotion claim.
+
+| Requirement                              | Tasks | Concrete proof                                                            |
+| ---------------------------------------- | ----- | ------------------------------------------------------------------------- |
+| Full width + smaller icons               | 5,6,7 | frame/bar bounds, 36px button measurement                                 |
+| 1–4 rows + independent paging            | 5,7   | default/clamp tests; all36 reachable at1 row, more visible at4            |
+| Explicit safe Edit ordering              | 5,6,7 | zero dispatch while edit/drag, same-section moves, exit/play assertions   |
+| Keep useful order across preview changes | 6     | controlled preference tests; no localStorage/RPC                          |
+| Log above bar, no reflow/click-through   | 6,7   | actual Debug JSON, stable bounds and elementFromPoint/click assertions    |
+| Existing mobile/live unchanged           | 6,7   | opt-in root attr absent on fallback; existing tests + compact screenshots |
+
+| Provider                | Consumer                         | Contract comparison                                                                | Availability           | Proof                              |
+| ----------------------- | -------------------------------- | ---------------------------------------------------------------------------------- | ---------------------- | ---------------------------------- |
+| current organizer       | layout helpers/surface           | declarations stay canonical; hint IDs only reorder existing section members        | existing               | membership/stale/withdrawal tests  |
+| Task5 layout type       | concept controlled customization | same rows1..4 and partial per-section ID order; callbacks change presentation only | Task5 before6          | roundtrip tests                    |
+| section ResizeObserver  | pager                            | measured width -> bounded columns/page; undefined measurement uses safe1 column    | browser + mocked tests | native viewport/page proof         |
+| concept generated Event | real StoryLog/DebugEventRow      | existing DebugFeedEntry event/schema JSON, no fabricated transport                 | installed protos       | formatted JSON + wide overlay test |
+| desktopIcons opt-in     | shell CSS data attr              | absent preserves default selectors; present full-width overlay layout              | Task6                  | regression + browser geometry      |
+
+Plan checks: rows/paging supersede the prior all-visible36 acceptance intentionally, per operator. No blanket approval for durable player settings; preview preferences remain in memory. Unavailable actions retain slots. Paging and edit mode are local presentation state only; no new legality or authority rule. All new seams have producers/tests; no required unresolved architectural decision for this concept increment.
+
+Tasks 5–7 completion: `typecheck` and changed-file lint/format pass; 73 targeted helper/surface/concept/log tests plus48 CombatExperience/death-save regressions pass (121 total). Browser `paging.mjs` exercises native drag in Edit, later-page Move first, all36 reachable by independent pages, four rows, controlled-preference roundtrips, true formatted event JSON at640px, no log-induced icon movement or click-through, and accessible End Turn. Full-width default row measures113px high at1280×720/1600×900. Screenshots inspected. Compact844×390/393×852 unchanged; an extra1000×501 four-row/Edit check motivated measuring surface height to bound the tooltip to the remaining viewport, and passes; height500 switches back to compact. Evidence: ignored `evidence/desktop-hotbar/paging.json` and PNGs. Existing `density.mjs` expectations are superseded by the approved paging design. No persisted settings, production caller, PR readiness or live promotion claimed. The additional hover/refusal/Command/keyboard/mobile regression passed under SwiftShader after default-renderer viewport-transition stalls; the harness now awaits actual compact-surface transition rather than a fixed500ms delay. A minimal native spent-action probe also passed; no application defect was diagnosed from the stalled harness runs.
