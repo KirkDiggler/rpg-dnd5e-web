@@ -42,10 +42,12 @@
  */
 
 import { clone } from '@bufbuild/protobuf';
-import type {
-  ConcealmentRevealed,
-  DoorRevealed,
-  RegionRevealed,
+import {
+  DoorRevealedSchema,
+  RegionRevealedSchema,
+  type ConcealmentRevealed,
+  type DoorRevealed,
+  type RegionRevealed,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetAtlasResponseSchema,
@@ -219,8 +221,10 @@ export function applyRegionRevealed(
   atlas: GetAtlasResponse,
   event: RegionRevealed
 ): GetAtlasResponse {
-  const region = event.region;
-  if (!region) return atlas;
+  if (!event.region) return atlas;
+  // Own incoming legacy rows just as the structural commit owns its records.
+  event = clone(RegionRevealedSchema, event);
+  const region = event.region!;
   const { segments, sealed } = revealAdditions(event);
   const next = clone(GetAtlasResponseSchema, atlas);
 
@@ -289,6 +293,7 @@ export function applyDoorRevealed(
   atlas: GetAtlasResponse,
   event: DoorRevealed
 ): GetAtlasResponse {
+  event = clone(DoorRevealedSchema, event);
   const next = clone(GetAtlasResponseSchema, atlas);
   next.doorways = appendNew(next.doorways, event.doorways, (d) =>
     pairKey(d.from, d.to)

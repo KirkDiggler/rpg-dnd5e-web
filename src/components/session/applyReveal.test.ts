@@ -73,6 +73,16 @@ function regionRevealed(
 }
 
 describe('a region reveal', () => {
+  it('detaches legacy region rows from the event in both directions', () => {
+    const event = regionRevealed();
+    const after = applyRegionRevealed(beforeAtlas(), event);
+    const region = after.regions.find((row) => row.id === 'crypt')!;
+    event.region!.name = 'event mutation';
+    expect(region.name).toBe('Crypt');
+    region.cells[0].x = 999;
+    expect(event.region!.cells[0].x).toBe(2);
+  });
+
   it('makes the revealed room’s footing WALKABLE — sealed replaces, it does not append', () => {
     // The acceptance case. Cells (2,0) and (3,0) were footing under a
     // wall this member could see: floor with no owner they knew, hence
@@ -153,6 +163,15 @@ describe('a door reveal', () => {
       boundaries: [],
     });
   }
+
+  it('detaches legacy doorway rows from their event', () => {
+    const event = doorRevealed();
+    const after = applyDoorRevealed(beforeAtlas(), event);
+    event.doorways[0].from!.x = 999;
+    expect(after.doorways[0].from!.x).toBe(1);
+    after.doorways[0].connection = 'cache mutation';
+    expect(event.doorways[0].connection).toBe('tomb/secret');
+  });
 
   it('takes the masquerade’s synthetic wall off the door’s own edges', () => {
     const before = beforeAtlas();

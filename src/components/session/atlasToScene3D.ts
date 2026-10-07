@@ -191,8 +191,9 @@ export interface Scene3D {
    * hides an unlisted permitted door, and no parent identity is carried.
    */
   structuralDoors?: readonly StructuralDoorRenderUnit[];
-  /** Named refusals for malformed supplied structural records. Empty when
-   * every supplied record rendered; a malformed record contributes no mesh. */
+  /** Always empty on buildScene3D output: malformed structural records refuse
+   * the whole scene. Directly constructed diagnostic/preview scenes may supply
+   * named refusals here instead of geometry. */
   structuralDiagnostics?: readonly string[];
   /**
    * The authored room this dungeon looks like, handed in by the caller
