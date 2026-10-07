@@ -189,8 +189,10 @@ describe('DesktopHotbarConcept', () => {
 
   it('routes Command through shared cast options and then targeting', () => {
     render(<DesktopHotbarConcept />);
+    const status = screen.getByTestId('desktop-status-section');
     fireEvent.click(screen.getByRole('button', { name: 'Command' }));
     expect(screen.getByTestId('cast-options')).toBeInTheDocument();
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
     fireEvent.click(screen.getByTestId('cast-option-grovel'));
     expect(screen.queryByTestId('cast-options')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -201,6 +203,38 @@ describe('DesktopHotbarConcept', () => {
       'true'
     );
   });
+  it('keeps the read-only Status section outside Edit, row and page changes', () => {
+    render(<DesktopHotbarConcept />);
+    const status = screen.getByTestId('desktop-status-section');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    expect(within(status).queryByRole('button')).not.toBeInTheDocument();
+    expect(status.querySelector('[draggable]')).toBeNull();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '4' },
+    });
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    fireEvent.click(screen.getByRole('button', { name: 'Done editing' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '36 icons (layout only)' })
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next Spells page' }));
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    expect(status).toHaveTextContent('22/28');
+    expect(status).toHaveTextContent('25 ft');
+    act(() => resize!(844, 390));
+    expect(
+      screen.queryByTestId('desktop-status-section')
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('group', { name: 'Your status' })).getByText(
+        '22/28'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('keeps refused spells inspectable and does not arm them', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));

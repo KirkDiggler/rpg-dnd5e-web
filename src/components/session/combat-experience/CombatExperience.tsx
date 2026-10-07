@@ -16,6 +16,7 @@ import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts.tsx';
+import { DesktopStatusSection } from './DesktopStatusSection';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
@@ -274,9 +275,8 @@ export function CombatExperience({
     ),
     rollWindowReady ? undefined : rollWindow?.storyId
   );
-  const noticesEnabled = Boolean(
-    storyFeedback && actionPresentation?.desktopIcons
-  );
+  const desktopHotbar = Boolean(actionPresentation?.desktopIcons);
+  const noticesEnabled = Boolean(storyFeedback && desktopHotbar);
   const storyNotices = useStoryNotices({
     story: revealedStory,
     scope: storyFeedback?.scopeKey ?? '',
@@ -400,9 +400,7 @@ export function CombatExperience({
       className={`${styles.combatExperience} ${layout === 'fill-parent' ? styles.combatExperienceFillParent : ''}`}
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
-      data-desktop-hotbar={
-        actionPresentation?.desktopIcons ? 'true' : undefined
-      }
+      data-desktop-hotbar={desktopHotbar ? 'true' : undefined}
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
@@ -558,95 +556,108 @@ export function CombatExperience({
           )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
-          <div
-            className={styles.identityRow}
-            role="group"
-            aria-label="Your status"
-          >
-            <div className={styles.viewerPortrait}>
-              {portraitOf(viewerName)}
-            </div>
-            <div className={styles.viewerIdentity}>
-              <strong>{viewerName}</strong>
-              <span>
-                {characterData
-                  ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
-                  : labelOf(viewerClassRefId)}
-              </span>
-            </div>
-            {hp && (
-              <div className={styles.hpBlock}>
-                <div className={styles.hpLabel}>
-                  <span>Hit points</span>
+          {(!desktopHotbar || statuses.length > 0) && (
+            <div
+              className={styles.identityRow}
+              role="group"
+              aria-label={
+                desktopHotbar ? 'Effects and resources' : 'Your status'
+              }
+            >
+              <div className={styles.viewerPortrait}>
+                {portraitOf(viewerName)}
+              </div>
+              <div className={styles.viewerIdentity}>
+                <strong>{viewerName}</strong>
+                <span>
+                  {characterData
+                    ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
+                    : labelOf(viewerClassRefId)}
+                </span>
+              </div>
+              {!desktopHotbar && hp && (
+                <div className={styles.hpBlock}>
+                  <div className={styles.hpLabel}>
+                    <span>Hit points</span>
+                    <strong>
+                      {hp.current}/{hp.max}
+                    </strong>
+                  </div>
+                  <div className={styles.hpTrack}>
+                    <span style={{ width: `${hpPercent}%` }} />
+                  </div>
+                </div>
+              )}
+              {!desktopHotbar && characterData?.armorClassDetail && (
+                <div
+                  className={styles.statBlock}
+                  title={characterData.armorClassDetail.note}
+                >
+                  <small>Armor</small>
+                  <strong>{characterData.armorClassDetail.total}</strong>
+                </div>
+              )}
+              {!desktopHotbar && characterData && (
+                <div className={styles.statBlock}>
+                  <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
                   <strong>
-                    {hp.current}/{hp.max}
+                    {isViewerTurn && movementRemainingFeet !== undefined
+                      ? movementRemainingFeet
+                      : characterData.baseSpeedFeet}{' '}
+                    ft
                   </strong>
                 </div>
-                <div className={styles.hpTrack}>
-                  <span style={{ width: `${hpPercent}%` }} />
+              )}
+              {statuses.length > 0 && (
+                <div
+                  className={styles.effects}
+                  aria-label={
+                    desktopHotbar
+                      ? 'Active effects and resources'
+                      : 'Character status'
+                  }
+                >
+                  {statuses.map((status) => (
+                    <StatusBadge key={status.key} status={status} />
+                  ))}
                 </div>
-              </div>
-            )}
-            {characterData?.armorClassDetail && (
-              <div
-                className={styles.statBlock}
-                title={characterData.armorClassDetail.note}
-              >
-                <small>Armor</small>
-                <strong>{characterData.armorClassDetail.total}</strong>
-              </div>
-            )}
-            {characterData && (
-              <div className={styles.statBlock}>
-                <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
-                <strong>
-                  {isViewerTurn && movementRemainingFeet !== undefined
-                    ? movementRemainingFeet
-                    : characterData.baseSpeedFeet}{' '}
-                  ft
-                </strong>
-              </div>
-            )}
-            {statuses.length > 0 && (
-              <div className={styles.effects} aria-label="Character status">
-                {statuses.map((status) => (
-                  <StatusBadge key={status.key} status={status} />
-                ))}
-              </div>
-            )}
-            {privateStatus !== 'ready' && (
-              <div className={styles.privateStatus} role="status">
-                <strong>
-                  {privateStatus === 'loading'
-                    ? 'Loading private status'
-                    : privateStatus === 'stale'
-                      ? 'Private status may be out of date'
-                      : 'Private status unavailable'}
-                </strong>
-                {privateStatusMessage && <small>{privateStatusMessage}</small>}
-                {onRetryPrivateStatus && (
-                  <button type="button" onClick={onRetryPrivateStatus}>
-                    Retry private status
+              )}
+              {!desktopHotbar && privateStatus !== 'ready' && (
+                <div className={styles.privateStatus} role="status">
+                  <strong>
+                    {privateStatus === 'loading'
+                      ? 'Loading private status'
+                      : privateStatus === 'stale'
+                        ? 'Private status may be out of date'
+                        : 'Private status unavailable'}
+                  </strong>
+                  {privateStatusMessage && (
+                    <small>{privateStatusMessage}</small>
+                  )}
+                  {onRetryPrivateStatus && (
+                    <button type="button" onClick={onRetryPrivateStatus}>
+                      Retry private status
+                    </button>
+                  )}
+                </div>
+              )}
+              {characterData &&
+                onOpenEquipment &&
+                actionPresentation?.mode !== 'organized-hud' && (
+                  <button
+                    type="button"
+                    className={styles.equipmentButton}
+                    data-testid="session-combat-equipment-button"
+                    aria-pressed={equipmentOpen}
+                    title="Equipment"
+                    onClick={onOpenEquipment}
+                  >
+                    <span aria-hidden="true">♜</span>
+                    Equipment
                   </button>
                 )}
-              </div>
-            )}
-            {characterData &&
-              onOpenEquipment &&
-              actionPresentation?.mode !== 'organized-hud' && (
-                <button
-                  type="button"
-                  className={styles.equipmentButton}
-                  data-testid="session-combat-equipment-button"
-                  aria-pressed={equipmentOpen}
-                  title="Equipment"
-                  onClick={onOpenEquipment}
-                >
-                  <span aria-hidden="true">♜</span>
-                  Equipment
-                </button>
-              )}
-          </div>
+            </div>
+          )}
 
           <ActionDock
             clock={clock}
@@ -655,6 +666,29 @@ export function CombatExperience({
             declarations={declarations}
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
+            desktopStatus={
+              desktopHotbar ? (
+                <DesktopStatusSection
+                  hitPoints={hp}
+                  hpPercent={hpPercent}
+                  armor={characterData?.armorClassDetail}
+                  movementLabel={
+                    clock === ClockKind.TURN && isViewerTurn ? 'Move' : 'Speed'
+                  }
+                  movementFeet={
+                    clock === ClockKind.TURN && isViewerTurn
+                      ? movementRemainingFeet
+                      : characterData?.baseSpeedFeet
+                  }
+                  movementStale={
+                    clock === ClockKind.TURN && isViewerTurn && !authorityFresh
+                  }
+                  privateStatus={privateStatus}
+                  privateStatusMessage={privateStatusMessage}
+                  onRetry={onRetryPrivateStatus}
+                />
+              ) : undefined
+            }
             onOpenEquipment={onOpenEquipment}
             equipmentOpen={equipmentOpen}
             onCenterView={onCenterView}

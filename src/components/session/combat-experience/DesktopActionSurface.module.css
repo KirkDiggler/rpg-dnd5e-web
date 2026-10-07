@@ -17,6 +17,12 @@
   pointer-events: auto;
   font-family: Inter, system-ui, sans-serif;
 }
+.surface[data-embedded='true'] {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
 .groups {
   display: flex;
   flex-wrap: nowrap;

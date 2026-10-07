@@ -271,6 +271,8 @@ export interface ActionDockProps {
   authorityFresh: boolean;
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
+  /** Fixed presentation slot outside all action/reaction/spectator gates. */
+  desktopStatus?: ReactNode;
   onOpenEquipment?: () => void;
   equipmentOpen?: boolean;
   onCenterView?: () => void;
@@ -479,13 +481,26 @@ function EndTurnPlacement({
   return target ? createPortal(children, target) : children;
 }
 
-export function ActionDock({
+export function ActionDock(props: ActionDockProps) {
+  if (!props.desktopStatus) return <ActionDockContents {...props} />;
+  return (
+    <div className={styles.desktopDock} data-desktop-dock="true">
+      {props.desktopStatus}
+      <div className={styles.desktopDockActions}>
+        <ActionDockContents {...props} />
+      </div>
+    </div>
+  );
+}
+
+function ActionDockContents({
   clock,
   viewerMember,
   participants,
   declarations,
   authorityFresh,
   actionPresentation,
+  desktopStatus,
   onOpenEquipment,
   equipmentOpen,
   onCenterView,
@@ -933,6 +948,7 @@ export function ActionDock({
           onSelectDeclaration={onSelectDeclaration}
           onCancelSelection={onCancelSelection}
           secondaryControls={standing}
+          embedded={Boolean(desktopStatus)}
         />
       ) : (
         <div className={styles.actionGroupWithDivider}>

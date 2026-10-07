@@ -1,0 +1,97 @@
+.status {
+  min-width: 0;
+  align-self: start;
+  padding-right: 14px;
+  border-right: 1px solid #c7b68f40;
+  color: #eee9dd;
+  font-family: Inter, system-ui, sans-serif;
+}
+.status h3 {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  margin: 0 0 2px;
+  color: #c7b68f;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.health > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 15px;
+}
+.health strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.health span,
+.status dt {
+  color: #bbc5c9;
+}
+.track {
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #553239;
+}
+.track > span {
+  display: block;
+  height: 100%;
+  background: #ec727a;
+}
+.status dl {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 5px 0 0;
+}
+.status dl > div {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11px;
+}
+.status dd {
+  margin: 0;
+  color: #f0ddb3;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.status [data-stale='true'] dd {
+  color: #d1b49c;
+}
+.warning,
+.feedback {
+  margin: 6px 0 0;
+  color: #f0c58a;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.feedback strong {
+  font-weight: 500;
+}
+.message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+  color: #c7cccf;
+}
+.feedback button {
+  display: block;
+  margin-top: 5px;
+  padding: 3px 6px;
+  border: 1px solid #766747;
+  border-radius: 3px;
+  color: #f0d99f;
+  background: #20272c;
+  font-size: 10px;
+}

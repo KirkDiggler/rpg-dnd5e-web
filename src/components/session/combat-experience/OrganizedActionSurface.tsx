@@ -181,6 +181,8 @@ export interface OrganizedActionSurfaceProps {
   onSelectDeclaration: (declaration: Declaration) => void;
   onCancelSelection?: () => void;
   secondaryControls?: ReactNode;
+  /** Parent desktop dock owns the shared frame when status is composed beside actions. */
+  embedded?: boolean;
 }
 
 /** Opt-in only: existing callers retain the original input and layout surface. */

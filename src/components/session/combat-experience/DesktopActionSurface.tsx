@@ -267,16 +267,18 @@ export function DesktopActionSurface({
   onSelectDeclaration,
   onCancelSelection,
   secondaryControls,
+  embedded = false,
 }: OrganizedActionSurfaceProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(0);
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface || typeof ResizeObserver === 'undefined') return;
+    const frame = surface.closest('[data-desktop-dock]') ?? surface;
     const observer = new ResizeObserver(() =>
-      setSurfaceHeight(surface.getBoundingClientRect().height)
+      setSurfaceHeight(frame.getBoundingClientRect().height)
     );
-    observer.observe(surface);
+    observer.observe(frame);
     return () => observer.disconnect();
   }, []);
   const [localLayout, setLocalLayout] = useState<DesktopHotbarLayout>(
@@ -384,6 +386,7 @@ export function DesktopActionSurface({
           : undefined
       }
       data-testid="desktop-action-surface"
+      data-embedded={embedded}
       data-editing={editing}
       data-rows={layout.rows}
       onPointerLeave={() => {

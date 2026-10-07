@@ -10,7 +10,7 @@ import {
   Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { CombatExperience } from './CombatExperience';
@@ -137,6 +137,92 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('moves desktop HP/AC/movement into one fixed status section and restores the original header without opt-in', () => {
+    const desktop = propsFor(fresh, {
+      actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+    });
+    const view = render(<CombatExperience {...desktop} />);
+    const status = screen.getByTestId('desktop-status-section');
+    expect(status.textContent).toContain('22/28');
+    expect(status.textContent).toContain('18');
+    expect(status.textContent).toContain('25 ft');
+    expect(screen.getAllByText('22/28')).toHaveLength(1);
+    expect(screen.queryByRole('group', { name: 'Your status' })).toBeNull();
+    expect(
+      screen.getByRole('group', { name: 'Effects and resources' }).textContent
+    ).not.toContain('22/28');
+    view.rerender(
+      <CombatExperience
+        {...propsFor(fresh, { actionPresentation: { mode: 'organized-hud' } })}
+      />
+    );
+    expect(screen.queryByTestId('desktop-status-section')).toBeNull();
+    expect(
+      within(screen.getByRole('group', { name: 'Your status' })).getByText(
+        '22/28'
+      )
+    ).toBeTruthy();
+  });
+
+  it('keeps fixed status through spectator, world-clock and reaction gates', () => {
+    const presentation = { mode: 'organized-hud' as const, desktopIcons: {} };
+    const desktop = propsFor(fresh, { actionPresentation: presentation });
+    const view = render(<CombatExperience {...desktop} />);
+    const status = screen.getByTestId('desktop-status-section');
+    view.rerender(
+      <CombatExperience
+        {...desktop}
+        participants={fresh.participants.map((p) => ({
+          ...p,
+          active:
+            p.member !== fresh.viewerMember && p.member === 'skeleton-archer',
+        }))}
+      />
+    );
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    expect(status.textContent).toContain('Speed');
+    expect(status.textContent).toContain(
+      `${fresh.characterData.baseSpeedFeet} ft`
+    );
+    expect(screen.getByText(/Your commands return/)).toBeTruthy();
+    view.rerender(<CombatExperience {...desktop} clock={ClockKind.WORLD} />);
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    expect(status.textContent).toContain('Speed');
+    view.rerender(
+      <CombatExperience
+        {...rollWindowExperienceProps({ actionPresentation: presentation })}
+      />
+    );
+    expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    expect(screen.getByTestId('roll-window-settling')).toBeTruthy();
+  });
+
+  it('does not disguise absent movement authority as base Speed on the viewer turn', () => {
+    const desktop = propsFor(fresh, {
+      actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+    });
+    const view = render(
+      <CombatExperience
+        {...desktop}
+        authorityFresh={false}
+        privateStatus="stale"
+      />
+    );
+    const status = screen.getByTestId('desktop-status-section');
+    expect(status.textContent).toContain('Movement may be out of date');
+    expect(status.textContent).toContain('Private status may be out of date');
+    expect(status.textContent).toContain('25 ft');
+    view.rerender(
+      <CombatExperience
+        {...desktop}
+        declarations={fresh.declarations.filter((d) => d.verb !== Verb.MOVE)}
+      />
+    );
+    expect(status.textContent).toContain('Move—');
+    expect(status.textContent).not.toContain(
+      `${fresh.characterData.baseSpeedFeet} ft`
+    );
+  });
   it('holds new notices behind the same roll-window release gate as story history', () => {
     const base = rollWindowExperienceProps({
       actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
