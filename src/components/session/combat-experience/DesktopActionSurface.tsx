@@ -51,9 +51,14 @@ export function DesktopActionSurface({
   const layout = presentation?.desktopCustomization?.layout ?? localLayout;
   const updateLayout =
     presentation?.desktopCustomization?.onChange ?? setLocalLayout;
-  const favorites = layout.favoriteIdsBySection ?? {};
+  const favoritesEnabled = presentation?.desktopFavorites === true;
+  const favorites = favoritesEnabled ? (layout.favoriteIdsBySection ?? {}) : {};
   const rows = hotbarRows(layout.rows);
-  const [editing, setEditing] = useState(false);
+  const [editingRequested, setEditing] = useState(false);
+  const editing = favoritesEnabled && editingRequested;
+  useEffect(() => {
+    if (!favoritesEnabled) setEditing(false);
+  }, [favoritesEnabled]);
   const [feedback, setFeedback] = useState('');
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [pointerInCard, setPointerInCard] = useState(false);
@@ -237,14 +242,16 @@ export function DesktopActionSurface({
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          className={styles.editButton}
-          aria-pressed={editing}
-          onClick={() => setEditMode(!editing)}
-        >
-          {editing ? 'Done editing' : 'Edit bar'}
-        </button>
+        {favoritesEnabled && (
+          <button
+            type="button"
+            className={styles.editButton}
+            aria-pressed={editing}
+            onClick={() => setEditMode(!editing)}
+          >
+            {editing ? 'Done editing' : 'Edit bar'}
+          </button>
+        )}
         <button
           type="button"
           className={styles.cancel}

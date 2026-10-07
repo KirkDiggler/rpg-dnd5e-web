@@ -286,7 +286,6 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
           densityDeclarations.map((offer) => [offer.id, 'leveled' as const])
         ),
       },
-      desktopEffectsDeclarationId: 'mace',
       desktopEffectIcons: EFFECT_ICONS,
     },
     desktopIcons: CLERIC_ICONS,
@@ -385,7 +384,6 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
         dash: 'actions',
         dodge: 'actions',
       },
-      desktopEffectsDeclarationId: 'offer:aldric:longsword:action',
       desktopEffectIcons: EFFECT_ICONS,
     },
     fixtures: martial.fixtures.map((fixture) => ({

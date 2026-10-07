@@ -24,6 +24,8 @@ export interface ActionIconPresentation {
 export interface OrganizedActionPresentation {
   /** Explicit desktop experiment opt-in. Artwork never supplies game facts. */
   desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
+  /** Explicit concept-only favorite experiment; absent disables pins and edit controls. */
+  desktopFavorites?: boolean;
   /** Optional controlled preview preferences; never a gameplay authority. */
   desktopCustomization?: DesktopHotbarCustomization;
   /** Explicit desktop categories; never inferred from a name, cost or class. */
@@ -33,8 +35,6 @@ export interface OrganizedActionPresentation {
   desktopSpellKindByDeclarationId?: Readonly<
     Record<string, 'cantrip' | 'leveled'>
   >;
-  /** Reference action for informational effects when no selected action supplies them. */
-  desktopEffectsDeclarationId?: string;
   desktopEffectIcons?: Readonly<Record<string, ActionIconPresentation>>;
   /** Declaration ids to place in the compact quick row, in this exact order. */
   quickDeclarationIds?: readonly string[];

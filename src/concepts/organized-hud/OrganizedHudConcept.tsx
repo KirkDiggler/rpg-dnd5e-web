@@ -489,6 +489,7 @@ export function OrganizedHudConcept({
             mode: 'organized-hud',
             ...profile.presentation,
             desktopIcons: desktopMode ? profile.desktopIcons : undefined,
+            desktopFavorites: iconExperiment,
             desktopCustomization: iconExperiment
               ? {
                   layout: {

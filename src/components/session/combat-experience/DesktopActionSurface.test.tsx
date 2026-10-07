@@ -20,6 +20,7 @@ const ready = profile.fixtures[0]!;
 const presentation = {
   ...profile.presentation,
   desktopIcons: profile.desktopIcons,
+  desktopFavorites: true,
 };
 const defaults = {
   declarations: ready.declarations,
@@ -48,6 +49,33 @@ afterEach(() => {
 });
 
 describe('DesktopActionSurface', () => {
+  it('omits favorite controls and ignores supplied pins unless explicitly opted in', () => {
+    const onChange = vi.fn();
+    const view = render(
+      <DesktopActionSurface
+        {...defaults}
+        presentation={{
+          ...presentation,
+          desktopFavorites: undefined,
+          desktopCustomization: {
+            layout: { rows: 1, favoriteIdsBySection: { spells: ['bane'] } },
+            onChange,
+          },
+        }}
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
+    expect(view.container.querySelector('[data-favorite="true"]')).toBeNull();
+    expect(screen.queryByText('★')).toBeNull();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
+      target: { value: '4' },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      rows: 4,
+      favoriteIdsBySection: {},
+    });
+  });
+
   it('mounts only supplied categories, with grouped cantrips and no empty placeholders', () => {
     render(<DesktopActionSurface {...defaults} />);
     for (const name of ['Actions', 'Spells'])

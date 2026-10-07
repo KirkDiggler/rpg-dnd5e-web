@@ -271,20 +271,26 @@ describe('DesktopHotbarConcept', () => {
         { name: 'Unarmed Strike' }
       )
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Inspect Sneak Attack' })
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Longsword' }));
+    const selectedIntent = screen.getByRole('status').textContent;
     fireEvent.click(
       screen.getByRole('button', { name: 'Inspect Sneak Attack' })
     );
     expect(
       screen.getByRole('region', { name: 'Sneak Attack information' })
     ).toHaveTextContent('For Longsword');
-    expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
+    expect(screen.getByRole('status').textContent).toBe(selectedIntent);
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Raging' }));
     expect(
       screen.getByRole('region', { name: 'Raging information' })
     ).toHaveTextContent('Applies');
+    expect(screen.getByRole('status').textContent).toBe(selectedIntent);
     expect(screen.getByRole('button', { name: 'Longsword' })).toHaveAttribute(
       'aria-pressed',
-      'false'
+      'true'
     );
   });
 

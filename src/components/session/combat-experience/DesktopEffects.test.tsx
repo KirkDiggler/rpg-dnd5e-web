@@ -1,14 +1,67 @@
 import { DESKTOP_HOTBAR_PROFILES } from '@/concepts/desktop-hotbar/fixtures';
+import { create } from '@bufbuild/protobuf';
+import {
+  DeclarationSchema,
+  ShortfallSchema,
+  Verb,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DesktopEffects } from './DesktopEffects';
 const profile = DESKTOP_HOTBAR_PROFILES[1]!;
 const attack = profile.fixtures[0]!.declarations.find(
-  (offer) => offer.id === profile.presentation.desktopEffectsDeclarationId
+  (offer) => offer.verb === Verb.ATTACK
 )!;
 
 describe('DesktopEffects', () => {
+  it('shows base attack information without effects and qualifies stale or refused data', () => {
+    const plain = create(DeclarationSchema, {
+      ...attack,
+      effects: [],
+      candidates: [],
+      available: false,
+      why: create(ShortfallSchema, { text: 'Provider refusal' }),
+    });
+    render(<DesktopEffects declaration={plain} authorityFresh={false} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Longsword' }));
+    const card = screen.getByRole('region', { name: 'Longsword information' });
+    expect(card).toHaveTextContent(/slashing/i);
+    expect(card).toHaveTextContent('Costs');
+    expect(card).toHaveTextContent('Action');
+    expect(card).toHaveTextContent('Provider refusal');
+    expect(card).toHaveTextContent('may be out of date');
+    expect(screen.queryByRole('button', { name: 'Inspect Raging' })).toBeNull();
+  });
+
+  it('drops prior action details and effects when switching to a zero-effect action or idle', () => {
+    const view = render(<DesktopEffects declaration={attack} authorityFresh />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Longsword' }));
+    expect(
+      screen.getByRole('region', { name: 'Longsword information' })
+    ).toHaveTextContent('Raging');
+    const plain = create(DeclarationSchema, {
+      ...attack,
+      id: 'plain',
+      attack: { ...attack.attack!, name: 'Plain attack' },
+      effects: [],
+      candidates: [],
+    });
+    view.rerender(<DesktopEffects declaration={plain} authorityFresh />);
+    expect(
+      screen.queryByRole('region', { name: 'Longsword information' })
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect Plain attack' })
+    );
+    expect(
+      screen.getByRole('region', { name: 'Plain attack information' })
+    ).not.toHaveTextContent('Raging');
+    view.rerender(<DesktopEffects authorityFresh />);
+    expect(screen.queryByRole('button', { name: /Inspect/ })).toBeNull();
+    expect(screen.getByText('Select an action to inspect')).toBeInTheDocument();
+  });
+
   it('inspects Raging and Sneak Attack as information with a named action context, not commands', () => {
     const view = render(
       <DesktopEffects
@@ -54,7 +107,7 @@ describe('DesktopEffects', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('may be out of date');
     view.rerender(<DesktopEffects authorityFresh />);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
-    expect(screen.getByText('No effect information')).toBeInTheDocument();
+    expect(screen.getByText('Select an action to inspect')).toBeInTheDocument();
   });
   it('closes pinned details on an outside click or Escape without adding any action callback', () => {
     render(<DesktopEffects declaration={attack} authorityFresh />);

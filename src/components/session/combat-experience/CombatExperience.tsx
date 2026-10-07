@@ -367,20 +367,9 @@ export function CombatExperience({
     phase === 'targeting' &&
     (!targetingDeclaration ||
       targetingDeclaration.targetKind === TargetKind.MEMBER);
-  const selectedEffectSources = declarations.filter(
-    (offer) =>
-      offer.id === presentationState.armedDeclarationId &&
-      offer.effects.length > 0
-  );
-  const referenceEffectSources = declarations.filter(
-    (offer) => offer.id === actionPresentation?.desktopEffectsDeclarationId
-  );
-  const effectSource =
-    selectedEffectSources.length === 1
-      ? selectedEffectSources[0]
-      : referenceEffectSources.length === 1
-        ? referenceEffectSources[0]
-        : undefined;
+  // Action information exists independently of effects. No unrelated offer
+  // supplies a default context while the player has nothing selected.
+  const effectSource = armedMatches.length === 1 ? armedMatches[0] : undefined;
   const movementRemainingFeet = movementBudgetFeet(declarations);
   const hp = characterData?.hitPoints;
   const hpPercent = hp?.max

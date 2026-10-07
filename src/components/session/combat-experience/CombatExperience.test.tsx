@@ -137,6 +137,33 @@ function rollWindowExperienceProps(
 }
 
 describe('CombatExperience shared production shell', () => {
+  it('inspects the selected zero-effect attack and leaves idle without an arbitrary action context', () => {
+    const attack = create(DeclarationSchema, {
+      ...fresh.declarations.find((offer) => offer.verb === Verb.ATTACK)!,
+      effects: [],
+    });
+    const props = propsFor(fresh, {
+      declarations: [attack],
+      actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
+      presentationState: { ...emptyState, armedDeclarationId: attack.id },
+    });
+    const view = render(<CombatExperience {...props} />);
+    const inspection = within(screen.getByTestId('desktop-effects'));
+    fireEvent.click(
+      inspection.getByRole('button', { name: `Inspect ${attack.attack!.name}` })
+    );
+    expect(
+      inspection.getByRole('region', {
+        name: `${attack.attack!.name} information`,
+      }).textContent
+    ).toContain('Costs');
+    view.rerender(
+      <CombatExperience {...props} presentationState={emptyState} />
+    );
+    expect(inspection.queryByRole('button', { name: /Inspect/ })).toBeNull();
+    expect(inspection.getByText('Select an action to inspect')).toBeTruthy();
+  });
+
   it('moves desktop HP/AC/movement into one fixed status section and restores the original header without opt-in', () => {
     const desktop = propsFor(fresh, {
       actionPresentation: { mode: 'organized-hud', desktopIcons: {} },
