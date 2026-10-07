@@ -279,6 +279,10 @@ export interface ActionDockProps {
   actionPresentation?: CombatExperienceActionPresentation;
   /** Fixed presentation slot outside all action/reaction/spectator gates. */
   desktopStatus?: ReactNode;
+  /** Caller-owned targeting portal host; placement only, outside action gates. */
+  desktopTargeting?: ReactNode;
+  targetingControlsActive?: boolean;
+  desktopTargetingHeight?: number;
   onOpenEquipment?: () => void;
   equipmentOpen?: boolean;
   onCenterView?: () => void;
@@ -507,15 +511,19 @@ export function ActionDock(props: ActionDockProps) {
       className={styles.desktopDock}
       data-desktop-dock="true"
       style={
-        height
-          ? ({ '--desktop-dock-height': `${height}px` } as CSSProperties)
-          : undefined
+        {
+          '--desktop-dock-height': height ? `${height}px` : undefined,
+          '--desktop-targeting-clearance': props.desktopTargetingHeight
+            ? `${props.desktopTargetingHeight + 16}px`
+            : '0px',
+        } as CSSProperties
       }
     >
       {props.desktopStatus}
       <div className={styles.desktopDockActions}>
         <ActionDockContents {...props} />
       </div>
+      {props.desktopTargeting}
     </div>
   );
 }
@@ -528,6 +536,7 @@ function ActionDockContents({
   authorityFresh,
   actionPresentation,
   desktopStatus,
+  targetingControlsActive,
   onOpenEquipment,
   equipmentOpen,
   onCenterView,
@@ -980,6 +989,7 @@ function ActionDockContents({
           onCancelSelection={onCancelSelection}
           secondaryControls={standing}
           embedded={Boolean(desktopStatus)}
+          externalCancel={targetingControlsActive}
           optionDeclaration={optionDeclaration}
           onSelectCastOption={onSelectCastOption}
           onCancelCastOption={onCancelCastOption}

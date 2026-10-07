@@ -183,6 +183,8 @@ export interface OrganizedActionSurfaceProps {
   secondaryControls?: ReactNode;
   /** Parent desktop dock owns the shared frame when status is composed beside actions. */
   embedded?: boolean;
+  /** A separate targeting strip owns the visible cancel control. */
+  externalCancel?: boolean;
   optionDeclaration?: Declaration;
   onSelectCastOption?: (id: string) => void;
   onCancelCastOption?: () => void;

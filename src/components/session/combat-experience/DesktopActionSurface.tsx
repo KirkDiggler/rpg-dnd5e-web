@@ -13,6 +13,7 @@ import {
   type DesktopHotbarSection,
 } from './desktopHotbarLayout';
 import { EffectRows } from './EffectRows';
+import { isMultiMemberDeclaration } from './memberTargeting';
 import { currentExecutableDeclaration } from './organizedActionPresentation';
 import type { OrganizedActionSurfaceProps } from './OrganizedActionSurface';
 
@@ -26,6 +27,7 @@ export function DesktopActionSurface({
   onCancelSelection,
   secondaryControls,
   embedded = false,
+  externalCancel = false,
   optionDeclaration,
   onSelectCastOption,
   onCancelCastOption,
@@ -107,6 +109,14 @@ export function DesktopActionSurface({
     const current = authorityFresh
       ? currentExecutableDeclaration(declarations, id)
       : undefined;
+    // Re-clicking an armed multi-target action neither confirms nor erases picks.
+    if (
+      current?.id === armedDeclarationId &&
+      isMultiMemberDeclaration(current)
+    ) {
+      setInspectedId(null);
+      return;
+    }
     if (current) {
       setInspectedId(null);
       onSelectDeclaration(current);
@@ -240,7 +250,10 @@ export function DesktopActionSurface({
           className={styles.cancel}
           style={{
             visibility:
-              !editing && armedDeclarationId && onCancelSelection
+              !editing &&
+              !externalCancel &&
+              armedDeclarationId &&
+              onCancelSelection
                 ? 'visible'
                 : 'hidden',
           }}

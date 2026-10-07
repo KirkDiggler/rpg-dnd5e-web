@@ -10,6 +10,12 @@ import { effectLinesFor, heldEffectLinesFor } from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { EffectRows } from './EffectRows';
+import { MapFirstTargeting } from './MapFirstTargeting';
+import {
+  memberTargetingView,
+  toggleMemberTarget,
+  type MemberTargetingInput,
+} from './memberTargeting';
 import type { SelectedCombatExperience } from './selection';
 import type {
   CombatExperienceMapRenderProps,
@@ -29,6 +35,9 @@ export interface TargetSurfaceProps {
   pacingNotice?: string | null;
   changedOptionNotice?: string | null;
   castOptionId?: string;
+  mapFirst?: MemberTargetingInput;
+  mapFirstHost?: HTMLElement | null;
+  onMapFirstHeightChange?: (height: number) => void;
   onChangeCastOption?: () => void;
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
@@ -54,6 +63,9 @@ export function TargetSurface({
   pacingNotice,
   changedOptionNotice,
   castOptionId,
+  mapFirst,
+  mapFirstHost,
+  onMapFirstHeightChange,
   onChangeCastOption,
   memberNames,
   location,
@@ -65,6 +77,17 @@ export function TargetSurface({
   hoveredTarget,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
+  const mapFirstActive = Boolean(
+    mapFirst &&
+    phase === 'targeting' &&
+    (!mapFirst.declaration ||
+      mapFirst.declaration.targetKind === TargetKind.MEMBER)
+  );
+  const mapFirstView = mapFirst ? memberTargetingView(mapFirst) : undefined;
+  const chooseMapTarget = (member: string): void => {
+    if (mapFirst && toggleMemberTarget(mapFirst, member).changed)
+      onTargetClick(member);
+  };
   // WHOSE EFFECT ROWS ARE SHOWN (rpg-project#520). Two sources, kept apart
   // so they never fight:
   // - PREVIEW: the last candidate hovered or focused, in the list or on the
@@ -218,7 +241,29 @@ export function TargetSurface({
 
   return (
     <>
-      {renderMap({ attackableTargets: availableTargets, onTargetClick })}
+      {renderMap({
+        attackableTargets: mapFirstActive
+          ? mapFirstView!.availableMembers
+          : availableTargets,
+        selectedTargets: mapFirstActive
+          ? mapFirstView!.selected.map((target) => target.member)
+          : undefined,
+        onTargetClick: mapFirstActive ? chooseMapTarget : onTargetClick,
+      })}
+      {mapFirstActive && mapFirst && (
+        <MapFirstTargeting
+          input={mapFirst}
+          host={mapFirstHost ?? null}
+          onHeightChange={onMapFirstHeightChange}
+          memberNames={memberNames}
+          hoveredTarget={hoveredTarget}
+          optionId={castOptionId}
+          onChoose={chooseMapTarget}
+          onConfirm={onConfirmTargets}
+          onCancel={onCancelSelection}
+          onChangeChoice={onChangeCastOption}
+        />
+      )}
       <div className={styles.mapVignette} aria-hidden="true" />
       <div
         className={`${styles.roomLabel} ${navigationControls ? styles.roomLabelWithNavigation : ''}`}
@@ -275,7 +320,7 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {phase === 'targeting' && isMemberTargeted && (
+      {!mapFirstActive && phase === 'targeting' && isMemberTargeted && (
         <div className={styles.contextPrompt} data-phase="targeting">
           <span className={styles.turnPromptKicker}>{armedName} armed</span>
           <strong>
@@ -405,52 +450,55 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {phase === 'targeting' && isMemberTargeted && hasEffects && (
-        <section
-          id={effectsPanelId}
-          className={styles.targetEffects}
-          aria-label={
-            inspectedName
-              ? `${armedName} effects against ${inspectedName}`
-              : `${armedName} effects`
-          }
-          // Small frames show the panel only for an inspected target, so the
-          // map is not covered until a player asks.
-          data-inspecting={inspectedName ? 'true' : undefined}
-        >
-          <span className={styles.targetEffectsHeading}>
-            <span className={styles.turnPromptKicker}>Effects</span>
-            {inspectedName && (
-              <button
-                type="button"
-                className={styles.targetEffectsToggle}
-                onClick={closeInspection}
-              >
-                Close
-              </button>
-            )}
-          </span>
-          <strong>
-            {inspectedName ? `Against ${inspectedName}` : armedName}
-          </strong>
-          {!inspectedName && (
-            <span className={styles.targetEffectsHint}>
-              Hover, focus or open a target’s effects to see its answers
+      {!mapFirstActive &&
+        phase === 'targeting' &&
+        isMemberTargeted &&
+        hasEffects && (
+          <section
+            id={effectsPanelId}
+            className={styles.targetEffects}
+            aria-label={
+              inspectedName
+                ? `${armedName} effects against ${inspectedName}`
+                : `${armedName} effects`
+            }
+            // Small frames show the panel only for an inspected target, so the
+            // map is not covered until a player asks.
+            data-inspecting={inspectedName ? 'true' : undefined}
+          >
+            <span className={styles.targetEffectsHeading}>
+              <span className={styles.turnPromptKicker}>Effects</span>
+              {inspectedName && (
+                <button
+                  type="button"
+                  className={styles.targetEffectsToggle}
+                  onClick={closeInspection}
+                >
+                  Close
+                </button>
+              )}
             </span>
-          )}
-          <EffectRows lines={effectLinesFor(declaration, inspectedMember)} />
-          {heldLines.length > 0 && (
-            // The target's own effects, after the actor's and apart from
-            // them: never folded into, or matched against, the rows above.
-            <>
-              <span className={styles.targetEffectsGroup} aria-hidden="true">
-                {HELD_HEADING}
+            <strong>
+              {inspectedName ? `Against ${inspectedName}` : armedName}
+            </strong>
+            {!inspectedName && (
+              <span className={styles.targetEffectsHint}>
+                Hover, focus or open a target’s effects to see its answers
               </span>
-              <EffectRows lines={heldLines} label={HELD_HEADING} />
-            </>
-          )}
-        </section>
-      )}
+            )}
+            <EffectRows lines={effectLinesFor(declaration, inspectedMember)} />
+            {heldLines.length > 0 && (
+              // The target's own effects, after the actor's and apart from
+              // them: never folded into, or matched against, the rows above.
+              <>
+                <span className={styles.targetEffectsGroup} aria-hidden="true">
+                  {HELD_HEADING}
+                </span>
+                <EffectRows lines={heldLines} label={HELD_HEADING} />
+              </>
+            )}
+          </section>
+        )}
       {phase === 'awaiting-roll' && targetName && (
         <div className={styles.contextPrompt} data-phase="awaiting-roll">
           <span className={styles.turnPromptKicker}>Attack declared</span>

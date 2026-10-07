@@ -48,12 +48,18 @@
 .card {
   position: absolute;
   z-index: 30;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 8px + var(--desktop-targeting-clearance, 0px));
   left: 8px;
   width: min(360px, calc(100cqw - 64px));
   max-height: min(
     440px,
-    calc(100cqh - var(--desktop-dock-height, 280px) - 36px)
+    max(
+      64px,
+      calc(
+        100cqh - var(--desktop-dock-height, 280px) -
+          var(--desktop-targeting-clearance, 0px) - 36px
+      )
+    )
   );
   overflow-y: auto;
   overscroll-behavior: contain;

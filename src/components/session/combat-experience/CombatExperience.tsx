@@ -4,6 +4,7 @@ import {
   ClockKind,
   LifeState,
   Standing,
+  TargetKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useRef, useState } from 'react';
@@ -212,6 +213,10 @@ export function CombatExperience({
   const [endTurnTarget, setEndTurnTarget] = useState<HTMLSpanElement | null>(
     null
   );
+  const [targetingHost, setTargetingHost] = useState<HTMLDivElement | null>(
+    null
+  );
+  const [targetingHeight, setTargetingHeight] = useState(0);
   const scrollInitiative = (direction: -1 | 1) => {
     const order = initiativeScroll.current;
     if (order)
@@ -352,6 +357,16 @@ export function CombatExperience({
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
+  const armedMatches = declarations.filter(
+    (offer) => offer.id === presentationState.armedDeclarationId
+  );
+  const targetingDeclaration =
+    armedMatches.length === 1 ? armedMatches[0] : undefined;
+  const targetingControlsActive =
+    desktopHotbar &&
+    phase === 'targeting' &&
+    (!targetingDeclaration ||
+      targetingDeclaration.targetKind === TargetKind.MEMBER);
   const selectedEffectSources = declarations.filter(
     (offer) =>
       offer.id === presentationState.armedDeclarationId &&
@@ -431,6 +446,20 @@ export function CombatExperience({
             showTurnNotice={showTurnNotice}
             pacingNotice={pacingNotice}
             changedOptionNotice={presentationState.changedOptionNotice}
+            mapFirst={
+              desktopHotbar
+                ? {
+                    declaration: targetingDeclaration,
+                    selectedMembers:
+                      presentationState.selectedCandidateMembers ?? [],
+                    authorityFresh,
+                    turnAllowed: clock !== ClockKind.TURN || isViewerTurn,
+                    optionId: presentationState.selectedOption,
+                  }
+                : undefined
+            }
+            mapFirstHost={desktopHotbar ? targetingHost : undefined}
+            onMapFirstHeightChange={setTargetingHeight}
             castOptionId={
               desktopHotbar
                 ? (presentationState.selectedOption ?? undefined)
@@ -438,9 +467,10 @@ export function CombatExperience({
             }
             onChangeCastOption={
               desktopHotbar &&
-              selection?.declaration?.available &&
-              selection.declaration.options.length > 0
-                ? () => onSelectDeclaration(selection.declaration!)
+              authorityFresh &&
+              targetingDeclaration?.available &&
+              targetingDeclaration.options.length > 0
+                ? () => onSelectDeclaration(targetingDeclaration)
                 : undefined
             }
             memberNames={memberNames}
@@ -693,6 +723,19 @@ export function CombatExperience({
             declarations={declarations}
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
+            targetingControlsActive={targetingControlsActive}
+            desktopTargetingHeight={
+              targetingControlsActive ? targetingHeight : 0
+            }
+            desktopTargeting={
+              desktopHotbar ? (
+                <div
+                  ref={setTargetingHost}
+                  className={styles.desktopTargetingSlot}
+                  data-testid="desktop-targeting-host"
+                />
+              ) : undefined
+            }
             desktopStatus={
               desktopHotbar ? (
                 <DesktopStatusSection

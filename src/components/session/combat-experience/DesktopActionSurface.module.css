@@ -361,7 +361,7 @@
 .inspectionBridge {
   position: absolute;
   z-index: 30;
-  bottom: 100%;
+  bottom: calc(100% + var(--desktop-targeting-clearance, 0px));
   left: 0;
   width: min(400px, 100%);
   padding-bottom: 10px;
@@ -369,7 +369,13 @@
 .inspection {
   max-height: min(
     440px,
-    calc(100cqh - var(--hotbar-surface-height, 280px) - 36px)
+    max(
+      64px,
+      calc(
+        100cqh - var(--hotbar-surface-height, 280px) -
+          var(--desktop-targeting-clearance, 0px) - 36px
+      )
+    )
   );
   overflow-y: auto;
   overscroll-behavior: contain;

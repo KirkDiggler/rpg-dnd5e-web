@@ -1,6 +1,6 @@
 # Desktop hotbar concept plan
 
-Current iteration: [FAVORITES-PLAN.md](FAVORITES-PLAN.md). The earlier drag-order and quick/abilities arrangements below are historical checkpoints, superseded by grouped favorites.
+Current iteration: [TARGETING-PLAN.md](TARGETING-PLAN.md). Toolbar plan: [FAVORITES-PLAN.md](FAVORITES-PLAN.md). The earlier drag-order and quick/abilities arrangements below are historical checkpoints, superseded by grouped favorites.
 
 ## Goal, authority and constraints
 

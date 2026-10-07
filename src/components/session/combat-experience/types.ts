@@ -159,6 +159,8 @@ export interface CombatExperienceRollWindow {
 
 export interface CombatExperienceMapRenderProps {
   attackableTargets: readonly string[];
+  /** Presence opts into member-target markers; IDs are local selection, not authorization. */
+  selectedTargets?: readonly string[];
   onTargetClick: (targetId: string) => void;
 }
 

@@ -2824,6 +2824,14 @@ button.diceDrawerCue:focus-visible {
 .desktopDockActions {
   min-width: 0;
 }
+.desktopTargetingSlot {
+  position: absolute;
+  z-index: 35;
+  bottom: calc(100% + 10px);
+  left: 8px;
+  right: 8px;
+  pointer-events: none;
+}
 .combatExperience[data-desktop-hotbar='true'] .desktopDock .actionRow {
   grid-row: auto;
   grid-column: auto;

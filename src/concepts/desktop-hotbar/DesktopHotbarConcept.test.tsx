@@ -51,10 +51,13 @@ describe('DesktopHotbarConcept', () => {
     render(<DesktopHotbarConcept />);
     expect(screen.getByTestId('desktop-action-surface')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Bane' }));
-    expect(screen.getByText('Choose 1–2 targets')).toBeInTheDocument();
+    expect(screen.getByText('0/2 selected')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Bane targets' })
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('no RPC');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel action' }));
-    expect(screen.queryByText('Choose 1–2 targets')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('map-first-targeting')).not.toBeInTheDocument();
   });
   it('defaults to one row with paging, and exposes all 36 distinct offers at four rows', () => {
     render(<DesktopHotbarConcept />);
@@ -199,7 +202,9 @@ describe('DesktopHotbarConcept', () => {
       'aria-pressed',
       'true'
     );
-    expect(screen.getByText('Command · Grovel armed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Command · Grovel', { exact: true })
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Change choice' }));
     expect(
       screen.getByRole('dialog', { name: 'Command choices' })

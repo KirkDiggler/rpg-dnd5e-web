@@ -1,8 +1,15 @@
 import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
+import { buildActionTooltip } from '@/components/session/combat-experience/actionTooltip';
 import type {
   DesktopHotbarLayout,
   HotbarRows,
 } from '@/components/session/combat-experience/desktopHotbarLayout';
+import {
+  isMultiMemberDeclaration,
+  memberTargetingView,
+  toggleMemberTarget,
+  type MemberTargetingInput,
+} from '@/components/session/combat-experience/memberTargeting';
 import type {
   ActionIconPresentation,
   OrganizedActionPresentation,
@@ -15,11 +22,19 @@ import type {
 import type { DebugFeedEntry } from '@/components/session/debugLogLine';
 import { create } from '@bufbuild/protobuf';
 import {
+  ClockKind,
   ParticipantSchema,
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
 import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
 import { ORGANIZED_HUD_PROFILES } from './fixtures';
@@ -62,6 +77,7 @@ export function OrganizedHudConcept({
   const frameRef = useRef<HTMLDivElement>(null);
   const [desktopFrame, setDesktopFrame] = useState(false);
   const [iconsEnabled, setIconsEnabled] = useState(true);
+  const desktopMode = iconExperiment && iconsEnabled && desktopFrame;
   const [barRows, setBarRows] = useState<HotbarRows>(1);
   const [preferences, setPreferences] = useState<{
     kind: 'favorites-v1';
@@ -151,19 +167,23 @@ export function OrganizedHudConcept({
     });
   };
   // Tracker-only stress fixture; these extras do not create map actors or actions.
-  const participants = crowdedInitiative
-    ? [
-        ...fixture.participants,
-        ...Array.from({ length: 8 }, (_, index) =>
-          create(ParticipantSchema, {
-            ...fixture.participants[1],
-            member: `initiative-preview-${index}`,
-            name: `Skeleton ${index + 3}`,
-            active: false,
-          })
-        ),
-      ]
-    : fixture.participants;
+  const participants = useMemo(
+    () =>
+      crowdedInitiative
+        ? [
+            ...fixture.participants,
+            ...Array.from({ length: 8 }, (_, index) =>
+              create(ParticipantSchema, {
+                ...fixture.participants[1],
+                member: `initiative-preview-${index}`,
+                name: `Skeleton ${index + 3}`,
+                active: false,
+              })
+            ),
+          ]
+        : fixture.participants,
+    [crowdedInitiative, fixture.participants]
+  );
   const authorityFresh = fixture.authorityFresh ?? true;
   const cancel = useCallback(() => {
     setState(EMPTY);
@@ -206,7 +226,89 @@ export function OrganizedHudConcept({
       `Fixture-only selected ${declaration.id}; no RPC or rule execution was sent.`
     );
   };
+  const targetingInputFor = useCallback(
+    (current: CombatExperiencePresentationState): MemberTargetingInput => {
+      const matches = fixture.declarations.filter(
+        (offer) => offer.id === current.armedDeclarationId
+      );
+      return {
+        declaration: matches.length === 1 ? matches[0] : undefined,
+        selectedMembers: current.selectedCandidateMembers ?? [],
+        authorityFresh,
+        turnAllowed:
+          fixture.clock !== ClockKind.TURN ||
+          participants.find((participant) => participant.active)?.member ===
+            fixture.viewerMember,
+        optionId: current.selectedOption,
+      };
+    },
+    [
+      fixture.declarations,
+      fixture.clock,
+      fixture.viewerMember,
+      authorityFresh,
+      participants,
+    ]
+  );
+  // Canvas commits can trail the DOM HUD. An old map callback must consult
+  // the current local choice/fixture, not resurrect a cancelled action.
+  const targetingSnapshot = useRef({
+    state,
+    inputFor: targetingInputFor,
+    desktopMode,
+    scope: storyScope,
+    participants,
+  });
+  useLayoutEffect(() => {
+    targetingSnapshot.current = {
+      state,
+      inputFor: targetingInputFor,
+      desktopMode,
+      scope: storyScope,
+      participants,
+    };
+  }, [state, targetingInputFor, desktopMode, storyScope, participants]);
   const selectTarget = (member: string) => {
+    const snapshot = targetingSnapshot.current;
+    if (snapshot.desktopMode !== desktopMode || snapshot.scope !== storyScope)
+      return;
+    if (desktopMode) {
+      const input = snapshot.inputFor(snapshot.state);
+      const next = toggleMemberTarget(input, member);
+      if (!next.changed) return;
+      const multi =
+        !input.declaration || isMultiMemberDeclaration(input.declaration);
+      setState((current) => {
+        if (current.armedDeclarationId !== snapshot.state.armedDeclarationId)
+          return current;
+        const latest = toggleMemberTarget(
+          targetingSnapshot.current.inputFor(current),
+          member
+        );
+        if (!latest.changed) return current;
+        return multi
+          ? {
+              ...current,
+              selectedCandidateMembers: latest.members,
+              selectedCandidateMember: latest.members.at(-1) ?? null,
+            }
+          : EMPTY;
+      });
+      const name =
+        snapshot.participants.find(
+          (participant) => participant.member === member
+        )?.name ?? member;
+      const option = input.declaration?.options.find(
+        (entry) => entry.id === input.optionId
+      );
+      const label = `${input.declaration ? buildActionTooltip(input.declaration).title : 'action'}${option?.label ? ` · ${option.label}` : ''}`;
+      setIntent(
+        multi
+          ? `Selection only: request for ${name}; no RPC or rule execution was sent.`
+          : `Fixture-only ${label} → ${name} requested; no RPC or rule execution was sent.`
+      );
+      return;
+    }
     setState((current) => {
       const selected = current.selectedCandidateMembers ?? [];
       const next = selected.includes(member)
@@ -221,6 +323,31 @@ export function OrganizedHudConcept({
     setIntent(
       `Fixture-only target ${member} selected; confirm or cancel without an RPC.`
     );
+  };
+
+  const confirmTargets = (): void => {
+    if (!desktopMode) {
+      setIntent(
+        'Fixture-only targets confirmed; no RPC or rule execution was sent.'
+      );
+      return;
+    }
+    const input = targetingInputFor(state);
+    const view = memberTargetingView(input);
+    if (!view.canConfirm || !input.declaration) return;
+    const option = input.declaration.options.find(
+      (entry) => entry.id === state.selectedOption
+    );
+    const label = `${buildActionTooltip(input.declaration).title}${option?.label ? ` · ${option.label}` : ''}`;
+    const names = view.selected.map(
+      (target) =>
+        participants.find((participant) => participant.member === target.member)
+          ?.name ?? target.member
+    );
+    setIntent(
+      `Fixture-only ${input.declaration.verb === Verb.CAST ? 'cast' : 'confirm'} ${label} → ${names.join(', ') || 'no targets'} requested; no RPC or rule execution was sent.`
+    );
+    setState(EMPTY);
   };
 
   return (
@@ -361,10 +488,7 @@ export function OrganizedHudConcept({
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,
-            desktopIcons:
-              iconExperiment && iconsEnabled && desktopFrame
-                ? profile.desktopIcons
-                : undefined,
+            desktopIcons: desktopMode ? profile.desktopIcons : undefined,
             desktopCustomization: iconExperiment
               ? {
                   layout: {
@@ -420,9 +544,14 @@ export function OrganizedHudConcept({
           diceEvents={[]}
           location={{ name: 'Reference Tomb', area: 'South reliquary' }}
           hoveredTarget={hoveredTarget}
-          renderMap={({ attackableTargets, onTargetClick }) => (
+          renderMap={({
+            attackableTargets,
+            selectedTargets,
+            onTargetClick,
+          }) => (
             <SessionCombatMap
               attackableTargets={attackableTargets}
+              selectedTargets={selectedTargets}
               onTargetClick={onTargetClick}
               onHoverTarget={setHoveredTarget}
               touchPanEnabled
@@ -449,11 +578,7 @@ export function OrganizedHudConcept({
           onCancelCastOption={cancel}
           onCancelSelection={cancel}
           onTargetClick={selectTarget}
-          onConfirmTargets={() =>
-            setIntent(
-              'Fixture-only targets confirmed; no RPC or rule execution was sent.'
-            )
-          }
+          onConfirmTargets={confirmTargets}
           onEndTurn={(declaration) =>
             setIntent(
               `Fixture-only End Turn ${declaration.id}; no RPC or rule execution was sent.`

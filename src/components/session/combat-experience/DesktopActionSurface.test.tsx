@@ -249,6 +249,8 @@ describe('DesktopActionSurface', () => {
       key: 'Escape',
     });
     fireEvent.click(screen.getByRole('button', { name: 'Bane' }));
+    expect(select).not.toHaveBeenCalled(); // Same armed multi-target action preserves picks.
+    fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
     expect(select).toHaveBeenCalledOnce();
   });
   it('shares the four-favorite limit across cantrips and leveled spells without mixing the blocks', () => {
