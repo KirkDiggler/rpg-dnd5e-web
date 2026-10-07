@@ -211,13 +211,20 @@ export function ChoiceRenderer({
           currentSelections={currentSelections}
           getDisplayInfo={(ref: string) => ({
             name: spellCatalog.get(ref)?.name || spellRefLabel(ref),
+            description: spellCatalog.get(ref)?.description,
           })}
           onSelectionChange={onSelectionChange}
         />
         {lockedRefs.map((ref) => (
           <button
             key={ref}
-            aria-label={`${spellCatalog.get(ref)?.name || spellRefLabel(ref)} Already selected in another cantrip choice`}
+            aria-label={[
+              spellCatalog.get(ref)?.name || spellRefLabel(ref),
+              spellCatalog.get(ref)?.description,
+              'Already selected in another cantrip choice',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             type="button"
             disabled
             className="rounded-lg border p-3 text-left cursor-not-allowed"
@@ -225,6 +232,11 @@ export function ChoiceRenderer({
             <span className="block font-semibold">
               {spellCatalog.get(ref)?.name || spellRefLabel(ref)}
             </span>
+            {spellCatalog.get(ref)?.description && (
+              <span className="block text-sm">
+                {spellCatalog.get(ref)?.description}
+              </span>
+            )}
             <span className="block text-sm">
               Already selected in another cantrip choice
             </span>
@@ -235,7 +247,14 @@ export function ChoiceRenderer({
             {visibleGrants.map((grant) => (
               <button
                 key={grant.spellRef}
-                aria-label={`${spellRefLabel(grant.spellRef)} Granted by ${grant.sourceName}`}
+                aria-label={[
+                  spellCatalog.get(grant.spellRef)?.name ||
+                    spellRefLabel(grant.spellRef),
+                  spellCatalog.get(grant.spellRef)?.description,
+                  `Granted by ${grant.sourceName}`,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 type="button"
                 disabled
                 className="rounded-lg border p-3 text-left cursor-not-allowed"
@@ -246,8 +265,14 @@ export function ChoiceRenderer({
                 }}
               >
                 <span className="block font-semibold">
-                  {spellRefLabel(grant.spellRef)}{' '}
+                  {spellCatalog.get(grant.spellRef)?.name ||
+                    spellRefLabel(grant.spellRef)}
                 </span>
+                {spellCatalog.get(grant.spellRef)?.description && (
+                  <span className="block text-sm">
+                    {spellCatalog.get(grant.spellRef)?.description}
+                  </span>
+                )}
                 <span
                   className="block text-sm"
                   style={{ color: 'var(--text-muted)' }}
