@@ -26,12 +26,19 @@ function ActionArt({
 }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return art?.src && art.src !== failedSource ? (
-    <img
-      src={art.src}
-      alt=""
-      draggable={false}
-      onError={() => setFailedSource(art.src)}
-    />
+    <span
+      className={styles.art}
+      style={{ maskImage: `url("${art.src}")` }}
+      aria-hidden="true"
+    >
+      {/* Retain native load/error reporting; the source alpha paints the tint. */}
+      <img
+        src={art.src}
+        alt=""
+        draggable={false}
+        onError={() => setFailedSource(art.src)}
+      />
+    </span>
   ) : (
     <span className={styles.fallback} aria-hidden="true">
       {art?.fallback ?? label.slice(0, 2)}
@@ -91,6 +98,7 @@ export function DesktopActionSurface({
     <div
       className={styles.surface}
       data-testid="desktop-action-surface"
+      data-crowded={offers.length > 18}
       onPointerLeave={() => {
         setInspectedId(null);
         setPointerInCard(false);
@@ -115,6 +123,7 @@ export function DesktopActionSurface({
             className={styles.group}
             key={group.label}
             aria-label={group.label}
+            style={{ flexGrow: group.entries.length }}
           >
             <h3>{group.label}</h3>
             <div className={styles.offers}>
@@ -169,9 +178,9 @@ export function DesktopActionSurface({
         ))}
       </div>
       <div className={styles.footer}>
-        <span className={styles.hint}>
-          Hover to inspect · Click to select <span>A Action · B Bonus</span>
-        </span>
+        {secondaryControls && (
+          <div className={styles.utilities}>{secondaryControls}</div>
+        )}
         {/* Reserve the cancel cell so selection never moves the icons. */}
         <button
           type="button"
@@ -185,9 +194,6 @@ export function DesktopActionSurface({
           Cancel action
         </button>
       </div>
-      {secondaryControls && (
-        <div className={styles.utilities}>{secondaryControls}</div>
-      )}
       {inspected && tooltip && (
         <div className={styles.inspectionBridge}>
           <div

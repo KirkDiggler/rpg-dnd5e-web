@@ -11,6 +11,7 @@ Open the development app at `?concept=desktop-hotbar&preview=1`, or select **Des
 - Click Command, then Grovel/Flee to exercise the shared cast-option path.
 - Select **Action spent** and inspect Cure Wounds: its refusal remains visible and it cannot select. Healing Word stays available in this explicit fixture.
 - Select **Slots spent**: limited-use spells remain in place, unavailable. Cantrips remain available in this fixture.
+- Select **36 icons (layout only)**: 25 explicitly artificial samples join the 11 normal offers. Every icon stays directly inspectable. This is a density stress fixture, not a real cleric repertoire.
 - Open/close the existing log while browsing. The opaque inspection card remains above the hotbar, outside wrapping groups. Its contents are scrollable and keyboard-focusable; Escape dismisses it.
 - Shrink the actual preview frame below 1000px wide or to 500px high or less. The existing organizer, collections and touch handling return. The **Landscape phone** control exercises that same fallback.
 
@@ -28,6 +29,8 @@ All five distinct INTERFACE archives in Downloads were surveyed. This iteration 
 
 On a fresh checkout, copy the referenced `ICON_DarkFantasy_*_Clean.png` files from that archive to the ignored directory. The component remains usable with lettering if those local files are absent. Existing reference-scene models must also be locally synced for the 3D scene.
 
+The density iteration uses 40px buttons and 24px tinted glyphs (previously 58px/34px), one combined utility/cancel row, and no permanent tutorial row. At 1600×900 and 1280×720 the regular bar is 112px high; all 36 stress icons fit inside a 156px bar with the log open. Tint comes from explicit fixture metadata, not inferred game rules. Dodge uses a temporary **Do** placeholder rather than a stealth glyph. Full pack counts, overlap and semantic coverage gaps are in [ICON-AUDIT.md](ICON-AUDIT.md).
+
 The inspected session declaration seam does not carry full spell descriptions or weapon damage dice. The tooltip renders the facts it has; it does not invent those mechanics. Adding catalog-backed descriptions is not claimed by this layout prototype. Wider repertoire paging/filtering and a redesigned status/log layout are also not part of this first slice.
 
 ## Verification
@@ -35,12 +38,13 @@ The inspected session declaration seam does not carry full spell descriptions or
 Checked task contracts and requirement/seam coverage: [PLAN.md](PLAN.md).
 
 - `npm run typecheck` — passed with dependencies installed from the existing lockfile.
-- Focused new surface/concept and existing organizer/concept tests — 38 passed.
+- Focused new surface/concept and existing organizer/concept tests — 40 passed.
 - Changed-file ESLint and Prettier — passed.
+- Native Chrome/Playwright density probe: all 36 distinct offers are 40×40px, inside the surface/viewport, non-overlapping and loaded; opaque tooltip above bar, no hover dispatch; ready/crowded heights 112px/156px at both desktop sizes. Screenshots inspected. One combined browser command timed out; the standalone regression rerun passed.
 - Native Chrome/Playwright: 1600×900 and 1280×720, all five spell icons visible before clicks; hover dispatches nothing; icon bounds unchanged; tooltip opaque and above bar/in viewport; refused click blocked; available bonus action selects; Command options and keyboard focus/Escape/Enter exercised.
 - 844×390 and 393×852: original organizer restored, spell collection visible, no document overflow. Screenshots inspected after rendering. This is responsive browser evidence, not an Android/Discord touch walkthrough.
 - Local evidence: ignored `evidence/desktop-hotbar/verification.json`, `verify.mjs`, and screenshots. No browser page errors during the walkthrough.
 
 Initial dependency reuse found the root checkout's node_modules out of sync with its tracked lockfile; `npm ci --ignore-scripts` in this isolated worktree restored the declared versions without changing dependency files. That also left this new worktree without Husky's generated hook shim, so the first commit did not execute pre-commit. `npm run prepare` restored the shim; `npx lint-staged --diff HEAD^..HEAD` then checked the entire first commit's changed files, and the documentation follow-up runs the installed hook normally.
 
-Operator visual acceptance, full PR-boundary CI, independent review and live promotion remain outstanding. The running preview is for collaborative iteration, not a merge-ready claim.
+The operator liked the first preview and requested this density/artwork iteration. Walkthrough of the revised density, full PR-boundary CI, independent review and live promotion remain outstanding. The running preview is for collaborative iteration, not a merge-ready claim.

@@ -78,3 +78,34 @@ Implementation detail correction: frame measurement and comparison fit inside th
 | local licensed sprites                 | icon image           | named ignored URLs; fallback if load fails          | local only                     | load verification and git check             |
 
 Plan checks: no changed wire, persistence, events or package pins. Full spell descriptions are absent at the inspected seam; tooltip keeps available facts rather than inventing mechanics. Layout threshold is local experiment sizing, not a production device policy. Existing accepted mobile behavior remains the fallback. No required architectural decision left open for this bounded concept.
+
+## Iteration 2 — density and icon coverage
+
+Authority: operator liked the first preview and requested less vertical space, smaller icons, a check against dozens of offers and a glyph coverage audit; identified Dodge/Stealth confusion and suggested color. Inspected baseline `8dbe36e8` and all five local INTERFACE archives. No new gameplay semantics or production changes.
+
+### Task 4: Dense, tinted icon experiment and honest coverage gaps
+
+**Delivers:** R7 smaller footprint, R8 dozens-of-icons proof, R9 distinct glyph audit and non-misleading Dodge fallback, R10 tinted glyphs (not just borders).
+**Owner:** web shared presentation and concept fixtures.
+**Prerequisites:** Tasks 1–3, local licensed clean glyph files.
+**Files:** modify `DesktopActionSurface.tsx`/`.module.css`/`.test.tsx`, `src/concepts/desktop-hotbar/fixtures.ts` and `DesktopHotbarConcept.test.tsx`; add `ICON-AUDIT.md`; update CONTRACT/PLAN. No changes to the original organizer.
+**Interfaces:** same optional desktopIcons metadata. An empty src explicitly uses its short-letter fallback. ActionArt uses the source alpha as a CSS mask colored by the existing tone; image load failure preserves the tested fallback. No new provider API. Crowded fixture appends 25 clearly named layout-only sample declarations to the existing 11 visible actions; END_TURN remains separate.
+**Behavior:** 40px desktop buttons (previously 58), 24px glyphs; remove persistent tutorial row, combine utilities/cancel into one compact row, keep section headings. Crowded groups share available width proportionally and wrap without hiding offers; no paging or sorting policy introduced. Opaque tooltip stays above the complete surface. Dodge uses the explicit Do fallback until an appropriate evasion glyph is selected/authored, not the stealth hood. New stress scenario clearly marks artificial samples; no fictional rules descriptions.
+**Tests:** 36 visible offers before any click; sample hover does not dispatch; all ids distinct; Dodge not mapped to Stealthy; color mask uses selected source and fallback still works. Browser assertions: ready surface <=115px high; crowded <=180px at 1280x720 with normal log open; all 36 icons inside surface and viewport with no overlap; keyboard/hover inspection intact and tooltip does not cover offers. Re-run compact mobile evidence unchanged.
+**Verification:** same focused test/typecheck/lint commands; updated ignored Playwright probe at 1600x900/1280x720 and phone sizes. Read screenshots. Audit excludes input-device icons and counts clean representations separately from semantic coverage.
+
+| Requirement            | Implementing task | Proof                                                     |
+| ---------------------- | ----------------- | --------------------------------------------------------- |
+| R7 smaller bar         | 4                 | measured icon size40 and ready height <=115px             |
+| R8 dozens              | 4                 | 36-offer fixture assertion and browser bounds at 1280x720 |
+| R9 icon coverage/Dodge | 4                 | ICON-AUDIT with reproducible counts; no Stealthy mapping  |
+| R10 colored art        | 4                 | mask source/tone test and inspected screenshot            |
+
+| Provider                               | Consumer                 | Produced vs consumed                                                      | Availability                    | Proof                                              |
+| -------------------------------------- | ------------------------ | ------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------- |
+| existing desktopIcons.src/tone         | ActionArt                | same alpha image plus presentational color; empty/broken src -> lettering | local staging, no bytes tracked | mask and fallback tests                            |
+| 25 explicit layout sample declarations | shared organizer/surface | generated rows only; 36 executable offers total                           | new fixture, no rules authority | count/no-dispatch test + actual shell browser walk |
+
+Plan check: smaller controls apply only to opt-in desktop experiment; mobile untouched. Color conveys no new rules or availability. No claim that file count proves full D&D coverage. Glyph authoring/selection for semantic gaps remains operator iteration, not guessed by the renderer.
+
+Task 4 completion: 40 focused tests and typecheck passed. Browser `density.mjs` measures 112px ready / 156px crowded at both 1600×900 and 1280×720, 36 distinct 40px offers in bounds with no overlap and a separate opaque inspection card. Screenshots read after rendering. Existing `verify.mjs` regression passed, including 844×390 / 393×852 fallback; its first combined invocation timed out and the standalone rerun passed. Audit result: 611 clean files, 457 byte-distinct normalized alpha masks, no claim of complete semantic coverage. Dodge remains a named art gap with a labeled fallback. New files are text/code only; licensed sprites stay ignored.

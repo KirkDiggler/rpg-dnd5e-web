@@ -149,6 +149,18 @@ describe('DesktopActionSurface', () => {
       )
     ).toBeVisible();
   });
+  it('uses the chosen image alpha for colored glyphs, not a rule-derived tint', () => {
+    render(<DesktopActionSurface {...defaults} />);
+    const button = screen.getByRole('button', { name: 'Cure Wounds' });
+    const source = profile.desktopIcons!['cure-wounds']!.src;
+    expect(button).toHaveAttribute('data-tone', 'green');
+    expect(button.querySelector('img')!.parentElement).toHaveStyle({
+      maskImage: `url("${source}")`,
+    });
+    fireEvent.error(button.querySelector('img')!);
+    expect(within(button).getByText('Cw')).toBeVisible();
+  });
+
   it('shows selected state and routes cancellation without executing another declaration', () => {
     const cancel = vi.fn();
     render(

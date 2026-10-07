@@ -50,6 +50,31 @@ describe('DesktopHotbarConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel action' }));
     expect(screen.queryByText('Choose 1–2 targets')).not.toBeInTheDocument();
   });
+  it('shows 36 distinct offers in the density fixture without a collection click', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(
+      screen.getByRole('button', { name: '36 icons (layout only)' })
+    );
+    const surface = screen.getByTestId('desktop-action-surface');
+    const offers = Array.from(surface.querySelectorAll('[data-offer-id]'));
+    expect(offers).toHaveLength(36);
+    expect(
+      new Set(offers.map((offer) => offer.getAttribute('data-offer-id'))).size
+    ).toBe(36);
+    expect(surface).toHaveAttribute('data-crowded', 'true');
+    fireEvent.focus(
+      screen.getByRole('button', { name: 'Layout sample 25 — Stealth' })
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Layout sample 25');
+    expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
+    expect(screen.getByRole('button', { name: 'Dodge' })).toHaveTextContent(
+      'Do'
+    );
+    expect(
+      screen.getByRole('button', { name: 'Dodge' }).querySelector('img')
+    ).toBeNull();
+  });
+
   it('routes Command through shared cast options and then targeting', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Command' }));

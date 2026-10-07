@@ -120,7 +120,51 @@ const art = (
   fallback,
   tone,
 });
+// Artificial density samples, not an expanded cleric spell list. The words
+// describe the pictured glyph, not invented rules, legality, or class access.
+const densityGlyphs = [
+  ['Element', 'Fire_01', 'Ember', 'gold'],
+  ['Element', 'Ice_01', 'Frost', 'blue'],
+  ['Element', 'Air_02', 'Wind', 'blue'],
+  ['Element', 'Earth_02', 'Stone', 'green'],
+  ['Inventory', 'Spellbooks_01', 'Tome', 'violet'],
+  ['Inventory', 'Magic_03', 'Rune', 'violet'],
+  ['Inventory', 'Potions_01', 'Potion', 'green'],
+  ['Inventory', 'Plants_01', 'Growth', 'green'],
+  ['Inventory', 'Staves_01', 'Staff', 'gold'],
+  ['Stat', 'Accuracy_01', 'Aim', 'gold'],
+  ['Stat', 'Luck_01', 'Luck', 'green'],
+  ['Stat', 'Spirit_01', 'Spirit', 'blue'],
+  ['Stat', 'Strength_02', 'Might', 'gold'],
+  ['Stat', 'Wisdom_01', 'Insight', 'blue'],
+  ['Status', 'Blinded_01', 'Blindness', 'violet'],
+  ['Status', 'Bleeding_01', 'Blood', 'violet'],
+  ['Status', 'Charmed_01', 'Charm', 'violet'],
+  ['Status', 'Entangled_01', 'Vines', 'green'],
+  ['Status', 'Invisble_01', 'Veil', 'blue'],
+  ['Status', 'Poisoned_01', 'Poison', 'green'],
+  ['Status', 'Shocked_01', 'Spark', 'blue'],
+  ['Status', 'Time_01', 'Time', 'gold'],
+  ['Status', 'Wet_01', 'Water', 'blue'],
+  ['Status', 'Vampiric_01', 'Fangs', 'violet'],
+  ['Status', 'Stealthy_01', 'Stealth', 'blue'],
+] as const;
+const densityDeclarations = densityGlyphs.map((glyph, index) =>
+  spell(
+    `layout-sample-${index + 1}`,
+    `Layout sample ${index + 1} — ${glyph[2]}`,
+    enemies,
+    false
+  )
+);
+
 export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
+  ...Object.fromEntries(
+    densityGlyphs.map(([family, file, , tone], index) => [
+      `layout-sample-${index + 1}`,
+      art(family, file, String(index + 1), tone),
+    ])
+  ),
   'offer:aldric:move': art('Stat', 'Speed_02', 'Mv', 'blue'),
   mace: art('Inventory', 'Maces_01', 'Ma', 'gold'),
   resistance: art('Status', 'DefenseUp_03', 'Re', 'blue'),
@@ -131,7 +175,9 @@ export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
   'cure-wounds': art('Status', 'Health_02', 'Cw', 'green'),
   'healing-word': art('Status', 'FortifiedHealth_01', 'Hw', 'green'),
   dash: art('Status', 'SpeedUp_01', 'Da', 'blue'),
-  dodge: art('Status', 'Stealthy_01', 'Do', 'blue'),
+  // Coverage gap: a stealth hood is NOT an evasion symbol. Keep an honest
+  // labeled placeholder until Dodge has appropriate dedicated artwork.
+  dodge: { src: '', fallback: 'Do', tone: 'blue' },
 };
 const martial = ORGANIZED_HUD_PROFILES[1];
 export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
@@ -156,6 +202,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       'ready',
       'spent-action',
       'spent-slots',
+      'crowded',
       'stale-authority',
       'spectator',
     ].map((id) => ({
@@ -166,6 +213,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
           ready: 'Ready',
           'spent-action': 'Action spent',
           'spent-slots': 'Slots spent',
+          crowded: '36 icons (layout only)',
           'stale-authority': 'Stale authority',
           spectator: 'Spectator',
         } as Record<string, string>
@@ -182,7 +230,10 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
             ? participant.member === 'skeleton-archer'
             : participant.active,
       })),
-      declarations: declarations.map((offer) => {
+      declarations: (id === 'crowded'
+        ? [...declarations, ...densityDeclarations]
+        : declarations
+      ).map((offer) => {
         const reason =
           id === 'spent-action' && offer.slot === Slot.ACTION
             ? 'action: 1 needed, 0 left'
