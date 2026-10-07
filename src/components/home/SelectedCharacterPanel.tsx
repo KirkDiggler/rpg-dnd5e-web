@@ -150,7 +150,11 @@ export function SelectedCharacterPanel({
             <StatBlock label="HP" value={character!.currentHitPoints || 0} />
             <StatBlock
               label="AC"
-              value={character!.combatStats?.armorClass || 10}
+              value={
+                character!.combatStats?.armorClass
+                  ? character!.combatStats.armorClass
+                  : '—'
+              }
             />
           </div>
 
@@ -215,7 +219,13 @@ export function SelectedCharacterPanel({
 }
 
 // Stat Block Component
-function StatBlock({ label, value }: { label: string; value: number }) {
+function StatBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
   return (
     <div
       className="text-center px-6 py-3 rounded-xl"

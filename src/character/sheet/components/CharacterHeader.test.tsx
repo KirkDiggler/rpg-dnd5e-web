@@ -1,5 +1,8 @@
 import { create } from '@bufbuild/protobuf';
-import { CharacterSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  CharacterSchema,
+  CombatStatsSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   Class,
   Race,
@@ -131,5 +134,31 @@ describe('CharacterHeader experience and the level-up prompt', () => {
     );
 
     expect(screen.queryByTestId('level-up-prompt')).not.toBeInTheDocument();
+  });
+});
+
+describe('CharacterHeader armor class', () => {
+  it('shows the armor class the server projected', () => {
+    render(
+      <CharacterHeader
+        character={create(CharacterSchema, {
+          id: 'char-1',
+          name: 'Arthur',
+          combatStats: create(CombatStatsSchema, { armorClass: 16 }),
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('armor-class-readout')).toHaveTextContent('16');
+  });
+
+  it('shows a dash, never an invented number, when no armor class arrived', () => {
+    render(
+      <CharacterHeader
+        character={create(CharacterSchema, { id: 'char-1', name: 'Arthur' })}
+      />
+    );
+
+    expect(screen.getByTestId('armor-class-readout')).toHaveTextContent('—');
   });
 });
