@@ -142,6 +142,8 @@ export interface UseSessionCombatExperienceResult {
   /** Answer the open option menu with one of the ids the declaration listed;
    * the cast then arms or fires exactly as an option-less one would. */
   onSelectCastOption: (optionId: string) => void;
+  /** Explicitly replace an armed cast's option; unlike icon re-selection, clears picks. */
+  onChangeCastOption: (declaration: Declaration) => void;
   /** Close the option menu without casting. Nothing has been sent yet. */
   onCancelCastOption: () => void;
   onTargetClick: (target: string) => void;
@@ -701,6 +703,33 @@ export function useSessionCombatExperience({
     previousActiveRef.current = current;
   }, [active, clock, member]);
 
+  const openCastOptionTray = useCallback(
+    (candidate: Declaration): void => {
+      if (
+        !mountedRef.current ||
+        activeInteractionScope.current !== interactionScope ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member ||
+        castInFlightRef.current
+      )
+        return;
+      const current = uniqueCurrentDeclaration(
+        declarationsRef.current,
+        candidate,
+        Verb.CAST,
+        TargetKind.NONE,
+        TargetKind.AREA,
+        TargetKind.CELL,
+        TargetKind.MEMBER
+      );
+      if (!current?.options.length) return;
+      setInteraction({ ...EMPTY_INTERACTION, optionDeclarationId: current.id });
+      setTargeting(false);
+    },
+    [interactionScope, member, setInteraction]
+  );
+
   /**
    * Arm or fire a cast, once every input the declaration named is in hand.
    *
@@ -1085,21 +1114,7 @@ export function useSessionCombatExperience({
         // labels are drawn; a client that branched on either would be
         // authoring 5e, which is the whole thing declarations prevent.
         if (candidate.options.length > 0) {
-          const current = uniqueCurrentDeclaration(
-            declarationsRef.current,
-            candidate,
-            Verb.CAST,
-            TargetKind.NONE,
-            TargetKind.AREA,
-            TargetKind.CELL,
-            TargetKind.MEMBER
-          );
-          if (!current) return;
-          setInteraction({
-            ...EMPTY_INTERACTION,
-            optionDeclarationId: current.id,
-          });
-          setTargeting(false);
+          openCastOptionTray(candidate);
           return;
         }
         beginCast(candidate, null);
@@ -1107,6 +1122,7 @@ export function useSessionCombatExperience({
     },
     [
       beginCast,
+      openCastOptionTray,
       memberTargetingMode,
       setInteraction,
       deathSave,
@@ -1118,6 +1134,18 @@ export function useSessionCombatExperience({
       scheduleRefresh,
       session,
     ]
+  );
+
+  const onChangeCastOption = useCallback(
+    (candidate: Declaration): void => {
+      if (
+        !selectionIsCurrent() ||
+        interactionRef.current.armedDeclarationId !== candidate.id
+      )
+        return;
+      openCastOptionTray(candidate);
+    },
+    [openCastOptionTray, selectionIsCurrent]
   );
 
   /**
@@ -2141,6 +2169,7 @@ export function useSessionCombatExperience({
       endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onSelectCastOption,
+      onChangeCastOption,
       onCancelCastOption,
       onTargetClick,
       onConfirmTargets,
@@ -2169,6 +2198,7 @@ export function useSessionCombatExperience({
       onCancelSelection,
       logMode,
       onCancelCastOption,
+      onChangeCastOption,
       onCellClick,
       onEndTurn,
       onSelectCastOption,

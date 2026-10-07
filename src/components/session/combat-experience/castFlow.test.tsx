@@ -620,6 +620,70 @@ describe('sending the cast', () => {
     });
   });
 
+  it('changes a multi-cast option explicitly while icon re-selection preserves picks', async () => {
+    const spell = create(DeclarationSchema, {
+      ...baneDeclaration(),
+      options: [
+        create(CastOptionSchema, { id: 'first', label: 'First choice' }),
+        create(CastOptionSchema, { id: 'second', label: 'Second choice' }),
+      ],
+    });
+    render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('first'));
+    act(() => latest.onTargetClick('skeleton-1'));
+    act(() => latest.onSelectDeclaration(spell));
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-1',
+    ]);
+    expect(latest.presentationState.selectedOption).toBe('first');
+    const oldConfirm = latest.onConfirmTargets;
+    const oldClick = latest.onTargetClick;
+    act(() => latest.onChangeCastOption(spell));
+    expect(latest.presentationState.optionDeclarationId).toBe(spell.id);
+    expect(latest.presentationState.armedDeclarationId).toBeNull();
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([]);
+    expect(latest.presentationState.selectedOption).toBeNull();
+    act(() => {
+      oldClick('skeleton-2');
+      oldConfirm();
+    });
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    act(() => latest.onSelectCastOption('second'));
+    act(() => latest.onTargetClick('skeleton-2'));
+    act(() => {
+      latest.onConfirmTargets();
+      latest.onChangeCastOption(spell);
+    });
+    expect(latest.presentationState.optionDeclarationId).toBeNull();
+    await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+    expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
+      targets: ['skeleton-2'],
+      option: 'second',
+    });
+  });
+
+  it('rejects a change-choice callback retained from an earlier selection', () => {
+    const spell = create(DeclarationSchema, {
+      ...baneDeclaration(),
+      options: [create(CastOptionSchema, { id: 'choice', label: 'Choice' })],
+    });
+    render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('choice'));
+    const oldChange = latest.onChangeCastOption;
+    act(() => latest.onCancelSelection());
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('choice'));
+    act(() => latest.onTargetClick('skeleton-2'));
+    act(() => oldChange(spell));
+    expect(latest.presentationState.optionDeclarationId).toBeNull();
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-2',
+    ]);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
   it('keeps an opaque option through self/ally toggles and blocks withdrawn picks until removed', async () => {
     const spell = create(DeclarationSchema, {
       ...baneDeclaration(),

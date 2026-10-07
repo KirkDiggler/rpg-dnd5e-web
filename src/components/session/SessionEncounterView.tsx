@@ -1932,6 +1932,7 @@ function SessionEncounterScope({
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
             onSelectCastOption={combat.onSelectCastOption}
+            onChangeCastOption={combat.onChangeCastOption}
             onCancelCastOption={combat.onCancelCastOption}
             onCancelSelection={combat.onCancelSelection}
             onTargetClick={combat.onTargetClick}

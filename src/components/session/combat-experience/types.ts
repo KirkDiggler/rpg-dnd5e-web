@@ -239,6 +239,8 @@ interface CombatExperienceBaseProps {
    * wherever it would have gone had there been no menu at all.
    */
   onSelectCastOption?: (optionId: string) => void;
+  /** Explicit option replacement, separate from re-clicking an armed command. */
+  onChangeCastOption?: (declaration: Declaration) => void;
   /** Close the option menu without casting. Nothing has been sent yet. */
   onCancelCastOption?: () => void;
   /** Clear the currently selected action without sending a command. */

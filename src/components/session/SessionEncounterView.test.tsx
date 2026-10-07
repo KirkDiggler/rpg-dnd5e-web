@@ -838,6 +838,11 @@ describe('SessionEncounterView production combat integration', () => {
     try {
       const spell = create(DeclarationSchema, {
         id: 'live-cast',
+        // Contract-shape regression: multi-member plus provider-authored options.
+        options: [
+          { id: 'first', label: 'First mode' },
+          { id: 'second', label: 'Second mode' },
+        ],
         verb: Verb.CAST,
         slot: Slot.ACTION,
         targetKind: TargetKind.MEMBER,
@@ -868,6 +873,7 @@ describe('SessionEncounterView production combat integration', () => {
       expect(screen.getByText('Leveled spells')).toBeTruthy();
       expect(screen.queryByRole('region', { name: 'Items' })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      fireEvent.click(screen.getByRole('button', { name: 'First mode' }));
       act(() => {
         hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
       });
@@ -902,16 +908,30 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBe('4');
       expect(hoisted.lastCanvasProps.current?.selectedTargets).toBeUndefined();
       fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      fireEvent.click(screen.getByRole('button', { name: 'First mode' }));
       act(() => {
         hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Cast Bless' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toEqual([
+        'char-1',
+      ]);
+      fireEvent.click(screen.getByRole('button', { name: 'Change choice' }));
+      expect(screen.getByTestId('cast-options')).toBeTruthy();
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toBeUndefined();
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Second mode' }));
+      act(() => hoisted.lastCanvasProps.current?.onEntityClick?.('char-1'));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Cast Bless · Second mode' })
+      );
       await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
       expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
         session: 'enc-1',
         member: 'char-1',
         declarationId: 'live-cast',
         targets: ['char-1'],
+        option: 'second',
       });
       expect(screen.getByTestId('session-canvas')).toBe(canvas);
       view.unmount();

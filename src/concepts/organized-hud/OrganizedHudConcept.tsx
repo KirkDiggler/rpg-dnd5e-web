@@ -565,6 +565,7 @@ export function OrganizedHudConcept({
             />
           )}
           onSelectDeclaration={selectDeclaration}
+          onChangeCastOption={selectDeclaration}
           onSelectCastOption={(option) => {
             const declaration = fixture.declarations.find(
               (candidate) => candidate.id === state.optionDeclarationId

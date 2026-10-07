@@ -185,6 +185,7 @@ export function CombatExperience({
   hoveredTarget,
   onSelectDeclaration,
   onSelectCastOption,
+  onChangeCastOption,
   onCancelCastOption,
   onCancelSelection,
   onTargetClick,
@@ -458,8 +459,9 @@ export function CombatExperience({
               desktopHotbar &&
               authorityFresh &&
               targetingDeclaration?.available &&
-              targetingDeclaration.options.length > 0
-                ? () => onSelectDeclaration(targetingDeclaration)
+              targetingDeclaration.options.length > 0 &&
+              onChangeCastOption
+                ? () => onChangeCastOption(targetingDeclaration)
                 : undefined
             }
             memberNames={memberNames}

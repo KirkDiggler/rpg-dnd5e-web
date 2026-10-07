@@ -74,7 +74,11 @@ a strip above the toolbar, with selected-member chips and an optional list.
 Both cap long content and keep inspection separate from command execution.
 Desktop multi-member CAST selection toggles map/list/chip picks; reaching the
 provider maximum never casts. Separate confirmation echoes the ordered members
-and chosen option. Scalar verbs retain their scalar protocol; unsupported list
+and chosen option. Re-clicking an armed multi-target icon preserves its picks;
+`onChangeCastOption` is a separate controller intent that reopens the current
+option tray and clears prior picks only after current-offer/scope checks. Both
+initial selection and explicit option replacement use the same tray-opening
+boundary. Scalar verbs retain their scalar protocol; unsupported list
 shapes fail closed. The controller fences callbacks by selection epoch and
 session/member/mode so cancellation or replacement cannot resurrect old intent.
 
