@@ -23,12 +23,24 @@ import {
   type Footprint,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction,
+} from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import { wardedCastNotice } from '../wardBeat';
 import { caughtNotice } from './caughtNotice';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import {
+  isMultiMemberDeclaration,
+  toggleMemberTarget,
+} from './memberTargeting';
 import {
   isStaleDeclarationRefusal,
   selectCombatExperience,
@@ -84,6 +96,8 @@ interface ReceivedRollWindow {
 }
 
 export interface UseSessionCombatExperienceArgs {
+  /** Presentation interaction only; legacy callers keep append-only selection. */
+  memberTargetingMode?: 'legacy' | 'map-first';
   session: string;
   member: string;
   clock: ClockKind;
@@ -254,9 +268,43 @@ export function useSessionCombatExperience({
   declarations,
   invalidateAuthoritySnapshots,
   scheduleRefresh,
+  memberTargetingMode = 'legacy',
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
-  const [interaction, setInteraction] =
+  const [interaction, setInteractionState] =
     useState<CombatExperiencePresentationState>(EMPTY_INTERACTION);
+  const interactionRef = useRef(interaction);
+  const selectionEpochRef = useRef(0);
+  // Event/effect writes are synchronous at this boundary. Batched target clicks
+  // read the last intent, not the render before the batch; RPCs stay outside
+  // React updater functions. A cancelled/replaced selection gets a new epoch.
+  const setInteraction = useCallback(
+    (update: SetStateAction<CombatExperiencePresentationState>): void => {
+      const previous = interactionRef.current;
+      const next = typeof update === 'function' ? update(previous) : update;
+      if (
+        next === EMPTY_INTERACTION ||
+        next.armedDeclarationId !== previous.armedDeclarationId ||
+        next.optionDeclarationId !== previous.optionDeclarationId ||
+        next.selectedOption !== previous.selectedOption
+      ) {
+        selectionEpochRef.current += 1;
+      }
+      interactionRef.current = next;
+      setInteractionState(next);
+    },
+    []
+  );
+  const interactionScope = useMemo(
+    () => ({ session, member, memberTargetingMode }),
+    [session, member, memberTargetingMode]
+  );
+  const activeInteractionScope = useRef(interactionScope);
+  useLayoutEffect(() => {
+    if (activeInteractionScope.current === interactionScope) return;
+    activeInteractionScope.current = interactionScope;
+    setInteraction(EMPTY_INTERACTION);
+    setTargeting(false);
+  }, [interactionScope, setInteraction]);
   const [targeting, setTargeting] = useState(false);
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   /**
@@ -317,7 +365,7 @@ export function useSessionCombatExperience({
     carryWorldMovementRef.current = false;
     setInteraction(EMPTY_INTERACTION);
     setTargeting(false);
-  }, []);
+  }, [setInteraction]);
 
   const selectionIsCancellable =
     interaction.movementSelected === true ||
@@ -414,7 +462,7 @@ export function useSessionCombatExperience({
           : EMPTY_INTERACTION
     );
     setTargeting(false);
-  }, [invalidateAuthoritySnapshots]);
+  }, [invalidateAuthoritySnapshots, setInteraction]);
 
   const recoverStaleDeclaration = useCallback(
     (declarationId: string, verb: Verb, target?: string) => {
@@ -429,7 +477,7 @@ export function useSessionCombatExperience({
       setTargeting(false);
       scheduleRefresh(['turn', 'afford']);
     },
-    [invalidateAuthoritySnapshots, scheduleRefresh]
+    [invalidateAuthoritySnapshots, scheduleRefresh, setInteraction]
   );
 
   // Only a coherent, successful refreshed pair may add provider-authored
@@ -444,7 +492,7 @@ export function useSessionCombatExperience({
         refreshedWhy(declarations, recovery)
       ),
     });
-  }, [authorityFresh, declarations]);
+  }, [authorityFresh, declarations, setInteraction]);
 
   useEffect(() => {
     if (clock === ClockKind.WORLD) {
@@ -482,7 +530,7 @@ export function useSessionCombatExperience({
       movementSelected: true,
     });
     setTargeting(false);
-  }, [authorityFresh, clock, declarations, interaction]);
+  }, [authorityFresh, clock, declarations, interaction, setInteraction]);
 
   // A selector is only fenced for the authoritative generation in which it
   // was attempted. Stale/loading snapshots retain the fence because their
@@ -621,7 +669,17 @@ export function useSessionCombatExperience({
     interaction.armedDeclarationId,
     interaction.movementSelected,
     presentationState,
+    setInteraction,
   ]);
+
+  const selectionEpoch = selectionEpochRef.current;
+  const selectionIsCurrent = useCallback(
+    (): boolean =>
+      mountedRef.current &&
+      activeInteractionScope.current === interactionScope &&
+      selectionEpochRef.current === selectionEpoch,
+    [interactionScope, selectionEpoch]
+  );
 
   const previousActiveRef = useRef<string | null>(null);
   useEffect(() => {
@@ -712,7 +770,7 @@ export function useSessionCombatExperience({
       setTargeting(false);
       runCastRef.current(candidate, option);
     },
-    []
+    [setInteraction]
   );
 
   const onSelectDeclaration = useCallback(
@@ -747,6 +805,30 @@ export function useSessionCombatExperience({
           authorityRef.current.active !== member)
       ) {
         return;
+      }
+      if (
+        isMultiMemberDeclaration(candidate) &&
+        uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          candidate.verb,
+          TargetKind.MEMBER
+        )
+      ) {
+        if (candidate.verb !== Verb.CAST) {
+          setInteraction({
+            ...EMPTY_INTERACTION,
+            changedOptionNotice:
+              'This action does not support multiple targets in this client.',
+          });
+          setTargeting(false);
+          return;
+        }
+        if (
+          memberTargetingMode === 'map-first' &&
+          interactionRef.current.armedDeclarationId === candidate.id
+        )
+          return;
       }
       // Any explicit declaration supersedes a pending free-roam carry. This
       // stays false across ordinary refreshed declarations.
@@ -1025,6 +1107,8 @@ export function useSessionCombatExperience({
     },
     [
       beginCast,
+      memberTargetingMode,
+      setInteraction,
       deathSave,
       invalidateAuthority,
       member,
@@ -1082,7 +1166,7 @@ export function useSessionCombatExperience({
     (target: string) => {
       if (
         !target ||
-        !mountedRef.current ||
+        !selectionIsCurrent() ||
         attackInFlightRef.current ||
         activateInFlightRef.current ||
         castInFlightRef.current ||
@@ -1092,6 +1176,10 @@ export function useSessionCombatExperience({
       ) {
         return;
       }
+      // Read current intent after the callback's selection/scope fence. This
+      // also handles multiple target clicks batched before the next render.
+      const presentationState = interactionRef.current;
+      if (!presentationState.armedDeclarationId) return;
       // THE CLOCK GATE IS PER-VERB NOW (R3). Everything that spends a turn's
       // economy still needs the turn clock and the actor's own turn; the two
       // social verbs need neither, because the world clock has no turns and
@@ -1130,6 +1218,18 @@ export function useSessionCombatExperience({
         return;
       }
       if (
+        castDeclaration?.verb !== Verb.CAST &&
+        isMultiMemberDeclaration(castDeclaration)
+      ) {
+        setInteraction({
+          ...EMPTY_INTERACTION,
+          changedOptionNotice:
+            'This action does not support multiple targets in this client.',
+        });
+        setTargeting(false);
+        return;
+      }
+      if (
         castDeclaration?.verb === Verb.CAST &&
         castDeclaration.targetKind === TargetKind.MEMBER
       ) {
@@ -1138,6 +1238,30 @@ export function useSessionCombatExperience({
         );
         const selectedTarget = matches.length === 1 ? matches[0] : undefined;
         const currentTargets = presentationState.selectedCandidateMembers ?? [];
+        if (
+          memberTargetingMode === 'map-first' &&
+          castDeclaration.maxTargets > 1
+        ) {
+          const next = toggleMemberTarget(
+            {
+              declaration: castDeclaration,
+              selectedMembers: currentTargets,
+              authorityFresh: authorityRef.current.fresh,
+              turnAllowed: true,
+              optionId: presentationState.selectedOption,
+            },
+            target
+          );
+          if (!next.changed) return;
+          setInteraction({
+            ...presentationState,
+            selectedCandidateMembers: next.members,
+            selectedCandidateMember: next.members.at(-1) ?? null,
+            changedOptionNotice: null,
+          });
+          setTargeting(true);
+          return;
+        }
         if (
           !selectedTarget?.available ||
           currentTargets.includes(target) ||
@@ -1373,7 +1497,9 @@ export function useSessionCombatExperience({
       invalidateAuthority,
       member,
       presentation,
-      presentationState,
+      memberTargetingMode,
+      selectionIsCurrent,
+      setInteraction,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
@@ -1444,6 +1570,7 @@ export function useSessionCombatExperience({
     },
     [
       activate,
+      setInteraction,
       invalidateAuthority,
       member,
       recoverStaleDeclaration,
@@ -1549,6 +1676,7 @@ export function useSessionCombatExperience({
     },
     [
       cast,
+      setInteraction,
       invalidateAuthority,
       member,
       memberNames,
@@ -1561,16 +1689,18 @@ export function useSessionCombatExperience({
   runCastTargetsRef.current = onCastTargets;
 
   const onConfirmTargets = useCallback(() => {
+    if (!selectionIsCurrent()) return;
+    const current = interactionRef.current;
     const matches = declarationsRef.current.filter(
-      (declaration) => declaration.id === presentationState.armedDeclarationId
+      (declaration) => declaration.id === current.armedDeclarationId
     );
     if (matches.length !== 1 || !matches[0]) return;
     runCastTargetsRef.current(
       matches[0],
-      presentationState.selectedCandidateMembers ?? [],
-      presentationState.selectedOption
+      current.selectedCandidateMembers ?? [],
+      current.selectedOption
     );
-  }, [presentationState]);
+  }, [selectionIsCurrent]);
 
   /**
    * A CAST THE CASTER AIMS, answered by a click on the floor.
@@ -1661,6 +1791,7 @@ export function useSessionCombatExperience({
     },
     [
       cast,
+      setInteraction,
       invalidateAuthority,
       member,
       presentationState.armedDeclarationId,
@@ -1821,6 +1952,7 @@ export function useSessionCombatExperience({
     },
     [
       cast,
+      setInteraction,
       invalidateAuthority,
       member,
       recoverStaleDeclaration,
@@ -1892,6 +2024,7 @@ export function useSessionCombatExperience({
     },
     [
       endTurn,
+      setInteraction,
       invalidateAuthority,
       member,
       onCancelSelection,
