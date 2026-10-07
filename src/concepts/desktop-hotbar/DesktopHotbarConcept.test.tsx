@@ -90,21 +90,23 @@ describe('DesktopHotbarConcept', () => {
     ).toHaveAttribute('src', expect.stringContaining('Stealthy_01'));
   });
 
-  it('retains row count and profile-local ordering across scenarios, compact fallback and comparison', () => {
+  it('retains row count and profile-local favorites across scenarios, compact fallback and comparison', () => {
     render(<DesktopHotbarConcept />);
+    const firstLeveled = () =>
+      screen
+        .getByRole('region', { name: 'Spells' })
+        .querySelector('[data-band="leveled"] [data-offer-id]');
     fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
       target: { value: '3' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Move first' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Favorite Cure Wounds' })
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Done editing' }));
     fireEvent.click(screen.getByRole('button', { name: 'Action spent' }));
-    expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
+    expect(firstLeveled()).toHaveAttribute('data-favorite', 'true');
     act(() => resize!(844, 390));
     expect(
       screen.queryByTestId('desktop-action-surface')
@@ -115,11 +117,7 @@ describe('DesktopHotbarConcept', () => {
     expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
       '3'
     );
-    expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
     fireEvent.click(screen.getByRole('button', { name: 'Martial' }));
     expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
       '3'
@@ -128,11 +126,7 @@ describe('DesktopHotbarConcept', () => {
       screen.queryByRole('button', { name: 'Cure Wounds' })
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cleric' }));
-    expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+    expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
   });
 
   it('offers a real retained debug event and expands its formatted JSON', async () => {
@@ -190,9 +184,12 @@ describe('DesktopHotbarConcept', () => {
   it('routes Command through shared cast options and then targeting', () => {
     render(<DesktopHotbarConcept />);
     const status = screen.getByTestId('desktop-status-section');
+    const bar = screen.getByTestId('desktop-action-surface');
     fireEvent.click(screen.getByRole('button', { name: 'Command' }));
     expect(screen.getByTestId('cast-options')).toBeInTheDocument();
     expect(screen.getByTestId('desktop-status-section')).toBe(status);
+    expect(screen.getByTestId('desktop-action-surface')).toBe(bar);
+    expect(screen.getByRole('button', { name: 'Bane' })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('cast-option-grovel'));
     expect(screen.queryByTestId('cast-options')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -202,13 +199,22 @@ describe('DesktopHotbarConcept', () => {
       'aria-pressed',
       'true'
     );
+    expect(screen.getByText('Command · Grovel armed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Change choice' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Command choices' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cast-option-cancel'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('keeps the read-only Status section outside Edit, row and page changes', () => {
     render(<DesktopHotbarConcept />);
     const status = screen.getByTestId('desktop-status-section');
     fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
-    expect(within(status).queryByRole('button')).not.toBeInTheDocument();
-    expect(status.querySelector('[draggable]')).toBeNull();
+    expect(
+      within(status).queryByRole('button', { name: /Favorite|Unfavorite|Edit/ })
+    ).not.toBeInTheDocument();
+    expect(status.querySelector('[draggable="true"]')).toBeNull();
     fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
       target: { value: '4' },
     });
@@ -233,6 +239,38 @@ describe('DesktopHotbarConcept', () => {
         '22/28'
       )
     ).toBeInTheDocument();
+  });
+
+  it('separates active Features from contextual Effects and Traits', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Martial' }));
+    expect(
+      within(screen.getByRole('region', { name: 'Features' })).getByRole(
+        'button',
+        { name: 'Second Wind' }
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Actions' })).getByRole(
+        'button',
+        { name: 'Unarmed Strike' }
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect Sneak Attack' })
+    );
+    expect(
+      screen.getByRole('region', { name: 'Sneak Attack information' })
+    ).toHaveTextContent('For Longsword');
+    expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Raging' }));
+    expect(
+      screen.getByRole('region', { name: 'Raging information' })
+    ).toHaveTextContent('Applies');
+    expect(screen.getByRole('button', { name: 'Longsword' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
   });
 
   it('keeps refused spells inspectable and does not arm them', () => {

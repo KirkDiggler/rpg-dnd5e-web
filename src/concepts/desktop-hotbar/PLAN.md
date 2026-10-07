@@ -1,5 +1,7 @@
 # Desktop hotbar concept plan
 
+Current iteration: [FAVORITES-PLAN.md](FAVORITES-PLAN.md). The earlier drag-order and quick/abilities arrangements below are historical checkpoints, superseded by grouped favorites.
+
 ## Goal, authority and constraints
 
 Authority: https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1225. Approved in conversation by KirkDiggler: browse spells without opening a collection, hover/focus to inspect, click to select; readable opaque inspection above the bar; unavailable offers remain inspectable; existing mobile presentation and live route unchanged. Scope is a fixture-only Concepts Lab experiment, not promotion. Reuse the real CombatExperience/ActionDock gates, generated declarations and targeting. No rule calculations, RPCs, new provider dependencies, persistence or events. Licensed sprites remain ignored local runtime assets, never tracked.

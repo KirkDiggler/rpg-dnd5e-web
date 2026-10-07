@@ -28,6 +28,8 @@ export interface TargetSurfaceProps {
   showTurnNotice: boolean;
   pacingNotice?: string | null;
   changedOptionNotice?: string | null;
+  castOptionId?: string;
+  onChangeCastOption?: () => void;
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
   navigationControls?: React.ReactNode;
@@ -51,6 +53,8 @@ export function TargetSurface({
   showTurnNotice,
   pacingNotice,
   changedOptionNotice,
+  castOptionId,
+  onChangeCastOption,
   memberNames,
   location,
   navigationControls,
@@ -171,16 +175,30 @@ export function TargetSurface({
   // label to prefer: it compiles no action definition, so there is no
   // AttackRef and no AbilityRef to read and nothing here to go stale against
   // content.
+  const optionMatches =
+    declaration?.options.filter((option) => option.id === castOptionId) ?? [];
+  const optionLabel =
+    optionMatches.length === 1 ? optionMatches[0]?.label : undefined;
   const armedName =
     declaration?.verb === Verb.ACTIVATE
       ? declaration.ability?.name || 'Ability'
       : declaration?.verb === Verb.CAST
-        ? castLabel(declaration)
+        ? `${castLabel(declaration)}${optionLabel ? ` · ${optionLabel}` : ''}`
         : declaration?.verb === Verb.INTIMIDATE
           ? 'Intimidate'
           : declaration?.verb === Verb.PERSUADE
             ? 'Persuade'
             : declaration?.attack?.name || 'Attack';
+  const changeChoice =
+    optionLabel && onChangeCastOption ? (
+      <button
+        type="button"
+        className={styles.targetChoice}
+        onClick={onChangeCastOption}
+      >
+        Change choice
+      </button>
+    ) : null;
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;
@@ -245,6 +263,7 @@ export function TargetSurface({
                 : 'Pick a cell to aim toward'}
           </strong>
           {castCost && <span>{castCost}</span>}
+          {changeChoice}
           {onCancelSelection && (
             <button
               type="button"
@@ -274,6 +293,7 @@ export function TargetSurface({
               : `${availableTargets.length} highlighted target${availableTargets.length === 1 ? '' : 's'}`}
           </span>
           {castCost && <span>{castCost}</span>}
+          {changeChoice}
           <ul className={styles.targetList} aria-label={`${armedName} targets`}>
             {declaration.candidates.map((candidate, index) => {
               const name =

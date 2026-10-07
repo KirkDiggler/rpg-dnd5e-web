@@ -11,6 +11,9 @@ import {
   CostComponentSchema,
   Currency,
   DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   ShortfallReason,
   ShortfallSchema,
   Slot,
@@ -69,6 +72,18 @@ const declarations = [
   ),
   create(DeclarationSchema, {
     id: 'mace',
+    effects: [
+      create(EffectRowSchema, {
+        id: 'fixture:blessed',
+        ref: 'dnd5e:conditions:blessed',
+        name: 'Bless',
+        description: 'Add 1d4 to attack rolls and saving throws.',
+        state: EffectState.APPLIES,
+        reason: 'Adds to this attack roll',
+        benefit: '+1d4 to the attack roll',
+        participation: EffectParticipation.CONTRIBUTES_NOW,
+      }),
+    ],
     verb: Verb.ATTACK,
     slot: Slot.ACTION,
     available: true,
@@ -77,6 +92,18 @@ const declarations = [
     attack: create(AttackRefSchema, {
       ref: 'dnd5e:weapons:mace',
       name: 'Mace',
+    }),
+  }),
+  create(DeclarationSchema, {
+    id: 'unarmed-strike',
+    verb: Verb.ATTACK,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    candidates: enemies,
+    attack: create(AttackRefSchema, {
+      ref: 'fixture:unarmed-strike',
+      name: 'Unarmed Strike',
     }),
   }),
   spell('resistance', 'Resistance', allies, false),
@@ -153,13 +180,18 @@ const densityGlyphs = [
   ['Status', 'Vampiric_01', 'Fangs', 'violet'],
   ['Status', 'Stealthy_01', 'Stealth', 'blue'],
 ] as const;
-const densityDeclarations = densityGlyphs.map((glyph, index) =>
-  spell(
-    `layout-sample-${index + 1}`,
-    `Layout sample ${index + 1} — ${glyph[2]}`,
-    enemies,
-    false
-  )
+// Keep the 36-offer stress profile: 12 ordinary offers and 24 artificial ones.
+const densityDeclarations = densityGlyphs.flatMap((glyph, index) =>
+  index === 23
+    ? []
+    : [
+        spell(
+          `layout-sample-${index + 1}`,
+          `Layout sample ${index + 1} — ${glyph[2]}`,
+          enemies,
+          true
+        ),
+      ]
 );
 
 export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
@@ -171,6 +203,7 @@ export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
   ),
   'offer:aldric:move': art('Stat', 'Speed_02', 'Mv', 'blue'),
   mace: art('Inventory', 'Maces_01', 'Ma', 'gold'),
+  'unarmed-strike': art('Stat', 'Strength_02', 'Us', 'gold'),
   resistance: art('Status', 'DefenseUp_03', 'Re', 'blue'),
   'toll-the-dead': art('Status', 'Dead_01', 'Td', 'violet'),
   bane: art('Status', 'Cursed_03', 'Ba', 'violet'),
@@ -182,6 +215,25 @@ export const CLERIC_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
   // Operator-proposed experiment: the same silhouette, distinguished by tint.
   // This is an explicit art choice, not a semantic fact inferred by the UI.
   dodge: art('Status', 'Stealthy_01', 'Do', 'gold'),
+};
+const EFFECT_ICONS: Readonly<Record<string, ActionIconPresentation>> = {
+  'fixture:blessed': art('Status', 'Fortified_01', 'Bl', 'gold'),
+  'dnd5e:features:sneak_attack': art('Inventory', 'Daggers_01', 'Sa', 'violet'),
+  'dnd5e:conditions:raging': art('Stat', 'Strength_02', 'Ra', 'gold'),
+  'dnd5e:conditions:blessed@mira': art('Status', 'Fortified_01', 'Bl', 'gold'),
+  'dnd5e:conditions:blessed@brother-ansel': art(
+    'Status',
+    'Fortified_01',
+    'Bl',
+    'gold'
+  ),
+  'dnd5e:conditions:inspired@lyra': art('Stat', 'Spirit_01', 'Bi', 'blue'),
+  'dnd5e:conditions:fighting_style_dueling': art(
+    'Inventory',
+    'Swords_01',
+    'Du',
+    'gold'
+  ),
 };
 const STORY_SAMPLES: NonNullable<HudConceptProfile['storySamples']> = [
   {
@@ -221,6 +273,21 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
         'toll-the-dead': 'cantrips',
       },
       sectionByDeclarationId: { dash: 'abilities', dodge: 'abilities' },
+      desktopSectionByDeclarationId: { dash: 'actions', dodge: 'actions' },
+      desktopSpellKindByDeclarationId: {
+        resistance: 'cantrip',
+        'toll-the-dead': 'cantrip',
+        bane: 'leveled',
+        bless: 'leveled',
+        command: 'leveled',
+        'cure-wounds': 'leveled',
+        'healing-word': 'leveled',
+        ...Object.fromEntries(
+          densityDeclarations.map((offer) => [offer.id, 'leveled' as const])
+        ),
+      },
+      desktopEffectsDeclarationId: 'mace',
+      desktopEffectIcons: EFFECT_ICONS,
     },
     desktopIcons: CLERIC_ICONS,
     fixtures: [
@@ -228,6 +295,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       'spent-action',
       'spent-slots',
       'crowded',
+      'twelve-spells',
       'stale-authority',
       'spectator',
     ].map((id) => ({
@@ -239,6 +307,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
           'spent-action': 'Action spent',
           'spent-slots': 'Slots spent',
           crowded: '36 icons (layout only)',
+          'twelve-spells': '12-spell grid',
           'stale-authority': 'Stale authority',
           spectator: 'Spectator',
         } as Record<string, string>
@@ -273,7 +342,9 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       })),
       declarations: (id === 'crowded'
         ? [...declarations, ...densityDeclarations]
-        : declarations
+        : id === 'twelve-spells'
+          ? [...declarations, ...densityDeclarations.slice(0, 7)]
+          : declarations
       ).map((offer) => {
         const reason =
           id === 'spent-action' && offer.slot === Slot.ACTION
@@ -307,6 +378,23 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
   },
   {
     ...martial,
+    presentation: {
+      ...martial.presentation,
+      desktopSectionByDeclarationId: {
+        'second-wind': 'features',
+        dash: 'actions',
+        dodge: 'actions',
+      },
+      desktopEffectsDeclarationId: 'offer:aldric:longsword:action',
+      desktopEffectIcons: EFFECT_ICONS,
+    },
+    fixtures: martial.fixtures.map((fixture) => ({
+      ...fixture,
+      declarations: [
+        ...fixture.declarations,
+        declarations.find((offer) => offer.id === 'unarmed-strike')!,
+      ],
+    })),
     storySamples: STORY_SAMPLES,
     desktopIcons: {
       'offer:aldric:move': CLERIC_ICONS['offer:aldric:move']!,
@@ -317,6 +405,7 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
         'gold'
       ),
       shortbow: art('Inventory', 'Bows_01', 'Sb', 'gold'),
+      'unarmed-strike': CLERIC_ICONS['unarmed-strike']!,
       'second-wind': art('Status', 'Health_01', 'Sw', 'green'),
       dash: CLERIC_ICONS.dash!,
       dodge: CLERIC_ICONS.dodge!,

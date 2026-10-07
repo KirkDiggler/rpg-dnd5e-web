@@ -7,7 +7,13 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type { ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   actionTooltipText,
@@ -482,9 +488,30 @@ function EndTurnPlacement({
 }
 
 export function ActionDock(props: ActionDockProps) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  const framed = Boolean(props.desktopStatus);
+  useEffect(() => {
+    const node = frame.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() =>
+      setHeight(node.getBoundingClientRect().height)
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [framed]);
   if (!props.desktopStatus) return <ActionDockContents {...props} />;
   return (
-    <div className={styles.desktopDock} data-desktop-dock="true">
+    <div
+      ref={frame}
+      className={styles.desktopDock}
+      data-desktop-dock="true"
+      style={
+        height
+          ? ({ '--desktop-dock-height': `${height}px` } as CSSProperties)
+          : undefined
+      }
+    >
       {props.desktopStatus}
       <div className={styles.desktopDockActions}>
         <ActionDockContents {...props} />
@@ -917,7 +944,9 @@ function ActionDockContents({
 
   return (
     <div className={styles.actionRow}>
-      {/* THE QUESTION TAKES THE PLACE OF THE OFFERS, it does not queue behind
+      {/* The desktop opt-in keeps offers mounted and shows a choice tray.
+          For the compact/legacy dock, THE QUESTION TAKES THE PLACE OF THE OFFERS,
+          it does not queue behind
           them. Drawn as one more group in this row, the menu landed past the
           right edge: `.actionRow` is a nowrap flex line inside a dock fixed at
           174px, the Actions group alone measured 1250px wide, and the four
@@ -932,7 +961,9 @@ function ActionDockContents({
           cannot both fit, and every one of those offers is still perfectly
           castable — which is why Cancel is part of the menu rather than an
           afterthought. One click back and the rows return. */}
-      {optionDeclaration && onSelectCastOption ? (
+      {optionDeclaration &&
+      onSelectCastOption &&
+      !actionPresentation?.desktopIcons ? (
         <CastOptionGroup
           declaration={optionDeclaration}
           authorityFresh={authorityFresh}
@@ -949,6 +980,9 @@ function ActionDockContents({
           onCancelSelection={onCancelSelection}
           secondaryControls={standing}
           embedded={Boolean(desktopStatus)}
+          optionDeclaration={optionDeclaration}
+          onSelectCastOption={onSelectCastOption}
+          onCancelCastOption={onCancelCastOption}
         />
       ) : (
         <div className={styles.actionGroupWithDivider}>
@@ -983,9 +1017,11 @@ function ActionDockContents({
         </div>
       )}
       {/* Ordinary organized mode hosts Explore in its collection row;
-          option selection and the default dock keep their own standing group. */}
+          compact option selection and the default dock keep their own standing group. */}
       {actionPresentation?.mode !== 'organized-hud' ||
-      (optionDeclaration && onSelectCastOption)
+      (optionDeclaration &&
+        onSelectCastOption &&
+        !actionPresentation?.desktopIcons)
         ? standing
         : null}
       {!authorityFresh && (

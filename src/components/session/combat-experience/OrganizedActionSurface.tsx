@@ -183,6 +183,9 @@ export interface OrganizedActionSurfaceProps {
   secondaryControls?: ReactNode;
   /** Parent desktop dock owns the shared frame when status is composed beside actions. */
   embedded?: boolean;
+  optionDeclaration?: Declaration;
+  onSelectCastOption?: (id: string) => void;
+  onCancelCastOption?: () => void;
 }
 
 /** Opt-in only: existing callers retain the original input and layout surface. */

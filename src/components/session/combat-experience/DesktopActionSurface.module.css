@@ -28,9 +28,14 @@
   flex-wrap: nowrap;
   gap: 14px;
   align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 4px;
+  margin: -4px;
 }
 .group {
-  min-width: 132px;
+  min-width: 84px;
   flex-basis: 0;
 }
 .sectionHeading {
@@ -71,11 +76,61 @@
 }
 .offers {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 36px);
+  grid-template-columns: repeat(var(--balanced-columns, 1), 36px);
   grid-auto-rows: 36px;
   align-content: start;
   height: calc(var(--hotbar-rows, 1) * 40px - 4px);
   gap: 4px;
+}
+.bands {
+  display: flex;
+  gap: 10px;
+}
+.band {
+  min-width: 0;
+  flex-basis: 0;
+}
+.band h4 {
+  height: 14px;
+  margin: 0 0 3px;
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 500;
+  color: #a9b9c1;
+}
+.emptySection {
+  margin: 0;
+  padding-top: 17px;
+  color: #98a6ad;
+  font-size: 10px;
+}
+.emptySlot {
+  width: 36px;
+  height: 36px;
+  border: 1px dashed #b9a07125;
+  border-radius: 4px;
+}
+.favoriteMark {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  color: #f3d98c;
+  font-size: 11px;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+}
+.favoriteCount {
+  color: #e6c884;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.choiceMark {
+  position: absolute;
+  left: 3px;
+  bottom: 0;
+  color: #f3d98c;
+  font-size: 11px;
+  line-height: 1;
 }
 .offerSlot {
   position: relative;
@@ -191,11 +246,72 @@
 .editControls small {
   color: #c0c6c8;
 }
+.editControls p {
+  margin: 0;
+  color: #ffc39b;
+}
+.choiceTray {
+  position: absolute;
+  z-index: 31;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: min(430px, 100%);
+  padding: 14px;
+  border: 1px solid #b79862;
+  border-radius: 6px;
+  color: #eee9dd;
+  background: #11191f;
+  box-shadow: 0 12px 36px #000b;
+}
+.choiceTray header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.choiceTray header strong {
+  color: #f3dfb2;
+  font:
+    600 18px/1.3 Cinzel,
+    serif;
+}
+.choiceTray header span,
+.choiceTray small {
+  color: #aab9c0;
+  font-size: 11px;
+}
+.choiceOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.choiceOptions button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #766747;
+  border-radius: 4px;
+  color: #f0d99f;
+  background: #253039;
+  font-size: 12px;
+}
+.choiceOptions button:focus-visible {
+  outline: 2px solid #f0d99f;
+}
+.choiceOptions button:disabled {
+  opacity: 0.45;
+}
+.choiceTray p {
+  margin: 6px 0 0;
+  color: #ffc39b;
+  font-size: 11px;
+}
 .surface[data-editing='true'] {
   border-color: #f0d99f;
 }
 .surface[data-editing='true'] .offer {
-  cursor: grab;
+  cursor: pointer;
   border-style: dashed;
 }
 .rows {

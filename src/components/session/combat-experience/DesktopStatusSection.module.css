@@ -6,7 +6,7 @@
   color: #eee9dd;
   font-family: Inter, system-ui, sans-serif;
 }
-.status h3 {
+.status > h3 {
   display: flex;
   align-items: center;
   min-height: 20px;

@@ -1,264 +1,22 @@
-import {
-  Slot,
-  type Declaration,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
-import {
-  actionTooltipText,
-  buildActionTooltip,
-  slotLabel,
-} from './actionTooltip';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { ActionArt } from './ActionArt';
+import { buildActionTooltip, slotLabel } from './actionTooltip';
+import { castLabel } from './castLabel';
+import { DesktopActionSection } from './DesktopActionSection';
 import styles from './DesktopActionSurface.module.css';
+import { desktopHotbarGroups } from './desktopHotbarGroups';
 import {
   DEFAULT_HOTBAR_LAYOUT,
-  hotbarColumns,
-  hotbarPage,
   hotbarRows,
-  moveHotbarOffer,
-  orderHotbarOffers,
+  toggleFavorite,
   type DesktopHotbarLayout,
   type DesktopHotbarSection,
-  type HotbarRows,
 } from './desktopHotbarLayout';
 import { EffectRows } from './EffectRows';
-import {
-  currentExecutableDeclaration,
-  organizeDeclarations,
-  type ActionIconPresentation,
-} from './organizedActionPresentation';
+import { currentExecutableDeclaration } from './organizedActionPresentation';
 import type { OrganizedActionSurfaceProps } from './OrganizedActionSurface';
 
-type LocatedOffer = { section: DesktopHotbarSection; id: string };
-interface OfferGroup {
-  key: DesktopHotbarSection;
-  label: string;
-  entries: readonly Declaration[];
-}
-
-function ActionArt({
-  art,
-  label,
-}: {
-  art?: ActionIconPresentation;
-  label: string;
-}) {
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  return art?.src && art.src !== failedSource ? (
-    <span
-      className={styles.art}
-      style={{ maskImage: `url("${art.src}")` }}
-      aria-hidden="true"
-    >
-      <img
-        src={art.src}
-        alt=""
-        draggable={false}
-        onError={() => setFailedSource(art.src)}
-      />
-    </span>
-  ) : (
-    <span className={styles.fallback} aria-hidden="true">
-      {art?.fallback ?? label.slice(0, 2)}
-    </span>
-  );
-}
-function costMark(slot: Slot): string {
-  if (slot === Slot.ACTION) return 'A';
-  if (slot === Slot.BONUS) return 'B';
-  if (slot === Slot.REACTION) return 'R';
-  return '—';
-}
-
-/** Each section owns its page, never the order or membership of another section. */
-function ActionSection({
-  group,
-  rows,
-  authorityFresh,
-  icons,
-  editing,
-  picked,
-  dragged,
-  reveal,
-  armedDeclarationId,
-  onChoose,
-  onInspect,
-  onDrag,
-  onMove,
-}: {
-  group: OfferGroup;
-  rows: HotbarRows;
-  authorityFresh: boolean;
-  icons?: Readonly<Record<string, ActionIconPresentation>>;
-  editing: boolean;
-  picked: LocatedOffer | null;
-  dragged: LocatedOffer | null;
-  reveal: LocatedOffer | null;
-  armedDeclarationId?: string;
-  onChoose: (offer: LocatedOffer) => void;
-  onInspect: (id: string | null) => void;
-  onDrag: (offer: LocatedOffer | null) => void;
-  onMove: (source: LocatedOffer, target: LocatedOffer) => void;
-}) {
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [columns, setColumns] = useState(1);
-  const [page, setPage] = useState(0);
-  const prefix = useId();
-  useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setColumns(hotbarColumns(entry.contentRect.width));
-    });
-    observer.observe(grid);
-    return () => observer.disconnect();
-  }, []);
-  const paging = hotbarPage(group.entries.length, columns, rows, page);
-  useEffect(() => onInspect(null), [paging.page, paging.capacity, onInspect]);
-  useEffect(
-    () => setPage((current) => Math.min(current, paging.pages - 1)),
-    [paging.pages]
-  );
-  const revealIndex =
-    reveal?.section === group.key
-      ? group.entries.findIndex((offer) => offer.id === reveal.id)
-      : -1;
-  useEffect(() => {
-    if (revealIndex >= 0) setPage(Math.floor(revealIndex / paging.capacity));
-  }, [reveal, revealIndex, paging.capacity]);
-  const visible = group.entries.slice(
-    paging.start,
-    paging.start + paging.capacity
-  );
-  const changePage = (next: number): void => {
-    onInspect(null);
-    setPage(next);
-  };
-  return (
-    <section
-      className={styles.group}
-      aria-label={group.label}
-      data-section={group.key}
-      style={{ flexGrow: Math.max(3, group.entries.length) }}
-    >
-      <div className={styles.sectionHeading}>
-        <h3>{group.label}</h3>
-        {paging.pages > 1 && (
-          <nav className={styles.pager} aria-label={`${group.label} pages`}>
-            <button
-              type="button"
-              aria-label={`Previous ${group.label} page`}
-              disabled={paging.page === 0}
-              onClick={() => changePage(paging.page - 1)}
-            >
-              ‹
-            </button>
-            <span
-              aria-label={`${group.label} page ${paging.page + 1} of ${paging.pages}`}
-            >
-              {paging.page + 1}/{paging.pages}
-            </span>
-            <button
-              type="button"
-              aria-label={`Next ${group.label} page`}
-              disabled={paging.page === paging.pages - 1}
-              onClick={() => changePage(paging.page + 1)}
-            >
-              ›
-            </button>
-          </nav>
-        )}
-      </div>
-      <div
-        ref={gridRef}
-        className={styles.offers}
-        data-section-grid={group.key}
-        style={{ '--hotbar-rows': rows } as CSSProperties}
-      >
-        {visible.map((declaration) => {
-          const info = buildActionTooltip(declaration);
-          const disabled = !authorityFresh || !declaration.available;
-          const art = icons?.[declaration.id];
-          const located = { section: group.key, id: declaration.id };
-          return (
-            <div key={declaration.id} className={styles.offerSlot}>
-              <button
-                type="button"
-                className={styles.offer}
-                data-tone={art?.tone ?? 'gold'}
-                data-offer-id={declaration.id}
-                aria-label={info.title}
-                aria-describedby={`${prefix}-${declaration.id}`}
-                aria-disabled={!editing && disabled}
-                aria-pressed={
-                  editing
-                    ? picked?.section === group.key &&
-                      picked.id === declaration.id
-                    : armedDeclarationId === declaration.id
-                }
-                draggable={editing}
-                onPointerEnter={(event) => {
-                  if (
-                    event.pointerType === 'mouse' ||
-                    event.pointerType === 'pen'
-                  )
-                    onInspect(declaration.id);
-                }}
-                onFocus={() => onInspect(declaration.id)}
-                onClick={() => onChoose(located)}
-                onDragStart={(event) => {
-                  if (!editing) {
-                    event.preventDefault();
-                    return;
-                  }
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('text/plain', declaration.id);
-                  onInspect(null);
-                  onDrag(located);
-                }}
-                onDragEnd={() => onDrag(null)}
-                onDragOver={(event) => {
-                  if (editing && dragged?.section === group.key) {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                  }
-                }}
-                onDrop={(event) => {
-                  if (editing && dragged?.section === group.key) {
-                    event.preventDefault();
-                    onMove(dragged, located);
-                  }
-                  onDrag(null);
-                }}
-              >
-                <ActionArt art={art} label={info.title} />
-                <span className={styles.cost} aria-hidden="true">
-                  {costMark(declaration.slot)}
-                </span>
-                {disabled && (
-                  <span className={styles.unavailableMark} aria-hidden="true">
-                    ×
-                  </span>
-                )}
-              </button>
-              <span
-                className={styles.srOnly}
-                id={`${prefix}-${declaration.id}`}
-              >
-                {editing
-                  ? 'Edit mode. Select to rearrange; this cannot execute an action. '
-                  : ''}
-                {actionTooltipText(info)}
-                {!authorityFresh ? '. Actions may be out of date' : ''}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-/** Presentation of current offers, not a second action controller. */
+/** Current offers, local display preferences, and unchanged command callbacks. */
 export function DesktopActionSurface({
   declarations,
   authorityFresh,
@@ -268,8 +26,12 @@ export function DesktopActionSurface({
   onCancelSelection,
   secondaryControls,
   embedded = false,
+  optionDeclaration,
+  onSelectCastOption,
+  onCancelCastOption,
 }: OrganizedActionSurfaceProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const choiceRef = useRef<HTMLDivElement>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(0);
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -287,91 +49,94 @@ export function DesktopActionSurface({
   const layout = presentation?.desktopCustomization?.layout ?? localLayout;
   const updateLayout =
     presentation?.desktopCustomization?.onChange ?? setLocalLayout;
+  const favorites = layout.favoriteIdsBySection ?? {};
+  const rows = hotbarRows(layout.rows);
   const [editing, setEditing] = useState(false);
-  const [picked, setPicked] = useState<LocatedOffer | null>(null);
-  const [dragged, setDragged] = useState<LocatedOffer | null>(null);
-  const [reveal, setReveal] = useState<LocatedOffer | null>(null);
+  const [feedback, setFeedback] = useState('');
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [pointerInCard, setPointerInCard] = useState(false);
-  const organized = organizeDeclarations(declarations, presentation);
-  const rawGroups: OfferGroup[] = [
-    { key: 'quick', label: 'At hand', entries: organized.quick },
-    { key: 'spells', label: 'Spells', entries: organized.sections.spells },
-    {
-      key: 'abilities',
-      label: 'Abilities',
-      entries: organized.sections.abilities,
-    },
-    { key: 'items', label: 'Items', entries: organized.sections.items },
-    { key: 'actions', label: 'Actions', entries: organized.sections.actions },
-  ];
-  const groups = rawGroups
-    .filter((group) => group.entries.length > 0)
-    .map((group) => ({
-      ...group,
-      entries: orderHotbarOffers(
-        group.entries,
-        layout.orderBySection[group.key]
-      ),
-    }));
-  const offers = groups.flatMap((group) => group.entries);
+  const groups = desktopHotbarGroups(declarations, presentation);
+  const offers = groups.flatMap((group) => group.offers);
   const inspected = offers.find((offer) => offer.id === inspectedId);
-  const pickedGroup = groups.find((group) => group.key === picked?.section);
-  const pickedIndex =
-    pickedGroup?.entries.findIndex((offer) => offer.id === picked?.id) ?? -1;
-  const pickedOffer =
-    pickedIndex >= 0 ? pickedGroup?.entries[pickedIndex] : undefined;
+  const optionMatches = optionDeclaration
+    ? offers.filter(
+        (offer) =>
+          offer.id === optionDeclaration.id &&
+          offer.available &&
+          offer.options.length > 0
+      )
+    : [];
+  const choosing =
+    optionMatches.length === 1 && onSelectCastOption
+      ? optionMatches[0]
+      : undefined;
   useEffect(() => {
     if (inspectedId && !inspected) setInspectedId(null);
   }, [inspectedId, inspected]);
+  const choosingId = choosing?.id;
   useEffect(() => {
-    if (picked && !pickedOffer) setPicked(null);
-  }, [picked, pickedOffer]);
+    if (choosingId) {
+      setInspectedId(null);
+      choiceRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    }
+  }, [choosingId]);
   const tooltip = inspected ? buildActionTooltip(inspected) : null;
   const refusal = !authorityFresh
     ? 'Actions may be out of date'
     : tooltip?.refusal;
-  const choose = (offer: LocatedOffer): void => {
+  const choose = (section: DesktopHotbarSection, id: string): void => {
     if (editing) {
-      setPicked(offer);
+      const group = groups.find((item) => item.key === section);
+      if (!group) return;
+      const next = toggleFavorite(group.offers, favorites[section] ?? [], id);
+      if (next.refused) {
+        setFeedback(
+          next.refused === 'limit'
+            ? `Four favorites maximum in ${group.label}. Unstar one first.`
+            : 'That offer is no longer present.'
+        );
+        return;
+      }
+      updateLayout({
+        rows,
+        favoriteIdsBySection: { ...favorites, [section]: next.favorites },
+      });
+      setFeedback('');
       return;
     }
     const current = authorityFresh
-      ? currentExecutableDeclaration(declarations, offer.id)
+      ? currentExecutableDeclaration(declarations, id)
       : undefined;
-    if (!current) return;
-    setInspectedId(null);
-    onSelectDeclaration(current);
+    if (current) {
+      setInspectedId(null);
+      onSelectDeclaration(current);
+    }
   };
-  const move = (source: LocatedOffer, target: LocatedOffer): void => {
-    if (!editing || source.section !== target.section) return;
-    const ids =
-      groups
-        .find((group) => group.key === source.section)
-        ?.entries.map((offer) => offer.id) ?? [];
-    if (!ids.includes(source.id) || !ids.includes(target.id)) return;
-    updateLayout({
-      ...layout,
-      orderBySection: {
-        ...layout.orderBySection,
-        [source.section]: moveHotbarOffer(ids, source.id, target.id),
-      },
-    });
-    setPicked(source);
-    setReveal({ ...source });
-    setInspectedId(null);
+  const cancelChoice = (): void => {
+    onCancelCastOption?.();
+    const button = Array.from(
+      surfaceRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[data-offer-id]'
+      ) ?? []
+    ).find((node) => node.dataset.offerId === choosing?.id);
+    button?.focus();
   };
-  const movePickedTo = (index: number): void => {
-    const target = pickedGroup?.entries[index];
-    if (picked && target)
-      move(picked, { section: picked.section, id: target.id });
+  const selectOption = (id: string): void => {
+    const current =
+      authorityFresh && choosing
+        ? currentExecutableDeclaration(declarations, choosing.id)
+        : undefined;
+    const matches = current?.options.filter((option) => option.id === id) ?? [];
+    if (id && matches.length === 1 && matches[0]?.label.trim())
+      onSelectCastOption?.(id);
   };
   const setEditMode = (next: boolean): void => {
-    if (next && armedDeclarationId) onCancelSelection?.();
+    if (next) {
+      if (choosing) onCancelCastOption?.();
+      else if (armedDeclarationId) onCancelSelection?.();
+    }
     setEditing(next);
-    setPicked(null);
-    setDragged(null);
-    setReveal(null);
+    setFeedback('');
     setInspectedId(null);
   };
   return (
@@ -388,7 +153,7 @@ export function DesktopActionSurface({
       data-testid="desktop-action-surface"
       data-embedded={embedded}
       data-editing={editing}
-      data-rows={layout.rows}
+      data-rows={rows}
       onPointerLeave={() => {
         setInspectedId(null);
         setPointerInCard(false);
@@ -401,69 +166,41 @@ export function DesktopActionSurface({
           setInspectedId(null);
       }}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && (editing || inspectedId)) {
+        if (event.key === 'Escape' && (editing || choosing || inspectedId)) {
           if (editing) setEditMode(false);
+          else if (choosing) cancelChoice();
           else setInspectedId(null);
           event.stopPropagation();
         }
       }}
     >
-      <div className={styles.groups}>
+      <div className={styles.groups} aria-label="Action sections" tabIndex={0}>
         {groups.map((group) => (
-          <ActionSection
+          <DesktopActionSection
             key={group.key}
             group={group}
-            rows={layout.rows}
+            rows={rows}
+            favorites={favorites[group.key] ?? []}
             authorityFresh={authorityFresh}
             icons={presentation?.desktopIcons}
             editing={editing}
-            picked={picked}
-            dragged={dragged}
-            reveal={reveal}
-            armedDeclarationId={armedDeclarationId}
-            onChoose={choose}
+            armedId={armedDeclarationId}
+            optionId={choosing?.id}
+            onChoose={(id) => choose(group.key, id)}
             onInspect={setInspectedId}
-            onDrag={setDragged}
-            onMove={move}
           />
         ))}
       </div>
       {editing && (
-        <div
-          className={styles.editControls}
-          role="group"
-          aria-label="Arrange actions"
-        >
+        <div className={styles.editControls} aria-label="Edit favorites">
           <span>
-            {pickedOffer
-              ? `Arrange ${buildActionTooltip(pickedOffer).title}`
-              : 'Drag within a section, or select an icon to move.'}
+            Click to star or unstar · Up to 4 per section · No actions execute
           </span>
-          <button
-            type="button"
-            disabled={pickedIndex <= 0}
-            onClick={() => movePickedTo(0)}
-          >
-            Move first
-          </button>
-          <button
-            type="button"
-            disabled={pickedIndex <= 0}
-            onClick={() => movePickedTo(pickedIndex - 1)}
-          >
-            Move earlier
-          </button>
-          <button
-            type="button"
-            disabled={
-              pickedIndex < 0 ||
-              pickedIndex === (pickedGroup?.entries.length ?? 0) - 1
-            }
-            onClick={() => movePickedTo(pickedIndex + 1)}
-          >
-            Move later
-          </button>
-          <small>Editing only — action icons cannot execute.</small>
+          <small>
+            Favorites repeat on every page. Scroll sections or choose fewer if
+            space is tight.
+          </small>
+          <p aria-live="polite">{feedback}</p>
         </div>
       )}
       <div className={styles.footer}>
@@ -474,18 +211,18 @@ export function DesktopActionSurface({
           Rows
           <select
             aria-label="Hotbar rows"
-            value={layout.rows}
+            value={rows}
             onChange={(event) => {
               setInspectedId(null);
               updateLayout({
-                ...layout,
                 rows: hotbarRows(Number(event.target.value)),
+                favoriteIdsBySection: favorites,
               });
             }}
           >
-            {[1, 2, 3, 4].map((rows) => (
-              <option key={rows} value={rows}>
-                {rows}
+            {[1, 2, 3, 4].map((count) => (
+              <option key={count} value={count}>
+                {count}
               </option>
             ))}
           </select>
@@ -512,7 +249,55 @@ export function DesktopActionSurface({
           Cancel action
         </button>
       </div>
-      {inspected && tooltip && (
+      {choosing && !editing && (
+        <div
+          className={styles.choiceTray}
+          ref={choiceRef}
+          role="dialog"
+          aria-label={`${castLabel(choosing)} choices`}
+          aria-modal="false"
+          data-testid="cast-options"
+        >
+          <header>
+            <strong>{castLabel(choosing)}</strong>
+            <span>Choose how to cast</span>
+          </header>
+          <div className={styles.choiceOptions}>
+            {choosing.options.map((option, index) => (
+              <button
+                type="button"
+                key={`${option.id}:${index}`}
+                data-testid={`cast-option-${option.id}`}
+                disabled={
+                  !authorityFresh ||
+                  !option.id ||
+                  !option.label.trim() ||
+                  choosing.options.filter(
+                    (candidate) => candidate.id === option.id
+                  ).length !== 1
+                }
+                onClick={() => selectOption(option.id)}
+              >
+                {option.label.trim()
+                  ? option.label
+                  : 'Choice label unavailable'}
+              </button>
+            ))}
+            <button
+              type="button"
+              data-testid="cast-option-cancel"
+              onClick={cancelChoice}
+            >
+              Cancel
+            </button>
+          </div>
+          <small>
+            No option descriptions are supplied by the current contract.
+          </small>
+          {!authorityFresh && <p>Actions may be out of date</p>}
+        </div>
+      )}
+      {!choosing && inspected && tooltip && (
         <div className={styles.inspectionBridge}>
           <div
             className={styles.inspection}
@@ -553,7 +338,7 @@ export function DesktopActionSurface({
             )}
             {editing ? (
               <p className={styles.ready}>
-                Edit mode — select or drag to rearrange
+                Edit favorites — click to star or unstar
               </p>
             ) : (
               !refusal && <p className={styles.ready}>Click to select</p>

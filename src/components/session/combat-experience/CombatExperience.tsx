@@ -16,6 +16,7 @@ import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts.tsx';
+import { DesktopEffects } from './DesktopEffects';
 import { DesktopStatusSection } from './DesktopStatusSection';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { RollFlashToasts } from './RollFlashToasts';
@@ -351,6 +352,20 @@ export function CombatExperience({
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
+  const selectedEffectSources = declarations.filter(
+    (offer) =>
+      offer.id === presentationState.armedDeclarationId &&
+      offer.effects.length > 0
+  );
+  const referenceEffectSources = declarations.filter(
+    (offer) => offer.id === actionPresentation?.desktopEffectsDeclarationId
+  );
+  const effectSource =
+    selectedEffectSources.length === 1
+      ? selectedEffectSources[0]
+      : referenceEffectSources.length === 1
+        ? referenceEffectSources[0]
+        : undefined;
   const movementRemainingFeet = movementBudgetFeet(declarations);
   const hp = characterData?.hitPoints;
   const hpPercent = hp?.max
@@ -416,6 +431,18 @@ export function CombatExperience({
             showTurnNotice={showTurnNotice}
             pacingNotice={pacingNotice}
             changedOptionNotice={presentationState.changedOptionNotice}
+            castOptionId={
+              desktopHotbar
+                ? (presentationState.selectedOption ?? undefined)
+                : undefined
+            }
+            onChangeCastOption={
+              desktopHotbar &&
+              selection?.declaration?.available &&
+              selection.declaration.options.length > 0
+                ? () => onSelectDeclaration(selection.declaration!)
+                : undefined
+            }
             memberNames={memberNames}
             location={location}
             navigationControls={navigationControls}
@@ -686,7 +713,25 @@ export function CombatExperience({
                   privateStatus={privateStatus}
                   privateStatusMessage={privateStatusMessage}
                   onRetry={onRetryPrivateStatus}
-                />
+                >
+                  <DesktopEffects
+                    declaration={effectSource}
+                    targetMember={
+                      effectSource?.id === presentationState.armedDeclarationId
+                        ? presentationState.selectedCandidateMember
+                        : undefined
+                    }
+                    targetName={
+                      presentationState.selectedCandidateMember
+                        ? memberNames.get(
+                            presentationState.selectedCandidateMember
+                          )
+                        : undefined
+                    }
+                    authorityFresh={authorityFresh}
+                    icons={actionPresentation?.desktopEffectIcons}
+                  />
+                </DesktopStatusSection>
               ) : undefined
             }
             onOpenEquipment={onOpenEquipment}

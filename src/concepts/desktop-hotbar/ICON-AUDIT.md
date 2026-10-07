@@ -32,7 +32,7 @@ The contact sheets are private/local evidence (`/tmp/hotbar-pack-survey.png`, `/
 
 The preview now tints each clean glyph's alpha using its existing explicit visual hint: gold, green, blue or violet. These are experimental visual families, not inferred schools, damage types, resource rules or legality. The same source supplies the small button and larger tooltip glyph. Color reinforces shape; the tooltip name and accessible name remain authoritative. Unavailable state still has an × and dashed border rather than relying on tint.
 
-The **36 icons (layout only)** scenario combines the existing 11 visible cleric-style offers with 25 clearly labeled artificial samples. It includes **Layout sample 25 — Stealth** in blue and Dodge in gold; both use the hood silhouette per the operator's requested comparison. This tests density and glyph recognition, not a real cleric loadout or spell implementation.
+The **36 icons (layout only)** scenario combines 12 cleric-style offers (including the Unarmed Strike layout sample) with 24 clearly labeled artificial spell samples. It includes **Layout sample 25 — Stealth** in blue and Dodge in gold; both use the hood silhouette per the operator's requested comparison. This tests density and glyph recognition, not a real cleric loadout or spell implementation.
 
 ## Promotion boundary
 

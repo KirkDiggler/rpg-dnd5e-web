@@ -63,9 +63,13 @@ export function OrganizedHudConcept({
   const [desktopFrame, setDesktopFrame] = useState(false);
   const [iconsEnabled, setIconsEnabled] = useState(true);
   const [barRows, setBarRows] = useState<HotbarRows>(1);
-  const [barOrders, setBarOrders] = useState<
-    Record<string, DesktopHotbarLayout['orderBySection']>
-  >({});
+  const [preferences, setPreferences] = useState<{
+    kind: 'favorites-v1';
+    byProfile: Record<string, DesktopHotbarLayout['favoriteIdsBySection']>;
+  }>({ kind: 'favorites-v1', byProfile: {} });
+  // HMR must not reinterpret a prior drag-order array as chosen favorites.
+  const barFavorites =
+    preferences.kind === 'favorites-v1' ? preferences.byProfile : {};
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   const demoSequence = useRef(0);
   const [demoStory, setDemoStory] = useState<{
@@ -365,13 +369,18 @@ export function OrganizedHudConcept({
               ? {
                   layout: {
                     rows: barRows,
-                    orderBySection: barOrders[profile.id] ?? {},
+                    favoriteIdsBySection: barFavorites[profile.id] ?? {},
                   },
                   onChange: (next) => {
                     setBarRows(next.rows);
-                    setBarOrders((current) => ({
-                      ...current,
-                      [profile.id]: next.orderBySection,
+                    setPreferences((current) => ({
+                      kind: 'favorites-v1',
+                      byProfile: {
+                        ...(current.kind === 'favorites-v1'
+                          ? current.byProfile
+                          : {}),
+                        [profile.id]: next.favoriteIdsBySection,
+                      },
                     }));
                   },
                 }

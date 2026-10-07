@@ -1,12 +1,11 @@
-import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type { OrganizedActionSection } from './organizedActionPresentation';
-
-export type DesktopHotbarSection = 'quick' | OrganizedActionSection;
+export type DesktopHotbarSection = 'actions' | 'features' | 'spells' | 'items';
 export type HotbarRows = 1 | 2 | 3 | 4;
 export interface DesktopHotbarLayout {
   rows: HotbarRows;
-  /** Preview-session selectors only, not durable production action identity. */
-  orderBySection: Partial<Record<DesktopHotbarSection, readonly string[]>>;
+  /** Fixture-local selectors, not a durable production identity. */
+  favoriteIdsBySection: Partial<
+    Record<DesktopHotbarSection, readonly string[]>
+  >;
 }
 export interface DesktopHotbarCustomization {
   layout: DesktopHotbarLayout;
@@ -14,8 +13,9 @@ export interface DesktopHotbarCustomization {
 }
 export const DEFAULT_HOTBAR_LAYOUT: DesktopHotbarLayout = {
   rows: 1,
-  orderBySection: {},
+  favoriteIdsBySection: {},
 };
+export const HOTBAR_FAVORITE_LIMIT = 4;
 export const HOTBAR_ICON_SIZE = 36;
 export const HOTBAR_ICON_GAP = 4;
 
@@ -29,52 +29,126 @@ export function hotbarColumns(width: number): number {
   return Math.max(
     1,
     Math.floor(
-      (Math.max(0, width) + HOTBAR_ICON_GAP) /
+      ((Number.isFinite(width) ? Math.max(0, width) : 0) + HOTBAR_ICON_GAP) /
         (HOTBAR_ICON_SIZE + HOTBAR_ICON_GAP)
     )
   );
 }
-/** Membership and availability are untouched. Unknown/duplicate hints cannot mint slots. */
-export function orderHotbarOffers(
-  offers: readonly Declaration[],
-  order: readonly string[] = []
-): Declaration[] {
-  const remaining = new Map(offers.map((offer) => [offer.id, offer]));
-  const result: Declaration[] = [];
-  for (const id of order) {
-    const offer = remaining.get(id);
-    if (offer) {
-      result.push(offer);
-      remaining.delete(id);
-    }
-  }
-  return [...result, ...remaining.values()];
-}
-/** Both source and destination must belong to this current section. */
-export function moveHotbarOffer(
-  ids: readonly string[],
-  source: string,
-  target: string
+export function currentFavorites(
+  offers: readonly { id: string }[],
+  requested: readonly string[] = []
 ): string[] {
-  const from = ids.indexOf(source);
-  const to = ids.indexOf(target);
-  if (from < 0 || to < 0 || from === to) return [...ids];
-  const result = [...ids];
-  result.splice(from, 1);
-  result.splice(to, 0, source);
-  return result;
+  const current = new Set(offers.map((offer) => offer.id));
+  return [...new Set(requested)]
+    .filter((id) => current.has(id))
+    .slice(0, HOTBAR_FAVORITE_LIMIT);
 }
-export function hotbarPage(
-  total: number,
-  columns: number,
+export function toggleFavorite(
+  offers: readonly { id: string }[],
+  requested: readonly string[],
+  id: string
+): { favorites: string[]; refused: 'limit' | 'missing' | null } {
+  const favorites = currentFavorites(offers, requested);
+  if (!offers.some((offer) => offer.id === id))
+    return { favorites, refused: 'missing' };
+  if (favorites.includes(id))
+    return { favorites: favorites.filter((key) => key !== id), refused: null };
+  if (favorites.length === HOTBAR_FAVORITE_LIMIT)
+    return { favorites, refused: 'limit' };
+  return { favorites: [...favorites, id], refused: null };
+}
+export function minimumFavoriteColumns(
+  offers: readonly { id: string }[],
+  favorites: readonly string[],
+  rows: HotbarRows
+): number {
+  const count = currentFavorites(offers, favorites).length;
+  return Math.max(
+    1,
+    Math.ceil(
+      (count +
+        (new Set(offers.map((offer) => offer.id)).size > count ? 1 : 0)) /
+        hotbarRows(rows)
+    )
+  );
+}
+export interface FavoritePage<T> {
+  visible: readonly T[];
+  cells: readonly (T | null)[];
+  favoriteIds: readonly string[];
+  page: number;
+  pages: number;
+  normalStart: number;
+  capacity: number;
+  columns: number;
+  slots: number;
+}
+/** Full final windows overlap the previous tail; favorites repeat, never duplicate.
+ * If measured width is too small, the renderer must provide horizontal overflow,
+ * not silently discard favorites or force a different number of rows. */
+export function favoritePage<T extends { id: string }>(
+  offers: readonly T[],
+  requestedFavorites: readonly string[],
+  availableColumns: number,
   rows: HotbarRows,
-  requested: number
-): { page: number; pages: number; capacity: number; start: number } {
-  const capacity = Math.max(1, columns) * hotbarRows(rows);
-  const pages = Math.max(1, Math.ceil(total / capacity));
+  requestedPage: number
+): FavoritePage<T> {
+  const favoriteIds = currentFavorites(offers, requestedFavorites);
+  const byId = new Map(offers.map((offer) => [offer.id, offer]));
+  const pinned = favoriteIds.map((id) => byId.get(id)!);
+  const normal = [...byId.values()].filter(
+    (offer) => !favoriteIds.includes(offer.id)
+  );
+  const height = hotbarRows(rows);
+  const measuredColumns = Number.isFinite(availableColumns)
+    ? Math.max(1, Math.floor(availableColumns))
+    : 1;
+  const capacity = Math.max(
+    measuredColumns * height,
+    pinned.length + (normal.length ? 1 : 0),
+    1
+  );
+  const normalCapacity = Math.max(1, capacity - pinned.length);
+  const pages = Math.max(1, Math.ceil(normal.length / normalCapacity));
   const page = Math.max(
     0,
-    Math.min(pages - 1, Number.isFinite(requested) ? Math.floor(requested) : 0)
+    Math.min(
+      pages - 1,
+      Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 0
+    )
   );
-  return { page, pages, capacity, start: page * capacity };
+  const normalStart = Math.min(
+    page * normalCapacity,
+    Math.max(0, normal.length - normalCapacity)
+  );
+  const visible = [
+    ...pinned,
+    ...normal.slice(normalStart, normalStart + normalCapacity),
+  ];
+  const columns = Math.max(1, Math.ceil(visible.length / height));
+  const cells: (T | null)[] = [];
+  let offset = 0;
+  if (visible.length) {
+    for (let row = 0; row < height; row++) {
+      const count =
+        Math.floor(visible.length / height) +
+        (row < visible.length % height ? 1 : 0);
+      cells.push(
+        ...visible.slice(offset, offset + count),
+        ...Array<null>(columns - count).fill(null)
+      );
+      offset += count;
+    }
+  }
+  return {
+    visible,
+    cells,
+    favoriteIds,
+    page,
+    pages,
+    normalStart,
+    capacity,
+    columns,
+    slots: visible.length ? columns * height : 0,
+  };
 }

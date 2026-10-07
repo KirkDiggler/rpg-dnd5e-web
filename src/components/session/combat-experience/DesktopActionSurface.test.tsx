@@ -1,6 +1,9 @@
 import { DESKTOP_HOTBAR_PROFILES } from '@/concepts/desktop-hotbar/fixtures';
 import { create } from '@bufbuild/protobuf';
-import { DeclarationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  CastOptionSchema,
+  DeclarationSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
 import {
   cleanup,
@@ -11,7 +14,6 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopActionSurface } from './DesktopActionSurface';
-
 const profile = DESKTOP_HOTBAR_PROFILES[0]!;
 const ready = profile.fixtures[0]!;
 const presentation = {
@@ -24,7 +26,7 @@ const defaults = {
   presentation,
   onSelectDeclaration: vi.fn(),
 };
-beforeEach(() => {
+beforeEach(() =>
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -37,27 +39,18 @@ beforeEach(() => {
       }
       disconnect(): void {}
     }
-  );
-});
+  )
+);
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe('DesktopActionSurface', () => {
-  it('exposes every spell without opening a collection; artwork cannot create offers', () => {
-    render(
-      <DesktopActionSurface
-        {...defaults}
-        presentation={{
-          ...presentation,
-          desktopIcons: {
-            ...profile.desktopIcons,
-            imaginary: { src: '/none', fallback: 'XX', tone: 'gold' },
-          },
-        }}
-      />
-    );
+  it('shows Actions/Features/Spells/Items with grouped cantrips and no invented offers', () => {
+    render(<DesktopActionSurface {...defaults} />);
+    for (const name of ['Actions', 'Features', 'Spells', 'Items'])
+      expect(screen.getByRole('region', { name })).toBeInTheDocument();
     for (const name of [
       'Bane',
       'Bless',
@@ -67,24 +60,27 @@ describe('DesktopActionSurface', () => {
     ])
       expect(screen.getByRole('button', { name })).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: /^Spells/ })
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Unarmed Strike' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Cantrips')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /End turn/ })
     ).not.toBeInTheDocument();
-    expect(screen.queryByText('XX')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'At hand' })
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText('No offers')).toHaveLength(2);
   });
   it('focus and mouse hover inspect without selecting; Escape dismisses', () => {
     const select = vi.fn();
     render(<DesktopActionSurface {...defaults} onSelectDeclaration={select} />);
     const button = screen.getByRole('button', { name: 'Cure Wounds' });
     fireEvent.focus(button);
-    expect(
-      screen.getByRole('tooltip', { name: 'Cure Wounds details' })
-    ).toHaveTextContent('1st-level Spell Slots');
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      '1st-level Spell Slots'
+    );
     fireEvent.keyDown(button, { key: 'Escape' });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
-    // jsdom lacks PointerEvent; supply the pointerType on the dispatched event.
     const enter = new MouseEvent('pointerover', { bubbles: true });
     Object.defineProperty(enter, 'pointerType', { value: 'mouse' });
     fireEvent(button, enter);
@@ -93,7 +89,7 @@ describe('DesktopActionSurface', () => {
     fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
-  it('keeps a refused action focusable and shows the reason without dispatch', () => {
+  it('keeps refused actions inspectable and blocks dispatch, while the supplied bonus action works', () => {
     const select = vi.fn();
     render(
       <DesktopActionSurface
@@ -104,19 +100,17 @@ describe('DesktopActionSurface', () => {
         onSelectDeclaration={select}
       />
     );
-    const button = screen.getByRole('button', { name: 'Cure Wounds' });
-    expect(button).toHaveAttribute('aria-disabled', 'true');
-    expect(button).not.toBeDisabled();
-    fireEvent.focus(button);
-    fireEvent.click(button);
+    const cure = screen.getByRole('button', { name: 'Cure Wounds' });
+    fireEvent.focus(cure);
+    fireEvent.click(cure);
     expect(screen.getByRole('tooltip')).toHaveTextContent(
-      'Unavailable — action: 1 needed, 0 left'
+      'action: 1 needed, 0 left'
     );
     expect(select).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Healing Word' }));
     expect(select).toHaveBeenCalledOnce();
   });
-  it('blocks stale authority and dispatches only the replacement current row when fresh', () => {
+  it('blocks stale authority and dispatches only the current replacement row', () => {
     const select = vi.fn();
     const view = render(
       <DesktopActionSurface
@@ -147,12 +141,15 @@ describe('DesktopActionSurface', () => {
     view.rerender(<DesktopActionSurface {...defaults} declarations={[]} />);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
-  it('removes a withdrawn inspection and uses readable fallback on image failure or missing art', () => {
+  it('removes withdrawn inspection and preserves tinted-image error fallback', () => {
     const view = render(<DesktopActionSurface {...defaults} />);
-    const button = screen.getByRole('button', { name: 'Bane' });
-    fireEvent.error(button.querySelector('img')!);
-    expect(within(button).getByText('Ba')).toBeVisible();
-    fireEvent.focus(button);
+    const bane = screen.getByRole('button', { name: 'Bane' });
+    expect(bane.querySelector('img')?.parentElement).toHaveStyle({
+      maskImage: `url("${profile.desktopIcons!.bane!.src}")`,
+    });
+    fireEvent.error(bane.querySelector('img')!);
+    expect(within(bane).getByText('Ba')).toBeVisible();
+    fireEvent.focus(bane);
     view.rerender(
       <DesktopActionSurface
         {...defaults}
@@ -167,92 +164,78 @@ describe('DesktopActionSurface', () => {
       )
     ).toBeVisible();
   });
-  it('uses the chosen image alpha for colored glyphs, not a rule-derived tint', () => {
-    render(<DesktopActionSurface {...defaults} />);
-    const button = screen.getByRole('button', { name: 'Cure Wounds' });
-    const source = profile.desktopIcons!['cure-wounds']!.src;
-    expect(button).toHaveAttribute('data-tone', 'green');
-    expect(button.querySelector('img')!.parentElement).toHaveStyle({
-      maskImage: `url("${source}")`,
-    });
-    fireEvent.error(button.querySelector('img')!);
-    expect(within(button).getByText('Cw')).toBeVisible();
-  });
-
-  it('defaults to one row and pages spells independently of the at-hand section', () => {
+  it('requires Edit to favorite, permits four, refuses five, and repeats pins on later pages', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
     render(
       <DesktopActionSurface
         {...defaults}
         declarations={
           profile.fixtures.find((f) => f.id === 'crowded')!.declarations
         }
-      />
-    );
-    expect(screen.getByRole('combobox', { name: 'Hotbar rows' })).toHaveValue(
-      '1'
-    );
-    const quickBefore = Array.from(
-      screen
-        .getByRole('region', { name: 'At hand' })
-        .querySelectorAll('[data-offer-id]')
-    ).map((n) => n.getAttribute('data-offer-id'));
-    fireEvent.click(screen.getByRole('button', { name: 'Next Spells page' }));
-    expect(
-      screen.queryByRole('button', { name: 'Bane' })
-    ).not.toBeInTheDocument();
-    expect(
-      Array.from(
-        screen
-          .getByRole('region', { name: 'At hand' })
-          .querySelectorAll('[data-offer-id]')
-      ).map((n) => n.getAttribute('data-offer-id'))
-    ).toEqual(quickBefore);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Hotbar rows' }), {
-      target: { value: '4' },
-    });
-    expect(screen.getByTestId('desktop-action-surface')).toHaveAttribute(
-      'data-rows',
-      '4'
-    );
-  });
-
-  it('requires Edit before arranging; move-first and Escape never dispatch and play resumes afterward', () => {
-    const select = vi.fn();
-    const cancel = vi.fn();
-    render(
-      <DesktopActionSurface
-        {...defaults}
         armedDeclarationId="bane"
         onCancelSelection={cancel}
         onSelectDeclaration={select}
       />
     );
-    const cure = screen.getByRole('button', { name: 'Cure Wounds' });
-    expect(cure).toHaveAttribute('draggable', 'false');
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'draggable',
+      'false'
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
     expect(cancel).toHaveBeenCalledOnce();
-    expect(cure).toHaveAttribute('draggable', 'true');
-    fireEvent.click(cure);
-    fireEvent.click(screen.getByRole('button', { name: 'Move first' }));
+    for (const name of ['Bane', 'Bless', 'Command', 'Cure Wounds'])
+      fireEvent.click(screen.getByRole('button', { name: `Favorite ${name}` }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Favorite Healing Word' })
+    );
     expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'cure-wounds');
+      screen.getByText(/Four favorites maximum in Spells/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Spells favorites 4 of 4')
+    ).toBeInTheDocument();
     expect(select).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next Spells page' }));
+    const level = screen
+      .getByRole('region', { name: 'Spells' })
+      .querySelector('[data-band="leveled"]')!;
+    expect(
+      Array.from(level.querySelectorAll('[data-offer-id]'))
+        .slice(0, 4)
+        .map((node) => node.getAttribute('data-offer-id'))
+    ).toEqual(['bane', 'bless', 'command', 'cure-wounds']);
     fireEvent.keyDown(screen.getByRole('button', { name: 'Done editing' }), {
       key: 'Escape',
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Bane' }));
+    expect(select).toHaveBeenCalledOnce();
+  });
+  it('shares the four-favorite limit across cantrips and leveled spells without mixing the blocks', () => {
+    render(<DesktopActionSurface {...defaults} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    for (const name of ['Resistance', 'Toll the Dead', 'Bane', 'Bless'])
+      fireEvent.click(screen.getByRole('button', { name: `Favorite ${name}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Favorite Command' }));
     expect(
-      screen.getByRole('button', { name: 'Edit bar' })
+      screen.getByLabelText('Spells favorites 4 of 4')
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
-    expect(select).toHaveBeenCalledWith(
-      ready.declarations.find((d) => d.id === 'cure-wounds')
-    );
+    const spells = screen.getByRole('region', { name: 'Spells' });
+    expect(spells.querySelectorAll('[data-favorite="true"]')).toHaveLength(4);
+    expect(
+      spells
+        .querySelector('[data-band="cantrips"]')
+        ?.querySelectorAll('[data-favorite="true"]')
+    ).toHaveLength(2);
+    expect(
+      spells
+        .querySelector('[data-band="leveled"]')
+        ?.querySelectorAll('[data-favorite="true"]')
+    ).toHaveLength(2);
   });
 
-  it('accepts internal same-section drops only, including unavailable actions', () => {
+  it('can favorite unavailable offers without selecting them, then unstar', () => {
     const select = vi.fn();
     render(
       <DesktopActionSurface
@@ -262,57 +245,91 @@ describe('DesktopActionSurface', () => {
       />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
-    const dataTransfer = {
-      setData: vi.fn(),
-      effectAllowed: '',
-      dropEffect: '',
-    };
-    const cure = screen.getByRole('button', { name: 'Cure Wounds' });
-    fireEvent.dragStart(cure, { dataTransfer });
-    fireEvent.drop(screen.getByRole('button', { name: 'Mace' }), {
-      dataTransfer,
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Favorite Bane' }));
     expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'bane');
-    fireEvent.drop(screen.getByRole('button', { name: 'Bane' }), {
-      dataTransfer,
-    });
+      screen.getByRole('button', { name: 'Unfavorite Bane' })
+    ).toHaveAttribute('data-favorite', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Unfavorite Bane' }));
     expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'bane');
-    fireEvent.dragStart(cure, { dataTransfer });
-    fireEvent.drop(screen.getByRole('button', { name: 'Bane' }), {
-      dataTransfer,
-    });
-    expect(
-      screen
-        .getByRole('region', { name: 'Spells' })
-        .querySelector('[data-offer-id]')
-    ).toHaveAttribute('data-offer-id', 'cure-wounds');
-    fireEvent.click(screen.getByRole('button', { name: 'Done editing' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cure Wounds' }));
+      screen.getByRole('button', { name: 'Favorite Bane' })
+    ).toHaveAttribute('data-favorite', 'false');
     expect(select).not.toHaveBeenCalled();
   });
-
-  it('shows selected state and routes cancellation without executing another declaration', () => {
-    const cancel = vi.fn();
+  it('refuses unnamed or ambiguous option identities rather than inventing a choice', () => {
+    const choose = vi.fn();
+    const option = create(DeclarationSchema, {
+      ...ready.declarations.find((d) => d.id === 'command')!,
+      options: [
+        create(CastOptionSchema, { id: 'nameless', label: '' }),
+        create(CastOptionSchema, { id: 'duplicate', label: 'First label' }),
+        create(CastOptionSchema, { id: 'duplicate', label: 'Second label' }),
+      ],
+    });
     render(
       <DesktopActionSurface
         {...defaults}
-        armedDeclarationId="bane"
-        onCancelSelection={cancel}
+        declarations={[option]}
+        optionDeclaration={option}
+        onSelectCastOption={choose}
       />
     );
-    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    for (const name of [
+      'Choice label unavailable',
+      'First label',
+      'Second label',
+    ]) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the bar present for exact current option choices, cancel and switching actions', () => {
+    const option = ready.declarations.find((d) => d.id === 'command')!;
+    const choose = vi.fn();
+    const cancel = vi.fn();
+    const action = vi.fn();
+    const view = render(
+      <DesktopActionSurface
+        {...defaults}
+        optionDeclaration={option}
+        onSelectCastOption={choose}
+        onCancelCastOption={cancel}
+        onSelectDeclaration={action}
+      />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel action' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Command choices' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bane' })).toBeVisible();
+    fireEvent.click(screen.getByTestId('cast-option-grovel'));
+    expect(choose).toHaveBeenCalledWith('grovel');
+    fireEvent.click(screen.getByRole('button', { name: 'Bane' }));
+    expect(action).toHaveBeenCalledWith(
+      ready.declarations.find((d) => d.id === 'bane')
+    );
+    fireEvent.keyDown(screen.getByTestId('cast-option-cancel'), {
+      key: 'Escape',
+    });
     expect(cancel).toHaveBeenCalledOnce();
+    view.rerender(
+      <DesktopActionSurface
+        {...defaults}
+        authorityFresh={false}
+        optionDeclaration={option}
+        onSelectCastOption={choose}
+      />
+    );
+    fireEvent.click(screen.getByTestId('cast-option-flee'));
+    expect(choose).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={ready.declarations.filter((d) => d.id !== 'command')}
+        optionDeclaration={option}
+      />
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

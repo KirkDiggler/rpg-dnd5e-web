@@ -1,4 +1,5 @@
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type { ReactNode } from 'react';
 import styles from './DesktopStatusSection.module.css';
 import type { CombatExperienceProps } from './types';
 
@@ -12,6 +13,7 @@ export interface DesktopStatusSectionProps {
   privateStatus: CombatExperienceProps['privateStatus'];
   privateStatusMessage?: string;
   onRetry?: () => void;
+  children?: ReactNode;
 }
 
 /** Fixed read-only facts. This section never enters an action/order/page list. */
@@ -25,6 +27,7 @@ export function DesktopStatusSection({
   privateStatus,
   privateStatusMessage,
   onRetry,
+  children,
 }: DesktopStatusSectionProps) {
   return (
     <section
@@ -59,6 +62,7 @@ export function DesktopStatusSection({
       {movementStale && (
         <p className={styles.warning}>Movement may be out of date</p>
       )}
+      {children}
       {privateStatus !== 'ready' && (
         <div className={styles.feedback} role="status">
           <strong>
