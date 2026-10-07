@@ -10,6 +10,12 @@ interface CharacterHeaderProps {
   onLevelUp?: () => void;
 }
 
+// Armor class is a projection the server either sends or refuses to send;
+// a missing (zero) value renders as a dash, never as an invented number.
+function armorClassOrDash(armorClass: number | undefined): number | string {
+  return armorClass !== undefined && armorClass > 0 ? armorClass : '—';
+}
+
 // Simple read-only HP display component
 function HPDisplay({
   currentHP,
@@ -120,8 +126,9 @@ export function CharacterHeader({
             <div
               className="text-2xl font-bold"
               style={{ color: 'var(--text-primary)' }}
+              data-testid="armor-class-readout"
             >
-              {character.combatStats?.armorClass || 10}
+              {armorClassOrDash(character.combatStats?.armorClass)}
             </div>
             <div className="text-sm" style={{ color: 'var(--text-subtle)' }}>
               Armor Class
