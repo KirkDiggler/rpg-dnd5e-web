@@ -258,20 +258,23 @@ export function DesktopActionSection({
         0
       ) +
       Math.max(0, group.bands.length - 1) * 10
-    : 84;
+    : 0;
   return (
     <section
       className={styles.group}
       aria-label={group.label}
       data-section={group.key}
+      data-empty={group.offers.length === 0}
       style={{
         minWidth: minimum,
-        flexGrow: Math.max(1, Math.min(12, group.offers.length)),
+        flexGrow: group.offers.length
+          ? Math.max(1, Math.min(12, group.offers.length))
+          : 0,
       }}
     >
       <div className={styles.sectionHeading}>
         <h3>{group.label}</h3>
-        {editing && (
+        {editing && group.offers.length > 0 && (
           <span
             className={styles.favoriteCount}
             aria-label={`${group.label} favorites ${favorites.length} of 4`}

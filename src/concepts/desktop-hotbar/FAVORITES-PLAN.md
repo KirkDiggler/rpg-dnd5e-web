@@ -69,6 +69,12 @@ flowchart LR
 
 Checks: user replaced arbitrary ordering intentionally; old drag acceptance is superseded. No new game rules, provider release pins or persisted settings. Narrow rail is an explicit presentational consequence of honoring four favorites, not a hidden cap. Missing option descriptions are reported, not faked. Passive-effect scope stays named because current wire answers are action/target-specific. Item execution is not invented; an empty Items section is truthful. Tasks ordered12→13→14→15; no merge/release dependency outside web.
 
+## Empty-section refinement — operator-approved after the favorites walkthrough
+
+Task16 (baseline `6525212d`): keep empty headings/`No offers` visible but intrinsic-width, non-growing and without an empty favorite counter. Owner/files: `DesktopActionSection.tsx`, `DesktopActionSurface.module.css`, surface tests. No provider/state/authority changes. Populated groups retain their measured minimums and consume the freed width; a section that gains an offer returns to normal sizing. Verify empty groups stay compact across1000/1280/1600 and Edit, both Cleric and Martial, with no document overflow; add an empty→populated regression. Run focused tests/typecheck/lint and inspect browser screenshots. Requirement coverage: visible-empty + minimum-room → Task16 → DOM/state assertions and measured widths. Changed seams: none; same groups/preferences/data, presentation sizing only.
+
+Task16 evidence: typecheck/lint and47 relevant tests pass with two workers, including empty→populated restoration. Browser measurements at1000/1280/1600 and Edit are constant: Features≈60px, Spells/Items≈44px, height37px, flex-grow0/flex-basis auto. Screenshots inspected; no overflow/page errors. The initial combined test command timed out; an isolated new test exposed its CSS zero serialization assumption (`0` versus `0px`), corrected to test the numeric zero and explicit flex-grow before the passing rerun. Ignored evidence: `evidence/desktop-hotbar/empty-sections.json` and PNGs.
+
 ## Completion evidence and remaining gap
 
 - Implemented the layout portion of tasks12–15. Typecheck, changed-file lint/format and201 focused tests pass, including exact A/B overlap, four-favorite cap, mixed cantrip/leveled cap, four-row balancing, invalid option identities, current authority and information-only effects. Old drag helpers/UI are removed rather than retained as a second preference mechanism.

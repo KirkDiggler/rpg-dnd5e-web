@@ -71,6 +71,45 @@ describe('DesktopActionSurface', () => {
     ).not.toBeInTheDocument();
     expect(screen.getAllByText('No offers')).toHaveLength(2);
   });
+  it('keeps empty groups visible without width allocation or an empty favorite counter, then restores normal sizing when offers arrive', () => {
+    const view = render(<DesktopActionSurface {...defaults} />);
+    const features = screen.getByRole('region', { name: 'Features' });
+    expect(features).toHaveAttribute('data-empty', 'true');
+    expect(Number.parseFloat(features.style.minWidth)).toBe(0);
+    expect(features.style.flexGrow).toBe('0');
+    expect(within(features).getByText('No offers')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
+    expect(
+      within(features).queryByLabelText(/favorites/)
+    ).not.toBeInTheDocument();
+    const feature = create(DeclarationSchema, {
+      ...ready.declarations.find((offer) => offer.id === 'dash')!,
+      id: 'new-feature',
+    });
+    view.rerender(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[...ready.declarations, feature]}
+        presentation={{
+          ...presentation,
+          desktopSectionByDeclarationId: {
+            ...presentation.desktopSectionByDeclarationId,
+            'new-feature': 'features',
+          },
+        }}
+      />
+    );
+    expect(features).toHaveAttribute('data-empty', 'false');
+    expect(features.style.flexGrow).toBe('1');
+    expect(within(features).queryByText('No offers')).not.toBeInTheDocument();
+    expect(
+      within(features).getByLabelText('Features favorites 0 of 4')
+    ).toBeInTheDocument();
+    expect(
+      features.querySelector('[data-offer-id="new-feature"]')
+    ).not.toBeNull();
+  });
+
   it('focus and mouse hover inspect without selecting; Escape dismisses', () => {
     const select = vi.fn();
     render(<DesktopActionSurface {...defaults} onSelectDeclaration={select} />);
