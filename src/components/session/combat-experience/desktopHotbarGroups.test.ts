@@ -67,9 +67,26 @@ describe('desktop hotbar groups', () => {
       ['other', ['unknown']],
     ]);
   });
-  it('retains empty sections as empty, not synthetic buttons', () => {
-    const groups = desktopHotbarGroups([]);
-    expect(groups).toHaveLength(4);
-    expect(groups.flatMap((g) => g.offers)).toEqual([]);
+  it('omits absent categories even when display hints name them', () => {
+    expect(
+      desktopHotbarGroups([], {
+        desktopSectionByDeclarationId: { missing: 'features' },
+        desktopSpellKindByDeclarationId: { missing: 'cantrip' },
+      })
+    ).toEqual([]);
+    expect(
+      desktopHotbarGroups([row('move', Verb.MOVE)]).map((group) => group.key)
+    ).toEqual(['actions']);
+  });
+  it('adds spellcasting from new data, not a class/level rule, and retains disabled offers', () => {
+    const before = [row('attack', Verb.ATTACK)];
+    expect(desktopHotbarGroups(before).map((group) => group.key)).toEqual([
+      'actions',
+    ]);
+    const after = [...before, row('new-spell', Verb.CAST)];
+    const groups = desktopHotbarGroups(after);
+    expect(groups.map((group) => group.key)).toEqual(['actions', 'spells']);
+    expect(groups[1]?.offers[0]).toBe(after[1]);
+    expect(groups[1]?.offers[0]?.available).toBe(false);
   });
 });

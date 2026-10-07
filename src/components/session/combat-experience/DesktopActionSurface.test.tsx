@@ -3,6 +3,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   CastOptionSchema,
   DeclarationSchema,
+  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
 import {
@@ -47,10 +48,12 @@ afterEach(() => {
 });
 
 describe('DesktopActionSurface', () => {
-  it('shows Actions/Features/Spells/Items with grouped cantrips and no invented offers', () => {
+  it('mounts only supplied categories, with grouped cantrips and no empty placeholders', () => {
     render(<DesktopActionSurface {...defaults} />);
-    for (const name of ['Actions', 'Features', 'Spells', 'Items'])
+    for (const name of ['Actions', 'Spells'])
       expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    for (const name of ['Features', 'Items'])
+      expect(screen.queryByRole('region', { name })).not.toBeInTheDocument();
     for (const name of [
       'Bane',
       'Bless',
@@ -69,19 +72,14 @@ describe('DesktopActionSurface', () => {
     expect(
       screen.queryByRole('region', { name: 'At hand' })
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText('No offers')).toHaveLength(2);
+    expect(screen.queryByText('No offers')).not.toBeInTheDocument();
   });
-  it('keeps empty groups visible without width allocation or an empty favorite counter, then restores normal sizing when offers arrive', () => {
+  it('mounts Features when offers arrive and unmounts them when withdrawn', () => {
     const view = render(<DesktopActionSurface {...defaults} />);
-    const features = screen.getByRole('region', { name: 'Features' });
-    expect(features).toHaveAttribute('data-empty', 'true');
-    expect(Number.parseFloat(features.style.minWidth)).toBe(0);
-    expect(features.style.flexGrow).toBe('0');
-    expect(within(features).getByText('No offers')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
     expect(
-      within(features).queryByLabelText(/favorites/)
+      screen.queryByRole('region', { name: 'Features' })
     ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bar' }));
     const feature = create(DeclarationSchema, {
       ...ready.declarations.find((offer) => offer.id === 'dash')!,
       id: 'new-feature',
@@ -99,7 +97,7 @@ describe('DesktopActionSurface', () => {
         }}
       />
     );
-    expect(features).toHaveAttribute('data-empty', 'false');
+    const features = screen.getByRole('region', { name: 'Features' });
     expect(features.style.flexGrow).toBe('1');
     expect(within(features).queryByText('No offers')).not.toBeInTheDocument();
     expect(
@@ -108,6 +106,39 @@ describe('DesktopActionSurface', () => {
     expect(
       features.querySelector('[data-offer-id="new-feature"]')
     ).not.toBeNull();
+    view.rerender(<DesktopActionSurface {...defaults} />);
+    expect(features).not.toBeInTheDocument();
+  });
+
+  it('mounts Spells when spell offers are gained, keeps it when all are unavailable, and removes it only when absent', () => {
+    const withoutSpells = ready.declarations.filter(
+      (offer) => offer.verb !== Verb.CAST
+    );
+    const view = render(
+      <DesktopActionSurface {...defaults} declarations={withoutSpells} />
+    );
+    expect(
+      screen.queryByRole('region', { name: 'Spells' })
+    ).not.toBeInTheDocument();
+    view.rerender(<DesktopActionSurface {...defaults} />);
+    const spells = screen.getByRole('region', { name: 'Spells' });
+    const unavailable = ready.declarations.map((offer) =>
+      offer.verb === Verb.CAST
+        ? create(DeclarationSchema, { ...offer, available: false })
+        : offer
+    );
+    view.rerender(
+      <DesktopActionSurface {...defaults} declarations={unavailable} />
+    );
+    expect(screen.getByRole('region', { name: 'Spells' })).toBe(spells);
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    view.rerender(
+      <DesktopActionSurface {...defaults} declarations={withoutSpells} />
+    );
+    expect(spells).not.toBeInTheDocument();
   });
 
   it('focus and mouse hover inspect without selecting; Escape dismisses', () => {

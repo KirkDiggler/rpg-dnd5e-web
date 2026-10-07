@@ -26,7 +26,8 @@ const labels: Record<DesktopHotbarSection, string> = {
   items: 'Items',
 };
 
-/** Registry-filtered offers only; hints can organize facts, never invent them. */
+/** Registry-filtered offers only; hints cannot mint a capability/category.
+ * Unavailable offers still count: spent resources must not erase a module. */
 export function desktopHotbarGroups(
   declarations: readonly Declaration[],
   presentation?: OrganizedActionPresentation
@@ -56,39 +57,43 @@ export function desktopHotbarGroups(
       (offer.verb === Verb.CAST ? 'spells' : 'actions');
     sections[section].push(offer);
   }
-  return (Object.keys(labels) as DesktopHotbarSection[]).map((key) => {
-    const current = sections[key];
-    const bands: HotbarBand[] =
-      key === 'spells'
-        ? [
-            {
-              id: 'cantrips',
-              label: 'Cantrips',
-              offers: current.filter(
-                (offer) =>
-                  presentation?.desktopSpellKindByDeclarationId?.[offer.id] ===
-                  'cantrip'
-              ),
-            },
-            {
-              id: 'leveled',
-              label: 'Leveled spells',
-              offers: current.filter(
-                (offer) =>
-                  presentation?.desktopSpellKindByDeclarationId?.[offer.id] ===
-                  'leveled'
-              ),
-            },
-            {
-              id: 'other',
-              label: 'Other spells',
-              offers: current.filter(
-                (offer) =>
-                  !presentation?.desktopSpellKindByDeclarationId?.[offer.id]
-              ),
-            },
-          ].filter((band) => band.offers.length > 0)
-        : [{ id: 'all', offers: current }];
-    return { key, label: labels[key], offers: current, bands };
-  });
+  return (Object.keys(labels) as DesktopHotbarSection[])
+    .filter((key) => sections[key].length > 0)
+    .map((key) => {
+      const current = sections[key];
+      const bands: HotbarBand[] =
+        key === 'spells'
+          ? [
+              {
+                id: 'cantrips',
+                label: 'Cantrips',
+                offers: current.filter(
+                  (offer) =>
+                    presentation?.desktopSpellKindByDeclarationId?.[
+                      offer.id
+                    ] === 'cantrip'
+                ),
+              },
+              {
+                id: 'leveled',
+                label: 'Leveled spells',
+                offers: current.filter(
+                  (offer) =>
+                    presentation?.desktopSpellKindByDeclarationId?.[
+                      offer.id
+                    ] === 'leveled'
+                ),
+              },
+              {
+                id: 'other',
+                label: 'Other spells',
+                offers: current.filter(
+                  (offer) =>
+                    !presentation?.desktopSpellKindByDeclarationId?.[offer.id]
+                ),
+              },
+            ].filter((band) => band.offers.length > 0)
+          : [{ id: 'all', offers: current }];
+      return { key, label: labels[key], offers: current, bands };
+    });
 }

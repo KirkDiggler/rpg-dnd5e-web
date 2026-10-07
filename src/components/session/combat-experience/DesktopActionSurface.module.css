@@ -38,11 +38,6 @@
   min-width: 84px;
   flex-basis: 0;
 }
-.group[data-empty='true'] {
-  flex: 0 0 auto;
-  width: max-content;
-  white-space: nowrap;
-}
 .sectionHeading {
   display: flex;
   align-items: center;
@@ -102,11 +97,6 @@
   line-height: 14px;
   font-weight: 500;
   color: #a9b9c1;
-}
-.emptySection {
-  margin: 0;
-  color: #98a6ad;
-  font-size: 10px;
 }
 .emptySlot {
   width: 36px;

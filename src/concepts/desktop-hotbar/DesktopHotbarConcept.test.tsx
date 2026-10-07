@@ -246,9 +246,19 @@ describe('DesktopHotbarConcept', () => {
     ).toBeInTheDocument();
   });
 
-  it('separates active Features from contextual Effects and Traits', () => {
+  it('mounts only offered command categories and separates them from contextual Effects and Traits', () => {
     render(<DesktopHotbarConcept />);
+    expect(
+      screen.queryByRole('region', { name: 'Features' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Spells' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Martial' }));
+    expect(
+      screen.queryByRole('region', { name: 'Spells' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Items' })
+    ).not.toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Features' })).getByRole(
         'button',

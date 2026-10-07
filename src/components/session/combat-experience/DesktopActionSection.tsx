@@ -252,29 +252,26 @@ export function DesktopActionSection({
     setPage((current) => Math.min(current, pages - 1));
   }, [pages]);
   useEffect(() => onInspect(null), [page, rows, onInspect]);
-  const minimum = group.offers.length
-    ? group.bands.reduce(
-        (total, band) => total + bandMinimum(band, favorites, rows),
-        0
-      ) +
-      Math.max(0, group.bands.length - 1) * 10
-    : 0;
+  if (!group.offers.length) return null;
+  const minimum =
+    group.bands.reduce(
+      (total, band) => total + bandMinimum(band, favorites, rows),
+      0
+    ) +
+    Math.max(0, group.bands.length - 1) * 10;
   return (
     <section
       className={styles.group}
       aria-label={group.label}
       data-section={group.key}
-      data-empty={group.offers.length === 0}
       style={{
         minWidth: minimum,
-        flexGrow: group.offers.length
-          ? Math.max(1, Math.min(12, group.offers.length))
-          : 0,
+        flexGrow: Math.max(1, Math.min(12, group.offers.length)),
       }}
     >
       <div className={styles.sectionHeading}>
         <h3>{group.label}</h3>
-        {editing && group.offers.length > 0 && (
+        {editing && (
           <span
             className={styles.favoriteCount}
             aria-label={`${group.label} favorites ${favorites.length} of 4`}
@@ -306,36 +303,32 @@ export function DesktopActionSection({
           </nav>
         )}
       </div>
-      {group.offers.length ? (
-        <div className={styles.bands}>
-          {group.bands.map((band) => (
-            <OfferGrid
-              key={band.id}
-              band={band}
-              page={favoritePage(
-                band.offers,
-                favorites,
-                columns[band.id] ?? 1,
-                rows,
-                page
-              )}
-              rows={rows}
-              minimum={bandMinimum(band, favorites, rows)}
-              authorityFresh={authorityFresh}
-              icons={icons}
-              editing={editing}
-              favoriteCount={favorites.length}
-              armedId={armedId}
-              optionId={optionId}
-              onChoose={onChoose}
-              onInspect={onInspect}
-              onColumns={measured}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className={styles.emptySection}>No offers</p>
-      )}
+      <div className={styles.bands}>
+        {group.bands.map((band) => (
+          <OfferGrid
+            key={band.id}
+            band={band}
+            page={favoritePage(
+              band.offers,
+              favorites,
+              columns[band.id] ?? 1,
+              rows,
+              page
+            )}
+            rows={rows}
+            minimum={bandMinimum(band, favorites, rows)}
+            authorityFresh={authorityFresh}
+            icons={icons}
+            editing={editing}
+            favoriteCount={favorites.length}
+            armedId={armedId}
+            optionId={optionId}
+            onChoose={onChoose}
+            onInspect={onInspect}
+            onColumns={measured}
+          />
+        ))}
+      </div>
     </section>
   );
 }
