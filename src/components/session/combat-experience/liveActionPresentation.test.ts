@@ -7,6 +7,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { FeatureViewSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
+import { desktopHotbarGroups } from './desktopHotbarGroups';
 import { liveActionPresentation } from './liveActionPresentation';
 import { organizeDeclarations } from './organizedActionPresentation';
 
@@ -48,6 +49,84 @@ const offers: Declaration[] = [
 ];
 
 describe('live action presentation', () => {
+  it('joins desktop sections and spell bands from exact provider refs without hiding unavailable or unknown offers', () => {
+    const presentation = liveActionPresentation({
+      declarations: offers,
+      desktop: true,
+      knownCantrips: ['provider:spells:zero'],
+      knownSpells: ['provider:spells:one', 'provider:spells:zero'],
+      features: [feature],
+    });
+    expect(presentation.desktopFavorites).toBe(false);
+    expect(presentation.desktopIcons).toBeDefined();
+    const groups = desktopHotbarGroups(offers, presentation);
+    expect(groups.map(({ key }) => key)).toEqual([
+      'actions',
+      'features',
+      'spells',
+    ]);
+    expect(groups.find(({ key }) => key === 'features')?.offers).toEqual([
+      offers[5],
+    ]);
+    expect(
+      groups.find(({ key }) => key === 'actions')?.offers.map(({ id }) => id)
+    ).toEqual(['attack', 'move', 'generic']);
+    expect(
+      groups
+        .find(({ key }) => key === 'spells')
+        ?.bands.map(({ id, offers }) => [id, offers.map(({ id }) => id)])
+    ).toEqual([
+      ['cantrips', ['cantrip']],
+      ['leveled', ['leveled']],
+      ['other', ['unknown-spell']],
+    ]);
+  });
+
+  it('retains all current desktop offers when private metadata disappears and follows reminted IDs', () => {
+    const renamed = offers.map((offer) =>
+      create(DeclarationSchema, { ...offer, id: `opaque:${offer.id}` })
+    );
+    const presentation = liveActionPresentation({
+      declarations: renamed,
+      desktop: true,
+    });
+    const groups = desktopHotbarGroups(renamed, presentation);
+    expect(groups.map(({ key }) => key)).toEqual(['actions', 'spells']);
+    expect(
+      groups.flatMap(({ offers }) => offers.map(({ id }) => id)).sort()
+    ).toEqual(
+      renamed
+        .filter(({ verb }) => verb !== Verb.END_TURN)
+        .map(({ id }) => id)
+        .sort()
+    );
+    expect(
+      groups.find(({ key }) => key === 'spells')?.bands.map(({ id }) => id)
+    ).toEqual(['other']);
+    expect(presentation.desktopSectionByDeclarationId).not.toHaveProperty(
+      'feature'
+    );
+    expect(presentation.desktopSectionByDeclarationId?.['opaque:feature']).toBe(
+      'actions'
+    );
+    expect(
+      liveActionPresentation({
+        declarations: [],
+        desktop: true,
+        features: [feature],
+      }).desktopSectionByDeclarationId
+    ).toEqual({});
+  });
+
+  it('keeps the desktop opt-in absent for legacy callers', () => {
+    const legacy = liveActionPresentation({ declarations: offers });
+    expect(
+      liveActionPresentation({ declarations: offers, desktop: false })
+    ).toEqual(legacy);
+    expect(legacy).not.toHaveProperty('desktopIcons');
+    expect(legacy).not.toHaveProperty('desktopSectionByDeclarationId');
+  });
+
   it('treats an explicitly empty feature list as known, not missing metadata', () => {
     expect(
       liveActionPresentation({ declarations: offers, features: [] })

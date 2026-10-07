@@ -3,13 +3,18 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { FeatureView } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type { DesktopHotbarSection } from './desktopHotbarLayout';
+import { liveActionArt } from './liveActionArt';
 import type { CombatExperienceActionPresentation } from './types';
+import { isExecutableVerb } from './verbRegistry';
 
 interface LiveActionPresentationInput {
   declarations: readonly Declaration[];
   knownCantrips?: readonly string[];
   knownSpells?: readonly string[];
   features?: readonly FeatureView[];
+  /** Responsive presentation only; absent preserves the current organizer. */
+  desktop?: boolean;
 }
 
 /** Display ordering only; declaration membership and availability remain authoritative. */
@@ -18,6 +23,7 @@ export function liveActionPresentation({
   knownCantrips,
   knownSpells,
   features,
+  desktop = false,
 }: LiveActionPresentationInput): CombatExperienceActionPresentation {
   const cantrips = new Set(knownCantrips);
   const leveledSpells = new Set(knownSpells);
@@ -30,8 +36,44 @@ export function liveActionPresentation({
         : []
     )
   );
+  const desktopDeclarations = desktop
+    ? declarations.filter(({ verb }) => isExecutableVerb(verb))
+    : [];
   return {
     mode: 'organized-hud',
+    ...(desktop
+      ? {
+          desktopFavorites: false,
+          desktopIcons: liveActionArt(desktopDeclarations),
+          desktopSectionByDeclarationId: Object.fromEntries(
+            desktopDeclarations.map(
+              (declaration): [string, DesktopHotbarSection] => [
+                declaration.id,
+                declaration.verb === Verb.CAST
+                  ? 'spells'
+                  : declaration.verb === Verb.ACTIVATE &&
+                      featureRefs.has(declaration.ability?.ref ?? '')
+                    ? 'features'
+                    : 'actions',
+              ]
+            )
+          ),
+          desktopSpellKindByDeclarationId: Object.fromEntries(
+            desktopDeclarations.flatMap<[string, 'cantrip' | 'leveled']>(
+              (declaration) => {
+                if (declaration.verb !== Verb.CAST) return [];
+                const ref = declaration.spell?.ref;
+                if (ref && cantrips.has(ref))
+                  return [[declaration.id, 'cantrip']];
+                if (ref && leveledSpells.has(ref))
+                  return [[declaration.id, 'leveled']];
+                // Granted/unknown spells remain visible in Other spells.
+                return [];
+              }
+            )
+          ),
+        }
+      : {}),
     quickGroupByDeclarationId: Object.fromEntries(
       declarations.flatMap<[string, 'cantrips' | 'features']>((declaration) => {
         if (
