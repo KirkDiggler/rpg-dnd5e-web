@@ -24,6 +24,7 @@ import {
   GetViewResponseSchema,
   VendorStockMode,
   type GetAtlasResponse,
+  type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AbilityRefSchema,
@@ -1477,6 +1478,12 @@ describe('SessionEncounterView production combat integration', () => {
       );
 
     it('draws the room the key named, and names the place after it', async () => {
+      let finishInitialView!: (view: GetViewResponse) => void;
+      hoisted.getViewFn.mockReturnValueOnce(
+        new Promise<GetViewResponse>((resolve) => {
+          finishInitialView = resolve;
+        })
+      );
       const room = authoredRoom();
       hoisted.atlasResult.atlas = pointyAtlas({ dungeonKey: 'room-workshop' });
       hoisted.atlasResult.loading = false;
@@ -1492,10 +1499,18 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBeNull();
       expect(first?.roomScene).toBe(room);
 
-      // ONE build per atlas/room identity: an unrelated re-render keeps
-      // the same memoized scene object.
+      // Force the initial position-triggered view read to settle in the timing
+      // window that CI exposed, rather than depending on a zero-delay timer.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledOnce());
+      await act(async () => finishInitialView(create(GetViewResponseSchema)));
+      // That authoritative read can legitimately replace observation inputs.
+      // Measure unrelated-render memoization only after it has settled.
+      const settledScene = hoisted.lastCanvasProps.current?.scene;
+      expect(settledScene?.roomScene).toBe(room);
+      const viewReads = hoisted.getViewFn.mock.calls.length;
       rerenderView(rerender);
-      expect(hoisted.lastCanvasProps.current?.scene).toBe(first);
+      expect(hoisted.lastCanvasProps.current?.scene).toBe(settledScene);
+      expect(hoisted.getViewFn).toHaveBeenCalledTimes(viewReads);
     });
 
     it('draws the legacy atlas room when the dungeon has no authored room', async () => {
