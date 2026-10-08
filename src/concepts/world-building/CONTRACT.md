@@ -3,6 +3,50 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
+## Current Encounter Studio boundary (#1232, project#545)
+
+Home offers **Encounter Studio** alongside World Builder under the same
+current-world source availability and identity lifecycle. Studio mounts one
+room-mode `WorldBuildingConcept`; its typed presentation facade projects the
+existing document and commands, not a second store. Layout and the existing 3D
+viewport may unmount independently without replacing the document owner.
+
+Layout offers Paint, Erase and Rectangle on canonical walkable cells. A completed
+stroke/rectangle is one validated whole-document history transaction. The 3D
+view reuses prop placement, selection, Move/Rotate, repeat, grouping, support,
+height and visual-light controls. Both views use the same draft **and complete
+site scope**, shared Undo/Redo and persistence. View changes and Layout pan/zoom
+create no history. Switching cancels unfinished gestures/transforms/drops and
+preserves committed selection and Layout framing; hidden prop mutation shortcuts
+are gated in Layout. Undo/Redo retain their existing selection-clearing behavior.
+The 3D camera is not promised to survive renderer remounts.
+
+Studio resumes World Builder's local draft under
+`rpg.concepts.world-building.room-draft.v3` (`ROOM_DRAFT_STORAGE_KEY`), not a
+Studio namespace or copied document. Despite the suffix, the current serialized
+room envelope is **version 5** with draft version 3 and optional normalized scope.
+Missing current bytes permit the existing legacy-key lookup then blank fallback;
+present unreadable/unsupported current bytes are refused and preserved with
+visible feedback and autosave blocked. Explicit **Replace unreadable local
+draft** replaces those bytes. A failed write retains the latest in-memory
+document and last successfully stored bytes. Reload restores content, not history.
+The storage key remains origin-global, not world/session-namespaced.
+
+Floor edits/history/reload preserve supported walls/openings/attached doors and
+state, props/declarations/bindings, transforms/groups/supports/lights,
+monsters/bindings/party start and all scope fields. Shape validation does not grade
+gameplay legality. Source availability is not proof of remote write permission.
+Studio exposes no publication, lobby launch, Save & Play, world-snapshot,
+import/reset or policy-editing commands. Room-management/focus tools, discovery
+simulation, Layout wall/door tools, asset markings/labels and gameplay camera
+presets are outside this slice. Missing room-navigation controls do not imply
+unsupported multi-room gameplay.
+
+See [the safe verification procedure](../../../docs/how-to/encounter-studio-verification.md)
+for disposable-context interaction checks and the DOM tests' WebGL boundary.
+The older sections below describe their own extensions or the standalone prop
+composer; they do not narrow this current Studio boundary.
+
 ## Structural-wall authoring (#527 in rpg-project)
 
 The room document optionally carries `room.walls`. Each wall owns a stable id,
@@ -308,13 +352,11 @@ and the saved snapshot list with open), `Publish & Play`
 `Save`/`Reload`/`New` and publish verbs are refused while a publishing
 transaction runs, and the route keeps its `publishingBusy` nav lock.
 
-**The site scope persists with the draft** (#1160). `factions`/`dispositions`
-are editor state carried in the room document's history entry, and the local
-draft's storage envelope — under the same `ROOM_DRAFT_STORAGE_KEY` — carries
-them beside the `draft` in a **v4** envelope, emitted only when a scope is
-authored; a document that authors none keeps the byte-identical **v3** bytes
-and reads back unchanged. Authoring is therefore not lost on reload, and a
-reloaded room publishes the document it was saved as. **Semantic checks are the
+**The site scope persists with the draft** (#1160). All supported scope fields
+are editor state carried in the room document's history entry and beside the
+`draft` in the current **v5** local envelope under `ROOM_DRAFT_STORAGE_KEY`.
+Empty normalized scope is omitted. Authoring is therefore not lost on reload,
+and a reloaded room publishes the document it was saved as. **Semantic checks are the
 SERVER's**: the `Publish & Play` `validate_only` preview (with a deliberate
 `Validate with server` verb) surfaces the engine's path-addressed refusals
 verbatim. The client's strict-shape layer refuses only what it cannot
@@ -714,7 +756,10 @@ Notable measured facts from `browser-evidence.json`:
   The harness returns valid empty gRPC-web responses only to unrelated App hooks
   and records them separately; World Building makes no API request.
 
-## Remaining limits
+## Standalone prop-composition limits
+
+These limits describe the original prop composer, not current room-mode or
+Encounter Studio floor/structural-wall authoring.
 
 - Persistence is browser-local only: no campaign wiring, backend promotion,
   collaboration, sharing, ACLs, or marketplace behavior.
