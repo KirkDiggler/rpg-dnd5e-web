@@ -14,8 +14,6 @@ import { useLobbyCharacterId } from './api/useLobbyCharacterId';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
 import { shouldRenderGlobalDevTools, type AppView } from './appView';
-import { AuthorView } from './author/AuthorView';
-import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
@@ -388,16 +386,12 @@ function AppContent() {
     handleBackToHome();
   };
 
-  const handleOpenAuthor = () => {
-    setCurrentView('author');
-  };
-
   const handleOpenWorldBuilder = () => {
     setCurrentView('world-builder');
   };
 
-  // Save & Play from the Dungeon Builder (rpg-project#256): the builder
-  // already started the encounter on the authored key; drop straight
+  // Save & Play from World Builder: the builder has already started
+  // the encounter on the authored key; drop straight
   // into it the same way resume-after-refresh does.
   const handlePlayAuthored = (encounterId: string, characterId: string) => {
     setResumeLobbyId(null);
@@ -462,7 +456,6 @@ function AppContent() {
   // reserved by the outer shell is a pixel their canvas never gets.
   const fullBleed =
     currentView === 'character-sheet' ||
-    currentView === 'author' ||
     currentView === 'world-builder' ||
     currentView === 'encounter-studio';
 
@@ -599,13 +592,6 @@ function AppContent() {
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
           />
-        ) : currentView === 'author' ? (
-          <AuthorView
-            onBack={handleBackToHome}
-            characterId={selectedType === 'character' ? selectedId : null}
-            onPlay={handlePlayAuthored}
-            compositionSource={compositionSource}
-          />
         ) : currentView === 'home' && resumeIdentityError ? (
           <div className="flex items-center justify-center h-screen">
             <ErrorDisplay
@@ -639,7 +625,6 @@ function AppContent() {
             onContinueDraft={handleResumeDraft}
             onDelete={handleDeleteCharacter}
             onDeleteDraft={handleDeleteDraft}
-            onOpenAuthor={handleOpenAuthor}
             onOpenWorldBuilder={handleOpenWorldBuilder}
             onOpenStudio={() => setCurrentView('encounter-studio')}
             worldBuilderAvailable={compositionSource !== undefined}
@@ -728,7 +713,6 @@ interface HomeViewProps {
   onContinueDraft: (draftId: string) => void;
   onDelete: (characterId: string) => void;
   onDeleteDraft: (draftId: string) => void;
-  onOpenAuthor: () => void;
   onOpenWorldBuilder: () => void;
   onOpenStudio: () => void;
   worldBuilderAvailable: boolean;
@@ -747,7 +731,6 @@ function HomeView({
   onContinueDraft,
   onDelete,
   onDeleteDraft,
-  onOpenAuthor,
   onOpenWorldBuilder,
   onOpenStudio,
   worldBuilderAvailable,
@@ -769,10 +752,12 @@ function HomeView({
 
   return (
     <div className="space-y-8">
-      {/* Dungeon Builder owns its existing server probe. World Builder and
-          Studio share the explicit current-world source gate, not a writer gate. */}
-      <div className="flex flex-wrap justify-center gap-3">
-        <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
+      {/* The two active editors share the current-world source gate, not a writer gate. */}
+      <div
+        className="flex flex-wrap justify-center gap-3"
+        role="group"
+        aria-label="Encounter authoring"
+      >
         {(worldBuilderAvailable || worldBuilderUnavailableMessage) && (
           <div className="flex flex-col items-center gap-1">
             <button

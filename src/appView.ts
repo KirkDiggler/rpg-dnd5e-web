@@ -5,7 +5,6 @@ export const APP_VIEWS = [
   'level-up',
   'lobby',
   'concepts',
-  'author',
   'world-builder',
   'encounter-studio',
   'world-settings',

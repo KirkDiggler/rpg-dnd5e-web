@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -98,8 +104,11 @@ vi.mock('./author/AuthorView', () => ({
   AuthorView: () => <div>Author View</div>,
 }));
 
+// A visible sentinel makes retirement fail if App mounts the old entry again.
 vi.mock('./author/DungeonBuilderHomeButton', () => ({
-  DungeonBuilderHomeButton: () => null,
+  DungeonBuilderHomeButton: () => (
+    <button type="button">Open Dungeon Builder</button>
+  ),
 }));
 
 vi.mock('./character/creation/CharacterDraftContext', () => ({
@@ -686,7 +695,7 @@ describe('App global development tools', () => {
 });
 
 describe('App Encounter Studio current-world entry', () => {
-  it('Home preserves World Builder and adds Studio under the same source gate', async () => {
+  it('Home offers only World Builder and Studio as authoring entries under the same source gate', async () => {
     vi.stubEnv('MODE', 'development');
     render(<App />);
     expect(
@@ -695,6 +704,14 @@ describe('App Encounter Studio current-world entry', () => {
     expect(
       screen.getByRole('button', { name: 'Open World Builder' })
     ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /Dungeon Builder/i })
+    ).toBeNull();
+    expect(
+      within(
+        screen.getByRole('group', { name: 'Encounter authoring' })
+      ).getAllByRole('button')
+    ).toHaveLength(2);
     expect(hoisted.sourceFactoryCalls).toHaveLength(1);
     fireEvent.click(
       screen.getByRole('button', { name: 'Open Encounter Studio' })

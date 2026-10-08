@@ -23,6 +23,8 @@ describe('global development tools visibility', () => {
 
   it('registers Studio and leaves its full-window canvas free of global dev tools', () => {
     expect(APP_VIEWS).toContain('encounter-studio');
+    expect(APP_VIEWS).toContain('world-builder');
+    expect(APP_VIEWS).not.toContain('author');
     expect(shouldRenderGlobalDevTools('development', 'encounter-studio')).toBe(
       false
     );
