@@ -12,6 +12,11 @@ import * as THREE from 'three';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import { previewSelectionTransform, selectionPivot } from './sceneState';
 import { validateScene } from './serialization';
+import { previewWallTransform, wallMidpoint } from './structuralWallEditing';
+import {
+  validateStructuralWalls,
+  type StructuralWall,
+} from './structuralWalls';
 import type { WorldScene } from './types';
 import {
   readWorldBuildingDragPayload,
@@ -155,7 +160,19 @@ const mutableControlState = (
 
 interface DragStart {
   scene: WorldScene;
+  wall?: StructuralWall;
   pivot: { x: number; y: number; z: number };
+}
+
+type TransformPreview =
+  | { kind: 'scene'; value: WorldScene }
+  | { kind: 'wall'; value: StructuralWall };
+
+export interface WallTransformTarget {
+  wall: StructuralWall;
+  horizontalLimit: number;
+  onPreview: (wall: StructuralWall | null) => void;
+  onCommit: (wall: StructuralWall) => void;
 }
 
 interface WorldBuildingTransformGizmoProps {
@@ -168,6 +185,7 @@ interface WorldBuildingTransformGizmoProps {
   onReject: (message: string) => void;
   onTransformingChange: (transforming: boolean) => void;
   sceneHorizontalLimit?: number;
+  wallTarget?: WallTransformTarget;
 }
 
 export function WorldBuildingTransformGizmo({
@@ -180,6 +198,7 @@ export function WorldBuildingTransformGizmo({
   onReject,
   onTransformingChange,
   sceneHorizontalLimit,
+  wallTarget,
 }: WorldBuildingTransformGizmoProps) {
   const { gl } = useThree();
   const proxyRef = useRef<THREE.Group>(null);
@@ -190,6 +209,23 @@ export function WorldBuildingTransformGizmo({
   latestScene.current = scene;
   latestSelection.current = selectedIds;
   latestTool.current = tool;
+  const latestWallTarget = useRef(wallTarget);
+  latestWallTarget.current = wallTarget;
+
+  const currentPivot = useCallback(() => {
+    const target = latestWallTarget.current;
+    if (target)
+      return {
+        ...wallMidpoint(target.wall),
+        y: target.wall.appearance.elevation,
+      };
+    return selectionPivot(latestScene.current, latestSelection.current);
+  }, []);
+
+  const clearPreview = useCallback(() => {
+    onPreview(null);
+    latestWallTarget.current?.onPreview(null);
+  }, [onPreview]);
 
   const reflectControlState = useCallback(() => {
     const controls = controlsRef.current;
@@ -202,29 +238,45 @@ export function WorldBuildingTransformGizmo({
 
   const syncProxy = useCallback(() => {
     const proxy = proxyRef.current;
-    const pivot = selectionPivot(latestScene.current, latestSelection.current);
+    const pivot = currentPivot();
     if (!proxy || !pivot) return;
     proxy.position.set(pivot.x, pivot.y, pivot.z);
     proxy.rotation.set(0, 0, 0);
     proxy.scale.set(1, 1, 1);
     proxy.updateMatrixWorld();
-  }, []);
+  }, [currentPivot]);
 
-  const currentPreview = useCallback((): WorldScene | null => {
+  const currentPreview = useCallback((): TransformPreview | null => {
     const start = dragStartRef.current;
     const proxy = proxyRef.current;
     if (!start || !proxy || latestTool.current === 'select') return null;
-    return previewSelectionTransform(
-      start.scene,
-      latestSelection.current,
-      latestTool.current,
-      {
-        x: proxy.position.x - start.pivot.x,
-        y: proxy.position.y - start.pivot.y,
-        z: proxy.position.z - start.pivot.z,
-        rotationY: proxy.rotation.y,
-      }
-    );
+    const change = {
+      x: proxy.position.x - start.pivot.x,
+      y: proxy.position.y - start.pivot.y,
+      z: proxy.position.z - start.pivot.z,
+      // Y-first extraction does not fold a 135°/180° yaw into XYZ Euler's
+      // +/-90° range. The control exposes only its world-Y rotation handle.
+      rotationY: new THREE.Euler().setFromQuaternion(proxy.quaternion, 'YXZ').y,
+    };
+    if (start.wall) {
+      return {
+        kind: 'wall',
+        value: previewWallTransform({
+          wall: start.wall,
+          mode: latestTool.current,
+          change,
+        }),
+      };
+    }
+    return {
+      kind: 'scene',
+      value: previewSelectionTransform(
+        start.scene,
+        latestSelection.current,
+        latestTool.current,
+        change
+      ),
+    };
   }, []);
 
   const finishControlState = useCallback(() => {
@@ -243,24 +295,27 @@ export function WorldBuildingTransformGizmo({
     dragStartRef.current = null;
     finishControlState();
     syncProxy();
-    onPreview(null);
-  }, [finishControlState, onPreview, syncProxy]);
+    clearPreview();
+  }, [finishControlState, clearPreview, syncProxy]);
 
   const begin = useCallback(() => {
-    const pivot = selectionPivot(latestScene.current, latestSelection.current);
+    const pivot = currentPivot();
     if (!pivot || latestTool.current === 'select') return;
     dragStartRef.current = {
       scene: latestScene.current,
+      wall: latestWallTarget.current?.wall,
       pivot: { x: pivot.x, y: pivot.y, z: pivot.z },
     };
     onTransformingChange(true);
     reflectControlState();
-  }, [onTransformingChange, reflectControlState]);
+  }, [currentPivot, onTransformingChange, reflectControlState]);
 
   const change = useCallback(() => {
     if (!dragStartRef.current) return;
     const preview = currentPreview();
-    if (preview) onPreview(preview);
+    if (preview?.kind === 'wall')
+      latestWallTarget.current?.onPreview(preview.value);
+    else if (preview?.kind === 'scene') onPreview(preview.value);
   }, [currentPreview, onPreview]);
 
   const commit = useCallback(() => {
@@ -269,11 +324,28 @@ export function WorldBuildingTransformGizmo({
     const next = currentPreview();
     dragStartRef.current = null;
     finishControlState();
-    onPreview(null);
+    clearPreview();
     syncProxy();
-    if (!next || JSON.stringify(next) === JSON.stringify(start.scene)) return;
+    if (
+      !next ||
+      JSON.stringify(next.value) === JSON.stringify(start.wall ?? start.scene)
+    )
+      return;
     try {
-      onCommit(validateScene(next, { horizontalLimit: sceneHorizontalLimit }));
+      if (next.kind === 'wall') {
+        const target = latestWallTarget.current;
+        if (!target || target.wall !== start.wall) return;
+        const validated = validateStructuralWalls({
+          value: [next.value],
+          horizontalLimit: target.horizontalLimit,
+          itemIds: new Set(),
+        });
+        target.onCommit(validated[0]!);
+      } else {
+        onCommit(
+          validateScene(next.value, { horizontalLimit: sceneHorizontalLimit })
+        );
+      }
     } catch (error) {
       onReject(
         `Transform rejected; drag-start positions were restored. ${
@@ -285,7 +357,7 @@ export function WorldBuildingTransformGizmo({
     currentPreview,
     finishControlState,
     onCommit,
-    onPreview,
+    clearPreview,
     onReject,
     sceneHorizontalLimit,
     syncProxy,
@@ -294,7 +366,7 @@ export function WorldBuildingTransformGizmo({
   useEffect(() => {
     if (dragStartRef.current) cancel();
     syncProxy();
-  }, [cancel, scene, selectedIds, syncProxy, tool]);
+  }, [cancel, scene, selectedIds, syncProxy, tool, wallTarget?.wall]);
 
   useEffect(() => {
     const element = gl.domElement;
@@ -335,13 +407,18 @@ export function WorldBuildingTransformGizmo({
       element.removeEventListener('lostpointercapture', handleLostCapture);
       if (dragStartRef.current) {
         dragStartRef.current = null;
-        onPreview(null);
+        clearPreview();
         onTransformingChange(false);
       }
     };
-  }, [cancel, gl.domElement, onPreview, onTransformingChange]);
+  }, [cancel, gl.domElement, clearPreview, onTransformingChange]);
 
-  const pivot = selectionPivot(scene, selectedIds);
+  const pivot = wallTarget
+    ? {
+        ...wallMidpoint(wallTarget.wall),
+        y: wallTarget.wall.appearance.elevation,
+      }
+    : selectionPivot(scene, selectedIds);
   const visible = tool !== 'select' && !!pivot;
   return (
     <>
@@ -359,7 +436,7 @@ export function WorldBuildingTransformGizmo({
           space="world"
           size={0.86}
           showX={tool === 'move'}
-          showY
+          showY={tool === 'rotate' || !wallTarget}
           showZ={tool === 'move'}
           onChange={reflectControlState}
           onMouseDown={begin}

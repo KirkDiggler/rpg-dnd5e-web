@@ -65,6 +65,7 @@
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { propVisualScale } from '@/rendering/propVisualScale';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -73,7 +74,7 @@ import {
   type PropCompanion,
   type PropVariant,
 } from './propManifest';
-import { cloneCryptMaterials } from './sceneKnowledge';
+import { useRememberedModelTint as useRememberedTint } from './useRememberedModelTint';
 
 export interface PropModelBounds {
   minY: number;
@@ -105,40 +106,6 @@ export interface PropModelProps {
   heightScale?: number;
 }
 
-/** Snapshot each mesh's original (untinted) material once per `object`
- * identity, then apply (or remove) the shared crypt-memory tint when
- * `remembered` toggles — same "snapshot once, tint as a separate effect"
- * split ClassCharacterModel.tsx uses, so neither a fresh clone/mount nor a
- * remembered toggle can compound a tint onto an already-tinted material.
- * Shared by both the parent variant and each companion mesh below. */
-function useRememberedTint(object: THREE.Object3D, remembered: boolean) {
-  const originalMaterials = useMemo(() => {
-    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) map.set(child, child.material);
-    });
-    return map;
-  }, [object]);
-
-  useEffect(() => {
-    if (!remembered) {
-      originalMaterials.forEach((mat, mesh) => {
-        mesh.material = mat;
-      });
-      return () => {};
-    }
-    const created: THREE.Material[] = [];
-    originalMaterials.forEach((mat, mesh) => {
-      const crypt = cloneCryptMaterials(mat);
-      (Array.isArray(crypt) ? crypt : [crypt]).forEach((m) => created.push(m));
-      mesh.material = crypt;
-    });
-    return () => {
-      created.forEach((mat) => mat.dispose());
-    };
-  }, [originalMaterials, remembered]);
-}
-
 /** One companion mesh, loaded/cloned independently of its parent (its own
  * `useGLTF` cache entry, same as any other GLB) but rendered with NO
  * transform of its own — the parent `<group>` in `PropModel` below
@@ -166,9 +133,7 @@ export function PropModel({
   remembered = false,
   heightScale = 1,
 }: PropModelProps) {
-  const safeHeightScale = Number.isFinite(heightScale)
-    ? Math.min(4, Math.max(0.25, heightScale))
-    : 1;
+  const safeHeightScale = propVisualScale(heightScale);
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const localBounds = useMemo(() => {

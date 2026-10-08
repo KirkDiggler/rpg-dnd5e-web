@@ -22,7 +22,7 @@ import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
-import { withDoorBinding } from './doorBindingEdits';
+import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
 import { IntelPanel } from './IntelPanel';
 import {
@@ -104,6 +104,25 @@ import {
   FactionsPanel,
 } from './SitePolicies';
 import type { SiteScope } from './siteScope';
+import {
+  attachableDoorAssetRefs,
+  attachDoorToOpening,
+  removeDoorFromOpening,
+  swapOpeningDoorAsset,
+} from './structuralDoorEditing';
+import {
+  createWall,
+  previewWallTransform,
+  repeatableWallAssetRefs,
+} from './structuralWallEditing';
+import {
+  StructuralWallPanel,
+  type WallDoorMutation,
+} from './StructuralWallPanel';
+import {
+  validateStructuralWalls,
+  type StructuralWall,
+} from './structuralWalls';
 import { TablesPanel } from './TablesPanel';
 import type {
   ArrangementLibrary,
@@ -276,8 +295,15 @@ export function WorldBuildingConcept({
     | 'repeat'
     | 'monster'
     | 'start'
+    | 'wall'
   >('select');
   const [repeatAssetRef, setRepeatAssetRef] = useState<string | null>(null);
+  /** Wall drawing arms a repeatable asset; the authored asset stays explicit
+   * and drawing is refused until one is chosen. Snap is optional. */
+  const [wallAssetRef, setWallAssetRef] = useState<string | null>(null);
+  const [wallSnapEnabled, setWallSnapEnabled] = useState(false);
+  /** The selected authored wall — its own selection, never a scene prop id. */
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
    * a selected actor is a monster id or 'start', never a WorldProp id, and
    * actor operations never touch scenery selections. */
@@ -287,6 +313,7 @@ export function WorldBuildingConcept({
     null
   );
   const [previewScene, setPreviewScene] = useState<WorldScene | null>(null);
+  const [previewWall, setPreviewWall] = useState<StructuralWall | null>(null);
   const [search, setSearch] = useState('');
   const [arrangementName, setArrangementName] = useState('New arrangement');
   const [portableJson, setPortableJson] = useState('');
@@ -535,7 +562,7 @@ export function WorldBuildingConcept({
        * no policies. */
       nextScope?: SiteScope
     ) => {
-      if (refuseWhilePublishing()) return;
+      if (refuseWhilePublishing()) return false;
       try {
         const valid = validateScene(next, {
           horizontalLimit: roomMode ? nextWorkspace.horizontalLimit : undefined,
@@ -558,6 +585,15 @@ export function WorldBuildingConcept({
                 },
             valid
           );
+          // Every wall mutation (gizmo, cardinal, panel and door editing)
+          // crosses this gate before it can enter history or autosave.
+          if (nextDraft.room.walls) {
+            nextDraft.room.walls = validateStructuralWalls({
+              value: nextDraft.room.walls,
+              horizontalLimit: nextDraft.workspace.horizontalLimit,
+              itemIds: new Set(valid.items.map((item) => item.id)),
+            });
+          }
           const resolvedScope = nextScope ?? siteScope;
           // A SCOPE-ONLY EDIT IS STILL AN EDIT: compare both halves, or the
           // first policy the author writes would be dropped as a no-op.
@@ -565,7 +601,7 @@ export function WorldBuildingConcept({
             JSON.stringify(nextDraft) === JSON.stringify(roomDraft) &&
             JSON.stringify(resolvedScope) === JSON.stringify(siteScope)
           )
-            return;
+            return true;
           setRoomHistory((current) => {
             const presentScope = nextScope ?? current.present.scope;
             if (
@@ -598,12 +634,14 @@ export function WorldBuildingConcept({
             : 'World workspace changes are not saved locally'
         );
         setNotice('');
+        return true;
       } catch (error) {
         setNotice(
           `Edit rejected; the open scene was kept. ${
             error instanceof Error ? error.message : String(error)
           }`
         );
+        return false;
       }
     },
     [refuseWhilePublishing, roomDraft, roomMode, selectedIds, siteScope]
@@ -1077,6 +1115,246 @@ export function WorldBuildingConcept({
       maxCount,
     };
   }, [repeatAssetRef, roomMode, scene.items.length]);
+
+  // Authored structural walls (Task 3). Derived visual pieces are never scene
+  // props; every wall edit goes through the existing validated room commit.
+  const walls = useMemo(
+    () => roomDraft.room.walls ?? [],
+    [roomDraft.room.walls]
+  );
+  const wallAssetOptions = useMemo(() => {
+    if (!roomMode) return [];
+    return repeatableWallAssetRefs().map((ref) => ({
+      ref,
+      label: WORLD_BUILDING_CATALOG_BY_REF.get(ref)?.label ?? ref,
+    }));
+  }, [roomMode]);
+  const wallDoorAssetOptions = useMemo(() => {
+    if (!roomMode) return [];
+    return attachableDoorAssetRefs().map((ref) => ({
+      ref,
+      label: WORLD_BUILDING_CATALOG_BY_REF.get(ref)?.label ?? ref,
+    }));
+  }, [roomMode]);
+  const commitWalls = useCallback(
+    (nextWalls: StructuralWall[]) => {
+      return commit(scene, selectedIds, {
+        ...roomDraft.room,
+        walls: nextWalls,
+      });
+    },
+    [commit, roomDraft.room, scene, selectedIds]
+  );
+  const createWallFromGesture = useCallback(
+    (line: {
+      start: { x: number; z: number };
+      end: { x: number; z: number };
+    }) => {
+      if (refuseWhilePublishing()) return;
+      const entry = wallAssetRef
+        ? WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)
+        : undefined;
+      if (!entry || entry.source !== 'generated') {
+        setNotice('Select a repeatable wall asset before drawing.');
+        return;
+      }
+      const limit = roomDraft.workspace.horizontalLimit;
+      if (
+        [line.start, line.end].some(
+          (point) =>
+            !Number.isFinite(point.x) ||
+            !Number.isFinite(point.z) ||
+            Math.abs(point.x) > limit ||
+            Math.abs(point.z) > limit
+        )
+      ) {
+        setNotice(
+          `Wall rejected; endpoints must stay inside the authoring workspace (±${limit}).`
+        );
+        return;
+      }
+      try {
+        const wall = createWall({
+          id: idFactory(),
+          start: line.start,
+          end: line.end,
+          assetRef: entry.ref,
+          // Provider catalog dimensions are already at shared runtime scale.
+          height: entry.asset.boundsMeters[1],
+          thickness: entry.asset.boundsMeters[2],
+          elevation: 0,
+        });
+        commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] });
+        setSelectedIds([]);
+        setSelectedActorId(null);
+        setSelectedWallId(wall.id);
+        setRoomTool('select');
+        setTool('select');
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [
+      commit,
+      idFactory,
+      refuseWhilePublishing,
+      roomDraft.room,
+      roomDraft.workspace,
+      scene,
+      walls,
+      wallAssetRef,
+    ]
+  );
+  const selectWall = useCallback(
+    (id: string | null) => {
+      setSelectedWallId(id);
+      setPreviewWall(null);
+      if (id) {
+        setPreviewScene(null);
+        setSelectedIds([]);
+        setSelectedActorId(null);
+        const nextTool =
+          roomTool === 'move' || roomTool === 'rotate' ? roomTool : 'select';
+        setRoomTool(nextTool);
+        setTool(nextTool);
+      }
+    },
+    [roomTool]
+  );
+  const editWall = useCallback(
+    (next: StructuralWall): boolean => {
+      return commitWalls(
+        walls.map((entry) => (entry.id === next.id ? next : entry))
+      );
+    },
+    [commitWalls, walls]
+  );
+  const rotateSelectedWall = useCallback(
+    (angle: number) => {
+      if (refuseWhilePublishing()) return;
+      const wall = walls.find((entry) => entry.id === selectedWallId);
+      if (!wall) return;
+      setPreviewWall(null);
+      try {
+        editWall(
+          previewWallTransform({
+            wall,
+            mode: 'rotate',
+            change: { x: 0, z: 0, rotationY: angle },
+          })
+        );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [editWall, refuseWhilePublishing, selectedWallId, walls]
+  );
+  useEffect(
+    () => setPreviewWall(null),
+    [roomTool, selectedWallId, roomDraft.room.walls]
+  );
+
+  const removeWall = useCallback(
+    (id: string) => {
+      commitWalls(walls.filter((entry) => entry.id !== id));
+      setSelectedWallId(null);
+    },
+    [commitWalls, walls]
+  );
+  /** One attached-door mutation is ONE room-history transaction that moves the
+   * opening's `door` record and its `doorBindings` entry together. The door id
+   * comes from the existing id factory; the binding uses the existing
+   * open/closed/locked grammar. Removing an opening or wall cleans its owned
+   * bindings through `reconcileRoomDraft` in the same commit (history restores
+   * both together). Every path is behind the publishing lock. */
+  const mutateWallDoor = useCallback(
+    (mutation: WallDoorMutation): boolean => {
+      if (refuseWhilePublishing()) return false;
+      const wall = walls.find((entry) => entry.id === mutation.wallId);
+      if (!wall) {
+        setNotice(`Unknown wall ${mutation.wallId}.`);
+        return false;
+      }
+      try {
+        let nextWall = wall;
+        let nextBindings = roomDraft.room.doorBindings;
+        const opening = wall.openings.find(
+          (entry) => entry.id === mutation.openingId
+        );
+        if (!opening) throw new Error(`Unknown opening ${mutation.openingId}.`);
+        switch (mutation.kind) {
+          case 'attach': {
+            const doorId = idFactory();
+            nextWall = attachDoorToOpening(wall, {
+              openingId: mutation.openingId,
+              doorId,
+              assetRef: mutation.assetRef,
+            });
+            nextBindings = withDoorBinding(
+              nextBindings,
+              doorId,
+              setDoorBindingState(undefined, 'closed')
+            );
+            break;
+          }
+          case 'swap': {
+            nextWall = swapOpeningDoorAsset(wall, {
+              openingId: mutation.openingId,
+              assetRef: mutation.assetRef,
+            });
+            break;
+          }
+          case 'remove': {
+            if (!opening.door) throw new Error('That opening has no door.');
+            nextBindings = withDoorBinding(
+              nextBindings,
+              opening.door.id,
+              undefined
+            );
+            nextWall = removeDoorFromOpening(wall, mutation.openingId);
+            break;
+          }
+          case 'binding': {
+            if (!opening.door) throw new Error('That opening has no door.');
+            nextBindings = withDoorBinding(
+              nextBindings,
+              opening.door.id,
+              mutation.binding
+            );
+            break;
+          }
+        }
+        const room: RoomGameplayData = {
+          ...roomDraft.room,
+          walls: walls.map((entry) =>
+            entry.id === wall.id ? nextWall : entry
+          ),
+        };
+        if (nextBindings === undefined) delete room.doorBindings;
+        else room.doorBindings = nextBindings;
+        return commit(scene, selectedIds, room, roomDraft.workspace);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    },
+    [
+      commit,
+      idFactory,
+      refuseWhilePublishing,
+      roomDraft.room,
+      roomDraft.workspace,
+      scene,
+      selectedIds,
+      walls,
+    ]
+  );
+  // A wall vanished (Undo, delete, reload): no stale selection or transform
+  // controls remain.
+  useEffect(() => {
+    if (selectedWallId && !walls.some((entry) => entry.id === selectedWallId))
+      setSelectedWallId(null);
+  }, [walls, selectedWallId]);
 
   const filteredCatalog = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -2258,13 +2536,17 @@ export function WorldBuildingConcept({
         <button
           key={label}
           type="button"
-          disabled={selectedIds.length === 0}
-          aria-label={`Rotate ${label}`}
-          onClick={() =>
-            applyToSelection((current) =>
-              rotateSelection(current, selectedIds, angle)
-            )
+          disabled={
+            publishBusy || (selectedIds.length === 0 && !selectedWallId)
           }
+          aria-label={`Rotate ${label}`}
+          onClick={() => {
+            if (selectedWallId) rotateSelectedWall(angle);
+            else
+              applyToSelection((current) =>
+                rotateSelection(current, selectedIds, angle)
+              );
+          }}
         >
           {label}
         </button>
@@ -2667,7 +2949,7 @@ export function WorldBuildingConcept({
     <section
       className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
       aria-label={roomMode ? 'Site' : 'World Building Concept'}
-      data-transform-preview={previewScene ? 'active' : 'idle'}
+      data-transform-preview={previewScene || previewWall ? 'active' : 'idle'}
       data-workspace-origin={workspaceOrigin}
     >
       {roomMode ? (
@@ -2827,6 +3109,7 @@ export function WorldBuildingConcept({
                     'erase',
                     'rectangle',
                     ...(repeatAssetRef ? (['repeat'] as const) : []),
+                    'wall',
                     'select',
                     'move',
                     'rotate',
@@ -2841,8 +3124,10 @@ export function WorldBuildingConcept({
                       : 'wb-tool'
                   }
                   aria-pressed={(roomMode ? roomTool : tool) === entry}
+                  disabled={roomMode && entry === 'wall' && !wallAssetRef}
                   onClick={() => {
                     setPreviewScene(null);
+                    setPreviewWall(null);
                     setPaintingConcealmentId(null);
                     if (entry !== 'repeat') setRepeatAssetRef(null);
                     // Actor arming lives in the Room setup controls; a tool
@@ -2852,7 +3137,8 @@ export function WorldBuildingConcept({
                       entry === 'paint' ||
                       entry === 'erase' ||
                       entry === 'rectangle' ||
-                      entry === 'repeat'
+                      entry === 'repeat' ||
+                      entry === 'wall'
                     )
                       setRoomTool(entry);
                     else {
@@ -2880,17 +3166,23 @@ export function WorldBuildingConcept({
                           : 'Repeat unavailable: this asset needs valid dimensions and remaining scene capacity'
                         : roomMode && roomTool === 'monster'
                           ? `Click the floor: place ${paletteNameForRef(armedMonsterRef ?? '')} on the snapped hex · every placement is one Undo`
-                          : roomMode && roomTool === 'start'
-                            ? 'Click the floor: place or move the party start'
-                            : roomMode && roomTool === 'move' && selectedActorId
-                              ? selectedActorId === 'start'
-                                ? 'Click the floor: move the party start · Delete: clear it'
-                                : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
-                              : tool === 'select'
-                                ? 'Left: select · Shift-left: add selection'
-                                : tool === 'move'
-                                  ? 'Drag arrows or planes · Esc/right-click: cancel'
-                                  : 'Drag the Y ring · Esc/right-click: cancel'}
+                          : roomMode && roomTool === 'wall'
+                            ? wallAssetRef
+                              ? `Drag on floor: draw ${WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)?.label ?? 'asset'} wall · release once · Esc/right-click: cancel`
+                              : 'Wall unavailable: select a repeatable asset with measured dimensions and no door leaf'
+                            : roomMode && roomTool === 'start'
+                              ? 'Click the floor: place or move the party start'
+                              : roomMode &&
+                                  roomTool === 'move' &&
+                                  selectedActorId
+                                ? selectedActorId === 'start'
+                                  ? 'Click the floor: move the party start · Delete: clear it'
+                                  : `Click the floor: move monster ${selectedActorId} · Delete: remove it`
+                                : tool === 'select'
+                                  ? 'Left: select · Shift-left: add selection'
+                                  : tool === 'move'
+                                    ? 'Drag arrows or planes · Esc/right-click: cancel'
+                                    : 'Drag the Y ring · Esc/right-click: cancel'}
             </span>
             {/* Canvas extent is a canvas control, so it lives with the
                   canvas rather than in the room chrome. */}
@@ -2937,7 +3229,7 @@ export function WorldBuildingConcept({
               scene={scene}
               previewScene={previewScene}
               selectedIds={selectedIds}
-              tool={tool}
+              tool={publishBusy ? 'select' : tool}
               activeDrag={activeDrag}
               roomAuthoring={
                 roomMode
@@ -2959,11 +3251,26 @@ export function WorldBuildingConcept({
                         );
                       },
                       onConcealmentPropPick: (id) => {
-                        if (
-                          !activeConcealmentId ||
-                          !scene.items.some((item) => item.id === id)
-                        )
+                        if (!activeConcealmentId) return;
+                        const structure = walls.some(
+                          (wall) =>
+                            wall.id === id ||
+                            wall.openings.some(
+                              (opening) => opening.door?.id === id
+                            )
+                        );
+                        if (structure) {
+                          commitPolicies(
+                            setConcealmentProp(
+                              siteScope,
+                              activeConcealmentId,
+                              id,
+                              true
+                            )
+                          );
                           return;
+                        }
+                        if (!scene.items.some((item) => item.id === id)) return;
                         // Hidden props must be placements the engine can name.
                         // Like making a door, this seeds only a missing shape;
                         // existing geometry and blocking flags stay authored.
@@ -2990,6 +3297,15 @@ export function WorldBuildingConcept({
                         );
                       },
                       repeat: repeatDescriptor,
+                      walls,
+                      doorBindings: roomDraft.room.doorBindings,
+                      selectedWallId,
+                      previewWall,
+                      onWallTransformPreview: setPreviewWall,
+                      onWallTransformCommit: editWall,
+                      wallSnapEnabled,
+                      onWallGesture: createWallFromGesture,
+                      onSelectWall: selectWall,
                       monsters: roomDraft.room.monsterDeclarations,
                       monsterBindings: roomDraft.room.monsterBindings,
                       partyStart: roomDraft.room.partyStart ?? null,
@@ -3040,9 +3356,16 @@ export function WorldBuildingConcept({
                   : undefined
               }
               onSelect={(ids) => {
-                // A scenery selection always deselects the actor: the two
-                // selections stay distinct and never delete each other.
-                if (ids.length > 0) setSelectedActorId(null);
+                // A scenery selection always deselects the actor and any wall:
+                // the selections stay distinct and never edit each other.
+                if (ids.length > 0) {
+                  setSelectedActorId(null);
+                  setSelectedWallId(null);
+                  setPreviewWall(null);
+                } else if (roomTool === 'select') {
+                  setSelectedWallId(null);
+                  setPreviewWall(null);
+                }
                 selectInScene(ids);
               }}
               onDrop={dropIntoScene}
@@ -3050,6 +3373,7 @@ export function WorldBuildingConcept({
               onTransformPreview={setPreviewScene}
               onTransformCommit={(next) => commit(next)}
               onTransformReject={(message) => {
+                setPreviewWall(null);
                 setPreviewScene(null);
                 setNotice(message);
               }}
@@ -3066,11 +3390,13 @@ export function WorldBuildingConcept({
 
         {roomMode ? (
           <WorldBuilderInspector
+            selectionSection={selectedWallId ? 'walls' : 'selection'}
             selectionKey={
-              selectedIds.length > 0 || selectedMonster
+              selectedIds.length > 0 || selectedMonster || selectedWallId
                 ? JSON.stringify([
                     roomDraft.id,
                     selectedMonster?.id,
+                    selectedWallId,
                     selectedIds,
                   ])
                 : ''
@@ -3201,6 +3527,30 @@ export function WorldBuildingConcept({
               )}
             </details>
 
+            {/* STRUCTURAL WALLS (Task 3). The panel lists and selects authored
+                walls; the repeated appearance pieces on the canvas are derived
+                presentation, never scene props. */}
+            <details className="wb-collapse" data-inspector-section="walls">
+              <summary aria-label="Walls">Walls</summary>
+              <StructuralWallPanel
+                walls={walls}
+                selectedWallId={selectedWallId}
+                onSelectWall={selectWall}
+                transformActions={cardinalRotateActions}
+                assetOptions={wallAssetOptions}
+                doorAssetOptions={wallDoorAssetOptions}
+                doorBindings={roomDraft.room.doorBindings}
+                armedAssetRef={wallAssetRef}
+                onArmedAssetChange={setWallAssetRef}
+                snapEnabled={wallSnapEnabled}
+                onSnapChange={setWallSnapEnabled}
+                onEdit={editWall}
+                onRemoveWall={removeWall}
+                onDoorMutation={mutateWallDoor}
+                onNotice={setNotice}
+              />
+            </details>
+
             {/* THE SITE'S NOUNS, each its own node (rpg-dnd5e-web#1178
                 follow-up). "Policies" was a wrapper over exactly two things —
                 factions and dispositions — and a wrapper that names nothing
@@ -3238,7 +3588,22 @@ export function WorldBuildingConcept({
               <summary aria-label="Concealments">Concealments</summary>
               <ConcealmentPanel
                 scope={siteScope}
-                items={scene.items}
+                items={[
+                  ...scene.items,
+                  ...walls.map((wall) => ({ id: wall.id, label: wall.label })),
+                  ...walls.flatMap((wall) =>
+                    wall.openings.flatMap((opening) =>
+                      opening.door
+                        ? [
+                            {
+                              id: opening.door.id,
+                              label: `${wall.label} · ${opening.id} door`,
+                            },
+                          ]
+                        : []
+                    )
+                  ),
+                ]}
                 activeId={activeConcealmentId}
                 onActivate={(id) => {
                   setPaintingConcealmentId(id);

@@ -134,6 +134,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
  * root 4 with room 3 is the only combination this build produces, and the Go
  * decoder's half of the seam says the same (`acceptedRootVersions`). */
 function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
+  // Structural authoring extends v4; documents without walls keep their bytes.
+  if ((draft.room.walls?.length ?? 0) > 0) return true;
   // A ROOT TABLE IS A v4 FACT TOO (rpg-toolkit#1897): a room whose only
   // authored orders are a named table must still claim v4, the same argument a
   // `factions`-only or `doorBindings`-only room makes below.
@@ -353,6 +355,10 @@ function decodeSingleRoomRoot(
     draft: root.room,
   });
   const draft = parseRoomDraftJson(draftJson);
+  if (version === 3 && (draft.room.walls?.length ?? 0) > 0)
+    throw new Error(
+      'room.room.walls: structural walls require root version 4.'
+    );
   // EVERY `table:` NAME MUST RESOLVE, and this is the one place both halves are
   // visible (rpg-toolkit#1897): the room reader carries a name without judging
   // it, and the scope reader declares the universe. Refused here so the author

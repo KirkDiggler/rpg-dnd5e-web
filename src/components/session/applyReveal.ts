@@ -31,7 +31,7 @@
  * (Measured by the toolkit builder and pinned in their test; ruled on
  * rpg-project#360, 2026-09-03, correcting an earlier "append both".)
  *
- * # The door's gap needs nothing new
+ * # Legacy segment/doorway rendering
  *
  * No doorway rides `RegionRevealed`. A concealed door arrives on
  * `DoorRevealed`, and the segment through it was already presented
@@ -42,9 +42,12 @@
  */
 
 import { clone } from '@bufbuild/protobuf';
-import type {
-  DoorRevealed,
-  RegionRevealed,
+import {
+  DoorRevealedSchema,
+  RegionRevealedSchema,
+  type ConcealmentRevealed,
+  type DoorRevealed,
+  type RegionRevealed,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetAtlasResponseSchema,
@@ -52,20 +55,145 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasSegment,
+  AtlasStructuralDoor,
+  AtlasStructuralWall,
   Position,
+  StructuralWallOpeningsReplacement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { applyPropPresentations } from './propPresentations';
+import { assertStructuralLayoutIntegrity } from './structuralLayout';
 
-/** The two slice-2 fields on `RegionRevealed`, present since the protos
- * generated-branch commit 883dd221a6cd (rpg-api-protos#285). */
+/** An otherwise meaningful patch cannot be applied without its known wall.
+ * The knowledge hook recovers via a snapshot; no partial event is installed. */
+export class MissingStructuralWallError extends Error {
+  constructor(wallId: string) {
+    super(`structural layout: missing baseline wall ${wallId}`);
+    this.name = 'MissingStructuralWallError';
+  }
+}
+
+/**
+ * Upsert COMPLETE structural records by id and restore canonical identity
+ * order. A reveal carries newly permitted OR CHANGED records (a formerly
+ * concealed cut becoming known), so an already-known wall id is REPLACED
+ * whole — never appended beside its stale twin and never merged only into its
+ * opening list. The sort matches the toolkit's own identity order, so a
+ * patched atlas equals a fresh snapshot. Empty inputs are a NO-OP that returns
+ * the caller's array unchanged, preserving legacy payload bytes.
+ */
+function upsertStructuralById<T extends { id: string }>(
+  have: readonly T[],
+  changed: readonly T[]
+): readonly T[] {
+  if (changed.length === 0) return have;
+  const byId = new Map(have.map((row) => [row.id, row]));
+  for (const row of changed) byId.set(row.id, row);
+  return [...byId.values()].sort((left, right) =>
+    left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+  );
+}
+
+/**
+ * Apply the structural wall/door delta a room or concealment reveal carries.
+ * Doors are one flat collection keyed by canonical gameplay DoorID and are
+ * never nested under a parent wall; walls are upserted by raw id so a wall
+ * that gained a newly permitted cut is updated in place.
+ */
+export function applyStructuralRecords(
+  atlas: GetAtlasResponse,
+  walls: readonly AtlasStructuralWall[] | undefined,
+  doors: readonly AtlasStructuralDoor[] | undefined,
+  replacements: readonly StructuralWallOpeningsReplacement[] = []
+): GetAtlasResponse {
+  if (!walls?.length && !doors?.length && replacements.length === 0)
+    return atlas;
+  assertStructuralLayoutIntegrity({
+    walls: atlas.structuralWalls,
+    doors: atlas.structuralDoors,
+  });
+
+  const changedWalls = new Set<string>();
+  for (const wall of walls ?? []) {
+    if (!wall.id || changedWalls.has(wall.id))
+      throw new Error('structural layout: empty or duplicate full wall id');
+    changedWalls.add(wall.id);
+  }
+  const baseline = new Set(atlas.structuralWalls.map((wall) => wall.id));
+  for (const patch of replacements) {
+    if (!patch.wallId || changedWalls.has(patch.wallId))
+      throw new Error(
+        'structural layout: empty wall id or full-row/patch collision or duplicate patch'
+      );
+    changedWalls.add(patch.wallId);
+    if (!baseline.has(patch.wallId))
+      throw new MissingStructuralWallError(patch.wallId);
+  }
+  const changedDoors = new Set<string>();
+  for (const door of doors ?? []) {
+    if (!door.id || changedDoors.has(door.id))
+      throw new Error('structural layout: empty or duplicate door id');
+    changedDoors.add(door.id);
+  }
+
+  const byWall = new Map(
+    upsertStructuralById(atlas.structuralWalls, walls ?? []).map((wall) => [
+      wall.id,
+      wall,
+    ])
+  );
+  for (const patch of replacements) {
+    const wall = byWall.get(patch.wallId)!; // baseline was checked before any update
+    byWall.set(patch.wallId, { ...wall, openings: [...patch.openings] });
+  }
+  const nextWalls = [...byWall.values()].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+  const nextDoors = upsertStructuralById(atlas.structuralDoors, doors ?? []);
+  assertStructuralLayoutIntegrity({ walls: nextWalls, doors: nextDoors });
+  // Clone at the commit boundary, including newly supplied event rows. Neither
+  // the baseline nor the event can subsequently mutate the returned cache.
+  return clone(GetAtlasResponseSchema, {
+    ...atlas,
+    structuralWalls: nextWalls,
+    structuralDoors: [...nextDoors],
+  });
+}
+
+/**
+ * The atlas after a concealment reveal. Applying the SAME fixed structural
+ * records the room-revealed path carries keeps the two reveal routes
+ * equivalent; every other concealment field continues to arrive through the
+ * existing authoritative GetAtlas/GetDoors refresh, so no second ordering or
+ * merge system is introduced here.
+ */
+export function applyConcealmentRevealed(
+  atlas: GetAtlasResponse,
+  event: ConcealmentRevealed
+): GetAtlasResponse {
+  const next = applyStructuralRecords(
+    atlas,
+    event.structuralWalls,
+    event.structuralDoors,
+    event.structuralWallOpeningsReplacements
+  );
+  const presentations = applyPropPresentations(
+    atlas.propPresentations,
+    event.propPresentations,
+    next.structuralDoors
+  );
+  if (!event.propPresentations?.length) return next;
+  return clone(GetAtlasResponseSchema, {
+    ...next,
+    propPresentations: presentations,
+  });
+}
 function revealAdditions(event: RegionRevealed): {
   segments: AtlasSegment[];
   sealed: Position[];
 } {
   return { segments: event.segments, sealed: event.sealed };
 }
-
 const cellKey = (p: Position): string => `${p.x},${p.y}`;
-
 /** Concatenate, dropping anything already present under `key`. */
 function appendNew<T>(
   have: readonly T[],
@@ -104,8 +232,10 @@ export function applyRegionRevealed(
   atlas: GetAtlasResponse,
   event: RegionRevealed
 ): GetAtlasResponse {
-  const region = event.region;
-  if (!region) return atlas;
+  if (!event.region) return atlas;
+  // Own incoming legacy rows just as the structural commit owns its records.
+  event = clone(RegionRevealedSchema, event);
+  const region = event.region!;
   const { segments, sealed } = revealAdditions(event);
   const next = clone(GetAtlasResponseSchema, atlas);
 
@@ -136,6 +266,22 @@ export function applyRegionRevealed(
   );
   next.segments = appendNew(next.segments, segments, segmentKey);
 
+  // THE FIXED STRUCTURAL RECORDS UPSERT BY ID, not append. A known wall can
+  // gain a newly revealed cut, so its whole record is replaced.
+  const structured = applyStructuralRecords(
+    next,
+    event.structuralWalls,
+    event.structuralDoors,
+    event.structuralWallOpeningsReplacements
+  );
+  next.structuralWalls = structured.structuralWalls;
+  next.structuralDoors = structured.structuralDoors;
+  next.propPresentations = applyPropPresentations(
+    atlas.propPresentations,
+    event.propPresentations,
+    next.structuralDoors
+  );
+
   // THE ONE FIELD THAT IS NOT AN APPEND. Every cell of the revealed
   // region drops out of `sealed` first — it was footing under a wall
   // this member could see, and it is that room's own floor now — and
@@ -163,6 +309,7 @@ export function applyDoorRevealed(
   atlas: GetAtlasResponse,
   event: DoorRevealed
 ): GetAtlasResponse {
+  event = clone(DoorRevealedSchema, event);
   const next = clone(GetAtlasResponseSchema, atlas);
   next.doorways = appendNew(next.doorways, event.doorways, (d) =>
     pairKey(d.from, d.to)

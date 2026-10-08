@@ -8,6 +8,11 @@ import {
   GetViewResponseSchema,
   type GetKnowledgeResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  AtlasStructuralDoorSchema,
+  AtlasStructuralWallSchema,
+  PropPresentationSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionKnowledge } from './useSessionKnowledge';
@@ -36,10 +41,570 @@ function snapshot(seq = 10n) {
   });
 }
 
+const wallRecord = (id: string, openingIds: string[]) =>
+  create(AtlasStructuralWallSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 10, y: 0 },
+    height: 3,
+    thickness: 0.3,
+    elevation: 0,
+    openings: openingIds.map((openingId, index) => ({
+      id: openingId,
+      position: index + 1,
+      width: 0.5,
+    })),
+  });
+const doorRecord = (id: string) =>
+  create(AtlasStructuralDoorSchema, {
+    id,
+    ref: `ref:${id}`,
+    from: { x: 0, y: 0 },
+    to: { x: 2, y: 0 },
+    height: 3,
+    thickness: 0.3,
+    elevation: 0,
+  });
+
+function structuralSnapshot(
+  seq: bigint,
+  walls: ReturnType<typeof wallRecord>[],
+  doors: ReturnType<typeof doorRecord>[] = []
+) {
+  return create(GetKnowledgeResponseSchema, {
+    seq,
+    atlas: {
+      cells: [{ x: 0, y: 0 }],
+      regions: [{ id: 'entry', cells: [{ x: 0, y: 0 }] }],
+      structuralWalls: walls,
+      structuralDoors: doors,
+    },
+    view: {},
+    where: { position: { x: 0, y: 0 } },
+    roster: { members: [{ id: 'a' }] },
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+function openingPatch(
+  seq: bigint,
+  ids: string[],
+  wallId = 'w',
+  doors: ReturnType<typeof doorRecord>[] = []
+) {
+  return create(EventSchema, {
+    session: 'run',
+    recipient: 'a',
+    seq,
+    kind: EventKind.CONCEALMENT_REVEALED,
+    body: {
+      case: 'concealmentRevealed',
+      value: {
+        concealment: 'secret',
+        structuralDoors: doors,
+        structuralWallOpeningsReplacements: [
+          { wallId, openings: wallRecord(wallId, ids).openings },
+        ],
+      },
+    },
+  });
+}
+
 beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
   client.getKnowledge.mockResolvedValue(snapshot());
   client.getView.mockResolvedValue(create(GetViewResponseSchema));
+});
+
+describe('supplied prop presentation', () => {
+  const presentation = (id: string) =>
+    create(PropPresentationSchema, {
+      id,
+      ref: 'dnd5e:props:books',
+      origin: { x: 1, y: 2 },
+      heightScale: 1,
+    });
+  it('recovers a presentations-only reveal without an atlas baseline', async () => {
+    const absent = snapshot();
+    absent.atlas = undefined;
+    const restored = snapshot(11n);
+    restored.atlas!.propPresentations = [presentation('p')];
+    client.getKnowledge
+      .mockResolvedValueOnce(absent)
+      .mockResolvedValueOnce(restored);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'r' },
+              propPresentations: [presentation('p')],
+            },
+          },
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(result.current.atlas?.propPresentations[0]?.id).toBe('p')
+    );
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+  });
+  it('refuses malformed snapshot and view presentations without installing partial data', async () => {
+    const initial = snapshot();
+    initial.atlas!.propPresentations = [presentation('fixed')];
+    client.getKnowledge.mockResolvedValue(initial);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, {
+        props: [
+          {
+            observedEmpty: true,
+            presentation: presentation('bad'),
+            shape: { case: 'prop', value: { id: 'bad' } },
+          },
+        ],
+      })
+    );
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error?.message).toMatch(/conflicting/);
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+    const malformed = snapshot(12n);
+    malformed.atlas!.propPresentations = [presentation('bad')];
+    malformed.atlas!.propPresentations[0]!.heightScale = 0;
+    client.getKnowledge.mockResolvedValue(malformed);
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.error?.message).toMatch(/height scale/);
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+  });
+  it('merges captured render input only into the render projection and clears observed-empty', async () => {
+    const initial = snapshot();
+    initial.atlas!.propPresentations = [presentation('fixed')];
+    initial.view = create(GetViewResponseSchema, {
+      props: [
+        {
+          presentation: presentation('seen'),
+          shape: { case: 'prop', value: { id: 'seen', at: { x: 0, y: 0 } } },
+          currentVia: [],
+        },
+      ],
+    });
+    client.getKnowledge.mockResolvedValue(initial);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+      'seen',
+    ]);
+    expect(
+      result.current.snapshot?.atlas?.propPresentations.map((p) => p.id)
+    ).toEqual(['fixed']);
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, {
+        props: [
+          {
+            observedEmpty: true,
+            shape: { case: 'prop', value: { id: 'seen' } },
+          },
+        ],
+      })
+    );
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+  });
+});
+
+describe('supplied structural layout', () => {
+  it('carries the snapshot’s permitted walls and independent doors', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(7n, [wallRecord('w', ['cut-1'])], [doorRecord('d')])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'w',
+    ]);
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('upserts a CHANGED wall on room reveal — the known cut is updated, not appended', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.atlas?.structuralWalls).toHaveLength(1);
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1', 'cut-2']);
+  });
+
+  it('upserts an independent door on concealment reveal without a parent wall', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('parent', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.CONCEALMENT_REVEALED,
+          body: {
+            case: 'concealmentRevealed',
+            value: {
+              concealment: 'hidden',
+              cells: [{ x: 1, y: 0 }],
+              structuralDoors: [doorRecord('hidden-door')],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'hidden-door',
+    ]);
+  });
+
+  it('fences a REPLAYED event below the snapshot cutoff, so a known cut cannot be reverted', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1', 'cut-2'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      // An old event (below the snapshot seq) that names only the earlier cut.
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 9n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1'])],
+            },
+          },
+        })
+      );
+    });
+    expect(
+      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
+    ).toEqual(['cut-1', 'cut-2']);
+  });
+
+  it('duplicate application is idempotent', async () => {
+    client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const event = create(EventSchema, {
+      seq: 11n,
+      kind: EventKind.ROOM_REVEALED,
+      body: {
+        case: 'roomRevealed',
+        value: {
+          region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+          structuralWalls: [wallRecord('w', ['cut-1'])],
+        },
+      },
+    });
+    act(() => {
+      result.current.acceptEvent(event);
+      result.current.acceptEvent(event);
+    });
+    expect(result.current.atlas?.structuralWalls).toHaveLength(1);
+  });
+
+  it('event-applied state equals a fresh reload of the same world', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.ROOM_REVEALED,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
+              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
+              structuralDoors: [doorRecord('d')],
+            },
+          },
+        })
+      );
+    });
+    const applied = result.current.atlas;
+    // The server's fresh answer for the same world carries the same records.
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(
+        11n,
+        [wallRecord('w', ['cut-1', 'cut-2'])],
+        [doorRecord('d')]
+      )
+    );
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.atlas?.structuralWalls).toEqual(
+      applied?.structuralWalls
+    );
+    expect(result.current.atlas?.structuralDoors).toEqual(
+      applied?.structuralDoors
+    );
+  });
+});
+
+describe('component patch ordering and recovery', () => {
+  it('advances the applied sequence and ignores duplicate/older replacements', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', [])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(openingPatch(11n, ['one']));
+      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
+      result.current.acceptEvent(openingPatch(11n, ['one']));
+      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
+    });
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one', 'two']);
+    expect(result.current.snapshot?.seq).toBe(12n);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('buffers component patches during initial hydration above the snapshot cutoff', async () => {
+    const hydration = deferred<GetKnowledgeResponse>();
+    client.getKnowledge.mockReturnValueOnce(hydration.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledOnce());
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
+      )
+    );
+    await act(async () =>
+      hydration.resolve(structuralSnapshot(10n, [wallRecord('w', [])]))
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.snapshot?.seq).toBe(11n);
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('coalesces missing-baseline recovery and atomically preserves subsequent events', async () => {
+    const recovery = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, []))
+      .mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d1')])
+      )
+    );
+    expect(result.current.atlas?.structuralWalls).toEqual([]);
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    act(() => {
+      result.current.acceptEvent(
+        openingPatch(12n, ['one', 'two'], 'w', [doorRecord('d2')])
+      );
+      void result.current.refetch();
+      void result.current.refetch();
+    });
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      recovery.resolve(
+        structuralSnapshot(11n, [wallRecord('w', ['one'])], [doorRecord('d1')])
+      )
+    );
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
+    expect(
+      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
+    ).toEqual(['one', 'two']);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd1',
+      'd2',
+    ]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('keeps failed recovery visible without automatic retry loops, then permits explicit retry', async () => {
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, []))
+      .mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
+      )
+    );
+    await waitFor(() =>
+      expect(result.current.error?.message).toContain('offline')
+    );
+    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error?.message).toContain('offline');
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+    client.getKnowledge.mockResolvedValueOnce(
+      structuralSnapshot(
+        12n,
+        [wallRecord('w', ['one', 'two'])],
+        [doorRecord('d')]
+      )
+    );
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.snapshot?.seq).toBe(12n);
+    expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
+      'd',
+    ]);
+  });
+
+  it('rejects malformed geometry atomically and does not erase its error on a mutable refresh', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', [])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const bad = openingPatch(11n, ['bad'], 'w', [doorRecord('d')]);
+    if (bad.body.case !== 'concealmentRevealed') throw new Error('fixture');
+    bad.body.value.structuralWallOpeningsReplacements[0].openings[0].width = -1;
+    act(() => result.current.acceptEvent(bad));
+    expect(result.current.error).not.toBeNull();
+    expect(result.current.atlas?.structuralDoors).toEqual([]);
+    expect(result.current.snapshot?.seq).toBe(10n);
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error).not.toBeNull();
+    expect(client.getKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers a delivery gap through Knowledge rather than applying an incomplete event history', async () => {
+    const recovery = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockResolvedValueOnce(structuralSnapshot(10n, [wallRecord('w', [])]))
+      .mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
+    expect(result.current.snapshot?.seq).toBe(10n);
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    await act(async () =>
+      recovery.resolve(
+        structuralSnapshot(12n, [wallRecord('w', ['one', 'two'])])
+      )
+    );
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports a recovery snapshot that still lacks the baseline without looping', async () => {
+    client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.acceptEvent(openingPatch(11n, ['one'])));
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(result.current.error?.message).toContain('missing baseline wall')
+    );
+    expect(result.current.atlas?.structuralWalls).toEqual([]);
+    expect(result.current.snapshot?.seq).toBe(10n);
+  });
+
+  it('fences a late snapshot from the previous member without blocking the new scope', async () => {
+    const old = deferred<GetKnowledgeResponse>();
+    client.getKnowledge
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(
+        structuralSnapshot(50n, [wallRecord('b-wall', [])])
+      );
+    const { result, rerender } = renderHook(
+      ({ member }) => useSessionKnowledge('run', member),
+      { initialProps: { member: 'a' } }
+    );
+    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(1));
+    rerender({ member: 'b' });
+    await waitFor(() => expect(result.current.snapshot?.seq).toBe(50n));
+    await act(async () =>
+      old.resolve(structuralSnapshot(100n, [wallRecord('a-wall', [])]))
+    );
+    expect(result.current.snapshot?.seq).toBe(50n);
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'b-wall',
+    ]);
+    act(() =>
+      result.current.acceptEvent(openingPatch(101n, ['old'], 'a-wall'))
+    );
+    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
+      'b-wall',
+    ]);
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('session knowledge delivery', () => {

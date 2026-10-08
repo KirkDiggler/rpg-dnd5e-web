@@ -437,7 +437,9 @@ describe('RoomPublishingPanel — existing key confirmation', () => {
     renderPanel(richDraft('room-abc123'));
     fireEvent.click(screen.getByRole('button', { name: 'Save to server' }));
     await waitFor(() => expect(rpc.gets).toHaveLength(1));
-    getAnswers[0]!.resolve({ yaml: 'version: 3\nkey: room-room-abc123\n' });
+    await act(async () => {
+      getAnswers[0]!.resolve({ yaml: 'version: 3\nkey: room-room-abc123\n' });
+    });
 
     const dialog = await screen.findByRole('alertdialog', {
       name: 'Overwrite room-room-abc123',

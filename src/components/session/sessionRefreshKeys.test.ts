@@ -5,12 +5,15 @@ import {
   CastSchema,
   ConcealmentRevealedSchema,
   ConcentrationEndedSchema,
+  DiscoveryCheckedSchema,
+  EquipmentChangedSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
   MovedSchema,
   PersuadedSchema,
   RegionRevealedSchema,
+  RestedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
   SightedSchema,
@@ -102,7 +105,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
   });
 
-  it('ARRIVED refreshes observations, plus the roster for a monster', () => {
+  it('ARRIVED refreshes fixed prop knowledge or the monster roster, plus observations', () => {
     const monster = create(EventSchema, {
       kind: EventKind.ARRIVED,
       body: {
@@ -126,7 +129,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
       },
     });
     expect(refreshKeysFor(monster, VIEWER)).toEqual(['roster', 'view']);
-    expect(refreshKeysFor(prop, VIEWER)).toEqual(['view']);
+    expect(refreshKeysFor(prop, VIEWER)).toEqual(['atlas', 'view']);
   });
 });
 
@@ -371,5 +374,64 @@ describe('the social beats and the creature’s answer', () => {
       });
       expect(refreshKeysFor(revealed, VIEWER)).toEqual(['doors', 'atlas']);
     });
+  });
+
+  describe('discovery_checked (rpg-project#523, the v0.1.220 event the pin adopted)', () => {
+    const checked = (checkedMember: string) =>
+      create(EventSchema, {
+        kind: EventKind.DISCOVERY_CHECKED,
+        body: {
+          case: 'discoveryChecked',
+          value: create(DiscoveryCheckedSchema, {
+            member: checkedMember,
+            ability: 'perception',
+            beaten: true,
+            total: 14,
+          }),
+        },
+      });
+
+    it('re-reads ONLY the checked member’s own card and offer', () => {
+      // The resolved check is scoped to the member it was made for, like the
+      // threat/appeal beats: nobody else's cached read moved. No discovery
+      // roll or decision happens here; the server resolved the check.
+      expect(refreshKeysFor(checked(VIEWER), VIEWER)).toEqual([
+        'characterData',
+        'afford',
+      ]);
+      expect(refreshKeysFor(checked('someone-else'), VIEWER)).toEqual([]);
+    });
+
+    it('does not re-read the scene — nobody moved and nothing was spent on it', () => {
+      expect(refreshKeysFor(checked(VIEWER), VIEWER)).not.toContain('view');
+    });
+  });
+});
+
+describe('the session verbs’ two rows (rpg-project#542)', () => {
+  it('EQUIPMENT_CHANGED re-reads the sheet and what it prices', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.EQUIPMENT_CHANGED,
+      body: {
+        case: 'equipmentChanged',
+        value: create(EquipmentChangedSchema, { member: VIEWER }),
+      },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(
+      expect.arrayContaining(['characterData', 'afford'])
+    );
+  });
+
+  it('RESTED re-reads the sheet, the offers and the turn’s concentration badge', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.RESTED,
+      body: {
+        case: 'rested',
+        value: create(RestedSchema, { member: VIEWER }),
+      },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(
+      expect.arrayContaining(['characterData', 'afford', 'turn'])
+    );
   });
 });

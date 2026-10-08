@@ -814,6 +814,7 @@
 
 .storyEntry p {
   margin: 0;
+  white-space: pre-line;
   color: var(--sc-muted);
   font-size: 10px;
   line-height: 1.35;

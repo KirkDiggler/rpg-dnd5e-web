@@ -19,7 +19,10 @@ import {
 } from './atlasToScene3D';
 import { DungeonSceneLights } from './DungeonSceneLights';
 import { DungeonShell, type ShellFallbackReason } from './DungeonShell';
+import { PropPresentationEnvironment } from './PropPresentationEnvironment';
+import { propPresentationItem } from './propPresentations';
 import { RoomSceneEnvironment } from './RoomSceneEnvironment';
+import { StructuralLayoutEnvironment } from './StructuralLayoutEnvironment';
 import { useDungeonCompositions } from './useDungeonCompositions';
 
 export interface DungeonEnvironmentProps {
@@ -99,6 +102,34 @@ export function DungeonEnvironment({
       }
     });
   }, [canonicalPresentation, compositionResolutions, hexSize, scene.props]);
+  const hiddenLegacyIds = useMemo(
+    () =>
+      new Set([
+        ...(scene.hiddenPlacedIds ?? []),
+        ...(scene.propPresentations ?? []).map((p) => p.id),
+      ]),
+    [scene.hiddenPlacedIds, scene.propPresentations]
+  );
+  const permittedLights = useMemo(
+    () =>
+      projectCompositionPointLights(
+        {
+          version: 1,
+          id: 'permitted-props',
+          name: '',
+          groups: [],
+          items: (scene.propPresentations ?? [])
+            .filter((p) => !scene.rememberedPropPresentationIds?.has(p.id))
+            .map((p) => propPresentationItem(p, hexSize)),
+        },
+        {
+          compositionId: 'permitted-props',
+          placementId: 'permitted-props',
+          transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+        }
+      ),
+    [scene.propPresentations, scene.rememberedPropPresentationIds, hexSize]
+  );
   const plan = useMemo(() => {
     const focusPoint = { x: focus.x, z: focus.z };
     if (canonicalPresentation) {
@@ -112,7 +143,7 @@ export function DungeonEnvironment({
         {
           ...canonicalPresentation.scene,
           items: canonicalPresentation.scene.items.filter(
-            (item) => !scene.hiddenPlacedIds?.has(item.id)
+            (item) => !hiddenLegacyIds.has(item.id)
           ),
         },
         {
@@ -130,19 +161,19 @@ export function DungeonEnvironment({
           sources: Object.freeze([] as readonly DungeonLightSource[]),
         },
         focusPoint,
-        canonicalLights
+        [...canonicalLights, ...permittedLights]
       );
     }
-    return resolveDungeonLighting(
-      scene.lighting,
-      focusPoint,
-      authoredPointLights
-    );
+    return resolveDungeonLighting(scene.lighting, focusPoint, [
+      ...authoredPointLights,
+      ...permittedLights,
+    ]);
   }, [
     authoredPointLights,
     canonicalPresentation,
     scene.lighting,
-    scene.hiddenPlacedIds,
+    hiddenLegacyIds,
+    permittedLights,
     focus.x,
     focus.z,
   ]);
@@ -173,6 +204,16 @@ export function DungeonEnvironment({
     onLightingDiagnostics(plan.diagnostics);
   }, [diagnosticsSignature, onLightingDiagnostics, plan.diagnostics]);
 
+  const propModels = (
+    <PropPresentationEnvironment
+      presentations={scene.propPresentations ?? []}
+      hexSize={hexSize}
+      rememberedIds={scene.rememberedPropPresentationIds}
+      currentDoorIds={scene.currentDoorIds}
+      doors={doors}
+      onDoorClick={onDoorClick}
+    />
+  );
   if (canonicalPresentation) {
     return (
       <>
@@ -193,7 +234,19 @@ export function DungeonEnvironment({
           dungeonKey={dungeonKey}
           doors={doors}
           onDoorClick={onDoorClick}
-          hiddenPlacedIds={scene.hiddenPlacedIds}
+          hiddenPlacedIds={hiddenLegacyIds}
+        />
+        {/* The supplied structural layout renders in BOTH branches. It is
+            independent of the authored room presentation and of the legacy
+            atlas props: it is the toolkit's own permitted wall/door records,
+            drawn through the shared World Building leaves. */}
+        {propModels}
+        <StructuralLayoutEnvironment
+          walls={scene.structuralWalls ?? []}
+          doors={scene.structuralDoors ?? []}
+          diagnostics={scene.structuralDiagnostics ?? []}
+          observedDoors={doors}
+          onDoorClick={onDoorClick}
         />
       </>
     );
@@ -228,6 +281,14 @@ export function DungeonEnvironment({
           />
         );
       })}
+      {propModels}
+      <StructuralLayoutEnvironment
+        walls={scene.structuralWalls ?? []}
+        doors={scene.structuralDoors ?? []}
+        diagnostics={scene.structuralDiagnostics ?? []}
+        observedDoors={doors}
+        onDoorClick={onDoorClick}
+      />
     </>
   );
 }

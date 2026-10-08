@@ -61,6 +61,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { PropPresentation } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { cellBoundingBox } from '../../author/hexGeometry';
 import {
   layoutFromWire,
@@ -79,6 +80,12 @@ import {
   type DoorGapPiece,
 } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
+import { applyPropPresentations } from './propPresentations';
+import {
+  structuralLayoutRender,
+  type StructuralDoorRenderUnit,
+  type StructuralWallRenderUnit,
+} from './structuralLayout';
 
 export { positionToCube, worldPositionOf };
 
@@ -150,6 +157,10 @@ export interface SceneExit3D {
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
+  /** Supplied render records, not an authored scene or a visibility calculation. */
+  propPresentations?: readonly PropPresentation[];
+  rememberedPropPresentationIds?: ReadonlySet<string>;
+  currentDoorIds?: ReadonlySet<string>;
   /**
    * The ways out, drawn from the start.
    *
@@ -168,6 +179,28 @@ export interface Scene3D {
   lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
+  /**
+   * The session's supplied structural walls, converted once to scene units.
+   * These are the toolkit's already-permitted authored layouts, NOT a
+   * reconstruction from blocker rectangles and NOT a builder-document fetch.
+   * Empty/absent for every producer older than the field and for the editor
+   * preview; the shared wall surface leaf consumes each unit directly.
+   *
+   * OPTIONAL for the same reason `roomScene`/`hiddenPlacedIds` are: a Scene3D
+   * built by hand (the dice/editor test fixtures) predates the collections and
+   * must keep meaning "no supplied structural layout".
+   */
+  structuralWalls?: readonly StructuralWallRenderUnit[];
+  /**
+   * The session's independently permitted structural doors, converted once to
+   * scene units. A door is rendered on its own: a withheld parent wall never
+   * hides an unlisted permitted door, and no parent identity is carried.
+   */
+  structuralDoors?: readonly StructuralDoorRenderUnit[];
+  /** Always empty on buildScene3D output: malformed structural records refuse
+   * the whole scene. Directly constructed diagnostic/preview scenes may supply
+   * named refusals here instead of geometry. */
+  structuralDiagnostics?: readonly string[];
   /**
    * The authored room this dungeon looks like, handed in by the caller
    * — never read off the atlas (rpg-project#479: presentation is
@@ -321,7 +354,12 @@ export function buildScene3D(
     GetAtlasResponse,
     'cells' | 'props' | 'segments' | 'doorways' | 'regions'
   > &
-    Partial<Pick<GetAtlasResponse, 'exits'>>,
+    Partial<
+      Pick<
+        GetAtlasResponse,
+        'exits' | 'structuralWalls' | 'structuralDoors' | 'propPresentations'
+      >
+    >,
   hexSize: number,
   layout: HexLayout,
   roomScene?: RoomScenePresentation,
@@ -354,10 +392,16 @@ export function buildScene3D(
     floorTiles.set(coordToKey(cube), { ...cube, roomId: '' });
   }
 
+  const propPresentations = applyPropPresentations(
+    [],
+    atlas.propPresentations,
+    atlas.structuralDoors
+  );
+  const presentedIds = new Set(propPresentations.map((p) => p.id));
   const props: SceneProp3D[] = [];
   const lightingSources: DungeonLightingSourceInput[] = [];
   for (const [propIndex, prop] of atlas.props.entries()) {
-    if (!prop.at) continue;
+    if (!prop.at || (prop.id && presentedIds.has(prop.id))) continue;
     // `?? ''` / `?? 0`: an older server or a stale client-side proto
     // schema (the exact live-walk failure this guards, rpg-project#261
     // PR #795 field report) hands back an AtlasProp with facing/
@@ -412,6 +456,16 @@ export function buildScene3D(
     lightingSources
   );
   const { wallRuns, doorGaps } = segmentsToWallRuns(atlas, hexSize);
+  const structural = structuralLayoutRender(
+    atlas.structuralWalls,
+    atlas.structuralDoors,
+    hexSize
+  );
+  if (structural.diagnostics.length > 0) {
+    // Use the existing scene-integrity refusal surface. Silently omitting a
+    // malformed wall would present a traversable-looking hole in the world.
+    throw new Error(`buildScene3D: ${structural.diagnostics.join('; ')}`);
+  }
 
   return {
     floorTiles,
@@ -420,6 +474,10 @@ export function buildScene3D(
     lighting,
     wallRuns,
     doorGaps,
+    propPresentations,
+    structuralWalls: structural.walls,
+    structuralDoors: structural.doors,
+    structuralDiagnostics: structural.diagnostics,
     roomScene,
     hiddenPlacedIds,
     // The floor this member knows is what was just built above, so an

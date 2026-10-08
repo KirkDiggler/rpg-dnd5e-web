@@ -156,7 +156,7 @@ export function refreshKeysFor(
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.
     case 'arrived':
       return event.body.value.kind === PlacementKind.PROP
-        ? ['view']
+        ? ['atlas', 'view']
         : ['roster', 'view'];
     // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
     // table: a body with nothing to give must be indistinguishable
@@ -176,6 +176,15 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
+    // A HAND CHANGED, OR A MEMBER RESTED (rpg-project#542). The sheet is what
+    // moved — the equipped slots, armor class and main-hand damage on an
+    // equip; hit points, resources and conditions on a rest — and the offers
+    // priced from it (`afford`) follow. `turn` rides with the rest because a
+    // rest can end concentration, whose badge is read off GetTurn.
+    case 'equipmentChanged':
+      return ['characterData', 'afford'];
+    case 'rested':
+      return ['characterData', 'afford', 'turn'];
     // A THREAT LANDED, OR MISSED (rpg-project#454). SCOPED TO THE ACTOR, the
     // way `moved` is and unlike every flat row here, because the only thing
     // this beat changes is the threatener's own turn: it costs them the
@@ -192,6 +201,18 @@ export function refreshKeysFor(
     // arrives as its next turn, on that turn's own beats. There is nothing
     // to re-read here because nothing has been decided yet.
     //
+    // AN AUTOMATIC DISCOVERY CHECK WAS RESOLVED (rpg-project#523, consuming
+    // proto v0.1.220). SCOPED TO THE CHECKED MEMBER: the result is theirs and
+    // only their own card and what they may still declare re-read. Nobody
+    // else's cached read moved, so nobody else refetches. No discovery roll
+    // and no discovery decision happens in web — the server resolved the
+    // check; this row is the mechanical invalidation of that member's own
+    // read, exactly as `intimidated`/`persuaded` below are scoped to the
+    // actor.
+    case 'discoveryChecked':
+      return event.body.value.member === member
+        ? ['characterData', 'afford']
+        : [];
     // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
     // shares this row, with ONE correction the threat's comment above did not
     // have to make: on the WORLD clock a social verb costs nothing at all (R3),
@@ -199,10 +220,6 @@ export function refreshKeysFor(
     // because the clock is not on this beat and guessing it from an absent
     // field is exactly the kind of local decision that goes wrong the first
     // time a rule moves. One wasted read is cheaper than a stale action bar.
-    case 'discoveryChecked':
-      return event.body.value.member === member
-        ? ['characterData', 'afford']
-        : [];
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded':

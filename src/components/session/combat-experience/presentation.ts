@@ -1275,6 +1275,11 @@ const EXPECTED_OTHER_KIND = {
   // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
   // exact gap `saved` fell into in slice two.
   concentrationEnded: EventKind.CONCENTRATION_ENDED,
+  // THE SESSION VERBS' TWO BEATS (rpg-project#542): a hand changed, a member
+  // rested. Narrated in story.ts; listed here so they are accepted rather than
+  // dropped as a kind/body mismatch.
+  equipmentChanged: EventKind.EQUIPMENT_CHANGED,
+  rested: EventKind.RESTED,
   // THE FIRST SHENANIGAN (rpg-project#454), and it has to be here for
   // `concentrationEnded`'s reason directly above: a body with no row is
   // discarded as a typed kind/body mismatch, and this beat is the ONLY
@@ -1336,6 +1341,8 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.TEMPERED,
   EventKind.SAVED,
   EventKind.CONCENTRATION_ENDED,
+  EventKind.EQUIPMENT_CHANGED,
+  EventKind.RESTED,
   EventKind.INTIMIDATED,
   EventKind.PERSUADED,
   EventKind.ANSWERED,
@@ -1822,6 +1829,49 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             })
           : null,
         reason: event.body.value.reason,
+      });
+    case 'equipmentChanged':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        slot: event.body.value.slot,
+        item: event.body.value.item,
+        change: event.body.value.change,
+      });
+    case 'rested':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        restKind: event.body.value.kind,
+        hitPointsRestored: event.body.value.hitPointsRestored,
+        hitPoints: event.body.value.hitPoints,
+        hitDiceSpent: event.body.value.hitDiceSpent,
+        hitDiceReturned: event.body.value.hitDiceReturned,
+        hitDiceRemaining: event.body.value.hitDiceRemaining,
+        resourcesRefilled: Object.freeze([
+          ...event.body.value.resourcesRefilled,
+        ]),
+        concentrationEnded: Object.freeze(
+          event.body.value.concentrationEnded.map((ended) =>
+            Object.freeze({
+              caster: ended.caster,
+              spell: ended.spell?.ref ?? null,
+              reason: ended.reason,
+            })
+          )
+        ),
+        ended: Object.freeze(
+          event.body.value.ended.map((removed) =>
+            Object.freeze({
+              target: removed.target,
+              ref: removed.ref,
+              sourceId: removed.sourceId,
+              reason: removed.reason,
+            })
+          )
+        ),
       });
     // The reveals, plus the creature's table's own two — every body this file
     // accepts and does not narrate. See their entries in EXPECTED_OTHER_KIND
