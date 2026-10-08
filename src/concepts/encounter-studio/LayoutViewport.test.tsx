@@ -8,6 +8,10 @@ import {
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { walkableCellsInWorldRectangle } from '../world-building/roomDraft';
+import {
+  centeredRoomWorkspace,
+  workspaceBounds,
+} from '../world-building/workspaceGeometry';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
   createLayoutTransform,
@@ -129,6 +133,141 @@ function brush(): void {
   fireEvent.pointerDown(surface(), { ...at(zero), pointerId: 7, button: 0 });
   fireEvent.pointerMove(surface(), { ...at(one), pointerId: 7 });
 }
+
+describe('controlled rectangular Layout', () => {
+  it.each([
+    [73, 48, 3504],
+    [128, 128, 16384],
+  ])(
+    'draws actual %s × %s (%s) cells, not its enclosing disk',
+    (w, h, count) => {
+      const input = props();
+      input.draft = { ...input.draft, workspace: centeredRoomWorkspace(w, h) };
+      render(<LayoutViewport {...input} />);
+      expect(surface().querySelectorAll('[data-cell]')).toHaveLength(count);
+      const transform = createLayoutTransform(
+        bounds,
+        initialFrame,
+        workspaceBounds(input.draft.workspace)
+      )!;
+      const point = worldToClient(
+        layoutCellCenter({ q: -36, r: 0 }),
+        transform
+      )!;
+      fireEvent.pointerDown(surface(), {
+        clientX: point.x,
+        clientY: point.y,
+        pointerId: 7,
+      });
+      const positive = worldToClient(
+        layoutCellCenter({ q: 36, r: 0 }),
+        transform
+      )!;
+      fireEvent.pointerMove(surface(), {
+        clientX: positive.x,
+        clientY: positive.y,
+        pointerId: 7,
+      });
+      fireEvent.pointerUp(surface(), {
+        clientX: positive.x,
+        clientY: positive.y,
+        pointerId: 7,
+      });
+      expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+        [
+          { q: -36, r: 0 },
+          { q: 36, r: 0 },
+        ],
+        'paint'
+      );
+      const outside = worldToClient(
+        layoutCellCenter({ q: 37, r: 0 }),
+        transform
+      )!;
+      if (h === 48) {
+        fireEvent.pointerDown(surface(), {
+          clientX: outside.x,
+          clientY: outside.y,
+          pointerId: 8,
+        });
+        fireEvent.pointerUp(surface(), {
+          clientX: outside.x,
+          clientY: outside.y,
+          pointerId: 8,
+        });
+        expect(previewCells()).toEqual([]);
+        expect(input.onCommit).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
+
+  it.each(['rectangle', 'erase'] as const)(
+    'uses actual expanded bounds for a %s gesture',
+    (tool) => {
+      const input = props({ tool });
+      input.draft = {
+        ...input.draft,
+        workspace: centeredRoomWorkspace(73, 48),
+      };
+      render(<LayoutViewport {...input} />);
+      const transform = createLayoutTransform(
+        bounds,
+        initialFrame,
+        workspaceBounds(input.draft.workspace)
+      )!;
+      const a = worldToClient(layoutCellCenter({ q: -36, r: 0 }), transform)!,
+        b = worldToClient(layoutCellCenter({ q: 36, r: 0 }), transform)!;
+      fireEvent.pointerDown(surface(), {
+        clientX: a.x,
+        clientY: a.y,
+        pointerId: 7,
+      });
+      fireEvent.pointerMove(surface(), {
+        clientX: b.x,
+        clientY: b.y,
+        pointerId: 7,
+      });
+      expect(previewCells()).toHaveLength(tool === 'rectangle' ? 73 : 2);
+      fireEvent.pointerUp(surface(), {
+        clientX: b.x,
+        clientY: b.y,
+        pointerId: 7,
+      });
+      const expected =
+        tool === 'rectangle'
+          ? Array.from({ length: 73 }, (_, i) => ({ q: i - 36, r: 0 }))
+          : [
+              { q: -36, r: 0 },
+              { q: 36, r: 0 },
+            ];
+      expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+        expected,
+        tool === 'erase' ? 'erase' : 'paint'
+      );
+    }
+  );
+
+  it.each(['document', 'workspace'])(
+    'cancels captured previews across %s replacement without a history callback',
+    (reason) => {
+      const input = props();
+      const view = render(<LayoutViewport {...input} />);
+      brush();
+      const draft =
+        reason === 'workspace'
+          ? { ...input.draft, workspace: centeredRoomWorkspace(73, 48) }
+          : {
+              ...input.draft,
+              room: { ...input.draft.room, walkableHexes: [{ q: 2, r: 0 }] },
+            };
+      view.rerender(<LayoutViewport {...input} draft={draft} />);
+      expect(previewCells()).toEqual([]);
+      expect(release).toHaveBeenCalledWith(7);
+      fireEvent.pointerUp(surface(), { ...at(one), pointerId: 7 });
+      expect(input.onCommit).not.toHaveBeenCalled();
+    }
+  );
+});
 
 describe('controlled Layout floor surface', () => {
   it('brush samples 0,0 and 1,0 once despite repeated movement', () => {
@@ -391,24 +530,16 @@ describe('controlled Layout floor surface', () => {
     ).toBe(committed);
   });
 
-  it('controlled rerenders retain gesture samples and use the latest callback and draft', () => {
+  it('presentation/callback rerenders retain samples when the document is unchanged', () => {
     const input = props();
     const view = render(<LayoutViewport {...input} />);
     fireEvent.pointerDown(surface(), { ...at(zero), pointerId: 7 });
     const next = props({
-      draft: {
-        ...input.draft,
-        room: { ...input.draft.room, walkableHexes: [{ q: 2, r: 0 }] },
-      },
+      draft: input.draft,
       frame: { center: { x: 2, z: -1 }, zoom: 2 },
     });
     view.rerender(<LayoutViewport {...next} />);
     expect(previewCells()).toEqual(['0,0']);
-    expect(
-      surface()
-        .querySelector('[data-cell="2,0"]')!
-        .getAttribute('data-walkable')
-    ).toBe('true');
     fireEvent.pointerMove(surface(), { ...at(one, next.frame), pointerId: 7 });
     fireEvent.pointerUp(surface(), { ...at(one, next.frame), pointerId: 7 });
     expect(input.onCommit).not.toHaveBeenCalled();
@@ -419,12 +550,13 @@ describe('controlled Layout floor surface', () => {
     const onCommit = vi.fn(() => true);
     let latest = initialFrame;
     const onFrameChange = vi.fn();
+    const input = props();
     function Controlled(): React.JSX.Element {
       const [frame, setFrame] = useState(initialFrame);
       latest = frame;
       return (
         <LayoutViewport
-          {...props()}
+          {...input}
           frame={frame}
           onCommit={onCommit}
           onFrameChange={(next): void => {
@@ -474,9 +606,11 @@ describe('controlled Layout floor surface', () => {
   it('resize updates drawn coordinates and picking through the same transform', () => {
     const input = props();
     render(<LayoutViewport {...input} />);
-    const before = surface()
-      .querySelector('[data-cell="0,0"]')!
-      .getAttribute('points');
+    const polygon = surface().querySelector('[data-cell="0,0"]')!;
+    const before = polygon.getAttribute('points');
+    const beforeTransform = surface()
+      .querySelector('.encounter-studio-layout-committed')!
+      .getAttribute('transform');
     bounds = { left: 170, top: 220, width: 600, height: 800 };
     act(() => {
       resizeCallback([], {} as ResizeObserver);
@@ -484,7 +618,13 @@ describe('controlled Layout floor surface', () => {
     expect(surface().getAttribute('viewBox')).toBe('0 0 600 800');
     expect(
       surface().querySelector('[data-cell="0,0"]')!.getAttribute('points')
-    ).not.toBe(before);
+    ).toBe(before); // World geometry is stable; only presentation moves.
+    expect(surface().querySelector('[data-cell="0,0"]')).toBe(polygon);
+    expect(
+      surface()
+        .querySelector('.encounter-studio-layout-committed')!
+        .getAttribute('transform')
+    ).not.toBe(beforeTransform);
     brush();
     fireEvent.pointerUp(surface(), { ...at(one), pointerId: 7 });
     expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(

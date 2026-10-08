@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -10,11 +11,9 @@ import {
   clientToWorld,
   createLayoutTransform,
   layoutCellCorners,
-  layoutRectangleCells,
   layoutWorkspaceCells,
   panLayoutFrame,
   pickLayoutCell,
-  worldToClient,
   zoomLayoutFrame,
   type ClientPoint,
   type LayoutBounds,
@@ -25,6 +24,40 @@ import type {
   RoomHexCell,
   WorldPoint,
 } from './studioSession';
+
+import { usePresentationWorkspace } from '../world-building/usePresentationWorkspace';
+import { workspaceBounds } from '../world-building/workspaceGeometry';
+import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+
+// World-space polygons stay stable through pan/zoom and preview-only renders.
+const LayoutGrid = memo(function LayoutGrid({
+  cells,
+  committed,
+}: {
+  cells: readonly RoomHexCell[];
+  committed: ReadonlySet<string>;
+}): React.JSX.Element {
+  return (
+    <>
+      {cells.map((cell) => (
+        <polygon
+          key={cellKey(cell)}
+          data-cell={cellKey(cell)}
+          data-walkable={committed.has(cellKey(cell))}
+          points={polygonPoints(cell)}
+          fill={committed.has(cellKey(cell)) ? '#44687a' : '#182633'}
+          stroke="#2d414e"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </>
+  );
+});
+const polygonPoints = (cell: RoomHexCell): string =>
+  layoutCellCorners(cell)
+    .map((p) => `${p.x},${p.z}`)
+    .join(' ');
 
 type Gesture = {
   pointerId: number;
@@ -104,7 +137,20 @@ export function LayoutViewport({
 
   useLayoutEffect(() => {
     abandon();
-  }, [tool, abandon]);
+  }, [tool, draft, abandon]);
+
+  const presentationWorkspace = usePresentationWorkspace(draft.workspace)!;
+  const rectangleCells = useMemo(
+    () => createWorkspaceRectangleSelection(presentationWorkspace),
+    [presentationWorkspace]
+  );
+  const fitExtent = useMemo(
+    () =>
+      presentationWorkspace.kind === 'centered-odd-r'
+        ? workspaceBounds(presentationWorkspace)
+        : presentationWorkspace.horizontalLimit,
+    [presentationWorkspace]
+  );
 
   useLayoutEffect(() => {
     const surface = surfaceRef.current;
@@ -121,7 +167,7 @@ export function LayoutViewport({
         frame,
         { x: event.clientX, y: event.clientY },
         delta,
-        createLayoutTransform(rect, frame, draft.workspace.horizontalLimit)
+        createLayoutTransform(rect, frame, fitExtent)
       );
       if (next) onFrameChange(next);
     };
@@ -129,27 +175,26 @@ export function LayoutViewport({
     return (): void => {
       surface.removeEventListener('wheel', wheel);
     };
-  }, [frame, onFrameChange, draft.workspace.horizontalLimit]);
+  }, [frame, onFrameChange, fitExtent]);
 
   const transform = bounds
-    ? createLayoutTransform(bounds, frame, draft.workspace.horizontalLimit)
+    ? createLayoutTransform(bounds, frame, fitExtent)
     : null;
   const workspace = useMemo(
-    () => layoutWorkspaceCells(draft.workspace.hexRadius),
-    [draft.workspace.hexRadius]
+    () => layoutWorkspaceCells(presentationWorkspace),
+    [presentationWorkspace]
   );
-  const committed = new Set(draft.room.walkableHexes.map(cellKey));
+  const committed = useMemo(
+    () => new Set(draft.room.walkableHexes.map(cellKey)),
+    [draft.room.walkableHexes]
+  );
 
   // Read live bounds for picking: scrolling/reflow may translate the surface
   // without a ResizeObserver notification. Rendering uses the identical scale.
   const eventTransform = (
     surface: SVGSVGElement
   ): ReturnType<typeof createLayoutTransform> =>
-    createLayoutTransform(
-      surface.getBoundingClientRect(),
-      frame,
-      draft.workspace.horizontalLimit
-    );
+    createLayoutTransform(surface.getBoundingClientRect(), frame, fitExtent);
   const sample = (
     event: ReactPointerEvent<SVGSVGElement>,
     gesture: Gesture
@@ -168,18 +213,10 @@ export function LayoutViewport({
     if (gesture.tool === 'rectangle') {
       const world = clientToWorld(point, currentTransform);
       if (!world) return;
-      const cells = layoutRectangleCells(
-        gesture.anchor,
-        world,
-        draft.workspace.hexRadius
-      );
+      const cells = rectangleCells(gesture.anchor, world);
       gesture.cells = new Map(cells.map((cell) => [cellKey(cell), cell]));
     } else {
-      const cell = pickLayoutCell(
-        point,
-        currentTransform,
-        draft.workspace.hexRadius
-      );
+      const cell = pickLayoutCell(point, currentTransform, draft.workspace);
       if (cell) gesture.cells.set(cellKey(cell), cell);
     }
     setPreview([...gesture.cells.values()]);
@@ -247,15 +284,10 @@ export function LayoutViewport({
   const cancelPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
     if (gestureRef.current?.pointerId === event.pointerId) abandon();
   };
-  const polygonPoints = (cell: RoomHexCell): string =>
-    layoutCellCorners(cell)
-      .map((corner) => {
-        const point = worldToClient(corner, transform);
-        return point && bounds
-          ? `${point.x - bounds.left},${point.y - bounds.top}`
-          : '';
-      })
-      .join(' ');
+  const worldTransform =
+    transform && bounds
+      ? `translate(${bounds.width / 2 - transform.center.x * transform.scale} ${bounds.height / 2 - transform.center.z * transform.scale}) scale(${transform.scale})`
+      : undefined;
 
   return (
     <svg
@@ -291,23 +323,18 @@ export function LayoutViewport({
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
-        <g className="encounter-studio-layout-committed" pointerEvents="none">
-          {workspace.map((cell) => (
-            <polygon
-              key={cellKey(cell)}
-              data-cell={cellKey(cell)}
-              data-walkable={committed.has(cellKey(cell))}
-              points={polygonPoints(cell)}
-              fill={committed.has(cellKey(cell)) ? '#44687a' : '#182633'}
-              stroke="#2d414e"
-              strokeWidth={1}
-            />
-          ))}
+        <g
+          className="encounter-studio-layout-committed"
+          pointerEvents="none"
+          transform={worldTransform}
+        >
+          <LayoutGrid cells={workspace} committed={committed} />
         </g>
       )}
       {transform && (
         <g
           className="encounter-studio-layout-preview"
+          transform={worldTransform}
           aria-hidden="true"
           pointerEvents="none"
         >
@@ -320,6 +347,7 @@ export function LayoutViewport({
               fillOpacity={0.6}
               stroke={tool === 'erase' ? '#ffb29f' : '#a7ffeb'}
               strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
               strokeDasharray="5 3"
             />
           ))}

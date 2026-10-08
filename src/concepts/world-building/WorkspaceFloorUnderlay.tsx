@@ -5,15 +5,20 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
+import type { RoomWorkspace } from './workspaceGeometry';
+
+type WorkspaceFloorExtent =
+  | { workspace: RoomWorkspace; radius?: number }
+  | { radius: number; workspace?: RoomWorkspace };
 
 export function WorkspaceFloorSurface({
   radius,
+  workspace,
   profile,
-}: {
-  radius: number;
-  profile: DungeonShellFloorProfile;
-}) {
+}: WorkspaceFloorExtent & { profile: DungeonShellFloorProfile }) {
+  const presentationWorkspace = usePresentationWorkspace(workspace);
   const sharedTexture = useTexture(`/models/synty/${profile.diffuse}`);
   const texture = useMemo(() => {
     const owned = sharedTexture.clone();
@@ -23,18 +28,15 @@ export function WorkspaceFloorSurface({
     owned.needsUpdate = true;
     return owned;
   }, [sharedTexture]);
-  const geometry = useMemo(
-    () => createWorkspaceFloorGeometry(radius, profile.worldUnitsPerRepeat),
-    [profile.worldUnitsPerRepeat, radius]
-  );
+  const geometry = useMemo(() => {
+    const extent = presentationWorkspace ?? radius;
+    if (extent === undefined)
+      throw new Error('Workspace floor requires a workspace or legacy radius.');
+    return createWorkspaceFloorGeometry(extent, profile.worldUnitsPerRepeat);
+  }, [profile.worldUnitsPerRepeat, radius, presentationWorkspace]);
 
-  useEffect(
-    () => () => {
-      geometry.dispose();
-      texture.dispose();
-    },
-    [geometry, texture]
-  );
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => texture.dispose(), [texture]);
 
   return (
     <mesh
@@ -54,17 +56,27 @@ export function WorkspaceFloorSurface({
  * Optional room-authoring visual. Catalog and texture loading stay inside this
  * boundary so the plain, interactive ground remains mounted at every state.
  */
-export function WorkspaceFloorUnderlay({ radius }: { radius: number }) {
+export function WorkspaceFloorUnderlay({
+  radius,
+  workspace,
+}: WorkspaceFloorExtent) {
   const shellCatalog = useDungeonShellCatalog();
   if (shellCatalog.status !== 'ready') return null;
 
   return (
     <Suspense fallback={null}>
       <ErrorBoundary fallback={<group name="workspace-floor-underlay-error" />}>
-        <WorkspaceFloorSurface
-          radius={radius}
-          profile={shellCatalog.catalog.profiles.crypt.floor}
-        />
+        {workspace ? (
+          <WorkspaceFloorSurface
+            workspace={workspace}
+            profile={shellCatalog.catalog.profiles.crypt.floor}
+          />
+        ) : (
+          <WorkspaceFloorSurface
+            radius={radius!}
+            profile={shellCatalog.catalog.profiles.crypt.floor}
+          />
+        )}
       </ErrorBoundary>
     </Suspense>
   );

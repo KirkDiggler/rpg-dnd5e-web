@@ -3,7 +3,6 @@ import {
   cubeToWorld,
   HEX_SIZE,
   hexCorners,
-  worldToCube,
 } from '@/components/hex-grid/hexMath';
 import type { PropModelBounds } from '@/components/hex-grid/PropModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
@@ -42,7 +41,6 @@ import {
   RoomActorPreview,
 } from './RoomActorMarkers';
 import {
-  walkableCellsInWorldRectangle,
   type RoomDoorBinding,
   type RoomHexCell,
   type RoomMonsterBinding,
@@ -58,7 +56,16 @@ import { snapWallPoint } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import { StructuralWallVisual } from './StructuralWallVisual';
 import type { WorldPoint, WorldScene, WorldTransform } from './types';
+import { usePresentationWorkspace } from './usePresentationWorkspace';
+import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
+import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
+import {
+  workspaceBounds,
+  workspaceCellAtPoint,
+  workspaceCells,
+} from './workspaceGeometry';
+import { createWorkspaceRectangleSelection } from './workspaceRectangleSelection';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
   WorldBuildingDropInteraction,
@@ -160,22 +167,18 @@ export interface WorldBuildingViewportProps {
   };
 }
 
-function makeHexLines(radius: number): THREE.BufferGeometry {
+function makeHexLines(workspace: RoomWorkspace | number): THREE.BufferGeometry {
   const points: THREE.Vector3[] = [];
-  for (let q = -radius; q <= radius; q += 1) {
-    for (let r = -radius; r <= radius; r += 1) {
-      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) > radius)
-        continue;
-      const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
-      const corners = hexCorners(center, HEX_SIZE);
-      corners.forEach((corner, index) => {
-        const next = corners[(index + 1) % corners.length]!;
-        points.push(
-          new THREE.Vector3(corner.x, DUNGEON_SURFACE_Y + 0.012, corner.z),
-          new THREE.Vector3(next.x, DUNGEON_SURFACE_Y + 0.012, next.z)
-        );
-      });
-    }
+  for (const { q, r } of workspaceCells(workspace)) {
+    const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
+    const corners = hexCorners(center, HEX_SIZE);
+    corners.forEach((corner, index) => {
+      const next = corners[(index + 1) % corners.length]!;
+      points.push(
+        new THREE.Vector3(corner.x, DUNGEON_SURFACE_Y + 0.012, corner.z),
+        new THREE.Vector3(next.x, DUNGEON_SURFACE_Y + 0.012, next.z)
+      );
+    });
   }
   return new THREE.BufferGeometry().setFromPoints(points);
 }
@@ -354,9 +357,11 @@ export function WorldPropVisual({
 function WorldBuildingCameraControls({
   enabled,
   maxDistance = 26,
+  workspace,
 }: {
   enabled: boolean;
   maxDistance?: number;
+  workspace?: RoomWorkspace;
 }) {
   const { camera, gl } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -369,6 +374,58 @@ function WorldBuildingCameraControls({
     });
   }, [camera.position, gl.domElement]);
   useEffect(recordCamera, [recordCamera]);
+  const extent = useMemo(
+    () =>
+      workspace?.kind === 'centered-odd-r' ? workspaceBounds(workspace) : null,
+    [workspace]
+  );
+  const fittedRectangle = useRef(false);
+  const perspectiveCamera = camera as THREE.PerspectiveCamera;
+  const aspect = perspectiveCamera.isPerspectiveCamera
+    ? perspectiveCamera.aspect
+    : 1;
+  useEffect(() => {
+    if (!perspectiveCamera.isPerspectiveCamera) return;
+    if (!extent) {
+      if (fittedRectangle.current) {
+        camera.position.set(8, 9, 8);
+        perspectiveCamera.far = 100;
+        perspectiveCamera.updateProjectionMatrix();
+        controlsRef.current?.target.set(0, 0.6, 0);
+        controlsRef.current?.update();
+        fittedRectangle.current = false;
+      }
+      return;
+    }
+    fittedRectangle.current = true;
+    // Fit at the existing orientation; no gameplay preset or mouse changes.
+    const radius = Math.hypot(
+      Math.max(Math.abs(extent.minX), Math.abs(extent.maxX)),
+      Math.max(Math.abs(extent.minZ), Math.abs(extent.maxZ))
+    );
+    const halfFov = Math.min(
+      THREE.MathUtils.degToRad(perspectiveCamera.fov / 2),
+      Math.atan(
+        Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov / 2)) * aspect
+      )
+    );
+    const distance = (radius / Math.sin(halfFov)) * 1.08;
+    const target = new THREE.Vector3(0, 0.6, 0);
+    const direction = camera.position
+      .clone()
+      .sub(controlsRef.current?.target ?? target);
+    if (direction.lengthSq() === 0) direction.set(8, 8.4, 8);
+    camera.position.copy(
+      direction.normalize().multiplyScalar(distance).add(target)
+    );
+    const reach = Math.max(maxDistance, distance * 2);
+    perspectiveCamera.far = Math.max(100, distance + reach + radius * 4);
+    if (controlsRef.current) controlsRef.current.maxDistance = reach;
+    perspectiveCamera.updateProjectionMatrix();
+    controlsRef.current?.target.copy(target);
+    controlsRef.current?.update();
+    recordCamera();
+  }, [camera, perspectiveCamera, aspect, extent, maxDistance, recordCamera]);
   return (
     <OrbitControls
       ref={controlsRef}
@@ -402,78 +459,118 @@ function RoomAuthoringDeclarations({
   rectanglePreview: readonly RoomHexCell[];
 }) {
   const fillGeometry = useMemo(() => createWalkableHexFillGeometry(), []);
+  useEffect(() => () => fillGeometry.dispose(), [fillGeometry]);
+  const rectangular = authoring.workspace.kind === 'centered-odd-r';
   return (
     <group name="room-authored-declarations">
-      {authoring.walkableHexes.map((cell) => {
-        const center = cubeToWorld(
-          { x: cell.q, y: -cell.q - cell.r, z: cell.r },
-          HEX_SIZE
-        );
-        return (
-          <mesh
-            key={`${cell.q},${cell.r}`}
-            name={`room-walkable-${cell.q}-${cell.r}`}
-            position={[center.x, DUNGEON_SURFACE_Y + 0.018, center.z]}
-            geometry={fillGeometry}
-            raycast={() => null}
-          >
-            <meshBasicMaterial
-              color="#34d399"
-              transparent
-              opacity={0.34}
-              depthWrite={false}
-            />
-          </mesh>
-        );
-      })}
-      {Object.entries(authoring.concealments ?? {}).flatMap(([id, spec]) =>
-        (spec.cells ?? []).map((cell) => {
+      {rectangular ? (
+        <WorkspaceCellOverlay
+          name="room-walkable-cells"
+          cells={authoring.walkableHexes}
+          geometry={fillGeometry}
+          y={DUNGEON_SURFACE_Y + 0.018}
+          color="#34d399"
+          opacity={0.34}
+        />
+      ) : (
+        authoring.walkableHexes.map((cell) => {
           const center = cubeToWorld(
             { x: cell.q, y: -cell.q - cell.r, z: cell.r },
             HEX_SIZE
           );
           return (
             <mesh
-              key={`${id}-${cell.q},${cell.r}`}
-              name={`room-concealment-${id}-${cell.q}-${cell.r}`}
-              position={[center.x, DUNGEON_SURFACE_Y + 0.021, center.z]}
+              key={`${cell.q},${cell.r}`}
+              name={`room-walkable-${cell.q}-${cell.r}`}
+              position={[center.x, DUNGEON_SURFACE_Y + 0.018, center.z]}
               geometry={fillGeometry}
               raycast={() => null}
             >
               <meshBasicMaterial
-                color={
-                  id === authoring.activeConcealmentId ? '#fbbf24' : '#c084fc'
-                }
+                color="#34d399"
                 transparent
-                opacity={0.6}
+                opacity={0.34}
                 depthWrite={false}
               />
             </mesh>
           );
         })
       )}
-      {rectanglePreview.map((cell) => {
-        const center = cubeToWorld(
-          { x: cell.q, y: -cell.q - cell.r, z: cell.r },
-          HEX_SIZE
-        );
-        return (
-          <mesh
-            key={`preview-${cell.q},${cell.r}`}
-            name={`room-rectangle-preview-${cell.q}-${cell.r}`}
-            position={[center.x, DUNGEON_SURFACE_Y + 0.022, center.z]}
-            geometry={fillGeometry}
-            raycast={() => null}
-          >
-            <meshBasicMaterial
-              color="#67e8f9"
-              transparent
-              opacity={0.48}
-              depthWrite={false}
+      {rectangular
+        ? Object.entries(authoring.concealments ?? {}).map(([id, spec]) => (
+            <WorkspaceCellOverlay
+              key={id}
+              name={`room-concealment-${id}-cells`}
+              cells={spec.cells ?? []}
+              geometry={fillGeometry}
+              y={DUNGEON_SURFACE_Y + 0.021}
+              color={
+                id === authoring.activeConcealmentId ? '#fbbf24' : '#c084fc'
+              }
+              opacity={0.6}
             />
-          </mesh>
-        );
-      })}
+          ))
+        : Object.entries(authoring.concealments ?? {}).flatMap(([id, spec]) =>
+            (spec.cells ?? []).map((cell) => {
+              const center = cubeToWorld(
+                { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+                HEX_SIZE
+              );
+              return (
+                <mesh
+                  key={`${id}-${cell.q},${cell.r}`}
+                  name={`room-concealment-${id}-${cell.q}-${cell.r}`}
+                  position={[center.x, DUNGEON_SURFACE_Y + 0.021, center.z]}
+                  geometry={fillGeometry}
+                  raycast={() => null}
+                >
+                  <meshBasicMaterial
+                    color={
+                      id === authoring.activeConcealmentId
+                        ? '#fbbf24'
+                        : '#c084fc'
+                    }
+                    transparent
+                    opacity={0.6}
+                    depthWrite={false}
+                  />
+                </mesh>
+              );
+            })
+          )}
+      {rectangular ? (
+        <WorkspaceCellOverlay
+          name="room-rectangle-preview-cells"
+          cells={rectanglePreview}
+          geometry={fillGeometry}
+          y={DUNGEON_SURFACE_Y + 0.022}
+          color="#67e8f9"
+          opacity={0.48}
+        />
+      ) : (
+        rectanglePreview.map((cell) => {
+          const center = cubeToWorld(
+            { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+            HEX_SIZE
+          );
+          return (
+            <mesh
+              key={`preview-${cell.q},${cell.r}`}
+              name={`room-rectangle-preview-${cell.q}-${cell.r}`}
+              position={[center.x, DUNGEON_SURFACE_Y + 0.022, center.z]}
+              geometry={fillGeometry}
+              raycast={() => null}
+            >
+              <meshBasicMaterial
+                color="#67e8f9"
+                transparent
+                opacity={0.48}
+                depthWrite={false}
+              />
+            </mesh>
+          );
+        })
+      )}
       {scene.items.flatMap((item) => {
         const declaration = authoring.propDeclarations[item.id];
         if (!declaration) return [];
@@ -513,8 +610,15 @@ function RoomAuthoringDeclarations({
 export function WorldSceneContents(
   props: WorldBuildingViewportProps & { showCompositionBounds: boolean }
 ) {
-  const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
-    props;
+  const {
+    scene,
+    previewScene,
+    selectedIds,
+    tool,
+    activeDrag,
+    onSelect,
+    onMeasuredBounds,
+  } = props;
   const { gl } = useThree();
   // Ground and actor overlays pick the same authored cell. Markers intercept
   // pointer events, so their occupied floor must use this path too.
@@ -531,20 +635,40 @@ export function WorldSceneContents(
   };
   const displayScene = previewScene ?? scene;
   const isRoomAuthoring = Boolean(props.roomAuthoring);
-  const workspaceHexRadius = props.roomAuthoring?.workspace.hexRadius ?? 6;
+  const workspace = usePresentationWorkspace(props.roomAuthoring?.workspace);
+  const rectangular = workspace?.kind === 'centered-odd-r';
+  const rectangleCells = useMemo(
+    () => createWorkspaceRectangleSelection(workspace ?? 6),
+    [workspace]
+  );
   const workspaceGroundRadius =
     props.roomAuthoring?.workspace.horizontalLimit !== undefined
       ? props.roomAuthoring.workspace.horizontalLimit + 1
       : 11.5;
-  const hexGeometry = useMemo(
-    () => makeHexLines(workspaceHexRadius),
-    [workspaceHexRadius]
-  );
+  const hexGeometry = useMemo(() => makeHexLines(workspace ?? 6), [workspace]);
   const boundaryGeometry = useMemo(
-    () => createGroundBoundaryGeometry(workspaceGroundRadius, isRoomAuthoring),
-    [isRoomAuthoring, workspaceGroundRadius]
+    () =>
+      createGroundBoundaryGeometry(
+        workspace ?? workspaceGroundRadius,
+        isRoomAuthoring
+      ),
+    [isRoomAuthoring, workspace, workspaceGroundRadius]
+  );
+  const groundGeometry = useMemo(
+    () => createWorkspaceFloorGeometry(workspace ?? workspaceGroundRadius, 6),
+    [workspace, workspaceGroundRadius]
   );
   useEffect(() => () => boundaryGeometry.dispose(), [boundaryGeometry]);
+  useEffect(() => () => hexGeometry.dispose(), [hexGeometry]);
+  useEffect(() => () => groundGeometry.dispose(), [groundGeometry]);
+  const pickGroundCell = (point: {
+    x: number;
+    z: number;
+  }): RoomHexCell | null =>
+    workspaceCellAtPoint(
+      workspace ?? { hexRadius: 6, horizontalLimit: 12 },
+      point
+    );
   const controlsRef = useRef<TransformControlsImpl>(null);
   type CapturedFloorPointer = {
     pointerId: number;
@@ -614,9 +738,9 @@ export function WorldSceneContents(
       });
       // Reported upward as well as kept locally: the guide needs the
       // aggregate, and the declaration editor needs one prop's own size.
-      props.onMeasuredBounds?.(id, measurement);
+      onMeasuredBounds?.(id, measurement);
     },
-    [props.onMeasuredBounds]
+    [onMeasuredBounds]
   );
   const guideBounds = useMemo(
     () => compositionGuideBounds(displayScene, measuredById),
@@ -697,6 +821,10 @@ export function WorldSceneContents(
     cancelFloorGesture,
     props.roomAuthoring?.tool,
     props.roomAuthoring?.activeConcealmentId,
+    scene,
+    props.roomAuthoring?.workspace,
+    props.roomAuthoring?.walkableHexes,
+    props.roomAuthoring?.walls,
   ]);
   useEffect(() => {
     // The hover preview belongs to the armed actor tools alone.
@@ -789,20 +917,18 @@ export function WorldSceneContents(
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, DUNGEON_SURFACE_Y - 0.012, 0]}
         receiveShadow
+        geometry={groundGeometry}
         onPointerDown={(event) => {
           if (event.button !== 0 || isGizmoPointer()) return;
           if (floorGesture.current) return;
+          const cell = pickGroundCell(event.point);
+          if (rectangular && !cell) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
           const actor = props.roomAuthoring?.selectedActorId;
           if (props.roomAuthoring?.activeConcealmentId) {
-            const cube = worldToCube(
-              { x: event.point.x, z: event.point.z },
-              HEX_SIZE
-            );
-            // Pick authored floor, not empty workspace; this is document
-            // membership, never a gameplay-legality calculation.
-            pickConcealmentCell({ q: cube.x, r: cube.z });
+            // Pick authored floor, not empty workspace; never game legality.
+            pickConcealmentCell(cell);
             return;
           }
           // Room actor authoring: one click is one whole-room history
@@ -820,11 +946,7 @@ export function WorldSceneContents(
             roomTool === 'start' ||
             roomTool === 'move'
           ) {
-            const cube = worldToCube(
-              { x: event.point.x, z: event.point.z },
-              HEX_SIZE
-            );
-            const cell = { q: cube.x, r: cube.z };
+            if (!cell) return;
             if (roomTool === 'monster') {
               props.roomAuthoring?.onPlaceMonster?.(cell);
               return;
@@ -857,6 +979,15 @@ export function WorldSceneContents(
                 originOffset: descriptor.originOffset,
                 maxCount: descriptor.maxCount,
               });
+              if (
+                rectangular &&
+                layout.transforms.some(
+                  (transform) => !pickGroundCell(transform)
+                )
+              )
+                throw new Error(
+                  'Repeat anchor outside the authoring workspace.'
+                );
               const target = event.target as Element;
               target.setPointerCapture?.(event.pointerId);
               floorGesture.current = {
@@ -881,11 +1012,7 @@ export function WorldSceneContents(
           }
           if (roomTool === 'rectangle') {
             const start = { x: event.point.x, z: event.point.z };
-            const cells = walkableCellsInWorldRectangle(
-              start,
-              start,
-              workspaceHexRadius
-            );
+            const cells = rectangleCells(start, start);
             const target = event.target as Element;
             target.setPointerCapture?.(event.pointerId);
             floorGesture.current = {
@@ -899,11 +1026,7 @@ export function WorldSceneContents(
             return;
           }
           if (roomTool === 'paint' || roomTool === 'erase') {
-            const cube = worldToCube(
-              { x: event.point.x, z: event.point.z },
-              HEX_SIZE
-            );
-            const cell = { q: cube.x, r: cube.z };
+            if (!cell) return;
             const target = event.target as Element;
             target.setPointerCapture?.(event.pointerId);
             floorGesture.current = {
@@ -923,6 +1046,7 @@ export function WorldSceneContents(
               point: { x: event.point.x, z: event.point.z },
               enabled: props.roomAuthoring?.wallSnapEnabled ?? false,
             }).point;
+            if (rectangular && !pickGroundCell(start)) return;
             const target = event.target as Element;
             target.setPointerCapture?.(event.pointerId);
             floorGesture.current = {
@@ -939,18 +1063,15 @@ export function WorldSceneContents(
         }}
         onPointerMove={(event) => {
           const roomTool = props.roomAuthoring?.tool;
+          const cell = pickGroundCell(event.point);
+          if (rectangular && !cell) {
+            setActorHoverCell(null);
+            return;
+          }
           // Snapped hover/placement preview for the armed actor tools. The
           // shared worldToCube already rounds to the nearest hex.
           if (roomTool === 'monster' || roomTool === 'start') {
-            const cube = worldToCube(
-              { x: event.point.x, z: event.point.z },
-              HEX_SIZE
-            );
-            setActorHoverCell((current) =>
-              current && current.q === cube.x && current.r === cube.z
-                ? current
-                : { q: cube.x, r: cube.z }
-            );
+            setActorHoverCell(cell);
           } else if (actorHoverCell) setActorHoverCell(null);
           if (event.buttons !== 1) return;
           const gesture = floorGesture.current;
@@ -965,6 +1086,15 @@ export function WorldSceneContents(
                 originOffset: gesture.descriptor.originOffset,
                 maxCount: gesture.descriptor.maxCount,
               });
+              if (
+                rectangular &&
+                layout.transforms.some(
+                  (transform) => !pickGroundCell(transform)
+                )
+              )
+                throw new Error(
+                  'Repeat anchor outside the authoring workspace.'
+                );
               gesture.transforms = layout.transforms;
               setRepeatPreview({
                 assetRef: gesture.descriptor.assetRef,
@@ -980,11 +1110,7 @@ export function WorldSceneContents(
             return;
           }
           if (roomTool === 'rectangle' && gesture.kind === 'rectangle') {
-            const cells = walkableCellsInWorldRectangle(
-              gesture.start,
-              { x: event.point.x, z: event.point.z },
-              workspaceHexRadius
-            );
+            const cells = rectangleCells(gesture.start, event.point);
             gesture.cells = cells;
             setRectanglePreview(cells);
             return;
@@ -994,6 +1120,7 @@ export function WorldSceneContents(
               point: { x: event.point.x, z: event.point.z },
               enabled: props.roomAuthoring?.wallSnapEnabled ?? false,
             }).point;
+            if (rectangular && !pickGroundCell(end)) return;
             gesture.end = end;
             setWallPreview({ start: gesture.start, end });
             return;
@@ -1003,17 +1130,14 @@ export function WorldSceneContents(
             gesture.kind !== 'brush'
           )
             return;
-          const cube = worldToCube(
-            { x: event.point.x, z: event.point.z },
-            HEX_SIZE
-          );
-          const cell = { q: cube.x, r: cube.z };
-          gesture.cells.set(`${cell.q},${cell.r}`, cell);
+          if (cell) gesture.cells.set(`${cell.q},${cell.r}`, cell);
         }}
         onPointerUp={(event) => {
           const gesture = floorGesture.current;
           if (!gesture || event.pointerId !== gesture.pointerId) return;
           event.stopPropagation();
+          // Capture release may be off-ground; only the already-contained
+          // samples are committed. The release point never adds a cell/pose.
           floorGesture.current = null;
           releaseFloorPointer(gesture);
           setRectanglePreview([]);
@@ -1049,16 +1173,13 @@ export function WorldSceneContents(
         }}
         onPointerCancel={(event) => cancelOwnedFloorGesture(event.pointerId)}
       >
-        <circleGeometry args={[workspaceGroundRadius, 6]} />
         <meshStandardMaterial
           color="#182a2a"
           roughness={0.96}
           metalness={0.02}
         />
       </mesh>
-      {props.roomAuthoring && (
-        <WorkspaceFloorUnderlay radius={workspaceGroundRadius} />
-      )}
+      {props.roomAuthoring && <WorkspaceFloorUnderlay workspace={workspace!} />}
       <lineSegments
         name="world-building-real-hex-basis"
         geometry={hexGeometry}
@@ -1066,13 +1187,23 @@ export function WorldSceneContents(
       >
         <lineBasicMaterial color="#47726e" transparent opacity={0.72} />
       </lineSegments>
-      <lineLoop
-        name="world-building-ground-boundary"
-        geometry={boundaryGeometry}
-        raycast={() => null}
-      >
-        <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
-      </lineLoop>
+      {rectangular ? (
+        <lineSegments
+          name="world-building-ground-boundary"
+          geometry={boundaryGeometry}
+          raycast={() => null}
+        >
+          <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
+        </lineSegments>
+      ) : (
+        <lineLoop
+          name="world-building-ground-boundary"
+          geometry={boundaryGeometry}
+          raycast={() => null}
+        >
+          <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
+        </lineLoop>
+      )}
       {/* The composition origin and its bounds are prop-composition
           vocabulary (design §UI surfaces, violation 3). While a room is being
           built they mean nothing, so they are not drawn at all. */}
@@ -1161,7 +1292,11 @@ export function WorldSceneContents(
       ))}
       <WorldBuildingCameraControls
         enabled={!transforming}
-        maxDistance={Math.max(26, workspaceGroundRadius * 2.2)}
+        maxDistance={Math.max(
+          26,
+          workspaceGroundRadius * (rectangular ? 8 : 2.2)
+        )}
+        workspace={workspace}
       />
       <WorldBuildingTransformGizmo
         controlsRef={controlsRef}
@@ -1174,6 +1309,7 @@ export function WorldSceneContents(
         onCommit={props.onTransformCommit}
         onReject={props.onTransformReject}
         onTransformingChange={setTransforming}
+        workspace={props.roomAuthoring?.workspace}
         sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
         wallTarget={(() => {
           const room = props.roomAuthoring;
@@ -1192,6 +1328,7 @@ export function WorldSceneContents(
           return {
             wall,
             horizontalLimit: room.workspace.horizontalLimit,
+            workspace: room.workspace,
             onPreview: room.onWallTransformPreview,
             onCommit: room.onWallTransformCommit,
           };
@@ -1202,6 +1339,7 @@ export function WorldSceneContents(
           props.roomAuthoring?.activeConcealmentId ? null : activeDrag
         }
         floorY={DUNGEON_SURFACE_Y}
+        workspace={props.roomAuthoring?.workspace}
         onDrop={props.onDrop}
         onDragFinished={props.onDragFinished}
       />

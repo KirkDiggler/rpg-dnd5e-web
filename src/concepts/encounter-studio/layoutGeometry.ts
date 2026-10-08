@@ -2,12 +2,14 @@ import {
   cubeToWorld,
   HEX_SIZE,
   hexCorners,
-  worldToCube,
 } from '@/components/hex-grid/hexMath';
 import {
-  isCellWithinWorkspace,
-  walkableCellsInWorldRectangle,
-} from '../world-building/roomDraft';
+  workspaceCellAtPoint,
+  workspaceCells,
+  type RoomWorkspace,
+  type WorkspaceBounds,
+} from '../world-building/workspaceGeometry';
+import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
 import type { LayoutFrame, RoomHexCell, WorldPoint } from './studioSession';
 
 export interface LayoutBounds {
@@ -33,8 +35,17 @@ export const MAX_LAYOUT_ZOOM = 4;
 export function createLayoutTransform(
   bounds: LayoutBounds,
   frame: LayoutFrame,
-  horizontalLimit: number
+  extent: number | WorkspaceBounds
 ): LayoutTransform | null {
+  // Keep the original world origin; fit both axes independently, not R/L.
+  const halfWidth =
+    typeof extent === 'number'
+      ? extent
+      : Math.max(Math.abs(extent.minX), Math.abs(extent.maxX));
+  const halfHeight =
+    typeof extent === 'number'
+      ? extent
+      : Math.max(Math.abs(extent.minZ), Math.abs(extent.maxZ));
   if (
     ![
       bounds.left,
@@ -44,16 +55,18 @@ export function createLayoutTransform(
       frame.center.x,
       frame.center.z,
       frame.zoom,
-      horizontalLimit,
+      halfWidth,
+      halfHeight,
     ].every(Number.isFinite) ||
     bounds.width <= 0 ||
     bounds.height <= 0 ||
-    horizontalLimit <= 0 ||
+    halfWidth <= 0 ||
+    halfHeight <= 0 ||
     frame.zoom <= 0
   )
     return null;
   const scale =
-    (Math.min(bounds.width, bounds.height) / (2 * horizontalLimit)) *
+    Math.min(bounds.width / (2 * halfWidth), bounds.height / (2 * halfHeight)) *
     frame.zoom;
   if (!Number.isFinite(scale) || scale <= 0) return null;
   return { bounds, center: frame.center, scale };
@@ -96,13 +109,16 @@ export function layoutCellCorners(cell: RoomHexCell): WorldPoint[] {
 export function pickLayoutCell(
   point: ClientPoint,
   transform: LayoutTransform | null,
-  hexRadius: number
+  workspace: RoomWorkspace | number
 ): RoomHexCell | null {
   const world = clientToWorld(point, transform);
   if (!world) return null;
-  const cube = worldToCube(world, HEX_SIZE);
-  const cell = { q: cube.x === 0 ? 0 : cube.x, r: cube.z === 0 ? 0 : cube.z };
-  return isCellWithinWorkspace(cell, hexRadius) ? cell : null;
+  return workspaceCellAtPoint(
+    typeof workspace === 'number'
+      ? { hexRadius: workspace, horizontalLimit: 12 }
+      : workspace,
+    world
+  );
 }
 
 /** Keep inclusive center membership through floating-point screen roundtrips.
@@ -111,40 +127,15 @@ export function pickLayoutCell(
 export function layoutRectangleCells(
   start: WorldPoint,
   end: WorldPoint,
-  hexRadius: number
+  workspace: RoomWorkspace | number
 ): RoomHexCell[] {
-  const epsilon =
-    16 *
-    Number.EPSILON *
-    Math.max(
-      1,
-      Math.abs(start.x),
-      Math.abs(start.z),
-      Math.abs(end.x),
-      Math.abs(end.z)
-    );
-  return walkableCellsInWorldRectangle(
-    {
-      x: Math.min(start.x, end.x) - epsilon,
-      z: Math.min(start.z, end.z) - epsilon,
-    },
-    {
-      x: Math.max(start.x, end.x) + epsilon,
-      z: Math.max(start.z, end.z) + epsilon,
-    },
-    hexRadius
-  );
+  return createWorkspaceRectangleSelection(workspace)(start, end);
 }
 
-export function layoutWorkspaceCells(hexRadius: number): RoomHexCell[] {
-  const cells: RoomHexCell[] = [];
-  for (let q = -hexRadius; q <= hexRadius; q++) {
-    for (let r = -hexRadius; r <= hexRadius; r++) {
-      const cell = { q, r };
-      if (isCellWithinWorkspace(cell, hexRadius)) cells.push(cell);
-    }
-  }
-  return cells;
+export function layoutWorkspaceCells(
+  workspace: RoomWorkspace | number
+): RoomHexCell[] {
+  return workspaceCells(workspace);
 }
 
 export function panLayoutFrame(

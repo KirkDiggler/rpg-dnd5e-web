@@ -1,3 +1,7 @@
+import {
+  centeredRoomWorkspace,
+  type RoomWorkspace,
+} from '@/concepts/world-building/workspaceGeometry';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,6 +31,7 @@ const hoisted = vi.hoisted(() => ({
   }>,
   floorSurfaceCalls: [] as Array<{
     radius: number;
+    workspace: RoomWorkspace;
     profile: unknown;
   }>,
 }));
@@ -57,12 +62,14 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
 vi.mock('@/concepts/world-building/WorkspaceFloorUnderlay', () => ({
   WorkspaceFloorSurface: ({
     radius,
+    workspace,
     profile,
   }: {
     radius: number;
+    workspace: RoomWorkspace;
     profile: unknown;
   }) => {
-    hoisted.floorSurfaceCalls.push({ radius, profile });
+    hoisted.floorSurfaceCalls.push({ radius, workspace, profile });
     return <group name="stub-workspace-floor-surface" />;
   },
 }));
@@ -256,6 +263,32 @@ describe('RoomSceneEnvironment', () => {
     ).toHaveLength(0);
   });
 
+  it('passes complete rectangular workspace only through the optional author-preview floor gate', async () => {
+    const rectangular = {
+      ...presentation,
+      workspace: centeredRoomWorkspace(73, 48),
+    };
+    const view = await ReactThreeTestRenderer.create(
+      <RoomSceneEnvironment presentation={rectangular} />
+    );
+    expect(hoisted.floorSurfaceCalls[0]!.workspace).toEqual(
+      rectangular.workspace
+    );
+    hoisted.floorSurfaceCalls.length = 0;
+    await view.update(
+      <RoomSceneEnvironment
+        presentation={rectangular}
+        renderWorkspaceFloor={false}
+        hiddenPlacedIds={new Set(['table'])}
+      />
+    );
+    expect(
+      view.scene.findAllByProps({ name: 'stub-workspace-floor-surface' })
+    ).toHaveLength(0);
+    expect(hoisted.floorSurfaceCalls).toHaveLength(0);
+    await view.unmount();
+  });
+
   it('presents the whole workspace Crypt floor at the authoring radius through the shared surface', async () => {
     await ReactThreeTestRenderer.create(
       <RoomSceneEnvironment presentation={presentation} />
@@ -263,6 +296,9 @@ describe('RoomSceneEnvironment', () => {
 
     expect(hoisted.floorSurfaceCalls).toHaveLength(1);
     expect(hoisted.floorSurfaceCalls[0]!.radius).toBe(13);
+    expect(hoisted.floorSurfaceCalls[0]!.workspace).toEqual(
+      presentation.workspace
+    );
     expect(hoisted.floorSurfaceCalls[0]!.profile).toEqual({
       diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
       sha256:

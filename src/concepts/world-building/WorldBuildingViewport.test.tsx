@@ -62,10 +62,17 @@ vi.mock('@/components/session/useDungeonShellCatalog', () => ({
   }),
 }));
 
+import { useThree } from '@react-three/fiber';
+import { useEffect } from 'react';
 import type { RoomHexCell } from './roomDraft';
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { snapWallPoint } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
+import {
+  centeredRoomWorkspace,
+  workspaceBoundary,
+  workspaceCellAtPoint,
+} from './workspaceGeometry';
 import { resolveWorldSelectionId } from './worldBuildingPointer';
 import {
   WorldBuildingFog,
@@ -597,6 +604,289 @@ describe('room boundary lifetime and floor layering', () => {
     expect(underlayY).toBeLessThan(walkableY);
     await renderer.unmount();
   });
+});
+
+describe('controlled rectangular 3D authoring', () => {
+  const base = {
+    scene: {
+      version: 2 as const,
+      id: 'rect',
+      name: 'Rectangle',
+      items: [],
+      groups: [],
+    },
+    previewScene: null,
+    selectedIds: [],
+    tool: 'select' as const,
+    activeDrag: null,
+    onSelect: vi.fn(),
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+  };
+  it.each([
+    [73, 48, 3504],
+    [128, 128, 16384],
+  ])(
+    'draws %s × %s actual cells, retains geometry on previews and disposes replacements',
+    async (w, h, count) => {
+      const workspace = centeredRoomWorkspace(w, h);
+      const authoring = {
+        workspace,
+        tool: 'paint' as const,
+        walkableHexes: [],
+        propDeclarations: {},
+        onWalkableGesture: vi.fn(),
+      };
+      let camera!: THREE.PerspectiveCamera;
+      function Probe(): null {
+        const value = useThree((state) => state.camera);
+        useEffect(() => {
+          camera = value as THREE.PerspectiveCamera;
+        }, [value]);
+        return null;
+      }
+      const view = await ReactThreeTestRenderer.create(
+        <>
+          <Probe />
+          <WorldSceneContents {...base} roomAuthoring={authoring} />
+        </>
+      );
+      const grid = (
+        view.scene.findByProps({ name: 'world-building-real-hex-basis' })
+          .instance as THREE.LineSegments
+      ).geometry;
+      const ground = (
+        view.scene.findByProps({ name: 'world-building-finite-ground' })
+          .instance as THREE.Mesh
+      ).geometry;
+      const outline = (
+        view.scene.findByProps({ name: 'world-building-ground-boundary' })
+          .instance as THREE.LineSegments
+      ).geometry;
+      expect(grid.getAttribute('position').count).toBe(count * 12);
+      expect(ground.getAttribute('position').count).toBe(count * 18);
+      expect(outline.getAttribute('position').count).toBe(
+        workspaceBoundary(workspace).length * 2
+      );
+      expect(camera.position.length()).toBeGreaterThan(
+        workspace.horizontalLimit * 2
+      );
+      expect(camera.far).toBeGreaterThan(
+        workspace.horizontalLimit * 8 + camera.position.length()
+      );
+      const position = camera.position.clone();
+      const disposals = [grid, ground, outline].map((g) =>
+        vi.spyOn(g, 'dispose')
+      );
+      await view.update(
+        <>
+          <Probe />
+          <WorldSceneContents
+            {...base}
+            roomAuthoring={{ ...authoring, workspace: { ...workspace } }}
+            previewScene={{ ...base.scene }}
+          />
+        </>
+      );
+      expect(
+        (
+          view.scene.findByProps({ name: 'world-building-finite-ground' })
+            .instance as THREE.Mesh
+        ).geometry
+      ).toBe(ground);
+      expect(camera.position.equals(position)).toBe(true);
+      disposals.forEach((dispose) => expect(dispose).not.toHaveBeenCalled());
+      await view.update(
+        <WorldSceneContents
+          {...base}
+          roomAuthoring={{
+            ...authoring,
+            workspace: centeredRoomWorkspace(2, 2),
+          }}
+        />
+      );
+      disposals.forEach((dispose) => expect(dispose).toHaveBeenCalledTimes(1));
+      const replacement = (
+        view.scene.findByProps({ name: 'world-building-finite-ground' })
+          .instance as THREE.Mesh
+      ).geometry;
+      const dispose = vi.spyOn(replacement, 'dispose');
+      await view.unmount();
+      expect(dispose).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('picks new positive/negative cells and canonical boundary ties, refusing envelope-only clicks', async () => {
+    const workspace = centeredRoomWorkspace(73, 48);
+    const onWalkableGesture = vi.fn();
+    const view = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...base}
+        roomAuthoring={{
+          workspace,
+          tool: 'paint',
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture,
+        }}
+      />
+    );
+    const ground = view.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const edge = workspaceBoundary(workspace).find(
+      ({ a }) => a.x < 0 && a.z < 0
+    )!;
+    const centers = [-36, 36, 37].map((q) =>
+      cubeToWorld({ x: q, y: -q, z: 0 }, HEX_SIZE)
+    );
+    const target = {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+    };
+    for (const p of [
+      ...centers,
+      edge.a,
+      { x: (edge.a.x + edge.b.x) / 2, z: (edge.a.z + edge.b.z) / 2 },
+    ]) {
+      onWalkableGesture.mockClear();
+      const event = {
+        button: 0,
+        buttons: 1,
+        pointerId: 7,
+        point: new THREE.Vector3(p.x, 0, p.z),
+        target,
+        stopPropagation: vi.fn(),
+      };
+      await view.fireEvent(ground, 'pointerDown', event);
+      await view.fireEvent(ground, 'pointerUp', event);
+      const expected = workspaceCellAtPoint(workspace, p);
+      if (expected)
+        expect(onWalkableGesture).toHaveBeenCalledExactlyOnceWith(
+          [expected],
+          'paint'
+        );
+      else expect(onWalkableGesture).not.toHaveBeenCalled();
+    }
+    await view.unmount();
+  });
+
+  it.each(['rectangle', 'erase'] as const)(
+    'previews and commits expanded %s cells without envelope enumeration',
+    async (tool) => {
+      const workspace = centeredRoomWorkspace(73, 48);
+      const onWalkableGesture = vi.fn();
+      const view = await ReactThreeTestRenderer.create(
+        <WorldSceneContents
+          {...base}
+          roomAuthoring={{
+            workspace,
+            tool,
+            walkableHexes: [],
+            propDeclarations: {},
+            onWalkableGesture,
+          }}
+        />
+      );
+      const ground = view.scene.findByProps({
+        name: 'world-building-finite-ground',
+      });
+      const target = {
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
+      };
+      const event = (q: number) => {
+        const p = cubeToWorld({ x: q, y: -q, z: 0 }, HEX_SIZE);
+        return {
+          button: 0,
+          buttons: 1,
+          pointerId: 7,
+          point: new THREE.Vector3(p.x, 0, p.z),
+          target,
+          stopPropagation: vi.fn(),
+        };
+      };
+      await view.fireEvent(ground, 'pointerDown', event(-36));
+      await view.fireEvent(ground, 'pointerMove', event(36));
+      if (tool === 'rectangle')
+        expect(
+          (
+            view.scene.findByProps({ name: 'room-rectangle-preview-cells' })
+              .instance as THREE.InstancedMesh
+          ).count
+        ).toBe(73);
+      await view.fireEvent(ground, 'pointerUp', event(36));
+      const expected =
+        tool === 'rectangle'
+          ? Array.from({ length: 73 }, (_, i) => ({ q: i - 36, r: 0 }))
+          : [
+              { q: -36, r: 0 },
+              { q: 36, r: 0 },
+            ];
+      expect(onWalkableGesture).toHaveBeenCalledExactlyOnceWith(
+        expected,
+        tool === 'erase' ? 'erase' : 'paint'
+      );
+      await view.unmount();
+    }
+  );
+
+  it.each(['workspace', 'document'])(
+    'cancels a brush on %s replacement and cannot commit the abandoned pointer',
+    async (reason) => {
+      const authoring = {
+        workspace: centeredRoomWorkspace(73, 48),
+        tool: 'paint' as const,
+        walkableHexes: [],
+        propDeclarations: {},
+        onWalkableGesture: vi.fn(),
+      };
+      const view = await ReactThreeTestRenderer.create(
+        <WorldSceneContents {...base} roomAuthoring={authoring} />
+      );
+      const event = {
+        button: 0,
+        buttons: 1,
+        pointerId: 7,
+        point: new THREE.Vector3(0, 0, 0),
+        target: { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() },
+        stopPropagation: vi.fn(),
+      };
+      await view.fireEvent(
+        view.scene.findByProps({ name: 'world-building-finite-ground' }),
+        'pointerDown',
+        event
+      );
+      await view.update(
+        <WorldSceneContents
+          {...base}
+          scene={
+            reason === 'document'
+              ? { ...base.scene, id: 'replacement' }
+              : base.scene
+          }
+          roomAuthoring={
+            reason === 'workspace'
+              ? { ...authoring, workspace: centeredRoomWorkspace(74, 48) }
+              : authoring
+          }
+        />
+      );
+      await view.fireEvent(
+        view.scene.findByProps({ name: 'world-building-finite-ground' }),
+        'pointerUp',
+        event
+      );
+      expect(event.target.releasePointerCapture).toHaveBeenCalledWith(7);
+      expect(authoring.onWalkableGesture).not.toHaveBeenCalled();
+      await view.unmount();
+    }
+  );
 });
 
 describe('room floor pointer ownership', () => {

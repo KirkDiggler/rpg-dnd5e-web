@@ -19,6 +19,10 @@ import {
 } from './structuralWalls';
 import type { WorldScene } from './types';
 import {
+  containsWorkspacePoint,
+  type RoomWorkspace,
+} from './workspaceGeometry';
+import {
   readWorldBuildingDragPayload,
   type WorldBuildingDragPayload,
 } from './worldBuildingDrag';
@@ -27,11 +31,27 @@ import {
   type WorldBuildingDropTarget,
 } from './worldBuildingPointer';
 
+/** Only authored anchors are available here. The document owner remains the
+ * final gate for declared footprints, scope, wall thickness/doors and size. */
+function assertSceneAnchors(
+  scene: WorldScene,
+  workspace?: RoomWorkspace
+): void {
+  if (workspace?.kind !== 'centered-odd-r') return;
+  for (const entry of [...scene.items, ...scene.groups]) {
+    if (!containsWorkspacePoint(workspace, entry.transform))
+      throw new Error(
+        `scene (${entry.id}).transform: outside the authoring workspace.`
+      );
+  }
+}
+
 export type WorldBuildingTool = 'select' | 'move' | 'rotate';
 
 interface WorldBuildingDropInteractionProps {
   activeDrag: WorldBuildingDragPayload | null;
   floorY: number;
+  workspace?: RoomWorkspace;
   onDrop: (
     payload: WorldBuildingDragPayload,
     target: WorldBuildingDropTarget
@@ -42,6 +62,7 @@ interface WorldBuildingDropInteractionProps {
 export function WorldBuildingDropInteraction({
   activeDrag,
   floorY,
+  workspace,
   onDrop,
   onDragFinished,
 }: WorldBuildingDropInteractionProps) {
@@ -68,13 +89,25 @@ export function WorldBuildingDropInteraction({
         -((event.clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(pointer, camera);
-      return dropTargetFromIntersections(
+      const target = dropTargetFromIntersections(
         payload,
         raycaster.intersectObjects(scene.children, true),
         floorY
       );
+      return target &&
+        (!workspace || containsWorkspacePoint(workspace, target.point))
+        ? target
+        : null;
     },
-    [camera, floorY, gl.domElement, pointer, raycaster, scene.children]
+    [
+      camera,
+      floorY,
+      gl.domElement,
+      pointer,
+      raycaster,
+      scene.children,
+      workspace,
+    ]
   );
 
   useEffect(() => {
@@ -98,7 +131,10 @@ export function WorldBuildingDropInteraction({
     };
     const handleDrop = (event: DragEvent) => {
       event.preventDefault();
-      const payload = readWorldBuildingDragPayload(event.dataTransfer);
+      // Abandoned owner drag contexts cannot be resurrected by stale transfer data.
+      const payload = activeDrag
+        ? readWorldBuildingDragPayload(event.dataTransfer)
+        : null;
       const target = payload ? targetAt(event, payload) : null;
       setPreview(null);
       onDragFinished();
@@ -113,6 +149,8 @@ export function WorldBuildingDropInteraction({
       element.removeEventListener('drop', handleDrop);
     };
   }, [activeDrag, gl.domElement, onDragFinished, onDrop, targetAt]);
+
+  useEffect(() => setPreview(null), [activeDrag, workspace]);
 
   if (!preview) return null;
   const position: [number, number, number] =
@@ -171,6 +209,7 @@ type TransformPreview =
 export interface WallTransformTarget {
   wall: StructuralWall;
   horizontalLimit: number;
+  workspace?: RoomWorkspace;
   onPreview: (wall: StructuralWall | null) => void;
   onCommit: (wall: StructuralWall) => void;
 }
@@ -185,6 +224,7 @@ interface WorldBuildingTransformGizmoProps {
   onReject: (message: string) => void;
   onTransformingChange: (transforming: boolean) => void;
   sceneHorizontalLimit?: number;
+  workspace?: RoomWorkspace;
   wallTarget?: WallTransformTarget;
 }
 
@@ -198,6 +238,7 @@ export function WorldBuildingTransformGizmo({
   onReject,
   onTransformingChange,
   sceneHorizontalLimit,
+  workspace,
   wallTarget,
 }: WorldBuildingTransformGizmoProps) {
   const { gl } = useThree();
@@ -313,10 +354,25 @@ export function WorldBuildingTransformGizmo({
   const change = useCallback(() => {
     if (!dragStartRef.current) return;
     const preview = currentPreview();
-    if (preview?.kind === 'wall')
-      latestWallTarget.current?.onPreview(preview.value);
-    else if (preview?.kind === 'scene') onPreview(preview.value);
-  }, [currentPreview, onPreview]);
+    try {
+      if (preview?.kind === 'wall') {
+        const target = latestWallTarget.current;
+        if (!target) return;
+        validateStructuralWalls({
+          value: [preview.value],
+          horizontalLimit: target.horizontalLimit,
+          workspace: target.workspace,
+          itemIds: new Set(),
+        });
+        target.onPreview(preview.value);
+      } else if (preview?.kind === 'scene') {
+        assertSceneAnchors(preview.value, workspace);
+        onPreview(preview.value);
+      }
+    } catch {
+      clearPreview();
+    }
+  }, [currentPreview, onPreview, workspace, clearPreview]);
 
   const commit = useCallback(() => {
     if (!dragStartRef.current) return;
@@ -338,12 +394,17 @@ export function WorldBuildingTransformGizmo({
         const validated = validateStructuralWalls({
           value: [next.value],
           horizontalLimit: target.horizontalLimit,
+          workspace: target.workspace,
           itemIds: new Set(),
         });
         target.onCommit(validated[0]!);
       } else {
+        assertSceneAnchors(next.value, workspace);
         onCommit(
-          validateScene(next.value, { horizontalLimit: sceneHorizontalLimit })
+          validateScene(next.value, {
+            horizontalLimit: sceneHorizontalLimit,
+            workspace,
+          })
         );
       }
     } catch (error) {
@@ -360,13 +421,23 @@ export function WorldBuildingTransformGizmo({
     clearPreview,
     onReject,
     sceneHorizontalLimit,
+    workspace,
     syncProxy,
   ]);
 
   useEffect(() => {
     if (dragStartRef.current) cancel();
     syncProxy();
-  }, [cancel, scene, selectedIds, syncProxy, tool, wallTarget?.wall]);
+  }, [
+    cancel,
+    scene,
+    selectedIds,
+    syncProxy,
+    tool,
+    wallTarget?.wall,
+    workspace,
+    wallTarget?.workspace,
+  ]);
 
   useEffect(() => {
     const element = gl.domElement;

@@ -6,6 +6,13 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import {
+  centeredRoomWorkspace,
+  containsWorkspaceCell,
+  workspaceBoundary,
+  workspaceBounds,
+  workspaceCellAtPoint,
+} from '../world-building/workspaceGeometry';
+import {
   clientToWorld,
   createLayoutTransform,
   layoutCellCenter,
@@ -22,6 +29,94 @@ import type { LayoutFrame } from './studioSession';
 
 const bounds: LayoutBounds = { left: 30, top: 70, width: 960, height: 600 };
 const frame: LayoutFrame = { center: { x: 0, z: 0 }, zoom: 1 };
+
+describe('rectangular Layout geometry', () => {
+  it.each([
+    [73, 48, 3504],
+    [128, 128, 16384],
+  ])(
+    'enumerates exactly %s × %s = %s cells and clips rectangles to that union',
+    (w, h, count) => {
+      const workspace = centeredRoomWorkspace(w, h);
+      expect(layoutWorkspaceCells(workspace)).toHaveLength(count);
+      expect(
+        layoutRectangleCells(
+          { x: -1000, z: -1000 },
+          { x: 1000, z: 1000 },
+          workspace
+        )
+      ).toHaveLength(count);
+      expect(
+        layoutRectangleCells(
+          layoutCellCenter({ q: -36, r: 0 }),
+          layoutCellCenter({ q: 36, r: 0 }),
+          workspace
+        ).every((c) => containsWorkspaceCell(workspace, c))
+      ).toBe(true);
+    }
+  );
+
+  it('fits a non-square cell union on both axes without shifting the world origin', () => {
+    const workspace = centeredRoomWorkspace(73, 8);
+    const extent = workspaceBounds(workspace);
+    const transform = createLayoutTransform(bounds, frame, extent)!;
+    expect(transform.scale).toBeCloseTo(
+      Math.min(
+        bounds.width /
+          (2 * Math.max(Math.abs(extent.minX), Math.abs(extent.maxX))),
+        bounds.height /
+          (2 * Math.max(Math.abs(extent.minZ), Math.abs(extent.maxZ)))
+      )
+    );
+    expect(worldToClient({ x: 0, z: 0 }, transform)).toEqual({
+      x: 510,
+      y: 370,
+    });
+    for (const { a, b } of workspaceBoundary(workspace))
+      for (const p of [a, b]) {
+        const screen = worldToClient(p, transform)!;
+        expect(screen.x).toBeGreaterThanOrEqual(bounds.left - 1e-10);
+        expect(screen.x).toBeLessThanOrEqual(
+          bounds.left + bounds.width + 1e-10
+        );
+        expect(screen.y).toBeGreaterThanOrEqual(bounds.top - 1e-10);
+        expect(screen.y).toBeLessThanOrEqual(
+          bounds.top + bounds.height + 1e-10
+        );
+      }
+  });
+
+  it('uses canonical negative edge/hex ties, newly exposed cells and refuses the enclosing envelope', () => {
+    const workspace = centeredRoomWorkspace(73, 48);
+    const transform = createLayoutTransform(
+      bounds,
+      frame,
+      workspaceBounds(workspace)
+    )!;
+    const edge = workspaceBoundary(workspace).find(
+      ({ a }) => a.x < 0 && a.z < 0
+    )!;
+    const points = [
+      layoutCellCenter({ q: -36, r: 0 }),
+      layoutCellCenter({ q: 36, r: 0 }),
+      edge.a,
+      { x: (edge.a.x + edge.b.x) / 2, z: (edge.a.z + edge.b.z) / 2 },
+      layoutCellCorners({ q: 0, r: 0 })[0]!,
+      { x: 0, z: 60 },
+    ];
+    for (const p of points)
+      expect(
+        pickLayoutCell(worldToClient(p, transform)!, transform, workspace)
+      ).toEqual(workspaceCellAtPoint(workspace, p));
+    expect(
+      pickLayoutCell(
+        worldToClient({ x: 0, z: 60 }, transform)!,
+        transform,
+        workspace
+      )
+    ).toBeNull();
+  });
+});
 
 describe('Layout geometry', () => {
   it('projects and picks cell 0,0 and cell 1,0 using shared HEX_SIZE', () => {
