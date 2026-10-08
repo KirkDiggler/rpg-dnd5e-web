@@ -124,6 +124,11 @@ function createSession(): EncounterStudioSession {
     undo: vi.fn(),
     redo: vi.fn(),
     commitFloor: vi.fn(() => true),
+    resizeWorkspace: vi.fn(() => true),
+    createMapLabel: vi.fn(() => true),
+    moveMapLabel: vi.fn(() => true),
+    renameMapLabel: vi.fn(() => true),
+    deleteMapLabel: vi.fn(() => true),
     cancelTransients: vi.fn(() => {
       observed.events.push('cancel');
     }),

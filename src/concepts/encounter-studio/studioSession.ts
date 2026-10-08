@@ -42,8 +42,16 @@ export interface EncounterStudioSession {
   canRedo: boolean;
   undo(): void;
   redo(): void;
-  /** Validated whole-document commit; a successful no-op adds no history. */
+  /** Shape/bounds/size-checked transaction preserving editable policies;
+   * a successful no-op adds no history. */
   commitFloor(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
+  /** Explicit centered resize; labels never resize implicitly. Refusals and
+   * retired-context callbacks return false without history/storage changes. */
+  resizeWorkspace(width: number, height: number): boolean;
+  createMapLabel(text: string, location: WorldPoint): boolean;
+  moveMapLabel(id: string, location: WorldPoint): boolean;
+  renameMapLabel(id: string, text: string): boolean;
+  deleteMapLabel(id: string): boolean;
   /** Abandon previews/drags before switching (the renderer unmounts its gestures). */
   cancelTransients(): void;
   propTool: WorldBuildingTool;

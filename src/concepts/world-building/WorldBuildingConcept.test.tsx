@@ -26,13 +26,19 @@ import {
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
+  resizeRoomWorkspace,
   ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
   type RoomDraft,
 } from './roomDraft';
-import { createEmptyScene } from './sceneState';
-import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
+import { createEmptyScene, saveArrangement } from './sceneState';
+import {
+  LIBRARY_STORAGE_KEY,
+  SCENE_STORAGE_KEY,
+  stringifyLibrary,
+  stringifyScene,
+} from './serialization';
 import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
@@ -40,7 +46,25 @@ import {
 import type { SiteScope } from './siteScope';
 import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
+import { workspaceCells } from './workspaceGeometry';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
+
+let capturedRoomViewport:
+  | {
+      scene: WorldScene;
+      onTransformCommit(scene: WorldScene): void;
+      onDrop(
+        payload: { kind: 'prop'; id: string },
+        target: { kind: 'ground'; point: { x: number; z: number } }
+      ): void;
+      roomAuthoring?: {
+        onWalkableGesture(
+          cells: { q: number; r: number }[],
+          mode: 'paint' | 'erase'
+        ): void;
+      };
+    }
+  | undefined;
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
 
@@ -253,6 +277,7 @@ vi.mock('./WorldBuildingViewport', () => ({
       onSelectWall?: (id: string | null) => void;
     };
   }) => {
+    capturedRoomViewport = props;
     const readPayload = (event: React.DragEvent) => {
       try {
         return JSON.parse(event.dataTransfer.getData(DRAG_MIME));
@@ -4473,10 +4498,136 @@ describe('structural wall authoring (Task 3)', () => {
   });
 });
 
+describe('Room transaction compatibility and retirement', () => {
+  it('unfinished intel remains editable and undoable but never masquerades as persistable policy', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    expect(
+      (
+        screen.getByLabelText(
+          'Intel reveals fact for intel-1'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('');
+    expect(screen.getByRole('alert').textContent).toMatch(/must name a fact/);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    openIdentity();
+    expect(
+      screen.getByRole('button', { name: 'Undo' }).hasAttribute('disabled')
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(
+      screen.queryByLabelText('Intel reveals fact for intel-1')
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    fireEvent.change(screen.getByLabelText('Intel reveals fact for intel-1'), {
+      target: { value: 'author-chosen-fact' },
+    });
+    expect(
+      JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).scope.intel
+    ).toEqual([{ id: 'intel-1', reveals: { fact: 'author-chosen-fact' } }]);
+  });
+
+  it('new resize/label intents refuse unfinished scope without dropping the editable policy', () => {
+    const storage = new MemoryStorage();
+    let session: EncounterStudioSession | undefined;
+    const idFactory = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept roomMode storage={storage} idFactory={idFactory} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    mounted.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={idFactory}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const before = session!.document;
+    act(() =>
+      expect(session!.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(false)
+    );
+    act(() => expect(session!.resizeWorkspace(73, 48)).toBe(false));
+    expect(session!.document).toBe(before);
+    expect(session!.document.scope.intel).toEqual([
+      { id: 'intel-1', reveals: { fact: '' } },
+    ]);
+    expect(session!.notice).toMatch(/must name a fact/);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() => session!.undo());
+    expect(session!.document.scope.intel).toBeUndefined();
+    expect(session!.canUndo).toBe(false);
+  });
+
+  it('queued viewport callbacks cannot change a reopened document, including the same document id', () => {
+    const storage = new MemoryStorage();
+    const document = createPopulatedStudioDocument();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    const stale = capturedRoomViewport!;
+    const preview = structuredClone(stale.scene);
+    preview.items[0].transform.rotationY += 0.1;
+    openIdentity();
+    // Cosmetic panel navigation does not retire this live callback.
+    act(() => stale.onTransformCommit(preview));
+    const beforeReload = capturedRoomViewport!;
+    fireEvent.click(screen.getByRole('button', { name: 'Reload room draft' }));
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.writes;
+    act(() => {
+      stale.onTransformCommit(stale.scene);
+      beforeReload.onTransformCommit(beforeReload.scene);
+      beforeReload.roomAuthoring!.onWalkableGesture([{ q: 3, r: 0 }], 'paint');
+      beforeReload.onDrop(
+        { kind: 'prop', id: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+        { kind: 'ground', point: { x: 0, z: 0 } }
+      );
+    });
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.writes).toBe(writes);
+    act(() =>
+      capturedRoomViewport!.roomAuthoring!.onWalkableGesture(
+        [{ q: 3, r: 0 }],
+        'paint'
+      )
+    );
+    expect(
+      JSON.parse(storage.getItem(ROOM_DRAFT_STORAGE_KEY)!).draft.room
+        .walkableHexes
+    ).toContainEqual({ q: 3, r: 0 });
+  });
+});
+
 describe('Studio owner facade', () => {
   function mountStudio(storage = new MemoryStorage(), strict = false) {
     let session: EncounterStudioSession | undefined;
     let view: EncounterStudioView = '3d';
+    const idFactory = deterministicIds();
     let duringLayoutRender: (() => void) | undefined;
     const presentation = (next: EncounterStudioSession) => {
       session = next;
@@ -4491,7 +4642,7 @@ describe('Studio owner facade', () => {
       <WorldBuildingConcept
         roomMode
         storage={storage}
-        idFactory={deterministicIds()}
+        idFactory={idFactory}
         studioPresentation={{ view, render: (next) => presentation(next) }}
       />
     );
@@ -4512,6 +4663,7 @@ describe('Studio owner facade', () => {
       rerender() {
         mounted.rerender(wrap());
       },
+      unmount: mounted.unmount,
     };
   }
   function populatedStorage() {
@@ -4523,6 +4675,371 @@ describe('Studio owner facade', () => {
     );
     return storage;
   }
+
+  it('resize and the complete label lifecycle are atomic shared-history transactions', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    const initial = structuredClone(owner.session.document);
+    const snapshots = [initial];
+    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
+    snapshots.push(structuredClone(owner.session.document));
+    expect(owner.session.document.draft.workspace).toMatchObject({
+      kind: 'centered-odd-r',
+      widthHexes: 73,
+      heightHexes: 48,
+    });
+    expect(owner.session.document.draft.scene.version).toBe(2);
+    expect(owner.session.document.draft.room).toEqual(initial.draft.room);
+    expect(owner.session.document.draft.scene.items).toEqual(
+      initial.draft.scene.items
+    );
+    expect(owner.session.document.draft.scene.groups).toEqual(
+      initial.draft.scene.groups
+    );
+    act(() =>
+      expect(owner.session.createMapLabel(' Kitchen ', { x: 0, z: 0 })).toBe(
+        true
+      )
+    );
+    const id = owner.session.document.draft.scene.mapLabels![0].id;
+    expect(id).toBeTruthy();
+    expect(owner.session.document.draft.scene.mapLabels![0].text).toBe(
+      'Kitchen'
+    );
+    snapshots.push(structuredClone(owner.session.document));
+    act(() =>
+      expect(owner.session.moveMapLabel(id, { x: 1, z: 1 })).toBe(true)
+    );
+    snapshots.push(structuredClone(owner.session.document));
+    act(() => expect(owner.session.renameMapLabel(id, 'Courtyard')).toBe(true));
+    snapshots.push(structuredClone(owner.session.document));
+    act(() => expect(owner.session.deleteMapLabel(id)).toBe(true));
+    snapshots.push(structuredClone(owner.session.document));
+    expect(owner.session.document.draft.scene.mapLabels).toBeUndefined();
+    expect(owner.session.viewportProps.selectedIds).toEqual(['table']);
+    for (const snapshot of snapshots) {
+      expect(snapshot.scope).toEqual(initial.scope);
+      expect(snapshot.draft.room).toEqual(initial.draft.room);
+      expect(snapshot.draft.workspace).toEqual(
+        snapshot === initial
+          ? initial.draft.workspace
+          : snapshots[1].draft.workspace
+      );
+    }
+    for (let i = snapshots.length - 2; i >= 0; i--) {
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(snapshots[i]);
+    }
+    expect(owner.session.canUndo).toBe(false);
+    for (const snapshot of snapshots.slice(1)) {
+      act(() => owner.session.redo());
+      expect(owner.session.document).toEqual(snapshot);
+    }
+  });
+
+  it('reload preserves resized workspace, labels and complete authored data and retires the old owner', () => {
+    const storage = populatedStorage();
+    const owner = mountStudio(storage);
+    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
+    act(() =>
+      expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
+    );
+    const id = owner.session.document.draft.scene.mapLabels![0].id;
+    act(() =>
+      expect(owner.session.moveMapLabel(id, { x: 1, z: 1 })).toBe(true)
+    );
+    act(() => expect(owner.session.renameMapLabel(id, 'Courtyard')).toBe(true));
+    const before = structuredClone(owner.session.document);
+    const retired = owner.session;
+    owner.unmount();
+    const reopened = mountStudio(storage);
+    const writes = storage.writes;
+    act(() => {
+      expect(retired.deleteMapLabel(id)).toBe(false);
+      expect(retired.resizeWorkspace(20, 20)).toBe(false);
+      retired.viewportProps.onTransformCommit(retired.viewportProps.scene);
+    });
+    expect(reopened.session.document).toEqual(before);
+    expect(reopened.session.canUndo).toBe(false);
+    expect(storage.writes).toBe(writes);
+    act(() =>
+      expect(reopened.session.renameMapLabel(id, 'Fresh after reload')).toBe(
+        true
+      )
+    );
+    expect(reopened.session.document.draft.scene.mapLabels![0].text).toBe(
+      'Fresh after reload'
+    );
+  });
+
+  it('label-only edits retain the legacy workspace; missing/no-op/refused intents write no history', () => {
+    const owner = mountStudio(populatedStorage());
+    const workspace = structuredClone(owner.session.document.draft.workspace);
+    act(() =>
+      expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
+    );
+    const id = owner.session.document.draft.scene.mapLabels![0].id;
+    const before = owner.session.document;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    act(() => {
+      expect(owner.session.moveMapLabel('missing', { x: Infinity, z: 0 })).toBe(
+        true
+      );
+      expect(owner.session.renameMapLabel('missing', '')).toBe(true);
+      expect(owner.session.deleteMapLabel('missing')).toBe(true);
+      expect(owner.session.renameMapLabel(id, ' Kitchen ')).toBe(true);
+      expect(owner.session.moveMapLabel(id, { x: 0, z: 0 })).toBe(true);
+      expect(owner.session.createMapLabel(' ', { x: 0, z: 0 })).toBe(false);
+      expect(owner.session.renameMapLabel(id, 'x'.repeat(121))).toBe(false);
+      expect(owner.session.moveMapLabel(id, { x: 999, z: 0 })).toBe(false);
+      expect(owner.session.resizeWorkspace(0, 48)).toBe(false);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.document.draft.workspace).toEqual(workspace);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.undo());
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.session.document.draft.scene.version).toBe(1);
+  });
+
+  it('same-dimension no-op and unsafe shrink preserve storage and history with an offender notice', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
+    act(() =>
+      expect(owner.session.createMapLabel('Outer ward', { x: 18, z: 0 })).toBe(
+        true
+      )
+    );
+    const before = owner.session.document;
+    const id = before.draft.scene.mapLabels![0].id;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
+    expect(owner.session.document).toBe(before);
+    act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(false));
+    expect(owner.session.notice).toContain(id);
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.scene.mapLabels).toBeUndefined();
+    expect(owner.session.document.draft.workspace).toEqual(
+      before.draft.workspace
+    );
+  });
+
+  it('ordinary prop edits cannot escape rectangular membership through the scalar envelope', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(true));
+    const before = owner.session.document;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    const next = structuredClone(before.draft.scene);
+    next.items[0].transform.x = 18;
+    expect(next.items[0].transform.x).toBeLessThan(
+      before.draft.workspace.horizontalLimit
+    );
+    act(() => owner.session.viewportProps.onTransformCommit(next));
+    expect(owner.session.notice).toMatch(/outside.*workspace/);
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.undo());
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('500000-character overflow is refused before floor history or storage insertion', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => expect(owner.session.resizeWorkspace(128, 128)).toBe(true));
+    const before = owner.session.document;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    act(() =>
+      expect(
+        owner.session.commitFloor(
+          workspaceCells(before.draft.workspace),
+          'paint'
+        )
+      ).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/too large.*500000/);
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.undo());
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.session.document.draft.workspace.kind).toBeUndefined();
+  });
+
+  it('a label edit exceeding the complete serialized budget is refused before history', () => {
+    const document = resizeRoomWorkspace(
+      createPopulatedStudioDocument(),
+      128,
+      128
+    );
+    document.draft.scene.mapLabels = [
+      { id: 'near-budget', text: 'L', location: { x: 0, z: 0 } },
+    ];
+    const cells = workspaceCells(document.draft.workspace);
+    // Locate the largest persistable floor with the real codec, not a copied
+    // size formula. One extra 120-character label must cross the remaining gap.
+    let low = document.draft.room.walkableHexes.length;
+    let high = cells.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      document.draft.room.walkableHexes = cells.slice(0, mid);
+      try {
+        stringifyRoomDraft(document.draft, document.scope);
+        low = mid;
+      } catch {
+        high = mid - 1;
+      }
+    }
+    document.draft.room.walkableHexes = cells.slice(0, low);
+    const storage = new MemoryStorage();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    const owner = mountStudio(storage);
+    const before = owner.session.document;
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.writes;
+    act(() =>
+      expect(owner.session.renameMapLabel('near-budget', 'x'.repeat(120))).toBe(
+        false
+      )
+    );
+    expect(owner.session.notice).toMatch(/too large.*500000/);
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.canUndo).toBe(false);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.writes).toBe(writes);
+  });
+
+  it('rapid intents use current owner state and fresh callbacks after each snapshot', () => {
+    const owner = mountStudio(populatedStorage());
+    const live = owner.session;
+    act(() => {
+      expect(live.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true);
+      expect(live.createMapLabel('Courtyard', { x: 1, z: 0 })).toBe(true);
+      expect(live.commitFloor([{ q: 3, r: 0 }], 'paint')).toBe(true);
+      expect(live.commitFloor([{ q: 4, r: 0 }], 'paint')).toBe(true);
+    });
+    expect(
+      owner.session.document.draft.scene.mapLabels?.map((label) => label.text)
+    ).toEqual(['Kitchen', 'Courtyard']);
+    expect(
+      new Set(
+        owner.session.document.draft.scene.mapLabels!.map((label) => label.id)
+      ).size
+    ).toBe(2);
+    expect(owner.session.document.draft.room.walkableHexes).toEqual(
+      expect.arrayContaining([
+        { q: 3, r: 0 },
+        { q: 4, r: 0 },
+      ])
+    );
+    act(() =>
+      expect(live.createMapLabel('Retired', { x: 0, z: 0 })).toBe(false)
+    );
+    act(() =>
+      expect(owner.session.createMapLabel('Fresh', { x: 0, z: 0 })).toBe(true)
+    );
+    expect(owner.session.document.draft.scene.mapLabels).toHaveLength(3);
+  });
+
+  it('canceled, tool-switched, view-switched and undone callbacks cannot edit a later context', () => {
+    const owner = mountStudio(populatedStorage());
+    const initial = owner.session.document;
+    const canceled = owner.session;
+    act(() => owner.session.cancelTransients());
+    act(() => {
+      expect(canceled.createMapLabel('Canceled', { x: 0, z: 0 })).toBe(false);
+      expect(canceled.resizeWorkspace(73, 48)).toBe(false);
+      expect(canceled.moveMapLabel('missing', { x: 0, z: 0 })).toBe(false);
+      expect(canceled.renameMapLabel('missing', 'Ignored')).toBe(false);
+      expect(canceled.deleteMapLabel('missing')).toBe(false);
+      expect(canceled.commitFloor([{ q: 3, r: 0 }], 'paint')).toBe(false);
+    });
+    const toolContext = owner.session;
+    act(() => owner.session.setPropTool('move'));
+    act(() => owner.session.setPropTool('select'));
+    act(() =>
+      expect(toolContext.createMapLabel('Abandoned tool', { x: 0, z: 0 })).toBe(
+        false
+      )
+    );
+    const viewContext = owner.session;
+    owner.switchView('layout');
+    owner.switchView('3d');
+    act(() => expect(viewContext.resizeWorkspace(73, 48)).toBe(false));
+    expect(owner.session.document).toBe(initial);
+    expect(owner.session.canUndo).toBe(false);
+    act(() =>
+      expect(owner.session.createMapLabel('Fresh', { x: 0, z: 0 })).toBe(true)
+    );
+    const undoContext = owner.session;
+    act(() => {
+      owner.session.undo();
+      undoContext.viewportProps.onTransformCommit(
+        undoContext.viewportProps.scene
+      );
+      expect(
+        undoContext.createMapLabel('Queued before undo', { x: 0, z: 0 })
+      ).toBe(false);
+    });
+    expect(owner.session.document).toEqual(initial);
+    act(() =>
+      expect(
+        owner.session.createMapLabel('Fresh after undo', { x: 0, z: 0 })
+      ).toBe(true)
+    );
+  });
+
+  it('unrelated prop transform and arrangement stamp retain labels and all scope', () => {
+    const storage = populatedStorage();
+    const arrangement = saveArrangement(
+      createPopulatedStudioDocument().draft.scene,
+      ['table'],
+      'saved-table',
+      'Table',
+      '2026-01-01T00:00:00.000Z'
+    );
+    storage.setItem(
+      LIBRARY_STORAGE_KEY,
+      stringifyLibrary({ version: 1, arrangements: [arrangement] })
+    );
+    const owner = mountStudio(storage);
+    act(() => owner.session.createMapLabel('Kitchen', { x: 0, z: 0 }));
+    const before = structuredClone(owner.session.document);
+    const transformed = structuredClone(before.draft.scene);
+    transformed.items[0].transform.rotationY += 0.1;
+    act(() => owner.session.viewportProps.onTransformCommit(transformed));
+    expect(owner.session.document.draft.scene.mapLabels).toEqual(
+      before.draft.scene.mapLabels
+    );
+    expect(owner.session.document.scope).toEqual(before.scope);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    act(() =>
+      owner.session.viewportProps.onDrop(
+        { kind: 'arrangement', id: 'saved-table' },
+        { kind: 'ground', point: { x: 2, z: 1 } }
+      )
+    );
+    expect(owner.session.document.draft.scene.items.length).toBeGreaterThan(
+      before.draft.scene.items.length
+    );
+    expect(owner.session.document.draft.scene.mapLabels).toEqual(
+      before.draft.scene.mapLabels
+    );
+    expect(owner.session.document.scope).toEqual(before.scope);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
 
   it('studio facade shares the committed scene with the controlled 3D props', () => {
     const owner = mountStudio(populatedStorage());
@@ -4787,6 +5304,40 @@ describe('Studio owner facade', () => {
     });
     expect(owner.session.autosaveBlocked).toBe(false);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).not.toBe('{broken');
+  });
+
+  it('new label/resize transactions retain corrupt-byte protection and quota failure semantics', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, '{broken');
+    const owner = mountStudio(storage, true);
+    act(() =>
+      expect(owner.session.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(true)
+    );
+    act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe('{broken');
+    expect(owner.session.autosaveBlocked).toBe(true);
+    storage.failSet = true;
+    act(() => owner.session.saveLocalDraft());
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe('{broken');
+    expect(owner.session.notice).toMatch(/quota blocked/);
+    expect(owner.session.autosaveBlocked).toBe(true);
+    storage.failSet = false;
+    act(() => owner.session.saveLocalDraft());
+    expect(owner.session.autosaveBlocked).toBe(false);
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    storage.failSet = true;
+    const id = owner.session.document.draft.scene.mapLabels![0].id;
+    act(() => expect(owner.session.renameMapLabel(id, 'Courtyard')).toBe(true));
+    expect(owner.session.document.draft.scene.mapLabels![0].text).toBe(
+      'Courtyard'
+    );
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.session.notice).toMatch(/quota blocked/);
+    expect(owner.session.saveStatus).toMatch(/failed.*memory/);
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.scene.mapLabels![0].text).toBe(
+      'Kitchen'
+    );
   });
 
   it('write failure keeps the latest document in memory and prior stored bytes unchanged', () => {

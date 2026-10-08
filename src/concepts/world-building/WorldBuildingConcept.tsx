@@ -34,6 +34,12 @@ import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
 import { IntelPanel } from './IntelPanel';
 import {
+  createMapLabel,
+  deleteMapLabel,
+  moveMapLabel,
+  renameMapLabel,
+} from './mapLabelEdits';
+import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
@@ -46,6 +52,7 @@ import {
 import { PropOrders } from './PropOrders';
 import { addRepeatedProps } from './repeatPlacement';
 import {
+  assertRoomDocumentSize,
   clearRoomPartyStart,
   createRoomDraft,
   expandRoomWorkspace,
@@ -59,13 +66,16 @@ import {
   reconcileRoomDraft,
   remapRoomDeclarations,
   removeRoomMonster,
+  resizeRoomWorkspace,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
+  validateRoomDocument,
   type RoomDoorBinding,
   type RoomDraft,
+  type RoomDraftDocument,
   type RoomGameplayData,
   type RoomHexCell,
   type RoomMonsterBinding,
@@ -137,11 +147,13 @@ import type {
   IdFactory,
   KeyValueStorage,
   SceneHistory,
+  WorldPoint,
   WorldPointLight,
   WorldProp,
   WorldScene,
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
+import { validateWorkspaceContent } from './workspaceContentBounds';
 import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
 import { WorldAssetThumbnailRenderer } from './WorldAssetThumbnailRenderer';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
@@ -205,10 +217,7 @@ interface WorldBuildingConceptProps {
  * policies together: a bare `SiteScope` beside the history would let one
  * Undo across two imports publish document A's room with document B's
  * policies, which is the same silent mismatch this slice exists to remove. */
-interface RoomDocument {
-  draft: RoomDraft;
-  scope: SiteScope;
-}
+type RoomDocument = RoomDraftDocument;
 
 const DEFAULT_POINT_LIGHT: WorldPointLight = {
   enabled: true,
@@ -286,7 +295,7 @@ export function WorldBuildingConcept({
     );
     return loadRoomDraft(effectiveStorage, fallback);
   });
-  const [roomHistory, setRoomHistory] = useState<{
+  const [roomHistory, storeRoomHistory] = useState<{
     past: RoomDocument[];
     present: RoomDocument;
     future: RoomDocument[];
@@ -295,6 +304,22 @@ export function WorldBuildingConcept({
     present: { draft: initialRoom.value, scope: initialRoom.scope },
     future: [],
   }));
+  // Synchronous owner truth lets several intents in one event compose in order,
+  // rather than each rebuilding the render's old snapshot.
+  const roomHistoryRef = useRef(roomHistory);
+  const setRoomHistory = useCallback(
+    (
+      next:
+        | typeof roomHistory
+        | ((current: typeof roomHistory) => typeof roomHistory)
+    ) => {
+      const resolved =
+        typeof next === 'function' ? next(roomHistoryRef.current) : next;
+      roomHistoryRef.current = resolved;
+      storeRoomHistory(resolved);
+    },
+    []
+  );
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<WorldBuildingTool>('select');
@@ -430,6 +455,35 @@ export function WorldBuildingConcept({
     studioViewRef.current = studioView;
     viewportGenerationRef.current += 1;
   }
+  const intentContextRef = useRef({
+    document: roomHistory.present,
+    tool,
+    roomTool,
+    armedMonsterRef,
+    repeatAssetRef,
+    wallAssetRef,
+    paintingConcealmentId,
+  });
+  if (
+    intentContextRef.current.document !== roomHistory.present ||
+    intentContextRef.current.tool !== tool ||
+    intentContextRef.current.roomTool !== roomTool ||
+    intentContextRef.current.armedMonsterRef !== armedMonsterRef ||
+    intentContextRef.current.repeatAssetRef !== repeatAssetRef ||
+    intentContextRef.current.wallAssetRef !== wallAssetRef ||
+    intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
+  ) {
+    intentContextRef.current = {
+      document: roomHistory.present,
+      tool,
+      roomTool,
+      armedMonsterRef,
+      repeatAssetRef,
+      wallAssetRef,
+      paintingConcealmentId,
+    };
+    viewportGenerationRef.current += 1;
+  }
   const cancelTransients = useCallback(() => {
     viewportGenerationRef.current += 1;
     refreshViewportGeneration((current) => current + 1);
@@ -440,12 +494,23 @@ export function WorldBuildingConcept({
     setPaintingConcealmentId(null);
   }, []);
   useEffect(() => {
-    if (studioView === undefined) return;
+    if (!roomMode) return;
     setPreviewScene(null);
     setPreviewWall(null);
     setFootprintPreview(null);
     setActiveDrag(null);
-    setPaintingConcealmentId(null);
+  }, [
+    studioView,
+    roomMode,
+    roomHistory.present,
+    tool,
+    roomTool,
+    armedMonsterRef,
+    repeatAssetRef,
+    wallAssetRef,
+  ]);
+  useEffect(() => {
+    if (studioView !== undefined) setPaintingConcealmentId(null);
   }, [studioView]);
   const activeConcealmentId =
     roomMode &&
@@ -584,88 +649,67 @@ export function WorldBuildingConcept({
     if (result.error) setNotice(result.error);
   }, [effectiveStorage, library]);
 
-  const commit = useCallback(
+  const editGeneration = viewportGenerationRef.current;
+  const rejectEdit = useCallback((error: unknown): false => {
+    setNotice(
+      `Edit rejected; the open scene was kept. ${error instanceof Error ? error.message : String(error)}`
+    );
+    return false;
+  }, []);
+
+  /** The only room edit insertion seam. Existing policy forms can author
+   * incomplete drafts (e.g. an intel record before its fact is entered).
+   * Ordinary edits protect shape, rectangular bounds and serialized size;
+   * explicit resize/label intents additionally require a complete codec-valid
+   * document. Autosave/export still honestly refuse incomplete policies. */
+  const commitRoomDocument = useCallback(
     (
-      next: WorldScene,
+      candidate: RoomDocument,
       selection = selectedIds,
-      nextRoom: RoomGameplayData = roomDraft.room,
-      nextWorkspace: RoomWorkspace = roomDraft.workspace,
-      /** Room mode's EXPLICIT rename sets the published draft name in the
-       * same one-transaction commit; every other path keeps the draft's
-       * name (reconcileRoomDraft retains it), so imported names are never
-       * normalized by unrelated edits. */
-      nextName?: string,
-      nextId = roomDraft.id,
-      /** The site scope to carry into the commit. Undefined PRESERVES the
-       * open document's own scope, which is what every edit wants; New room
-       * is the one caller that passes `{}`, because a fresh document authors
-       * no policies. */
-      nextScope?: SiteScope
-    ) => {
+      complete = false
+    ): boolean => {
+      if (
+        !mountedRef.current ||
+        viewportGenerationRef.current !== editGeneration
+      )
+        return false;
       if (refuseWhilePublishing()) return false;
       try {
-        const valid = validateScene(next, {
-          horizontalLimit: roomMode ? nextWorkspace.horizontalLimit : undefined,
+        const scene = validateScene(candidate.draft.scene, {
+          horizontalLimit: candidate.draft.workspace.horizontalLimit,
+          workspace: candidate.draft.workspace,
         });
-        if (roomMode) {
-          const nextDraft = reconcileRoomDraft(
-            nextName === undefined
+        const draft = {
+          ...candidate.draft,
+          scene,
+          room: {
+            ...candidate.draft.room,
+            ...(candidate.draft.room.walls
               ? {
-                  ...roomDraft,
-                  id: nextId,
-                  room: nextRoom,
-                  workspace: nextWorkspace,
+                  walls: validateStructuralWalls({
+                    value: candidate.draft.room.walls,
+                    horizontalLimit: candidate.draft.workspace.horizontalLimit,
+                    itemIds: new Set(scene.items.map((item) => item.id)),
+                  }),
                 }
-              : {
-                  ...roomDraft,
-                  id: nextId,
-                  name: nextName,
-                  room: nextRoom,
-                  workspace: nextWorkspace,
-                },
-            valid
-          );
-          // Every wall mutation (gizmo, cardinal, panel and door editing)
-          // crosses this gate before it can enter history or autosave.
-          if (nextDraft.room.walls) {
-            nextDraft.room.walls = validateStructuralWalls({
-              value: nextDraft.room.walls,
-              horizontalLimit: nextDraft.workspace.horizontalLimit,
-              itemIds: new Set(valid.items.map((item) => item.id)),
-            });
-          }
-          const resolvedScope = nextScope ?? siteScope;
-          // A SCOPE-ONLY EDIT IS STILL AN EDIT: compare both halves, or the
-          // first policy the author writes would be dropped as a no-op.
-          if (
-            JSON.stringify(nextDraft) === JSON.stringify(roomDraft) &&
-            JSON.stringify(resolvedScope) === JSON.stringify(siteScope)
-          )
-            return true;
-          setRoomHistory((current) => {
-            const presentScope = nextScope ?? current.present.scope;
-            if (
-              JSON.stringify(nextDraft) ===
-                JSON.stringify(current.present.draft) &&
-              JSON.stringify(presentScope) ===
-                JSON.stringify(current.present.scope)
-            )
-              return current;
-            return {
-              past: [
-                ...current.past.slice(-79),
-                structuredClone(current.present),
-              ],
-              present: structuredClone({
-                draft: nextDraft,
-                scope: presentScope,
-              }),
-              future: [],
-            };
-          });
-        } else {
-          setHistory((current) => updateHistory(current, valid));
-        }
+              : {}),
+          },
+        };
+        validateWorkspaceContent(draft, candidate.scope);
+        const valid = complete
+          ? validateRoomDocument({ draft, scope: candidate.scope })
+          : { draft, scope: candidate.scope };
+        assertRoomDocumentSize(valid);
+        if (
+          JSON.stringify(valid) ===
+          JSON.stringify(roomHistoryRef.current.present)
+        )
+          return true;
+        setRoomHistory((current) => ({
+          past: [...current.past.slice(-79), structuredClone(current.present)],
+          present: structuredClone(valid),
+          future: [],
+        }));
         setPreviewScene(null);
         setSelectedIds(selection);
         setSaveStatus(
@@ -676,15 +720,80 @@ export function WorldBuildingConcept({
         setNotice('');
         return true;
       } catch (error) {
-        setNotice(
-          `Edit rejected; the open scene was kept. ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-        return false;
+        return rejectEdit(error);
       }
     },
-    [refuseWhilePublishing, roomDraft, roomMode, selectedIds, siteScope]
+    [
+      editGeneration,
+      refuseWhilePublishing,
+      rejectEdit,
+      selectedIds,
+      setRoomHistory,
+    ]
+  );
+
+  const commit = useCallback(
+    (
+      next: WorldScene,
+      selection = selectedIds,
+      nextRoom: RoomGameplayData = roomHistoryRef.current.present.draft.room,
+      nextWorkspace: RoomWorkspace = roomHistoryRef.current.present.draft
+        .workspace,
+      nextName?: string,
+      nextId = roomHistoryRef.current.present.draft.id,
+      nextScope?: SiteScope
+    ): boolean => {
+      if (
+        roomMode &&
+        (!mountedRef.current ||
+          viewportGenerationRef.current !== editGeneration ||
+          roomHistoryRef.current.present !== roomHistory.present)
+      )
+        return false;
+      if (refuseWhilePublishing()) return false;
+      try {
+        if (roomMode) {
+          const current = roomHistoryRef.current.present;
+          const nextDraft = reconcileRoomDraft(
+            {
+              ...current.draft,
+              id: nextId,
+              ...(nextName === undefined ? {} : { name: nextName }),
+              room: nextRoom,
+              workspace: nextWorkspace,
+            },
+            next
+          );
+          return commitRoomDocument(
+            { draft: nextDraft, scope: nextScope ?? current.scope },
+            selection
+          );
+        }
+        // Standalone composition semantics intentionally retain their own gate.
+        const valid = validateScene(next);
+        setHistory((current) => updateHistory(current, valid));
+        setPreviewScene(null);
+        setSelectedIds(selection);
+        setSaveStatus(
+          workspaceOriginRef.current === 'local'
+            ? 'Saving local draft…'
+            : 'World workspace changes are not saved locally'
+        );
+        setNotice('');
+        return true;
+      } catch (error) {
+        return rejectEdit(error);
+      }
+    },
+    [
+      commitRoomDocument,
+      editGeneration,
+      refuseWhilePublishing,
+      rejectEdit,
+      roomHistory.present,
+      roomMode,
+      selectedIds,
+    ]
   );
 
   const dropIntoScene = useCallback(
@@ -702,7 +811,7 @@ export function WorldBuildingConcept({
             target.kind === 'surface'
               ? { ...target.point, rotationY: 0 }
               : { ...target.point, y: 0, rotationY: 0 };
-          commit(
+          const accepted = commit(
             addProp(
               scene,
               payload.id,
@@ -714,6 +823,7 @@ export function WorldBuildingConcept({
             ),
             [id]
           );
+          if (roomMode && !accepted) return;
           setTool('move');
           if (roomMode) setRoomTool('move');
         } catch (error) {
@@ -750,7 +860,7 @@ export function WorldBuildingConcept({
               : [];
           })
         );
-        commit(
+        const accepted = commit(
           stamped.scene,
           stamped.createdIds,
           roomMode
@@ -763,6 +873,7 @@ export function WorldBuildingConcept({
               }
             : roomDraft.room
         );
+        if (roomMode && !accepted) return;
         setTool('move');
         if (roomMode) setRoomTool('move');
       } catch (error) {
@@ -808,7 +919,7 @@ export function WorldBuildingConcept({
         ref: armedMonsterRef,
         startingCell: { location: { ...cell } },
       });
-      commit(scene, selectedIds, next.room);
+      if (!commit(scene, selectedIds, next.room)) return;
       setSelectedActorId(id);
       setNotice('');
     } catch (error) {
@@ -826,7 +937,7 @@ export function WorldBuildingConcept({
     try {
       const next = moveRoomMonster(roomDraft, id, cell);
       if (next === roomDraft) return;
-      commit(scene, selectedIds, next.room);
+      if (!commit(scene, selectedIds, next.room)) return;
       setNotice('');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -839,7 +950,7 @@ export function WorldBuildingConcept({
     try {
       const next = setRoomPartyStart(roomDraft, cell);
       if (next === roomDraft) return;
-      commit(scene, selectedIds, next.room);
+      if (!commit(scene, selectedIds, next.room)) return;
       setSelectedActorId('start');
       setNotice('');
     } catch (error) {
@@ -854,7 +965,7 @@ export function WorldBuildingConcept({
           ? clearRoomPartyStart(roomDraft)
           : removeRoomMonster(roomDraft, actor);
       if (next === roomDraft) return;
-      commit(scene, selectedIds, next.room);
+      if (!commit(scene, selectedIds, next.room)) return;
       setSelectedActorId((current) => (current === actor ? null : current));
       setNotice('');
     },
@@ -864,7 +975,7 @@ export function WorldBuildingConcept({
   const clearPartyStart = () => {
     const next = clearRoomPartyStart(roomDraft);
     if (next === roomDraft) return;
-    commit(scene, selectedIds, next.room);
+    if (!commit(scene, selectedIds, next.room)) return;
     setSelectedActorId((current) => (current === 'start' ? null : current));
     setNotice('');
   };
@@ -1044,7 +1155,8 @@ export function WorldBuildingConcept({
 
   const undo = useCallback(() => {
     if (refuseWhilePublishing()) return;
-    setPreviewScene(null);
+    if (roomMode) cancelTransients();
+    else setPreviewScene(null);
     if (roomMode) {
       setRoomHistory((current) =>
         current.past.length === 0
@@ -1058,10 +1170,11 @@ export function WorldBuildingConcept({
     } else setHistory((current) => undoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, [refuseWhilePublishing, roomMode]);
+  }, [cancelTransients, refuseWhilePublishing, roomMode, setRoomHistory]);
   const redo = useCallback(() => {
     if (refuseWhilePublishing()) return;
-    setPreviewScene(null);
+    if (roomMode) cancelTransients();
+    else setPreviewScene(null);
     if (roomMode) {
       setRoomHistory((current) =>
         current.future.length === 0
@@ -1075,7 +1188,7 @@ export function WorldBuildingConcept({
     } else setHistory((current) => redoHistory(current));
     setSelectedIds([]);
     setNotice('');
-  }, [refuseWhilePublishing, roomMode]);
+  }, [cancelTransients, refuseWhilePublishing, roomMode, setRoomHistory]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1233,7 +1346,8 @@ export function WorldBuildingConcept({
           thickness: entry.asset.boundsMeters[2],
           elevation: 0,
         });
-        commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] });
+        if (!commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] }))
+          return;
         setSelectedIds([]);
         setSelectedActorId(null);
         setSelectedWallId(wall.id);
@@ -1479,6 +1593,7 @@ export function WorldBuildingConcept({
       // rather than carrying the replaced document's factions forward.
       roomMode ? {} : undefined
     );
+    if (roomMode) cancelTransients();
     setTool('select');
     setActiveDrag(null);
     setConfirmBlank(false);
@@ -1505,12 +1620,10 @@ export function WorldBuildingConcept({
         arrangementName,
         now()
       );
-      setLibrary(
-        validateLibrary({
-          ...library,
-          arrangements: [...library.arrangements, arrangement],
-        })
-      );
+      const nextLibrary = validateLibrary({
+        ...library,
+        arrangements: [...library.arrangements, arrangement],
+      });
       if (roomMode) {
         const declarations = Object.fromEntries(
           arrangement.items.flatMap((item) => {
@@ -1520,14 +1633,18 @@ export function WorldBuildingConcept({
               : [];
           })
         );
-        commit(scene, selectedIds, {
-          ...roomDraft.room,
-          arrangementDeclarations: {
-            ...roomDraft.room.arrangementDeclarations,
-            [arrangement.id]: declarations,
-          },
-        });
+        if (
+          !commit(scene, selectedIds, {
+            ...roomDraft.room,
+            arrangementDeclarations: {
+              ...roomDraft.room.arrangementDeclarations,
+              [arrangement.id]: declarations,
+            },
+          })
+        )
+          return;
       }
+      setLibrary(nextLibrary);
       setArrangementName('New arrangement');
       setNotice('');
     } catch (error) {
@@ -1539,7 +1656,10 @@ export function WorldBuildingConcept({
     if (refuseWhilePublishing()) return;
     try {
       if (roomMode) {
-        const imported = parseRoomDocumentJson(portableJson);
+        const imported = validateRoomDocument(
+          parseRoomDocumentJson(portableJson)
+        );
+        cancelTransients();
         const saveError = saveRoomDraft(
           effectiveStorage,
           imported.draft,
@@ -1603,7 +1723,13 @@ export function WorldBuildingConcept({
     (imported: RoomDraft, scope: SiteScope): boolean => {
       if (refuseWhilePublishing()) return false;
       try {
-        const saveError = saveRoomDraft(effectiveStorage, imported, scope);
+        const valid = validateRoomDocument({ draft: imported, scope });
+        cancelTransients();
+        const saveError = saveRoomDraft(
+          effectiveStorage,
+          valid.draft,
+          valid.scope
+        );
         if (!saveError) {
           markAutosaveBlocked(false);
           workspaceOriginRef.current = 'local';
@@ -1611,7 +1737,7 @@ export function WorldBuildingConcept({
         }
         setRoomHistory((current) => ({
           past: [...current.past.slice(-79), structuredClone(current.present)],
-          present: { draft: imported, scope },
+          present: valid,
           future: [],
         }));
         setSelectedIds([]);
@@ -1635,7 +1761,7 @@ export function WorldBuildingConcept({
         return false;
       }
     },
-    [effectiveStorage, refuseWhilePublishing]
+    [cancelTransients, effectiveStorage, refuseWhilePublishing, setRoomHistory]
   );
 
   const reopen = () => {
@@ -1649,6 +1775,7 @@ export function WorldBuildingConcept({
       markAutosaveBlocked(false);
       workspaceOriginRef.current = 'local';
       setWorkspaceOrigin('local');
+      cancelTransients();
       setRoomHistory({
         past: [],
         // The stored envelope carries the scope beside the draft, so a reopen
@@ -1799,6 +1926,7 @@ export function WorldBuildingConcept({
       workspaceOriginRef.current = 'world';
       setWorkspaceOrigin('world');
       if (roomMode) {
+        cancelTransients();
         if (metadata.status !== 'room')
           throw new Error('This snapshot is not a room authoring document.');
         setRoomHistory({
@@ -2998,14 +3126,29 @@ export function WorldBuildingConcept({
     cells: readonly RoomHexCell[],
     mode: 'paint' | 'erase'
   ): boolean => {
+    if (refuseWhilePublishing()) return false;
     try {
-      const next = updateWalkableHexes(roomDraft, cells, mode);
-      return commit(scene, selectedIds, next.room);
+      const current = roomHistoryRef.current.present;
+      return commitRoomDocument({
+        draft: updateWalkableHexes(current.draft, cells, mode),
+        scope: current.scope,
+      });
     } catch (error) {
-      setNotice(
-        `Edit rejected; the open scene was kept. ${error instanceof Error ? error.message : String(error)}`
-      );
-      return false;
+      return rejectEdit(error);
+    }
+  };
+  const applyRoomIntent = (
+    intent: (current: RoomDocument) => RoomDocument
+  ): boolean => {
+    if (refuseWhilePublishing()) return false;
+    try {
+      const current = roomHistoryRef.current.present;
+      const next = intent(current);
+      if (next.draft === current.draft && next.scope === current.scope)
+        return true;
+      return commitRoomDocument(next, selectedIds, true);
+    } catch (error) {
+      return rejectEdit(error);
     }
   };
   const viewportInputs: WorldBuildingViewportProps = {
@@ -3144,8 +3287,19 @@ export function WorldBuildingConcept({
     onMeasuredBounds: handleMeasuredBounds,
   };
   const viewportGeneration = viewportGenerationRef.current;
+  const viewportDocument = roomHistory.present;
+  const guardIntent =
+    <Args extends unknown[]>(
+      callback: (...args: Args) => boolean
+    ): ((...args: Args) => boolean) =>
+    (...args) =>
+      viewportGenerationRef.current === viewportGeneration && mountedRef.current
+        ? callback(...args)
+        : false;
   const viewportIsActive = (): boolean =>
+    mountedRef.current &&
     studioViewRef.current !== 'layout' &&
+    (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
     viewportGenerationRef.current === viewportGeneration;
   // A callback belongs to THIS presentation only. Unmount cleanup alone
   // cannot fence an already queued drop/transform.
@@ -3161,25 +3315,29 @@ export function WorldBuildingConcept({
   const guardedScenePreview = useCallback(
     (next: WorldScene | null): void => {
       if (
+        mountedRef.current &&
         studioViewRef.current !== 'layout' &&
+        (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
         viewportGenerationRef.current === viewportGeneration
       )
         setPreviewScene(next);
     },
-    [viewportGeneration]
+    [roomMode, viewportDocument, viewportGeneration]
   );
   const guardedWallPreview = useCallback(
     (next: StructuralWall | null): void => {
       if (
+        mountedRef.current &&
         studioViewRef.current !== 'layout' &&
+        (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
         viewportGenerationRef.current === viewportGeneration
       )
         setPreviewWall(next);
     },
-    [viewportGeneration]
+    [roomMode, viewportDocument, viewportGeneration]
   );
   const viewportProps: WorldBuildingViewportProps =
-    studioView === undefined
+    !roomMode && studioView === undefined
       ? viewportInputs
       : {
           ...viewportInputs,
@@ -3266,12 +3424,54 @@ export function WorldBuildingConcept({
       viewportProps,
       canUndo: !publishBusy && roomHistory.past.length > 0,
       canRedo: !publishBusy && roomHistory.future.length > 0,
-      undo,
-      redo,
-      commitFloor,
+      undo: () => {
+        if (
+          viewportGenerationRef.current === viewportGeneration &&
+          mountedRef.current
+        )
+          undo();
+      },
+      redo: () => {
+        if (
+          viewportGenerationRef.current === viewportGeneration &&
+          mountedRef.current
+        )
+          redo();
+      },
+      commitFloor: guardIntent(commitFloor),
+      resizeWorkspace: guardIntent((width: number, height: number) =>
+        applyRoomIntent((current) =>
+          resizeRoomWorkspace(current, width, height)
+        )
+      ),
+      createMapLabel: guardIntent((text: string, location: WorldPoint) =>
+        applyRoomIntent((current) => ({
+          ...current,
+          draft: createMapLabel(current.draft, idFactory(), text, location),
+        }))
+      ),
+      moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
+        applyRoomIntent((current) => ({
+          ...current,
+          draft: moveMapLabel(current.draft, id, location),
+        }))
+      ),
+      renameMapLabel: guardIntent((id: string, text: string) =>
+        applyRoomIntent((current) => ({
+          ...current,
+          draft: renameMapLabel(current.draft, id, text),
+        }))
+      ),
+      deleteMapLabel: guardIntent((id: string) =>
+        applyRoomIntent((current) => ({
+          ...current,
+          draft: deleteMapLabel(current.draft, id),
+        }))
+      ),
       cancelTransients,
       propTool: tool,
       setPropTool: (next) => {
+        cancelTransients();
         setTool(next);
         setRoomTool(next);
       },
