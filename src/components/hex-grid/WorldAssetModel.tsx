@@ -9,6 +9,7 @@ import { useGLTF } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { PropModelBounds } from './PropModel';
+import { useRememberedModelTint } from './useRememberedModelTint';
 
 export type WorldAssetRole = NonNullable<
   GeneratedWorldAsset['roles']
@@ -50,6 +51,7 @@ export interface WorldAssetModelProps {
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   heightScale?: number;
+  remembered?: boolean;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -278,6 +280,7 @@ function LoadedWorldAssetModel({
   open,
   onDoorClick,
   heightScale,
+  remembered,
 }: {
   assetRef: string;
   url: string;
@@ -292,9 +295,11 @@ function LoadedWorldAssetModel({
   open?: boolean;
   onDoorClick?: () => void;
   heightScale: number;
+  remembered: boolean;
 }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  useRememberedModelTint(cloned, remembered, heightScale);
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
     [cloned, roles]
@@ -512,6 +517,7 @@ export function WorldAssetModel({
   onBoundsMeasured,
   onDiagnostic,
   heightScale = 1,
+  remembered = false,
   openDoors = [],
   open,
   onDoorClick,
@@ -539,6 +545,7 @@ export function WorldAssetModel({
       open={open}
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
+      remembered={remembered}
     />
   );
 }

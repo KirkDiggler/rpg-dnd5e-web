@@ -151,6 +151,9 @@ export interface WorldBuildingViewportProps {
      * the authored INITIAL state only; never a live engine operation. */
     doorBindings?: Readonly<Record<string, RoomDoorBinding>>;
     selectedWallId?: string | null;
+    previewWall?: StructuralWall | null;
+    onWallTransformPreview?: (wall: StructuralWall | null) => void;
+    onWallTransformCommit?: (wall: StructuralWall) => void;
     wallSnapEnabled?: boolean;
     onWallGesture?: (line: { start: WorldPoint; end: WorldPoint }) => void;
     onSelectWall?: (id: string | null) => void;
@@ -756,14 +759,20 @@ export function WorldSceneContents(
         })()}
       {props.roomAuthoring && (props.roomAuthoring.walls?.length ?? 0) > 0 && (
         <StructuralWallVisual
-          walls={props.roomAuthoring.walls ?? []}
+          walls={(props.roomAuthoring.walls ?? []).map((wall) =>
+            props.roomAuthoring?.previewWall?.id === wall.id
+              ? props.roomAuthoring.previewWall
+              : wall
+          )}
           selectedWallId={props.roomAuthoring.selectedWallId ?? null}
           doorBindings={props.roomAuthoring.doorBindings}
           selectable={
-            props.roomAuthoring.tool === 'select' &&
+            ['select', 'move', 'rotate'].includes(props.roomAuthoring.tool) &&
             !props.roomAuthoring.activeConcealmentId
           }
-          onSelectWall={props.roomAuthoring.onSelectWall}
+          onSelectWall={(id) => {
+            if (!isGizmoPointer()) props.roomAuthoring?.onSelectWall?.(id);
+          }}
         />
       )}
       {props.roomAuthoring && (
@@ -1166,6 +1175,27 @@ export function WorldSceneContents(
         onReject={props.onTransformReject}
         onTransformingChange={setTransforming}
         sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
+        wallTarget={(() => {
+          const room = props.roomAuthoring;
+          const wall = room?.walls?.find(
+            (entry) => entry.id === room.selectedWallId
+          );
+          if (
+            !room ||
+            !wall ||
+            room.activeConcealmentId ||
+            (room.tool !== 'move' && room.tool !== 'rotate') ||
+            !room.onWallTransformPreview ||
+            !room.onWallTransformCommit
+          )
+            return undefined;
+          return {
+            wall,
+            horizontalLimit: room.workspace.horizontalLimit,
+            onPreview: room.onWallTransformPreview,
+            onCommit: room.onWallTransformCommit,
+          };
+        })()}
       />
       <WorldBuildingDropInteraction
         activeDrag={

@@ -156,7 +156,7 @@ export function refreshKeysFor(
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.
     case 'arrived':
       return event.body.value.kind === PlacementKind.PROP
-        ? ['view']
+        ? ['atlas', 'view']
         : ['roster', 'view'];
     // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
     // table: a body with nothing to give must be indistinguishable

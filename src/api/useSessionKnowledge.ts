@@ -3,6 +3,10 @@ import {
   applyRegionRevealed,
   MissingStructuralWallError,
 } from '@/components/session/applyReveal';
+import {
+  assertPropPresentations,
+  assertPropSightings,
+} from '@/components/session/propPresentations';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
 import { nextViewerHoldings } from '@/components/session/viewerHoldings';
 import { create } from '@bufbuild/protobuf';
@@ -88,7 +92,8 @@ export function useSessionKnowledge(session: string, member: string) {
         reveal &&
         (reveal.structuralWalls.length ||
           reveal.structuralDoors.length ||
-          reveal.structuralWallOpeningsReplacements.length)
+          reveal.structuralWallOpeningsReplacements.length ||
+          reveal.propPresentations?.length)
       )
         throw new MissingStructuralWallError('(atlas absent)');
       // Both reveal routes use the same atomic structural reducer. Other
@@ -132,6 +137,16 @@ export function useSessionKnowledge(session: string, member: string) {
           walls: response.atlas.structuralWalls,
           doors: response.atlas.structuralDoors,
         });
+      assertPropSightings(response.view?.props);
+      assertPropPresentations(
+        [
+          ...(response.atlas?.propPresentations ?? []),
+          ...(response.view?.props ?? []).flatMap((s) =>
+            s.presentation ? [s.presentation] : []
+          ),
+        ],
+        response.atlas?.structuralDoors
+      );
       let restored = response;
       // Transport owns catch-up; this is only the finite hydration buffer.
       for (const event of [...pending.current].sort((a, b) =>
@@ -159,8 +174,19 @@ export function useSessionKnowledge(session: string, member: string) {
           session,
           member,
         });
-        if (current() && currentSnapshot.current)
+        assertPropSightings(view.props);
+        if (current() && currentSnapshot.current) {
+          assertPropPresentations(
+            [
+              ...(currentSnapshot.current.atlas?.propPresentations ?? []),
+              ...view.props.flatMap((s) =>
+                s.presentation ? [s.presentation] : []
+              ),
+            ],
+            currentSnapshot.current.atlas?.structuralDoors
+          );
           install({ ...currentSnapshot.current, view });
+        }
       }),
     [session, member, enqueue, install]
   );
@@ -237,8 +263,10 @@ export function useSessionKnowledge(session: string, member: string) {
     if (!snapshot?.atlas) return null;
     const props = [...snapshot.atlas.props];
     const placed = [...snapshot.atlas.placed];
+    const propPresentations = [...(snapshot.atlas.propPresentations ?? [])];
     for (const sighting of snapshot.view?.props ?? []) {
       if (sighting.observedEmpty) continue;
+      if (sighting.presentation) propPresentations.push(sighting.presentation);
       const current = sighting.currentVia.length > 0;
       if (sighting.shape.case === 'prop' && sighting.shape.value.at) {
         const prop = sighting.shape.value;
@@ -259,7 +287,7 @@ export function useSessionKnowledge(session: string, member: string) {
         });
       }
     }
-    return { ...snapshot.atlas, props, placed };
+    return { ...snapshot.atlas, props, placed, propPresentations };
   }, [snapshot?.atlas, snapshot?.view?.props]);
   const roster = useMemo(
     () =>

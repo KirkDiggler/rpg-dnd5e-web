@@ -510,6 +510,19 @@ export function translateWall(
   return next;
 }
 
+/** Apply the existing controls' planar move or Three.js positive-Y yaw to a
+ * wall. The authored line remains the only pose; cuts/blocker settings travel
+ * with it. Convert yaw once because rotateWall uses mathematical XZ angles. */
+export function previewWallTransform(input: {
+  wall: StructuralWall;
+  mode: 'move' | 'rotate';
+  change: { x: number; z: number; rotationY: number };
+}): StructuralWall {
+  return input.mode === 'move'
+    ? translateWall(input.wall, { x: input.change.x, z: input.change.z })
+    : rotateWall(input.wall, { angle: -input.change.rotationY });
+}
+
 /** Rotate a whole wall about an explicit pivot in the mathematical XZ plane
  * (`angle` is NOT Three.js yaw), carrying openings and local blocker offsets. */
 export function rotateWall(
@@ -537,8 +550,9 @@ export function rotateWall(
  * Create one authored wall from a finished draw gesture. The line is required
  * to be finite and non-degenerate; a zero-length gesture is the caller's
  * no-op, not a wall. The blocker starts as the drawn structure's own
- * longitudinal extent with both flags FALSE — appearance never infers blocking
- * and the author declares it.
+ * longitudinal extent with movement and sight blocking enabled. This is the
+ * wall tool's default, not an inference from asset appearance; both flags remain
+ * independently editable and saved declarations are never rewritten.
  */
 export function createWall(input: {
   id: string;
@@ -578,8 +592,8 @@ export function createWall(input: {
       elevation: input.elevation,
     },
     blocker: {
-      blocksMovement: false,
-      blocksLineOfSight: false,
+      blocksMovement: true,
+      blocksLineOfSight: true,
       footprint: {
         width: length,
         depth: DEFAULT_WALL_BLOCKER_DEPTH,

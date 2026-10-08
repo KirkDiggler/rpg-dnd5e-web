@@ -7,7 +7,7 @@
  * the draft is never modified. Asset mapping, hex geometry and fit math all
  * live in the pure `structuralWallEditing` leaf.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CheckApproachRows } from './CheckApproachRows';
 import {
   addDoorApproach,
@@ -61,6 +61,8 @@ export interface StructuralWallPanelProps {
   walls: readonly StructuralWall[];
   selectedWallId: string | null;
   onSelectWall: (id: string | null) => void;
+  /** Normal selection rotation controls; numeric transforms stay secondary. */
+  transformActions?: ReactNode;
   /** Generated catalog assets with measured dimensions and no door leaf. */
   assetOptions: readonly { ref: string; label: string }[];
   /** Catalog assets whose generated model declares a door `leaf`. */
@@ -89,6 +91,7 @@ export function StructuralWallPanel({
   walls,
   selectedWallId,
   onSelectWall,
+  transformActions,
   assetOptions,
   doorAssetOptions,
   doorBindings,
@@ -376,61 +379,69 @@ export function StructuralWallPanel({
 
           <fieldset>
             <legend>Move and rotate</legend>
-            <label>
-              <span>Move X</span>
-              <input
-                type="number"
-                step="0.1"
-                aria-label="Move X"
-                value={moveX}
-                onChange={(event) => setMoveX(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Move Z</span>
-              <input
-                type="number"
-                step="0.1"
-                aria-label="Move Z"
-                value={moveZ}
-                onChange={(event) => setMoveZ(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() =>
-                apply(() =>
-                  translateWall(wall, {
-                    x: Number(moveX),
-                    z: Number(moveZ),
-                  })
-                )
-              }
-            >
-              Apply move
-            </button>
-            <label>
-              <span>Rotate degrees</span>
-              <input
-                type="number"
-                step="15"
-                aria-label="Rotate degrees"
-                value={rotateDegrees}
-                onChange={(event) => setRotateDegrees(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() =>
-                apply(() =>
-                  rotateWall(wall, {
-                    angle: (Number(rotateDegrees) * Math.PI) / 180,
-                  })
-                )
-              }
-            >
-              Apply rotation
-            </button>
+            {transformActions}
+            <p className="wb-help">
+              Use Move or Rotate in the toolbar, then drag the selected wall's
+              handles.
+            </p>
+            <details>
+              <summary>Advanced transform values</summary>
+              <label>
+                <span>Move X</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  aria-label="Move X"
+                  value={moveX}
+                  onChange={(event) => setMoveX(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Move Z</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  aria-label="Move Z"
+                  value={moveZ}
+                  onChange={(event) => setMoveZ(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  apply(() =>
+                    translateWall(wall, {
+                      x: Number(moveX),
+                      z: Number(moveZ),
+                    })
+                  )
+                }
+              >
+                Apply move
+              </button>
+              <label>
+                <span>Rotate degrees</span>
+                <input
+                  type="number"
+                  step="15"
+                  aria-label="Rotate degrees"
+                  value={rotateDegrees}
+                  onChange={(event) => setRotateDegrees(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  apply(() =>
+                    rotateWall(wall, {
+                      angle: (Number(rotateDegrees) * Math.PI) / 180,
+                    })
+                  )
+                }
+              >
+                Apply rotation
+              </button>
+            </details>
           </fieldset>
 
           <fieldset>

@@ -61,6 +61,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { PropPresentation } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { cellBoundingBox } from '../../author/hexGeometry';
 import {
   layoutFromWire,
@@ -79,6 +80,7 @@ import {
   type DoorGapPiece,
 } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
+import { applyPropPresentations } from './propPresentations';
 import {
   structuralLayoutRender,
   type StructuralDoorRenderUnit,
@@ -155,6 +157,10 @@ export interface SceneExit3D {
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
+  /** Supplied render records, not an authored scene or a visibility calculation. */
+  propPresentations?: readonly PropPresentation[];
+  rememberedPropPresentationIds?: ReadonlySet<string>;
+  currentDoorIds?: ReadonlySet<string>;
   /**
    * The ways out, drawn from the start.
    *
@@ -349,7 +355,10 @@ export function buildScene3D(
     'cells' | 'props' | 'segments' | 'doorways' | 'regions'
   > &
     Partial<
-      Pick<GetAtlasResponse, 'exits' | 'structuralWalls' | 'structuralDoors'>
+      Pick<
+        GetAtlasResponse,
+        'exits' | 'structuralWalls' | 'structuralDoors' | 'propPresentations'
+      >
     >,
   hexSize: number,
   layout: HexLayout,
@@ -383,10 +392,16 @@ export function buildScene3D(
     floorTiles.set(coordToKey(cube), { ...cube, roomId: '' });
   }
 
+  const propPresentations = applyPropPresentations(
+    [],
+    atlas.propPresentations,
+    atlas.structuralDoors
+  );
+  const presentedIds = new Set(propPresentations.map((p) => p.id));
   const props: SceneProp3D[] = [];
   const lightingSources: DungeonLightingSourceInput[] = [];
   for (const [propIndex, prop] of atlas.props.entries()) {
-    if (!prop.at) continue;
+    if (!prop.at || (prop.id && presentedIds.has(prop.id))) continue;
     // `?? ''` / `?? 0`: an older server or a stale client-side proto
     // schema (the exact live-walk failure this guards, rpg-project#261
     // PR #795 field report) hands back an AtlasProp with facing/
@@ -459,6 +474,7 @@ export function buildScene3D(
     lighting,
     wallRuns,
     doorGaps,
+    propPresentations,
     structuralWalls: structural.walls,
     structuralDoors: structural.doors,
     structuralDiagnostics: structural.diagnostics,

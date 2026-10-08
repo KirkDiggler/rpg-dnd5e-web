@@ -73,7 +73,7 @@ import {
   type PropCompanion,
   type PropVariant,
 } from './propManifest';
-import { cloneCryptMaterials } from './sceneKnowledge';
+import { useRememberedModelTint as useRememberedTint } from './useRememberedModelTint';
 
 export interface PropModelBounds {
   minY: number;
@@ -103,40 +103,6 @@ export interface PropModelProps {
   remembered?: boolean;
   /** Visual Y scale, grounded at the authored mesh base. */
   heightScale?: number;
-}
-
-/** Snapshot each mesh's original (untinted) material once per `object`
- * identity, then apply (or remove) the shared crypt-memory tint when
- * `remembered` toggles — same "snapshot once, tint as a separate effect"
- * split ClassCharacterModel.tsx uses, so neither a fresh clone/mount nor a
- * remembered toggle can compound a tint onto an already-tinted material.
- * Shared by both the parent variant and each companion mesh below. */
-function useRememberedTint(object: THREE.Object3D, remembered: boolean) {
-  const originalMaterials = useMemo(() => {
-    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) map.set(child, child.material);
-    });
-    return map;
-  }, [object]);
-
-  useEffect(() => {
-    if (!remembered) {
-      originalMaterials.forEach((mat, mesh) => {
-        mesh.material = mat;
-      });
-      return () => {};
-    }
-    const created: THREE.Material[] = [];
-    originalMaterials.forEach((mat, mesh) => {
-      const crypt = cloneCryptMaterials(mat);
-      (Array.isArray(crypt) ? crypt : [crypt]).forEach((m) => created.push(m));
-      mesh.material = crypt;
-    });
-    return () => {
-      created.forEach((mat) => mat.dispose());
-    };
-  }, [originalMaterials, remembered]);
 }
 
 /** One companion mesh, loaded/cloned independently of its parent (its own

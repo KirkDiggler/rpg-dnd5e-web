@@ -13,6 +13,7 @@ export interface WorldPropModelProps {
   position: [number, number, number];
   rotationY: number;
   heightScale?: number;
+  remembered?: boolean;
   /** A door item's live state: TRUE swings every declared group open. Absent
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
@@ -34,6 +35,7 @@ export function WorldPropModel({
   position,
   rotationY,
   heightScale = 1,
+  remembered = false,
   open,
   onDoorClick,
   onBoundsMeasured,
@@ -45,6 +47,7 @@ export function WorldPropModel({
   return entry.source === 'generated' ? (
     <WorldAssetModel
       assetRef={entry.ref}
+      remembered={remembered}
       position={position}
       rotationY={rotationY}
       heightScale={heightScale}
@@ -56,6 +59,7 @@ export function WorldPropModel({
   ) : (
     <PropModel
       variant={entry.variant}
+      remembered={remembered}
       position={position}
       rotationY={rotationY}
       anchor="bounds-floor-center"

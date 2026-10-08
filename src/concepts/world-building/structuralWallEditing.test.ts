@@ -556,7 +556,7 @@ describe('whole-wall operations', () => {
 });
 
 describe('wall creation and guides', () => {
-  it('creates a wall whose blocker is the drawn extent and blocks nothing', () => {
+  it('creates a wall with movement and sight blocking enabled by default', () => {
     const created = createWall({
       id: 'wall-2',
       start: { x: 0, z: 0 },
@@ -568,8 +568,15 @@ describe('wall creation and guides', () => {
     });
     expect(created.blocker.footprint.width).toBeCloseTo(6);
     expect(created.blocker.footprint.depth).toBe(DEFAULT_WALL_BLOCKER_DEPTH);
-    expect(created.blocker.blocksMovement).toBe(false);
-    expect(created.blocker.blocksLineOfSight).toBe(false);
+    expect(created.blocker.blocksMovement).toBe(true);
+    expect(created.blocker.blocksLineOfSight).toBe(true);
+    const edited = setWallBlocker(created, {
+      ...created.blocker,
+      blocksMovement: false,
+      blocksLineOfSight: false,
+    });
+    expect(edited.blocker.blocksMovement).toBe(false);
+    expect(edited.blocker.blocksLineOfSight).toBe(false);
     expect(created.openings).toEqual([]);
   });
 

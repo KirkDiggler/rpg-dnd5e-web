@@ -97,13 +97,17 @@ function RoomSceneAssetMarker({
   );
 }
 
-function RoomSceneItem({
+export function RoomSceneItem({
   item,
   dungeonKey,
   doors,
   onDoorClick,
+  suppliedDoorId,
+  remembered = false,
 }: {
   item: WorldProp;
+  suppliedDoorId?: string;
+  remembered?: boolean;
   dungeonKey?: string;
   doors?: ReadonlyMap<string, DoorInfo>;
   onDoorClick?: (door: string) => void;
@@ -112,7 +116,11 @@ function RoomSceneItem({
   // The decoder's scene validation refuses refs outside the catalog, so
   // a miss here is defensive only — and it stays a named error, never a
   // substitute model.
-  if (!entry) {
+  if (
+    !entry ||
+    (item.heightScale !== undefined &&
+      (item.heightScale < 0.25 || item.heightScale > 4))
+  ) {
     return (
       <RoomSceneAssetMarker
         itemId={item.id}
@@ -135,7 +143,8 @@ function RoomSceneItem({
   // THE JOIN. A door's live id is the engine's minting, `<key>/<itemId>`, so
   // an entry under exactly that id IS this item's door state. Everything else
   // — no key, no entry — is not a door as far as the live field is concerned.
-  const doorId = dungeonKey ? `${dungeonKey}/${item.id}` : undefined;
+  const doorId =
+    suppliedDoorId ?? (dungeonKey ? `${dungeonKey}/${item.id}` : undefined);
   const doorInfo = doorId ? doors?.get(doorId) : undefined;
   return (
     <group
@@ -167,6 +176,7 @@ function RoomSceneItem({
             position={position}
             rotationY={item.transform.rotationY}
             heightScale={item.heightScale}
+            remembered={remembered}
             open={doorInfo ? doorInfo.state === DoorState.OPEN : undefined}
             onDoorClick={
               doorInfo && doorId && onDoorClick

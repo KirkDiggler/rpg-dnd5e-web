@@ -103,7 +103,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
   });
 
-  it('ARRIVED refreshes observations, plus the roster for a monster', () => {
+  it('ARRIVED refreshes fixed prop knowledge or the monster roster, plus observations', () => {
     const monster = create(EventSchema, {
       kind: EventKind.ARRIVED,
       body: {
@@ -127,7 +127,7 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
       },
     });
     expect(refreshKeysFor(monster, VIEWER)).toEqual(['roster', 'view']);
-    expect(refreshKeysFor(prop, VIEWER)).toEqual(['view']);
+    expect(refreshKeysFor(prop, VIEWER)).toEqual(['atlas', 'view']);
   });
 });
 

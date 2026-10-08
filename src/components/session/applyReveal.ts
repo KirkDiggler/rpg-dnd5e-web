@@ -60,6 +60,7 @@ import type {
   Position,
   StructuralWallOpeningsReplacement,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { applyPropPresentations } from './propPresentations';
 import { assertStructuralLayoutIntegrity } from './structuralLayout';
 
 /** An otherwise meaningful patch cannot be applied without its known wall.
@@ -169,12 +170,22 @@ export function applyConcealmentRevealed(
   atlas: GetAtlasResponse,
   event: ConcealmentRevealed
 ): GetAtlasResponse {
-  return applyStructuralRecords(
+  const next = applyStructuralRecords(
     atlas,
     event.structuralWalls,
     event.structuralDoors,
     event.structuralWallOpeningsReplacements
   );
+  const presentations = applyPropPresentations(
+    atlas.propPresentations,
+    event.propPresentations,
+    next.structuralDoors
+  );
+  if (!event.propPresentations?.length) return next;
+  return clone(GetAtlasResponseSchema, {
+    ...next,
+    propPresentations: presentations,
+  });
 }
 function revealAdditions(event: RegionRevealed): {
   segments: AtlasSegment[];
@@ -265,6 +276,11 @@ export function applyRegionRevealed(
   );
   next.structuralWalls = structured.structuralWalls;
   next.structuralDoors = structured.structuralDoors;
+  next.propPresentations = applyPropPresentations(
+    atlas.propPresentations,
+    event.propPresentations,
+    next.structuralDoors
+  );
 
   // THE ONE FIELD THAT IS NOT AN APPEND. Every cell of the revealed
   // region drops out of `sealed` first — it was footing under a wall

@@ -235,8 +235,11 @@ vi.mock('./WorldBuildingViewport', () => ({
       onMoveMonster?: (id: string, cell: { q: number; r: number }) => void;
       onStartGesture?: (cell: { q: number; r: number }) => void;
       onSelectActor?: (actor: string | null) => void;
-      walls?: Array<{ id: string; label: string }>;
+      walls?: StructuralWall[];
       selectedWallId?: string | null;
+      previewWall?: StructuralWall | null;
+      onWallTransformPreview?: (wall: StructuralWall | null) => void;
+      onWallTransformCommit?: (wall: StructuralWall) => void;
       wallSnapEnabled?: boolean;
       onWallGesture?: (line: {
         start: { x: number; z: number };
@@ -281,6 +284,15 @@ vi.mock('./WorldBuildingViewport', () => ({
         </output>
         <output data-testid="viewport-walls">
           {JSON.stringify(props.roomAuthoring?.walls ?? [])}
+        </output>
+        <output data-testid="viewport-displayed-walls">
+          {JSON.stringify(
+            (props.roomAuthoring?.walls ?? []).map((wall) =>
+              props.roomAuthoring?.previewWall?.id === wall.id
+                ? props.roomAuthoring.previewWall
+                : wall
+            )
+          )}
         </output>
         <output data-testid="viewport-selected-wall">
           {props.roomAuthoring?.selectedWallId ?? ''}
@@ -332,6 +344,39 @@ vi.mock('./WorldBuildingViewport', () => ({
         </button>
         <button onClick={() => props.onTransformPreview(null)}>
           Cancel gizmo
+        </button>
+        <button
+          onClick={() => {
+            const room = props.roomAuthoring;
+            const wall = room?.walls?.find(
+              (entry) => entry.id === room.selectedWallId
+            );
+            if (wall)
+              room?.onWallTransformPreview?.({
+                ...wall,
+                line: {
+                  start: { x: wall.line.start.x + 2, z: wall.line.start.z + 1 },
+                  end: { x: wall.line.end.x + 2, z: wall.line.end.z + 1 },
+                },
+              });
+          }}
+        >
+          Preview wall gizmo move
+        </button>
+        <button
+          onClick={() => {
+            const room = props.roomAuthoring;
+            if (room?.previewWall)
+              room.onWallTransformCommit?.(room.previewWall);
+            room?.onWallTransformPreview?.(null);
+          }}
+        >
+          Release wall gizmo
+        </button>
+        <button
+          onClick={() => props.roomAuthoring?.onWallTransformPreview?.(null)}
+        >
+          Cancel wall gizmo
         </button>
         {props.roomAuthoring && (
           <>
@@ -3773,6 +3818,98 @@ describe('structural wall authoring (Task 3)', () => {
     return draft;
   }
 
+  it('keeps a wall drag transient, cancels cleanly, then commits one undoable saved edit', () => {
+    const storage = new MemoryStorage();
+    seedRoomWithWall(storage);
+    const mounted = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+    const before = draftWalls()[0];
+    const saved = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview wall gizmo move' })
+    );
+    const displayed = JSON.parse(
+      screen.getByTestId('viewport-displayed-walls').textContent!
+    )[0] as StructuralWall;
+    expect(displayed.line.start).toEqual({ x: 2, z: 1 });
+    expect(draftWalls()[0]).toEqual(before);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toEqual(saved);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel wall gizmo' }));
+    expect(
+      JSON.parse(screen.getByTestId('viewport-displayed-walls').textContent!)[0]
+    ).toEqual(before);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview wall gizmo move' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Release wall gizmo' }));
+    expect(draftWalls()[0]).toEqual(displayed);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(draftWalls()[0]).toEqual(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(draftWalls()[0]).toEqual(displayed);
+    mounted.unmount();
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    expect(draftWalls()[0]).toEqual(displayed);
+  });
+
+  it('rotates a selected wall with the normal cardinal controls and preserves its attachment', () => {
+    const storage = new MemoryStorage();
+    const draft = seedRoomWithWall(storage);
+    draft.room.walls![0].openings[0].door = {
+      id: 'bound-door',
+      assetRef: DOOR_ASSET,
+    };
+    draft.room.doorBindings = { 'bound-door': { closed: true } };
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+      />
+    );
+    openWalls();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Select wall Seeded wall wall-seeded',
+      })
+    );
+    const before = draftWalls()[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate +90°' }));
+    let rotated = draftWalls()[0];
+    expect(rotated.line.start.x).toBeCloseTo(5);
+    expect(rotated.line.start.z).toBeCloseTo(5);
+    expect(rotated.line.end.x).toBeCloseTo(5);
+    expect(rotated.line.end.z).toBeCloseTo(-5);
+    expect(rotated.blocker).toEqual(before.blocker);
+    expect(rotated.openings).toEqual(before.openings);
+    expect(publishedDraft().room.doorBindings).toEqual(draft.room.doorBindings);
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate 180°' }));
+    rotated = draftWalls()[0];
+    expect(rotated.line.start.z).toBeCloseTo(-5);
+    expect(rotated.line.end.z).toBeCloseTo(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(draftWalls()[0].line.start.z).toBeCloseTo(5);
+  });
+
   it('explicitly picks a wall and attached door independently without inventing declarations', () => {
     const storage = new MemoryStorage();
     const source = seedRoomWithWall(storage);
@@ -3860,9 +3997,10 @@ describe('structural wall authoring (Task 3)', () => {
     expect(drawn[0]!.appearance.height).toBeCloseTo(2.258652985095978);
     expect(drawn[0]!.appearance.thickness).toBeCloseTo(0.2477882355451584);
     expect(drawn[0]!.blocker.footprint.depth).toBe(0.25);
-    // Independent blocker, both flags false: appearance never infers blocking.
-    expect(drawn[0]!.blocker.blocksMovement).toBe(false);
-    expect(drawn[0]!.blocker.blocksLineOfSight).toBe(false);
+    // The wall tool defaults to blocking; the rectangle remains independent
+    // of appearance and the author can still change either flag.
+    expect(drawn[0]!.blocker.blocksMovement).toBe(true);
+    expect(drawn[0]!.blocker.blocksLineOfSight).toBe(true);
     expect(drawn[0]!.blocker.footprint.width).toBeCloseTo(Math.hypot(7, 3));
     expect(drawn[0]!.blocker.footprint.offsetX).toBe(0);
     expect(screen.getByTestId('viewport-selected-wall').textContent).toBe(

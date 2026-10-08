@@ -110,7 +110,11 @@ import {
   removeDoorFromOpening,
   swapOpeningDoorAsset,
 } from './structuralDoorEditing';
-import { createWall, repeatableWallAssetRefs } from './structuralWallEditing';
+import {
+  createWall,
+  previewWallTransform,
+  repeatableWallAssetRefs,
+} from './structuralWallEditing';
 import {
   StructuralWallPanel,
   type WallDoorMutation,
@@ -306,6 +310,7 @@ export function WorldBuildingConcept({
     null
   );
   const [previewScene, setPreviewScene] = useState<WorldScene | null>(null);
+  const [previewWall, setPreviewWall] = useState<StructuralWall | null>(null);
   const [search, setSearch] = useState('');
   const [arrangementName, setArrangementName] = useState('New arrangement');
   const [portableJson, setPortableJson] = useState('');
@@ -1188,16 +1193,22 @@ export function WorldBuildingConcept({
       wallAssetRef,
     ]
   );
-  const selectWall = useCallback((id: string | null) => {
-    setSelectedWallId(id);
-    if (id) {
-      setPreviewScene(null);
-      setSelectedIds([]);
-      setSelectedActorId(null);
-      setRoomTool('select');
-      setTool('select');
-    }
-  }, []);
+  const selectWall = useCallback(
+    (id: string | null) => {
+      setSelectedWallId(id);
+      setPreviewWall(null);
+      if (id) {
+        setPreviewScene(null);
+        setSelectedIds([]);
+        setSelectedActorId(null);
+        const nextTool =
+          roomTool === 'move' || roomTool === 'rotate' ? roomTool : 'select';
+        setRoomTool(nextTool);
+        setTool(nextTool);
+      }
+    },
+    [roomTool]
+  );
   const editWall = useCallback(
     (next: StructuralWall): boolean => {
       return commitWalls(
@@ -1206,6 +1217,31 @@ export function WorldBuildingConcept({
     },
     [commitWalls, walls]
   );
+  const rotateSelectedWall = useCallback(
+    (angle: number) => {
+      if (refuseWhilePublishing()) return;
+      const wall = walls.find((entry) => entry.id === selectedWallId);
+      if (!wall) return;
+      setPreviewWall(null);
+      try {
+        editWall(
+          previewWallTransform({
+            wall,
+            mode: 'rotate',
+            change: { x: 0, z: 0, rotationY: angle },
+          })
+        );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [editWall, refuseWhilePublishing, selectedWallId, walls]
+  );
+  useEffect(
+    () => setPreviewWall(null),
+    [roomTool, selectedWallId, roomDraft.room.walls]
+  );
+
   const removeWall = useCallback(
     (id: string) => {
       commitWalls(walls.filter((entry) => entry.id !== id));
@@ -2488,13 +2524,17 @@ export function WorldBuildingConcept({
         <button
           key={label}
           type="button"
-          disabled={selectedIds.length === 0}
-          aria-label={`Rotate ${label}`}
-          onClick={() =>
-            applyToSelection((current) =>
-              rotateSelection(current, selectedIds, angle)
-            )
+          disabled={
+            publishBusy || (selectedIds.length === 0 && !selectedWallId)
           }
+          aria-label={`Rotate ${label}`}
+          onClick={() => {
+            if (selectedWallId) rotateSelectedWall(angle);
+            else
+              applyToSelection((current) =>
+                rotateSelection(current, selectedIds, angle)
+              );
+          }}
         >
           {label}
         </button>
@@ -2897,7 +2937,7 @@ export function WorldBuildingConcept({
     <section
       className={`wb-shell ${compositionSource || roomMode ? 'wb-shell--world' : ''}`}
       aria-label={roomMode ? 'Site' : 'World Building Concept'}
-      data-transform-preview={previewScene ? 'active' : 'idle'}
+      data-transform-preview={previewScene || previewWall ? 'active' : 'idle'}
       data-workspace-origin={workspaceOrigin}
     >
       {roomMode ? (
@@ -3075,6 +3115,7 @@ export function WorldBuildingConcept({
                   disabled={roomMode && entry === 'wall' && !wallAssetRef}
                   onClick={() => {
                     setPreviewScene(null);
+                    setPreviewWall(null);
                     setPaintingConcealmentId(null);
                     if (entry !== 'repeat') setRepeatAssetRef(null);
                     // Actor arming lives in the Room setup controls; a tool
@@ -3176,7 +3217,7 @@ export function WorldBuildingConcept({
               scene={scene}
               previewScene={previewScene}
               selectedIds={selectedIds}
-              tool={tool}
+              tool={publishBusy ? 'select' : tool}
               activeDrag={activeDrag}
               roomAuthoring={
                 roomMode
@@ -3247,6 +3288,9 @@ export function WorldBuildingConcept({
                       walls,
                       doorBindings: roomDraft.room.doorBindings,
                       selectedWallId,
+                      previewWall,
+                      onWallTransformPreview: setPreviewWall,
+                      onWallTransformCommit: editWall,
                       wallSnapEnabled,
                       onWallGesture: createWallFromGesture,
                       onSelectWall: selectWall,
@@ -3305,6 +3349,10 @@ export function WorldBuildingConcept({
                 if (ids.length > 0) {
                   setSelectedActorId(null);
                   setSelectedWallId(null);
+                  setPreviewWall(null);
+                } else if (roomTool === 'select') {
+                  setSelectedWallId(null);
+                  setPreviewWall(null);
                 }
                 selectInScene(ids);
               }}
@@ -3313,6 +3361,7 @@ export function WorldBuildingConcept({
               onTransformPreview={setPreviewScene}
               onTransformCommit={(next) => commit(next)}
               onTransformReject={(message) => {
+                setPreviewWall(null);
                 setPreviewScene(null);
                 setNotice(message);
               }}
@@ -3475,6 +3524,7 @@ export function WorldBuildingConcept({
                 walls={walls}
                 selectedWallId={selectedWallId}
                 onSelectWall={selectWall}
+                transformActions={cardinalRotateActions}
                 assetOptions={wallAssetOptions}
                 doorAssetOptions={wallDoorAssetOptions}
                 doorBindings={roomDraft.room.doorBindings}
