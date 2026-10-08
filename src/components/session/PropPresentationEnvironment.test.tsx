@@ -50,6 +50,19 @@ describe('permitted shared prop renderer', () => {
     expect(models.calls.at(-1)?.remembered).toBe(true);
     await r.unmount();
   });
+  it('does not replace a valid height scale outside editor limits with an error marker', async () => {
+    const p = prop();
+    p.heightScale = 8;
+    const r = await ReactThreeTestRenderer.create(
+      <PropPresentationEnvironment presentations={[p]} hexSize={1} />
+    );
+    expect(models.calls.at(-1)?.heightScale).toBe(8);
+    expect(
+      r.scene.findAllByProps({ name: 'room-scene-item-error-books' })
+    ).toHaveLength(0);
+    await r.unmount();
+  });
+
   it('does not turn missing door state into a closed interactive model', async () => {
     const p = prop();
     p.doorId = 'actual/gate';

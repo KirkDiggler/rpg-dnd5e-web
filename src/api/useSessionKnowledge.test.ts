@@ -11,6 +11,7 @@ import {
 import {
   AtlasStructuralDoorSchema,
   AtlasStructuralWallSchema,
+  PropPresentationSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,6 +124,120 @@ beforeEach(() => {
   for (const fn of Object.values(client)) fn.mockReset();
   client.getKnowledge.mockResolvedValue(snapshot());
   client.getView.mockResolvedValue(create(GetViewResponseSchema));
+});
+
+describe('supplied prop presentation', () => {
+  const presentation = (id: string) =>
+    create(PropPresentationSchema, {
+      id,
+      ref: 'dnd5e:props:books',
+      origin: { x: 1, y: 2 },
+      heightScale: 1,
+    });
+  it('recovers a presentations-only reveal without an atlas baseline', async () => {
+    const absent = snapshot();
+    absent.atlas = undefined;
+    const restored = snapshot(11n);
+    restored.atlas!.propPresentations = [presentation('p')];
+    client.getKnowledge
+      .mockResolvedValueOnce(absent)
+      .mockResolvedValueOnce(restored);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          body: {
+            case: 'roomRevealed',
+            value: {
+              region: { id: 'r' },
+              propPresentations: [presentation('p')],
+            },
+          },
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(result.current.atlas?.propPresentations[0]?.id).toBe('p')
+    );
+    expect(client.getKnowledge).toHaveBeenCalledTimes(2);
+  });
+  it('refuses malformed snapshot and view presentations without installing partial data', async () => {
+    const initial = snapshot();
+    initial.atlas!.propPresentations = [presentation('fixed')];
+    client.getKnowledge.mockResolvedValue(initial);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, {
+        props: [
+          {
+            observedEmpty: true,
+            presentation: presentation('bad'),
+            shape: { case: 'prop', value: { id: 'bad' } },
+          },
+        ],
+      })
+    );
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.error?.message).toMatch(/conflicting/);
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+    const malformed = snapshot(12n);
+    malformed.atlas!.propPresentations = [presentation('bad')];
+    malformed.atlas!.propPresentations[0]!.heightScale = 0;
+    client.getKnowledge.mockResolvedValue(malformed);
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.error?.message).toMatch(/height scale/);
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+  });
+  it('merges captured render input only into the render projection and clears observed-empty', async () => {
+    const initial = snapshot();
+    initial.atlas!.propPresentations = [presentation('fixed')];
+    initial.view = create(GetViewResponseSchema, {
+      props: [
+        {
+          presentation: presentation('seen'),
+          shape: { case: 'prop', value: { id: 'seen', at: { x: 0, y: 0 } } },
+          currentVia: [],
+        },
+      ],
+    });
+    client.getKnowledge.mockResolvedValue(initial);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+      'seen',
+    ]);
+    expect(
+      result.current.snapshot?.atlas?.propPresentations.map((p) => p.id)
+    ).toEqual(['fixed']);
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, {
+        props: [
+          {
+            observedEmpty: true,
+            shape: { case: 'prop', value: { id: 'seen' } },
+          },
+        ],
+      })
+    );
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(result.current.atlas?.propPresentations.map((p) => p.id)).toEqual([
+      'fixed',
+    ]);
+  });
 });
 
 describe('supplied structural layout', () => {

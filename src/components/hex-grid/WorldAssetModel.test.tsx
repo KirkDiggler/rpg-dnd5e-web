@@ -201,6 +201,29 @@ describe('WorldAssetModel provider-baked placement', () => {
     await renderer.unmount();
   });
 
+  it.each([0.1, 8])(
+    'renders a valid canonical height scale %s without an editor-window clamp',
+    async (heightScale) => {
+      const measured = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <WorldAssetModel
+          assetRef={REF}
+          position={[0, 0, 0]}
+          heightScale={heightScale}
+          onBoundsMeasured={measured}
+        />
+      );
+      const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+      expect(model.instance.scale.y).toBeCloseTo(SYNTY_SCALE * heightScale);
+      expect(measured).toHaveBeenCalledWith(
+        expect.objectContaining({
+          height: GENERATED_WORLD_ASSETS[REF]!.boundsMeters[1] * heightScale,
+        })
+      );
+      await renderer.unmount();
+    }
+  );
+
   it('applies grounded Y-only height scaling to generated bounds', async () => {
     const onBoundsMeasured = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(

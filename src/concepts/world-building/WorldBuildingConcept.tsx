@@ -119,7 +119,10 @@ import {
   StructuralWallPanel,
   type WallDoorMutation,
 } from './StructuralWallPanel';
-import type { StructuralWall } from './structuralWalls';
+import {
+  validateStructuralWalls,
+  type StructuralWall,
+} from './structuralWalls';
 import { TablesPanel } from './TablesPanel';
 import type {
   ArrangementLibrary,
@@ -582,6 +585,15 @@ export function WorldBuildingConcept({
                 },
             valid
           );
+          // Every wall mutation (gizmo, cardinal, panel and door editing)
+          // crosses this gate before it can enter history or autosave.
+          if (nextDraft.room.walls) {
+            nextDraft.room.walls = validateStructuralWalls({
+              value: nextDraft.room.walls,
+              horizontalLimit: nextDraft.workspace.horizontalLimit,
+              itemIds: new Set(valid.items.map((item) => item.id)),
+            });
+          }
           const resolvedScope = nextScope ?? siteScope;
           // A SCOPE-ONLY EDIT IS STILL AN EDIT: compare both halves, or the
           // first policy the author writes would be dropped as a no-op.

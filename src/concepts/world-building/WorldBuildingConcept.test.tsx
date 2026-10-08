@@ -374,6 +374,22 @@ vi.mock('./WorldBuildingViewport', () => ({
           Release wall gizmo
         </button>
         <button
+          onClick={() => {
+            const room = props.roomAuthoring;
+            const wall = room?.walls?.find((w) => w.id === room.selectedWallId);
+            if (wall)
+              room?.onWallTransformCommit?.({
+                ...wall,
+                line: {
+                  start: { x: wall.line.start.x + 1, z: wall.line.start.z },
+                  end: { x: wall.line.end.x + 1, z: wall.line.end.z },
+                },
+              });
+          }}
+        >
+          Attempt late wall commit
+        </button>
+        <button
           onClick={() => props.roomAuthoring?.onWallTransformPreview?.(null)}
         >
           Cancel wall gizmo
@@ -3818,6 +3834,53 @@ describe('structural wall authoring (Task 3)', () => {
     return draft;
   }
 
+  it.each(['cardinal', 'panel'] as const)(
+    'refuses an out-of-bounds %s wall edit before history or autosave changes',
+    (mode) => {
+      const storage = new MemoryStorage();
+      const draft = seedRoomWithWall(storage);
+      if (mode === 'cardinal')
+        draft.room.walls![0].line = {
+          start: { x: 0, z: 10 },
+          end: { x: 12, z: 10 },
+        };
+      storage.setItem(ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft));
+      render(
+        <WorldBuildingConcept
+          roomMode
+          storage={storage}
+          idFactory={deterministicIds()}
+        />
+      );
+      openWalls();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Select wall Seeded wall wall-seeded',
+        })
+      );
+      const before = publishedDraft();
+      const saved = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+      if (mode === 'cardinal')
+        fireEvent.click(screen.getByRole('button', { name: 'Rotate +90°' }));
+      else {
+        fireEvent.click(screen.getByText('Advanced transform values'));
+        fireEvent.change(screen.getByLabelText('Move Z'), {
+          target: { value: '20' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Apply move' }));
+      }
+      expect(publishedDraft()).toEqual(before);
+      expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(saved);
+      expect(
+        (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(true);
+      expect(screen.getByRole('alert').textContent).toMatch(
+        /Edit rejected.*workspace/
+      );
+    }
+  );
+
   it('keeps a wall drag transient, cancels cleanly, then commits one undoable saved edit', () => {
     const storage = new MemoryStorage();
     seedRoomWithWall(storage);
@@ -4368,6 +4431,13 @@ describe('structural wall authoring (Task 3)', () => {
     );
 
     const before = screen.getByTestId('room-draft-json').textContent;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Attempt late wall commit' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
     fireEvent.change(
       screen.getByLabelText('Door state for opening opening-1'),
       { target: { value: 'open' } }

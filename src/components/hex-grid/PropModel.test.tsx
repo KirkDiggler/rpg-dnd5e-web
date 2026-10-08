@@ -193,6 +193,32 @@ describe('PropModel shared placement', () => {
     });
   });
 
+  it.each([0.1, 8])(
+    'preserves valid legacy-model height scale %s outside editor slider limits',
+    async (heightScale) => {
+      const measured = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <PropModel
+          variant={BASE_VARIANT}
+          position={[2, 0, 3]}
+          anchor="bounds-floor-center"
+          heightScale={heightScale}
+          onBoundsMeasured={measured}
+        />
+      );
+      const groups = renderer.scene
+        .findAllByType('Group')
+        .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+      expect(
+        groups.find((g) => g.position.x === 2 && g.position.z === 3)!.scale.y
+      ).toBeCloseTo(SYNTY_SCALE * heightScale);
+      expect(measured).toHaveBeenCalledWith(
+        expect.objectContaining({ height: SYNTY_SCALE * heightScale })
+      );
+      await renderer.unmount();
+    }
+  );
+
   it('renders every prop at the shared SYNTY_SCALE', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <PropModel variant={BASE_VARIANT} position={[0, 0, 9]} />

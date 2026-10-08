@@ -15,6 +15,7 @@ import {
   DoorInfoSchema,
   DoorState,
   FootprintPointSchema,
+  PropPresentationSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { describe, expect, it, vi } from 'vitest';
@@ -553,6 +554,47 @@ describe('DungeonEnvironment', () => {
         (node) => node.instance?.name === 'stub-legacy-prop'
       )
     ).toHaveLength(2);
+    await renderer.unmount();
+  });
+
+  it('replaces only the matching canonical item and light with its permitted presentation', async () => {
+    const scene = sceneWith(factsWithSources(0), [], roomPresentation);
+    scene.propPresentations = [
+      create(PropPresentationSchema, {
+        id: 'candles',
+        ref: 'dnd5e:props:candles',
+        origin: { x: 0, y: 0 },
+        elevation: 0,
+        heightScale: 1,
+        pointLight: {
+          enabled: true,
+          offset: { x: 0, y: 0 },
+          offsetElevation: 1,
+          color: '#ffffff',
+          intensity: 2,
+          range: 10,
+        },
+      }),
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment scene={scene} focus={{ x: 0, z: 0 }} hexSize={1} />
+    );
+    expect(
+      renderer.scene.findAllByProps({ name: 'room-scene-item-candles' })
+    ).toHaveLength(1);
+    expect(
+      renderer.scene.findAllByProps({ name: 'room-scene-item-table' })
+    ).toHaveLength(1);
+    const lights = pointLights(renderer);
+    expect(lights).toHaveLength(1);
+    const position = (
+      lights[0]!.instance as unknown as {
+        position: { toArray: () => number[] };
+      }
+    ).position.toArray();
+    expect(position[0]).toBeCloseTo(0);
+    expect(position[1]).toBeCloseTo(0.2 + Math.sqrt(3) / 5);
+    expect(position[2]).toBeCloseTo(0);
     await renderer.unmount();
   });
 

@@ -65,6 +65,7 @@
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { propVisualScale } from '@/rendering/propVisualScale';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -132,9 +133,7 @@ export function PropModel({
   remembered = false,
   heightScale = 1,
 }: PropModelProps) {
-  const safeHeightScale = Number.isFinite(heightScale)
-    ? Math.min(4, Math.max(0.25, heightScale))
-    : 1;
+  const safeHeightScale = propVisualScale(heightScale);
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
   const localBounds = useMemo(() => {

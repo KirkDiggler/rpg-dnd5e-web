@@ -119,7 +119,7 @@ export function RoomSceneItem({
   if (
     !entry ||
     (item.heightScale !== undefined &&
-      (item.heightScale < 0.25 || item.heightScale > 4))
+      (!Number.isFinite(item.heightScale) || item.heightScale <= 0))
   ) {
     return (
       <RoomSceneAssetMarker
