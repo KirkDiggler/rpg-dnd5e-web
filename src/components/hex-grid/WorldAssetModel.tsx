@@ -5,10 +5,12 @@ import {
 } from '@/generated/worldAssetCatalog';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { propVisualScale } from '@/rendering/propVisualScale';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { PropModelBounds } from './PropModel';
+import { useRememberedModelTint } from './useRememberedModelTint';
 
 export type WorldAssetRole = NonNullable<
   GeneratedWorldAsset['roles']
@@ -28,14 +30,10 @@ export interface WorldAssetRoleDiagnostic {
   node: string;
 }
 
-/** The height-scale range every call site clamps to. */
-const MIN_HEIGHT_SCALE = 0.25;
-const MAX_HEIGHT_SCALE = 4;
-
 /** Upper bound on tiled `above` rows, so an asset whose row is a tiny
  * fraction of its body cannot mint unbounded clones. Past this the residual
- * scale absorbs the difference, which only happens near the top of the clamp
- * and only on such an asset. */
+ * scale absorbs the difference. The pool stays bounded even for large valid
+ * presentation scales; editor slider limits do not clamp runtime rendering. */
 const MAX_ABOVE_ROWS = 64;
 
 export type WorldAssetModelDiagnostic =
@@ -50,6 +48,7 @@ export interface WorldAssetModelProps {
   onBoundsMeasured?: (bounds: PropModelBounds) => void;
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   heightScale?: number;
+  remembered?: boolean;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -278,6 +277,7 @@ function LoadedWorldAssetModel({
   open,
   onDoorClick,
   heightScale,
+  remembered,
 }: {
   assetRef: string;
   url: string;
@@ -292,9 +292,11 @@ function LoadedWorldAssetModel({
   open?: boolean;
   onDoorClick?: () => void;
   heightScale: number;
+  remembered: boolean;
 }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  useRememberedModelTint(cloned, remembered, heightScale);
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
     [cloned, roles]
@@ -370,9 +372,7 @@ function LoadedWorldAssetModel({
       MAX_ABOVE_ROWS,
       Math.max(
         1,
-        Math.ceil(
-          (boundsMeters[1] * MAX_HEIGHT_SCALE - openingWorld) / rowWorld
-        )
+        Math.ceil((boundsMeters[1] * heightScale - openingWorld) / rowWorld)
       )
     );
     for (let index = 1; index < most; index += 1) {
@@ -381,7 +381,7 @@ function LoadedWorldAssetModel({
       tiles.push(tile);
     }
     return tiles;
-  }, [boundsMeters, resolved]);
+  }, [boundsMeters, resolved, heightScale]);
 
   /**
    * Grow the `above` section until the assembly reaches its authored height
@@ -512,14 +512,13 @@ export function WorldAssetModel({
   onBoundsMeasured,
   onDiagnostic,
   heightScale = 1,
+  remembered = false,
   openDoors = [],
   open,
   onDoorClick,
   onDoorsResolved,
 }: WorldAssetModelProps) {
-  const safeHeightScale = Number.isFinite(heightScale)
-    ? Math.min(MAX_HEIGHT_SCALE, Math.max(MIN_HEIGHT_SCALE, heightScale))
-    : 1;
+  const safeHeightScale = propVisualScale(heightScale);
   const asset = resolveWorldAsset(assetRef, (diagnostic) =>
     onDiagnostic?.(diagnostic)
   );
@@ -539,6 +538,7 @@ export function WorldAssetModel({
       open={open}
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
+      remembered={remembered}
     />
   );
 }

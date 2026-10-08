@@ -4,15 +4,15 @@
  * answers live or gate-off; an unreachable answer is never cached so
  * `retry` can recover).
  *
- * The probe is `GetDungeon("reference-tomb")` (plan W): the tomb is the
- * one dungeon every registry boots with (rpg-api refuses to boot
- * without a compiling content dir), so with authoring on this simply
- * succeeds. `Unimplemented` is the registered-or-not answer (rpg-api
- * registers `AuthoringService` only under `RPG_AUTHORING_ENABLED=1`);
+ * The probe is `GetDungeon("")`: a registered service refuses the missing
+ * required key BEFORE reading content. It must not fetch a real dungeon just
+ * to decide whether a builder entry can be offered during app/game startup.
+ * `Unimplemented` is the registered-or-not answer (rpg-api registers
+ * `AuthoringService` only under `RPG_AUTHORING_ENABLED=1`);
  * `Unavailable`/`Unknown`/a raw network throw mean the server itself is
  * not there (connect-web wraps a genuine connection failure as
  * `Code.Unknown`, verified live — never `Unavailable`); any other code
- * (a `NotFound` from a content dir without the tomb, say) still proves
+ * (notably the expected `InvalidArgument` for the empty key) still proves
  * the service is reachable.
  */
 import { authoringClient } from '@/api/client';
@@ -34,7 +34,7 @@ export interface UseAuthoringGateResult {
   retry: () => void;
 }
 
-export const AUTHORING_PROBE_KEY = 'reference-tomb';
+export const AUTHORING_PROBE_KEY = '';
 
 let cachedTerminalState: 'live' | 'gate-off' | null = null;
 

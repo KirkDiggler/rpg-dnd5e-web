@@ -14,6 +14,10 @@ import {
   type SiteScope,
 } from './siteScope';
 import { objectShape, rejectUnknownKeys } from './strictShape';
+import {
+  validateStructuralWalls,
+  type StructuralWall,
+} from './structuralWalls';
 import type { KeyValueStorage, WorldScene } from './types';
 
 // Re-exported so every sibling strict decoder keeps importing them from here
@@ -236,6 +240,9 @@ export interface RoomMonsterBinding extends RoomMonsterInteraction {
 }
 export interface RoomGameplayData {
   implicitRegionId: string;
+  /** Authored wall geometry and appearance; generated pieces are never stored.
+   * Absent on existing documents. Does not change walkable membership. */
+  walls?: StructuralWall[];
   /** Pointy-top axial q/r cells using shared HEX_SIZE=1 scene units. */
   walkableHexes: RoomHexCell[];
   /** Stable WorldProp id -> authored declaration. */
@@ -587,6 +594,19 @@ export function reconcileRoomDraft(
   scene: WorldScene
 ): RoomDraft {
   const ids = new Set(scene.items.map((item) => item.id));
+  // A BOUND DOOR'S STATE IS OWNED BY ITS OPENING, NOT BY A SCENE ITEM. The
+  // door has no `scene.items` entry, so the state cleanup must keep an entry
+  // whose owner is a wall opening — otherwise an unrelated prop edit would
+  // silently delete an attached door's authored state. `propDeclarations` and
+  // `propBindings` still follow scene items alone.
+  const boundDoorIds = new Set(
+    (draft.room.walls ?? []).flatMap((wall) =>
+      wall.openings.flatMap((opening) =>
+        opening.door ? [opening.door.id] : []
+      )
+    )
+  );
+  const doorOwners = new Set([...ids, ...boundDoorIds]);
   // BOTH DECLARATION KINDS FOLLOW THE ITEM THEY NAME. A door binding can no
   // more outlive its item than a creature's orders can outlive the creature
   // (`removeRoomMonster`), and here the cost of leaving one behind is higher
@@ -595,7 +615,9 @@ export function reconcileRoomDraft(
   // file, it refuses the whole document at publish.
   const doorBindings = draft.room.doorBindings
     ? Object.fromEntries(
-        Object.entries(draft.room.doorBindings).filter(([id]) => ids.has(id))
+        Object.entries(draft.room.doorBindings).filter(([id]) =>
+          doorOwners.has(id)
+        )
       )
     : undefined;
   const room: RoomGameplayData = {
@@ -1084,6 +1106,7 @@ function validateDraft(value: unknown): RoomDraft {
     room,
     [
       'implicitRegionId',
+      'walls',
       'walkableHexes',
       'propDeclarations',
       'arrangementDeclarations',
@@ -1124,6 +1147,13 @@ function validateDraft(value: unknown): RoomDraft {
   }
   const propDeclarations: Record<string, RoomPropDeclaration> = {};
   const itemIds = new Set((input.scene?.items ?? []).map((item) => item.id));
+  const walls = Object.hasOwn(room, 'walls')
+    ? validateStructuralWalls({
+        value: room.walls,
+        horizontalLimit: workspace.horizontalLimit,
+        itemIds,
+      })
+    : [];
   for (const [id, declaration] of Object.entries(room.propDeclarations)) {
     if (!itemIds.has(id))
       throw new Error(`Declaration owner does not exist: ${id}`);
@@ -1176,6 +1206,21 @@ function validateDraft(value: unknown): RoomDraft {
         RoomPropBinding
       >)
     : undefined;
+  // A BOUND DOOR REQUIRES ITS STATE. An opening that carries a `door` owns a
+  // `doorBindings` entry; absence is a bare opening, never a hidden or open
+  // door. This is the ONE owner-specific shape rule, and it applies ONLY to
+  // attachments: an ordinary standalone door's state grammar stays carried,
+  // not graded, exactly as before.
+  for (const [wallIndex, wall] of walls.entries()) {
+    for (const [openingIndex, opening] of wall.openings.entries()) {
+      if (!opening.door) continue;
+      if (!doorBindings || !Object.hasOwn(doorBindings, opening.door.id))
+        throw new Error(
+          `room.room.walls[${wallIndex}].openings[${openingIndex}].door: ` +
+            `door ${opening.door.id} has no doorBindings entry`
+        );
+    }
+  }
   const draft: RoomDraft = {
     ...input,
     version: 3,
@@ -1194,6 +1239,7 @@ function validateDraft(value: unknown): RoomDraft {
     }),
     room: {
       implicitRegionId: room.implicitRegionId,
+      ...(walls.length > 0 ? { walls } : {}),
       walkableHexes,
       propDeclarations,
       arrangementDeclarations,

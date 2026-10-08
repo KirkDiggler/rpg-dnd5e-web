@@ -340,13 +340,27 @@ function SessionEncounterScope({
     try {
       return {
         ok: true as const,
-        scene: buildScene3D(
-          atlas,
-          HEX_SIZE,
-          layoutOutcome.layout,
-          roomScene ?? undefined,
-          hiddenPlacedIds
-        ),
+        scene: {
+          ...buildScene3D(
+            atlas,
+            HEX_SIZE,
+            layoutOutcome.layout,
+            roomScene ?? undefined,
+            hiddenPlacedIds
+          ),
+          rememberedPropPresentationIds: new Set(
+            knowledgeView.props.flatMap((s) =>
+              s.presentation && s.currentVia.length === 0
+                ? [s.presentation.id]
+                : []
+            )
+          ),
+          currentDoorIds: new Set(
+            knowledgeView.doors.flatMap((s) =>
+              s.door && s.currentVia.length > 0 ? [s.door.door] : []
+            )
+          ),
+        },
       };
     } catch (error) {
       return {
@@ -354,12 +368,20 @@ function SessionEncounterScope({
         message: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [atlas, layoutOutcome, roomScene, roomSceneLoading, hiddenPlacedIds]);
+  }, [
+    atlas,
+    layoutOutcome,
+    roomScene,
+    roomSceneLoading,
+    hiddenPlacedIds,
+    knowledgeView.props,
+    knowledgeView.doors,
+  ]);
   const scene = sceneBuild?.ok ? sceneBuild.scene : null;
   const observationMarkers = useMemo(() => {
     if (!scene) return [];
     const props = knowledgeView.props.flatMap((s) => {
-      if (s.observedEmpty || !s.shape.value) return [];
+      if (s.observedEmpty || !s.shape.value || s.presentation) return [];
       const drawn = scene.props.find((p) => p.id === s.shape.value?.id);
       return drawn
         ? [
@@ -1198,6 +1220,7 @@ function SessionEncounterScope({
       acceptKnowledgeEvent,
       invalidateAuthority,
       member,
+      moves,
       refreshKeysForEvent,
       scheduleRefresh,
     ]
@@ -1236,11 +1259,15 @@ function SessionEncounterScope({
   const handleDoorClick = useCallback(
     (door: string) => {
       const state = doors.get(door)?.state;
-      if (!member || state === undefined || state === DoorState.OPEN) return;
+      if (!member || state === undefined || state === DoorState.UNSPECIFIED)
+        return;
       setDoorNotice(null);
       void (async () => {
         try {
-          if (state === DoorState.LOCKED) {
+          if (state === DoorState.OPEN) {
+            await sessionClient.closeDoor({ session: sessionId, member, door });
+            setDoorNotice('The door closes.');
+          } else if (state === DoorState.LOCKED) {
             const response = await sessionClient.unlock({
               session: sessionId,
               member,

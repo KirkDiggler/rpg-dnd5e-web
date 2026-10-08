@@ -184,6 +184,8 @@ export interface SiteConcealmentCheck {
 export interface SiteDiscoveryAttempts {
   max?: number;
   reset_hexes?: number;
+  /** Legacy source values round-trip; the game owns discoveries in the
+   * encounter regardless. New policy edits emit 'run', not cross-run memory. */
   lifetime?: 'character' | 'run';
 }
 

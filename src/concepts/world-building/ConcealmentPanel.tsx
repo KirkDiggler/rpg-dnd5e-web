@@ -17,7 +17,8 @@ import type { WorldScene } from './types';
 
 export interface ConcealmentPanelProps {
   scope: SiteScope;
-  items: WorldScene['items'];
+  /** Labels for selectable source identities; structures need no fake prop pose. */
+  items: ReadonlyArray<Pick<WorldScene['items'][number], 'id' | 'label'>>;
   activeId: string | null;
   onActivate: (id: string | null) => void;
   onChange: (scope: SiteScope) => void;
@@ -135,9 +136,10 @@ function ConcealmentRow({
             {activeId === id ? 'Done' : 'Add members'}
           </button>
           <p className="wb-help">
-            Click Add members, then click walkable hexes, doors and props on the
-            canvas. Each click adds one member; clicking it again keeps it. Gold
-            highlights this secret’s members. Done or Escape ends selection.
+            Click Add members, then click walkable hexes, walls, doors and props
+            on the canvas. Each click adds one member; clicking it again keeps
+            it. Gold highlights this secret’s members. Done or Escape ends
+            selection.
           </p>
           <fieldset>
             <legend>Members</legend>

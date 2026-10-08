@@ -156,7 +156,7 @@ export function refreshKeysFor(
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.
     case 'arrived':
       return event.body.value.kind === PlacementKind.PROP
-        ? ['view']
+        ? ['atlas', 'view']
         : ['roster', 'view'];
     // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
     // table: a body with nothing to give must be indistinguishable
@@ -192,6 +192,18 @@ export function refreshKeysFor(
     // arrives as its next turn, on that turn's own beats. There is nothing
     // to re-read here because nothing has been decided yet.
     //
+    // AN AUTOMATIC DISCOVERY CHECK WAS RESOLVED (rpg-project#523, consuming
+    // proto v0.1.220). SCOPED TO THE CHECKED MEMBER: the result is theirs and
+    // only their own card and what they may still declare re-read. Nobody
+    // else's cached read moved, so nobody else refetches. No discovery roll
+    // and no discovery decision happens in web — the server resolved the
+    // check; this row is the mechanical invalidation of that member's own
+    // read, exactly as `intimidated`/`persuaded` below are scoped to the
+    // actor.
+    case 'discoveryChecked':
+      return event.body.value.member === member
+        ? ['characterData', 'afford']
+        : [];
     // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
     // shares this row, with ONE correction the threat's comment above did not
     // have to make: on the WORLD clock a social verb costs nothing at all (R3),
@@ -199,10 +211,6 @@ export function refreshKeysFor(
     // because the clock is not on this beat and guessing it from an absent
     // field is exactly the kind of local decision that goes wrong the first
     // time a rule moves. One wasted read is cheaper than a stale action bar.
-    case 'discoveryChecked':
-      return event.body.value.member === member
-        ? ['characterData', 'afford']
-        : [];
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded':

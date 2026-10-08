@@ -43,6 +43,7 @@ import {
 } from './RoomActorMarkers';
 import {
   walkableCellsInWorldRectangle,
+  type RoomDoorBinding,
   type RoomHexCell,
   type RoomMonsterBinding,
   type RoomMonsterPlacement,
@@ -52,7 +53,11 @@ import {
 import { createWalkableHexFillGeometry } from './roomHexGeometry';
 import { selectionClosure } from './sceneState';
 import type { SiteConcealments } from './siteScope';
-import type { WorldScene, WorldTransform } from './types';
+import { StructuralConcealmentGuides } from './StructuralConcealmentGuides';
+import { snapWallPoint } from './structuralWallEditing';
+import type { StructuralWall } from './structuralWalls';
+import { StructuralWallVisual } from './StructuralWallVisual';
+import type { WorldPoint, WorldScene, WorldTransform } from './types';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
 import {
@@ -103,7 +108,8 @@ export interface WorldBuildingViewportProps {
       | 'rectangle'
       | 'repeat'
       | 'monster'
-      | 'start';
+      | 'start'
+      | 'wall';
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;
@@ -137,6 +143,20 @@ export interface WorldBuildingViewportProps {
     onPlaceMonster?: (cell: RoomHexCell) => void;
     onMoveMonster?: (id: string, cell: RoomHexCell) => void;
     onStartGesture?: (cell: RoomHexCell) => void;
+    /** Authored structural walls, their selection, the optional snap flag and
+     * the draw callback. The viewport reports a finished line; the editor
+     * creates and commits the wall through the existing room history. */
+    walls?: readonly StructuralWall[];
+    /** Attached-door state, keyed by bound door id. Presentation preview of
+     * the authored INITIAL state only; never a live engine operation. */
+    doorBindings?: Readonly<Record<string, RoomDoorBinding>>;
+    selectedWallId?: string | null;
+    previewWall?: StructuralWall | null;
+    onWallTransformPreview?: (wall: StructuralWall | null) => void;
+    onWallTransformCommit?: (wall: StructuralWall) => void;
+    wallSnapEnabled?: boolean;
+    onWallGesture?: (line: { start: WorldPoint; end: WorldPoint }) => void;
+    onSelectWall?: (id: string | null) => void;
   };
 }
 
@@ -549,9 +569,18 @@ export function WorldSceneContents(
         >;
         transforms: WorldTransform[];
       } & CapturedFloorPointer)
+    | ({
+        kind: 'wall';
+        start: WorldPoint;
+        end: WorldPoint;
+      } & CapturedFloorPointer)
     | null
   >(null);
   const [rectanglePreview, setRectanglePreview] = useState<RoomHexCell[]>([]);
+  const [wallPreview, setWallPreview] = useState<{
+    start: WorldPoint;
+    end: WorldPoint;
+  } | null>(null);
   /** Hover/placement preview cell for the armed monster and party-start
    * tools. Purely authoring: never authored, never a legality gate. */
   const [actorHoverCell, setActorHoverCell] = useState<RoomHexCell | null>(
@@ -632,6 +661,7 @@ export function WorldSceneContents(
     if (gesture) releaseFloorPointer(gesture);
     setRectanglePreview([]);
     setRepeatPreview(null);
+    setWallPreview(null);
   }, [releaseFloorPointer]);
   const cancelOwnedFloorGesture = useCallback(
     (pointerId: number) => {
@@ -698,6 +728,61 @@ export function WorldSceneContents(
             />
           ) : null;
         })()}
+      {wallPreview &&
+        (() => {
+          const dx = wallPreview.end.x - wallPreview.start.x;
+          const dz = wallPreview.end.z - wallPreview.start.z;
+          const length = Math.hypot(dx, dz);
+          const rotationY = length === 0 ? 0 : Math.atan2(-dz, dx);
+          return (
+            <mesh
+              name="structural-wall-draw-preview"
+              userData={{ length }}
+              position={[
+                (wallPreview.start.x + wallPreview.end.x) / 2,
+                DUNGEON_SURFACE_Y + 0.06,
+                (wallPreview.start.z + wallPreview.end.z) / 2,
+              ]}
+              rotation={[0, rotationY, 0]}
+              raycast={() => null}
+            >
+              <boxGeometry args={[Math.max(length, 0.04), 0.02, 0.1]} />
+              <meshBasicMaterial
+                color="#67e8f9"
+                transparent
+                opacity={0.9}
+                depthTest={false}
+                toneMapped={false}
+              />
+            </mesh>
+          );
+        })()}
+      {props.roomAuthoring && (props.roomAuthoring.walls?.length ?? 0) > 0 && (
+        <StructuralWallVisual
+          walls={(props.roomAuthoring.walls ?? []).map((wall) =>
+            props.roomAuthoring?.previewWall?.id === wall.id
+              ? props.roomAuthoring.previewWall
+              : wall
+          )}
+          selectedWallId={props.roomAuthoring.selectedWallId ?? null}
+          doorBindings={props.roomAuthoring.doorBindings}
+          selectable={
+            ['select', 'move', 'rotate'].includes(props.roomAuthoring.tool) &&
+            !props.roomAuthoring.activeConcealmentId
+          }
+          onSelectWall={(id) => {
+            if (!isGizmoPointer()) props.roomAuthoring?.onSelectWall?.(id);
+          }}
+        />
+      )}
+      {props.roomAuthoring && (
+        <StructuralConcealmentGuides
+          walls={props.roomAuthoring.walls ?? []}
+          concealments={props.roomAuthoring.concealments}
+          activeId={props.roomAuthoring.activeConcealmentId}
+          onPick={props.roomAuthoring.onConcealmentPropPick}
+        />
+      )}
       <mesh
         name="world-building-finite-ground"
         userData={{ worldBuildingGround: true }}
@@ -830,6 +915,26 @@ export function WorldSceneContents(
             };
             return;
           }
+          // Wall drawing: preview-only during the drag, one line reported on
+          // release, zero length a no-op. Snapping is optional and uses the
+          // one shared pure helper for both the preview and the commit.
+          if (roomTool === 'wall') {
+            const start = snapWallPoint({
+              point: { x: event.point.x, z: event.point.z },
+              enabled: props.roomAuthoring?.wallSnapEnabled ?? false,
+            }).point;
+            const target = event.target as Element;
+            target.setPointerCapture?.(event.pointerId);
+            floorGesture.current = {
+              kind: 'wall',
+              start,
+              end: start,
+              pointerId: event.pointerId,
+              target,
+            };
+            setWallPreview({ start, end: start });
+            return;
+          }
           if (!event.shiftKey) onSelect([]);
         }}
         onPointerMove={(event) => {
@@ -884,6 +989,15 @@ export function WorldSceneContents(
             setRectanglePreview(cells);
             return;
           }
+          if (roomTool === 'wall' && gesture.kind === 'wall') {
+            const end = snapWallPoint({
+              point: { x: event.point.x, z: event.point.z },
+              enabled: props.roomAuthoring?.wallSnapEnabled ?? false,
+            }).point;
+            gesture.end = end;
+            setWallPreview({ start: gesture.start, end });
+            return;
+          }
           if (
             (roomTool !== 'paint' && roomTool !== 'erase') ||
             gesture.kind !== 'brush'
@@ -904,6 +1018,7 @@ export function WorldSceneContents(
           releaseFloorPointer(gesture);
           setRectanglePreview([]);
           setRepeatPreview(null);
+          setWallPreview(null);
           if (gesture.kind === 'repeat') {
             if (gesture.transforms.length > 0) {
               props.roomAuthoring?.onRepeatGesture?.(
@@ -914,6 +1029,17 @@ export function WorldSceneContents(
           } else if (gesture.kind === 'rectangle') {
             if (gesture.cells.length > 0)
               props.roomAuthoring?.onWalkableGesture(gesture.cells, 'paint');
+          } else if (gesture.kind === 'wall') {
+            const length = Math.hypot(
+              gesture.end.x - gesture.start.x,
+              gesture.end.z - gesture.start.z
+            );
+            if (length > 0) {
+              props.roomAuthoring?.onWallGesture?.({
+                start: { ...gesture.start },
+                end: { ...gesture.end },
+              });
+            }
           } else {
             props.roomAuthoring?.onWalkableGesture(
               [...gesture.cells.values()],
@@ -1049,6 +1175,27 @@ export function WorldSceneContents(
         onReject={props.onTransformReject}
         onTransformingChange={setTransforming}
         sceneHorizontalLimit={props.roomAuthoring?.workspace.horizontalLimit}
+        wallTarget={(() => {
+          const room = props.roomAuthoring;
+          const wall = room?.walls?.find(
+            (entry) => entry.id === room.selectedWallId
+          );
+          if (
+            !room ||
+            !wall ||
+            room.activeConcealmentId ||
+            (room.tool !== 'move' && room.tool !== 'rotate') ||
+            !room.onWallTransformPreview ||
+            !room.onWallTransformCommit
+          )
+            return undefined;
+          return {
+            wall,
+            horizontalLimit: room.workspace.horizontalLimit,
+            onPreview: room.onWallTransformPreview,
+            onCommit: room.onWallTransformCommit,
+          };
+        })()}
       />
       <WorldBuildingDropInteraction
         activeDrag={

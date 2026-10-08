@@ -18,6 +18,12 @@
 import { coordToKey } from '@/components/hex-grid/hexMath';
 import { resolveDungeonLighting } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { create } from '@bufbuild/protobuf';
+import {
+  AtlasStructuralDoorSchema,
+  AtlasStructuralWallSchema,
+  FootprintPointSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { cellBoundingBox } from '../../author/hexGeometry';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
@@ -570,5 +576,112 @@ describe('hiddenPlacedPropIds — the placement universe minus what the atlas li
     expect(
       hiddenPlacedPropIds(new Set(['table', 'reliquary']), undefined)
     ).toEqual(new Set(['table', 'reliquary']));
+  });
+});
+
+/**
+ * The supplied structural collections `buildScene3D` carries through.
+ *
+ * The numeric witness again, this time end to end through the scene builder:
+ * the encounter compiler measured the wall as `0 → 10k` with a `7k`-centred
+ * `2k` opening, and the renderer must draw `0 → 10` / `7` / `2` at HEX_SIZE 1
+ * with the catalog runtime scale applied exactly once (by the shared leaf, not
+ * here).
+ */
+describe('buildScene3D supplied structural layout', () => {
+  const K = 5 / Math.sqrt(3);
+  const feet = (x: number, y: number) => create(FootprintPointSchema, { x, y });
+  const baseAtlas = (structural: Record<string, unknown>) =>
+    ({
+      cells: [pos(0, 0)],
+      props: [],
+      segments: [],
+      doorways: [],
+      regions: [],
+      exits: [],
+      ...structural,
+    }) as never;
+
+  it('converts the canonical line once into scene units', () => {
+    const scene = buildScene3D(
+      baseAtlas({
+        structuralWalls: [
+          create(AtlasStructuralWallSchema, {
+            id: 'wall-1',
+            ref: 'r',
+            from: feet(0, 0),
+            to: feet(10 * K, 0),
+            height: 3 * K,
+            thickness: 0.3 * K,
+            elevation: 0.2 * K,
+            openings: [{ id: 'cut-1', position: 7 * K, width: 2 * K }],
+          }),
+        ],
+      }),
+      1,
+      'pointy'
+    );
+    expect(scene.structuralWalls).toHaveLength(1);
+    const surface = scene.structuralWalls![0]!.surface;
+    expect(surface.line.end.x).toBeCloseTo(10, 10);
+    expect(surface.appearance.height).toBeCloseTo(3, 10);
+    expect(surface.openings[0]!.position).toBeCloseTo(7, 10);
+    expect(surface.openings[0]!.width).toBeCloseTo(2, 10);
+    expect(scene.structuralDiagnostics).toEqual([]);
+  });
+
+  it('carries independent door records with no parent wall', () => {
+    const scene = buildScene3D(
+      baseAtlas({
+        structuralDoors: [
+          create(AtlasStructuralDoorSchema, {
+            id: 'dungeon/gate',
+            ref: 'r',
+            from: feet(6 * K, 0),
+            to: feet(8 * K, 0),
+            height: 3 * K,
+            thickness: 0.3 * K,
+            elevation: 0,
+          }),
+        ],
+      }),
+      1,
+      'pointy'
+    );
+    expect(scene.structuralDoors).toHaveLength(1);
+    expect(scene.structuralDoors![0]!.id).toBe('dungeon/gate');
+    expect(scene.structuralDoors![0]!.pose.point.x).toBeCloseTo(7, 10);
+  });
+
+  it('is the LEGACY branch when the producer omits the collections', () => {
+    const scene = buildScene3D(baseAtlas({}), 1, 'pointy');
+    expect(scene.structuralWalls).toEqual([]);
+    expect(scene.structuralDoors).toEqual([]);
+    expect(scene.structuralDiagnostics).toEqual([]);
+  });
+
+  it('refuses a partial scene with a named malformed structural record', () => {
+    expect(() =>
+      buildScene3D(
+        baseAtlas({
+          structuralWalls: [
+            create(AtlasStructuralWallSchema, { id: 'broken', ref: 'r' }),
+          ],
+          structuralDoors: [
+            create(AtlasStructuralDoorSchema, {
+              id: 'good-door',
+              ref: 'r',
+              from: feet(0, 0),
+              to: feet(2 * K, 0),
+              height: 3 * K,
+              thickness: 0.3 * K,
+              elevation: 0,
+            }),
+          ],
+        }),
+        1,
+        'pointy'
+      )
+    ).toThrow(/wall broken/);
   });
 });
