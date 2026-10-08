@@ -6,12 +6,14 @@ import {
   ConcealmentRevealedSchema,
   ConcentrationEndedSchema,
   DiscoveryCheckedSchema,
+  EquipmentChangedSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
   MovedSchema,
   PersuadedSchema,
   RegionRevealedSchema,
+  RestedSchema,
   RollWindowOpenedSchema,
   SavedSchema,
   SightedSchema,
@@ -403,5 +405,33 @@ describe('the social beats and the creature’s answer', () => {
     it('does not re-read the scene — nobody moved and nothing was spent on it', () => {
       expect(refreshKeysFor(checked(VIEWER), VIEWER)).not.toContain('view');
     });
+  });
+});
+
+describe('the session verbs’ two rows (rpg-project#542)', () => {
+  it('EQUIPMENT_CHANGED re-reads the sheet and what it prices', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.EQUIPMENT_CHANGED,
+      body: {
+        case: 'equipmentChanged',
+        value: create(EquipmentChangedSchema, { member: VIEWER }),
+      },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(
+      expect.arrayContaining(['characterData', 'afford'])
+    );
+  });
+
+  it('RESTED re-reads the sheet, the offers and the turn’s concentration badge', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.RESTED,
+      body: {
+        case: 'rested',
+        value: create(RestedSchema, { member: VIEWER }),
+      },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(
+      expect.arrayContaining(['characterData', 'afford', 'turn'])
+    );
   });
 });

@@ -5306,6 +5306,48 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the server’s refusal of an unequip in its own words and leaves the hand unchanged', async () => {
+    readyScene();
+    const sword = { module: 'dnd5e', type: 'item', id: 'longsword' };
+    const initial = privateCharacterData({
+      equipped: { main_hand: sword },
+      inventory: [
+        {
+          ref: sword,
+          name: 'Longsword',
+          statLine: '1d8 slashing',
+          iconKey: '',
+          kind: 'weapon',
+          equipmentType: 'weapon',
+          slotKeys: ['main_hand'],
+        },
+      ],
+      slots: [
+        { key: 'main_hand', displayLabel: 'Main Hand', accepts: ['weapon'] },
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({ character: initial });
+    hoisted.unequipItemFn.mockRejectedValue(
+      new ConnectError('it is not your turn', Code.FailedPrecondition)
+    );
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+        'dnd5e:item:longsword'
+      )
+    );
+
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    await screen.findByTestId('equipment-popover');
+    fireEvent.click(screen.getByTestId('equip-socket-main_hand'));
+
+    expect(await screen.findByText('it is not your turn')).toBeTruthy();
+    expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+      'dnd5e:item:longsword'
+    );
+  });
+
   it('replaces the visible main hand directly from the authoritative EquipItem response', async () => {
     readyScene();
     const greatsword = {

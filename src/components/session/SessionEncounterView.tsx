@@ -21,6 +21,7 @@ import { useSessionInteract } from '@/api/useSessionInteract';
 import { useSessionKnowledge } from '@/api/useSessionKnowledge';
 import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
+import { useSessionRest } from '@/api/useSessionRest';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
@@ -116,6 +117,8 @@ import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldD
 import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
 import { cubeToPosition } from './positionBridge';
+import { isRefusal, refusalMessage } from './refusal';
+import { RestDialog } from './RestDialog';
 import { RunEndedToast } from './RunEndedToast';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
@@ -258,6 +261,13 @@ function SessionEncounterScope({
   const { interact } = useSessionInteract();
   const { trade, loading: tradeLoading } = useSessionTrade();
   const { unpack, loading: unpacking } = useSessionUnpack();
+  const { rest, loading: resting } = useSessionRest();
+  const [restOpen, setRestOpen] = useState(false);
+  const [restError, setRestError] = useState<string | null>(null);
+  /** The server's refusal of an equip or unequip (not your turn, downed,
+   * cannot afford, body armour mid-fight) — shown as its own words, with the
+   * hands left as the last confirmed sheet drew them. */
+  const [equipNotice, setEquipNotice] = useState<string | null>(null);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
   const [runEnded, setRunEnded] = useState<string | null>(null);
@@ -1537,6 +1547,7 @@ function SessionEncounterScope({
         }
         return;
       }
+      setEquipNotice(null);
       try {
         const response =
           intent.kind === 'EquipItem'
@@ -1554,9 +1565,11 @@ function SessionEncounterScope({
         }
         // Full authoritative replacement only — no client equipment/AC rules.
         replaceCharacterData(response.character);
-      } catch {
-        // The mutation hooks retain the transport error. Last confirmed private
-        // state remains visible until the player retries.
+      } catch (error) {
+        // No optimistic update ran, so the last confirmed private state is
+        // already what stays on screen. A refusal says why in the server's own
+        // words; any other failure stays on the mutation hook's error.
+        if (isRefusal(error)) setEquipNotice(refusalMessage(error));
       }
     },
     [
@@ -1568,6 +1581,29 @@ function SessionEncounterScope({
       unequipItem,
       unpack,
     ]
+  );
+
+  // Everyone seated rests together; the roster is the table's own list.
+  const restMembers = useMemo(
+    () =>
+      [...roster]
+        .filter(([, entry]) => entry.kind === MemberKind.PLAYER)
+        .map(([id, entry]) => ({ id, name: entry.name })),
+    [roster]
+  );
+  const handleRest = useCallback(
+    async (resters: readonly { member: string; hitDice: number }[]) => {
+      setRestError(null);
+      try {
+        // The outcome arrives on the RESTED beats; nothing is read here.
+        await rest({ session: sessionId, resters });
+        setRestOpen(false);
+      } catch (error) {
+        setRestError(refusalMessage(error));
+        throw error;
+      }
+    },
+    [rest, sessionId]
   );
 
   const ownRoster = roster.get(member);
@@ -1725,6 +1761,18 @@ function SessionEncounterScope({
                 <Button variant="ghost" size="sm" onClick={onBack}>
                   Back
                 </Button>
+                {turnClock === ClockKind.WORLD && runEnded === null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRestError(null);
+                      setRestOpen(true);
+                    }}
+                  >
+                    Short rest
+                  </Button>
+                )}
                 {snapshot?.discoverySharing !== undefined && (
                   <label
                     style={{
@@ -1774,6 +1822,7 @@ function SessionEncounterScope({
                 {holdingNotice && <span>{holdingNotice}</span>}
                 {vendorNotice && <span>{vendorNotice}</span>}
                 {unpackNotice && <span>{unpackNotice}</span>}
+                {equipNotice && <span role="alert">{equipNotice}</span>}
               </>
             }
             onCenterView={() => setFocusRequest((value) => value + 1)}
@@ -2141,6 +2190,14 @@ function SessionEncounterScope({
       }}
     >
       {content}
+      <RestDialog
+        open={restOpen && turnClock === ClockKind.WORLD}
+        onOpenChange={setRestOpen}
+        members={restMembers}
+        onRest={handleRest}
+        error={restError}
+        pending={resting}
+      />
     </div>,
     document.body
   );
