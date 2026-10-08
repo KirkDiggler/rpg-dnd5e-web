@@ -599,9 +599,27 @@ function ActionDockContents({
         Equipment
       </button>
     ) : null;
+  const movementHint =
+    clock === ClockKind.WORLD && actionPresentation?.desktopIcons ? (
+      <small
+        className={styles.desktopMovementHint}
+        title={
+          authorityFresh
+            ? 'No turn economy on the world clock.'
+            : 'Waiting for current Turn and Afford authority.'
+        }
+      >
+        {authorityFresh
+          ? 'Click the floor to move'
+          : 'Actions may be out of date'}
+      </small>
+    ) : null;
   const standing =
     actionPresentation?.mode === 'organized-hud'
-      ? (standingGroup || centerControl || equipmentControl) && (
+      ? (standingGroup ||
+          centerControl ||
+          equipmentControl ||
+          movementHint) && (
           <div
             className={styles.organizedSecondary}
             role="group"
@@ -614,6 +632,7 @@ function ActionDockContents({
               </details>
             )}
             {centerControl}
+            {movementHint}
             {equipmentControl}
           </div>
         )
@@ -656,6 +675,26 @@ function ActionDockContents({
     (declaration) => declaration.verb !== Verb.MOVE
   );
 
+  if (clock === ClockKind.WORLD && actionPresentation?.desktopIcons) {
+    // Same two-level composition as combat: offers, then one utility footer.
+    // The compact/mobile branch below retains its existing standing-control
+    // positions; only desktop replaces the old exploration banner with a hint.
+    return (
+      <div className={styles.actionRow} data-testid="world-clock-actions">
+        <OrganizedActionSurface
+          declarations={worldClockDeclarations}
+          authorityFresh={authorityFresh}
+          presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
+          onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
+          secondaryControls={standing}
+          embedded={Boolean(desktopStatus)}
+          externalCancel={targetingControlsActive}
+        />
+      </div>
+    );
+  }
   if (clock === ClockKind.WORLD) {
     // THE WORLD CLOCK HAS ROWS NOW (rpg-project#457 R3, rpg-project#458).
     // Afford used to return an empty list here, so this branch drew a message
@@ -705,56 +744,34 @@ function ActionDockContents({
             reason one step smaller: a group that came and went would shift
             nothing now, but would the moment anything followed it. */}
         <div
-          className={
-            actionPresentation?.desktopIcons ? undefined : styles.actionGroup
-          }
-          style={
-            actionPresentation?.desktopIcons
-              ? { flex: '1 1 100%', minWidth: 0 }
-              : undefined
-          }
+          className={styles.actionGroup}
           data-testid="world-clock-actions"
           role="group"
           aria-label="Actions"
         >
-          {actionPresentation?.desktopIcons ? (
-            <OrganizedActionSurface
-              declarations={worldClockDeclarations}
-              authorityFresh={authorityFresh}
-              presentation={actionPresentation}
-              armedDeclarationId={armedDeclarationId}
-              onSelectDeclaration={onSelectDeclaration}
-              onCancelSelection={onCancelSelection}
-              embedded={Boolean(desktopStatus)}
-              externalCancel={targetingControlsActive}
-            />
-          ) : (
-            <>
-              {worldClockDeclarations.length > 0 && (
-                <span className={styles.groupLabel}>Actions</span>
-              )}
-              {worldClockDeclarations.map((declaration, index) => (
-                <ActionDeclaration
-                  key={`${declaration.id}-${index}`}
-                  declaration={declaration}
-                  armed={declaration.id === armedDeclarationId}
-                  authorityFresh={authorityFresh}
-                  index={index}
-                  // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
-                  // Slot.NONE because the world clock has no economy to charge
-                  // against, so a badge here would invent a price the server said
-                  // there is none of. A row that DOES arrive priced still draws
-                  // its badge, so this reads what the server sent rather than
-                  // applying a blanket rule about the clock.
-                  showCost={
-                    declaration.slot !== Slot.NONE &&
-                    declaration.slot !== Slot.UNSPECIFIED
-                  }
-                  onSelect={onSelectDeclaration}
-                />
-              ))}
-            </>
+          {worldClockDeclarations.length > 0 && (
+            <span className={styles.groupLabel}>Actions</span>
           )}
+          {worldClockDeclarations.map((declaration, index) => (
+            <ActionDeclaration
+              key={`${declaration.id}-${index}`}
+              declaration={declaration}
+              armed={declaration.id === armedDeclarationId}
+              authorityFresh={authorityFresh}
+              index={index}
+              // A ROW WITH NO COST SHOWS NO PRICE. Afford sends these at
+              // Slot.NONE because the world clock has no economy to charge
+              // against, so a badge here would invent a price the server said
+              // there is none of. A row that DOES arrive priced still draws
+              // its badge, so this reads what the server sent rather than
+              // applying a blanket rule about the clock.
+              showCost={
+                declaration.slot !== Slot.NONE &&
+                declaration.slot !== Slot.UNSPECIFIED
+              }
+              onSelect={onSelectDeclaration}
+            />
+          ))}
         </div>
       </div>
     );

@@ -39,6 +39,9 @@ PNG bytes come from private `rpg-game-assets`, never the public web repository.
 No inventory entry or class/level inference mints an action.
 
 `DesktopActionSurface` keeps 1–4 balanced rows and overlapping final pages.
+Free-roam desktop uses the same offers-plus-footer composition as combat;
+its movement hint and map utilities live in that footer rather than separate
+banner/control rows. Compact callers retain their exploration panel.
 Favorites are disabled unless a concept explicitly supplies `desktopFavorites`;
 the live slice has no stars, edit mode or preference storage. The fixed Status
 area keeps private-state absence/freshness explicit. Action inspection renders

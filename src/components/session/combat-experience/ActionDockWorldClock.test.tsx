@@ -22,7 +22,7 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ActionDock } from './ActionDock';
 
@@ -63,6 +63,74 @@ describe('the dock outside a fight', () => {
   it('uses desktop icons for the same world offers without adding Move or favorites', () => {
     const offered = create(DeclarationSchema, socialRow(Verb.PERSUADE));
     const select = vi.fn();
+    const center = vi.fn();
+    const equipment = vi.fn();
+    render(
+      <ActionDock
+        clock={ClockKind.WORLD}
+        viewerMember={fixture.viewerMember}
+        participants={fixture.participants}
+        declarations={[offered]}
+        authorityFresh
+        actionPresentation={{ mode: 'organized-hud', desktopIcons: {} }}
+        onCenterView={center}
+        onOpenEquipment={equipment}
+        onSelectDeclaration={select}
+        onEndTurn={vi.fn()}
+      />
+    );
+    const surface = within(screen.getByTestId('desktop-action-surface'));
+    // Free roam uses the same footer composition as combat, not three extra rows.
+    expect(surface.getByText('Click the floor to move')).toBeTruthy();
+    expect(screen.queryByText('Exploration')).toBeNull();
+    fireEvent.click(surface.getByRole('button', { name: 'Center on me' }));
+    fireEvent.click(surface.getByRole('button', { name: 'Equipment' }));
+    expect(center).toHaveBeenCalledOnce();
+    expect(equipment).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Move/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Persuade' }));
+    expect(select).toHaveBeenCalledWith(offered);
+  });
+
+  it.each([true, false])(
+    'keeps the movement hint in the desktop footer with no offers (fresh=%s)',
+    (authorityFresh) => {
+      render(
+        <ActionDock
+          clock={ClockKind.WORLD}
+          viewerMember={fixture.viewerMember}
+          participants={fixture.participants}
+          declarations={[]}
+          authorityFresh={authorityFresh}
+          actionPresentation={{ mode: 'organized-hud', desktopIcons: {} }}
+          onSelectDeclaration={vi.fn()}
+          onEndTurn={vi.fn()}
+        />
+      );
+      const surface = within(screen.getByTestId('desktop-action-surface'));
+      expect(
+        surface.getByText(
+          authorityFresh
+            ? 'Click the floor to move'
+            : 'Actions may be out of date'
+        )
+      ).toBeTruthy();
+      expect(surface.queryByRole('region', { name: 'Actions' })).toBeNull();
+      expect(screen.queryByText('Exploration')).toBeNull();
+    }
+  );
+
+  it('keeps refused desktop social offers inspectable without dispatching them', () => {
+    const select = vi.fn();
+    const offered = create(
+      DeclarationSchema,
+      socialRow(Verb.PERSUADE, {
+        available: false,
+        why: { text: 'No audience' },
+      })
+    );
     render(
       <ActionDock
         clock={ClockKind.WORLD}
@@ -75,12 +143,11 @@ describe('the dock outside a fight', () => {
         onEndTurn={vi.fn()}
       />
     );
-    expect(screen.getByTestId('desktop-action-surface')).toBeTruthy();
-    expect(screen.getByText('Click the floor to move')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Move/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Persuade' }));
-    expect(select).toHaveBeenCalledWith(offered);
+    const button = screen.getByRole('button', { name: 'Persuade' });
+    fireEvent.focus(button);
+    expect(screen.getByRole('tooltip').textContent).toContain('No audience');
+    fireEvent.click(button);
+    expect(select).not.toHaveBeenCalled();
   });
 
   it('draws both social rows the server sent', () => {
