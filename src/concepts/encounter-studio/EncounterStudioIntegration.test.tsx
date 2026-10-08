@@ -1,4 +1,11 @@
+import { decodeCompositionScene } from '@/compositions/compositionScene';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import {
+  decodeRoomDocumentJson,
+  encodeRoomDocument,
+} from '@/compositions/roomDocument';
+import { create } from '@bufbuild/protobuf';
+import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
   act,
   cleanup,
@@ -10,16 +17,41 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertRoomDocumentSize,
   parseRoomDocumentJson,
+  resizeRoomWorkspace,
   ROOM_DRAFT_STORAGE_KEY,
   stringifyRoomDraft,
+  updateWalkableHexes,
   type RoomDraftDocument,
   type RoomHexCell,
 } from '../world-building/roomDraft';
-import type { KeyValueStorage, WorldScene } from '../world-building/types';
+import {
+  MAX_JSON_LENGTH,
+  parseSceneJson,
+  stringifyScene,
+} from '../world-building/serialization';
+import {
+  decodeSingleRoomDungeon,
+  encodeSingleRoomDungeon,
+} from '../world-building/singleRoomDungeon';
+import { scopeFrom } from '../world-building/siteScope';
+import type {
+  KeyValueStorage,
+  WorldPoint,
+  WorldScene,
+} from '../world-building/types';
+import {
+  workspaceBounds,
+  workspaceCells,
+} from '../world-building/workspaceGeometry';
 import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
+import {
+  createCastleWorkspaceDocument,
+  createSparseMaxWorkspaceDocument,
+} from './fixtures/castleWorkspace';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
   createLayoutTransform,
@@ -190,9 +222,16 @@ function seed(emptyFloor = false): RoomDraftDocument {
     stringifyRoomDraft(document.draft, document.scope)
   );
 }
-function mount(storage: MemoryStorage): ReturnType<typeof render> {
+function mount(
+  storage: MemoryStorage,
+  idFactory?: () => string
+): ReturnType<typeof render> {
   return render(
-    <EncounterStudioWorkspace compositionSource={source} storage={storage} />
+    <EncounterStudioWorkspace
+      compositionSource={source}
+      storage={storage}
+      idFactory={idFactory}
+    />
   );
 }
 function button(name: string): HTMLElement {
@@ -588,4 +627,308 @@ describe('Encounter Studio joined document boundary', () => {
     fireEvent.click(button('Redo'));
     expect(storage.document()).toEqual(good);
   });
+});
+
+function changeField(name: string, value: string): void {
+  fireEvent.change(screen.getByLabelText(name), { target: { value } });
+}
+function submitForm(name: string): void {
+  fireEvent.submit(screen.getByRole('form', { name }));
+}
+function resize(width: number, height: number): void {
+  changeField('Width (hexes)', String(width));
+  changeField('Height (hexes)', String(height));
+  submitForm('Workspace dimensions');
+}
+function pointInDocument(
+  storage: MemoryStorage,
+  world: WorldPoint
+): { clientX: number; clientY: number } {
+  const workspace = storage.document().draft.workspace;
+  const client = worldToClient(
+    world,
+    createLayoutTransform(
+      bounds,
+      { center: { x: 0, z: 0 }, zoom: 1 },
+      workspace.kind === 'centered-odd-r'
+        ? workspaceBounds(workspace)
+        : workspace.horizontalLimit
+    )
+  )!;
+  return { clientX: client.x, clientY: client.y };
+}
+function paintWorkspace(storage: MemoryStorage): void {
+  const all = workspaceCells(storage.document().draft.workspace);
+  // Both tested rectangles have an even height: first row is even and last
+  // row is odd, so these contained endpoints enclose every cell centre.
+  const start = pointInDocument(storage, layoutCellCenter(all[0]));
+  const end = pointInDocument(storage, layoutCellCenter(all[all.length - 1]));
+  fireEvent.click(button('Rectangle'));
+  fireEvent.pointerDown(surface(), { ...start, pointerId: 7, button: 0 });
+  fireEvent.pointerMove(surface(), { ...end, pointerId: 7 });
+  fireEvent.pointerUp(surface(), { ...end, pointerId: 7, button: 0 });
+}
+function createLabelAt(text: string, location: WorldPoint): void {
+  changeField('Label name', text);
+  submitForm('New map label');
+  changeField('Label world X', String(location.x));
+  changeField('Label world Z', String(location.z));
+  submitForm('Map label coordinates');
+}
+function expectCodecs(document: RoomDraftDocument): void {
+  const json = stringifyRoomDraft(document.draft, document.scope);
+  expect(json.length).toBeLessThanOrEqual(MAX_JSON_LENGTH);
+  expect(parseRoomDocumentJson(json)).toEqual(document);
+  const yaml = encodeSingleRoomDungeon({
+    key: 'studio-castle',
+    draft: document.draft,
+    ...document.scope,
+  });
+  const decoded = decodeSingleRoomDungeon(yaml);
+  expect({ draft: decoded.draft, scope: scopeFrom(decoded) }).toEqual(document);
+  expect(
+    parseRoomDocumentJson(stringifyRoomDraft(decoded.draft, scopeFrom(decoded)))
+  ).toEqual(document);
+  // A room-library snapshot intentionally owns only the draft, NOT site scope.
+  // JSON/YAML/local storage above prove the separate complete scope boundary.
+  expect(decodeRoomDocumentJson(encodeRoomDocument(document.draft))).toEqual(
+    document.draft
+  );
+  const composition = create(CompositionSchema, {
+    json: stringifyScene(document.draft.scene),
+  });
+  expect(decodeCompositionScene(composition)).toEqual(document.draft.scene);
+  expect(parseSceneJson(composition.json)).toEqual(document.draft.scene);
+}
+
+describe('Task 6 populated workspace/label integration', () => {
+  it('castle fixture preserves the complete payload and survives real JSON/YAML/snapshot/composition codecs', () => {
+    const base = seed();
+    const castle = createCastleWorkspaceDocument();
+    expect(workspaceCells(castle.draft.workspace)).toHaveLength(3504);
+    expect(castle.draft.room.walkableHexes).toHaveLength(3504);
+    expect(
+      new Set(
+        castle.draft.room.walkableHexes.map((cell) => `${cell.q},${cell.r}`)
+      ).size
+    ).toBe(3504);
+    expect(castle).toEqual({
+      ...base,
+      draft: {
+        ...base.draft,
+        workspace: resizeRoomWorkspace(base, 73, 48).draft.workspace,
+        room: {
+          ...base.draft.room,
+          walkableHexes: castle.draft.room.walkableHexes,
+        },
+        scene: {
+          ...base.draft.scene,
+          version: 2,
+          mapLabels: [
+            {
+              id: 'castle-kitchen',
+              text: 'Kitchen',
+              location: { x: -8, z: -6 },
+            },
+            {
+              id: 'castle-courtyard',
+              text: 'Courtyard',
+              location: { x: 8, z: 6 },
+            },
+          ],
+        },
+      },
+    });
+    expectCodecs(castle);
+    const independent = createCastleWorkspaceDocument();
+    independent.draft.scene.mapLabels![0].text = 'Changed annotation';
+    expect(castle.draft.scene.mapLabels![0].text).toBe('Kitchen');
+  });
+
+  it('real resize/paint/label forms preserve all populated data through no-ops, cancellation, refused shrink, shared history and reload', async () => {
+    const original = seed();
+    const storage = new MemoryStorage(original);
+    let id = 0;
+    const view = mount(storage, () => `joined-label-${++id}`);
+    await settled();
+    resize(73, 48);
+    const resized = resizeRoomWorkspace(original, 73, 48);
+    expect(storage.document()).toEqual(resized); // growth changes no geometry/policy
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(3504);
+    paintWorkspace(storage);
+    const painted = {
+      ...resized,
+      draft: updateWalkableHexes(
+        resized.draft,
+        workspaceCells(resized.draft.workspace),
+        'paint'
+      ),
+    };
+    expect(storage.document()).toEqual(painted);
+    fireEvent.click(button('Label'));
+    createLabelAt('Kitchen', { x: -8, z: -6 });
+    const kitchenId = storage.document().draft.scene.mapLabels![0].id;
+    expect(kitchenId).toMatch(/^joined-label-\d+$/);
+    const kitchen = {
+      ...painted,
+      draft: {
+        ...painted.draft,
+        scene: {
+          ...painted.draft.scene,
+          mapLabels: [
+            { id: kitchenId, text: 'Kitchen', location: { x: -8, z: -6 } },
+          ],
+        },
+      },
+    };
+    expect(storage.document()).toEqual(kitchen);
+    createLabelAt('Courtyard', { x: 8, z: 6 });
+    const courtyardId = storage.document().draft.scene.mapLabels![1].id;
+    expect(courtyardId).not.toBe(kitchenId);
+    const castle = createCastleWorkspaceDocument();
+    const labeled = {
+      ...castle,
+      draft: {
+        ...castle.draft,
+        scene: {
+          ...castle.draft.scene,
+          mapLabels: [
+            { id: kitchenId, text: 'Kitchen', location: { x: -8, z: -6 } },
+            { id: courtyardId, text: 'Courtyard', location: { x: 8, z: 6 } },
+          ],
+        },
+      },
+    };
+    expect(storage.document()).toEqual(labeled);
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.roomWrites();
+    resize(73, 48); // no-op dimensions
+    changeField('Existing label', kitchenId);
+    submitForm('Rename map label'); // same text
+    submitForm('Map label coordinates'); // same point
+    changeField('Rename label', 'Never committed');
+    fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
+    changeField('Width (hexes)', '74');
+    fireEvent.click(button('Cancel dimensions'));
+    // Deselect before staging placement; this is not a selected-label edit.
+    changeField('Existing label', '');
+    changeField('Label name', 'Never placed');
+    submitForm('New map label');
+    fireEvent.click(button('Cancel placement'));
+    resize(2, 2);
+    expect(screen.getByText(/Resize refused/)).not.toBeNull();
+    expect(
+      screen
+        .getAllByRole('alert')
+        .map((node) => node.textContent)
+        .join(' ')
+    ).toMatch(/walkableHexes.*outside/i);
+    expect(storage.document()).toEqual(labeled);
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    switchTo('3D');
+    expect(viewport().scene).toEqual(labeled.draft.scene);
+    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
+      labeled.draft.room.walkableHexes
+    );
+    const nextScene = moved(viewport().scene);
+    act(() => viewport().onTransformCommit(nextScene));
+    const propEdited = {
+      ...labeled,
+      draft: { ...labeled.draft, scene: nextScene },
+    };
+    expect(storage.document()).toEqual(propEdited);
+    switchTo('Layout');
+    switchTo('3D');
+    expect(viewport().scene).toEqual(nextScene);
+    switchTo('Layout');
+    // Exactly five committed edits; all navigation/no-op/cancel/refusal entries
+    // are absent. Whole-document comparisons protect every policy and identity.
+    for (const expected of [labeled, kitchen, painted, resized, original]) {
+      fireEvent.click(button('Undo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    for (const expected of [resized, painted, kitchen, labeled, propEdited]) {
+      fireEvent.click(button('Redo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expect((button('Redo') as HTMLButtonElement).disabled).toBe(true);
+    expectCodecs(propEdited);
+    view.unmount();
+    mount(storage);
+    await settled();
+    expect(cells()).toHaveLength(3504);
+    expect(surface().querySelectorAll('[data-label-id]')).toHaveLength(2);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    expect(storage.document()).toEqual(propEdited);
+    switchTo('3D');
+    expect(viewport().scene).toEqual(propEdited.draft.scene);
+    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
+      propEdited.draft.room.walkableHexes
+    );
+  }, 60000);
+
+  it('sparse maximum fits but fully painted maximum refuses before history/storage without losing prior label edit', async () => {
+    const original = createSparseMaxWorkspaceDocument();
+    expect(workspaceCells(original.draft.workspace)).toHaveLength(16384);
+    expect(original.draft.room.walkableHexes.length).toBeLessThan(16384);
+    expectCodecs(original);
+    const fullyPainted = {
+      ...original,
+      draft: updateWalkableHexes(
+        original.draft,
+        workspaceCells(original.draft.workspace),
+        'paint'
+      ),
+    };
+    expect(fullyPainted.draft.room.walkableHexes).toHaveLength(16384);
+    expect(() => assertRoomDocumentSize(fullyPainted)).toThrow(
+      /maximum 500000 characters/
+    );
+    expect(() =>
+      stringifyRoomDraft(fullyPainted.draft, fullyPainted.scope)
+    ).toThrow(/maximum 500000 characters/);
+    const storage = new MemoryStorage(original);
+    mount(storage, () => 'max-label');
+    await settled();
+    expect(surface().querySelectorAll('[data-cell]')).toHaveLength(16384);
+    fireEvent.click(button('Label'));
+    createLabelAt('Courtyard', { x: 8, z: 6 });
+    const good = storage.document();
+    expect(good).toEqual({
+      ...original,
+      draft: {
+        ...original.draft,
+        scene: {
+          ...original.draft.scene,
+          mapLabels: [
+            { id: 'max-label', text: 'Courtyard', location: { x: 8, z: 6 } },
+          ],
+        },
+      },
+    });
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.roomWrites();
+    paintWorkspace(storage);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /maximum 500000 characters/
+    );
+    expect(storage.document()).toEqual(good);
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    expect(cells()).toHaveLength(original.draft.room.walkableHexes.length);
+    switchTo('3D');
+    expect(viewport().scene).toEqual(good.draft.scene);
+    expect(viewport().roomAuthoring?.walkableHexes).toEqual(
+      good.draft.room.walkableHexes
+    );
+    switchTo('Layout');
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(good);
+    expect((button('Redo') as HTMLButtonElement).disabled).toBe(true);
+  }, 60000);
 });

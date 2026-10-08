@@ -8,9 +8,23 @@ availability and identity lifecycle; availability is not server write permission
 Studio does not inject publication or gameplay launch capabilities.
 
 Layout offers **Paint**, **Erase** and **Rectangle** over canonical walkable hex
-cells. Brush strokes sample visited cells (no interpolation); rectangles include
-cell centers within the world-XZ box. Middle-drag pans, wheel zooms, and Escape
-cancels. These framing operations do not create document history.
+cells, staged **Width (hexes)** / **Height (hexes)** with **Apply dimensions**, and
+**Label** placement/selection/drag/rename/move/delete. Brush strokes sample visited
+cells (no interpolation); rectangles include cell centers within the world-XZ
+box. Middle-drag pans, wheel zooms, and Escape cancels. Framing operations and
+view switching do not create document history.
+
+Dimensions are counts from 1 to 128, not world distance. Centered absolute odd-r
+columns/rows span `-floor(count/2)` through `ceil(count/2)-1`; even counts take
+the extra negative side. Negative odd rows also stagger +½ column. Existing
+coordinates never translate. Untagged legacy radius workspaces are identified as
+nonrectangular and remain unchanged until explicit Apply. Labels are 2D plain-text
+annotations, not gameplay regions, floor/policy membership or arrangement content.
+Their IDs/text are at most 120 characters, with at most 256 labels. A rectangular
+resize or first label promotes the scene to version 2; older scene-1-only web
+readers refuse it rather than strip metadata. See the
+[owning contract](../../src/concepts/world-building/CONTRACT.md#centered-workspaces-and-map-annotations-1239)
+for membership and conservative protected-extent refusal rules.
 
 **3D** reuses the existing interactive viewport and prop palette/tree/selection
 controls: ground or supported-surface drops, Select/Move/Rotate, repeat placement,
@@ -33,10 +47,11 @@ or API/proto change. Visual lights are not gameplay illumination calculations.
 - Use a dedicated worktree and the repository's [local development guide](local-dev.md).
   Use the existing local stack or explicitly configured reader-only development
   compositions. Do not replace another running stack or dev server.
-- If using development compositions, an example server command is:
+- If using development compositions, choose an unused authorized port (5174 in
+  this example; do not replace another session's server). An example command is:
 
   ```bash
-  VITE_DEV_PLAYER_ID=test-player VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+  VITE_DEV_PLAYER_ID=test-player VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1 npm run dev -- --host 127.0.0.1 --port 5174 --strictPort
   ```
 
 - Use a **fresh, nonpersistent browser context** (for Playwright,
@@ -96,26 +111,65 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
    prop declarations/bindings, transforms/groups/supports/lights, monster
    declarations/bindings, party start and **every** scope key (tables, factions,
    dispositions, intel, exits, endings, scenarios, concealments).
-8. Keep deterministic write-error and late-callback checks in the injected-memory
-   tests below. Optionally use a third fresh context with corrupt current bytes:
-   observe refusal/autosave pause, edit/switch, and verify the original corrupt
-   bytes remain unless explicit replacement is chosen.
-9. Close the contexts. Record URL, source configuration, revision, exact content
-   comparisons, screenshots, console/page/request failures and any incomplete
-   steps in the delivery report or PR. Do not put pass claims in this procedure.
+8. In that populated context, stage 73 × 48 and verify nothing changes before
+   Apply. Apply once; confirm exactly 3504 workspace cells, unchanged original
+   coordinates/payload and no automatically painted floor. Paint the exposed
+   negative/positive edges and check both views. Try an unsafe shrink and record
+   the offender path; current dimensions/document/history/stored bytes must stay
+   unchanged. Undo/Redo the resize and confirm navigation created no entry.
+9. Use **Label** to name Kitchen and Courtyard, including pointer placement and
+   the accessible exact-coordinate form. Drag one, rename/move it with Apply or
+   Enter, then delete/Undo/Redo; verify stable IDs and no floor/policy changes.
+   Stage text/dimensions/drag and cancel with Escape, Cancel or view switching;
+   verify no hidden commit. Apply unchanged dimensions/name/location and confirm
+   no history entry. Reload and compare full normalized data in both views.
+10. In a separate fresh context, seed `createCastleWorkspaceDocument()` from
+    `src/concepts/encounter-studio/fixtures/castleWorkspace.ts`. This reusable TS
+    fixture uses actual resize/paint/label helpers over the complete populated
+    document: 73 × 48, all 3504 cells, Kitchen/Courtyard, walls/openings/attached
+    door, props/groups/support/light, actors/start and all site scope. It is the
+    authority; do not commit thousands of generated YAML cells. Export to a
+    temporary file only when needed. Compare room JSON → YAML → JSON full payload,
+    scene/composition decode and room-library snapshot draft equality. Snapshots
+    intentionally carry the draft, not site scope; local JSON/YAML carry both.
+11. Seed `createSparseMaxWorkspaceDocument()` from the same fixture module and
+    confirm 128 × 128 / 16384 workspace cells, sparse floor and full payload fit.
+    Commit a label, then attempt to paint every cell with one rectangle. The
+    unchanged 500000-character serialization budget must refuse it **before**
+    history/storage, preserving the prior document and label Undo/Redo. Supported
+    workspace capacity is not a guarantee of fully paintable maximum capacity.
+    Check that ordinary incomplete policy staging in World Builder remains
+    editable-size-valid but is not called persistable; resize/labels/save/export
+    retain full codec validation.
+12. Keep deterministic write-error and late-callback checks in the injected-memory
+    tests below. Optionally use a third fresh context with corrupt current bytes:
+    observe refusal/autosave pause, edit/switch, and verify the original corrupt
+    bytes remain unless explicit replacement is chosen.
+13. Measure castle and sparse-max render/paint/pick/save timings in the disposable
+    browser and record frame/latency/memory observations, serialized size and any
+    refusal. Do not infer performance acceptance from cell counts or DOM tests.
+    If checking provider compatibility, use temporary web-emitted YAML with the
+    pinned toolkit's actual decode/Load and YAML-node re-emission/decode, comparing
+    labeled vs label-free compiled gameplay. Record provider revision/commands
+    separately; mocked service results do not prove this boundary.
+14. Close the contexts. Record URL, source configuration, revision, exact content
+    comparisons, screenshots, console/page/request failures and any incomplete
+    steps in the delivery report or PR. Do not put pass claims in this procedure.
 
 ## Automated checks
 
 Run individually from the web worktree with matching local dependencies:
 
 ```bash
-npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx
+npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx
+npm run test:run -- src/concepts/world-building/sceneState.test.ts src/concepts/world-building/serialization.test.ts src/concepts/world-building/roomDraft.test.ts src/concepts/world-building/singleRoomDungeon.test.ts src/compositions/roomDocument.test.ts
 npm run test:run -- src/concepts/world-building/WorldBuilderWorkspace.test.tsx src/concepts/world-building/WorldBuildingViewport.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.ts
 npm run typecheck
 ```
 
 The joined DOM tests use the real Studio shell, WorldBuildingConcept owner,
-LayoutViewport, floor mutations, validators and parsers with injected memory
+LayoutViewport, dimension/label forms and gestures, floor/label mutations,
+validators and real JSON/YAML/snapshot/composition parsers with injected memory
 storage. They retain the real WorldBuildingViewport but replace its **Canvas
 WebGL boundary**, observing the controlled scene inputs and calling the owner
 callbacks supplied to WorldSceneContents. Thumbnail rendering and external

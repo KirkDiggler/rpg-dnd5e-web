@@ -3,7 +3,7 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
-## Current Encounter Studio boundary (#1232, project#545)
+## Current Encounter Studio boundary (#1232, #1239, project#545)
 
 Home offers **Encounter Studio** alongside World Builder under the same
 current-world source availability and identity lifecycle. Studio mounts one
@@ -11,8 +11,9 @@ room-mode `WorldBuildingConcept`; its typed presentation facade projects the
 existing document and commands, not a second store. Layout and the existing 3D
 viewport may unmount independently without replacing the document owner.
 
-Layout offers Paint, Erase and Rectangle on canonical walkable cells. A completed
-stroke/rectangle is one validated whole-document history transaction. The 3D
+Layout offers Paint, Erase and Rectangle on canonical walkable cells, explicit
+workspace dimensions and presentation-only map labels. A completed
+stroke/rectangle is one bounds/size-checked whole-document history transaction. The 3D
 view reuses prop placement, selection, Move/Rotate, repeat, grouping, support,
 height and visual-light controls. Both views use the same draft **and complete
 site scope**, shared Undo/Redo and persistence. View changes and Layout pan/zoom
@@ -38,14 +39,76 @@ monsters/bindings/party start and all scope fields. Shape validation does not gr
 gameplay legality. Source availability is not proof of remote write permission.
 Studio exposes no publication, lobby launch, Save & Play, world-snapshot,
 import/reset or policy-editing commands. Room-management/focus tools, discovery
-simulation, Layout wall/door tools, asset markings/labels and gameplay camera
-presets are outside this slice. Missing room-navigation controls do not imply
-unsupported multi-room gameplay.
+simulation, Layout wall/door tools, asset markings and gameplay camera
+presets are outside this slice. Map labels do not supply those capabilities.
+Missing room-navigation controls do not imply unsupported multi-room gameplay.
 
 See [the safe verification procedure](../../../docs/how-to/encounter-studio-verification.md)
 for disposable-context interaction checks and the DOM tests' WebGL boundary.
 The older sections below describe their own extensions or the standalone prop
 composer; they do not narrow this current Studio boundary.
+
+## Centered workspaces and map annotations (#1239)
+
+**Width (hexes)** and **Height (hexes)** stage integer counts in `1..128`.
+**Apply dimensions** is one atomic resize; Cancel/Escape or navigation does not
+commit. Growth adds capacity, never floor, content translation, scaling or
+policy membership. A fresh draft retains the small legacy hex-radius workspace.
+Untagged `{hexRadius, horizontalLimit}` documents remain legacy until explicit
+Apply; the controls identify them as nonrectangular and do not invent dimensions.
+
+The saved rectangle is `{kind:"centered-odd-r", widthHexes, heightHexes,
+hexRadius, horizontalLimit}`. It contains exactly width × height cells (maximum
+16384). Absolute odd-r coordinates use `row=r`, `col=q+floor(r/2)`, and
+`q=col-floor(row/2)`. Columns range from `-floor(width/2)` through
+`ceil(width/2)-1`; rows use the same rule. Even counts take the extra negative-side
+cell. Odd rows, including negative odd rows, stagger +½ column. The original
+axial/world origin stays fixed, not cosmetically recentered. Both views consume
+one shared cell union, boundary and world AABB. The derived enclosing hex radius
+and scalar horizontal limit remain saved for existing consumers, are checked on
+read, and are not independent membership authorities or editable controls.
+
+A shrink protects floor, actors/start, exit/concealment cells, prop/group anchors,
+labels, authored prop footprints, wall line/thickness/blocker and derived
+opening/door poses. Protected extent AABBs must fit wholly in the closed union
+of workspace hex polygons; boundary contact is allowed. This conservative check
+can refuse a rotated shape whose exact shape fits. A refusal names the offending
+identity/path and leaves geometry, document, history and stored bytes intact.
+Template-local arrangement declarations are not placed geometry. Pure loaded-mesh
+overhang is permitted; private model bounds do not define eligibility.
+
+**Label** offers named placement by pointer, keyboard at view center or exact
+world X/Z, selection, drag, staged rename, coordinate move and delete. Apply/Enter
+commits; Escape, capture loss, navigation or document/tool changes cancel previews
+without history. Labels are plain text 2D annotations such as Kitchen/Courtyard,
+not gameplay regions, floor ownership, blocking/discovery data, assets, support
+relations or arrangement members. No 3D label renderer is promised. Label-only
+edits leave workspace and gameplay policy unchanged.
+
+`WorldScene.version` supports 1/2. Version 2 optionally carries
+`mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
+labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
+continuous world points inside the workspace, and at most 256 labels are accepted.
+Absent labels means none; deleting the last removes `mapLabels` without demoting
+the scene. First label or explicit rectangular resize promotes the scene to 2,
+even if the rectangle has no labels. Version-1 scenes carrying label metadata
+are refused. Older scene-1-only web readers refuse scene 2 rather than silently
+strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
+data, not YAML comments/formatting. Envelope versions, storage namespaces and
+existing v3/v4 local-envelope refusals remain unchanged. Toolkit presentation
+retains the opaque authored metadata; labels do not compile into gameplay policy.
+
+Bounds validity, editable-draft size and completed persistence are distinct gates.
+Ordinary edits preserve unfinished policy rows while checking existing shapes,
+rectangular bounds and canonical serialized size before history insertion. Explicit
+resize/label intents and save/export require complete codec validation. An editable
+unfinished policy is not thereby persistable; no fact is invented or policy dropped.
+Storage quota failure remains a visible save failure, not a successful persistence
+claim. The unchanged 500000-character envelope budget includes the complete scope.
+Workspace capacity is **not** fully paintable maximum capacity: the populated
+73 × 48 / 3504-cell castle fits, but fully painting 128 × 128 exceeds this budget
+and is refused before history/storage. A sparse 128 × 128 document fits. These
+bounds do not promise browser latency or performance acceptance.
 
 ## Structural-wall authoring (#527 in rpg-project)
 
@@ -559,10 +622,11 @@ SceneEnvelope {
   kind: "rpg-world-building-scene"
   version: 1
   scene: WorldScene {
-    version: 1
+    version: 1 | 2
     id, name
     items: WorldProp[]
     groups: WorldGroup[]
+    mapLabels?: [{ id, text, location: { x, z } }] // scene 2 only
   }
 }
 
@@ -606,7 +670,8 @@ LibraryEnvelope {
 }
 ```
 
-Bounds are deliberately finite: X/Z `[-12, 12]`, Y `[0, 8]`, at most 200
+Standalone prop-composer bounds are deliberately finite: X/Z `[-12, 12]`,
+Y `[0, 8]`, at most 200
 props and 80 groups per scene/arrangement, at most 40 arrangements, strings up
 to their field-specific limits, rotations within `[-100π, 100π]`, and imported
 JSON up to 500,000 characters. Parsers reject malformed/wrong-version
