@@ -300,6 +300,60 @@ describe('Task 5 controls through the real owner', () => {
       0
     );
   });
+  it('creates a second label directly from a selected first label; Escape and view retirement cancel only genuinely armed placement', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Label');
+    change('Label name', 'Kitchen');
+    submit('New map label');
+    place(storage, { x: 2, z: 1 });
+    const kitchen = storage.document();
+    const first = kitchen.draft.scene.mapLabels![0];
+    const before = storage.writes();
+    change('Existing label', first.id);
+    change('Label name', 'Courtyard');
+    submit('New map label');
+    expect(screen.getByText(/Placing “Courtyard”/)).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Existing label') as HTMLSelectElement).value
+    ).toBe('');
+    fireEvent.keyDown(screen.getByLabelText('Label name'), { key: 'Escape' });
+    expect(screen.queryByText(/Placing “Courtyard”/)).toBeNull();
+    expect(storage.document()).toEqual(kitchen);
+    expect(storage.writes()).toBe(before);
+    change('Existing label', first.id);
+    submit('New map label');
+    expect(screen.getByText(/Placing “Courtyard”/)).toBeTruthy();
+    click('3D');
+    click('Layout');
+    expect(screen.queryByText(/Placing “Courtyard”/)).toBeNull();
+    expect(storage.document()).toEqual(kitchen);
+    expect(storage.writes()).toBe(before);
+    click('Label');
+    change('Existing label', first.id);
+    submit('New map label');
+    expect(screen.getByText(/Placing “Courtyard”/)).toBeTruthy();
+    place(storage, { x: -2, z: -1 });
+    const labels = storage.document().draft.scene.mapLabels!;
+    expect(labels).toHaveLength(2);
+    expect(labels[0]).toEqual(first);
+    expect(labels[1]).toMatchObject({
+      text: 'Courtyard',
+      location: { x: -2, z: -1 },
+    });
+    expect(labels[1].id).not.toBe(first.id);
+    expect(storage.document().draft.room).toEqual(kitchen.draft.room);
+    expect(storage.document().draft.workspace).toEqual(kitchen.draft.workspace);
+    expect(storage.writes()).toBe(before + 1);
+    expect(surface().querySelectorAll('[data-walkable="true"]')).toHaveLength(
+      0
+    );
+    click('Undo');
+    expect(storage.document()).toEqual(kitchen);
+    click('Redo');
+    expect(storage.document().draft.scene.mapLabels).toEqual(labels);
+  });
   it('failed shrink retains current dimensions/draft/error and navigation/document changes retire live label drags without history', async () => {
     const storage = new MemoryStorage();
     mount(storage);

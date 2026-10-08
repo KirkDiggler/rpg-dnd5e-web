@@ -484,6 +484,29 @@ describe('staged workspace dimensions and label controls', () => {
     expect(observed.session?.cancelTransients).toHaveBeenCalledTimes(1); // tool transition only
     expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
   });
+  it('arms a new label from an existing selection, then explicitly cancels with Escape or selection', () => {
+    observed.session!.document.draft.scene.mapLabels = [
+      { id: 'kitchen', text: 'Kitchen', location: { x: 0, z: 0 } },
+    ];
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Label');
+    change('Existing label', 'kitchen');
+    change('Label name', 'Courtyard');
+    submit('New map label');
+    expect(observed.layoutProps?.labelEditing?.selectedId).toBeNull();
+    expect(observed.layoutProps?.labelEditing?.placementText).toBe('Courtyard');
+    expect(screen.getByText(/Placing “Courtyard”/)).toBeTruthy();
+    fireEvent.keyDown(screen.getByLabelText('Label name'), { key: 'Escape' });
+    expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
+    expect(screen.queryByText(/Placing “Courtyard”/)).toBeNull();
+    submit('New map label');
+    expect(observed.layoutProps?.labelEditing?.placementText).toBe('Courtyard');
+    change('Existing label', 'kitchen');
+    expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
+    expect(observed.layoutProps?.labelEditing?.selectedId).toBe('kitchen');
+    expect(observed.session?.createMapLabel).not.toHaveBeenCalled();
+    expect(observed.session?.commitFloor).not.toHaveBeenCalled();
+  });
   it('selects stable IDs for duplicate names; rename is explicit, Escape/navigation discard, delete and move have accessible controls', () => {
     observed.session!.document.draft.scene.mapLabels = [
       { id: 'kitchen-1', text: 'Kitchen', location: { x: 0, z: 0 } },

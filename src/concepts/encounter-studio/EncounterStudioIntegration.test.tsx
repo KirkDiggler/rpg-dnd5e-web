@@ -810,10 +810,15 @@ describe('Task 6 populated workspace/label integration', () => {
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
     changeField('Width (hexes)', '74');
     fireEvent.click(button('Cancel dimensions'));
-    // Deselect before staging placement; this is not a selected-label edit.
-    changeField('Existing label', '');
     changeField('Label name', 'Never placed');
     submitForm('New map label');
+    // Arming from a selected label must really succeed before cancellation:
+    // clearing that old selection is not document/tool/view retirement.
+    expect(screen.getByText(/Placing “Never placed”/)).not.toBeNull();
+    fireEvent.keyDown(screen.getByLabelText('Label name'), { key: 'Escape' });
+    expect(screen.queryByText(/Placing “Never placed”/)).toBeNull();
+    submitForm('New map label');
+    expect(screen.getByText(/Placing “Never placed”/)).not.toBeNull();
     fireEvent.click(button('Cancel placement'));
     resize(2, 2);
     expect(screen.getByText(/Resize refused/)).not.toBeNull();

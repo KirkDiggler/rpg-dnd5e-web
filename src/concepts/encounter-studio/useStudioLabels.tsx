@@ -35,7 +35,13 @@ export function useStudioLabels(
     setError(null);
   };
   useEffect(() => {
+    // A new owner snapshot retires placement; clearing the previous selection
+    // while arming a new label does not. Explicit selection cancels in handlers.
     setPlacementText(null);
+  }, [session.document]);
+  useEffect(() => {
+    // Selection/document changes reset selected-label drafts independently of
+    // placement, which can have been armed in the same selection-clearing event.
     setRename(selected?.text ?? '');
     setX(String(selected?.location.x ?? 0));
     setZ(String(selected?.location.z ?? 0));
