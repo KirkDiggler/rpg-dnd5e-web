@@ -1,14 +1,18 @@
+import { createMapLabel } from '@/concepts/world-building/mapLabelEdits';
 import {
   createRoomDraft,
+  resizeRoomWorkspace,
   stringifyRoomDraft,
   type RoomDraft,
   type RoomPropDeclaration,
 } from '@/concepts/world-building/roomDraft';
 import { createEmptyScene } from '@/concepts/world-building/sceneState';
+import { stringifyScene } from '@/concepts/world-building/serialization';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import { compositionMetadata } from './compositionMetadata';
+import { decodeCompositionScene } from './compositionScene';
 import {
   decodeRoomDocumentJson,
   encodeRoomDocument,
@@ -321,4 +325,21 @@ describe('room snapshot document', () => {
       );
     }
   });
+});
+
+it('preserves promoted room snapshots and scene-composition metadata through actual adapters', () => {
+  const room = resizeRoomWorkspace(
+    { draft: richRoomDraft(), scope: {} },
+    73,
+    48
+  ).draft;
+  const labeled = createMapLabel(room, 'label', 'Kitchen', {
+    x: 1.125,
+    z: -2.75,
+  });
+  expect(decodeRoomDocumentJson(encodeRoomDocument(labeled))).toEqual(labeled);
+  const composition = create(CompositionSchema, {
+    json: stringifyScene(labeled.scene),
+  });
+  expect(decodeCompositionScene(composition)).toEqual(labeled.scene);
 });

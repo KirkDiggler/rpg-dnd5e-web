@@ -19,11 +19,27 @@ import {
   type StructuralWall,
 } from './structuralWalls';
 import type { KeyValueStorage, WorldScene } from './types';
+import { validateWorkspaceContent } from './workspaceContentBounds';
+import {
+  centeredRoomWorkspace,
+  containsWorkspaceCell,
+  ROOM_WORKSPACE_STEPS,
+  validateWorkspace,
+  workspaceCells,
+  type RoomHexCell,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 // Re-exported so every sibling strict decoder keeps importing them from here
 // (rpg-dnd5e-web#1136 moved the definitions to `strictShape.ts` so the
 // answer-table adapter is not an import cycle; the words are unchanged).
 export { objectShape, rejectUnknownKeys } from './strictShape';
+export {
+  MAX_ROOM_WORKSPACE_HEXES,
+  ROOM_WORKSPACE_STEPS,
+  type RoomHexCell,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 export const ROOM_DRAFT_STORAGE_KEY =
   'rpg.concepts.world-building.room-draft.v3';
@@ -32,21 +48,6 @@ export const LEGACY_ROOM_DRAFT_STORAGE_KEY =
 export const LEGACY_V1_ROOM_DRAFT_STORAGE_KEY =
   'rpg.concepts.world-building.room-draft.v1';
 export const ROOM_DRAFT_KIND = 'rpg-room-authoring-draft' as const;
-export const ROOM_WORKSPACE_STEPS = [
-  { hexRadius: 6, horizontalLimit: 12 },
-  { hexRadius: 10, horizontalLimit: 20 },
-  { hexRadius: 14, horizontalLimit: 28 },
-] as const;
-export const MAX_ROOM_WORKSPACE_HEXES = 631;
-export interface RoomWorkspace {
-  hexRadius: number;
-  horizontalLimit: number;
-}
-
-export interface RoomHexCell {
-  q: number;
-  r: number;
-}
 export interface RoomFootprint {
   /** Rectangle dimensions in WorldScene coordinate units, local to owner. */
   width: number;
@@ -409,27 +410,22 @@ export function createRoomDraft(scene: WorldScene, id: string): RoomDraft {
 export function walkableCellsInWorldRectangle(
   start: WorldPos,
   end: WorldPos,
-  hexRadius: number = ROOM_WORKSPACE_STEPS[0].hexRadius
+  workspace: RoomWorkspace | number = ROOM_WORKSPACE_STEPS[0]
 ): RoomHexCell[] {
   const minX = Math.min(start.x, end.x);
   const maxX = Math.max(start.x, end.x);
   const minZ = Math.min(start.z, end.z);
   const maxZ = Math.max(start.z, end.z);
   const cells: Array<RoomHexCell & { worldX: number; worldZ: number }> = [];
-  for (let q = -hexRadius; q <= hexRadius; q += 1) {
-    for (let r = -hexRadius; r <= hexRadius; r += 1) {
-      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) > hexRadius)
-        continue;
-      const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
-      if (
-        center.x >= minX &&
-        center.x <= maxX &&
-        center.z >= minZ &&
-        center.z <= maxZ
-      ) {
-        cells.push({ q, r, worldX: center.x, worldZ: center.z });
-      }
-    }
+  for (const { q, r } of workspaceCells(workspace)) {
+    const center = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
+    if (
+      center.x >= minX &&
+      center.x <= maxX &&
+      center.z >= minZ &&
+      center.z <= maxZ
+    )
+      cells.push({ q, r, worldX: center.x, worldZ: center.z });
   }
   return cells
     .sort((a, b) => a.worldZ - b.worldZ || a.worldX - b.worldX)
@@ -446,7 +442,7 @@ export function updateWalkableHexes(
   );
   let changed = false;
   cells.forEach((cell) => {
-    if (!isCellWithinWorkspace(cell, draft.workspace.hexRadius)) return;
+    if (!isCellWithinWorkspace(cell, draft.workspace)) return;
     const key = cellKey(cell);
     if (mode === 'paint') {
       if (!byKey.has(key)) {
@@ -468,17 +464,12 @@ export function updateWalkableHexes(
 }
 
 /** Structural workspace membership for any axial cell: integral and inside
- * the authored radius. Game legality is never a client question here. */
+ * the authored workspace. Numeric callers retain legacy radius semantics. */
 export function isCellWithinWorkspace(
   cell: RoomHexCell,
-  hexRadius: number
+  workspace: RoomWorkspace | number
 ): boolean {
-  return (
-    Number.isInteger(cell.q) &&
-    Number.isInteger(cell.r) &&
-    Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(-cell.q - cell.r)) <=
-      hexRadius
-  );
+  return containsWorkspaceCell(workspace, cell);
 }
 
 /** Actor placements, moves and removals are authoring metadata only: each
@@ -491,12 +482,7 @@ export function placeRoomMonster(
   placement: RoomMonsterPlacement
 ): RoomDraft {
   if (!placement.id) throw new Error('Monster placement requires a stable id.');
-  if (
-    !isCellWithinWorkspace(
-      placement.startingCell.location,
-      draft.workspace.hexRadius
-    )
-  )
+  if (!isCellWithinWorkspace(placement.startingCell.location, draft.workspace))
     throw new Error('Monster placement is outside the authoring floor.');
   if (
     draft.room.monsterDeclarations.some(
@@ -521,7 +507,7 @@ export function moveRoomMonster(
   id: string,
   cell: RoomHexCell
 ): RoomDraft {
-  if (!isCellWithinWorkspace(cell, draft.workspace.hexRadius))
+  if (!isCellWithinWorkspace(cell, draft.workspace))
     throw new Error('Monster placement is outside the authoring floor.');
   if (!draft.room.monsterDeclarations.some((monster) => monster.id === id))
     return draft;
@@ -569,7 +555,7 @@ export function setRoomPartyStart(
   draft: RoomDraft,
   cell: RoomHexCell
 ): RoomDraft {
-  if (!isCellWithinWorkspace(cell, draft.workspace.hexRadius))
+  if (!isCellWithinWorkspace(cell, draft.workspace))
     throw new Error('Party start is outside the authoring floor.');
   if (
     draft.room.partyStart &&
@@ -658,6 +644,7 @@ export function remapRoomDeclarations(
 }
 
 export function expandRoomWorkspace(draft: RoomDraft): RoomDraft {
+  if (draft.workspace.kind === 'centered-odd-r') return draft;
   const index = ROOM_WORKSPACE_STEPS.findIndex(
     (step) =>
       step.hexRadius === draft.workspace.hexRadius &&
@@ -1088,15 +1075,9 @@ function validateDraft(value: unknown): RoomDraft {
     ],
     'Room coordinate frame'
   );
-  const workspace = ROOM_WORKSPACE_STEPS.find(
-    (step) =>
-      step.hexRadius === input.workspace!.hexRadius &&
-      step.horizontalLimit === input.workspace!.horizontalLimit
-  );
-  if (!workspace) throw new Error('Unsupported room workspace extent.');
-  const cellBudget = 1 + 3 * workspace.hexRadius * (workspace.hexRadius + 1);
-  if (cellBudget > MAX_ROOM_WORKSPACE_HEXES)
-    throw new Error('Room workspace exceeds the cell allocation budget.');
+  const workspace = validateWorkspace(input.workspace);
+  if (workspace.kind === 'centered-odd-r' && input.scene?.version !== 2)
+    throw new Error('Centered room workspace requires scene version 2.');
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
     throw new Error(
@@ -1132,8 +1113,10 @@ function validateDraft(value: unknown): RoomDraft {
   const walkableHexes: RoomHexCell[] = [];
   for (const cell of room.walkableHexes) {
     const parsed = validateCell(cell, 'Walkable cell');
-    if (!isCellWithinWorkspace(parsed, workspace.hexRadius))
-      throw new Error('Walkable cell is outside the authoring floor.');
+    if (!isCellWithinWorkspace(parsed, workspace))
+      throw new Error(
+        `room.walkableHexes (${parsed.q},${parsed.r}) is outside the authoring floor.`
+      );
     walkableHexes.push(parsed);
   }
   /** Presence must mean an actual integral-cell object; absence stays
@@ -1141,7 +1124,7 @@ function validateDraft(value: unknown): RoomDraft {
   let partyStart: RoomHexCell | undefined;
   if (Object.hasOwn(room, 'partyStart')) {
     const start = validateCell(room.partyStart, 'Party start');
-    if (!isCellWithinWorkspace(start, workspace.hexRadius))
+    if (!isCellWithinWorkspace(start, workspace))
       throw new Error('Party start is outside the authoring floor.');
     partyStart = start;
   }
@@ -1175,9 +1158,7 @@ function validateDraft(value: unknown): RoomDraft {
   }
   const monsters = validateMonsters(room.monsterDeclarations);
   for (const monster of monsters) {
-    if (
-      !isCellWithinWorkspace(monster.startingCell.location, workspace.hexRadius)
-    )
+    if (!isCellWithinWorkspace(monster.startingCell.location, workspace))
       throw new Error(
         `Monster ${monster.id} startingCell is outside the authoring floor.`
       );
@@ -1235,7 +1216,7 @@ function validateDraft(value: unknown): RoomDraft {
     },
     workspace: { ...workspace },
     scene: validateScene(input.scene, {
-      horizontalLimit: workspace.horizontalLimit,
+      workspace,
     }),
     room: {
       implicitRegionId: room.implicitRegionId,
@@ -1265,42 +1246,41 @@ function validateDraft(value: unknown): RoomDraft {
   return draft;
 }
 
-export function stringifyRoomDraft(
-  draft: RoomDraft,
-  scope?: SiteScope
-): string {
-  // THE SCOPE IS VALIDATED ON THE WAY OUT, exactly as the draft is: an
-  // oversize or invalid scope is refused before any caller can store it, so
-  // the editor can never persist a document its own reader would refuse
-  // (rpg-dnd5e-web#1160). An empty scope normalizes to no scope at all.
-  const validatedScope = validateSiteScope(scope ?? {});
-  // validateSiteScope already omits empty entries. Inspect the normalized
-  // scope, not a second key inventory that silently drops new site nouns.
-  const carriesScope = Object.keys(validatedScope).length > 0;
+/** Normalize once: full shape, scope and rectangle content have one canonical gate. */
+function normalizeRoomDocument(document: RoomDraftDocument): RoomDraftDocument {
+  const draft = validateDraft(document.draft);
+  const scope = validateSiteScope(document.scope);
+  validateWorkspaceContent(draft, scope);
+  return { draft, scope };
+}
+
+function serializeRoomDocument(document: RoomDraftDocument): string {
+  const carriesScope = Object.keys(document.scope).length > 0;
   const json = JSON.stringify(
     {
       kind: ROOM_DRAFT_KIND,
-      // ALWAYS v5, WHETHER OR NOT A SCOPE RIDES ALONG. Before the
-      // `startingCell` change this was `carriesScope ? 4 : 3`, because the
-      // version's only job was to say whether a scope could be present. It now
-      // has a second job — it says which MONSTER SHAPE the draft stores — and
-      // that is true of every draft this build writes, scope or no scope. So
-      // the version stops being conditional and the scope key stays absent
-      // when there is none.
+      // Envelope 5 and embedded draft 3 remain separate axes; scope stays absent when empty.
       version: ROOM_DRAFT_ENVELOPE_VERSION,
-      draft: validateDraft(draft),
-      ...(carriesScope ? { scope: validatedScope } : {}),
+      draft: document.draft,
+      ...(carriesScope ? { scope: document.scope } : {}),
     } satisfies RoomDraftEnvelope,
     null,
     2
   );
-  // Write-size symmetry with the reader: an oversize draft is refused before
-  // any caller can store it, so prior stored bytes are never replaced.
   if (json.length > MAX_JSON_LENGTH)
     throw new Error(
       `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
     );
   return json;
+}
+
+export function stringifyRoomDraft(
+  draft: RoomDraft,
+  scope?: SiteScope
+): string {
+  return serializeRoomDocument(
+    normalizeRoomDocument({ draft, scope: scope ?? {} })
+  );
 }
 
 /**
@@ -1311,6 +1291,36 @@ export function stringifyRoomDraft(
 export interface RoomDraftDocument {
   draft: RoomDraft;
   scope: SiteScope;
+}
+
+/** Complete, normalized, content-safe and size-safe gate BEFORE owner history insertion. */
+export function validateRoomDocument(
+  document: RoomDraftDocument
+): RoomDraftDocument {
+  const normalized = normalizeRoomDocument(document);
+  // Serialization includes scope and pretty-print overhead, exactly like persisted bytes.
+  serializeRoomDocument(normalized);
+  return normalized;
+}
+
+/** Explicit immutable intent; existing poses/cells are never moved. */
+export function resizeRoomWorkspace(
+  document: RoomDraftDocument,
+  widthHexes: number,
+  heightHexes: number
+): RoomDraftDocument {
+  const workspace = centeredRoomWorkspace(widthHexes, heightHexes);
+  const next = {
+    draft: {
+      ...document.draft,
+      workspace,
+      scene: { ...document.draft.scene, version: 2 as const },
+    },
+    scope: document.scope,
+  };
+  const validated = validateRoomDocument(next);
+  if (JSON.stringify(validated) === JSON.stringify(document)) return document;
+  return validated;
 }
 
 /**
@@ -1342,15 +1352,25 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
       throw new Error(
         'A version 1 room authoring draft carries no site scope.'
       );
-    return {
-      draft: validateDraft({
+    if (
+      envelope.draft?.workspace &&
+      typeof envelope.draft.workspace === 'object' &&
+      ('kind' in envelope.draft.workspace ||
+        'widthHexes' in envelope.draft.workspace ||
+        'heightHexes' in envelope.draft.workspace)
+    )
+      throw new Error(
+        'Version 1 room envelope cannot carry centered workspace metadata.'
+      );
+    return validateRoomDocument({
+      draft: {
         ...envelope.draft,
         version: 3,
         workspace: { ...ROOM_WORKSPACE_STEPS[0] },
         room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
-      }),
+      } as unknown as RoomDraft,
       scope: {},
-    };
+    });
   }
   if (envelope.version === 2) {
     if (envelope.draft?.version !== 2)
@@ -1361,14 +1381,14 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
       throw new Error(
         'A version 2 room authoring draft carries no site scope.'
       );
-    return {
-      draft: validateDraft({
+    return validateRoomDocument({
+      draft: {
         ...envelope.draft,
         version: 3,
         room: { ...(envelope.draft.room as object), monsterDeclarations: [] },
-      }),
+      } as unknown as RoomDraft,
       scope: {},
-    };
+    });
   }
   if (
     envelope.version !== 3 &&
@@ -1389,10 +1409,10 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
         'so its creatures store a bare `cell` this build no longer reads. ' +
         'Rebuild the room rather than migrating it.'
     );
-  return {
-    draft: validateDraft(envelope.draft),
+  return validateRoomDocument({
+    draft: envelope.draft as unknown as RoomDraft,
     scope: validateSiteScope(envelope.scope ?? {}),
-  };
+  });
 }
 
 /** The room draft alone. A DRAFT-ONLY reader deliberately refuses an envelope

@@ -1,14 +1,20 @@
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { rejectUnknownKeys } from './strictShape';
 import type {
   Arrangement,
   ArrangementLibrary,
   KeyValueStorage,
+  MapLabel,
   WorldGroup,
   WorldPointLight,
   WorldProp,
   WorldScene,
   WorldTransform,
 } from './types';
+import {
+  containsWorkspacePoint,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 export const SCENE_STORAGE_KEY = 'rpg.concepts.world-building.scene.v1';
 export const LIBRARY_STORAGE_KEY = 'rpg.concepts.world-building.library.v1';
@@ -71,6 +77,45 @@ function finiteNumber(
 interface SceneValidationOptions {
   /** Room-editor X/Z capacity; standalone composer defaults remain WORLD_LIMIT. */
   horizontalLimit?: number;
+  workspace?: RoomWorkspace;
+}
+
+export const MAX_MAP_LABELS = 256;
+export function validateMapLabels(
+  value: unknown,
+  options: SceneValidationOptions = {}
+): MapLabel[] {
+  if (!Array.isArray(value) || value.length > MAX_MAP_LABELS)
+    throw new Error(
+      `scene.mapLabels must be an array of at most ${MAX_MAP_LABELS} labels.`
+    );
+  const ids = new Set<string>();
+  return value.map((value, index) => {
+    const path = `scene.mapLabels[${index}]`;
+    const input = object(value);
+    rejectUnknownKeys(input, ['id', 'text', 'location'], path);
+    const id = string(input.id, `${path}.id`);
+    if (ids.has(id))
+      throw new Error(`${path}.id: duplicate label identity ${id}.`);
+    ids.add(id);
+    const text = string(input.text, `${path}.text`).trim();
+    if (!text) throw new Error(`${path}.text must be nonblank after trimming.`);
+    const location = object(input.location);
+    rejectUnknownKeys(location, ['x', 'z'], `${path}.location`);
+    const limit =
+      options.workspace?.horizontalLimit ??
+      options.horizontalLimit ??
+      WORLD_LIMIT;
+    const point = {
+      x: finiteNumber(location.x, `${path}.location.x`, -limit, limit),
+      z: finiteNumber(location.z, `${path}.location.z`, -limit, limit),
+    };
+    if (options.workspace && !containsWorkspacePoint(options.workspace, point))
+      throw new Error(
+        `${path} (${id}).location: outside the authoring workspace.`
+      );
+    return { id, text, location: point };
+  });
 }
 
 function transform(
@@ -253,17 +298,29 @@ export function validateScene(
   options: SceneValidationOptions = {}
 ): WorldScene {
   const input = object(value);
-  if (input.version !== 1) throw new Error('Scene version must be 1.');
-  const horizontalLimit = options.horizontalLimit ?? WORLD_LIMIT;
+  if (input.version !== 1 && input.version !== 2)
+    throw new Error('Scene version must be 1 or 2.');
+  if (input.version === 1 && Object.hasOwn(input, 'mapLabels'))
+    throw new Error(
+      'Scene version 1 cannot carry mapLabels; promote to version 2.'
+    );
+  const mapLabels = Object.hasOwn(input, 'mapLabels')
+    ? validateMapLabels(input.mapLabels, options)
+    : [];
+  const horizontalLimit =
+    options.workspace?.horizontalLimit ??
+    options.horizontalLimit ??
+    WORLD_LIMIT;
   if (!Number.isFinite(horizontalLimit) || horizontalLimit < WORLD_LIMIT) {
     throw new Error(`Scene horizontal limit must be at least ${WORLD_LIMIT}.`);
   }
   const entities = entityArrays(input, 'scene', horizontalLimit);
   return {
-    version: 1,
+    version: input.version,
     id: string(input.id, 'scene.id', 120),
     name: string(input.name, 'scene.name', 120),
     ...entities,
+    ...(mapLabels.length > 0 ? { mapLabels } : {}),
   };
 }
 

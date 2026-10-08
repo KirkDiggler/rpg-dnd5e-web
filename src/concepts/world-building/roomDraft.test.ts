@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createMapLabel } from './mapLabelEdits';
 import {
   clearRoomPartyStart,
   createRoomDraft,
@@ -14,6 +15,7 @@ import {
   reconcileRoomDraft,
   remapRoomDeclarations,
   removeRoomMonster,
+  resizeRoomWorkspace,
   ROOM_DRAFT_ENVELOPE_VERSION,
   ROOM_DRAFT_STORAGE_KEY,
   ROOM_WORKSPACE_STEPS,
@@ -21,6 +23,7 @@ import {
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
+  validateRoomDocument,
   walkableCellsInWorldRectangle,
   type RoomDraft,
   type RoomPropDeclaration,
@@ -33,6 +36,7 @@ import {
 import { validateScene } from './serialization';
 import type { SiteScope } from './siteScope';
 import type { KeyValueStorage } from './types';
+import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 describe('room authoring draft', () => {
   it('round trips a versioned room envelope separately from composer data', () => {
@@ -1352,5 +1356,139 @@ describe('the site scope persists beside the draft (rpg-dnd5e-web#1160)', () => 
         factions: [{ id: 'party' }],
       })
     ).toThrow(/players' side/);
+  });
+});
+
+describe('complete centered document gate', () => {
+  it('normalizes the full scope, promotes explicit resize even with no labels, and keeps legacy bytes unchanged', () => {
+    const original = createRoomDraft(createEmptyScene('scene'), 'room');
+    const bytes = stringifyRoomDraft(original);
+    expect(
+      stringifyRoomDraft(
+        validateRoomDocument({ draft: original, scope: {} }).draft
+      )
+    ).toBe(bytes);
+    const next = resizeRoomWorkspace({ draft: original, scope: {} }, 73, 48);
+    expect(next.draft.scene.version).toBe(2);
+    expect(next.draft.scene).not.toHaveProperty('mapLabels');
+    expect(next.draft.room).toEqual(original.room);
+    expect(next.draft.workspace).toEqual(centeredRoomWorkspace(73, 48));
+    expect(parseRoomDocumentJson(stringifyRoomDraft(next.draft))).toEqual(next);
+    expect(resizeRoomWorkspace(next, 73, 48)).toBe(next);
+    expect(original.scene.version).toBe(1);
+  });
+  it('uses rectangle membership in room editing helpers while preserving numeric compatibility callers', () => {
+    const draft = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      2,
+      2
+    ).draft;
+    expect(
+      walkableCellsInWorldRectangle(
+        { x: -100, z: -100 },
+        { x: 100, z: 100 },
+        draft.workspace
+      )
+    ).toEqual(workspaceCells(draft.workspace));
+    expect(
+      walkableCellsInWorldRectangle({ x: -100, z: -100 }, { x: 100, z: 100 }, 1)
+    ).toHaveLength(7);
+    expect(
+      updateWalkableHexes(
+        draft,
+        [
+          { q: 1, r: 0 },
+          { q: 1, r: -1 },
+        ],
+        'paint'
+      ).room.walkableHexes
+    ).toEqual([{ q: 1, r: -1 }]);
+    expect(() => setRoomPartyStart(draft, { q: 1, r: 0 })).toThrow(/outside/);
+    expect(() =>
+      placeRoomMonster(draft, {
+        id: 'actor',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 1, r: 0 } },
+      })
+    ).toThrow(/outside/);
+    expect(() => moveRoomMonster(draft, 'actor', { q: 1, r: 0 })).toThrow(
+      /outside/
+    );
+    expect(expandRoomWorkspace(draft)).toBe(draft);
+  });
+  it('refuses version/metadata mismatch and false workspace envelopes rather than stripping dimensions or labels', () => {
+    const rectangle = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      2,
+      2
+    ).draft;
+    const badScene = {
+      ...rectangle,
+      scene: { ...rectangle.scene, version: 1 as const },
+    };
+    expect(() => validateRoomDocument({ draft: badScene, scope: {} })).toThrow(
+      /scene version 2/
+    );
+    const labeled = createMapLabel(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      'label',
+      'Kitchen',
+      { x: 0, z: 0 }
+    );
+    expect(() =>
+      stringifyRoomDraft({
+        ...labeled,
+        scene: { ...labeled.scene, version: 1 },
+      })
+    ).toThrow(/version 1 cannot carry/);
+    expect(() =>
+      stringifyRoomDraft({
+        ...rectangle,
+        workspace: { ...rectangle.workspace, hexRadius: 99 },
+      })
+    ).toThrow(/derived/);
+    expect(() =>
+      parseRoomDocumentJson(
+        JSON.stringify({
+          kind: 'rpg-room-authoring-draft',
+          version: 1,
+          draft: { ...rectangle, version: 1 },
+        })
+      )
+    ).toThrow(/cannot carry centered workspace metadata/);
+    for (const version of [3, 4])
+      expect(() =>
+        parseRoomDocumentJson(
+          JSON.stringify({
+            kind: 'rpg-room-authoring-draft',
+            version,
+            draft: labeled,
+          })
+        )
+      ).toThrow(/Rebuild/);
+  });
+  it('refuses oversized full scope and maximum painted floor before returning a transaction, without mutation', () => {
+    const draft = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      128,
+      128
+    ).draft;
+    const full = {
+      draft: {
+        ...draft,
+        room: { ...draft.room, walkableHexes: workspaceCells(draft.workspace) },
+      },
+      scope: {},
+    };
+    const before = structuredClone(full);
+    expect(() => validateRoomDocument(full)).toThrow(/too large/);
+    expect(full).toEqual(before);
+    const hugeScope = { scenarios: { test: { custom: 'x'.repeat(500001) } } };
+    expect(() => validateRoomDocument({ draft, scope: hugeScope })).toThrow(
+      /too large/
+    );
+    expect(() =>
+      resizeRoomWorkspace({ draft, scope: hugeScope }, 73, 48)
+    ).toThrow(/too large/);
   });
 });

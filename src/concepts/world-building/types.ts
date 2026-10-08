@@ -50,8 +50,16 @@ export interface WorldGroup {
   parentId?: string;
 }
 
+export interface MapLabel {
+  id: string;
+  text: string;
+  location: WorldPoint;
+}
+
 export interface WorldScene {
-  version: 1;
+  version: 1 | 2;
+  /** Presentation-only annotations; version 1 refuses this metadata. */
+  mapLabels?: MapLabel[];
   id: string;
   name: string;
   items: WorldProp[];

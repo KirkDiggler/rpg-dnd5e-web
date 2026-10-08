@@ -19,6 +19,7 @@ import {
   stringifyLibrary,
   stringifyScene,
   validateLibrary,
+  validateScene,
 } from './serialization';
 import type {
   ArrangementLibrary,
@@ -309,6 +310,45 @@ describe('world-building non-destructive local persistence', () => {
     );
     expect(parseLibraryJson(storage.values.get(LIBRARY_STORAGE_KEY)!)).toEqual(
       library
+    );
+  });
+});
+
+describe('scene version 2 annotation preservation', () => {
+  it('keeps promoted versions and labels through real scene codecs without changing the envelope/key', () => {
+    const legacy = validScene(),
+      legacyBytes = stringifyScene(legacy);
+    expect(stringifyScene(parseSceneJson(legacyBytes))).toBe(legacyBytes);
+    const scene = {
+      ...legacy,
+      version: 2 as const,
+      mapLabels: [
+        { id: 'kitchen', text: 'Kitchen', location: { x: 0.125, z: -0.75 } },
+      ],
+    };
+    const bytes = stringifyScene(scene);
+    expect(JSON.parse(bytes)).toMatchObject({
+      version: 1,
+      scene: { version: 2, mapLabels: scene.mapLabels },
+    });
+    expect(parseSceneJson(bytes)).toEqual(scene);
+    expect(validateScene({ ...scene, mapLabels: [] })).toEqual({
+      ...legacy,
+      version: 2,
+    });
+    expect(
+      parseSceneJson(stringifyScene({ ...legacy, version: 2 })).version
+    ).toBe(2);
+  });
+  it('refuses metadata under scene 1, unknown versions and explicit null label arrays', () => {
+    expect(() => validateScene({ ...validScene(), mapLabels: [] })).toThrow(
+      /version 1 cannot carry/
+    );
+    expect(() =>
+      validateScene({ ...validScene(), version: 2, mapLabels: null })
+    ).toThrow(/mapLabels/);
+    expect(() => validateScene({ ...validScene(), version: 3 })).toThrow(
+      /version must be 1 or 2/
     );
   });
 });
