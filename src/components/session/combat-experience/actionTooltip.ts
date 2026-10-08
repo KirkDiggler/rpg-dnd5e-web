@@ -321,9 +321,19 @@ export function informationDescription(description: string): string {
   return description.trim() ? description : 'Description not provided.';
 }
 
+/** Missing-cell diagnostics are identical for visual and accessible readers. */
+export function informationDetail(line: ActionTooltipLine): ActionTooltipLine {
+  return {
+    label: line.label.trim() ? line.label : 'Detail label not provided',
+    value: line.value.trim() ? line.value : 'Value not provided',
+  };
+}
+
 /** Flattened one-line form, for a native `title` or an aria description. */
 export function actionTooltipText(tooltip: ActionTooltip): string {
-  const parts = tooltip.lines.map((line) => `${line.label}: ${line.value}`);
+  const parts = tooltip.lines
+    .map(informationDetail)
+    .map((line) => `${line.label}: ${line.value}`);
   for (const effect of tooltip.effects) {
     parts.push(
       `${effect.name}: ${effect.stateWord}${effect.reason ? ` — ${effect.reason}` : ''}${effect.benefit ? ` (${effect.benefit})` : ''}`

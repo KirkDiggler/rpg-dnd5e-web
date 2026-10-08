@@ -1,6 +1,7 @@
 import styles from './ActionInformationContent.module.css';
 import {
   informationDescription,
+  informationDetail,
   type ActionEffectLine,
   type ActionTooltipLine,
 } from './actionTooltip';
@@ -33,12 +34,10 @@ export function ActionInformationContent({
       </p>
       {lines.length > 0 && (
         <dl className={styles.facts}>
-          {lines.map((line, index) => (
+          {lines.map(informationDetail).map((line, index) => (
             <div key={`${index}:${line.label}`}>
-              <dt>
-                {line.label.trim() ? line.label : 'Detail label not provided'}
-              </dt>
-              <dd>{line.value.trim() ? line.value : 'Value not provided'}</dd>
+              <dt>{line.label}</dt>
+              <dd>{line.value}</dd>
             </div>
           ))}
         </dl>

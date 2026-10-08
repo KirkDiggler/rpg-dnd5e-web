@@ -289,6 +289,13 @@ function CollectionActionSurface({
   const inspectedDeclaration = declarations.find(
     (item) => item.id === (previewId ?? inspectedId)
   );
+  useEffect(() => {
+    const present = (id: string): boolean =>
+      declarations.some((item) => item.id === id);
+    if (inspectedId && !present(inspectedId)) setInspectedId(null);
+    if (hoveredId && !present(hoveredId)) setHoveredId(null);
+    if (focusedId && !present(focusedId)) setFocusedId(null);
+  }, [declarations, inspectedId, hoveredId, focusedId]);
   const closeInspection = () => {
     clearPreview();
     setInspectedId(null);

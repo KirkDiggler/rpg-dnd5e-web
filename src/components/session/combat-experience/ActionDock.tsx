@@ -20,6 +20,7 @@ import {
   actionTooltipText,
   buildActionTooltip,
   informationDescription,
+  informationDetail,
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
@@ -161,7 +162,7 @@ function ActionTooltipCard({ tooltip }: { tooltip: ActionTooltip }) {
     <span className={styles.actionTooltip} aria-hidden="true">
       <strong>{tooltip.title}</strong>
       <span>{informationDescription(tooltip.description)}</span>
-      {tooltip.lines.map((line, index) => (
+      {tooltip.lines.map(informationDetail).map((line, index) => (
         <span key={`${index}:${line.label}`}>
           <em>{line.label}</em>
           {line.value}
@@ -456,7 +457,7 @@ function CastOptionGroup({
           </button>
           <span
             className={styles.optionDescription}
-            role="region"
+            role="note"
             aria-label={`${option.label} description`}
             tabIndex={0}
           >
@@ -916,7 +917,7 @@ function ActionDockContents({
                 </button>
                 <span
                   className={styles.optionDescription}
-                  role="region"
+                  role="note"
                   aria-label={`${option.label} description`}
                   tabIndex={0}
                 >

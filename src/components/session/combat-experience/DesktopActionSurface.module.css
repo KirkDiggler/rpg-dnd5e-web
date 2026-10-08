@@ -247,12 +247,15 @@
 .choiceTray {
   position: absolute;
   z-index: 31;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + var(--desktop-targeting-clearance, 0px) + 10px);
   left: 0;
   width: min(430px, 100%);
   max-height: max(
     64px,
-    calc(100cqh - var(--hotbar-surface-height, 280px) - 36px)
+    calc(
+      100cqh - var(--hotbar-surface-height, 280px) -
+        var(--desktop-targeting-clearance, 0px) - 36px
+    )
   );
   overflow-y: auto;
   overscroll-behavior: contain;

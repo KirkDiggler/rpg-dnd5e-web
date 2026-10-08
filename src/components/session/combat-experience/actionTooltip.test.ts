@@ -183,6 +183,28 @@ describe('buildActionTooltip', () => {
 });
 
 describe('actionTooltipText', () => {
+  it('uses the same explicit missing-cell markers in accessible and visual information', () => {
+    const tooltip = buildActionTooltip(
+      create(DeclarationSchema, {
+        information: {
+          description: 'Provider text.',
+          details: [
+            { label: ' ', value: 'Known value' },
+            { label: 'Known label', value: '\t' },
+            { label: 'Zero', value: '0' },
+          ],
+        },
+      })
+    );
+    expect(actionTooltipText(tooltip)).toContain(
+      'Detail label not provided: Known value'
+    );
+    expect(actionTooltipText(tooltip)).toContain(
+      'Known label: Value not provided'
+    );
+    expect(actionTooltipText(tooltip)).toContain('Zero: 0');
+  });
+
   it('flattens to one readable line', () => {
     const tooltip = buildActionTooltip(
       declaration({

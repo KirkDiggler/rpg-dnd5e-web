@@ -83,6 +83,94 @@ describe('provider option information in legacy/mobile and reaction controls', (
     fireEvent.click(screen.getByRole('button', { name: /^First spell\./ }));
     expect(select).toHaveBeenCalledExactlyOnceWith(offers[0]);
   });
+  it('replaces a compact pinned explanation and does not resurrect a withdrawn pin', () => {
+    const offer = (description: string) =>
+      create(DeclarationSchema, {
+        id: 'same-offer',
+        verb: Verb.CAST,
+        available: true,
+        slot: Slot.ACTION,
+        targetKind: TargetKind.NONE,
+        spell: { name: 'Refreshing spell', ref: 'provider:spells:refresh' },
+        information: { description },
+      });
+    const select = vi.fn();
+    const props = {
+      authorityFresh: true,
+      presentation: {},
+      onSelectDeclaration: select,
+    };
+    const view = render(
+      <OrganizedActionSurface
+        {...props}
+        declarations={[offer('Old provider text.')]}
+      />
+    );
+    fireEvent.focus(
+      screen.getByRole('button', { name: /^Refreshing spell\./ })
+    );
+    fireEvent.focus(
+      screen.getByRole('tooltip', { name: 'Refreshing spell details' })
+    );
+    expect(
+      screen.getByRole('region', { name: 'Refreshing spell details' })
+    ).toHaveTextContent('Old provider text.');
+    view.rerender(
+      <OrganizedActionSurface
+        {...props}
+        declarations={[offer('New provider text.')]}
+      />
+    );
+    expect(
+      screen.getByRole('region', { name: 'Refreshing spell details' })
+    ).toHaveTextContent('New provider text.');
+    expect(screen.queryByText('Old provider text.')).toBeNull();
+    view.rerender(<OrganizedActionSurface {...props} declarations={[]} />);
+    expect(
+      screen.queryByRole('region', { name: 'Refreshing spell details' })
+    ).toBeNull();
+    view.rerender(
+      <OrganizedActionSurface
+        {...props}
+        declarations={[offer('New provider text.')]}
+      />
+    );
+    expect(
+      screen.queryByRole('region', { name: 'Refreshing spell details' })
+    ).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes the compact inspection while leaving its collection available', () => {
+    const offers = ['One', 'Two'].map((name) =>
+      create(DeclarationSchema, {
+        id: name,
+        verb: Verb.CAST,
+        available: true,
+        targetKind: TargetKind.NONE,
+        spell: { ref: `provider:spells:${name}`, name },
+      })
+    );
+    const select = vi.fn();
+    render(
+      <OrganizedActionSurface
+        authorityFresh
+        declarations={offers}
+        presentation={{}}
+        onSelectDeclaration={select}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Spells/ }));
+    fireEvent.focus(screen.getByRole('button', { name: /^One\./ }));
+    const card = screen.getByRole('tooltip', { name: 'One details' });
+    fireEvent.keyDown(card, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'Spells collection' })
+    ).toBeVisible();
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it('keeps End Turn information read-only and echoes its existing declaration on click', () => {
     const offer = create(DeclarationSchema, {
       id: 'end',
@@ -148,9 +236,7 @@ describe('provider option information in legacy/mobile and reaction controls', (
       'aria-description',
       'Provider description before selection.'
     );
-    fireEvent.click(
-      choices.getByRole('region', { name: 'Mode A description' })
-    );
+    fireEvent.click(choices.getByRole('note', { name: 'Mode A description' }));
     expect(select).not.toHaveBeenCalled();
     fireEvent.click(choices.getByRole('button', { name: 'Mode A' }));
     expect(select).toHaveBeenCalledExactlyOnceWith('mode-a');
