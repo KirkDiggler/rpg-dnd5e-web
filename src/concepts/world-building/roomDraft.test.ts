@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMapLabel } from './mapLabelEdits';
 import {
+  assertRoomDocumentSize,
   clearRoomPartyStart,
   createRoomDraft,
   expandRoomWorkspace,
@@ -1466,6 +1467,33 @@ describe('complete centered document gate', () => {
           })
         )
       ).toThrow(/Rebuild/);
+  });
+  it('allows an unfinished intel row through size checking without making it persistable', () => {
+    const document = {
+      draft: createRoomDraft(createEmptyScene('scene'), 'room'),
+      scope: { intel: [{ id: 'draft-intel', reveals: { fact: '' } }] },
+    };
+    const before = structuredClone(document);
+    expect(() => assertRoomDocumentSize(document)).not.toThrow();
+    expect(document).toEqual(before);
+    expect(() => validateRoomDocument(document)).toThrow(/must name a fact/);
+    expect(() => stringifyRoomDraft(document.draft, document.scope)).toThrow(
+      /must name a fact/
+    );
+  });
+  it('checks the same full envelope size even when a policy row is incomplete', () => {
+    const document = {
+      draft: createRoomDraft(createEmptyScene('scene'), 'room'),
+      scope: {
+        intel: [{ id: 'draft-intel', reveals: { fact: '' } }],
+        scenarios: { test: { custom: 'x'.repeat(500001) } },
+      },
+    };
+    const before = structuredClone(document);
+    expect(() => assertRoomDocumentSize(document)).toThrow(
+      'Room draft is too large (maximum 500000 characters).'
+    );
+    expect(document).toEqual(before);
   });
   it('refuses oversized full scope and maximum painted floor before returning a transaction, without mutation', () => {
     const draft = resizeRoomWorkspace(

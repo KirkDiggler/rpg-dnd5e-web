@@ -1293,13 +1293,19 @@ export interface RoomDraftDocument {
   scope: SiteScope;
 }
 
-/** Complete, normalized, content-safe and size-safe gate BEFORE owner history insertion. */
+/** Enforce the actual envelope size budget without grading an editable draft.
+ * Incomplete policy rows may remain in history while being authored; this does
+ * not make them persistable. Saves/exports still use complete codec validation. */
+export function assertRoomDocumentSize(document: RoomDraftDocument): void {
+  serializeRoomDocument(document);
+}
+
+/** Complete normalized gate for explicit resize/label intents and persistence. */
 export function validateRoomDocument(
   document: RoomDraftDocument
 ): RoomDraftDocument {
   const normalized = normalizeRoomDocument(document);
-  // Serialization includes scope and pretty-print overhead, exactly like persisted bytes.
-  serializeRoomDocument(normalized);
+  assertRoomDocumentSize(normalized);
   return normalized;
 }
 
