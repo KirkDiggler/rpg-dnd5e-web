@@ -178,3 +178,31 @@
     padding: 0.5rem;
   }
 }
+
+.es-dimensions label,
+.es-label-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.es-dimensions input,
+.es-label-controls input[inputmode='decimal'] {
+  width: 5rem;
+}
+.es-label-controls input:not([inputmode]),
+.es-label-controls select {
+  width: 12rem;
+  max-width: 100%;
+}
+.es-dimensions [role='alert'],
+.es-label-controls [role='alert'] {
+  width: 100%;
+  color: #ffe2a6;
+}
+.es-map-labels text:focus-visible {
+  outline: none;
+  fill: #a7ffeb;
+  stroke: #235349;
+  stroke-width: 6;
+}

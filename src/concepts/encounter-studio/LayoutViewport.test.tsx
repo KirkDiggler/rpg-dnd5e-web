@@ -717,3 +717,357 @@ describe('controlled Layout floor surface', () => {
     expect(fireEvent.contextMenu(document.body)).toBe(true);
   });
 });
+
+describe('2D map label pointer ownership and shared transforms', () => {
+  function labelled(
+    overrides: Partial<LayoutViewportProps> = {}
+  ): LayoutViewportProps {
+    const input = props(overrides);
+    input.draft = {
+      ...input.draft,
+      scene: {
+        ...input.draft.scene,
+        version: 2,
+        mapLabels: [
+          { id: 'kitchen', text: 'Kitchen', location: { x: 0, z: 0 } },
+        ],
+      },
+    };
+    input.labelEditing = {
+      active: true,
+      placementText: null,
+      selectedId: null,
+      onSelect: vi.fn(),
+      onCreate: vi.fn(() => true),
+      onMove: vi.fn(() => true),
+      onCancel: vi.fn(),
+      ...overrides.labelEditing,
+    };
+    return input;
+  }
+  function label(): Element {
+    return surface().querySelector('[data-label-id="kitchen"]')!;
+  }
+  function downLabel(): void {
+    fireEvent.pointerDown(label(), {
+      ...position({ x: 0, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+  }
+  function finish(): void {
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 1, z: 1 }),
+      pointerId: 7,
+      button: 0,
+    });
+  }
+
+  it('creates exactly once on completed placement with no floor paint; empty Label mode is inert', () => {
+    const input = labelled();
+    const { rerender } = render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), { ...at(zero), pointerId: 7, button: 0 });
+    fireEvent.pointerUp(surface(), { ...at(zero), pointerId: 7, button: 0 });
+    expect(input.onCommit).not.toHaveBeenCalled();
+    const armed = {
+      ...input,
+      labelEditing: { ...input.labelEditing!, placementText: 'Courtyard' },
+    };
+    rerender(<LayoutViewport {...armed} />);
+    fireEvent.pointerDown(surface(), {
+      ...position({ x: 2, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(armed.labelEditing.onCreate).not.toHaveBeenCalled();
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 2, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 2, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(armed.labelEditing.onCreate).toHaveBeenCalledExactlyOnceWith(
+      'Courtyard',
+      { x: 2, z: -1 }
+    );
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('label hits select and drag by stable ID even in Paint; captured floor strokes crossing text remain floor-owned', () => {
+    const input = labelled();
+    input.labelEditing!.active = false;
+    render(<LayoutViewport {...input} />);
+    downLabel();
+    fireEvent.pointerMove(surface(), {
+      ...position({ x: 1, z: 1 }),
+      pointerId: 7,
+    });
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledExactlyOnceWith(
+      'kitchen'
+    );
+    expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+    finish();
+    expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
+      'kitchen',
+      { x: 1, z: 1 }
+    );
+    expect(input.onCommit).not.toHaveBeenCalled();
+    fireEvent.pointerDown(surface(), { ...at(one), pointerId: 8, button: 0 });
+    fireEvent.pointerMove(label(), { ...at(zero), pointerId: 8 });
+    fireEvent.pointerUp(label(), { ...at(zero), pointerId: 8, button: 0 });
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+      [one, zero],
+      'paint'
+    );
+    expect(input.labelEditing!.onMove).toHaveBeenCalledTimes(1);
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledTimes(1);
+  });
+  it('select-only click is a real no-op even at a fractional world anchor', () => {
+    const input = labelled();
+    input.draft.scene.mapLabels![0].location = {
+      x: 0.123456789,
+      z: -0.987654321,
+    };
+    render(<LayoutViewport {...input} />);
+    const hit = position(input.draft.scene.mapLabels![0].location);
+    fireEvent.pointerDown(label(), { ...hit, pointerId: 7, button: 0 });
+    fireEvent.pointerUp(surface(), { ...hit, pointerId: 7, button: 0 });
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledExactlyOnceWith(
+      'kitchen'
+    );
+    expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('refused or generation-retired captured intent never falls back to floor, retries, or retains preview', () => {
+    const input = labelled();
+    input.labelEditing!.onMove = vi.fn(() => false);
+    render(<LayoutViewport {...input} />);
+    downLabel();
+    fireEvent.pointerMove(surface(), {
+      ...position({ x: 1, z: 1 }),
+      pointerId: 7,
+    });
+    finish();
+    finish();
+    expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
+      'kitchen',
+      { x: 1, z: 1 }
+    );
+    expect(Number(label().getAttribute('x'))).toBe(bounds.width / 2);
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('does not let another pointer steal a label capture, and canceling arming cancels an unfinished placement', () => {
+    const input = labelled();
+    const { rerender } = render(<LayoutViewport {...input} />);
+    downLabel();
+    fireEvent.pointerDown(surface(), {
+      ...position({ x: 2, z: 1 }),
+      pointerId: 8,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 2, z: 1 }),
+      pointerId: 8,
+      button: 0,
+    });
+    expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+    finish();
+    expect(input.labelEditing!.onMove).toHaveBeenCalledTimes(1);
+    rerender(
+      <LayoutViewport
+        {...input}
+        labelEditing={{ ...input.labelEditing!, placementText: 'Courtyard' }}
+      />
+    );
+    fireEvent.pointerDown(surface(), {
+      ...position({ x: 2, z: 1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    rerender(<LayoutViewport {...input} />);
+    finish();
+    expect(input.labelEditing!.onCreate).not.toHaveBeenCalled();
+  });
+  it('uses actual world transform under translated bounds/pan/zoom, preserves grab offset and screen font size', () => {
+    const frame = { center: { x: 2, z: -3 }, zoom: 2 };
+    const input = labelled({ frame });
+    render(<LayoutViewport {...input} />);
+    const text = label();
+    const anchor = worldToClient(
+      { x: 0, z: 0 },
+      createLayoutTransform(bounds, frame, 12)
+    )!;
+    expect(Number(text.getAttribute('x'))).toBeCloseTo(anchor.x - bounds.left);
+    expect(Number(text.getAttribute('y'))).toBeCloseTo(anchor.y - bounds.top);
+    expect(text.getAttribute('font-size')).toBe('14');
+    fireEvent.pointerDown(text, {
+      ...position({ x: 0.25, z: 0.5 }, frame),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerMove(surface(), {
+      ...position({ x: 1.25, z: 1.5 }, frame),
+      pointerId: 7,
+    });
+    expect(Number(label().getAttribute('x'))).toBeCloseTo(
+      anchor.x - bounds.left + 50
+    );
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 1.25, z: 1.5 }, frame),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
+      'kitchen',
+      { x: 1, z: 1 }
+    );
+  });
+  it.each([
+    'escape',
+    'right-click',
+    'capture-loss',
+    'pointer-cancel',
+    'unmount',
+    'tool',
+    'document',
+    'mode',
+  ] as const)(
+    '%s abandons a label gesture without any label/floor intent',
+    (kind) => {
+      const input = labelled();
+      const { rerender, unmount } = render(<LayoutViewport {...input} />);
+      downLabel();
+      fireEvent.pointerMove(surface(), {
+        ...position({ x: 1, z: 1 }),
+        pointerId: 7,
+      });
+      if (kind === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+      if (kind === 'right-click') fireEvent.contextMenu(surface());
+      if (kind === 'capture-loss')
+        fireEvent.lostPointerCapture(surface(), { pointerId: 7 });
+      if (kind === 'pointer-cancel')
+        fireEvent.pointerCancel(surface(), { pointerId: 7 });
+      if (kind === 'tool') rerender(<LayoutViewport {...input} tool="erase" />);
+      if (kind === 'document')
+        rerender(<LayoutViewport {...input} draft={{ ...input.draft }} />);
+      if (kind === 'mode')
+        rerender(
+          <LayoutViewport
+            {...input}
+            labelEditing={{ ...input.labelEditing!, active: false }}
+          />
+        );
+      if (kind === 'unmount') unmount();
+      else finish();
+      expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+      expect(input.labelEditing!.onCreate).not.toHaveBeenCalled();
+      expect(input.onCommit).not.toHaveBeenCalled();
+      expect(captures.size).toBe(0);
+    }
+  );
+  it('full owner document identity retires scope-only changes even when the draft object is unchanged', () => {
+    const input = labelled();
+    const documentContext = { draft: input.draft, scope: {} };
+    const { rerender } = render(
+      <LayoutViewport {...input} documentContext={documentContext} />
+    );
+    downLabel();
+    rerender(
+      <LayoutViewport {...input} documentContext={{ ...documentContext }} />
+    );
+    finish();
+    expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('callback-only rerender does not cancel or replace the live gesture intent; frame changes sample with the live transform', () => {
+    const input = labelled();
+    const { rerender } = render(<LayoutViewport {...input} />);
+    downLabel();
+    const nextMove = vi.fn(() => true);
+    const frame = { center: { x: 1, z: 0 }, zoom: 1.5 };
+    rerender(
+      <LayoutViewport
+        {...input}
+        frame={frame}
+        labelEditing={{ ...input.labelEditing!, onMove: nextMove }}
+      />
+    );
+    fireEvent.pointerUp(surface(), {
+      ...position({ x: 2, z: 1 }, frame),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.labelEditing!.onMove).toHaveBeenCalledExactlyOnceWith(
+      'kitchen',
+      { x: 2, z: 1 }
+    );
+    expect(nextMove).not.toHaveBeenCalled();
+  });
+  it('rejects enclosing-envelope-only label points and an invalid move release instead of using last valid preview', () => {
+    const input = labelled();
+    input.draft = { ...input.draft, workspace: centeredRoomWorkspace(3, 3) };
+    input.labelEditing!.placementText = 'Courtyard';
+    const transform = createLayoutTransform(
+      bounds,
+      initialFrame,
+      workspaceBounds(input.draft.workspace)
+    )!;
+    const atWorld = (p: WorldPoint): { clientX: number; clientY: number } => {
+      const client = worldToClient(p, transform)!;
+      return { clientX: client.x, clientY: client.y };
+    };
+    const { rerender } = render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), {
+      ...atWorld({ x: 5, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...atWorld({ x: 5, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.labelEditing!.onCreate).not.toHaveBeenCalled();
+    rerender(
+      <LayoutViewport
+        {...input}
+        labelEditing={{ ...input.labelEditing!, placementText: null }}
+      />
+    );
+    fireEvent.pointerDown(label(), {
+      ...atWorld({ x: 0, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerMove(surface(), {
+      ...atWorld({ x: 1, z: 0 }),
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...atWorld({ x: 5, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.labelEditing!.onMove).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('keyboard selects labels without floor edits and Enter on the surface places at the actual frame center', () => {
+    const input = labelled({ frame: { center: { x: 1, z: 2 }, zoom: 1.5 } });
+    input.labelEditing!.placementText = 'Courtyard';
+    render(<LayoutViewport {...input} />);
+    fireEvent.keyDown(label(), { key: 'Enter' });
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledExactlyOnceWith(
+      'kitchen'
+    );
+    expect(input.labelEditing!.onCreate).not.toHaveBeenCalled();
+    fireEvent.keyDown(surface(), { key: 'Enter' });
+    expect(input.labelEditing!.onCreate).toHaveBeenCalledExactlyOnceWith(
+      'Courtyard',
+      { x: 1, z: 2 }
+    );
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+});

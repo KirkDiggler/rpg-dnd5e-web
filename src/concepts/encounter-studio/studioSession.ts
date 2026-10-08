@@ -24,6 +24,18 @@ export interface LayoutFrame {
   zoom: number;
 }
 
+/** Optional 2D-only presentation intents. Labels are read from draft.scene;
+ * names, selection and gesture previews never become a second document. */
+export interface LayoutLabelEditing {
+  active: boolean;
+  placementText: string | null;
+  selectedId: string | null;
+  onSelect(id: string): void;
+  onCreate(text: string, location: WorldPoint): boolean;
+  onMove(id: string, location: WorldPoint): boolean;
+  onCancel(): void;
+}
+
 /** A controlled presentation: no document copy, persistence or history owner. */
 export interface LayoutViewportProps {
   draft: Readonly<RoomDraft>;
@@ -31,6 +43,10 @@ export interface LayoutViewportProps {
   frame: LayoutFrame;
   onFrameChange(next: LayoutFrame): void;
   onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
+  labelEditing?: LayoutLabelEditing;
+  /** Optional complete-owner snapshot identity: scope-only navigation also
+   * retires previews. Absent retains existing draft-identity cancellation. */
+  documentContext?: Readonly<RoomDraftDocument>;
 }
 
 /** Render-time projection of the existing owner, never a second store.

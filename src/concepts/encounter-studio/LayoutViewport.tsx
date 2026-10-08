@@ -26,8 +26,12 @@ import type {
 } from './studioSession';
 
 import { usePresentationWorkspace } from '../world-building/usePresentationWorkspace';
-import { workspaceBounds } from '../world-building/workspaceGeometry';
+import {
+  containsWorkspacePoint,
+  workspaceBounds,
+} from '../world-building/workspaceGeometry';
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+import { MapLabelOverlay } from './MapLabelOverlay';
 
 // World-space polygons stay stable through pan/zoom and preview-only renders.
 const LayoutGrid = memo(function LayoutGrid({
@@ -62,9 +66,16 @@ const polygonPoints = (cell: RoomHexCell): string =>
 type Gesture = {
   pointerId: number;
   surface: SVGSVGElement;
-  tool: LayoutFloorTool | 'pan';
+  tool: LayoutFloorTool | 'pan' | 'label';
   anchor: WorldPoint;
   cells: Map<string, RoomHexCell>;
+  label?: {
+    id: string | null;
+    origin: WorldPoint;
+    location: WorldPoint;
+    valid: boolean;
+    commit(location: WorldPoint): boolean;
+  };
 };
 const cellKey = (cell: RoomHexCell): string => `${cell.q},${cell.r}`;
 const pointerPoint = (
@@ -74,19 +85,27 @@ const pointerPoint = (
   y: event.clientY,
 });
 
-/** Controlled schematic only: the owner decides whether a completed floor
- * gesture is accepted. Preview and pointer capture are the only edit state here. */
+/** Controlled schematic only: the owner decides whether a completed floor or
+ * label gesture is accepted. Previews and pointer capture are transient. */
 export function LayoutViewport({
   draft,
   tool,
   frame,
   onFrameChange,
   onCommit,
+  labelEditing,
+  documentContext,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const [bounds, setBounds] = useState<LayoutBounds | null>(null);
   const [preview, setPreview] = useState<RoomHexCell[]>([]);
+  const [labelPreview, setLabelPreview] = useState<{
+    id: string;
+    location: WorldPoint;
+  } | null>(null);
+  const labelEditingRef = useRef(labelEditing);
+  labelEditingRef.current = labelEditing;
 
   const abandon = useCallback((updatePreview: boolean = true): void => {
     const gesture = gestureRef.current;
@@ -101,7 +120,10 @@ export function LayoutViewport({
         // The UA may already have retired this pointer/capture.
       }
     }
-    if (updatePreview) setPreview([]);
+    if (updatePreview) {
+      setPreview([]);
+      setLabelPreview(null);
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -124,7 +146,10 @@ export function LayoutViewport({
     observer?.observe(surface);
     window.addEventListener('resize', measure);
     const escape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') abandon();
+      if (event.key === 'Escape') {
+        abandon();
+        labelEditingRef.current?.onCancel();
+      }
     };
     window.addEventListener('keydown', escape);
     return (): void => {
@@ -137,7 +162,13 @@ export function LayoutViewport({
 
   useLayoutEffect(() => {
     abandon();
-  }, [tool, draft, abandon]);
+  }, [tool, draft, documentContext, labelEditing?.active, abandon]);
+
+  useLayoutEffect(() => {
+    // Choosing an existing label cancels arming, not the grab that selected it.
+    // Changing/canceling an armed placement still retires its live gesture.
+    if (gestureRef.current?.label?.id === null) abandon();
+  }, [labelEditing?.placementText, abandon]);
 
   const presentationWorkspace = usePresentationWorkspace(draft.workspace)!;
   const rectangleCells = useMemo(
@@ -203,6 +234,30 @@ export function LayoutViewport({
     const point = pointerPoint(event);
     if (!currentTransform) return;
     const rect = currentTransform.bounds;
+    if (gesture.label) {
+      const world = clientToWorld(point, currentTransform);
+      const location =
+        world &&
+        (gesture.label.id
+          ? {
+              x: gesture.label.origin.x + (world.x - gesture.anchor.x),
+              z: gesture.label.origin.z + (world.z - gesture.anchor.z),
+            }
+          : world);
+      gesture.label.valid =
+        !!location &&
+        point.x >= rect.left &&
+        point.y >= rect.top &&
+        point.x <= rect.left + rect.width &&
+        point.y <= rect.top + rect.height &&
+        containsWorkspacePoint(presentationWorkspace, location);
+      if (location && gesture.label.valid) {
+        gesture.label.location = location;
+        if (gesture.label.id)
+          setLabelPreview({ id: gesture.label.id, location });
+      }
+      return;
+    }
     if (
       point.x < rect.left ||
       point.y < rect.top ||
@@ -226,6 +281,7 @@ export function LayoutViewport({
     if (active && active.pointerId !== event.pointerId) return;
     if (event.button === 2) {
       abandon();
+      labelEditing?.onCancel();
       return;
     }
     if (
@@ -239,15 +295,43 @@ export function LayoutViewport({
       eventTransform(event.currentTarget)
     );
     if (!anchor) return;
+    const labelId =
+      event.target instanceof Element
+        ? event.target.closest('[data-label-id]')?.getAttribute('data-label-id')
+        : null;
+    const label =
+      labelEditing && labelId
+        ? draft.scene.mapLabels?.find((candidate) => candidate.id === labelId)
+        : undefined;
+    const placing = event.button === 0 && !label && labelEditing?.placementText;
+    if (event.button === 0 && labelEditing?.active && !label && !placing)
+      return;
+    if (placing && !containsWorkspacePoint(presentationWorkspace, anchor))
+      return;
     event.preventDefault();
     event.currentTarget.focus();
     const gesture: Gesture = {
       pointerId: event.pointerId,
       surface: event.currentTarget,
-      tool: event.button === 1 ? 'pan' : tool,
+      tool: event.button === 1 ? 'pan' : label || placing ? 'label' : tool,
       anchor,
       cells: new Map(),
     };
+    if (event.button === 0 && labelEditing && (label || placing)) {
+      // Capture the live owner intent at gesture start. Callback-only/frame
+      // rerenders preserve it; document/tool/view retirement still fences it.
+      const editing = labelEditing;
+      if (label) editing.onSelect(label.id);
+      gesture.label = {
+        id: label?.id ?? null,
+        origin: label?.location ?? anchor,
+        location: label?.location ?? anchor,
+        valid: true,
+        commit: label
+          ? (location) => editing.onMove(label.id, location)
+          : (location) => editing.onCreate(placing as string, location),
+      };
+    }
     gestureRef.current = gesture;
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -277,7 +361,15 @@ export function LayoutViewport({
     if (gesture.tool !== 'pan') sample(event, gesture);
     const cells = [...gesture.cells.values()];
     abandon();
-    if (gesture.tool !== 'pan' && cells.length > 0) {
+    if (gesture.label) {
+      const { id, location, origin, valid } = gesture.label;
+      if (
+        valid &&
+        (!id || location.x !== origin.x || location.z !== origin.z)
+      ) {
+        gesture.label.commit(location);
+      }
+    } else if (gesture.tool !== 'pan' && cells.length > 0) {
       onCommit(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
   };
@@ -315,11 +407,23 @@ export function LayoutViewport({
       onContextMenu={(event): void => {
         event.preventDefault();
         abandon();
+        labelEditing?.onCancel();
+      }}
+      onKeyDown={(event): void => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' && labelEditing?.placementText) {
+          event.preventDefault();
+          if (containsWorkspacePoint(presentationWorkspace, frame.center)) {
+            labelEditing.onCreate(labelEditing.placementText, frame.center);
+          }
+        }
       }}
     >
       <title>Layout floor surface</title>
       <desc>
-        Drag to {tool === 'rectangle' ? 'paint a rectangle' : tool} floor.
+        {labelEditing?.active
+          ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
+          : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -352,6 +456,15 @@ export function LayoutViewport({
             />
           ))}
         </g>
+      )}
+      {transform && labelEditing && (
+        <MapLabelOverlay
+          labels={draft.scene.mapLabels ?? []}
+          transform={transform}
+          selectedId={labelEditing.selectedId}
+          preview={labelPreview}
+          onSelect={labelEditing.onSelect}
+        />
       )}
     </svg>
   );

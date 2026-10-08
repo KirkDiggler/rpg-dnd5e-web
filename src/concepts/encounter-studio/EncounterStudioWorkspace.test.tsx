@@ -402,3 +402,140 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(observed.session?.saveLocalDraft).not.toHaveBeenCalled();
   });
 });
+
+describe('staged workspace dimensions and label controls', () => {
+  const change = (name: string, value: string): void => {
+    fireEvent.change(screen.getByLabelText(name), { target: { value } });
+  };
+  const submit = (name: string): void => {
+    fireEvent.submit(screen.getByRole('form', { name }));
+  };
+  it('identifies legacy shape, stages hex counts and applies one exact intent without self-retiring', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(screen.getByText(/legacy hex-radius.*not a rectangle/)).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('');
+    change('Width (hexes)', '73');
+    change('Height (hexes)', '48');
+    expect(observed.session?.resizeWorkspace).not.toHaveBeenCalled();
+    submit('Workspace dimensions');
+    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
+      73,
+      48
+    );
+    expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
+    expect(observed.layoutProps?.frame).toEqual({
+      center: { x: 0, z: 0 },
+      zoom: 1,
+    });
+  });
+  it.each(['0', '129', '1.5', 'no', ''])(
+    'retains invalid width %j without owner/history intent',
+    (width) => {
+      render(<EncounterStudioWorkspace compositionSource={source} />);
+      change('Width (hexes)', width);
+      change('Height (hexes)', '48');
+      submit('Workspace dimensions');
+      expect(screen.getByRole('alert').textContent).toContain('1 to 128 hexes');
+      expect(observed.session?.resizeWorkspace).not.toHaveBeenCalled();
+      expect(observed.session?.undo).not.toHaveBeenCalled();
+    }
+  );
+  it('keeps refused resize inputs and frame; Escape visibly cancels staged dimensions', () => {
+    observed.session!.resizeWorkspace = vi.fn(() => false);
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Pan and zoom test surface');
+    const frame = observed.layoutProps?.frame;
+    change('Width (hexes)', '2');
+    change('Height (hexes)', '2');
+    submit('Workspace dimensions');
+    expect(screen.getByRole('alert').textContent).toContain(
+      'choose larger dimensions'
+    );
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('2');
+    expect(observed.layoutProps?.frame).toBe(frame);
+    fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
+      key: 'Escape',
+    });
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('arms the typed label and gives keyboard coordinate placement, without floor or a default name', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Label');
+    change('Label name', 'Kitchen');
+    expect(observed.session?.createMapLabel).not.toHaveBeenCalled();
+    submit('New map label');
+    expect(observed.layoutProps?.labelEditing?.placementText).toBe('Kitchen');
+    expect(screen.getByText(/Placing “Kitchen”/)).toBeTruthy();
+    change('Label world X', '1.25');
+    change('Label world Z', '-2');
+    submit('Map label coordinates');
+    expect(observed.session?.createMapLabel).toHaveBeenCalledExactlyOnceWith(
+      'Kitchen',
+      { x: 1.25, z: -2 }
+    );
+    expect(observed.session?.commitFloor).not.toHaveBeenCalled();
+    expect(observed.session?.cancelTransients).toHaveBeenCalledTimes(1); // tool transition only
+    expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
+  });
+  it('selects stable IDs for duplicate names; rename is explicit, Escape/navigation discard, delete and move have accessible controls', () => {
+    observed.session!.document.draft.scene.mapLabels = [
+      { id: 'kitchen-1', text: 'Kitchen', location: { x: 0, z: 0 } },
+      { id: 'kitchen-2', text: 'Kitchen', location: { x: 1, z: 0 } },
+    ];
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Label');
+    change('Existing label', 'kitchen-2');
+    change('Rename label', 'Courtyard');
+    expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
+    expect(
+      (screen.getByLabelText('Rename label') as HTMLInputElement).value
+    ).toBe('Kitchen');
+    change('Rename label', 'Courtyard');
+    submit('Rename map label');
+    expect(observed.session?.renameMapLabel).toHaveBeenCalledExactlyOnceWith(
+      'kitchen-2',
+      'Courtyard'
+    );
+    change('Label world X', '2');
+    change('Label world Z', '3');
+    submit('Map label coordinates');
+    expect(observed.session?.moveMapLabel).toHaveBeenCalledExactlyOnceWith(
+      'kitchen-2',
+      { x: 2, z: 3 }
+    );
+    click('Delete label');
+    expect(observed.session?.deleteMapLabel).toHaveBeenCalledExactlyOnceWith(
+      'kitchen-2'
+    );
+    change('Rename label', 'Never commit');
+    click('3D');
+    click('Layout');
+    expect(screen.queryByLabelText('Rename label')).toBeNull();
+    expect(observed.session?.renameMapLabel).toHaveBeenCalledTimes(1);
+    expect(observed.session?.viewportProps.selectedIds).toEqual([
+      'selected-prop',
+    ]);
+  });
+  it('Cancel placement and floor tool switches discard arming; no text-input change becomes a document edit', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Label');
+    change('Label name', 'Kitchen');
+    submit('New map label');
+    click('Cancel placement');
+    expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
+    submit('New map label');
+    click('Paint');
+    expect(screen.queryByLabelText('Map label controls')).toBeNull();
+    expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
+    expect(observed.session?.createMapLabel).not.toHaveBeenCalled();
+    expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
+  });
+});

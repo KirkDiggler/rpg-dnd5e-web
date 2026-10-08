@@ -5,12 +5,14 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
+import { StudioDimensions } from './StudioDimensions';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
   LayoutFloorTool,
   LayoutFrame,
 } from './studioSession';
+import { useStudioLabels } from './useStudioLabels';
 
 interface EncounterStudioWorkspaceProps {
   compositionSource: CompositionSource;
@@ -43,6 +45,7 @@ function StudioSurface({
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const labels = useStudioLabels(session, view);
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
     session.cancelTransients();
@@ -154,8 +157,12 @@ function StudioSurface({
               <button
                 key={tool}
                 type="button"
-                aria-pressed={floorTool === tool}
-                onClick={() => onFloorToolChange(tool)}
+                aria-pressed={!labels.active && floorTool === tool}
+                onClick={() => {
+                  session.cancelTransients();
+                  labels.deactivate();
+                  onFloorToolChange(tool);
+                }}
               >
                 {tool === 'paint'
                   ? 'Paint'
@@ -164,6 +171,16 @@ function StudioSurface({
                     : 'Rectangle'}
               </button>
             ))}
+            <button
+              type="button"
+              aria-pressed={labels.active}
+              onClick={() => {
+                session.cancelTransients();
+                labels.activate();
+              }}
+            >
+              Label
+            </button>
           </div>
         ) : (
           <div className="es-buttons" role="group" aria-label="Prop tools">
@@ -187,12 +204,22 @@ function StudioSurface({
         )}
         <p className="es-help">
           {view === 'layout'
-            ? 'Drag to edit floor · Middle drag to pan · Wheel to zoom · Esc cancels'
+            ? labels.active
+              ? 'Type a name, then Place label on map · Select/drag labels or use coordinates · Esc cancels'
+              : 'Drag to edit floor · Middle drag to pan · Wheel to zoom · Esc cancels'
             : session.viewportProps.roomAuthoring?.tool === 'repeat'
               ? 'Repeat active · Drag on floor to repeat pieces · Esc / right-click cancels'
               : 'Drag assets onto ground or tabletop · Middle drag orbits · Shift-middle pans · Wheel zooms'}
         </p>
       </div>
+      <div className="es-toolbar">
+        <StudioDimensions
+          session={session}
+          view={view}
+          onFrameChange={onFrameChange}
+        />
+      </div>
+      {labels.controls}
       {view === 'layout' ? (
         <div className="es-canvas">
           <LayoutViewport
@@ -201,6 +228,8 @@ function StudioSurface({
             frame={frame}
             onFrameChange={onFrameChange}
             onCommit={session.commitFloor}
+            labelEditing={labels.editing}
+            documentContext={session.document}
           />
         </div>
       ) : (
