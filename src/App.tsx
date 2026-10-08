@@ -27,6 +27,7 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
+import { EncounterStudioWorkspace } from './concepts/encounter-studio/EncounterStudioWorkspace';
 import { WorldBuilderWorkspace } from './concepts/world-building/WorldBuilderWorkspace';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
@@ -228,7 +229,8 @@ function AppContent() {
   // there without also shipping the rest of dev tooling.
   const showGlobalDevTools =
     shouldRenderGlobalDevTools(import.meta.env.MODE, currentView) ||
-    import.meta.env.VITE_FEEL_LAB === '1';
+    (import.meta.env.VITE_FEEL_LAB === '1' &&
+      currentView !== 'encounter-studio');
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
   // without Discord (slice 2 playtest infrastructure)
   const devPlayerIdOverride = isDevelopment
@@ -456,14 +458,13 @@ function AppContent() {
   }
 
   // Views that own the whole window rather than sitting in a centred reading
-  // column. The character sheet was the first; the Dungeon Builder is the
-  // second — it is an application surface, and every pixel the shell reserves
-  // is a pixel its canvas never gets. Both draw their own chrome, so the
-  // shell's header row is theirs to skip as well.
+  // column. These application surfaces draw their own chrome; every pixel
+  // reserved by the outer shell is a pixel their canvas never gets.
   const fullBleed =
     currentView === 'character-sheet' ||
     currentView === 'author' ||
-    currentView === 'world-builder';
+    currentView === 'world-builder' ||
+    currentView === 'encounter-studio';
 
   return (
     <div
@@ -565,6 +566,30 @@ function AppContent() {
             onBack={handleBackToHome}
             compositionSource={compositionSource}
           />
+        ) : currentView === 'encounter-studio' ? (
+          compositionSource ? (
+            <EncounterStudioWorkspace
+              key={compositionIdentity}
+              compositionSource={compositionSource}
+              onBack={handleBackToHome}
+            />
+          ) : (
+            <section className="p-8" aria-label="Encounter Studio unavailable">
+              <h1>Encounter Studio unavailable</h1>
+              <p>
+                {authDecision.kind === 'discord' && !authDecision.guildId
+                  ? 'Open this Activity in a server to access its world'
+                  : 'Waiting for a current-world source.'}
+              </p>
+              <p>
+                Only successfully saved local drafts are kept; changes still in
+                memory may be lost when the current-world identity changes.
+              </p>
+              <button type="button" onClick={handleBackToHome}>
+                Back to Home
+              </button>
+            </section>
+          )
         ) : currentView === 'world-builder' && compositionSource ? (
           <WorldBuilderWorkspace
             key={compositionIdentity}
@@ -616,6 +641,7 @@ function AppContent() {
             onDeleteDraft={handleDeleteDraft}
             onOpenAuthor={handleOpenAuthor}
             onOpenWorldBuilder={handleOpenWorldBuilder}
+            onOpenStudio={() => setCurrentView('encounter-studio')}
             worldBuilderAvailable={compositionSource !== undefined}
             worldBuilderUnavailableMessage={
               authDecision.kind === 'discord' && !authDecision.guildId
@@ -704,6 +730,7 @@ interface HomeViewProps {
   onDeleteDraft: (draftId: string) => void;
   onOpenAuthor: () => void;
   onOpenWorldBuilder: () => void;
+  onOpenStudio: () => void;
   worldBuilderAvailable: boolean;
   worldBuilderUnavailableMessage?: string;
 }
@@ -722,6 +749,7 @@ function HomeView({
   onDeleteDraft,
   onOpenAuthor,
   onOpenWorldBuilder,
+  onOpenStudio,
   worldBuilderAvailable,
   worldBuilderUnavailableMessage,
 }: HomeViewProps) {
@@ -741,10 +769,9 @@ function HomeView({
 
   return (
     <div className="space-y-8">
-      {/* Home authoring menu. Dungeon Builder owns its existing server probe;
-          World Builder appears only when the app has an explicit current-world
-          source (development today; no fabricated production world). */}
-      <div className="flex justify-center gap-3">
+      {/* Dungeon Builder owns its existing server probe. World Builder and
+          Studio share the explicit current-world source gate, not a writer gate. */}
+      <div className="flex flex-wrap justify-center gap-3">
         <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
         {(worldBuilderAvailable || worldBuilderUnavailableMessage) && (
           <div className="flex flex-col items-center gap-1">
@@ -760,6 +787,20 @@ function HomeView({
               }}
             >
               🌍 World Builder
+            </button>
+            <button
+              type="button"
+              onClick={onOpenStudio}
+              aria-label="Open Encounter Studio"
+              disabled={!worldBuilderAvailable}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
+                border: '1px solid var(--accent-primary)',
+              }}
+            >
+              Encounter Studio
             </button>
             {worldBuilderUnavailableMessage && (
               <p className="max-w-xs text-center text-xs text-gray-400">
