@@ -161,6 +161,52 @@ describe('centered workspace authority', () => {
     expect(bounds.minX).toBeCloseTo(-Math.sqrt(3) / 2);
     expect(bounds.maxZ).toBe(1);
   });
+  it('keeps shared-corner and edge ties stable through screen roundtrips and machine-precision perturbations', () => {
+    const workspace = centeredRoomWorkspace(73, 48);
+    for (const cell of [
+      { q: 0, r: 0 },
+      { q: 5, r: -3 },
+    ]) {
+      const center = cubeToWorld(
+        { x: cell.q, y: -cell.q - cell.r, z: cell.r },
+        HEX_SIZE
+      );
+      const corner = hexCorners(center, HEX_SIZE)[0]!;
+      const scale = 900 / 130;
+      const roundtrip = {
+        x: (317 + (corner.x + 65) * scale - 317) / scale - 65,
+        z: (91 + (corner.z + 65) * scale - 91) / scale - 65,
+      };
+      const expected = { q: cell.q + 1, r: cell.r - 1 };
+      for (const point of [corner, roundtrip]) {
+        expect(workspaceCellAtPoint(workspace, point)).toEqual(expected);
+        const epsilon =
+          4 *
+          Number.EPSILON *
+          Math.max(1, Math.abs(point.x), Math.abs(point.z));
+        for (const dx of [-epsilon, 0, epsilon])
+          for (const dz of [-epsilon, 0, epsilon])
+            expect(
+              workspaceCellAtPoint(workspace, {
+                x: point.x + dx,
+                z: point.z + dz,
+              })
+            ).toEqual(expected);
+      }
+    }
+    const edge = { x: Math.sqrt(3) / 2, z: 0 };
+    for (const dx of [-Number.EPSILON, 0, Number.EPSILON])
+      expect(
+        workspaceCellAtPoint(workspace, { ...edge, x: edge.x + dx })
+      ).toEqual({ q: 0, r: 0 });
+    // A genuine point on either side is not snapped to the tie winner.
+    expect(
+      workspaceCellAtPoint(workspace, { ...edge, x: edge.x - 1e-9 })
+    ).toEqual({ q: 0, r: 0 });
+    expect(
+      workspaceCellAtPoint(workspace, { ...edge, x: edge.x + 1e-9 })
+    ).toEqual({ q: 1, r: 0 });
+  });
   it('checks area coverage and degenerate segments/points non-vacuously', () => {
     const workspace = centeredRoomWorkspace(1, 1);
     expect(

@@ -178,17 +178,21 @@ function cellCorners(cell: RoomHexCell): WorldPos[] {
 function tolerance(...values: number[]): number {
   return 64 * Number.EPSILON * Math.max(1, ...values.map(Math.abs));
 }
-function inHex(point: WorldPos, cell: RoomHexCell): boolean {
+function inHex(
+  point: WorldPos,
+  cell: RoomHexCell,
+  strictInterior = false
+): boolean {
   const corners = cellCorners(cell);
+  const epsilon = tolerance(point.x, point.z);
   return corners.every((a, i) => {
     const b = corners[(i + 1) % 6];
-    return (
-      (b.x - a.x) * (point.z - a.z) - (b.z - a.z) * (point.x - a.x) <=
-      tolerance(point.x, point.z)
-    );
+    const cross = (b.x - a.x) * (point.z - a.z) - (b.z - a.z) * (point.x - a.x);
+    return strictInterior ? cross < -epsilon : cross <= epsilon;
   });
 }
-/** Shared rounding first, then deterministic contained-cell tie on closed boundaries. */
+/** Shared rounding handles interiors. Closed-boundary ties include the rounded
+ * cell itself, so machine-precision screen roundtrips cannot change the winner. */
 export function workspaceCellAtPoint(
   workspace: RoomWorkspace,
   point: WorldPos
@@ -196,12 +200,15 @@ export function workspaceCellAtPoint(
   if (!Number.isFinite(point.x) || !Number.isFinite(point.z)) return null;
   const cube = worldToCube(point, HEX_SIZE);
   const first = { q: cube.x || 0, r: cube.z || 0 };
-  if (containsWorkspaceCell(workspace, first) && inHex(point, first))
+  if (containsWorkspaceCell(workspace, first) && inHex(point, first, true))
     return first;
-  const ties = HEX_DIRECTIONS.map((d) => ({
-    q: cube.x + d.x,
-    r: cube.z + d.z,
-  })).sort((a, b) => a.r - b.r || a.q - b.q);
+  const ties = [
+    first,
+    ...HEX_DIRECTIONS.map((d) => ({
+      q: cube.x + d.x || 0,
+      r: cube.z + d.z || 0,
+    })),
+  ].sort((a, b) => a.r - b.r || a.q - b.q);
   return (
     ties.find((c) => containsWorkspaceCell(workspace, c) && inHex(point, c)) ??
     null
