@@ -102,7 +102,7 @@ describe('Spare the Dying stabilization', () => {
       expect(story[1].detail).not.toMatch(/heals|recovers|roll|reviv/i);
       expect(live.presentations).toHaveLength(0);
       expect(selectVisibleStory(feed([cast, result], 'catchup'))).toEqual(
-        story
+        story.map((entry) => ({ ...entry, deliverySource: 'catchup' }))
       );
       const duplicate = reduceCombatPresentation(live, {
         type: 'stream-event',

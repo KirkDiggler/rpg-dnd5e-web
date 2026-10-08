@@ -72,6 +72,8 @@ export type CombatExperienceStreamState =
 
 export interface CombatExperienceStoryExchange {
   id: string;
+  /** Missing provenance is history-only, never a fresh announcement. */
+  deliverySource?: 'live' | 'catchup';
   round?: number;
   eyebrow: string;
   headline: string;
@@ -159,6 +161,8 @@ export interface CombatExperienceRollWindow {
 
 export interface CombatExperienceMapRenderProps {
   attackableTargets: readonly string[];
+  /** Presence opts into member-target markers; IDs are local selection, not authorization. */
+  selectedTargets?: readonly string[];
   onTargetClick: (targetId: string) => void;
 }
 
@@ -193,6 +197,8 @@ interface CombatExperienceBaseProps {
   logMode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   story: readonly CombatExperienceStoryExchange[];
+  /** Desktop opt-in: temporary released narration and optional history, scoped by caller. */
+  storyFeedback?: { scopeKey: string };
   debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll reaction window is asking about. Null when no
@@ -233,6 +239,8 @@ interface CombatExperienceBaseProps {
    * wherever it would have gone had there been no menu at all.
    */
   onSelectCastOption?: (optionId: string) => void;
+  /** Explicit option replacement, separate from re-clicking an armed command. */
+  onChangeCastOption?: (declaration: Declaration) => void;
   /** Close the option menu without casting. Nothing has been sent yet. */
   onCancelCastOption?: () => void;
   /** Clear the currently selected action without sending a command. */

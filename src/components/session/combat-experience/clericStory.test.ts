@@ -109,7 +109,12 @@ describe('Cleric cast outcomes in live and replay presentation', () => {
     const events = [cast(), applied(), missed()];
     const live = feed(events);
     const replay = feed(events, 'catchup');
-    expect(selectVisibleStory(live)).toEqual(selectVisibleStory(replay));
+    expect(selectVisibleStory(replay)).toEqual(
+      selectVisibleStory(live).map((entry) => ({
+        ...entry,
+        deliverySource: 'catchup',
+      }))
+    );
     expect(selectVisibleStory(live).map((entry) => entry.headline)).toEqual([
       'Mercy casts Bless',
       'Ally begins Bless',
@@ -240,7 +245,9 @@ describe('Cleric cast outcomes in live and replay presentation', () => {
         },
       });
       const story = selectVisibleStory(feed([event]));
-      expect(story).toEqual(selectVisibleStory(feed([event], 'catchup')));
+      expect(selectVisibleStory(feed([event], 'catchup'))).toEqual(
+        story.map((entry) => ({ ...entry, deliverySource: 'catchup' }))
+      );
       expect(story[0]?.headline).toBe('Ally recovers 2 HP');
       expect(story[0]?.detail).toBe(
         `${name} rolled 4 + 3 = 7; 2 applied (8 → 10 HP).`

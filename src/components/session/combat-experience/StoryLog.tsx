@@ -24,6 +24,10 @@ export interface StoryLogProps {
   result?: CombatExperienceAttackOutcome;
   /** Explicit diagnostic surface (for example the Concepts contract view). */
   diagnosticsEnabled?: boolean;
+  /** Responsive default until the player's first explicit expand/collapse choice. */
+  initialCollapsed?: boolean;
+  /** Avoid duplicate speech when the same released rows have a live notice surface. */
+  announceUpdates?: boolean;
 }
 
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
@@ -98,6 +102,8 @@ export function StoryLog({
   onModeChange,
   result,
   diagnosticsEnabled = false,
+  initialCollapsed = false,
+  announceUpdates = true,
 }: StoryLogProps) {
   const debugEnabled = isCombatDebugEnabled(
     diagnosticsEnabled,
@@ -118,7 +124,10 @@ export function StoryLog({
   // dependency so switching feeds re-pins the newly mounted one.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedChoice, setCollapsed] = useState<boolean | null>(null);
+  // Container measurement may enable desktop after mount. Follow its default
+  // until the player chooses; subsequent resize never overrides that choice.
+  const collapsed = collapsedChoice ?? initialCollapsed;
   const [jsonWide, setJsonWide] = useState(false);
   const wideDebug = visibleMode === 'debug' && jsonWide && !collapsed;
   const savedScrollTop = useRef<number | undefined>(undefined);
@@ -245,7 +254,7 @@ export function StoryLog({
           id={feedId}
           hidden={collapsed}
           role="log"
-          aria-live="polite"
+          aria-live={announceUpdates ? 'polite' : 'off'}
           aria-relevant="additions"
         >
           {story.map((entry) =>

@@ -33,6 +33,10 @@ import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolvePlayerCharacterModel } from './classCharacterModels';
 import { resolveDemoNpcModelUrl } from './demoNpcModels';
 import {
+  EntityTargetMarker,
+  type EntityTargetMarkerState,
+} from './EntityTargetMarker';
+import {
   DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
   POLYGON_DUNGEON_FORWARD_OFFSET,
@@ -73,6 +77,8 @@ export interface HexEntityProps {
   type: 'player' | 'monster' | 'obstacle' | 'npc';
   hexSize: number;
   isSelected?: boolean;
+  /** Opt-in offered-member selection display; follows this entity's moving group. */
+  targetMarker?: EntityTargetMarkerState;
   onClick?: (entityId: string) => void;
   /** Fires when the pointer enters this entity's own model geometry —
    * rpg-project#249, Kirk's own live-walk finding: the hover affordance
@@ -351,10 +357,12 @@ function resolveShield(
 
 export function HexEntity({
   entityId,
+  name,
   position,
   type,
   hexSize,
   isSelected = false,
+  targetMarker,
   onClick,
   onPointerOver: onPointerOverProp,
   onPointerOut: onPointerOutProp,
@@ -472,7 +480,9 @@ export function HexEntity({
   // Handle click events - dead and ghost entities are not interactive.
   // Ghosts represent last-known position outside LoS — clicking would let a
   // player attempt to attack/select an entity they technically can't see.
-  const isInert = isDead || isGhost || remembered;
+  // A provider-offered dead/downed target may still be chosen (e.g. recovery).
+  // Knowledge ghosts remain inert; the renderer never invents an offered target.
+  const isInert = (isDead && !targetMarker) || isGhost || remembered;
   const handleClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation(); // Prevent hex click from firing
     if (!isInert && onClick) {
@@ -667,6 +677,17 @@ export function HexEntity({
     // static prop did).
     return (
       <group ref={movingGroupRef} {...interactionProps}>
+        {targetMarker && !remembered && !isGhost && (
+          <EntityTargetMarker
+            entityId={entityId}
+            name={name}
+            hexSize={hexSize}
+            {...targetMarker}
+            onChoose={() => onClick?.(entityId)}
+            onHover={() => onPointerOverProp?.(entityId)}
+            onLeave={() => onPointerOutProp?.()}
+          />
+        )}
         {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
             THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not
             the pose the idle/walk clip actually renders — the animation

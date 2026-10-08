@@ -1,0 +1,454 @@
+.surface {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #746044;
+  border-top: 2px solid #b79862;
+  border-radius: 8px 8px 4px 4px;
+  color: #eee9dd;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 33, 38, 0.76),
+    rgba(11, 17, 22, 0.84)
+  );
+  box-shadow: 0 8px 28px #0008;
+  pointer-events: auto;
+  font-family: Inter, system-ui, sans-serif;
+}
+.surface[data-embedded='true'] {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.groups {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 14px;
+  align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  padding: 4px;
+  margin: -4px;
+}
+.group {
+  min-width: 84px;
+  flex-basis: 0;
+}
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  margin-bottom: 2px;
+  gap: 4px;
+}
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #d4c8ab;
+}
+.pager button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #766747;
+  border-radius: 3px;
+  background: #20272c;
+  color: #f0d99f;
+  font-size: 17px;
+  line-height: 1;
+}
+.pager button:disabled {
+  opacity: 0.3;
+}
+.group h3 {
+  margin: 0;
+  color: #c7b68f;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.offers {
+  display: grid;
+  grid-template-columns: repeat(var(--balanced-columns, 1), 36px);
+  grid-auto-rows: 36px;
+  align-content: start;
+  height: calc(var(--hotbar-rows, 1) * 40px - 4px);
+  gap: 4px;
+}
+.bands {
+  display: flex;
+  gap: 10px;
+}
+.band {
+  min-width: 0;
+  flex-basis: 0;
+}
+.band h4 {
+  height: 14px;
+  margin: 0 0 3px;
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 500;
+  color: #a9b9c1;
+}
+.emptySlot {
+  width: 36px;
+  height: 36px;
+  border: 1px dashed #b9a07125;
+  border-radius: 4px;
+}
+.favoriteMark {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  color: #f3d98c;
+  font-size: 11px;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+}
+.favoriteCount {
+  color: #e6c884;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.choiceMark {
+  position: absolute;
+  left: 3px;
+  bottom: 0;
+  color: #f3d98c;
+  font-size: 11px;
+  line-height: 1;
+}
+.offerSlot {
+  position: relative;
+}
+.offer {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--icon-color) 55%, #30363a);
+  border-radius: 4px;
+  background: radial-gradient(
+    ellipse at 50% 80%,
+    color-mix(in srgb, var(--icon-color) 22%, #101820),
+    #0b1015
+  );
+  box-shadow: inset 0 0 0 3px #0a0e1280;
+  cursor: pointer;
+  color: #f1eadb;
+}
+.art {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  background: var(--icon-color);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+.art img {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+.inspectionIcon .art {
+  width: 30px;
+  height: 30px;
+}
+.surface [data-tone='gold'] {
+  --icon-color: #d6b573;
+}
+.surface [data-tone='green'] {
+  --icon-color: #77cda5;
+}
+.surface [data-tone='blue'] {
+  --icon-color: #8bbddd;
+}
+.surface [data-tone='violet'] {
+  --icon-color: #b09ddb;
+}
+.offer:hover,
+.offer:focus-visible {
+  outline: 2px solid #f0d99f;
+  outline-offset: 2px;
+  background-color: #344048;
+}
+.offer[aria-pressed='true'] {
+  outline: 2px solid #f4d381;
+  outline-offset: 2px;
+  box-shadow: inset 0 0 15px #d9b65b60;
+}
+.offer[aria-disabled='true'] {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.offer[aria-disabled='true'] .art {
+  opacity: 0.5;
+}
+.cost {
+  position: absolute;
+  right: 3px;
+  bottom: 0;
+  font:
+    700 9px/1.3 Inter,
+    sans-serif;
+  color: var(--icon-color);
+}
+.unavailableMark {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  color: #f2a29a;
+  font: 700 16px/1 sans-serif;
+}
+.fallback {
+  font:
+    700 17px/1 Inter,
+    sans-serif;
+  color: var(--icon-color);
+}
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 5px;
+  padding-right: 240px;
+  min-height: 36px;
+  border-top: 1px solid #ffffff12;
+}
+.editControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  color: #f0d99f;
+  font-size: 11px;
+}
+.editControls small {
+  color: #c0c6c8;
+}
+.editControls p {
+  margin: 0;
+  color: #ffc39b;
+}
+.choiceTray {
+  position: absolute;
+  z-index: 31;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: min(430px, 100%);
+  padding: 14px;
+  border: 1px solid #b79862;
+  border-radius: 6px;
+  color: #eee9dd;
+  background: #11191f;
+  box-shadow: 0 12px 36px #000b;
+}
+.choiceTray header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.choiceTray header strong {
+  color: #f3dfb2;
+  font:
+    600 18px/1.3 Cinzel,
+    serif;
+}
+.choiceTray header span,
+.choiceTray small {
+  color: #aab9c0;
+  font-size: 11px;
+}
+.choiceOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.choiceOptions button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #766747;
+  border-radius: 4px;
+  color: #f0d99f;
+  background: #253039;
+  font-size: 12px;
+}
+.choiceOptions button:focus-visible {
+  outline: 2px solid #f0d99f;
+}
+.choiceOptions button:disabled {
+  opacity: 0.45;
+}
+.choiceTray p {
+  margin: 6px 0 0;
+  color: #ffc39b;
+  font-size: 11px;
+}
+.surface[data-editing='true'] {
+  border-color: #f0d99f;
+}
+.surface[data-editing='true'] .offer {
+  cursor: pointer;
+  border-style: dashed;
+}
+.rows {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #c7b68f;
+  font-size: 11px;
+}
+.rows select {
+  padding: 3px;
+  background: #20272c;
+  color: #f0d99f;
+  border: 1px solid #766747;
+  border-radius: 3px;
+}
+.editControls button,
+.editButton,
+.cancel {
+  min-height: 26px;
+  padding: 3px 6px;
+  color: #f0d99f;
+  border: 1px solid #766747;
+  border-radius: 3px;
+  background: #20272c;
+  font-size: 11px;
+}
+.editControls button:disabled {
+  opacity: 0.4;
+}
+.utilities {
+  flex: 1;
+  min-width: 0;
+}
+.utilities button,
+.utilities summary {
+  min-height: 26px;
+  padding: 3px 6px;
+  font-size: 10px;
+}
+/* A bridged, separate layer above the WHOLE bar. Opaque even for refused offers.
+   It is outside every scrolling/wrapping icon group and never moves their bounds. */
+.inspectionBridge {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + var(--desktop-targeting-clearance, 0px));
+  left: 0;
+  width: min(400px, 100%);
+  padding-bottom: 10px;
+}
+.inspection {
+  max-height: min(
+    440px,
+    max(
+      64px,
+      calc(
+        100cqh - var(--hotbar-surface-height, 280px) -
+          var(--desktop-targeting-clearance, 0px) - 36px
+      )
+    )
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px;
+  border: 1px solid #b79862;
+  border-top: 3px solid #d6b573;
+  border-radius: 6px;
+  background: #11191f;
+  color: #eee9dd;
+  box-shadow: 0 12px 36px #000b;
+  font:
+    13px/1.5 Inter,
+    system-ui,
+    sans-serif;
+  text-shadow: none;
+}
+.inspection:focus-visible {
+  outline: 2px solid #f0d99f;
+}
+.inspection header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #ffffff20;
+}
+.inspection header strong {
+  display: block;
+  font:
+    600 20px/1.3 Cinzel,
+    serif;
+  color: #f3dfb2;
+}
+.inspection header small {
+  color: #b8c0c2;
+  font-size: 11px;
+}
+.inspectionIcon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--icon-color) 18%, #101820);
+}
+.inspection dl {
+  margin: 12px 0;
+}
+.inspection dl > div {
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.inspection dt {
+  color: #a7b4bd;
+}
+.inspection dd {
+  margin: 0;
+  text-align: right;
+}
+.refusal,
+.ready {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border-radius: 3px;
+}
+.refusal {
+  color: #ffb7ac;
+  background: #382326;
+  border-left: 2px solid #db8b80;
+}
+.ready {
+  color: #a0d9ba;
+  background: #1d302c;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

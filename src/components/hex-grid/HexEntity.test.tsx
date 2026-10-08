@@ -91,6 +91,34 @@ describe('generic MediumHumanoid fallback colors', () => {
 });
 
 describe('remembered entities are inert', () => {
+  it.each(['remembered', 'ghost'] as const)(
+    'never gives a %s entity a live target marker even if a caller supplies one',
+    async (state) => {
+      const choose = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <HexEntity
+          {...base}
+          type="monster"
+          monsterRefId="skeleton"
+          knowledgeState={state === 'remembered' ? 'remembered' : undefined}
+          isGhost={state === 'ghost'}
+          targetMarker={{ selected: true, order: 1 }}
+          onClick={choose}
+        />
+      );
+      expect(
+        renderer.scene.findAll((node) =>
+          String(node.props.name ?? '').startsWith('member-target-marker-')
+        )
+      ).toHaveLength(0);
+      for (const node of renderer.scene.findAll(
+        (item) => typeof item.props.onClick === 'function'
+      ))
+        node.props.onClick({ stopPropagation: () => {} });
+      expect(choose).not.toHaveBeenCalled();
+      await renderer.unmount();
+    }
+  );
   it('gives a remembered monster no pointer handlers at all', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <HexEntity

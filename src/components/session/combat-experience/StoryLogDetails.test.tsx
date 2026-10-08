@@ -56,6 +56,22 @@ const base = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('inline Debug inspection', () => {
+  it('adopts a measured desktop default without overriding an explicit log choice', () => {
+    const view = render(
+      <StoryLog {...base} debug={[]} initialCollapsed={false} />
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Expand combat log' })
+    ).toBeNull();
+    view.rerender(<StoryLog {...base} debug={[]} initialCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
+    view.rerender(<StoryLog {...base} debug={[]} initialCollapsed={false} />);
+    view.rerender(<StoryLog {...base} debug={[]} initialCollapsed />);
+    expect(
+      screen.queryByRole('button', { name: 'Expand combat log' })
+    ).toBeNull();
+  });
+
   it.each(['click', 'focus'])(
     'widens only Debug on JSON %s and can return to compact width',
     async (action) => {

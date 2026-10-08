@@ -170,6 +170,16 @@
   }
 }
 
+/* Keep lab controls away from left-anchored inspection cards in short desktop frames. */
+@media (max-height: 600px) {
+  .organizedHudConcept[data-preview='true']:has([data-desktop-hotbar='true'])
+    > header {
+    left: auto;
+    right: 24px;
+    top: 86px;
+  }
+}
+
 html:has(.organizedHudConcept[data-preview='true']),
 body:has(.organizedHudConcept[data-preview='true']) {
   width: 100%;
