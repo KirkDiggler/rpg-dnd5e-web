@@ -1,0 +1,37 @@
+.marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 200px;
+  min-height: 26px;
+  padding: 4px 7px;
+  border: 1px solid #81c6cc;
+  border-radius: 4px;
+  color: #d6eff0;
+  background: #0b1720e8;
+  box-shadow: 0 2px 8px #0008;
+  font:
+    600 11px/1.2 Inter,
+    system-ui,
+    sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.marker[data-selected='true'] {
+  border: 2px solid #f3d17c;
+  color: #ffe8ac;
+  background: #292719f5;
+}
+.marker:focus-visible,
+.marker:hover {
+  outline: 2px solid #fff0bd;
+  outline-offset: 2px;
+}
+.check {
+  font-weight: 800;
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

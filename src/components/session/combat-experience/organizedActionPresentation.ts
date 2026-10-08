@@ -3,6 +3,10 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import type {
+  DesktopHotbarCustomization,
+  DesktopHotbarSection,
+} from './desktopHotbarLayout';
 import type { QuickOverflowGroup } from './quickOverflow';
 import { isExecutableVerb } from './verbRegistry';
 
@@ -11,7 +15,27 @@ import { isExecutableVerb } from './verbRegistry';
  * future caller), never derived from game refs, class, costs, or resources.
  * The server remains the source of membership and availability.
  */
+export interface ActionIconPresentation {
+  src: string;
+  fallback: string;
+  tone: 'gold' | 'green' | 'blue' | 'violet';
+}
+
 export interface OrganizedActionPresentation {
+  /** Explicit desktop experiment opt-in. Artwork never supplies game facts. */
+  desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
+  /** Explicit concept-only favorite experiment; absent disables pins and edit controls. */
+  desktopFavorites?: boolean;
+  /** Optional controlled preview preferences; never a gameplay authority. */
+  desktopCustomization?: DesktopHotbarCustomization;
+  /** Explicit desktop categories; never inferred from a name, cost or class. */
+  desktopSectionByDeclarationId?: Readonly<
+    Record<string, DesktopHotbarSection>
+  >;
+  desktopSpellKindByDeclarationId?: Readonly<
+    Record<string, 'cantrip' | 'leveled'>
+  >;
+  desktopEffectIcons?: Readonly<Record<string, ActionIconPresentation>>;
   /** Declaration ids to place in the compact quick row, in this exact order. */
   quickDeclarationIds?: readonly string[];
   /** Explicit group facts for width-driven overflow; unknown offers are not guessed. */

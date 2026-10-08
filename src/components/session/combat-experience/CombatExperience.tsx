@@ -4,6 +4,7 @@ import {
   ClockKind,
   LifeState,
   Standing,
+  TargetKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useRef, useState } from 'react';
@@ -16,11 +17,14 @@ import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts.tsx';
+import { DesktopEffects } from './DesktopEffects';
+import { DesktopStatusSection } from './DesktopStatusSection';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
+import { StoryNotices } from './StoryNotices';
 import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
@@ -30,6 +34,7 @@ import {
   useDiceSettleGate,
 } from './useDiceSettleGate';
 import { useRollFlash } from './useRollFlash';
+import { useStoryNotices } from './useStoryNotices';
 
 function portraitOf(name: string): string {
   return name
@@ -162,6 +167,7 @@ export function CombatExperience({
   logMode,
   streamState,
   story,
+  storyFeedback,
   debug,
   result,
   rollWindow,
@@ -179,6 +185,7 @@ export function CombatExperience({
   hoveredTarget,
   onSelectDeclaration,
   onSelectCastOption,
+  onChangeCastOption,
   onCancelCastOption,
   onCancelSelection,
   onTargetClick,
@@ -207,6 +214,10 @@ export function CombatExperience({
   const [endTurnTarget, setEndTurnTarget] = useState<HTMLSpanElement | null>(
     null
   );
+  const [targetingHost, setTargetingHost] = useState<HTMLDivElement | null>(
+    null
+  );
+  const [targetingHeight, setTargetingHeight] = useState(0);
   const scrollInitiative = (direction: -1 | 1) => {
     const order = initiativeScroll.current;
     if (order)
@@ -271,6 +282,14 @@ export function CombatExperience({
     ),
     rollWindowReady ? undefined : rollWindow?.storyId
   );
+  const desktopHotbar = Boolean(actionPresentation?.desktopIcons);
+  const noticesEnabled = Boolean(storyFeedback && desktopHotbar);
+  const storyNotices = useStoryNotices({
+    story: revealedStory,
+    scope: storyFeedback?.scopeKey ?? '',
+    enabled: noticesEnabled,
+    streamState,
+  });
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -339,6 +358,19 @@ export function CombatExperience({
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
+  const armedMatches = declarations.filter(
+    (offer) => offer.id === presentationState.armedDeclarationId
+  );
+  const targetingDeclaration =
+    armedMatches.length === 1 ? armedMatches[0] : undefined;
+  const targetingControlsActive =
+    desktopHotbar &&
+    phase === 'targeting' &&
+    (!targetingDeclaration ||
+      targetingDeclaration.targetKind === TargetKind.MEMBER);
+  // Action information exists independently of effects. No unrelated offer
+  // supplies a default context while the player has nothing selected.
+  const effectSource = armedMatches.length === 1 ? armedMatches[0] : undefined;
   const movementRemainingFeet = movementBudgetFeet(declarations);
   const hp = characterData?.hitPoints;
   const hpPercent = hp?.max
@@ -388,6 +420,7 @@ export function CombatExperience({
       className={`${styles.combatExperience} ${layout === 'fill-parent' ? styles.combatExperienceFillParent : ''}`}
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
+      data-desktop-hotbar={desktopHotbar ? 'true' : undefined}
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
@@ -403,6 +436,34 @@ export function CombatExperience({
             showTurnNotice={showTurnNotice}
             pacingNotice={pacingNotice}
             changedOptionNotice={presentationState.changedOptionNotice}
+            mapFirst={
+              desktopHotbar
+                ? {
+                    declaration: targetingDeclaration,
+                    selectedMembers:
+                      presentationState.selectedCandidateMembers ?? [],
+                    authorityFresh,
+                    turnAllowed: clock !== ClockKind.TURN || isViewerTurn,
+                    optionId: presentationState.selectedOption,
+                  }
+                : undefined
+            }
+            mapFirstHost={desktopHotbar ? targetingHost : undefined}
+            onMapFirstHeightChange={setTargetingHeight}
+            castOptionId={
+              desktopHotbar
+                ? (presentationState.selectedOption ?? undefined)
+                : undefined
+            }
+            onChangeCastOption={
+              desktopHotbar &&
+              authorityFresh &&
+              targetingDeclaration?.available &&
+              targetingDeclaration.options.length > 0 &&
+              onChangeCastOption
+                ? () => onChangeCastOption(targetingDeclaration)
+                : undefined
+            }
             memberNames={memberNames}
             location={location}
             navigationControls={navigationControls}
@@ -501,8 +562,14 @@ export function CombatExperience({
           </div>
         )}
 
-        <DamageToasts toasts={damageToasts} />
-        <RollFlashToasts flashes={rollFlashes} />
+        {noticesEnabled ? (
+          <StoryNotices entries={storyNotices} />
+        ) : (
+          <>
+            <DamageToasts toasts={damageToasts} />
+            <RollFlashToasts flashes={rollFlashes} />
+          </>
+        )}
 
         <StoryLog
           story={revealedStory}
@@ -512,6 +579,8 @@ export function CombatExperience({
           onModeChange={onLogModeChange}
           result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
+          initialCollapsed={Boolean(storyFeedback)}
+          announceUpdates={!noticesEnabled}
         />
 
         {diceWitnessRole === 'roller' &&
@@ -535,95 +604,108 @@ export function CombatExperience({
           )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
-          <div
-            className={styles.identityRow}
-            role="group"
-            aria-label="Your status"
-          >
-            <div className={styles.viewerPortrait}>
-              {portraitOf(viewerName)}
-            </div>
-            <div className={styles.viewerIdentity}>
-              <strong>{viewerName}</strong>
-              <span>
-                {characterData
-                  ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
-                  : labelOf(viewerClassRefId)}
-              </span>
-            </div>
-            {hp && (
-              <div className={styles.hpBlock}>
-                <div className={styles.hpLabel}>
-                  <span>Hit points</span>
+          {(!desktopHotbar || statuses.length > 0) && (
+            <div
+              className={styles.identityRow}
+              role="group"
+              aria-label={
+                desktopHotbar ? 'Effects and resources' : 'Your status'
+              }
+            >
+              <div className={styles.viewerPortrait}>
+                {portraitOf(viewerName)}
+              </div>
+              <div className={styles.viewerIdentity}>
+                <strong>{viewerName}</strong>
+                <span>
+                  {characterData
+                    ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
+                    : labelOf(viewerClassRefId)}
+                </span>
+              </div>
+              {!desktopHotbar && hp && (
+                <div className={styles.hpBlock}>
+                  <div className={styles.hpLabel}>
+                    <span>Hit points</span>
+                    <strong>
+                      {hp.current}/{hp.max}
+                    </strong>
+                  </div>
+                  <div className={styles.hpTrack}>
+                    <span style={{ width: `${hpPercent}%` }} />
+                  </div>
+                </div>
+              )}
+              {!desktopHotbar && characterData?.armorClassDetail && (
+                <div
+                  className={styles.statBlock}
+                  title={characterData.armorClassDetail.note}
+                >
+                  <small>Armor</small>
+                  <strong>{characterData.armorClassDetail.total}</strong>
+                </div>
+              )}
+              {!desktopHotbar && characterData && (
+                <div className={styles.statBlock}>
+                  <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
                   <strong>
-                    {hp.current}/{hp.max}
+                    {isViewerTurn && movementRemainingFeet !== undefined
+                      ? movementRemainingFeet
+                      : characterData.baseSpeedFeet}{' '}
+                    ft
                   </strong>
                 </div>
-                <div className={styles.hpTrack}>
-                  <span style={{ width: `${hpPercent}%` }} />
+              )}
+              {statuses.length > 0 && (
+                <div
+                  className={styles.effects}
+                  aria-label={
+                    desktopHotbar
+                      ? 'Active effects and resources'
+                      : 'Character status'
+                  }
+                >
+                  {statuses.map((status) => (
+                    <StatusBadge key={status.key} status={status} />
+                  ))}
                 </div>
-              </div>
-            )}
-            {characterData?.armorClassDetail && (
-              <div
-                className={styles.statBlock}
-                title={characterData.armorClassDetail.note}
-              >
-                <small>Armor</small>
-                <strong>{characterData.armorClassDetail.total}</strong>
-              </div>
-            )}
-            {characterData && (
-              <div className={styles.statBlock}>
-                <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
-                <strong>
-                  {isViewerTurn && movementRemainingFeet !== undefined
-                    ? movementRemainingFeet
-                    : characterData.baseSpeedFeet}{' '}
-                  ft
-                </strong>
-              </div>
-            )}
-            {statuses.length > 0 && (
-              <div className={styles.effects} aria-label="Character status">
-                {statuses.map((status) => (
-                  <StatusBadge key={status.key} status={status} />
-                ))}
-              </div>
-            )}
-            {privateStatus !== 'ready' && (
-              <div className={styles.privateStatus} role="status">
-                <strong>
-                  {privateStatus === 'loading'
-                    ? 'Loading private status'
-                    : privateStatus === 'stale'
-                      ? 'Private status may be out of date'
-                      : 'Private status unavailable'}
-                </strong>
-                {privateStatusMessage && <small>{privateStatusMessage}</small>}
-                {onRetryPrivateStatus && (
-                  <button type="button" onClick={onRetryPrivateStatus}>
-                    Retry private status
+              )}
+              {!desktopHotbar && privateStatus !== 'ready' && (
+                <div className={styles.privateStatus} role="status">
+                  <strong>
+                    {privateStatus === 'loading'
+                      ? 'Loading private status'
+                      : privateStatus === 'stale'
+                        ? 'Private status may be out of date'
+                        : 'Private status unavailable'}
+                  </strong>
+                  {privateStatusMessage && (
+                    <small>{privateStatusMessage}</small>
+                  )}
+                  {onRetryPrivateStatus && (
+                    <button type="button" onClick={onRetryPrivateStatus}>
+                      Retry private status
+                    </button>
+                  )}
+                </div>
+              )}
+              {characterData &&
+                onOpenEquipment &&
+                actionPresentation?.mode !== 'organized-hud' && (
+                  <button
+                    type="button"
+                    className={styles.equipmentButton}
+                    data-testid="session-combat-equipment-button"
+                    aria-pressed={equipmentOpen}
+                    title="Equipment"
+                    onClick={onOpenEquipment}
+                  >
+                    <span aria-hidden="true">♜</span>
+                    Equipment
                   </button>
                 )}
-              </div>
-            )}
-            {characterData &&
-              onOpenEquipment &&
-              actionPresentation?.mode !== 'organized-hud' && (
-                <button
-                  type="button"
-                  className={styles.equipmentButton}
-                  data-testid="session-combat-equipment-button"
-                  aria-pressed={equipmentOpen}
-                  title="Equipment"
-                  onClick={onOpenEquipment}
-                >
-                  <span aria-hidden="true">♜</span>
-                  Equipment
-                </button>
-              )}
-          </div>
+            </div>
+          )}
 
           <ActionDock
             clock={clock}
@@ -632,6 +714,60 @@ export function CombatExperience({
             declarations={declarations}
             authorityFresh={authorityFresh}
             actionPresentation={actionPresentation}
+            targetingControlsActive={targetingControlsActive}
+            desktopTargetingHeight={
+              targetingControlsActive ? targetingHeight : 0
+            }
+            desktopTargeting={
+              desktopHotbar ? (
+                <div
+                  ref={setTargetingHost}
+                  className={styles.desktopTargetingSlot}
+                  data-testid="desktop-targeting-host"
+                />
+              ) : undefined
+            }
+            desktopStatus={
+              desktopHotbar ? (
+                <DesktopStatusSection
+                  hitPoints={hp}
+                  hpPercent={hpPercent}
+                  armor={characterData?.armorClassDetail}
+                  movementLabel={
+                    clock === ClockKind.TURN && isViewerTurn ? 'Move' : 'Speed'
+                  }
+                  movementFeet={
+                    clock === ClockKind.TURN && isViewerTurn
+                      ? movementRemainingFeet
+                      : characterData?.baseSpeedFeet
+                  }
+                  movementStale={
+                    clock === ClockKind.TURN && isViewerTurn && !authorityFresh
+                  }
+                  privateStatus={privateStatus}
+                  privateStatusMessage={privateStatusMessage}
+                  onRetry={onRetryPrivateStatus}
+                >
+                  <DesktopEffects
+                    declaration={effectSource}
+                    targetMember={
+                      effectSource?.id === presentationState.armedDeclarationId
+                        ? presentationState.selectedCandidateMember
+                        : undefined
+                    }
+                    targetName={
+                      presentationState.selectedCandidateMember
+                        ? memberNames.get(
+                            presentationState.selectedCandidateMember
+                          )
+                        : undefined
+                    }
+                    authorityFresh={authorityFresh}
+                    icons={actionPresentation?.desktopEffectIcons}
+                  />
+                </DesktopStatusSection>
+              ) : undefined
+            }
             onOpenEquipment={onOpenEquipment}
             equipmentOpen={equipmentOpen}
             onCenterView={onCenterView}

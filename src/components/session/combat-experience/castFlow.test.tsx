@@ -200,13 +200,24 @@ function attackDeclaration(): Declaration {
 
 let latest: ReturnType<typeof useSessionCombatExperience>;
 
-function Harness({ declarations }: { declarations: readonly Declaration[] }) {
+function Harness({
+  declarations,
+  mode = 'legacy',
+  session = 'crypt-run',
+  authorityFresh = true,
+}: {
+  declarations: readonly Declaration[];
+  mode?: 'legacy' | 'map-first';
+  session?: string;
+  authorityFresh?: boolean;
+}) {
   latest = useSessionCombatExperience({
-    session: 'crypt-run',
+    session,
     member: 'bard-1',
     clock: ClockKind.TURN,
     active: 'bard-1',
-    authorityFresh: true,
+    authorityFresh,
+    memberTargetingMode: mode,
     memberNames: new Map([
       ['bard-1', 'Lyric'],
       ['skeleton-1', 'Skeleton'],
@@ -578,6 +589,217 @@ describe('sending the cast', () => {
    * TARGET_KIND_NONE cast — leaves the bard holding a spell with no candidate
    * to click, which is the dead-button shape slice one's walk kept finding.
    */
+  it('toggles desktop picks, preserves same-command picks, and confirms the latest ordered list once', async () => {
+    const bane = baneDeclaration();
+    render(<Harness declarations={[bane]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(bane));
+    act(() => {
+      latest.onTargetClick('skeleton-1');
+      latest.onTargetClick('skeleton-2');
+      latest.onTargetClick('skeleton-1');
+      latest.onTargetClick('skeleton-3');
+    });
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-2',
+      'skeleton-3',
+    ]);
+    act(() => latest.onSelectDeclaration(bane));
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-2',
+      'skeleton-3',
+    ]);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    act(() => {
+      latest.onConfirmTargets();
+      latest.onConfirmTargets();
+    });
+    await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+    expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
+      declarationId: bane.id,
+      targets: ['skeleton-2', 'skeleton-3'],
+    });
+  });
+
+  it('changes a multi-cast option explicitly while icon re-selection preserves picks', async () => {
+    const spell = create(DeclarationSchema, {
+      ...baneDeclaration(),
+      options: [
+        create(CastOptionSchema, { id: 'first', label: 'First choice' }),
+        create(CastOptionSchema, { id: 'second', label: 'Second choice' }),
+      ],
+    });
+    render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('first'));
+    act(() => latest.onTargetClick('skeleton-1'));
+    act(() => latest.onSelectDeclaration(spell));
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-1',
+    ]);
+    expect(latest.presentationState.selectedOption).toBe('first');
+    const oldConfirm = latest.onConfirmTargets;
+    const oldClick = latest.onTargetClick;
+    act(() => latest.onChangeCastOption(spell));
+    expect(latest.presentationState.optionDeclarationId).toBe(spell.id);
+    expect(latest.presentationState.armedDeclarationId).toBeNull();
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([]);
+    expect(latest.presentationState.selectedOption).toBeNull();
+    act(() => {
+      oldClick('skeleton-2');
+      oldConfirm();
+    });
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    act(() => latest.onSelectCastOption('second'));
+    act(() => latest.onTargetClick('skeleton-2'));
+    act(() => {
+      latest.onConfirmTargets();
+      latest.onChangeCastOption(spell);
+    });
+    expect(latest.presentationState.optionDeclarationId).toBeNull();
+    await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+    expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
+      targets: ['skeleton-2'],
+      option: 'second',
+    });
+  });
+
+  it('rejects a change-choice callback retained from an earlier selection', () => {
+    const spell = create(DeclarationSchema, {
+      ...baneDeclaration(),
+      options: [create(CastOptionSchema, { id: 'choice', label: 'Choice' })],
+    });
+    render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('choice'));
+    const oldChange = latest.onChangeCastOption;
+    act(() => latest.onCancelSelection());
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('choice'));
+    act(() => latest.onTargetClick('skeleton-2'));
+    act(() => oldChange(spell));
+    expect(latest.presentationState.optionDeclarationId).toBeNull();
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'skeleton-2',
+    ]);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('keeps an opaque option through self/ally toggles and blocks withdrawn picks until removed', async () => {
+    const spell = create(DeclarationSchema, {
+      ...baneDeclaration(),
+      options: [
+        create(CastOptionSchema, {
+          id: 'opaque-option',
+          label: 'Provider choice',
+        }),
+      ],
+      candidates: ['bard-1', 'ally', 'other'].map((member) =>
+        create(TargetCandidateSchema, { member, available: true })
+      ),
+      maxTargets: 2,
+    });
+    const view = render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onSelectCastOption('opaque-option'));
+    act(() => {
+      latest.onTargetClick('bard-1');
+      latest.onTargetClick('ally');
+      latest.onTargetClick('other');
+    });
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'bard-1',
+      'ally',
+    ]);
+    const withdrawn = create(DeclarationSchema, {
+      ...spell,
+      candidates: spell.candidates.filter(({ member }) => member !== 'ally'),
+    });
+    view.rerender(<Harness declarations={[withdrawn]} mode="map-first" />);
+    act(() => latest.onConfirmTargets());
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    act(() => latest.onTargetClick('ally'));
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([
+      'bard-1',
+    ]);
+    act(() => latest.onConfirmTargets());
+    await waitFor(() => expect(hoisted.castFn).toHaveBeenCalledTimes(1));
+    expect(hoisted.castFn.mock.calls[0]?.[0]).toMatchObject({
+      targets: ['bard-1'],
+      option: 'opaque-option',
+    });
+  });
+
+  it('does not transfer picks across authority loss or a replacement selector', () => {
+    const spell = baneDeclaration();
+    const view = render(<Harness declarations={[spell]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(spell));
+    act(() => latest.onTargetClick('skeleton-1'));
+    const confirm = latest.onConfirmTargets;
+    view.rerender(
+      <Harness declarations={[spell]} mode="map-first" authorityFresh={false} />
+    );
+    expect(latest.presentationState.armedDeclarationId).toBeNull();
+    const replacement = create(DeclarationSchema, {
+      ...spell,
+      id: 'replacement',
+    });
+    view.rerender(<Harness declarations={[replacement]} mode="map-first" />);
+    act(() => {
+      latest.onSelectDeclaration(replacement);
+      confirm();
+    });
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([]);
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects callbacks saved before cancel/rearm, scope changes and mode changes', () => {
+    const bane = baneDeclaration();
+    const view = render(<Harness declarations={[bane]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(bane));
+    const oldClick = latest.onTargetClick;
+    const oldConfirm = latest.onConfirmTargets;
+    act(() => {
+      latest.onCancelSelection();
+      latest.onSelectDeclaration(bane);
+      oldClick('skeleton-1');
+      oldConfirm();
+    });
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([]);
+    act(() => latest.onTargetClick('skeleton-2'));
+    const oldScopeClick = latest.onTargetClick;
+    view.rerender(
+      <Harness declarations={[bane]} mode="map-first" session="new-session" />
+    );
+    act(() => {
+      latest.onSelectDeclaration(bane);
+      oldScopeClick('skeleton-1');
+    });
+    expect(latest.presentationState.selectedCandidateMembers).toEqual([]);
+    act(() => latest.onTargetClick('skeleton-2'));
+    view.rerender(
+      <Harness declarations={[bane]} mode="legacy" session="new-session" />
+    );
+    expect(latest.presentationState.armedDeclarationId).toBeNull();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+  });
+
+  it('refuses a multi-member shape on a scalar RPC instead of sending its first target', () => {
+    const multiAttack = create(DeclarationSchema, {
+      ...attackDeclaration(),
+      minTargets: 1,
+      maxTargets: 2,
+    });
+    render(<Harness declarations={[multiAttack]} mode="map-first" />);
+    act(() => latest.onSelectDeclaration(multiAttack));
+    act(() => latest.onTargetClick('skeleton-1'));
+    act(() => latest.onConfirmTargets());
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.castFn).not.toHaveBeenCalled();
+    expect(latest.presentationState.changedOptionNotice).toMatch(
+      /does not support multiple targets/i
+    );
+  });
+
   it('collects Bane targets in click order, caps them at the provider maximum, and submits once', async () => {
     const declaration = baneDeclaration();
     render(<Harness declarations={[declaration]} />);

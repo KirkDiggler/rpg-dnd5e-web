@@ -2795,3 +2795,107 @@ button.diceDrawerCue:focus-visible {
     max-height: min(220px, calc(100dvh - 300px));
   }
 }
+
+/* Desktop concept opt-in only. The bar owns the full width; log width never
+   participates in its sizing. Log/JSON is an input-owning overlay above it. */
+.desktopDock {
+  position: relative;
+  z-index: 6;
+  grid-row: 3;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  min-width: 0;
+  margin: 12px 24px;
+  padding: 6px 8px;
+  border: 1px solid #746044;
+  border-top: 2px solid #b79862;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 33, 38, 0.76),
+    rgba(11, 17, 22, 0.84)
+  );
+  box-shadow: 0 8px 28px #0008;
+  pointer-events: auto;
+}
+.desktopDockActions {
+  min-width: 0;
+}
+.desktopMovementHint {
+  max-width: 130px;
+  color: #a8b5bb;
+  font-size: 10px;
+  line-height: 1.3;
+}
+.desktopTargetingSlot {
+  position: absolute;
+  z-index: 35;
+  bottom: calc(100% + 10px);
+  left: 8px;
+  right: 8px;
+  pointer-events: none;
+}
+.combatExperience[data-desktop-hotbar='true'] .desktopDock .actionRow {
+  grid-row: auto;
+  grid-column: auto;
+  padding: 0;
+  align-content: start;
+}
+.desktopDockActions .actionRow > .organizedSecondary {
+  margin-right: 240px;
+  min-height: 36px;
+}
+.desktopDockActions .authorityStale {
+  margin-left: 0;
+  justify-self: start;
+  max-width: calc(100% - 240px);
+  white-space: normal;
+}
+
+.combatExperience[data-desktop-hotbar='true'] .gameFrame,
+.combatExperience[data-desktop-hotbar='true']
+  .gameFrame:has(.storyLog:not(.storyLogCollapsed)) {
+  grid-template-columns: minmax(0, 1fr) 64px 164px;
+}
+.combatExperience[data-desktop-hotbar='true'] .actionRow {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  padding-right: 24px;
+  padding-left: 24px;
+}
+.combatExperience[data-desktop-hotbar='true'] .organizedEndTurnSlot {
+  padding-right: 30px;
+  padding-bottom: 18px;
+}
+.combatExperience[data-desktop-hotbar='true'] .organizedEndTurnSlot .endTurn,
+.combatExperience[data-desktop-hotbar='true'] .logTab {
+  min-height: 36px;
+}
+.combatExperience[data-desktop-hotbar='true'] .storyLog.storyLogCollapsed {
+  z-index: 20;
+  margin-bottom: 18px;
+}
+.combatExperience[data-desktop-hotbar='true']
+  .storyLog:not(.storyLogCollapsed) {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--organized-header-height, 80px) + 8px);
+  right: 24px;
+  bottom: 76px;
+  grid-row: auto;
+  grid-column: auto;
+  margin: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  background: rgba(10, 17, 20, 0.96);
+  border: 1px solid var(--sc-line);
+  pointer-events: auto;
+}
+.combatExperience[data-desktop-hotbar='true']
+  .storyLog:not(.storyLogCollapsed)::before {
+  display: none;
+}

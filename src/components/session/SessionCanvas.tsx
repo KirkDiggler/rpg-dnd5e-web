@@ -72,7 +72,7 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
-import { HexEntity } from '../hex-grid/HexEntity';
+import { HexEntity, type HexEntityProps } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
 import { resolveMainHandPresentationByRefKey } from '../hex-grid/mainHandWeapons';
@@ -268,6 +268,8 @@ export interface SessionCanvasProps {
    * verb that took a member. Bardic Inspiration and Help name allies here, and
    * whose side a subject is on is Afford's answer, never this component's. */
   attackableTargets?: string[];
+  /** Opt-in member targeting: ordered local choices, never authorization. */
+  selectedTargets?: readonly string[];
   /** The mover an open reaction window is posed against — ringed while THIS
    * viewer holds the window, and undefined at every other moment. One
    * subject: a window names a single mover, and several windows over the
@@ -343,6 +345,7 @@ export function SessionScene({
   dungeonKey,
   onInteractClick,
   attackableTargets,
+  selectedTargets,
   reactionMover,
   pathIndex = null,
   movementPreviewEnabled = true,
@@ -448,6 +451,17 @@ export function SessionScene({
     [attackableTargets]
   );
 
+  const memberTargeting = selectedTargets !== undefined;
+  const targetMarkerFor = (
+    subject: string,
+    remembered = false
+  ): HexEntityProps['targetMarker'] => {
+    if (!memberTargeting || remembered || !attackableSet.has(subject))
+      return undefined;
+    const index = selectedTargets.indexOf(subject);
+    return { selected: index >= 0, order: index >= 0 ? index + 1 : undefined };
+  };
+
   // ONE lookup for every actor, self included — the whole point of
   // rpg-dnd5e-web#961. `characterId` is the local player's member id, the
   // same key the controller stores peers under.
@@ -472,6 +486,15 @@ export function SessionScene({
   const handleTargetClick = useCallback(
     (subject: string) => {
       const observed = membersBySubject.get(subject);
+      if (memberTargeting) {
+        if (
+          !observed?.remembered &&
+          attackableSet.has(subject) &&
+          (observed || subject === characterId)
+        )
+          onEntityClick?.(subject);
+        return;
+      }
       if (cellAimEnabled && observed) {
         // CELL aiming selects a place, not a victim. Use only the position in
         // this viewer's sighting and submit it through the exact floor seam.
@@ -486,6 +509,8 @@ export function SessionScene({
     },
     [
       membersBySubject,
+      memberTargeting,
+      characterId,
       cellAimEnabled,
       onHexClick,
       attackableSet,
@@ -506,6 +531,10 @@ export function SessionScene({
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       const key = coordToKey(coord);
+      if (memberTargeting && key === coordToKey(myPosition)) {
+        handleTargetClick(characterId);
+        return;
+      }
       const hit = otherMembers?.find(
         (member) => coordToKey(member.position) === key
       );
@@ -513,9 +542,16 @@ export function SessionScene({
         handleTargetClick(hit.subject);
         return;
       }
-      onHexClick?.(coord);
+      if (!memberTargeting) onHexClick?.(coord);
     },
-    [otherMembers, handleTargetClick, onHexClick]
+    [
+      otherMembers,
+      handleTargetClick,
+      onHexClick,
+      memberTargeting,
+      myPosition,
+      characterId,
+    ]
   );
 
   const freeAreaAim = useAreaAim(
@@ -584,6 +620,8 @@ export function SessionScene({
   // already know exactly which cell it occupies), falling back to the
   // ground plane's own raycast hit otherwise.
   const effectiveHoveredHex = useMemo(() => {
+    if (memberTargeting && meshHoveredSubject === characterId)
+      return myPosition;
     if (meshHoveredSubject) {
       return (
         otherMembers?.find((m) => m.subject === meshHoveredSubject)?.position ??
@@ -591,7 +629,14 @@ export function SessionScene({
       );
     }
     return hoveredHex;
-  }, [meshHoveredSubject, otherMembers, hoveredHex]);
+  }, [
+    meshHoveredSubject,
+    otherMembers,
+    hoveredHex,
+    memberTargeting,
+    characterId,
+    myPosition,
+  ]);
 
   const displayedAim = freeAreaAim ?? effectiveHoveredHex;
   useEffect(() => {
@@ -603,12 +648,21 @@ export function SessionScene({
   // lookup this module has always used (cheap — otherMembers is small).
   const hoveredEntityId = useMemo(() => {
     if (meshHoveredSubject) return meshHoveredSubject;
-    if (!hoveredHex || !otherMembers) return null;
+    if (!hoveredHex) return null;
     const key = coordToKey(hoveredHex);
+    if (memberTargeting && key === coordToKey(myPosition)) return characterId;
+    if (!otherMembers) return null;
     return (
       otherMembers.find((m) => coordToKey(m.position) === key)?.subject ?? null
     );
-  }, [meshHoveredSubject, hoveredHex, otherMembers]);
+  }, [
+    meshHoveredSubject,
+    hoveredHex,
+    otherMembers,
+    memberTargeting,
+    characterId,
+    myPosition,
+  ]);
 
   // Presentation-only: report the hovered subject up so the panel can
   // show "Attack <name>" (or its shortfall) — this component makes no
@@ -628,7 +682,7 @@ export function SessionScene({
   // marker is prospective movement and therefore exists only while Move is
   // explicitly selected (or an exploration caller keeps the default enabled).
   const moveIndicatorHovered =
-    movementPreviewEnabled || hoveredEntityIsAttackable
+    !memberTargeting && (movementPreviewEnabled || hoveredEntityIsAttackable)
       ? effectiveHoveredHex
       : null;
   const moveIndicatorSelection = useMoveIndicator({
@@ -716,15 +770,16 @@ export function SessionScene({
               hexSize={hexSize}
             />
           ))}
-      {attackableRingPositions.map((member) => (
-        <PathPreview
-          key={`attackable-ring-${member.subject}`}
-          path={[member.position]}
-          hexSize={hexSize}
-          color={ATTACKABLE_RING_COLOR}
-          opacity={ATTACKABLE_RING_OPACITY}
-        />
-      ))}
+      {!memberTargeting &&
+        attackableRingPositions.map((member) => (
+          <PathPreview
+            key={`attackable-ring-${member.subject}`}
+            path={[member.position]}
+            hexSize={hexSize}
+            color={ATTACKABLE_RING_COLOR}
+            opacity={ATTACKABLE_RING_OPACITY}
+          />
+        ))}
       {reactionMoverMember && (
         <PathPreview
           key={`reaction-mover-ring-${reactionMoverMember.subject}`}
@@ -741,6 +796,12 @@ export function SessionScene({
       />
       <HexEntity
         entityId={characterId}
+        targetMarker={targetMarkerFor(characterId)}
+        onClick={memberTargeting ? handleTargetClick : undefined}
+        onPointerOver={memberTargeting ? setMeshHoveredSubject : undefined}
+        onPointerOut={
+          memberTargeting ? () => setMeshHoveredSubject(null) : undefined
+        }
         name={characterName}
         position={myPosition}
         type="player"
@@ -782,6 +843,7 @@ export function SessionScene({
         <HexEntity
           key={member.subject}
           entityId={member.subject}
+          targetMarker={targetMarkerFor(member.subject, member.remembered)}
           name={member.name}
           position={member.position}
           movePath={movements?.get(member.subject)?.route}

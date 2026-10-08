@@ -8,6 +8,7 @@ import { CharacterCustomizationConcept } from './character-customization/Charact
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
+import { DesktopHotbarConcept } from './desktop-hotbar/DesktopHotbarConcept';
 import { DungeonIntelConcept } from './dungeon-intel/DungeonIntelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
@@ -36,6 +37,7 @@ type ConceptPage =
   | 'weapon-attachment'
   | 'off-hand-attachment'
   | 'organized-hud'
+  | 'desktop-hotbar'
   | 'dungeon-builder'
   | 'asset-anchor-lab'
   | 'world-building'
@@ -57,6 +59,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'weapon-attachment', label: 'Weapon Attachment' },
   { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'organized-hud', label: 'Organized HUD' },
+  { id: 'desktop-hotbar', label: 'Desktop Hotbar' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
   { id: 'world-building', label: 'World Building' },
@@ -162,6 +165,7 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
         {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
         {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {activePage === 'organized-hud' && <OrganizedHudConcept />}
+        {activePage === 'desktop-hotbar' && <DesktopHotbarConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — the same `DungeonBuilder` on a fixture

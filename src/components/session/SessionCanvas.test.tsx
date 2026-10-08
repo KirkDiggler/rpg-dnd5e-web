@@ -215,6 +215,19 @@ vi.mock('@react-three/drei', () => {
       [key: string]: unknown;
     }) => <group {...props}>{children}</group>,
     Text: () => null,
+    Html: ({
+      children,
+      position,
+    }: {
+      children?: ReactElement;
+      position?: [number, number, number];
+    }) => (
+      <group
+        name="target-marker-html"
+        position={position}
+        userData={{ label: children }}
+      />
+    ),
   };
 });
 
@@ -3168,6 +3181,138 @@ describe('SessionScene', () => {
         onClick({ stopPropagation: () => {} });
       }
     }
+
+    it('opt-in member targeting marks selected peers and self, follows their entity groups, and routes mesh/cell clicks once', async () => {
+      const onEntityClick = vi.fn();
+      const onHexClick = vi.fn();
+      const props = {
+        scene: scene(),
+        hexSize: 1,
+        characterId: 'char-1',
+        characterName: 'Self',
+        classRefId: undefined,
+        myPosition: { x: 0, y: 0, z: 0 },
+        otherMembers: oneMember,
+        attackableTargets: ['char-1', 'skeleton-1'],
+        onEntityClick,
+        onHexClick,
+      };
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene {...props} selectedTargets={['char-1', 'skeleton-1']} />
+      );
+      const self = renderer.scene.findByProps({
+        name: 'member-target-marker-char-1',
+      });
+      const peer = renderer.scene.findByProps({
+        name: 'member-target-marker-skeleton-1',
+      });
+      expect(self.props.userData).toMatchObject({ selected: true, order: 1 });
+      expect(peer.props.userData).toMatchObject({ selected: true, order: 2 });
+      expect(self.instance.parent?.position.y).toBeCloseTo(0.21);
+      fireEveryEntityClick(renderer);
+      expect(onEntityClick.mock.calls.map((call) => call[0]).sort()).toEqual([
+        'char-1',
+        'skeleton-1',
+      ]);
+      clickAt(findGroundPlaneProps(renderer), { x: 0, y: 0, z: 0 });
+      expect(onEntityClick).toHaveBeenLastCalledWith('char-1');
+      expect(onHexClick).not.toHaveBeenCalled();
+      await renderer.update(<SessionScene {...props} selectedTargets={[]} />);
+      expect(
+        renderer.scene.findByProps({ name: 'member-target-marker-char-1' })
+          .props.userData.selected
+      ).toBe(false);
+      await renderer.unmount();
+    });
+
+    it('keeps an explicitly offered downed body targetable without changing default dead-body policy', async () => {
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Self"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            standing: Standing.DOWNED,
+          }))}
+          attackableTargets={['skeleton-1']}
+          selectedTargets={[]}
+          onEntityClick={onEntityClick}
+        />
+      );
+      expect(
+        renderer.scene.findByProps({ name: 'member-target-marker-skeleton-1' })
+      ).toBeTruthy();
+      fireEveryEntityClick(renderer);
+      expect(onEntityClick).toHaveBeenCalledOnce();
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      await renderer.unmount();
+    });
+
+    it('target mode never marks/selects remembered or unoffered members or walks instead', async () => {
+      const onEntityClick = vi.fn();
+      const onHexClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Self"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          classRefId={undefined}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            remembered: true,
+          }))}
+          attackableTargets={['skeleton-1']}
+          selectedTargets={['skeleton-1']}
+          onEntityClick={onEntityClick}
+          onHexClick={onHexClick}
+        />
+      );
+      expect(
+        renderer.scene.findAll((node) =>
+          String(node.props.name ?? '').startsWith('member-target-marker-')
+        )
+      ).toHaveLength(0);
+      fireEveryEntityClick(renderer);
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: 0, z: -1 });
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(onHexClick).not.toHaveBeenCalled();
+      await renderer.unmount();
+    });
+
+    it('an explicitly offered world member selects through targeting instead of opening interaction', async () => {
+      const onEntityClick = vi.fn();
+      const onInteractClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Self"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          classRefId={undefined}
+          otherMembers={oneMember.map((member) => ({
+            ...member,
+            kind: MemberKind.WORLD,
+          }))}
+          attackableTargets={['skeleton-1']}
+          selectedTargets={[]}
+          onEntityClick={onEntityClick}
+          onInteractClick={onInteractClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onInteractClick).not.toHaveBeenCalled();
+      await renderer.unmount();
+    });
 
     it("clicking an ENTITY'S OWN mesh (not the floor underneath it) fires onEntityClick — the exact raycast-order bug caught live", async () => {
       const onHexClick = vi.fn();

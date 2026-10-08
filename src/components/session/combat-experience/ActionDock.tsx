@@ -7,7 +7,13 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type { ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   actionTooltipText,
@@ -271,6 +277,12 @@ export interface ActionDockProps {
   authorityFresh: boolean;
   /** Omitted keeps the existing production dock semantics. */
   actionPresentation?: CombatExperienceActionPresentation;
+  /** Fixed presentation slot outside all action/reaction/spectator gates. */
+  desktopStatus?: ReactNode;
+  /** Caller-owned targeting portal host; placement only, outside action gates. */
+  desktopTargeting?: ReactNode;
+  targetingControlsActive?: boolean;
+  desktopTargetingHeight?: number;
   onOpenEquipment?: () => void;
   equipmentOpen?: boolean;
   onCenterView?: () => void;
@@ -479,13 +491,52 @@ function EndTurnPlacement({
   return target ? createPortal(children, target) : children;
 }
 
-export function ActionDock({
+export function ActionDock(props: ActionDockProps) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  const framed = Boolean(props.desktopStatus);
+  useEffect(() => {
+    const node = frame.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() =>
+      setHeight(node.getBoundingClientRect().height)
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [framed]);
+  if (!props.desktopStatus) return <ActionDockContents {...props} />;
+  return (
+    <div
+      ref={frame}
+      className={styles.desktopDock}
+      data-desktop-dock="true"
+      style={
+        {
+          '--desktop-dock-height': height ? `${height}px` : undefined,
+          '--desktop-targeting-clearance': props.desktopTargetingHeight
+            ? `${props.desktopTargetingHeight + 16}px`
+            : '0px',
+        } as CSSProperties
+      }
+    >
+      {props.desktopStatus}
+      <div className={styles.desktopDockActions}>
+        <ActionDockContents {...props} />
+      </div>
+      {props.desktopTargeting}
+    </div>
+  );
+}
+
+function ActionDockContents({
   clock,
   viewerMember,
   participants,
   declarations,
   authorityFresh,
   actionPresentation,
+  desktopStatus,
+  targetingControlsActive,
   onOpenEquipment,
   equipmentOpen,
   onCenterView,
@@ -548,9 +599,27 @@ export function ActionDock({
         Equipment
       </button>
     ) : null;
+  const movementHint =
+    clock === ClockKind.WORLD && actionPresentation?.desktopIcons ? (
+      <small
+        className={styles.desktopMovementHint}
+        title={
+          authorityFresh
+            ? 'No turn economy on the world clock.'
+            : 'Waiting for current Turn and Afford authority.'
+        }
+      >
+        {authorityFresh
+          ? 'Click the floor to move'
+          : 'Actions may be out of date'}
+      </small>
+    ) : null;
   const standing =
     actionPresentation?.mode === 'organized-hud'
-      ? (standingGroup || centerControl || equipmentControl) && (
+      ? (standingGroup ||
+          centerControl ||
+          equipmentControl ||
+          movementHint) && (
           <div
             className={styles.organizedSecondary}
             role="group"
@@ -563,6 +632,7 @@ export function ActionDock({
               </details>
             )}
             {centerControl}
+            {movementHint}
             {equipmentControl}
           </div>
         )
@@ -605,6 +675,26 @@ export function ActionDock({
     (declaration) => declaration.verb !== Verb.MOVE
   );
 
+  if (clock === ClockKind.WORLD && actionPresentation?.desktopIcons) {
+    // Same two-level composition as combat: offers, then one utility footer.
+    // The compact/mobile branch below retains its existing standing-control
+    // positions; only desktop replaces the old exploration banner with a hint.
+    return (
+      <div className={styles.actionRow} data-testid="world-clock-actions">
+        <OrganizedActionSurface
+          declarations={worldClockDeclarations}
+          authorityFresh={authorityFresh}
+          presentation={actionPresentation}
+          armedDeclarationId={armedDeclarationId}
+          onSelectDeclaration={onSelectDeclaration}
+          onCancelSelection={onCancelSelection}
+          secondaryControls={standing}
+          embedded={Boolean(desktopStatus)}
+          externalCancel={targetingControlsActive}
+        />
+      </div>
+    );
+  }
   if (clock === ClockKind.WORLD) {
     // THE WORLD CLOCK HAS ROWS NOW (rpg-project#457 R3, rpg-project#458).
     // Afford used to return an empty list here, so this branch drew a message
@@ -902,7 +992,9 @@ export function ActionDock({
 
   return (
     <div className={styles.actionRow}>
-      {/* THE QUESTION TAKES THE PLACE OF THE OFFERS, it does not queue behind
+      {/* The desktop opt-in keeps offers mounted and shows a choice tray.
+          For the compact/legacy dock, THE QUESTION TAKES THE PLACE OF THE OFFERS,
+          it does not queue behind
           them. Drawn as one more group in this row, the menu landed past the
           right edge: `.actionRow` is a nowrap flex line inside a dock fixed at
           174px, the Actions group alone measured 1250px wide, and the four
@@ -917,7 +1009,9 @@ export function ActionDock({
           cannot both fit, and every one of those offers is still perfectly
           castable — which is why Cancel is part of the menu rather than an
           afterthought. One click back and the rows return. */}
-      {optionDeclaration && onSelectCastOption ? (
+      {optionDeclaration &&
+      onSelectCastOption &&
+      !actionPresentation?.desktopIcons ? (
         <CastOptionGroup
           declaration={optionDeclaration}
           authorityFresh={authorityFresh}
@@ -933,6 +1027,11 @@ export function ActionDock({
           onSelectDeclaration={onSelectDeclaration}
           onCancelSelection={onCancelSelection}
           secondaryControls={standing}
+          embedded={Boolean(desktopStatus)}
+          externalCancel={targetingControlsActive}
+          optionDeclaration={optionDeclaration}
+          onSelectCastOption={onSelectCastOption}
+          onCancelCastOption={onCancelCastOption}
         />
       ) : (
         <div className={styles.actionGroupWithDivider}>
@@ -967,9 +1066,11 @@ export function ActionDock({
         </div>
       )}
       {/* Ordinary organized mode hosts Explore in its collection row;
-          option selection and the default dock keep their own standing group. */}
+          compact option selection and the default dock keep their own standing group. */}
       {actionPresentation?.mode !== 'organized-hud' ||
-      (optionDeclaration && onSelectCastOption)
+      (optionDeclaration &&
+        onSelectCastOption &&
+        !actionPresentation?.desktopIcons)
         ? standing
         : null}
       {!authorityFresh && (

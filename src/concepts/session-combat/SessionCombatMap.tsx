@@ -4,6 +4,7 @@ import { SESSION_COMBAT_MAP_FIXTURE } from './sessionCombatMapFixture';
 
 export interface SessionCombatMapProps {
   attackableTargets?: readonly string[];
+  selectedTargets?: readonly string[];
   onTargetClick?: (targetId: string) => void;
   onHoverTarget?: (targetId: string | null) => void;
   interactionEnabled?: boolean;
@@ -20,6 +21,7 @@ export interface SessionCombatMapProps {
  */
 export function SessionCombatMap({
   attackableTargets,
+  selectedTargets,
   onTargetClick,
   onHoverTarget,
   interactionEnabled,
@@ -38,6 +40,8 @@ export function SessionCombatMap({
       myPosition={SESSION_COMBAT_MAP_FIXTURE.playerPosition}
       otherMembers={[...SESSION_COMBAT_MAP_FIXTURE.members]}
       attackableTargets={attackableTargets ? [...attackableTargets] : undefined}
+      selectedTargets={selectedTargets}
+      movementPreviewEnabled={selectedTargets === undefined}
       pathIndex={SESSION_COMBAT_MAP_FIXTURE.pathIndex}
       onEntityClick={onTargetClick}
       onHoverEntity={onHoverTarget}

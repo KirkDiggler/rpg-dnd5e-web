@@ -966,8 +966,9 @@ describe('attack roll source breakdown', () => {
         '1d20 [10] Attack (Aldric) + 4 Attack bonus + 1d4 [3] Bless - 1d4 [2] Bane = 15'
       );
       expect(live[0]?.detail).toContain(hit ? 'Hit' : 'Miss');
+      expect(live[0]?.deliverySource).toBe('live');
       expect(buildCombatStory([visible(event, 'catchup')], context)).toEqual(
-        live
+        live.map((entry) => ({ ...entry, deliverySource: 'catchup' }))
       );
       // The total belongs to the provider, even if components appear inconsistent.
       event.body.value.calculation.total = 99;
