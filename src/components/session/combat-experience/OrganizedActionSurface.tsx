@@ -8,8 +8,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
+import { ActionInformationContent } from './ActionInformationContent';
 import {
   actionTooltipText,
   buildActionTooltip,
@@ -19,7 +21,6 @@ import {
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { DesktopActionSurface } from './DesktopActionSurface';
-import { EffectRows } from './EffectRows';
 import { bindOfferPress, type OfferPressBinding } from './offerPress';
 import {
   currentExecutableDeclaration,
@@ -73,18 +74,28 @@ function Inspection({
   unavailable,
   temporary,
   onClose,
+  onPin,
+  aboveMenu,
 }: {
   label: string;
   tooltip: ActionTooltip;
   unavailable: string | null;
   temporary: boolean;
   onClose: () => void;
+  onPin: () => void;
+  aboveMenu: boolean;
 }) {
   return (
     <div
       className={`${styles.organizedInspection} ${temporary ? styles.organizedHoverInspection : ''}`}
       role={temporary ? 'tooltip' : 'region'}
       aria-label={`${label} details`}
+      data-action-inspection
+      data-above-menu={aboveMenu}
+      tabIndex={0}
+      onFocus={() => {
+        if (temporary) onPin();
+      }}
     >
       <div className={styles.organizedInspectionHeading}>
         <strong>{tooltip.title}</strong>
@@ -99,13 +110,12 @@ function Inspection({
           </button>
         )}
       </div>
-      {tooltip.lines.map((line) => (
-        <span key={line.label}>
-          <em>{line.label}</em>
-          {line.value}
-        </span>
-      ))}
-      <EffectRows lines={tooltip.effects} />
+      <ActionInformationContent
+        description={tooltip.description}
+        lines={tooltip.lines}
+        effects={tooltip.effects}
+        effectsLabel="Effects"
+      />
       {unavailable && <p>Unavailable: {unavailable}</p>}
     </div>
   );
@@ -122,7 +132,7 @@ function Offer({
   authorityFresh: boolean;
   selected: boolean;
   onChoose: (id: string) => void;
-  onHover: (id: string | null) => void;
+  onHover: (id: string | null, relatedTarget?: EventTarget | null) => void;
   onKeyboardFocus: (id: string | null) => void;
 }) {
   const disabled = !authorityFresh || !declaration.available;
@@ -139,7 +149,7 @@ function Offer({
             : null
         );
       }}
-      onPointerLeave={() => onHover(null)}
+      onPointerLeave={(event) => onHover(null, event.relatedTarget)}
       onFocus={() => onKeyboardFocus(declaration.id)}
       onBlur={() => onKeyboardFocus(null)}
       tabIndex={disabled ? 0 : undefined}
@@ -210,6 +220,11 @@ function CollectionActionSurface({
   secondaryControls,
 }: OrganizedActionSurfaceProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const trayRef = useRef<HTMLDivElement>(null);
+  const [inspectionLayout, setInspectionLayout] = useState({
+    surface: 0,
+    tray: 0,
+  });
   const measureRef = useRef<HTMLDivElement>(null);
   const pressRef = useRef<OfferPressBinding | null>(null);
   const [open, setOpen] = useState<Menu | null>(null);
@@ -278,6 +293,25 @@ function CollectionActionSurface({
     clearPreview();
     setInspectedId(null);
   };
+  // Keep an interactive inspection above, not on top of, the open menu.
+  // Geometry is presentation-only and cannot alter the offered action.
+  useEffect(() => {
+    const measure = (): void => {
+      const surface = rootRef.current?.getBoundingClientRect().height ?? 0;
+      const tray = trayRef.current?.getBoundingClientRect().height ?? 0;
+      setInspectionLayout((previous) =>
+        previous.surface === surface && previous.tray === tray
+          ? previous
+          : { surface, tray }
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    if (rootRef.current) observer.observe(rootRef.current);
+    if (trayRef.current) observer.observe(trayRef.current);
+    return () => observer.disconnect();
+  }, [activeOpen]);
   const choose = (id: string) => {
     const current = authorityFresh
       ? currentExecutableDeclaration(declarations, id)
@@ -301,7 +335,15 @@ function CollectionActionSurface({
       authorityFresh={authorityFresh}
       selected={armedDeclarationId === declaration.id}
       onChoose={choose}
-      onHover={setHoveredId}
+      onHover={(id, relatedTarget) => {
+        if (
+          id === null &&
+          relatedTarget instanceof Node &&
+          rootRef.current?.contains(relatedTarget)
+        )
+          return;
+        setHoveredId(id);
+      }}
       onKeyboardFocus={keyboardFocus}
     />
   );
@@ -320,7 +362,20 @@ function CollectionActionSurface({
     <div
       ref={rootRef}
       className={styles.organizedActions}
+      style={
+        {
+          '--organized-surface-height': `${inspectionLayout.surface}px`,
+          '--organized-tray-height': `${inspectionLayout.tray}px`,
+        } as CSSProperties
+      }
       data-testid="organized-action-surface"
+      onPointerLeave={(event) => {
+        if (
+          !(event.relatedTarget instanceof Node) ||
+          !event.currentTarget.contains(event.relatedTarget)
+        )
+          setHoveredId(null);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') closeInspection();
       }}
@@ -418,6 +473,7 @@ function CollectionActionSurface({
       {activeOpen && (
         <div
           className={styles.organizedTray}
+          ref={trayRef}
           role="region"
           aria-label={`${sectionTitle[activeOpen]} collection`}
         >
@@ -446,6 +502,11 @@ function CollectionActionSurface({
           tooltip={buildActionTooltip(inspectedDeclaration)}
           temporary={previewId !== null}
           onClose={closeInspection}
+          onPin={() => {
+            clearPreview();
+            setInspectedId(inspectedDeclaration.id);
+          }}
+          aboveMenu={Boolean(activeOpen)}
           unavailable={
             !authorityFresh
               ? 'Actions may be out of date'

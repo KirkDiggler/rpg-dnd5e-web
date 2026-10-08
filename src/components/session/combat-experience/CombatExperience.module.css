@@ -1486,6 +1486,45 @@ button.diceDrawerCue:focus-visible {
   text-align: left;
 }
 
+.describedOptions {
+  max-width: max(76px, calc(100cqw - 64px));
+  min-width: 0;
+  align-items: flex-start;
+  overflow-x: auto;
+}
+
+.describedOption {
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 5px;
+  max-width: min(260px, calc(100cqw - 64px));
+}
+
+.optionDescription {
+  display: block;
+  max-height: min(22vh, 140px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--sc-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.reactionInformation {
+  max-width: min(430px, calc(100cqw - 64px));
+  max-height: min(240px, 35cqh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.reactionInformation:focus-visible,
+.optionDescription:focus-visible {
+  outline: 2px solid var(--sc-gold-bright);
+  outline-offset: 2px;
+}
+
 .actionOffer:hover:not(:disabled) {
   border-color: rgba(255, 217, 142, 0.62);
   transform: translateY(-1px);
@@ -2114,21 +2153,30 @@ button.diceDrawerCue:focus-visible {
   font-size: 10px;
   font-weight: 800;
 }
-/* A temporary card can cover the open menu without taking its pointer and
-   triggering a leave/re-enter loop on the underlying offer. */
+/* Reading long provider text must not require selecting the action. The
+   gesture owner preserves inspection when the pointer enters this card. */
 .organizedHoverInspection {
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .organizedInspection {
   position: absolute;
   z-index: 10;
-  bottom: calc(100% + 6px);
+  bottom: 100%;
   left: 0;
   display: grid;
-  width: min(300px, calc(100vw - 28px));
+  width: min(300px, calc(100cqw - 48px));
   gap: 4px;
-  max-height: 180px;
+  max-height: min(
+    440px,
+    max(
+      64px,
+      calc(
+        100cqh - var(--organized-surface-height, 160px) -
+          var(--organized-tray-height, 0px) - 36px
+      )
+    )
+  );
   overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--sc-line);
@@ -2137,6 +2185,12 @@ button.diceDrawerCue:focus-visible {
   background: rgba(7, 13, 15, 0.98);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
   font-size: 10px;
+}
+.organizedInspection[data-above-menu='true'] {
+  bottom: calc(100% + var(--organized-tray-height, 0px) + 5px);
+}
+.organizedInspection:focus-visible {
+  outline: 2px solid var(--sc-gold-bright);
 }
 .organizedInspection > span {
   display: flex;
@@ -2149,7 +2203,7 @@ button.diceDrawerCue:focus-visible {
   font-style: normal;
   text-transform: uppercase;
 }
-.organizedInspection p {
+.organizedInspection > p {
   margin: 2px 0 0;
   padding-top: 5px;
   border-top: 1px solid var(--sc-line);
@@ -2175,20 +2229,15 @@ button.diceDrawerCue:focus-visible {
     font-size: 9px;
   }
   .organizedTray {
-    position: fixed;
     z-index: 50;
-    right: 8px;
-    bottom: 120px;
-    left: 8px;
-    max-height: min(220px, calc(100dvh - 136px));
+    max-height: min(
+      220px,
+      max(64px, calc(100cqh - var(--organized-surface-height, 160px) - 36px))
+    );
     overflow: auto;
   }
   .organizedInspection {
-    position: fixed;
     z-index: 60;
-    bottom: 124px;
-    left: 8px;
-    width: min(360px, calc(100vw - 16px));
   }
 }
 
@@ -2536,6 +2585,7 @@ button.diceDrawerCue:focus-visible {
 /* The opt-in tray is a deliberate overlay; do not let the legacy narrow-row
    horizontal scroller clip its vertical inspection controls. */
 .combatExperience[data-action-presentation='organized-hud'] .actionRow {
+  max-width: 100%;
   overflow: visible;
 }
 
@@ -2666,21 +2716,15 @@ button.diceDrawerCue:focus-visible {
 .actionTooltip:has(.effectRows) {
   max-width: 280px;
 }
-/* A hover card takes no pointer, so it cannot be scrolled: give the rows the
-   room to be read whole rather than clipped. */
+/* Wider effect prose stays within the owning frame. Both pointer and
+   keyboard inspection can scroll; extra text never needs to execute an offer. */
 .organizedInspection:has(.effectRows) {
-  width: min(360px, calc(100vw - 28px));
-  max-height: min(600px, calc(100dvh - 160px));
+  width: min(360px, calc(100cqw - 48px));
 }
 /* Rows are prose to be read; the overlay's map-through translucency would
    bleed the scene into their descriptions. */
-.organizedActions .organizedInspection:has(.effectRows) {
-  background: rgba(7, 13, 15, 0.92);
-}
-@container organized-hud (max-width: 800px) or (max-height: 500px) {
-  .organizedInspection:has(.effectRows) {
-    max-height: calc(100dvh - 186px);
-  }
+.organizedActions .organizedInspection {
+  background: rgba(7, 13, 15, 0.96);
 }
 
 /* Target effects: a candidate's answers, beside the target list so hovering

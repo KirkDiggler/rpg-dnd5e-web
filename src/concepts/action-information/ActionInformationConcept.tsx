@@ -5,6 +5,7 @@ import type {
   ActionEffectLine,
   ActionTooltipLine,
 } from '../../components/session/combat-experience/actionTooltip';
+import { ActionInformationConsumerLab } from './ActionInformationConsumerLab';
 
 interface InformationFixture {
   title: string;
@@ -93,7 +94,8 @@ export function ActionInformationConcept() {
       style={{ padding: '1rem', color: '#dce5e6' }}
       aria-label="Action information concept"
     >
-      <h2>Action information</h2>
+      <ActionInformationConsumerLab />
+      <h2>Standalone information body fixtures</h2>
       <p>
         Fixture preview — no gameplay commands. Base facts first; contextual
         effects underneath.

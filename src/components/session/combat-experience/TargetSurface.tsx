@@ -6,10 +6,14 @@ import {
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useEffect, useId, useState } from 'react';
-import { effectLinesFor, heldEffectLinesFor } from './actionTooltip';
+import { ActionInformationContent } from './ActionInformationContent';
+import {
+  buildActionTooltip,
+  effectLinesFor,
+  heldEffectLinesFor,
+} from './actionTooltip';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
-import { EffectRows } from './EffectRows';
 import { MapFirstTargeting } from './MapFirstTargeting';
 import {
   memberTargetingView,
@@ -231,6 +235,9 @@ export function TargetSurface({
   const inspectedName = inspectedMember
     ? memberNames.get(inspectedMember) || inspectedMember
     : null;
+  const actionInformation = declaration
+    ? buildActionTooltip(declaration)
+    : undefined;
   const heldLines = declaration
     ? heldEffectLinesFor(declaration, inspectedMember)
     : [];
@@ -486,16 +493,15 @@ export function TargetSurface({
                 Hover, focus or open a target’s effects to see its answers
               </span>
             )}
-            <EffectRows lines={effectLinesFor(declaration, inspectedMember)} />
-            {heldLines.length > 0 && (
-              // The target's own effects, after the actor's and apart from
-              // them: never folded into, or matched against, the rows above.
-              <>
-                <span className={styles.targetEffectsGroup} aria-hidden="true">
-                  {HELD_HEADING}
-                </span>
-                <EffectRows lines={heldLines} label={HELD_HEADING} />
-              </>
+            {actionInformation && (
+              <ActionInformationContent
+                description={actionInformation.description}
+                lines={actionInformation.lines}
+                effects={effectLinesFor(declaration, inspectedMember)}
+                effectsLabel="Effects"
+                targetEffects={heldLines}
+                targetEffectsLabel={HELD_HEADING}
+              />
             )}
           </section>
         )}
