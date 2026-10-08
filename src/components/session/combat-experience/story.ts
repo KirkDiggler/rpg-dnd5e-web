@@ -1,9 +1,12 @@
 import { getConditionDisplay } from '@/utils/conditionIcons';
-import { refId } from '@/utils/refs';
+import { parseRef, refId, refLabel } from '@/utils/refs';
 import {
   AnswerWord,
+  EquipmentChange,
   EventKind,
   type AttackModifierSource,
+  type ConcentrationEnded,
+  type ConditionRemoved,
   type Event,
   type RollCalculation,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -11,6 +14,7 @@ import {
   DeathSaveOutcome,
   DoorState,
   LifeState,
+  RestKind,
   type AttackRef,
   type ReactionRef,
   type SpellRef,
@@ -136,11 +140,71 @@ const CONCENTRATION_END_PHRASES: Readonly<Record<string, string>> =
     spell_ended: 'the spell was already spent',
     caster_down: 'the caster went down',
     'long rest': 'a long rest',
+    rest: 'a rest',
   });
 
 function concentrationEndPhrase(reason: string): string | undefined {
   if (!reason) return undefined;
   return CONCENTRATION_END_PHRASES[reason] ?? reason.replace(/_/g, ' ');
+}
+
+/**
+ * The line a concentration break reads as, shared by the standalone beat and
+ * the sub-line of a rest that ended one, so the two cannot drift apart.
+ */
+function concentrationEndedHeadline(
+  ended: ConcentrationEnded,
+  context: CombatStoryContext
+): string {
+  const caster = memberName(ended.caster, context);
+  const spell = spellName(ended.spell);
+  return spell
+    ? `${caster} loses concentration on ${spell}`
+    : `${caster} loses concentration`;
+}
+
+/**
+ * The line a condition coming off a member reads as. Shared by the standalone
+ * `conditionRemoved` result and the sub-line of a rest that ended one, so a
+ * condition leaves the log in the same words whichever beat carried it.
+ */
+function conditionRemovedLine(
+  condition: ConditionRemoved,
+  context: CombatStoryContext
+): { headline: string; detail: string } {
+  const target = memberName(condition.target, context);
+  // A SPELL'S RESIDUE LEAVING, SAID AS A SPELL ENDING. The generic
+  // template names the condition as a state the member stopped being —
+  // "staniel is no longer True Strike" — which is the right sentence for
+  // Raging and nonsense for a spell. Only a condition sharing its name
+  // with a spell this run watched somebody cast takes the other wording,
+  // so a class feature's removal reads exactly as it did before.
+  if (condition.ref === 'dnd5e:conditions:in_fog') {
+    const ended = condition.reason === 'area ended';
+    return {
+      headline: ended
+        ? `${target} is no longer in Fog Cloud`
+        : `${target} leaves Fog Cloud`,
+      detail: ended ? 'The cloud ended.' : 'Moved out of the fog.',
+    };
+  }
+  if (condition.name && context.castSpells?.names.has(condition.name)) {
+    return {
+      headline: `${condition.name} fades from ${target}`,
+      detail: concentrationEndPhrase(condition.reason) ?? condition.reason,
+    };
+  }
+  return {
+    headline: `${target} is no longer ${condition.name}`,
+    detail: condition.reason,
+  };
+}
+
+/** Armour and shields are worn; everything else in a slot is drawn. The
+ * ref's TYPE segment says which — nothing else about the item is read. */
+function isWornItem(item: string): boolean {
+  const type = parseRef(item)?.type;
+  return type === 'armor' || type === 'shield' || type === 'shields';
 }
 
 /**
@@ -257,37 +321,11 @@ function buildActivationResultStory(
       });
     }
     case 'conditionRemoved': {
-      const condition = event.body.value.result.value;
-      const target = memberName(condition.target, context);
-      // A SPELL'S RESIDUE LEAVING, SAID AS A SPELL ENDING. The generic
-      // template names the condition as a state the member stopped being —
-      // "staniel is no longer True Strike" — which is the right sentence for
-      // Raging and nonsense for a spell. Only a condition sharing its name
-      // with a spell this run watched somebody cast takes the other wording,
-      // so a class feature's removal reads exactly as it did before.
-      if (condition.ref === 'dnd5e:conditions:in_fog') {
-        const ended = condition.reason === 'area ended';
-        return Object.freeze({
-          ...base,
-          headline: ended
-            ? `${target} is no longer in Fog Cloud`
-            : `${target} leaves Fog Cloud`,
-          detail: ended ? 'The cloud ended.' : 'Moved out of the fog.',
-          tone: 'neutral',
-        });
-      }
-      if (condition.name && context.castSpells?.names.has(condition.name)) {
-        return Object.freeze({
-          ...base,
-          headline: `${condition.name} fades from ${target}`,
-          detail: concentrationEndPhrase(condition.reason) ?? condition.reason,
-          tone: 'neutral',
-        });
-      }
+      const line = conditionRemovedLine(event.body.value.result.value, context);
       return Object.freeze({
         ...base,
-        headline: `${target} is no longer ${condition.name}`,
-        detail: condition.reason,
+        headline: line.headline,
+        detail: line.detail,
         tone: 'neutral',
       });
     }
@@ -891,17 +929,72 @@ function buildOtherStory(
     case 'concentrationEnded': {
       if (event.kind !== EventKind.CONCENTRATION_ENDED) return undefined;
       const ended = event.body.value;
-      const caster = memberName(ended.caster, context);
-      const spell = spellName(ended.spell);
       const why = concentrationEndPhrase(ended.reason);
       return Object.freeze({
         ...base,
         eyebrow: 'Concentration',
-        headline: spell
-          ? `${caster} loses concentration on ${spell}`
-          : `${caster} loses concentration`,
+        headline: concentrationEndedHeadline(ended, context),
         detail: why ? `${why}.` : `Story sequence ${event.seq}.`,
         tone: 'danger',
+      });
+    }
+    // A HAND CHANGED (session verbs, rpg-project#542). One slot, one item, one
+    // direction: a swap arrives as TWO of these sharing a correlation, a STOW
+    // then a DRAW, and each reads as its own line — nothing here merges them.
+    // The item's name is its ref's own label; the client holds no item table.
+    case 'equipmentChanged': {
+      if (event.kind !== EventKind.EQUIPMENT_CHANGED) return undefined;
+      const changed = event.body.value;
+      const who = memberName(changed.member, context);
+      const item = refLabel(changed.item);
+      const worn = isWornItem(changed.item);
+      const drawn = changed.change === EquipmentChange.DRAW;
+      const verb = worn
+        ? drawn
+          ? 'dons'
+          : 'doffs'
+        : drawn
+          ? 'draws'
+          : 'stows';
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Equipment',
+        headline: `${who} ${verb} ${worn ? 'the' : 'a'} ${item}`,
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'neutral',
+      });
+    }
+    // A MEMBER RESTED (session verbs, rpg-project#542). The outcome lives only
+    // on this beat: the response carries none of it. The headline is the
+    // member's own account; every side effect — a held spell let go, a
+    // condition that ran out — is a sub-line phrased by the formatter its
+    // standalone beat already uses.
+    case 'rested': {
+      if (event.kind !== EventKind.RESTED) return undefined;
+      const rested = event.body.value;
+      const who = memberName(rested.member, context);
+      const restWord = rested.kind === RestKind.LONG ? 'long' : 'short';
+      const spent =
+        rested.hitDiceSpent > 0
+          ? ` (spent ${rested.hitDiceSpent} hit ${rested.hitDiceSpent === 1 ? 'die' : 'dice'})`
+          : '';
+      const refilled = rested.resourcesRefilled
+        .map((resource) => `, ${refLabel(resource)} restored`)
+        .join('');
+      const lines = [
+        ...rested.concentrationEnded.map((ended) =>
+          concentrationEndedHeadline(ended, context)
+        ),
+        ...rested.ended.map(
+          (condition) => conditionRemovedLine(condition, context).headline
+        ),
+      ];
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Rest',
+        headline: `${who} takes a ${restWord} rest: +${rested.hitPointsRestored} hit points${spent}${refilled}`,
+        detail: lines.length > 0 ? lines.join('\n') : `${rested.hitPoints} HP.`,
+        tone: 'success',
       });
     }
     case 'activationResult':

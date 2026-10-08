@@ -176,6 +176,15 @@ export function refreshKeysFor(
     // work for a beat that changed neither.
     case 'concentrationEnded':
       return ['characterData', 'turn'];
+    // A HAND CHANGED, OR A MEMBER RESTED (rpg-project#542). The sheet is what
+    // moved — the equipped slots, armor class and main-hand damage on an
+    // equip; hit points, resources and conditions on a rest — and the offers
+    // priced from it (`afford`) follow. `turn` rides with the rest because a
+    // rest can end concentration, whose badge is read off GetTurn.
+    case 'equipmentChanged':
+      return ['characterData', 'afford'];
+    case 'rested':
+      return ['characterData', 'afford', 'turn'];
     // A THREAT LANDED, OR MISSED (rpg-project#454). SCOPED TO THE ACTOR, the
     // way `moved` is and unlike every flat row here, because the only thing
     // this beat changes is the threatener's own turn: it costs them the
