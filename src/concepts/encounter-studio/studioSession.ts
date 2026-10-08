@@ -1,0 +1,64 @@
+import type { ReactNode } from 'react';
+import type {
+  RoomDraft,
+  RoomDraftDocument,
+  RoomHexCell,
+} from '../world-building/roomDraft';
+import type { WorldPoint } from '../world-building/types';
+import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
+import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+
+// Layout consumers can use the canonical geometry/document types through this
+// seam; these are re-exports, never parallel Studio model definitions.
+export type {
+  RoomDraft,
+  RoomDraftDocument,
+  RoomHexCell,
+} from '../world-building/roomDraft';
+export type { WorldPoint } from '../world-building/types';
+
+export type EncounterStudioView = 'layout' | '3d';
+export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
+export interface LayoutFrame {
+  center: WorldPoint;
+  zoom: number;
+}
+
+/** A controlled presentation: no document copy, persistence or history owner. */
+export interface LayoutViewportProps {
+  draft: Readonly<RoomDraft>;
+  tool: LayoutFloorTool;
+  frame: LayoutFrame;
+  onFrameChange(next: LayoutFrame): void;
+  onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
+}
+
+/** Render-time projection of the existing owner, never a second store.
+ * Consumers must not mutate or serialize document. No publishing/play seam. */
+export interface EncounterStudioSession {
+  document: Readonly<RoomDraftDocument>;
+  viewportProps: WorldBuildingViewportProps;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo(): void;
+  redo(): void;
+  /** Validated whole-document commit; a successful no-op adds no history. */
+  commitFloor(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
+  /** Abandon previews/drags before switching (the renderer unmounts its gestures). */
+  cancelTransients(): void;
+  propTool: WorldBuildingTool;
+  setPropTool(tool: WorldBuildingTool): void;
+  propControls: { palette: ReactNode; tree: ReactNode; selection: ReactNode };
+  saveStatus: string;
+  notice: string | null;
+  autosaveBlocked: boolean;
+  /** Explicit save replaces unreadable stored bytes when autosave is blocked.
+   * Present that consequence clearly on the consuming save control. */
+  saveLocalDraft(): void;
+  dismissNotice(): void;
+}
+
+export interface EncounterStudioPresentation {
+  view: EncounterStudioView;
+  render(session: EncounterStudioSession): ReactNode;
+}

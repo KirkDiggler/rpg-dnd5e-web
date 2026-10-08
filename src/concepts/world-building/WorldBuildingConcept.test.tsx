@@ -14,6 +14,11 @@ import {
 } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
+import type {
+  EncounterStudioSession,
+  EncounterStudioView,
+} from '../encounter-studio/studioSession';
 import {
   decodeWorldBuilderV4Site,
   WORLD_BUILDER_V4_SITE_YAML,
@@ -4465,5 +4470,339 @@ describe('structural wall authoring (Task 3)', () => {
       .find((put) => !put.request.validateOnly)!
       .deferred.resolve({ errors: [] } as never);
     await waitFor(() => expect(onPlay).toHaveBeenCalledWith('enc-1', 'char-1'));
+  });
+});
+
+describe('Studio owner facade', () => {
+  function mountStudio(storage = new MemoryStorage(), strict = false) {
+    let session: EncounterStudioSession | undefined;
+    let view: EncounterStudioView = '3d';
+    let duringLayoutRender: (() => void) | undefined;
+    const presentation = (next: EncounterStudioSession) => {
+      session = next;
+      if (view === 'layout') {
+        const invoke = duringLayoutRender;
+        duringLayoutRender = undefined;
+        invoke?.();
+      }
+      return <div>{view === '3d' ? next.propControls.selection : null}</div>;
+    };
+    const element = () => (
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={deterministicIds()}
+        studioPresentation={{ view, render: (next) => presentation(next) }}
+      />
+    );
+    const wrap = () =>
+      strict ? <StrictMode>{element()}</StrictMode> : element();
+    const mounted = render(wrap());
+    return {
+      storage,
+      get session(): EncounterStudioSession {
+        expect(session, 'Studio presentation was invoked').toBeDefined();
+        return session!;
+      },
+      switchView(next: EncounterStudioView, duringRender?: () => void) {
+        view = next;
+        duringLayoutRender = duringRender;
+        mounted.rerender(wrap());
+      },
+      rerender() {
+        mounted.rerender(wrap());
+      },
+    };
+  }
+  function populatedStorage() {
+    const storage = new MemoryStorage();
+    const document = createPopulatedStudioDocument();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    return storage;
+  }
+
+  it('studio facade shares the committed scene with the controlled 3D props', () => {
+    const owner = mountStudio(populatedStorage());
+    expect(owner.session.viewportProps.scene).toBe(
+      owner.session.document.draft.scene
+    );
+    expect(owner.session.viewportProps.previewScene).toBeNull();
+    const writes = owner.storage.writes;
+    owner.rerender();
+    expect(owner.storage.writes).toBe(writes);
+    expect(owner.session).not.toHaveProperty('onPlay');
+    expect(owner.session).not.toHaveProperty('publish');
+    expect(screen.queryByLabelText('Site')).toBeNull();
+    expect(owner.session.propControls.selection).toBeNull();
+    act(() => {
+      owner.session.viewportProps.onSelect(['table']);
+    });
+    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeTruthy();
+    expect(screen.getByLabelText('Visual height')).toBeTruthy();
+    expect(screen.getByText('Visual point light')).toBeTruthy();
+    expect(screen.queryByLabelText('Authored prop declarations')).toBeNull();
+    expect(screen.queryByLabelText('Factions')).toBeNull();
+  });
+
+  it('one floor gesture changes only walkableHexes and carries the complete scope', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = structuredClone(owner.session.document);
+    act(() => {
+      expect(owner.session.commitFloor([{ q: 3, r: 0 }], 'paint')).toBe(true);
+    });
+    const after = structuredClone(owner.session.document);
+    expect(after.draft.room.walkableHexes).toContainEqual({ q: 3, r: 0 });
+    after.draft.room.walkableHexes = before.draft.room.walkableHexes;
+    expect(after).toEqual(before);
+    expect(owner.session.canUndo).toBe(true);
+  });
+
+  it('no-op floor edit leaves Undo availability unchanged', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = owner.session.document;
+    const writes = owner.storage.writes;
+    act(() => {
+      expect(owner.session.commitFloor([{ q: 0, r: 0 }], 'paint')).toBe(true);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => {
+      owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
+    });
+    act(() => {
+      owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
+    });
+    act(() => {
+      owner.session.undo();
+    });
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('refused commit retains document history and reports the refusal', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = owner.session.document;
+    const bad = structuredClone(before.draft.scene);
+    bad.items[0].transform.x = 9999;
+    act(() => {
+      owner.session.viewportProps.onTransformCommit(bad);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.session.notice).toMatch(/rejected/);
+    act(() => {
+      owner.session.dismissNotice();
+    });
+    expect(owner.session.notice).toBeNull();
+  });
+
+  it('Layout gates Delete Backspace R and Cmd-D without losing selected props', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => {
+      owner.session.viewportProps.onSelect(['table']);
+    });
+    owner.switchView('layout');
+    const before = owner.session.document;
+    for (const event of [
+      { key: 'Delete' },
+      { key: 'Backspace' },
+      { key: 'R' },
+      { key: 'd', metaKey: true },
+    ]) {
+      fireEvent.keyDown(window, event);
+    }
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.viewportProps.selectedIds).toEqual(['table']);
+    expect(owner.session.canUndo).toBe(false);
+    owner.switchView('3d');
+    fireEvent.keyDown(window, { key: 'R' });
+    expect(owner.session.canUndo).toBe(true);
+  });
+
+  it.each(['actor', 'wall'] as const)(
+    'Layout gates hidden %s selection shortcuts',
+    (noun) => {
+      const owner = mountStudio(populatedStorage());
+      act(() => {
+        if (noun === 'actor')
+          owner.session.viewportProps.roomAuthoring!.onSelectActor!('goblin-1');
+        else
+          owner.session.viewportProps.roomAuthoring!.onSelectWall!(
+            'studio-wall'
+          );
+      });
+      owner.switchView('layout');
+      const before = owner.session.document;
+      for (const event of [
+        { key: 'Delete' },
+        { key: 'Backspace' },
+        { key: 'R' },
+        { key: 'd', metaKey: true },
+      ])
+        fireEvent.keyDown(window, event);
+      expect(owner.session.document).toBe(before);
+      expect(owner.session.canUndo).toBe(false);
+      expect(
+        noun === 'actor'
+          ? owner.session.viewportProps.roomAuthoring!.selectedActorId
+          : owner.session.viewportProps.roomAuthoring!.selectedWallId
+      ).toBe(noun === 'actor' ? 'goblin-1' : 'studio-wall');
+    }
+  );
+
+  it('Layout leaves input select textarea and contenteditable keyboard events alone', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => {
+      owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
+    });
+    owner.switchView('layout');
+    const before = owner.session.document;
+    for (const tag of ['input', 'select', 'textarea', 'div']) {
+      const target = document.createElement(tag);
+      if (tag === 'div')
+        Object.defineProperty(target, 'isContentEditable', { value: true });
+      document.body.appendChild(target);
+      for (const event of [
+        { key: 'Delete' },
+        { key: 'Backspace' },
+        { key: 'R' },
+        { key: 'd', metaKey: true },
+        { key: 'z', metaKey: true },
+      ]) {
+        const key = createEvent.keyDown(target, event);
+        fireEvent(target, key);
+        expect(key.defaultPrevented).toBe(false);
+      }
+      target.remove();
+    }
+    expect(owner.session.document).toBe(before);
+  });
+
+  it('Studio Undo and Redo remain available while Layout is active', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = structuredClone(owner.session.document);
+    act(() => {
+      owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
+    });
+    const after = structuredClone(owner.session.document);
+    owner.switchView('layout');
+    fireEvent.keyDown(window, { key: 'z', metaKey: true });
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canRedo).toBe(true);
+    fireEvent.keyDown(window, { key: 'z', shiftKey: true, metaKey: true });
+    expect(owner.session.document).toEqual(after);
+  });
+
+  it('view switch cancels preview and late transform/drop commits without clearing valid selection', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => {
+      owner.session.viewportProps.onSelect(['table']);
+    });
+    const transfer = new TransferStub();
+    const palette = render(<>{owner.session.propControls.palette}</>);
+    fireEvent.dragStart(
+      screen.getByLabelText('Drag Alchemy Tools 01 into scene'),
+      { dataTransfer: transfer }
+    );
+    expect(owner.session.viewportProps.activeDrag).not.toBeNull();
+    palette.unmount();
+    const stale = owner.session.viewportProps;
+    const preview = structuredClone(stale.scene);
+    preview.items[0].transform.x += 1;
+    act(() => {
+      stale.onTransformPreview(preview);
+    });
+    expect(owner.session.viewportProps.previewScene).toEqual(preview);
+    expect(owner.session.viewportProps.onTransformPreview).toBe(
+      stale.onTransformPreview
+    );
+    expect(
+      owner.session.viewportProps.roomAuthoring!.onWallTransformPreview
+    ).toBe(stale.roomAuthoring!.onWallTransformPreview);
+    const before = owner.session.document;
+    // Runs before effects/renderer unmount cleanup: a synchronous fence is required.
+    owner.switchView('layout', () => {
+      stale.onTransformCommit(preview);
+      stale.onDrop(
+        { kind: 'prop', id: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+        { kind: 'ground', point: { x: 0, z: 0 } }
+      );
+    });
+    act(() => {
+      stale.onTransformCommit(preview);
+      stale.onDrop(
+        { kind: 'prop', id: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+        { kind: 'ground', point: { x: 0, z: 0 } }
+      );
+      stale.onSelect([]);
+      stale.onTransformPreview(preview);
+      stale.roomAuthoring!.onWalkableGesture([{ q: 3, r: 0 }], 'paint');
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.viewportProps.previewScene).toBeNull();
+    expect(owner.session.viewportProps.activeDrag).toBeNull();
+    expect(owner.session.viewportProps.selectedIds).toEqual(['table']);
+    owner.switchView('3d');
+    act(() => {
+      stale.onTransformCommit(preview);
+    });
+    expect(owner.session.document).toBe(before);
+    const current = owner.session.viewportProps;
+    act(() => {
+      current.onTransformCommit(preview);
+    });
+    expect(owner.session.document.draft.scene).toEqual(preview);
+    const canceled = owner.session.viewportProps;
+    act(() => {
+      owner.session.cancelTransients();
+    });
+    act(() => {
+      canceled.onDrop(
+        { kind: 'prop', id: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+        { kind: 'ground', point: { x: 0, z: 0 } }
+      );
+    });
+    expect(owner.session.document.draft.scene).toEqual(preview);
+  });
+
+  it('corrupt current bytes survive StrictMode replay floor edits and view changes', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(ROOM_DRAFT_STORAGE_KEY, '{broken');
+    const owner = mountStudio(storage, true);
+    expect(owner.session.autosaveBlocked).toBe(true);
+    expect(owner.session.notice).toBeTruthy();
+    act(() => {
+      owner.session.commitFloor([{ q: 0, r: 0 }], 'paint');
+    });
+    owner.switchView('layout');
+    owner.switchView('3d');
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe('{broken');
+    expect(owner.session.autosaveBlocked).toBe(true);
+    act(() => {
+      owner.session.saveLocalDraft();
+    });
+    expect(owner.session.autosaveBlocked).toBe(false);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).not.toBe('{broken');
+  });
+
+  it('write failure keeps the latest document in memory and prior stored bytes unchanged', () => {
+    const storage = populatedStorage();
+    const owner = mountStudio(storage);
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    storage.failSet = true;
+    act(() => {
+      owner.session.commitFloor([{ q: 3, r: 0 }], 'paint');
+    });
+    expect(owner.session.document.draft.room.walkableHexes).toContainEqual({
+      q: 3,
+      r: 0,
+    });
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.session.notice).toMatch(/quota blocked/);
+    expect(owner.session.saveStatus).toMatch(/failed.*memory/);
   });
 });
