@@ -267,3 +267,109 @@ describe('structural wall editing geometry', () => {
     ).toThrow('Wall geometry');
   });
 });
+
+describe('M1 exact geometry identity operations', () => {
+  const fractional = (): WallGeometry => ({
+    line: { start: { x: -2.7, z: -3.1 }, end: { x: 3.2, z: 5.7 } },
+    openings: fixture().openings,
+  });
+  it.each(['start', 'end'] as const)(
+    'preserves exact fractional %s endpoint at its original distance',
+    (endpoint) => {
+      const wall = fractional();
+      const before = structuredClone(wall);
+      const length = Math.hypot(
+        wall.line.end.x - wall.line.start.x,
+        wall.line.end.z - wall.line.start.z
+      );
+      Object.freeze(wall.line.start);
+      Object.freeze(wall.line.end);
+      Object.freeze(wall.line);
+      wall.openings.forEach(Object.freeze);
+      Object.freeze(wall.openings);
+      Object.freeze(wall);
+      const result = resizeWallEndpoint({
+        wall,
+        endpoint,
+        distance: endpoint === 'start' ? 0 : length,
+      });
+      expect(result).toEqual({ wall: before, clamped: false });
+      expect(result.wall).not.toBe(wall);
+      expect(result.wall.line).not.toBe(wall.line);
+      expect(result.wall.openings[0]).not.toBe(wall.openings[0]);
+      expect(wall).toEqual(before);
+    }
+  );
+  it('preserves a fractional zero transform with fresh copies after validating geometry and inputs', () => {
+    const wall = fractional();
+    const result = transformWall({
+      wall,
+      pivot: { x: 0.25, z: 1.3 },
+      angle: 0,
+      translation: { x: 0, z: 0 },
+    });
+    expect(result).toEqual(wall);
+    expect(result).not.toBe(wall);
+    expect(result.line.start).not.toBe(wall.line.start);
+    expect(result.openings[0]).not.toBe(wall.openings[0]);
+    expect(() =>
+      transformWall({
+        wall,
+        pivot: { x: NaN, z: 0 },
+        angle: 0,
+        translation: { x: 0, z: 0 },
+      })
+    ).toThrow('Wall geometry');
+    expect(() =>
+      transformWall({
+        wall,
+        pivot: { x: 0, z: 0 },
+        angle: 0,
+        translation: { x: Infinity, z: 0 },
+      })
+    ).toThrow('Wall geometry');
+    const bad = { ...wall, openings: [{ id: 'bad', position: 1, width: -1 }] };
+    expect(() =>
+      transformWall({
+        wall: bad,
+        pivot: { x: 0, z: 0 },
+        angle: 0,
+        translation: { x: 0, z: 0 },
+      })
+    ).toThrow('Wall geometry');
+    expect(() =>
+      resizeWallEndpoint({ wall: bad, endpoint: 'start', distance: 0 })
+    ).toThrow('Wall geometry');
+  });
+  it.each(['start', 'end'] as const)(
+    'retains clamped metadata when an attempted %s resize clamps to the original pose',
+    (endpoint) => {
+      const wall = fractional();
+      const length = Math.hypot(
+        wall.line.end.x - wall.line.start.x,
+        wall.line.end.z - wall.line.start.z
+      );
+      wall.openings = [{ id: 'whole', position: length / 2, width: length }];
+      expect(
+        resizeWallEndpoint({
+          wall,
+          endpoint,
+          distance: endpoint === 'start' ? 1 : length - 1,
+        })
+      ).toEqual({ wall, clamped: true });
+    }
+  );
+  it('does not discard representable tiny nonzero transforms or resizes', () => {
+    const wall = fractional();
+    const pivot = { x: 0.25, z: 1.3 };
+    expect(
+      transformWall({ wall, pivot, angle: 0, translation: { x: 1e-10, z: 0 } })
+    ).not.toEqual(wall);
+    expect(
+      transformWall({ wall, pivot, angle: 1e-10, translation: { x: 0, z: 0 } })
+    ).not.toEqual(wall);
+    expect(
+      resizeWallEndpoint({ wall, endpoint: 'start', distance: -1e-10 }).wall
+    ).not.toEqual(wall);
+  });
+});

@@ -937,3 +937,103 @@ describe('no source mutation', () => {
     expect(JSON.stringify(source)).toBe(before);
   });
 });
+
+describe('M1 exact editing no-ops', () => {
+  it('preserves the complete frozen fractional wall for both unchanged lengths, zero move and zero rotation', () => {
+    const source = wall({
+      line: { start: { x: -2.7, z: -3.1 }, end: { x: 3.2, z: 5.7 } },
+      openings: [
+        {
+          id: 'opening-1',
+          position: 7,
+          width: 2,
+          door: { id: 'attached-door', assetRef: WALL_ASSET },
+        },
+      ],
+    });
+    const before = structuredClone(source);
+    const length = Math.hypot(
+      source.line.end.x - source.line.start.x,
+      source.line.end.z - source.line.start.z
+    );
+    Object.freeze(source.appearance);
+    Object.freeze(source.blocker.footprint);
+    Object.freeze(source.blocker);
+    Object.freeze(source.openings[0].door);
+    Object.freeze(source.openings[0]);
+    Object.freeze(source.openings);
+    Object.freeze(source.line.start);
+    Object.freeze(source.line.end);
+    Object.freeze(source.line);
+    Object.freeze(source);
+    for (const endpoint of ['start', 'end'] as const) {
+      const result = resizeWallLength({ wall: source, endpoint, length });
+      expect(result).toEqual({
+        wall: before,
+        appliedLength: length,
+        clamped: false,
+      });
+      expect(result.wall).not.toBe(source);
+      expect(result.wall.blocker).not.toBe(source.blocker);
+    }
+    expect(translateWall(source, { x: 0, z: 0 })).toEqual(before);
+    expect(rotateWall(source, { angle: 0 })).toEqual(before);
+    expect(
+      rotateWall(source, { angle: 0, pivot: { x: 0.25, z: 1.3 } })
+    ).toEqual(before);
+    expect(source).toEqual(before);
+  });
+  it.each(['start', 'end'] as const)(
+    'retains length/clamp metadata for a %s edit clamped to the original fractional pose',
+    (endpoint) => {
+      const source = wall({
+        line: { start: { x: 0, z: 0 }, end: { x: 3, z: 2 } },
+      });
+      const length = Math.hypot(3, 2);
+      source.openings = [{ id: 'whole', position: length / 2, width: length }];
+      expect(
+        resizeWallLength({ wall: source, endpoint, length: length - 1 })
+      ).toEqual({ wall: source, appliedLength: length, clamped: true });
+    }
+  );
+  it('does not treat intentional tiny length, movement or rotation edits as unchanged', () => {
+    const source = wall({
+      line: { start: { x: 0, z: 0 }, end: { x: 3, z: 2 } },
+      openings: [],
+    });
+    expect(
+      resizeWallLength({
+        wall: source,
+        endpoint: 'end',
+        length: Math.hypot(3, 2) + 1e-10,
+      }).wall
+    ).not.toEqual(source);
+    expect(translateWall(source, { x: 1e-10, z: 0 })).not.toEqual(source);
+    expect(rotateWall(source, { angle: 1e-10 })).not.toEqual(source);
+  });
+  it('still refuses invalid input geometry, blocker width and zero-operation parameters', () => {
+    const source = wall();
+    source.openings[0].width = -1;
+    expect(() =>
+      resizeWallLength({ wall: source, endpoint: 'end', length: 10 })
+    ).toThrow('Wall geometry');
+    expect(() => translateWall(source, { x: 0, z: 0 })).toThrow(
+      'Wall geometry'
+    );
+    expect(() => rotateWall(source, { angle: 0 })).toThrow('Wall geometry');
+    const badBlocker = wall();
+    badBlocker.blocker.footprint.width = 0;
+    expect(() =>
+      resizeWallLength({ wall: badBlocker, endpoint: 'end', length: 10 })
+    ).toThrow(/nonpositive blocker width/);
+    expect(() =>
+      rotateWall(wall(), { angle: 0, pivot: { x: NaN, z: 0 } })
+    ).toThrow('Wall geometry');
+    expect(() => translateWall(wall(), { x: Infinity, z: 0 })).toThrow(
+      'Structural wall edit'
+    );
+    expect(() =>
+      resizeWallLength({ wall: wall(), endpoint: 'end', length: NaN })
+    ).toThrow('Structural wall edit');
+  });
+});

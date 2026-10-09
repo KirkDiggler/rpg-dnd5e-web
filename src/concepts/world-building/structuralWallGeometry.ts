@@ -92,6 +92,13 @@ function frame(wall: WallGeometry): {
   return { length, direction: { x: dx / length, z: dz / length }, cuts };
 }
 
+function copyGeometry(wall: WallGeometry): WallGeometry {
+  return {
+    line: { start: { ...wall.line.start }, end: { ...wall.line.end } },
+    openings: wall.openings.map((opening) => ({ ...opening })),
+  };
+}
+
 function along(input: {
   start: WorldPoint;
   direction: WorldPoint;
@@ -148,6 +155,14 @@ export function resizeWallEndpoint(input: {
     input.endpoint === 'start' ? distance < length : distance > 0,
     'resize cannot collapse or invert the line'
   );
+  // Validate first, then preserve exact identity before reconstructing an
+  // endpoint. An attempted edit clamped to this pose still reports the clamp.
+  if (distance === (input.endpoint === 'start' ? 0 : length)) {
+    return {
+      wall: copyGeometry(input.wall),
+      clamped: distance !== input.distance,
+    };
+  }
   const point = along({ start: input.wall.line.start, direction, distance });
   const wall: WallGeometry = {
     line: {
@@ -182,6 +197,14 @@ export function transformWall(input: {
       Number.isFinite(input.angle),
     'transform must be finite'
   );
+  // A zero operation must not round-trip the pose through pivot arithmetic.
+  // Exact checks only: representable tiny edits remain real authoring intents.
+  if (
+    input.angle === 0 &&
+    input.translation.x === 0 &&
+    input.translation.z === 0
+  )
+    return copyGeometry(input.wall);
   const cosine = Math.cos(input.angle);
   const sine = Math.sin(input.angle);
   const transform = (point: WorldPoint): WorldPoint => {

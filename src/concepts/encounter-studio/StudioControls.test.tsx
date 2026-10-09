@@ -817,3 +817,89 @@ describe('cosmetic presentation arrivals', () => {
     expect(storage.document()).toEqual(original);
   });
 });
+
+describe('M1 exact precision no-ops through the real owner', () => {
+  it('untouched diagonal length preserves both endpoint choices, bytes and history; an edited length still commits', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    const blank = storage.document();
+    click('Wall');
+    chooseCastle();
+    click('Dismiss wall controls');
+    drawWall(storage, { x: 0, z: 0 }, { x: 3, z: 2 });
+    click('Select');
+    const drawn = storage.document();
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.writes();
+    for (const endpoint of ['end', 'start']) {
+      change('Length endpoint', endpoint);
+      submit('Wall exact length');
+      expect(storage.document()).toEqual(drawn);
+      expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+      expect(storage.writes()).toBe(writes);
+    }
+    click('Undo');
+    expect(storage.document()).toEqual(blank); // No phantom precision history.
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    click('Redo');
+    expect(storage.document()).toEqual(drawn);
+    const hit = surface().querySelector(
+      `line[data-wall-id="${drawn.draft.room.walls![0].id}"]`
+    )!;
+    fireEvent.pointerDown(hit, {
+      ...point(storage, { x: 1.5, z: 1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...point(storage, { x: 1.5, z: 1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    const beforeEdit = storage.writes();
+    // An explicit edit to the displayed precision is a real intent, not an epsilon no-op.
+    change('Wall length', '');
+    change('Wall length', '3.605551');
+    submit('Wall exact length');
+    const edited = storage.document();
+    expect(edited).not.toEqual(drawn);
+    expect(storage.writes()).toBe(beforeEdit + 1);
+    click('Undo');
+    expect(storage.document()).toEqual(drawn);
+    click('Redo');
+    expect(storage.document()).toEqual(edited);
+  });
+  it.each(['Wall movement', 'Wall rotation'])(
+    'default %s preserves fractional pose, bytes and history exactly',
+    async (form) => {
+      const storage = new MemoryStorage();
+      mount(storage);
+      await ready();
+      const blank = storage.document();
+      click('Wall');
+      chooseCastle();
+      click('Dismiss wall controls');
+      drawWall(storage, { x: -2.7, z: -3.1 }, { x: 3.2, z: 5.7 });
+      click('Select');
+      const drawn = storage.document();
+      const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+      const writes = storage.writes();
+      submit(form);
+      expect(storage.document()).toEqual(drawn);
+      expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+      expect(storage.writes()).toBe(writes);
+      click('Undo');
+      expect(storage.document()).toEqual(blank);
+      expect(
+        (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(true);
+      click('Redo');
+      expect(storage.document()).toEqual(drawn);
+    }
+  );
+});

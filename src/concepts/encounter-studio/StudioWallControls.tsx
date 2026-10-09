@@ -27,6 +27,7 @@ export function StudioWallControls({
   const selected = drawing ? undefined : wall;
   const [search, setSearch] = useState('');
   const [length, setLength] = useState('');
+  const [lengthEdited, setLengthEdited] = useState(false);
   const [endpoint, setEndpoint] = useState<'start' | 'end'>('end');
   const [moveX, setMoveX] = useState('0');
   const [moveZ, setMoveZ] = useState('0');
@@ -34,6 +35,7 @@ export function StudioWallControls({
   const [feedback, setFeedback] = useState<string | null>(null);
   useEffect(() => {
     setLength(selected ? String(Number(wallLength(selected).toFixed(6))) : '');
+    setLengthEdited(false);
     setMoveX('0');
     setMoveZ('0');
     setRotation('0');
@@ -130,7 +132,11 @@ export function StudioWallControls({
                   const result = resizeWallLength({
                     wall: selected,
                     endpoint,
-                    length: numeric(length),
+                    // Display rounding is not an authoring intent. Only a
+                    // field edit replaces the canonical length.
+                    length: lengthEdited
+                      ? numeric(length)
+                      : wallLength(selected),
                   });
                   clamped = result.clamped;
                   appliedLength = result.appliedLength;
@@ -149,7 +155,10 @@ export function StudioWallControls({
                 aria-label="Wall length"
                 inputMode="decimal"
                 value={length}
-                onChange={(event) => setLength(event.target.value)}
+                onChange={(event) => {
+                  setLength(event.target.value);
+                  setLengthEdited(true);
+                }}
               />
             </label>
             <label>

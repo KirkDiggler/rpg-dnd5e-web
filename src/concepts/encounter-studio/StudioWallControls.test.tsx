@@ -195,3 +195,37 @@ describe('Studio wall presentation', () => {
     expect(initial.onExitWallTool).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('M1 untouched precision display', () => {
+  it.each(['start', 'end'])(
+    'uses canonical length for an untouched %s endpoint, but honors explicitly edited display precision',
+    (endpoint) => {
+      const session = fixture();
+      const wall = session.document.draft.room.walls![0];
+      wall.line = { start: { x: 0, z: 0 }, end: { x: 3, z: 2 } };
+      wall.openings = [];
+      wall.blocker.footprint.width = Math.hypot(3, 2);
+      session.wallEditing = { ...session.wallEditing, selectedId: wall.id };
+      render(<StudioWallControls {...props(session, false)} />);
+      fireEvent.change(screen.getByLabelText('Length endpoint'), {
+        target: { value: endpoint },
+      });
+      expect(
+        (screen.getByLabelText('Wall length') as HTMLInputElement).value
+      ).toBe('3.605551');
+      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
+      expect(session.wallEditing.edit).toHaveBeenLastCalledWith(wall);
+      fireEvent.change(screen.getByLabelText('Wall length'), {
+        target: { value: '3.605552' },
+      });
+      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
+      expect(session.wallEditing.edit).not.toHaveBeenLastCalledWith(wall);
+      fireEvent.change(screen.getByLabelText('Wall length'), {
+        target: { value: '' },
+      });
+      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
+      expect(screen.getByRole('alert').textContent).toMatch(/finite numeric/);
+      expect(session.wallEditing.edit).toHaveBeenCalledTimes(2);
+    }
+  );
+});

@@ -413,3 +413,46 @@ describe('StructuralWallPanel', () => {
     expect(selected().openings[0]!.door).toBeUndefined();
   });
 });
+
+describe('M1 legacy panel untouched length mirror', () => {
+  it.each(['start', 'end'])(
+    'preserves the canonical fractional %s length and still applies genuinely typed values',
+    (endpoint) => {
+      const original = wallWithDoor({
+        line: { start: { x: 0, z: 0 }, end: { x: 3, z: 2 } },
+        openings: [
+          {
+            id: 'opening-1',
+            position: 1,
+            width: 1,
+            door: { id: 'door-1', assetRef: DOOR_ASSET },
+          },
+        ],
+      });
+      render(<Harness initial={[original]} />);
+      expect(
+        (screen.getByLabelText('Exact length') as HTMLInputElement).value
+      ).toBe('3.605551');
+      fireEvent.change(screen.getByLabelText('Length endpoint'), {
+        target: { value: endpoint },
+      });
+      fireEvent.click(screen.getByText('Apply length'));
+      expect(selected()).toEqual(original);
+      expect(screen.getByTestId('structural-wall-length').textContent).toBe(
+        'Applied length 3.605551'
+      );
+      fireEvent.change(screen.getByLabelText('Exact length'), {
+        target: { value: '3.605552' },
+      });
+      fireEvent.click(screen.getByText('Apply length'));
+      const changed = selected();
+      expect(changed).not.toEqual(original);
+      expect(changed.id).toBe(original.id);
+      expect(changed.appearance).toEqual(original.appearance);
+      expect(changed.openings[0].door).toEqual(original.openings[0].door);
+      // A real owner wall update resets the staged token and its dirty status.
+      fireEvent.click(screen.getByText('Apply length'));
+      expect(selected()).toEqual(changed);
+    }
+  );
+});
