@@ -21,6 +21,7 @@ import {
   ROOM_DRAFT_STORAGE_KEY,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
+  setRoomMonsterFacing,
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
@@ -40,6 +41,42 @@ import type { KeyValueStorage } from './types';
 import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 describe('room authoring draft', () => {
+  it('sets all compass facings and deletes default without altering location or bindings', () => {
+    const draft = placeRoomMonster(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      {
+        id: 'actor',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 1, r: 0 } },
+      }
+    );
+    draft.room.monsterBindings = { actor: { faction: 'guards' } };
+    expect(setRoomMonsterFacing(draft, 'actor', undefined)).toBe(draft);
+    expect(draft.room.monsterDeclarations[0]!.startingCell).not.toHaveProperty(
+      'facing'
+    );
+    for (const facing of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+      const next = setRoomMonsterFacing(draft, 'actor', facing);
+      expect(next.room.monsterDeclarations[0]!.startingCell).toEqual({
+        location: { q: 1, r: 0 },
+        facing,
+      });
+      expect(next.room.monsterBindings).toBe(draft.room.monsterBindings);
+      expect(setRoomMonsterFacing(next, 'actor', facing)).toBe(next);
+      const defaulted = setRoomMonsterFacing(next, 'actor', undefined);
+      expect(defaulted).toEqual(draft);
+      expect(
+        defaulted.room.monsterDeclarations[0]!.startingCell
+      ).not.toHaveProperty('facing');
+    }
+    expect(() => setRoomMonsterFacing(draft, 'gone', 'n')).toThrow(
+      /does not exist/
+    );
+    for (const invalid of ['', 'default', 'north', 'N'])
+      expect(() => setRoomMonsterFacing(draft, 'actor', invalid)).toThrow(
+        /facing/
+      );
+  });
   it('round trips a versioned room envelope separately from composer data', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const painted = updateWalkableHexes(draft, [{ q: 1, r: -2 }], 'paint');

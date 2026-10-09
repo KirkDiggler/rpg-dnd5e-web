@@ -19,6 +19,19 @@ export type {
 } from '../world-building/roomDraft';
 export type { WallLine } from '../world-building/structuralWallGeometry';
 export type { StructuralWall } from '../world-building/structuralWalls';
+export type {
+  StudioActorArrangeEdit,
+  StudioArrangeHeight,
+  StudioArrangeIntent,
+  StudioArrangeProjectionInput,
+  StudioArrangeSelection,
+  StudioArrangeTarget,
+  StudioSceneArrangeEdit,
+  StudioSceneArrangeValues,
+  StudioStartArrangeEdit,
+  StudioWallArrangeEdit,
+  StudioWallArrangeValues,
+} from '../world-building/studioArrange';
 export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';

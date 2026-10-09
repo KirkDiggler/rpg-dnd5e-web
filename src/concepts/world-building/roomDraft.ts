@@ -529,6 +529,41 @@ export function moveRoomMonster(
   return { ...draft, room: { ...draft.room, monsterDeclarations: monsters } };
 }
 
+/** Set an explicit compass facing, or delete it to use the asset default.
+ * Unknown identities and invalid words refuse; exact no-ops keep absence. */
+export function setRoomMonsterFacing(
+  draft: RoomDraft,
+  id: string,
+  facing: string | undefined
+): RoomDraft {
+  const target = draft.room.monsterDeclarations.find(
+    (monster) => monster.id === id
+  );
+  if (!target) throw new Error(`Monster does not exist: ${id}.`);
+  if (facing !== undefined && !isValidFacing(facing))
+    throw new Error(
+      `Monster facing must be one of ${FACING_NAMES.join(', ')}.`
+    );
+  if (
+    facing === undefined
+      ? !Object.hasOwn(target.startingCell, 'facing')
+      : target.startingCell.facing === facing
+  )
+    return draft;
+  const startingCell = { ...target.startingCell };
+  if (facing === undefined) delete startingCell.facing;
+  else startingCell.facing = facing;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((monster) =>
+        monster.id === id ? { ...monster, startingCell } : monster
+      ),
+    },
+  };
+}
+
 /** Removing the creature removes its orders. A binding can never outlive the
  * creature it names (rpg-project#477, "a declaration can never outlive the
  * creature it names") — the decoder refuses an orphan, and this helper must
