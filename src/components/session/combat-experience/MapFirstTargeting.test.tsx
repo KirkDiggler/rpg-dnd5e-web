@@ -365,6 +365,87 @@ describe('read-only target-hover effects', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
+  it('refreshes target answers and held descriptions under a sticky peek without a scope reset', () => {
+    const choose = vi.fn();
+    const props = {
+      input: {
+        declaration: effectsOffer(),
+        selectedMembers: [],
+        authorityFresh: true,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: choose,
+      hoveredTarget: 'a',
+    };
+    const view = render(<MapFirstTargeting {...props} />);
+    const original = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    const refreshed = effectsOffer();
+    refreshed.effects[0]!.description = 'Refreshed actor description.';
+    // The candidate answer, not the generic declaration reason, owns this target.
+    refreshed.candidates[0]!.effects[0]!.reason = 'Refreshed Alpha answer.';
+    refreshed.candidates[0]!.heldEffects[0]!.description =
+      'Refreshed observed effect.';
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{ ...props.input, declaration: refreshed }}
+      />
+    );
+    const current = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    expect(current).toBe(original);
+    expect(current).toHaveAttribute('data-preview', 'true');
+    expect(current).toHaveTextContent('Refreshed Alpha answer.');
+    expect(current).toHaveTextContent('Refreshed actor description.');
+    expect(current).toHaveTextContent('Refreshed observed effect.');
+    expect(current).not.toHaveTextContent('Alpha-specific answer.');
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('re-evaluates the same hovered member under a new action without retaining old rows', () => {
+    const choose = vi.fn();
+    const props = {
+      input: {
+        declaration: effectsOffer(),
+        selectedMembers: [],
+        authorityFresh: true,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: choose,
+      hoveredTarget: 'a',
+    };
+    const view = render(<MapFirstTargeting {...props} />);
+    const next = effectsOffer();
+    next.id = 'next-action';
+    next.spell!.name = 'Next provider action';
+    next.effects[0]!.name = 'Next action effect';
+    next.candidates[0]!.effects[0]!.reason = 'Next action target answer.';
+    next.candidates[0]!.heldEffects = [];
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{ ...props.input, declaration: next }}
+      />
+    );
+    const current = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    expect(current).toHaveTextContent('For Next provider action');
+    expect(current).toHaveTextContent('Next action effect');
+    expect(current).toHaveTextContent('Next action target answer.');
+    expect(current).not.toHaveTextContent('Alpha-specific answer.');
+    expect(current).not.toHaveTextContent('Alpha-held effect');
+    expect(current).toHaveAttribute('data-preview', 'true');
+    expect(choose).not.toHaveBeenCalled();
+  });
+
   it('does not let a sticky target peek cover another dock control inspection', () => {
     const dock = document.createElement('div');
     dock.dataset.desktopDock = 'true';
@@ -377,7 +458,7 @@ describe('read-only target-hover effects', () => {
         <MapFirstTargeting
           input={{
             declaration: effectsOffer(),
-            selectedMembers: [],
+            selectedMembers: ['a'],
             authorityFresh: true,
             turnAllowed: true,
           }}
@@ -395,12 +476,29 @@ describe('read-only target-hover effects', () => {
         Object.defineProperty(event, 'pointerType', { value: 'mouse' });
         fireEvent(element, event);
       };
+      const chip = screen.getByRole('button', {
+        name: 'Inspect selected Alpha',
+      });
+      const peekId = screen.getByRole('tooltip', {
+        name: 'Alpha target information',
+      }).id;
+      expect(chip).toHaveAttribute('aria-describedby', peekId);
       over(action);
       expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(chip).not.toHaveAttribute('aria-describedby');
       over(document.body);
       expect(
         screen.getByRole('tooltip', { name: 'Alpha target information' })
       ).toBeVisible();
+      expect(chip).toHaveAttribute('aria-describedby', peekId);
+      fireEvent.focusIn(action);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(chip).not.toHaveAttribute('aria-describedby');
+      fireEvent.focusIn(screen.getByRole('button', { name: 'Targets (2)' }));
+      expect(
+        screen.getByRole('tooltip', { name: 'Alpha target information' })
+      ).toBeVisible();
+      expect(chip).toHaveAttribute('aria-describedby', peekId);
       expect(choose).not.toHaveBeenCalled();
     } finally {
       dock.remove();
@@ -425,10 +523,14 @@ describe('read-only target-hover effects', () => {
     );
     const chip = screen.getByRole('button', { name: 'Inspect selected Alpha' });
     fireEvent.focus(chip);
-    expect(
-      screen.getByRole('tooltip', { name: 'Alpha target information' })
-    ).toHaveTextContent('Alpha-specific answer.');
+    const peek = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    expect(peek).toHaveTextContent('Alpha-specific answer.');
+    expect(peek.id).not.toBe('');
+    expect(chip).toHaveAttribute('aria-describedby', peek.id);
     fireEvent.click(chip);
+    expect(chip).not.toHaveAttribute('aria-describedby');
     expect(
       screen.getByRole('region', { name: 'Alpha target information' })
     ).toHaveTextContent('Provider base explanation.');
