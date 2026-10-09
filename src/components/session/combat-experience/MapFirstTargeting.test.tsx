@@ -253,7 +253,7 @@ describe('read-only target-hover effects', () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
-  it('keeps a pointer-transparent peek readable and preserves explicit full inspection until closed', () => {
+  it('keeps a peek readable and preserves explicit full inspection until closed', () => {
     const cancel = vi.fn(),
       choose = vi.fn();
     const props = {
@@ -293,7 +293,44 @@ describe('read-only target-hover effects', () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('drops foreign, ambiguous and withdrawn candidates; labels stale and empty provider answers honestly', () => {
+  it('lets the player focus, scroll and click a hover window without choosing or confirming', () => {
+    const choose = vi.fn(),
+      confirm = vi.fn(),
+      cancel = vi.fn();
+    const props = {
+      input: {
+        declaration: effectsOffer(),
+        selectedMembers: [],
+        authorityFresh: true,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: choose,
+      onConfirm: confirm,
+      onCancel: cancel,
+    };
+    const view = render(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget={null} />);
+    const card = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    expect(card).toHaveAttribute('tabindex', '0');
+    fireEvent.focus(card);
+    fireEvent.wheel(card, { deltaY: 120 });
+    fireEvent.click(card);
+    expect(card).toBeVisible();
+    expect(choose).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close target preview' })
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('ignores foreign hover while retaining the named reader, drops invalid current candidates, and labels missing data', () => {
     const declaration = effectsOffer();
     const props = {
       input: {
@@ -306,10 +343,17 @@ describe('read-only target-hover effects', () => {
       memberNames: names,
       onChoose: vi.fn(),
     };
-    const view = render(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    const view = render(
+      <MapFirstTargeting {...props} hoveredTarget="foreign" />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="a" />);
     expect(screen.getByRole('tooltip')).toHaveTextContent('may be out of date');
     view.rerender(<MapFirstTargeting {...props} hoveredTarget="foreign" />);
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(
+      screen.getByRole('tooltip', { name: 'Alpha target information' })
+    ).toBeVisible();
+    expect(screen.queryByRole('tooltip', { name: /foreign/ })).toBeNull();
     const duplicate = create(DeclarationSchema, {
       ...declaration,
       candidates: [declaration.candidates[0], declaration.candidates[0]],

@@ -214,11 +214,13 @@
 }
 .details {
   width: min(360px, calc(100cqw - 64px));
+  /* A visible scrollbar must be reachable. Reading consumes input here,
+     rather than forwarding clicks/wheel gestures to the map underneath. */
+  pointer-events: auto;
 }
-/* Automatic inspection must never steal a click intended for the map.
-   The existing Info controls open the interactive, scrollable reader. */
-.details[data-preview='true'] {
-  pointer-events: none;
+.details:focus-visible {
+  outline: 2px solid #f3d17c;
+  outline-offset: 2px;
 }
 .details[data-list-open='true'] {
   left: 410px;

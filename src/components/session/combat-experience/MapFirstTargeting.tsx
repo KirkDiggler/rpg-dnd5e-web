@@ -163,8 +163,10 @@ export function MapFirstTargeting({
       update({ details: details, preview: preview });
   }, [current.details, current.preview, details, preview, update]);
   useEffect(() => {
-    if (hoveredTarget)
-      update({ preview: hoveredIsCandidate ? hoveredTarget : null });
+    // Keep the last named candidate while the pointer travels to its reader,
+    // even if it crosses empty ground or a non-candidate model on the way.
+    // Only another unique current candidate supplies replacement information.
+    if (hoveredTarget && hoveredIsCandidate) update({ preview: hoveredTarget });
   }, [hoveredTarget, hoveredIsCandidate, update]);
   // A sticky map peek must not cover an action's own hover card. Preserve the
   // inspected identity, but hide the automatic peek while using other dock UI.
@@ -315,6 +317,15 @@ export function MapFirstTargeting({
         >
           Targets ({candidates.length})
         </button>
+        {inspected && !details && (
+          <button
+            type="button"
+            aria-label="Close target preview"
+            onClick={closeDetails}
+          >
+            Close preview
+          </button>
+        )}
         {declaration?.options.length && onChangeChoice ? (
           <button
             type="button"
@@ -502,7 +513,7 @@ export function MapFirstTargeting({
           data-preview={!details}
           role={details ? 'region' : 'tooltip'}
           aria-label={`${nameFor(inspected)} target information`}
-          tabIndex={details ? 0 : undefined}
+          tabIndex={0}
         >
           <header>
             <div>
