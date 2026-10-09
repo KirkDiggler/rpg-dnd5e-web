@@ -3305,6 +3305,111 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(areaCount()).toBe(2);
   });
 
+  it('persists a representable true gap through scene3 codecs/reload and resolves only the same repaired boundary', async () => {
+    const original = regionSeed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    place('Gap room', 7, 2);
+    const intent = structuredClone(
+      storage.document().draft.scene.authoringRegions
+    );
+    fireEvent.click(button('Select'));
+    const north = surface().querySelector('[data-wall-id="studio-wall"]')!;
+    fireEvent.pointerDown(north, { ...at(zero), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
+    change('Wall length', '7.999999');
+    fireEvent.click(button('Apply Arrange'));
+    const broken = storage.document();
+    expect(broken.draft.room.walls![0].line.end.x).toBe(7.999999);
+    expect(broken.draft.scene.authoringRegions).toEqual(intent);
+    expect(areaCount()).toBe(0);
+    expectCodecs(broken); // unresolved alone is persistable, with complete scope
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(broken);
+    expect(areaCount()).toBe(0);
+    selectLabel('Gap room');
+    expect(
+      screen.getByText(/Automatic · Unresolved/, { selector: 'p' })
+    ).toBeTruthy();
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Use enclosing walls'));
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Select'));
+    const reloadedNorth = surface().querySelector(
+      '[data-wall-id="studio-wall"]'
+    )!;
+    fireEvent.pointerDown(reloadedNorth, {
+      ...at(zero),
+      button: 0,
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
+    change('Wall length', '8');
+    fireEvent.click(button('Apply Arrange'));
+    expect(areaCount()).toBe(1);
+    expect(storage.document().draft.scene.authoringRegions).toEqual(intent);
+    expect(storage.document().draft.room).toEqual(original.draft.room);
+    expect(storage.document().scope).toEqual(original.scope);
+    expectCodecs(storage.document());
+  });
+
+  it('retires a pending region stroke when selection or history changes and retains an authored empty definition in every codec', async () => {
+    const storage = new MemoryStorage(seed());
+    mount(storage);
+    await settled();
+    place('Forest', 0, 0);
+    place('Meadow', 4, 0);
+    selectLabel('Forest');
+    fireEvent.click(button('Define explicit area'));
+    gesture(zero);
+    const before = storage.document();
+    const writes = storage.roomWrites();
+    fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
+    selectLabel('Meadow');
+    fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Define explicit area'));
+    gesture(two);
+    fireEvent.pointerDown(surface(), { ...at(one), button: 0, pointerId: 7 });
+    fireEvent.click(button('Undo'));
+    const undone = storage.document();
+    fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
+    expect(storage.document()).toEqual(undone);
+    expect(undone).toEqual(before);
+    fireEvent.click(button('Redo'));
+    selectLabel('Forest');
+    fireEvent.click(button('Define explicit area'));
+    fireEvent.click(button('Clear explicit area'));
+    const empty = storage.document();
+    expect(empty.draft.scene.authoringRegions![0].boundary).toEqual({
+      kind: 'explicit',
+      cells: [],
+    });
+    expect(
+      screen.getByText(/Explicit · Unresolved.*empty/, { selector: 'p' })
+    ).toBeTruthy();
+    expectCodecs(empty);
+    const emptyBytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const emptyWrites = storage.roomWrites();
+    fireEvent.click(button('Clear explicit area'));
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(emptyBytes);
+    expect(storage.roomWrites()).toBe(emptyWrites);
+    cleanup();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(empty);
+    selectLabel('Forest');
+    expect(
+      screen.getByText(/Explicit · Unresolved.*empty/, { selector: 'p' })
+    ).toBeTruthy();
+  });
+
   it('keeps initial unbound author intent after wall closure until the explicit bind control, then binding is a no-op', async () => {
     const original = regionSeed(true);
     const storage = new MemoryStorage(original);

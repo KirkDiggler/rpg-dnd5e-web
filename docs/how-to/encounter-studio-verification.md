@@ -29,8 +29,11 @@ coordinates never translate. Untagged legacy radius workspaces are identified as
 nonrectangular and remain unchanged until explicit Apply. Labels are 2D plain-text
 annotations, not gameplay regions, floor/policy membership or 3D scenery.
 Their IDs/text are at most 120 characters, with at most 256 labels. A rectangular
-resize or first label promotes the scene to version 2; older scene-1-only web
-readers refuse it rather than strip metadata. See the
+resize or first ordinary note promotes an older scene to version 2. Explicit
+Room-label creation promotes to scene 3 and links one label to one authoring
+region. Existing scene 1/2 notes remain notes; reading does not promote or add
+empty collections. Older readers refuse unsupported versions rather than strip
+metadata. See the
 [owning contract](../../src/concepts/world-building/CONTRACT.md#centered-workspaces-and-map-annotations-1239)
 for membership and conservative protected-extent refusal rules.
 
@@ -279,6 +282,115 @@ Use the populated context and exact full-document comparisons above:
    support and lights. Reload restores content, not history. Record unavailable
    backend/provider capabilities and unexercised interactions explicitly.
 
+## Room boundaries and explicit repair
+
+These are **authoring definitions**, not gameplay regions, floor membership,
+concealment, lighting or visibility. The label owns text and anchor; the linked
+region owns boundary intent. Definitions share the existing full-document owner,
+history, validation and persistence. No region-specific publication capability
+or runtime lighting control is supplied.
+
+Use a disposable populated fixture with a closed outer rectangle and an
+axis-aligned divider that meets the outer wall interiors exactly. Keep its
+openings, attached-door bindings, props/supports/lights, actors/start and every
+scope key. Seed an ordinary saved note before entry. Use canonical helpers and
+`stringifyRoomDraft`, not handwritten authoring callbacks or unchecked storage.
+
+1. Enter through **Home → Encounter Studio**. Open **Label**, choose
+   **Room · linked boundary** in **Label kind**, enter a name, then
+   **Place label on map**. Use a pointer or the **New label world X/Z** form
+   and **Place label at coordinates** to place one room inside each side.
+   Dismiss Label controls. Select each label by pointer or keyboard Enter on
+   **Select map label NAME**. Verify distinct boundaries and **Automatic ·
+   Resolved** in Arrange. The saved ordinary note has neither a linked region
+   nor repair controls; new **Note** creation retains that behavior.
+2. Select the divider and change **Wall midpoint X** with **Apply Arrange**.
+   Compare current boundary rings, identical persisted region IDs/witnesses,
+   door bindings and complete unrelated payload. Apply unchanged fields or
+   **Use enclosing walls** on the already bound room: exact stored bytes and
+   write count must not change. Undo/Redo should traverse only accepted intents.
+3. Shorten the divider enough to leave a true representable gap, even a small
+   one. Boundaries must disappear, while labels/definitions survive with
+   **Unresolved** and a reason. Reload via Home → Studio and compare the full
+   document, JSON and YAML. Restore the exact original endpoint/source walk:
+   the bound rooms resolve without acquiring another witness. Removing a
+   divider or crossing a label into another enclosure must not adopt that area.
+4. In a separate fresh fixture with a missing outer wall, place a Room label.
+   Its automatic definition has no witness. Close the room with **Wall**,
+   choosing an actual appearance and drawing with a real pointer. If native
+   screen round trips leave nonidentical endpoints, use the existing Arrange
+   precision fields to author exact coordinates/length, or use supported hex
+   snap geometry; never expect distance-based welding. Even after closure,
+   the initial definition stays unbound. Select the label and explicitly press
+   **Use enclosing walls** to bind once. Repeating it is a no-op.
+5. Place Forest and Meadow Room labels in an open area, away from existing
+   rooms. Select Forest → **Define explicit area**. **Paint region**, **Erase
+   region** and **Rectangle region** stage a complete cell replacement and
+   commit on release. Paint distinct cells for each label and compare the entire
+   floor, walls, props, bindings and scope before/after: none change. **Clear
+   explicit area** keeps `{ kind: 'explicit', cells: [] }` with an unresolved
+   empty-area explanation; it does not revert to automatic or delete intent.
+   JSON/YAML and reload retain that empty definition.
+6. Paint an overlapping cell, or create a second Room label in the same
+   enclosure. All affected conflicts must be visible without priority or
+   membership transfer. Undo restores the previous definitions. **Delete region
+   and label** removes only the linked pair; Undo restores both identities.
+   Ordinary notes retain **Delete label**. Raw linked-label deletion is refused.
+7. Start a region stroke and cancel with Escape, change selection or switch
+   views before release. A late release must not commit to a retired target.
+   Paint identical membership twice: only the first change writes. Interleave
+   a floor edit and a real 3D prop edit, then return to Layout and traverse
+   Undo/Redo. Navigation is not history; unresolved metadata is persistable,
+   but invalid existing policy still fails its operation's normal strict gate.
+8. In fresh contexts compare otherwise identical attached-door initial open and
+   closed states. All wall spans, including openings, remain logical boundaries.
+   Studio introduces no new doorway-state control; canonical disposable
+   seeding is the state variation, not a fake control or gameplay sight test.
+9. Inspect desktop and narrow screenshots, label/status legibility, keyboard
+   focus, scroll-to-Apply and actual canvas area. Expanded Arrange may cover
+   the scene tree or canvas; collapse it to pick behind it. Explicit-area
+   controls can also cover cells: pan the view or collapse Arrange before
+   painting underneath. On narrow screens use the horizontally scrolling
+   toolbar and collapse Arrange to regain canvas space. Do not count covered
+   cells as exercised by clicks intercepted by a panel or label.
+10. Reload and compare complete scene3 JSON → YAML → JSON payloads and room
+    snapshots (draft only). Preserve old notes, all optional-field presence,
+    groups/supports/visual lights and scope. Inspect the native loaded 3D scene
+    separately; authoring boundaries are Layout-only, not a new 3D overlay.
+
+### Conservative geometry boundary
+
+Exact shared endpoints, certified axis-aligned T contacts and certified proper
+crossings may resolve simple, bounded single-ring faces. Moving the same oriented
+source walk follows without rewriting it. Source direction/order matter:
+reversing endpoints can require explicit rebind even when the undirected line
+looks unchanged. There is no epsilon welding, inferred gap closure, render-time
+witness acquisition or cached valid-looking stale ring.
+
+Holes, dangling interior slits, positive-length source overlaps/coincident walls,
+uncertified angled T/collinear contacts, uncertain multiway intersections or
+intersection ordering remain visibly unresolved. Conflicts never select a winner.
+Explicit cells use canonical membership; adjacent cells are not overlap. Explicit
+boundaries show cell outlines including interior seams, not a simplified contour.
+See the [region contract](../../src/concepts/world-building/CONTRACT.md) and
+[geometry design](../architecture/components/encounter-studio-regions/design.md).
+
+### Provider carriage is a separate prerequisite
+
+Web JSON/YAML round trips do not prove provider compilation. Use the isolated API
+snapshot and its **actual pinned** encounter module with the real registry
+validate-only, Put, Get and fresh-registry paths. Feed actual Web-emitted scene3
+bound, unbound and empty-explicit definitions; compare exact source bytes and
+compiled gameplay/implicit lighting against the same document without metadata.
+Retain temporary fixtures, probe diff and exact refusal/output outside tracked
+source, then restore only the temporary addition/fixture and verify original bytes
+and clean status. Never change production or pins to make this probe green.
+
+If even the metadata-free structural-wall base is refused, record that format/pin
+blocker separately from local authoring results. Do not remove walls from exports,
+substitute a newer provider, claim an API launch/save, or treat a metadata-only
+diagnostic as full-document acceptance.
+
 ## Automated checks
 
 Run individually from the web worktree with matching local dependencies:
@@ -293,9 +405,11 @@ npm run typecheck
 
 The joined DOM tests use the real Studio shell, WorldBuildingConcept owner,
 LayoutViewport, dimension/label/wall forms and gestures, floor/label/wall mutations,
-pure snap/reshape/resize/rotation helpers,
-validators and real JSON/YAML/snapshot/composition parsers with injected memory
-storage. They retain the real WorldBuildingViewport but replace its **Canvas
+pure snap/reshape/resize/rotation and region boundary helpers,
+validators and real scene3 JSON/YAML/snapshot/composition parsers with injected
+memory storage. Region checks include persisted true-gap repair, selection/history
+retirement, authored empty definitions, no-op byte/write exactness and full payload
+preservation. They retain the real WorldBuildingViewport but replace its **Canvas
 WebGL boundary**, observing the controlled scene inputs and calling the owner
 callbacks supplied to WorldSceneContents. Thumbnail rendering and external
 services are faked; Layout browser geometry/pointer capture are shimmed. These
