@@ -3,7 +3,7 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
-## Current Encounter Studio boundary (#1232, #1239, project#545)
+## Current Encounter Studio boundary (#1232, #1239, #1233, project#545)
 
 Home offers **Encounter Studio** alongside World Builder under the same
 current-world source availability and identity lifecycle. Studio mounts one
@@ -11,11 +11,18 @@ room-mode `WorldBuildingConcept`; its typed presentation facade projects the
 existing document and commands, not a second store. Layout and the existing 3D
 viewport may unmount independently without replacing the document owner.
 
-Layout offers Paint, Erase and Rectangle on canonical walkable cells, explicit
-workspace dimensions and presentation-only map labels. A completed
-stroke/rectangle is one bounds/size-checked whole-document history transaction. The 3D
-view reuses prop placement, selection, Move/Rotate, repeat, grouping, support,
-height and visual-light controls. Both views use the same draft **and complete
+Studio keeps two permanent chrome bands: document/name/save/view header and
+editing/history toolbar. Header rename commits the trimmed canonical scene and
+draft names together, preserving identity and site scope. Size opens staged
+workspace dimensions; accepted Apply commits before dismissing the fields.
+Cancel/Escape dismiss without content changes. Wall and Label contexts dismiss
+without deleting committed content; their staged forms are not document state.
+
+Layout offers Paint, Erase and Rectangle on canonical walkable cells, Select,
+Wall, explicit Size and presentation-only map labels. A completed
+stroke/rectangle or wall gesture is one bounds/size-checked whole-document history
+transaction. The 3D view reuses prop placement, selection, Move/Rotate, repeat,
+grouping, support, height and visual-light controls. Both views use the same draft **and complete
 site scope**, shared Undo/Redo and persistence. View changes and Layout pan/zoom
 create no history. Switching cancels unfinished gestures/transforms/drops and
 preserves committed selection and Layout framing; hidden prop mutation shortcuts
@@ -39,7 +46,7 @@ monsters/bindings/party start and all scope fields. Shape validation does not gr
 gameplay legality. Source availability is not proof of remote write permission.
 Studio exposes no publication, lobby launch, Save & Play, world-snapshot,
 import/reset or policy-editing commands. Room-management/focus tools, discovery
-simulation, Layout wall/door tools, asset markings and gameplay camera
+simulation, new opening/door creation tools, asset markings and gameplay camera
 presets are outside this slice. Map labels do not supply those capabilities.
 Missing room-navigation controls do not imply unsupported multi-room gameplay.
 
@@ -47,6 +54,49 @@ See [the safe verification procedure](../../../docs/how-to/encounter-studio-veri
 for disposable-context interaction checks and the DOM tests' WebGL boundary.
 The older sections below describe their own extensions or the standalone prop
 composer; they do not narrow this current Studio boundary.
+
+## Studio Layout walls and compact contexts (#1233)
+
+Wall opens searchable repeatable appearance choices, ranking case-insensitive
+wall name/ref matches first without inventing asset categories. Other eligible
+repeatable choices remain accessible. Generated images use the existing single
+serial capture queue/cache; Layout requests capture while the context is visible.
+Loading/error images retain named selectable fallbacks, never substitute an asset
+or delete an authored wall. Eligibility remains the catalog's measured generated
+assets without a door leaf role. No appearance is armed by default.
+
+Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
+centres/corners/side midpoints, and retains its presentation-only choice across
+context dismissal and view changes. Both preview and release use the same pure
+helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
+Wall and cancels the unfinished gesture without clearing appearance or snap.
+
+Select picks a wall body for rigid translation or a selected endpoint for direct
+reshape. Endpoint reshape composes protected collinear resize then rotation about
+the opposite endpoint: opening distances/identities and attached doors travel with
+the changed bearing. Opening edges clamp length; the preview displays the actual
+applied endpoint on the requested ray, not the unreachable raw pointer. Numeric
+length remains collinear, and move/rotation/appearance controls are secondary.
+Appearance changes do not change the independent blocker. Neither renderer stores
+derived spans or a second door pose; the existing 3D consumes the same canonical
+walls and door bindings.
+
+Selected endpoint handles precede labels, then wall bodies, then empty-space
+deselection; middle-button pan wins. Paint/Erase/Rectangle remain floor-owned.
+Wall ignores existing wall/label hits; Label owns label gestures. Selection and
+cosmetic reflow do not invalidate an active drag or create content edits. Preview,
+unchanged release, zero-length drawing, cancellation, refusal and retired-epoch
+release create no history. Accepted edits submit before settings dismissal, not
+after canceling their own owner intent.
+
+Remove deletes the owning wall/openings and attached-door bindings in one history
+entry. Site concealment reference lists are independently authored policy and stay
+unchanged, even when they name removed identities; server validation names
+unresolved references before publication/play. Undo restores the owned identities
+and bindings so those unchanged references resolve again. Unrelated bindings and
+all other scope fields remain intact. An editable post-removal draft is not a
+claim of publishability. Ordinary wall/name edits retain unfinished editable
+policy; save/export still require complete codec validation.
 
 ## Centered workspaces and map annotations (#1239)
 

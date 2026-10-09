@@ -7,8 +7,15 @@ Builder** remains available. Both entries use the same current-world source
 availability and identity lifecycle; availability is not server write permission.
 Studio does not inject publication or gameplay launch capabilities.
 
+Studio has two permanent bands: the document/name/save/view header and the
+editing/history toolbar. Header naming stages a canonical rename; **Size** opens
+**Width (hexes)** / **Height (hexes)** with **Apply dimensions**, rather than
+permanently occupying canvas space. Successful Apply commits then dismisses;
+Cancel/Escape discard staging. **Wall** and **Label** settings can also dismiss
+without deleting committed content.
+
 Layout offers **Paint**, **Erase** and **Rectangle** over canonical walkable hex
-cells, staged **Width (hexes)** / **Height (hexes)** with **Apply dimensions**, and
+cells, **Select** and **Wall** over existing canonical structural walls, Size, and
 **Label** placement/selection/drag/rename/move/delete. Brush strokes sample visited
 cells (no interpolation); rectangles include cell centers within the world-XZ
 box. Middle-drag pans, wheel zooms, and Escape cancels. Framing operations and
@@ -36,8 +43,8 @@ are shared document commands; their existing behavior clears selection. The 3D
 camera may reset when its renderer remounts.
 
 This slice does not offer room-management/focus tools, discovery simulation,
-Layout wall/door tools, asset labels/markings, gameplay camera presets or policy
-editors. Existing supported declarations and policies are carried, not removed.
+new opening/door creation tools, asset labels/markings, gameplay camera presets or
+policy editors. Existing supported declarations and policies are carried, not removed.
 The absence of room-navigation tools is not a statement about multi-room gameplay
 support. There is no Studio Save & Play, Publish, world-snapshot/import/reset flow
 or API/proto change. Visual lights are not gameplay illumination calculations.
@@ -82,9 +89,11 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
 
 ## Interaction procedure
 
-1. Enter through **Home → Encounter Studio** in the fresh context. Confirm a clean
-   Layout surface with visible Paint/Erase/Rectangle, local-save status and no site
-   inspector or publication controls.
+1. Enter through **Home → Encounter Studio** in the fresh context. Confirm the two
+   permanent chrome bands, Paint initially active, Select/Wall/Label/Size available,
+   local-save status and no site inspector or publication controls. Default Size,
+   Label and appearance fields are hidden. Check desktop and narrow/mobile sizes,
+   toolbar overflow and usable canvas area; capture both.
 2. Paint `0,0` and `2,0` as separated samples, then join with `1,0`. Erase `1,0`.
    Use Rectangle from `0,0` to `2,0` to restore the connection. Compare exact
    committed cell identities, not just the screenshot. Capture Layout.
@@ -111,8 +120,9 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
    prop declarations/bindings, transforms/groups/supports/lights, monster
    declarations/bindings, party start and **every** scope key (tables, factions,
    dispositions, intel, exits, endings, scenarios, concealments).
-8. In that populated context, stage 73 × 48 and verify nothing changes before
-   Apply. Apply once; confirm exactly 3504 workspace cells, unchanged original
+8. In that populated context, open **Size**, stage 73 × 48 and verify nothing
+   changes before Apply. Apply once; confirm fields disappear, exactly 3504
+   workspace cells, unchanged original
    coordinates/payload and no automatically painted floor. Paint the exposed
    negative/positive edges and check both views. Try an unsafe shrink and record
    the offender path; current dimensions/document/history/stored bytes must stay
@@ -156,19 +166,78 @@ content, not Undo/Redo stacks. Failed unsaved work is not recoverable by reload.
     comparisons, screenshots, console/page/request failures and any incomplete
     steps in the delivery report or PR. Do not put pass claims in this procedure.
 
+## Wall and compact-context procedure
+
+Use the populated context above, retaining props/groups/supports/lights,
+actors/start, openings/attached door/bindings and every site scope field. To test
+an existing rotated wall, derive it with `rotateWall` before encoding the fixture;
+do not replace it with a new doorless wall or hand-write an unchecked second schema.
+
+1. Open the header name, stage a trimmed name and Apply. Compare both canonical
+   scene/draft names, unchanged IDs/storage key/scope, one Undo/Redo and reload.
+   Same trimmed name is a no-op; blank/overlong names refuse. Cancel/Escape/view
+   navigation must never commit staging. Open Size, then Cancel/Escape; confirm
+   unchanged document/history and that reopening reads committed dimensions.
+2. Open **Wall** with no default appearance. Search a wall (for example
+   `castle_wall_01`), then a supported non-wall appearance (`alchemy_tools_01`).
+   Verify ranked native image buttons, named loading/error fallback and search
+   recovery. Generated thumbnails use one existing serial capture queue/cache;
+   a missing preview is not an unavailable appearance. Confirm an actual loaded
+   image/model rather than treating a fallback or mocked capture as evidence.
+3. Confirm **Snap to hex centres, corners and side midpoints** starts off. Choose
+   an appearance and draw two successive walls, one free and one snapped. Compare
+   exact lines with `snapWallPoint` and creation defaults; preview sampling writes
+   nothing, each accepted release adds one history entry, and Wall remains armed.
+   Dismiss controls, verify committed walls remain, reopen and confirm retained
+   appearance/snap. Escape/right-click cancels the unfinished draw and exits Wall;
+   zero-length/cancel/capture loss must add no content/history.
+4. Use **Select** on the rotated existing wall, then drag its body and selected
+   endpoint. Compare rigid movement with `translateWall` and endpoint output with
+   `reshapeWallEndpoint`, not merely a changed screenshot. Request a length shorter
+   than an opening edge: the visible preview and committed endpoint must match the
+   helper's protected clamp on the requested ray, not the cursor. The opposite end
+   stays fixed; rotation carries openings/attached doors with the bearing. Confirm
+   stable IDs, binding state and independent blocker fields.
+5. Exercise exact length, rotation and appearance on that selected wall. Numeric
+   length is collinear; appearance does not rewrite the blocker. Unchanged
+   selection/release and settings reflow must not move it or create history. Try
+   an out-of-workspace edit; notice/inputs remain visible, document and stored
+   bytes stay unchanged. Tool/option/view retirement during preview must prevent
+   a late release from committing.
+6. Remove the owning wall, then Undo/Redo. Removal clears its owned openings and
+   attached-door binding but preserves unrelated bindings and the complete site
+   scope, including explicit concealment reference lists. Those lists may now
+   contain unresolved IDs; they are carried authoring, not proof of publishability.
+   Undo restores the owned identities/binding, making unchanged references resolve
+   again. Compare the whole document at each step.
+7. Interleave floor, wall and real 3D prop edits. Navigate without adding history;
+   Undo/Redo must traverse only accepted edits, including removal. In 3D inspect
+   actual loaded appearances/openings/door initial state, then return and reload
+   with the attachment restored. Compare the full normalized document and JSON/
+   YAML payload, not just walls or floor counts. Room snapshots intentionally carry
+   draft only; local JSON/YAML carry complete scope. Dismiss Label settings and
+   verify committed labels persist without reviving canceled placement.
+8. Keep unfinished-policy staging in the legacy policy editor: Studio deliberately
+   offers none. Ordinary wall/name authoring must retain those rows and remain
+   undoable, while save/export refuse incomplete intel and preserve last good
+   bytes. Complete the missing fact explicitly, then verify the whole authored
+   document becomes persistable without dropping policy. Do not seed invalid
+   storage to bypass the strict load gate.
+
 ## Automated checks
 
 Run individually from the web worktree with matching local dependencies:
 
 ```bash
-npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx
+npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
 npm run test:run -- src/concepts/world-building/sceneState.test.ts src/concepts/world-building/serialization.test.ts src/concepts/world-building/roomDraft.test.ts src/concepts/world-building/singleRoomDungeon.test.ts src/compositions/roomDocument.test.ts
 npm run test:run -- src/concepts/world-building/WorldBuilderWorkspace.test.tsx src/concepts/world-building/WorldBuildingViewport.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.ts
 npm run typecheck
 ```
 
 The joined DOM tests use the real Studio shell, WorldBuildingConcept owner,
-LayoutViewport, dimension/label forms and gestures, floor/label mutations,
+LayoutViewport, dimension/label/wall forms and gestures, floor/label/wall mutations,
+pure snap/reshape/resize/rotation helpers,
 validators and real JSON/YAML/snapshot/composition parsers with injected memory
 storage. They retain the real WorldBuildingViewport but replace its **Canvas
 WebGL boundary**, observing the controlled scene inputs and calling the owner
