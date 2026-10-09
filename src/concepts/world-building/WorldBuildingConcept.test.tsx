@@ -44,6 +44,7 @@ import {
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
 import type { SiteScope } from './siteScope';
+import { repeatableWallAssetRefs } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { workspaceCells } from './workspaceGeometry';
@@ -4257,6 +4258,18 @@ describe('structural wall authoring (Task 3)', () => {
       /Save & Play is running/
     );
 
+    // Removal cleanup must follow accepted commit, not erase selection on refusal.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove wall wall-seeded' })
+    );
+    expect(screen.getByTestId('room-draft-json').textContent).toBe(before);
+    expect(screen.getByTestId('viewport-selected-wall').textContent).toBe(
+      'wall-seeded'
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /Save & Play is running/
+    );
+
     publishRpc.puts
       .find((put) => !put.request.validateOnly)!
       .deferred.resolve({ errors: [] } as never);
@@ -4570,6 +4583,37 @@ describe('Room transaction compatibility and retirement', () => {
     ]);
     expect(session!.notice).toMatch(/must name a fact/);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() =>
+      expect(session!.renameDocument('Unfinished but editable')).toBe(true)
+    );
+    act(() =>
+      expect(
+        session!.wallEditing.setAsset('dnd5e:env:dark-fortress:45_wall_01')
+      ).toBe(true)
+    );
+    act(() =>
+      expect(
+        session!.wallEditing.create({
+          start: { x: -2, z: 0 },
+          end: { x: 2, z: 0 },
+        })
+      ).toBe(true)
+    );
+    const wall = session!.document.draft.room.walls![0];
+    act(() =>
+      expect(
+        session!.wallEditing.edit({ ...wall, label: 'Still editable' })
+      ).toBe(true)
+    );
+    expect(session!.document.scope.intel).toEqual([
+      { id: 'intel-1', reveals: { fact: '' } },
+    ]);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(session!.notice).toMatch(/must name a fact/);
+    act(() => session!.undo());
+    act(() => session!.undo());
+    act(() => session!.undo());
+    expect(session!.document).toEqual(before);
     act(() => session!.undo());
     expect(session!.document.scope.intel).toBeUndefined();
     expect(session!.canUndo).toBe(false);
@@ -4675,6 +4719,303 @@ describe('Studio owner facade', () => {
     );
     return storage;
   }
+
+  it('renames through the canonical ordinary commit, preserving identity/scope and one no-op-safe history', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = structuredClone(owner.session.document);
+    act(() =>
+      expect(owner.session.renameDocument('  North gate  ')).toBe(true)
+    );
+    const renamed = structuredClone(owner.session.document);
+    expect(renamed.draft.name).toBe('North gate');
+    expect(renamed.draft.scene.name).toBe('North gate');
+    renamed.draft.name = before.draft.name;
+    renamed.draft.scene.name = before.draft.scene.name;
+    expect(renamed).toEqual(before);
+    const writes = owner.storage.writes;
+    const document = owner.session.document;
+    act(() => expect(owner.session.renameDocument(' North gate ')).toBe(true));
+    expect(owner.session.document).toBe(document);
+    expect(owner.storage.writes).toBe(writes);
+    act(() => expect(owner.session.renameDocument('   ')).toBe(false));
+    expect(owner.session.notice).toMatch(/cannot be empty/);
+    act(() =>
+      expect(owner.session.renameDocument('n'.repeat(121))).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/120/);
+    expect(owner.session.document).toBe(document);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canUndo).toBe(false);
+    act(() => owner.session.redo());
+    owner.unmount();
+    const reloaded = mountStudio(owner.storage);
+    expect(reloaded.session.document).toEqual(document);
+  });
+
+  it('projects eligible ranked wall/nonwall options without silently choosing an appearance', () => {
+    const owner = mountStudio(populatedStorage());
+    const options = owner.session.wallEditing.options;
+    expect(options.length).toBeGreaterThan(1);
+    expect(
+      options.find(
+        (option) => option.ref === 'dnd5e:env:dark-fortress:45_wall_01'
+      )?.wallMatch
+    ).toBe(true);
+    expect(options.some((option) => !option.wallMatch)).toBe(true);
+    expect(options.map((option) => option.ref)).toEqual(
+      expect.arrayContaining(repeatableWallAssetRefs())
+    );
+    expect(options).toHaveLength(repeatableWallAssetRefs().length);
+    expect(
+      options.every(
+        (option) =>
+          option.wallMatch === /wall/i.test(`${option.label} ${option.ref}`)
+      )
+    ).toBe(true);
+    const firstOther = options.findIndex((option) => !option.wallMatch);
+    expect(options.slice(firstOther).every((option) => !option.wallMatch)).toBe(
+      true
+    );
+    expect(owner.session.wallEditing.assetRef).toBeNull();
+    expect(owner.session.wallEditing.snapEnabled).toBe(false);
+    const before = owner.session.document;
+    act(() =>
+      expect(
+        owner.session.wallEditing.create({
+          start: { x: 0, z: 0 },
+          end: { x: 2, z: 0 },
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/Select a repeatable wall asset/);
+    act(() =>
+      expect(owner.session.wallEditing.setAsset('missing:ref')).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/unsupported asset/);
+    act(() =>
+      expect(owner.session.wallEditing.setAsset('plushie-skeleton-dog')).toBe(
+        false
+      )
+    );
+    expect(owner.session.wallEditing.assetRef).toBeNull();
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('null selection/asset are explicit and unchanged options do not retire callbacks or create history', () => {
+    const owner = mountStudio(populatedStorage());
+    const initial = owner.session.document;
+    const epoch = owner.session.intentEpoch;
+    const live = owner.session.wallEditing;
+    act(() => {
+      expect(live.select(null)).toBe(true);
+      expect(live.setAsset(null)).toBe(true);
+      expect(live.setSnap(false)).toBe(true);
+    });
+    expect(owner.session.intentEpoch).toBe(epoch);
+    act(() => expect(live.select('studio-wall')).toBe(true));
+    act(() => expect(live.select(null)).toBe(true));
+    expect(owner.session.wallEditing.selectedId).toBeNull();
+    expect(owner.session.intentEpoch).toBe(epoch);
+    act(() =>
+      expect(
+        owner.session.wallEditing.setAsset('dnd5e:env:dark-fortress:45_wall_01')
+      ).toBe(true)
+    );
+    act(() => expect(owner.session.wallEditing.setAsset(null)).toBe(true));
+    expect(owner.session.wallEditing.assetRef).toBeNull();
+    expect(owner.session.document).toBe(initial);
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('boolean wall intents retain refused selection and preserve complete attachments through history', () => {
+    const owner = mountStudio(populatedStorage());
+    owner.switchView('layout');
+    const before = structuredClone(owner.session.document);
+    const wall = before.draft.room.walls![0];
+    act(() => expect(owner.session.wallEditing.select(wall.id)).toBe(true));
+    const epoch = owner.session.intentEpoch;
+    const live = owner.session.wallEditing;
+    act(() => expect(live.select('missing-wall')).toBe(false));
+    expect(owner.session.wallEditing.selectedId).toBe(wall.id);
+    expect(owner.session.intentEpoch).toBe(epoch);
+    act(() => expect(live.remove('missing-wall')).toBe(false));
+    expect(owner.session.notice).toMatch(/unknown wall/);
+    act(() => expect(live.edit({ ...wall, id: 'missing-wall' })).toBe(false));
+    act(() =>
+      expect(
+        live.edit({
+          ...wall,
+          line: { start: { x: 999, z: 0 }, end: { x: 1000, z: 0 } },
+        })
+      ).toBe(false)
+    );
+    act(() =>
+      expect(
+        live.edit({
+          ...wall,
+          appearance: { ...wall.appearance, assetRef: 'missing:asset' },
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.notice).toMatch(/unknown catalog asset/);
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.wallEditing.selectedId).toBe(wall.id);
+    expect(owner.session.canUndo).toBe(false);
+    act(() => expect(live.edit(wall)).toBe(true));
+    expect(owner.session.canUndo).toBe(false);
+    act(() => expect(live.edit({ ...wall, label: 'Renamed wall' })).toBe(true));
+    expect(owner.session.document.draft.room.walls![0]).toEqual({
+      ...wall,
+      label: 'Renamed wall',
+    });
+    expect(owner.session.document.scope).toEqual(before.scope);
+    expect(owner.session.document.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    const appearance = {
+      ...wall.appearance,
+      height: wall.appearance.height + 1,
+    };
+    act(() =>
+      expect(owner.session.wallEditing.edit({ ...wall, appearance })).toBe(true)
+    );
+    expect(owner.session.document.draft.room.walls![0]).toEqual({
+      ...wall,
+      appearance,
+    });
+    expect(owner.session.document.scope).toEqual(before.scope);
+    expect(owner.session.document.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    act(() => expect(owner.session.wallEditing.remove(wall.id)).toBe(true));
+    expect(owner.session.wallEditing.selectedId).toBeNull();
+    expect(owner.session.document.draft.room.walls).toEqual([]);
+    expect(
+      owner.session.document.draft.room.doorBindings?.['studio-door']
+    ).toBeUndefined();
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('selection alone keeps a captured drag live without resetting the private prop tool', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => owner.session.setPropTool('rotate'));
+    owner.switchView('layout');
+    const wall = owner.session.document.draft.room.walls![0];
+    const live = owner.session.wallEditing;
+    const epoch = owner.session.intentEpoch;
+    act(() => expect(live.select(wall.id)).toBe(true));
+    owner.rerender();
+    expect(owner.session.intentEpoch).toBe(epoch);
+    expect(owner.session.propTool).toBe('rotate');
+    expect(owner.session.viewportProps.roomAuthoring?.tool).toBe('rotate');
+    act(() =>
+      expect(live.edit({ ...wall, label: 'Dragged after selection' })).toBe(
+        true
+      )
+    );
+    expect(owner.session.document.draft.room.walls![0].label).toBe(
+      'Dragged after selection'
+    );
+  });
+
+  it('creates consecutively without forced tool reset, remembering asset/snap across contexts and views', () => {
+    const owner = mountStudio();
+    act(() => owner.session.setPropTool('move'));
+    owner.switchView('layout');
+    const ref = 'dnd5e:env:dark-fortress:45_wall_01';
+    act(() => expect(owner.session.wallEditing.setAsset(ref)).toBe(true));
+    act(() => expect(owner.session.wallEditing.setSnap(true)).toBe(true));
+    const before = structuredClone(owner.session.document);
+    for (const z of [0, 2]) {
+      act(() =>
+        expect(
+          owner.session.wallEditing.create({
+            start: { x: -2, z },
+            end: { x: 2, z },
+          })
+        ).toBe(true)
+      );
+      expect(owner.session.wallEditing.assetRef).toBe(ref);
+      expect(owner.session.propTool).toBe('move');
+      expect(owner.session.viewportProps.roomAuthoring?.tool).toBe('move');
+    }
+    const walls = owner.session.document.draft.room.walls!;
+    expect(walls).toHaveLength(2);
+    expect(walls[0].id).not.toBe(walls[1].id);
+    expect(walls[0].appearance.assetRef).toBe(ref);
+    expect(walls[0].blocker).toMatchObject({
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    });
+    act(() => owner.session.cancelTransients());
+    owner.switchView('3d');
+    expect(owner.session.wallEditing.snapEnabled).toBe(true);
+    expect(owner.session.wallEditing.assetRef).toBe(ref);
+    expect(owner.session.viewportProps.roomAuthoring?.walls).toEqual(walls);
+    owner.switchView('layout');
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.room.walls).toHaveLength(1);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('fences every wall/rename/refusal callback after option, snap, tool, view, document, cancel and unmount retirement', () => {
+    const owner = mountStudio(populatedStorage());
+    const staleContexts: EncounterStudioSession[] = [];
+    staleContexts.push(owner.session);
+    act(() =>
+      owner.session.wallEditing.setAsset('dnd5e:env:dark-fortress:45_wall_01')
+    );
+    staleContexts.push(owner.session);
+    act(() => owner.session.wallEditing.setSnap(true));
+    staleContexts.push(owner.session);
+    act(() => owner.session.setPropTool('move'));
+    staleContexts.push(owner.session);
+    owner.switchView('layout');
+    staleContexts.push(owner.session);
+    act(() => owner.session.renameDocument('Changed context'));
+    staleContexts.push(owner.session);
+    act(() => owner.session.cancelTransients());
+    const current = owner.session;
+    const before = current.document;
+    const writes = owner.storage.writes;
+    const wall = before.draft.room.walls![0];
+    for (const stale of staleContexts) {
+      expect(stale.intentEpoch).toBeLessThan(current.intentEpoch);
+      act(() => {
+        expect(stale.renameDocument('Retired name')).toBe(false);
+        expect(stale.wallEditing.select(wall.id)).toBe(false);
+        expect(stale.wallEditing.setAsset(null)).toBe(false);
+        expect(stale.wallEditing.setSnap(false)).toBe(false);
+        expect(stale.wallEditing.create(wall.line)).toBe(false);
+        expect(stale.wallEditing.edit({ ...wall, label: 'Retired edit' })).toBe(
+          false
+        );
+        expect(stale.wallEditing.remove(wall.id)).toBe(false);
+        stale.wallEditing.reportRefusal('Retired refusal');
+      });
+    }
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.notice).not.toBe('Retired refusal');
+    expect(owner.storage.writes).toBe(writes);
+    act(() => owner.session.wallEditing.reportRefusal('Live refusal'));
+    expect(owner.session.notice).toBe('Live refusal');
+    owner.unmount();
+    act(() => {
+      expect(current.renameDocument('Unmounted')).toBe(false);
+      expect(current.wallEditing.remove(wall.id)).toBe(false);
+      current.wallEditing.reportRefusal('Unmounted refusal');
+    });
+    expect(owner.storage.writes).toBe(writes);
+  });
 
   it('resize and the complete label lifecycle are atomic shared-history transactions', () => {
     const owner = mountStudio(populatedStorage());

@@ -98,6 +98,21 @@ function createSession(): EncounterStudioSession {
   );
   return {
     document: { draft, scope: {} },
+    intentEpoch: 0,
+    renameDocument: vi.fn(() => true),
+    wallEditing: {
+      selectedId: null,
+      assetRef: null,
+      snapEnabled: false,
+      options: [],
+      select: vi.fn(() => true),
+      setAsset: vi.fn(() => true),
+      setSnap: vi.fn(() => true),
+      create: vi.fn(() => true),
+      edit: vi.fn(() => true),
+      remove: vi.fn(() => true),
+      reportRefusal: vi.fn(),
+    },
     viewportProps: {
       scene: draft.scene,
       previewScene: null,

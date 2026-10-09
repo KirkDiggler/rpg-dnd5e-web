@@ -18,7 +18,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { EncounterStudioPresentation } from '../encounter-studio/studioSession';
+import type {
+  EncounterStudioPresentation,
+  StudioWallAppearanceOption,
+} from '../encounter-studio/studioSession';
 import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
@@ -133,6 +136,7 @@ import {
   previewWallTransform,
   repeatableWallAssetRefs,
 } from './structuralWallEditing';
+import type { WallLine } from './structuralWallGeometry';
 import {
   StructuralWallPanel,
   type WallDoorMutation,
@@ -462,6 +466,7 @@ export function WorldBuildingConcept({
     armedMonsterRef,
     repeatAssetRef,
     wallAssetRef,
+    wallSnapEnabled,
     paintingConcealmentId,
   });
   if (
@@ -471,6 +476,7 @@ export function WorldBuildingConcept({
     intentContextRef.current.armedMonsterRef !== armedMonsterRef ||
     intentContextRef.current.repeatAssetRef !== repeatAssetRef ||
     intentContextRef.current.wallAssetRef !== wallAssetRef ||
+    intentContextRef.current.wallSnapEnabled !== wallSnapEnabled ||
     intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
   ) {
     intentContextRef.current = {
@@ -480,6 +486,7 @@ export function WorldBuildingConcept({
       armedMonsterRef,
       repeatAssetRef,
       wallAssetRef,
+      wallSnapEnabled,
       paintingConcealmentId,
     };
     viewportGenerationRef.current += 1;
@@ -508,6 +515,7 @@ export function WorldBuildingConcept({
     armedMonsterRef,
     repeatAssetRef,
     wallAssetRef,
+    wallSnapEnabled,
   ]);
   useEffect(() => {
     if (studioView !== undefined) setPaintingConcealmentId(null);
@@ -1307,18 +1315,19 @@ export function WorldBuildingConcept({
     },
     [commit, roomDraft.room, scene, selectedIds]
   );
-  const createWallFromGesture = useCallback(
-    (line: {
-      start: { x: number; z: number };
-      end: { x: number; z: number };
-    }) => {
-      if (refuseWhilePublishing()) return;
+  const createStudioWall = useCallback(
+    (line: WallLine): boolean => {
+      if (refuseWhilePublishing()) return false;
       const entry = wallAssetRef
         ? WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)
         : undefined;
-      if (!entry || entry.source !== 'generated') {
+      if (
+        !entry ||
+        entry.source !== 'generated' ||
+        !wallAssetOptions.some((option) => option.ref === entry.ref)
+      ) {
         setNotice('Select a repeatable wall asset before drawing.');
-        return;
+        return false;
       }
       const limit = roomDraft.workspace.horizontalLimit;
       if (
@@ -1333,7 +1342,7 @@ export function WorldBuildingConcept({
         setNotice(
           `Wall rejected; endpoints must stay inside the authoring workspace (±${limit}).`
         );
-        return;
+        return false;
       }
       try {
         const wall = createWall({
@@ -1347,14 +1356,14 @@ export function WorldBuildingConcept({
           elevation: 0,
         });
         if (!commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] }))
-          return;
+          return false;
         setSelectedIds([]);
         setSelectedActorId(null);
         setSelectedWallId(wall.id);
-        setRoomTool('select');
-        setTool('select');
+        return true;
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
+        return false;
       }
     },
     [
@@ -1366,26 +1375,56 @@ export function WorldBuildingConcept({
       scene,
       walls,
       wallAssetRef,
+      wallAssetOptions,
     ]
   );
-  const selectWall = useCallback(
-    (id: string | null) => {
+  // Legacy World Builder keeps its one-shot drawing behavior. Studio owns
+  // its drawing mode and must be able to submit consecutive gestures.
+  const createWallFromGesture = useCallback(
+    (line: WallLine): boolean => {
+      if (!createStudioWall(line)) return false;
+      setRoomTool('select');
+      setTool('select');
+      return true;
+    },
+    [createStudioWall]
+  );
+  const selectStudioWall = useCallback(
+    (id: string | null): boolean => {
+      if (refuseWhilePublishing()) return false;
+      if (id !== null && !walls.some((wall) => wall.id === id)) {
+        setNotice(`Wall selection refused; unknown wall ${id}.`);
+        return false;
+      }
       setSelectedWallId(id);
       setPreviewWall(null);
       if (id) {
         setPreviewScene(null);
         setSelectedIds([]);
         setSelectedActorId(null);
+      }
+      return true;
+    },
+    [refuseWhilePublishing, walls]
+  );
+  const selectWall = useCallback(
+    (id: string | null) => {
+      if (!selectStudioWall(id)) return;
+      if (id) {
         const nextTool =
           roomTool === 'move' || roomTool === 'rotate' ? roomTool : 'select';
         setRoomTool(nextTool);
         setTool(nextTool);
       }
     },
-    [roomTool]
+    [roomTool, selectStudioWall]
   );
   const editWall = useCallback(
     (next: StructuralWall): boolean => {
+      if (!walls.some((wall) => wall.id === next.id)) {
+        setNotice(`Wall edit refused; unknown wall ${next.id}.`);
+        return false;
+      }
       return commitWalls(
         walls.map((entry) => (entry.id === next.id ? next : entry))
       );
@@ -1418,11 +1457,16 @@ export function WorldBuildingConcept({
   );
 
   const removeWall = useCallback(
-    (id: string) => {
-      commitWalls(walls.filter((entry) => entry.id !== id));
-      setSelectedWallId(null);
+    (id: string): boolean => {
+      if (!walls.some((wall) => wall.id === id)) {
+        setNotice(`Wall removal refused; unknown wall ${id}.`);
+        return false;
+      }
+      if (!commitWalls(walls.filter((entry) => entry.id !== id))) return false;
+      if (selectedWallId === id) setSelectedWallId(null);
+      return true;
     },
-    [commitWalls, walls]
+    [commitWalls, selectedWallId, walls]
   );
   /** One attached-door mutation is ONE room-history transaction that moves the
    * opening's `door` record and its `doorBindings` entry together. The door id
@@ -2076,22 +2120,42 @@ export function WorldBuildingConcept({
   /** The document's one explicit rename. In room mode it is the site's
    * identity (The site) and it also moves the published draft name in the
    * same single Undo; in the composer it is the scene's name (Edit). */
-  const commitDocumentName = () => {
-    const name = sceneNameDraft.trim();
-    if (!name) {
-      setSceneNameDraft(scene.name);
-      setNotice(
-        roomMode ? 'Room name cannot be empty.' : 'Scene name cannot be empty.'
-      );
-    } else if (name !== scene.name) {
-      commit(
-        { ...scene, name },
-        selectedIds,
-        roomDraft.room,
-        roomDraft.workspace,
-        roomMode ? name : undefined
-      );
-    }
+  const renameDocument = useCallback(
+    (value: string): boolean => {
+      if (refuseWhilePublishing()) return false;
+      const name = value.trim();
+      if (!name || name.length > 120) {
+        setSceneNameDraft(scene.name);
+        setNotice(
+          !name
+            ? roomMode
+              ? 'Room name cannot be empty.'
+              : 'Scene name cannot be empty.'
+            : 'Document name cannot exceed 120 characters.'
+        );
+        return false;
+      }
+      if (name === scene.name && (!roomMode || name === roomDraft.name)) {
+        setSceneNameDraft(name);
+        return true;
+      }
+      if (
+        !commit(
+          { ...scene, name },
+          selectedIds,
+          roomDraft.room,
+          roomDraft.workspace,
+          roomMode ? name : undefined
+        )
+      )
+        return false;
+      setSceneNameDraft(name);
+      return true;
+    },
+    [commit, refuseWhilePublishing, roomDraft, roomMode, scene, selectedIds]
+  );
+  const commitDocumentName = (): void => {
+    renameDocument(sceneNameDraft);
   };
 
   /** Flip a blocking answer on every selected prop WITHOUT touching any
@@ -2395,6 +2459,44 @@ export function WorldBuildingConcept({
     // navigation, and jumping must never change the site's right-hand nouns.
   };
 
+  // Keep queue keys alive when demand pauses: the existing serial queue owns
+  // one cache, and this is its only renderer in both Studio and legacy views.
+  const thumbnailHost =
+    (studioView !== 'layout' || studioPresentation?.thumbnailDemand === true) &&
+    generatedThumbnails.active ? (
+      <WorldAssetThumbnailRenderer
+        entry={generatedThumbnails.active.entry}
+        requestKey={generatedThumbnails.active.key}
+        onComplete={generatedThumbnails.recordComplete}
+        onError={generatedThumbnails.recordError}
+        onRootError={generatedThumbnails.recordRootError}
+      />
+    ) : null;
+  const studioWallOptions: readonly StudioWallAppearanceOption[] =
+    wallAssetOptions
+      .map(({ ref, label }): StudioWallAppearanceOption => {
+        const entry = WORLD_BUILDING_CATALOG_BY_REF.get(ref);
+        const result =
+          entry?.source === 'generated'
+            ? generatedThumbnails.results[worldAssetThumbnailKey(entry.asset)]
+            : undefined;
+        return {
+          ref,
+          label,
+          wallMatch: /wall/i.test(`${label} ${ref}`),
+          thumbnail:
+            result?.status === 'ready' && result.image
+              ? { status: 'ready', image: result.image }
+              : result?.status === 'error'
+                ? {
+                    status: 'error',
+                    message: result.message ?? 'Thumbnail unavailable',
+                  }
+                : { status: 'loading' },
+        };
+      })
+      .sort((a, b) => Number(b.wallMatch) - Number(a.wallMatch));
+
   /** The asset palette body, shared by both editors: the composer keeps it as
    * its left panel, the Site editor puts it inside the `Props` section next to
    * the scene tree because adding a prop and finding a placed prop are the
@@ -2501,15 +2603,6 @@ export function WorldBuildingConcept({
           );
         })}
       </div>
-      {generatedThumbnails.active && (
-        <WorldAssetThumbnailRenderer
-          entry={generatedThumbnails.active.entry}
-          requestKey={generatedThumbnails.active.key}
-          onComplete={generatedThumbnails.recordComplete}
-          onError={generatedThumbnails.recordError}
-          onRootError={generatedThumbnails.recordRootError}
-        />
-      )}
     </>
   );
 
@@ -3296,6 +3389,16 @@ export function WorldBuildingConcept({
       viewportGenerationRef.current === viewportGeneration && mountedRef.current
         ? callback(...args)
         : false;
+  // Wall gestures carry a snapshot, unlike floor/label reducers that can
+  // intentionally compose rapid intents against synchronous current state.
+  const guardSnapshotIntent = <Args extends unknown[]>(
+    callback: (...args: Args) => boolean
+  ): ((...args: Args) => boolean) =>
+    guardIntent((...args: Args) =>
+      roomHistoryRef.current.present === viewportDocument
+        ? callback(...args)
+        : false
+    );
   const viewportIsActive = (): boolean =>
     mountedRef.current &&
     studioViewRef.current !== 'layout' &&
@@ -3419,73 +3522,119 @@ export function WorldBuildingConcept({
     ) : null;
 
   if (roomMode && studioPresentation) {
-    return studioPresentation.render({
-      document: roomHistory.present,
-      viewportProps,
-      canUndo: !publishBusy && roomHistory.past.length > 0,
-      canRedo: !publishBusy && roomHistory.future.length > 0,
-      undo: () => {
-        if (
-          viewportGenerationRef.current === viewportGeneration &&
-          mountedRef.current
-        )
-          undo();
-      },
-      redo: () => {
-        if (
-          viewportGenerationRef.current === viewportGeneration &&
-          mountedRef.current
-        )
-          redo();
-      },
-      commitFloor: guardIntent(commitFloor),
-      resizeWorkspace: guardIntent((width: number, height: number) =>
-        applyRoomIntent((current) =>
-          resizeRoomWorkspace(current, width, height)
-        )
-      ),
-      createMapLabel: guardIntent((text: string, location: WorldPoint) =>
-        applyRoomIntent((current) => ({
-          ...current,
-          draft: createMapLabel(current.draft, idFactory(), text, location),
-        }))
-      ),
-      moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
-        applyRoomIntent((current) => ({
-          ...current,
-          draft: moveMapLabel(current.draft, id, location),
-        }))
-      ),
-      renameMapLabel: guardIntent((id: string, text: string) =>
-        applyRoomIntent((current) => ({
-          ...current,
-          draft: renameMapLabel(current.draft, id, text),
-        }))
-      ),
-      deleteMapLabel: guardIntent((id: string) =>
-        applyRoomIntent((current) => ({
-          ...current,
-          draft: deleteMapLabel(current.draft, id),
-        }))
-      ),
-      cancelTransients,
-      propTool: tool,
-      setPropTool: (next) => {
-        cancelTransients();
-        setTool(next);
-        setRoomTool(next);
-      },
-      propControls: {
-        palette: assetPalette,
-        tree: siteSceneTree,
-        selection: renderVisualPropControls(),
-      },
-      saveStatus,
-      notice: notice || null,
-      autosaveBlocked,
-      saveLocalDraft: saveNow,
-      dismissNotice: () => setNotice(''),
-    });
+    return (
+      <>
+        {thumbnailHost}
+        {studioPresentation.render({
+          document: roomHistory.present,
+          viewportProps,
+          intentEpoch: viewportGeneration,
+          renameDocument: guardSnapshotIntent(renameDocument),
+          wallEditing: {
+            selectedId: selectedWallId,
+            assetRef: wallAssetRef,
+            snapEnabled: wallSnapEnabled,
+            options: studioWallOptions,
+            select: guardSnapshotIntent(selectStudioWall),
+            setAsset: guardSnapshotIntent((ref: string | null): boolean => {
+              if (refuseWhilePublishing()) return false;
+              if (
+                ref !== null &&
+                !wallAssetOptions.some((option) => option.ref === ref)
+              ) {
+                setNotice(`Wall appearance refused; unsupported asset ${ref}.`);
+                return false;
+              }
+              if (ref !== wallAssetRef) {
+                cancelTransients();
+                setWallAssetRef(ref);
+              }
+              return true;
+            }),
+            setSnap: guardSnapshotIntent((enabled: boolean): boolean => {
+              if (refuseWhilePublishing()) return false;
+              if (enabled !== wallSnapEnabled) {
+                cancelTransients();
+                setWallSnapEnabled(enabled);
+              }
+              return true;
+            }),
+            create: guardSnapshotIntent(createStudioWall),
+            edit: guardSnapshotIntent(editWall),
+            remove: guardSnapshotIntent(removeWall),
+            reportRefusal: (message: string): void => {
+              guardSnapshotIntent(() => {
+                setNotice(message);
+                return true;
+              })();
+            },
+          },
+          canUndo: !publishBusy && roomHistory.past.length > 0,
+          canRedo: !publishBusy && roomHistory.future.length > 0,
+          undo: () => {
+            if (
+              viewportGenerationRef.current === viewportGeneration &&
+              mountedRef.current
+            )
+              undo();
+          },
+          redo: () => {
+            if (
+              viewportGenerationRef.current === viewportGeneration &&
+              mountedRef.current
+            )
+              redo();
+          },
+          commitFloor: guardIntent(commitFloor),
+          resizeWorkspace: guardIntent((width: number, height: number) =>
+            applyRoomIntent((current) =>
+              resizeRoomWorkspace(current, width, height)
+            )
+          ),
+          createMapLabel: guardIntent((text: string, location: WorldPoint) =>
+            applyRoomIntent((current) => ({
+              ...current,
+              draft: createMapLabel(current.draft, idFactory(), text, location),
+            }))
+          ),
+          moveMapLabel: guardIntent((id: string, location: WorldPoint) =>
+            applyRoomIntent((current) => ({
+              ...current,
+              draft: moveMapLabel(current.draft, id, location),
+            }))
+          ),
+          renameMapLabel: guardIntent((id: string, text: string) =>
+            applyRoomIntent((current) => ({
+              ...current,
+              draft: renameMapLabel(current.draft, id, text),
+            }))
+          ),
+          deleteMapLabel: guardIntent((id: string) =>
+            applyRoomIntent((current) => ({
+              ...current,
+              draft: deleteMapLabel(current.draft, id),
+            }))
+          ),
+          cancelTransients,
+          propTool: tool,
+          setPropTool: (next) => {
+            cancelTransients();
+            setTool(next);
+            setRoomTool(next);
+          },
+          propControls: {
+            palette: assetPalette,
+            tree: siteSceneTree,
+            selection: renderVisualPropControls(),
+          },
+          saveStatus,
+          notice: notice || null,
+          autosaveBlocked,
+          saveLocalDraft: saveNow,
+          dismissNotice: () => setNotice(''),
+        })}
+      </>
+    );
   }
 
   return (
@@ -3495,6 +3644,7 @@ export function WorldBuildingConcept({
       data-transform-preview={previewScene || previewWall ? 'active' : 'idle'}
       data-workspace-origin={workspaceOrigin}
     >
+      {thumbnailHost}
       {roomMode ? (
         <header className="wb-header wb-header--site">
           <div className="wb-site-heading">
