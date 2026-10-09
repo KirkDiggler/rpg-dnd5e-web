@@ -1,7 +1,16 @@
+import {
+  doorBindingState,
+  type DoorBindings,
+} from '../world-building/doorBindingEdits';
 import { wallLength } from '../world-building/structuralWallEditing';
 import { wallSolidIntervals } from '../world-building/structuralWallGeometry';
 import { worldToClient, type LayoutTransform } from './layoutGeometry';
-import type { StructuralWall, WallLine, WorldPoint } from './studioSession';
+import type {
+  StructuralWall,
+  StudioDoorTarget,
+  WallLine,
+  WorldPoint,
+} from './studioSession';
 
 export interface LayoutWallPreview {
   line: WallLine;
@@ -11,6 +20,8 @@ export interface LayoutWallPreview {
 }
 interface LayoutWallOverlayProps {
   walls: readonly StructuralWall[];
+  doorBindings?: DoorBindings;
+  selectedDoor?: StudioDoorTarget | null;
   transform: LayoutTransform;
   selectedId: string | null;
   interactive: boolean;
@@ -23,6 +34,8 @@ interface LayoutWallOverlayProps {
  * not a second door pose. Hits and handles remain usable at every zoom. */
 export function LayoutWallOverlay({
   walls,
+  doorBindings,
+  selectedDoor,
   transform,
   selectedId,
   interactive,
@@ -112,6 +125,50 @@ export function LayoutWallOverlay({
                 pointerEvents="stroke"
               />
             )}
+            {wall.openings
+              .filter((opening) => opening.door)
+              .map((opening) => {
+                const selected =
+                  selectedDoor?.wallId === wall.id &&
+                  selectedDoor.openingId === opening.id &&
+                  selectedDoor.doorId === opening.door!.id;
+                const center = project(along(opening.position));
+                const state = doorBindingState(
+                  doorBindings?.[opening.door!.id]
+                );
+                return (
+                  <g
+                    key={opening.id}
+                    data-wall-id={wall.id}
+                    data-door-id={opening.door!.id}
+                    data-opening-id={opening.id}
+                    data-door-state={state}
+                  >
+                    <line
+                      {...lineProps({
+                        start: along(opening.position - opening.width / 2),
+                        end: along(opening.position + opening.width / 2),
+                      })}
+                      stroke={selected ? '#fbbf24' : '#22d3ee'}
+                      strokeWidth={state === 'open' ? 2 : 5}
+                      strokeDasharray={state === 'open' ? '4 3' : undefined}
+                      pointerEvents="none"
+                    />
+                    {interactive && (
+                      <circle
+                        cx={center.x}
+                        cy={center.y}
+                        r={8}
+                        fill={selected ? '#fbbf24' : '#22d3ee'}
+                        stroke="#101923"
+                        strokeWidth={2}
+                        pointerEvents="all"
+                        aria-label={`Door ${opening.door!.id}`}
+                      />
+                    )}
+                  </g>
+                );
+              })}
           </g>
         );
       })}

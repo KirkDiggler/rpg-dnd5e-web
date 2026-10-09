@@ -7,6 +7,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { doorAlongWall } from '../world-building/studioDoorEditing';
 import {
   clientToWorld,
   createLayoutTransform,
@@ -23,6 +24,8 @@ import type {
   LayoutViewportProps,
   RoomHexCell,
   StructuralWall,
+  StudioDoorEditing,
+  StudioDoorTarget,
   StudioWallEditing,
   WorldPoint,
 } from './studioSession';
@@ -74,7 +77,7 @@ const polygonPoints = (cell: RoomHexCell): string =>
 type Gesture = {
   pointerId: number;
   surface: SVGSVGElement;
-  tool: LayoutFloorTool | 'pan' | 'label' | 'wall';
+  tool: LayoutFloorTool | 'pan' | 'label' | 'wall' | 'door';
   client: ClientPoint;
   moved: boolean;
   commitFloor: LayoutViewportProps['onCommit'];
@@ -85,6 +88,15 @@ type Gesture = {
     preview: LayoutWallPreview | null;
     valid: boolean;
     editing: StudioWallEditing;
+  };
+  door?: {
+    target: StudioDoorTarget;
+    wall: StructuralWall;
+    origin: number;
+    anchor: number;
+    position: number;
+    valid: boolean;
+    editing: StudioDoorEditing;
   };
   anchor: WorldPoint;
   cells: Map<string, RoomHexCell>;
@@ -115,6 +127,8 @@ export function LayoutViewport({
   labelEditing,
   documentContext,
   wallEditing,
+  doorEditing,
+  onExitDoorTool,
   intentEpoch,
   onExitWallTool,
 }: LayoutViewportProps): React.JSX.Element {
@@ -131,6 +145,10 @@ export function LayoutViewport({
   );
   const wallModeRef = useRef({ tool, onExitWallTool });
   wallModeRef.current = { tool, onExitWallTool };
+  const doorEditingRef = useRef(doorEditing);
+  doorEditingRef.current = doorEditing;
+  const doorModeRef = useRef({ tool, onExitDoorTool });
+  doorModeRef.current = { tool, onExitDoorTool };
   const labelEditingRef = useRef(labelEditing);
   labelEditingRef.current = labelEditing;
 
@@ -151,6 +169,7 @@ export function LayoutViewport({
       setPreview([]);
       setLabelPreview(null);
       setWallPreview(null);
+      doorEditingRef.current?.cancelPreview();
     }
   }, []);
 
@@ -175,8 +194,11 @@ export function LayoutViewport({
     window.addEventListener('resize', measure);
     const escape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        if (gestureRef.current?.door) doorEditingRef.current?.setActive(false);
         abandon();
         labelEditingRef.current?.onCancel();
+        if (doorModeRef.current.tool === 'door')
+          doorModeRef.current.onExitDoorTool?.();
         if (wallModeRef.current.tool === 'wall')
           wallModeRef.current.onExitWallTool?.();
       }
@@ -211,6 +233,18 @@ export function LayoutViewport({
     if (gestureRef.current?.label?.id === null) abandon();
   }, [labelEditing?.placementText, abandon]);
 
+  useLayoutEffect(() => {
+    const gesture = gestureRef.current?.door;
+    const selected = doorEditing?.selectedTarget;
+    if (
+      gesture &&
+      (!selected ||
+        selected.wallId !== gesture.target.wallId ||
+        selected.openingId !== gesture.target.openingId ||
+        selected.doorId !== gesture.target.doorId)
+    )
+      abandon();
+  }, [doorEditing?.selectedTarget, abandon]);
   const presentationWorkspace = usePresentationWorkspace(draft.workspace)!;
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(presentationWorkspace),
@@ -289,6 +323,19 @@ export function LayoutViewport({
       point.x !== gesture.client.x || point.y !== gesture.client.y;
     if (changed) gesture.moved = true;
     gesture.client = point;
+    if (gesture.door) {
+      if (!changed) return;
+      const world = clientToWorld(point, currentTransform);
+      if (!world) {
+        gesture.door.valid = false;
+        return;
+      }
+      const edit = gesture.door;
+      edit.position =
+        edit.origin + (doorAlongWall(edit.wall, world) - edit.anchor);
+      edit.valid = edit.editing.previewMove(edit.target, edit.position);
+      return;
+    }
     if (gesture.wall) {
       // Selection reflow/frame roundtrips at an unchanged client pointer are
       // never authoring movement. Reuse the last applied preview on release.
@@ -425,6 +472,7 @@ export function LayoutViewport({
       abandon();
       labelEditing?.onCancel();
       if (tool === 'wall') onExitWallTool?.();
+      if (tool === 'door') onExitDoorTool?.();
       return;
     }
     if (
@@ -442,6 +490,62 @@ export function LayoutViewport({
     const wallId = target
       ?.closest('[data-wall-id]')
       ?.getAttribute('data-wall-id');
+    const doorHit = target?.closest('[data-door-id]');
+    if (event.button === 0 && tool === 'door' && doorEditing) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      if (wallId && doorEditing.create(wallId, anchor)) onExitDoorTool?.();
+      return;
+    }
+    if (
+      event.button === 0 &&
+      tool === 'select' &&
+      doorEditing &&
+      wallId &&
+      doorHit
+    ) {
+      const wall = draft.room.walls?.find((wall) => wall.id === wallId);
+      const opening = wall?.openings.find(
+        (opening) =>
+          opening.id === doorHit.getAttribute('data-opening-id') &&
+          opening.door?.id === doorHit.getAttribute('data-door-id')
+      );
+      if (!wall || !opening?.door) return;
+      const intended: StudioDoorTarget = {
+        kind: 'door',
+        wallId,
+        openingId: opening.id,
+        doorId: opening.door.id,
+      };
+      if (!doorEditing.select(intended)) return;
+      event.preventDefault();
+      event.currentTarget.focus();
+      gestureRef.current = {
+        pointerId: event.pointerId,
+        surface: event.currentTarget,
+        tool: 'door',
+        client: pointerPoint(event),
+        moved: false,
+        commitFloor: onCommit,
+        anchor,
+        cells: new Map(),
+        door: {
+          target: intended,
+          wall,
+          origin: opening.position,
+          anchor: doorAlongWall(wall, anchor),
+          position: opening.position,
+          valid: true,
+          editing: doorEditing,
+        },
+      };
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        abandon();
+      }
+      return;
+    }
     const endpoint = target
       ?.closest('[data-wall-endpoint]')
       ?.getAttribute('data-wall-endpoint');
@@ -476,6 +580,7 @@ export function LayoutViewport({
       if (tool === 'select' && !label && !source) {
         wallEditing?.select(null);
         labelEditing?.onSelect(null);
+        doorEditing?.select(null);
         return;
       }
       if (labelMode && !label && !placing) return;
@@ -555,6 +660,19 @@ export function LayoutViewport({
   };
   const pointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const gesture = gestureRef.current;
+    if (!gesture && tool === 'door' && doorEditing) {
+      const wallId =
+        event.target instanceof Element
+          ? event.target.closest('[data-wall-id]')?.getAttribute('data-wall-id')
+          : null;
+      const world = clientToWorld(
+        pointerPoint(event),
+        eventTransform(event.currentTarget)
+      );
+      if (wallId && world) doorEditing.previewPlacement(wallId, world);
+      else doorEditing.cancelPreview();
+      return;
+    }
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (gesture.tool === 'pan') {
       const next = panLayoutFrame(
@@ -573,7 +691,10 @@ export function LayoutViewport({
     if (gesture.tool !== 'pan') sample(event, gesture);
     const cells = [...gesture.cells.values()];
     abandon();
-    if (gesture.wall) {
+    if (gesture.door) {
+      if (gesture.moved && gesture.door.valid)
+        gesture.door.editing.move(gesture.door.target, gesture.door.position);
+    } else if (gesture.wall) {
       const { source, preview, valid, editing } = gesture.wall;
       if (!gesture.moved || !valid || !preview) return;
       if (source && preview.wall) {
@@ -598,7 +719,10 @@ export function LayoutViewport({
     }
   };
   const cancelPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
-    if (gestureRef.current?.pointerId === event.pointerId) abandon();
+    if (gestureRef.current?.pointerId === event.pointerId) {
+      if (gestureRef.current.door) doorEditing?.setActive(false);
+      abandon();
+    }
   };
   const worldTransform =
     transform && bounds
@@ -626,13 +750,18 @@ export function LayoutViewport({
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
+      onPointerLeave={() => {
+        if (!gestureRef.current) doorEditing?.cancelPreview();
+      }}
       onPointerCancel={cancelPointer}
       onLostPointerCapture={cancelPointer}
       onContextMenu={(event): void => {
         event.preventDefault();
+        if (gestureRef.current?.door) doorEditing?.setActive(false);
         abandon();
         labelEditing?.onCancel();
         if (tool === 'wall') onExitWallTool?.();
+        if (tool === 'door') onExitDoorTool?.();
       }}
       onKeyDown={(event): void => {
         if (event.target !== event.currentTarget) return;
@@ -702,10 +831,25 @@ export function LayoutViewport({
       )}
       {transform && (
         <LayoutWallOverlay
-          walls={draft.room.walls ?? []}
+          walls={(draft.room.walls ?? []).map((wall) =>
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.wall.id === wall.id
+              ? doorEditing.preview.wall
+              : wall
+          )}
+          doorBindings={
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.purpose === 'placement'
+              ? {
+                  ...draft.room.doorBindings,
+                  [doorEditing.preview.target.doorId]: { closed: true },
+                }
+              : draft.room.doorBindings
+          }
+          selectedDoor={doorEditing?.selectedTarget}
           transform={transform}
           selectedId={wallEditing?.selectedId ?? null}
-          interactive={tool === 'select' && !!wallEditing}
+          interactive={(tool === 'select' || tool === 'door') && !!wallEditing}
           preview={wallPreview}
           layer="body"
         />
@@ -724,7 +868,22 @@ export function LayoutViewport({
       )}
       {transform && (
         <LayoutWallOverlay
-          walls={draft.room.walls ?? []}
+          walls={(draft.room.walls ?? []).map((wall) =>
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.wall.id === wall.id
+              ? doorEditing.preview.wall
+              : wall
+          )}
+          doorBindings={
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.purpose === 'placement'
+              ? {
+                  ...draft.room.doorBindings,
+                  [doorEditing.preview.target.doorId]: { closed: true },
+                }
+              : draft.room.doorBindings
+          }
+          selectedDoor={doorEditing?.selectedTarget}
           transform={transform}
           selectedId={wallEditing?.selectedId ?? null}
           interactive={tool === 'select' && !!wallEditing}

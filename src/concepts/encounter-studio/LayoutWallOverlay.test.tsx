@@ -68,7 +68,7 @@ describe('canonical Layout wall pixel overlay', () => {
       ).toEqual(['7', '7']);
     }
   );
-  it('does not mount wall hit targets in floor/Wall modes and never creates a door-state overlay', () => {
+  it('keeps wall and door hit targets inactive in floor/Wall modes while showing passive authored door geometry', () => {
     const wall = createPopulatedStudioDocument().draft.room.walls![0];
     const transform = createLayoutTransform(
       { left: 0, top: 0, width: 600, height: 400 },
@@ -87,9 +87,10 @@ describe('canonical Layout wall pixel overlay', () => {
         />
       </svg>
     );
-    expect(container.querySelectorAll('[data-wall-id]')).toHaveLength(0);
+    expect(container.querySelectorAll('line[data-wall-id]')).toHaveLength(0);
     expect(container.querySelectorAll('[data-wall-span]')).toHaveLength(3);
-    expect(container.querySelectorAll('[data-door-id]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-door-id]')).toHaveLength(1);
+    expect(container.querySelector('[data-door-id] circle')).toBeNull();
     expect(container.querySelector('g')?.getAttribute('pointer-events')).toBe(
       'none'
     );

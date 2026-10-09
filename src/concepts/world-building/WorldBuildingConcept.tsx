@@ -1393,6 +1393,12 @@ export function WorldBuildingConcept({
         ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
       )
         return;
+      if (
+        studioViewRef.current !== undefined &&
+        roomTool === 'door' &&
+        ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
+      )
+        return;
       const modifier = event.ctrlKey || event.metaKey;
       if (
         studioViewRef.current !== undefined &&
@@ -1460,6 +1466,7 @@ export function WorldBuildingConcept({
     removeSelectedStudioActor,
     removeSelectedStudioDoor,
     roomMode,
+    roomTool,
     selectedActorId,
     selectedIds,
     undo,
@@ -3773,18 +3780,27 @@ export function WorldBuildingConcept({
         });
         return true;
       } catch (error) {
+        const wall = roomDraft.room.walls?.find(
+          (wall) => wall.id === target.wallId
+        );
+        if (!wall) return rejectEdit(error);
         setPreviewDoor({
           valid: false,
           purpose: 'move',
           wallId: target.wallId,
-          point: roomDraft.room.walls?.find((wall) => wall.id === target.wallId)
-            ?.line.start ?? { x: 0, z: 0 },
+          point: wall.line.start,
           message: error instanceof Error ? error.message : String(error),
         });
         return false;
       }
     },
-    [doorContextCurrent, doorTargetCurrent, refuseWhilePublishing, roomDraft]
+    [
+      doorContextCurrent,
+      doorTargetCurrent,
+      refuseWhilePublishing,
+      roomDraft,
+      rejectEdit,
+    ]
   );
   const cancelDoorPreview = useCallback((): void => {
     if (doorContextCurrent()) setPreviewDoor(null);
@@ -3811,6 +3827,7 @@ export function WorldBuildingConcept({
       cancelTransients();
       setTool('select');
       setRoomTool(active ? 'door' : 'select');
+      if (active) setNotice('');
       return true;
     },
     select: (target): boolean => {
@@ -3889,7 +3906,9 @@ export function WorldBuildingConcept({
     roomAuthoring: roomMode
       ? {
           tool: roomTool,
-          ...(isStudio ? { doorEditing } : {}),
+          ...(isStudio
+            ? { doorEditing, intentEpoch: viewportGenerationRef.current }
+            : {}),
           workspace: roomDraft.workspace,
           walkableHexes: roomDraft.room.walkableHexes,
           concealments: siteScope.concealments,

@@ -1140,6 +1140,114 @@ function selectWall(storage: MemoryStorage, wall: StructuralWall): void {
   fireEvent.pointerUp(surface(), event);
 }
 
+describe('complete Studio doors through real Layout gestures', () => {
+  it('hover/click creates one closed door; selecting drag, Arrange, cancellation and whole removal share history and codecs', async () => {
+    const original = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    const writes = storage.roomWrites();
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    fireEvent.click(button('Door'));
+    changeField(
+      'Complete door appearance',
+      'dnd5e:env:dark-fortress:wall_door_double_01'
+    );
+    fireEvent.pointerMove(
+      wallHit('studio-wall'),
+      pointer(storage, { x: -2, z: -3 })
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/overlap/);
+    fireEvent.pointerDown(
+      wallHit('studio-wall'),
+      pointer(storage, { x: -2, z: -3 })
+    );
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerMove(
+      wallHit('studio-wall'),
+      pointer(storage, { x: -0.25, z: -3 })
+    );
+    expect(surface().querySelectorAll('[data-door-id]')).toHaveLength(2); // actual matching cut/door preview
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerDown(
+      wallHit('studio-wall'),
+      pointer(storage, { x: -0.25, z: -3 })
+    );
+    expect(button('Select').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByLabelText('Complete door appearance')).toBeNull();
+    const created = storage.document();
+    const opening = created.draft.room.walls![0].openings.at(-1)!;
+    expect(created.draft.room.doorBindings![opening.door!.id]).toEqual({
+      closed: true,
+    });
+    expect(created.scope).toEqual(original.scope);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const hit = (): Element =>
+      surface().querySelector(`[data-door-id="${opening.door!.id}"] circle`)!;
+    const start = pointer(storage, { x: -0.25, z: -3 });
+    const end = pointer(storage, { x: -0.125, z: -3 });
+    fireEvent.pointerDown(hit(), start);
+    fireEvent.pointerMove(surface(), end);
+    expect(storage.document()).toEqual(created);
+    expect(
+      Number(
+        (screen.getByLabelText('Along wall position') as HTMLInputElement).value
+      )
+    ).toBeCloseTo(3.875, 6);
+    fireEvent.pointerUp(surface(), end);
+    const dragged = storage.document();
+    expect(dragged.draft.room.walls![0].openings.at(-1)!.position).toBeCloseTo(
+      3.875,
+      12
+    );
+    expect(storage.roomWrites()).toBe(writes + 2);
+    changeField('Along wall position', '3.75');
+    changeField('Door width', '1.5');
+    submitForm('Arrange selected noun');
+    const arranged = storage.document();
+    expect(arranged.draft.room.walls![0].openings.at(-1)).toMatchObject({
+      position: 3.75,
+      width: 1.5,
+      door: opening.door,
+    });
+    expect(storage.roomWrites()).toBe(writes + 3);
+    for (const cancel of ['Escape', 'capture-loss', 'view'] as const) {
+      fireEvent.pointerDown(hit(), start);
+      fireEvent.pointerMove(surface(), end);
+      if (cancel === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
+      else if (cancel === 'capture-loss')
+        fireEvent.lostPointerCapture(surface(), end);
+      else {
+        switchTo('3D');
+        switchTo('Layout');
+      }
+      fireEvent.pointerUp(surface(), end);
+      expect(storage.document()).toEqual(arranged);
+      expect(storage.roomWrites()).toBe(writes + 3);
+    }
+    fireEvent.click(button('Delete doorway'));
+    expect(storage.document()).toEqual(original);
+    for (const expected of [arranged, dragged, created, original]) {
+      fireEvent.click(button('Undo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    for (const expected of [created, dragged, arranged]) {
+      fireEvent.click(button('Redo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expectCodecs(arranged);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(arranged);
+    expect(
+      surface().querySelector(`[data-door-id="${opening.door!.id}"]`)
+    ).not.toBeNull();
+  });
+});
+
 describe('joined structural walls in the populated Studio document', () => {
   it('consecutive free/snapped draws, rotated protected reshape, precision, removal and interleaved prop history preserve the full payload through codecs/reload', async () => {
     const original = rotatedSeed();
@@ -1450,7 +1558,8 @@ describe('joined structural walls in the populated Studio document', () => {
       { id: 'strict-noop-label', text: 'Map', location: { x: 0, z: 0 } },
     ];
     const storage = new MemoryStorage(original);
-    const idFactory = (): string => 'unfinished-wall';
+    let idSequence = 0;
+    const idFactory = (): string => `unfinished-${++idSequence}`;
     const mounted = render(
       <WorldBuildingConcept roomMode storage={storage} idFactory={idFactory} />
     );
@@ -1547,6 +1656,34 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(() =>
       stringifyRoomDraft(session!.document.draft, session!.document.scope)
     ).toThrow(/must name a fact/);
+    act(() => session!.undo());
+    expect(session!.document).toEqual(renamed);
+    act(() =>
+      expect(
+        session!.doorEditing.setAsset(
+          'dnd5e:env:dark-fortress:wall_door_double_01'
+        )
+      ).toBe(true)
+    );
+    act(() => expect(session!.doorEditing.setActive(true)).toBe(true));
+    const source = session!.document.draft.room.walls![0];
+    const point = {
+      x:
+        source.line.start.x +
+        ((source.line.end.x - source.line.start.x) * 3.75) / 8,
+      z:
+        source.line.start.z +
+        ((source.line.end.z - source.line.start.z) * 3.75) / 8,
+    };
+    act(() => expect(session!.doorEditing.create(source.id, point)).toBe(true));
+    expect(session!.document.scope).toEqual(unfinished.scope);
+    expect(session!.document.draft.room.walls![0].openings).toHaveLength(
+      source.openings.length + 1
+    );
+    expect(() =>
+      stringifyRoomDraft(session!.document.draft, session!.document.scope)
+    ).toThrow(/must name a fact/);
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() => session!.undo());
     expect(session!.document).toEqual(renamed);
     chooseAppearance(castleWallRef, 'castle_wall_01');
@@ -1661,6 +1798,8 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     act(() => expect(owner.session.doorEditing.setAsset(ref)).toBe(true));
     act(() => expect(owner.session.doorEditing.setActive(true)).toBe(true));
     const placement = owner.session.doorEditing;
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(owner.session.document).toBe(original);
     act(() =>
       expect(placement.previewPlacement('studio-wall', { x: -2, z: -3 })).toBe(
         false

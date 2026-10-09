@@ -6,6 +6,7 @@ import { attachedDoorVisualPose } from './structuralDoorEditing';
 import type { StructuralWall } from './structuralWalls';
 import { FittedDoorSurface } from './StructuralWallSurfaces';
 import { StructuralWallVisual } from './StructuralWallVisual';
+import type { StudioDoorEditing, StudioDoorTarget } from './studioDoorEditing';
 
 const modelState = vi.hoisted(() => ({
   mode: 'loaded' as 'loaded' | 'pending',
@@ -459,4 +460,166 @@ describe('StructuralWallVisual', () => {
     const inertLeaf = inert.scene.findByProps({ name: 'world-asset-model' });
     expect(inertLeaf.props.onClick).toBeUndefined();
   });
+});
+
+function doorEditingFixture(
+  target: StudioDoorTarget | null = null
+): StudioDoorEditing {
+  return {
+    assetRef: DOOR_ASSET,
+    active: false,
+    options: [],
+    selectedTarget: target,
+    preview: null,
+    setAsset: vi.fn(() => true),
+    setActive: vi.fn(() => true),
+    select: vi.fn(() => true),
+    previewPlacement: vi.fn(() => true),
+    create: vi.fn(() => true),
+    previewMove: vi.fn(() => true),
+    move: vi.fn(() => true),
+    cancelPreview: vi.fn(),
+  };
+}
+it('Studio wall hit routes real placement hover/click while door hit drags only along its wall and Escape retires release', async () => {
+  modelState.mode = 'loaded';
+  const source = wall({
+    openings: [
+      {
+        id: 'opening-1',
+        position: 7,
+        width: 2,
+        door: { id: 'door-1', assetRef: DOOR_ASSET },
+      },
+    ],
+  });
+  const target: StudioDoorTarget = {
+    kind: 'door',
+    wallId: source.id,
+    openingId: 'opening-1',
+    doorId: 'door-1',
+  };
+  const editing = doorEditingFixture(target);
+  const onSelectWall = vi.fn();
+  const draw = () => (
+    <StructuralWallVisual
+      walls={[source]}
+      selectedWallId={null}
+      selectable
+      doorEditing={editing}
+      onSelectWall={onSelectWall}
+      doorBindings={{ 'door-1': {} }}
+    />
+  );
+  const renderer = await ReactThreeTestRenderer.create(draw());
+  const capture = {
+    setPointerCapture: vi.fn(),
+    releasePointerCapture: vi.fn(),
+  };
+  const event = (x: number, z = 0) => ({
+    button: 0,
+    pointerId: 7,
+    target: capture,
+    point: new THREE.Vector3(x, 1.6, z),
+    ray: new THREE.Ray(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0)),
+    stopPropagation: vi.fn(),
+  });
+  try {
+    const hit = renderer.scene.findByProps({ name: 'studio-door-hit-door-1' });
+    await renderer.fireEvent(hit, 'pointerDown', event(7));
+    await renderer.fireEvent(hit, 'pointerMove', event(7.25, 2)); // perpendicular motion is not stored
+    expect(editing.previewMove).toHaveBeenLastCalledWith(target, 7.25);
+    await renderer.fireEvent(hit, 'pointerUp', event(7.25, 2));
+    expect(editing.move).toHaveBeenCalledExactlyOnceWith(target, 7.25);
+    expect(onSelectWall).not.toHaveBeenCalled();
+    await renderer.fireEvent(hit, 'pointerDown', event(7));
+    await renderer.fireEvent(hit, 'pointerMove', event(7.5));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await renderer.fireEvent(hit, 'pointerUp', event(7.5));
+    expect(editing.move).toHaveBeenCalledTimes(1);
+    expect(editing.setActive).toHaveBeenCalledWith(false);
+    Object.assign(editing, { active: true });
+    await renderer.update(draw());
+    const wallHit = renderer.scene.findByProps({
+      name: 'structural-wall-hit-wall-1',
+    });
+    await renderer.fireEvent(wallHit, 'pointerMove', event(3));
+    await renderer.fireEvent(wallHit, 'pointerDown', event(3));
+    expect(editing.previewPlacement).toHaveBeenCalledWith('wall-1', {
+      x: 3,
+      z: 0,
+    });
+    expect(editing.create).toHaveBeenCalledWith('wall-1', { x: 3, z: 0 });
+  } finally {
+    await renderer.unmount();
+  }
+});
+
+it('purpose-aware Studio move previews keep existing open state; placement alone supplies a closed preview', async () => {
+  modelState.mode = 'loaded';
+  const source = wall({
+    openings: [
+      {
+        id: 'opening-1',
+        position: 7,
+        width: 2,
+        door: { id: 'door-1', assetRef: DOOR_ASSET },
+      },
+    ],
+  });
+  const target: StudioDoorTarget = {
+    kind: 'door',
+    wallId: source.id,
+    openingId: 'opening-1',
+    doorId: 'door-1',
+  };
+  const editing = doorEditingFixture(target);
+  Object.assign(editing, {
+    preview: {
+      valid: true,
+      purpose: 'move',
+      wall: { ...source, openings: [{ ...source.openings[0], position: 6 }] },
+      target,
+      position: 6,
+      width: 2,
+      clamped: false,
+    },
+  });
+  const renderer = await ReactThreeTestRenderer.create(
+    <StructuralWallVisual
+      walls={[source]}
+      selectedWallId={null}
+      selectable={false}
+      doorEditing={editing}
+      doorBindings={{ 'door-1': {} }}
+    />
+  );
+  try {
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-door-door-1' })
+        .instance.userData.open
+    ).toBe(true);
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-door-door-1' })
+        .instance.position.x
+    ).toBe(6);
+    Object.assign(editing, {
+      preview: { ...editing.preview, purpose: 'placement' },
+    });
+    await renderer.update(
+      <StructuralWallVisual
+        walls={[source]}
+        selectedWallId={null}
+        selectable={false}
+        doorEditing={editing}
+        doorBindings={{ 'door-1': {} }}
+      />
+    );
+    expect(
+      renderer.scene.findByProps({ name: 'structural-wall-door-door-1' })
+        .instance.userData.open
+    ).toBe(false);
+  } finally {
+    await renderer.unmount();
+  }
 });

@@ -13,6 +13,7 @@ import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioDimensions } from './StudioDimensions';
+import { StudioDoorControls } from './StudioDoorControls';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
@@ -92,6 +93,10 @@ function StudioSurface({
     appearanceDemand,
     onThumbnailDemandChange,
   ]);
+  const exitDoor = (): void => {
+    session.doorEditing.setActive(false);
+    onLayoutToolChange('select');
+  };
   const exitWall = (): void => {
     changeTool('select');
     setWallVisible(false);
@@ -106,6 +111,8 @@ function StudioSurface({
 
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
+    if (session.doorEditing.active) session.doorEditing.setActive(false);
+    if (layoutTool === 'door') onLayoutToolChange('select');
     session.cancelTransients();
     setSizeVisible(false);
     setWallVisible(false);
@@ -255,6 +262,7 @@ function StudioSurface({
                   'erase',
                   'rectangle',
                   'wall',
+                  'door',
                   'label',
                 ] as const
               ).map((tool) => (
@@ -263,6 +271,16 @@ function StudioSurface({
                   type="button"
                   aria-pressed={layoutTool === tool}
                   onClick={() => {
+                    if (tool === 'door') {
+                      if (session.doorEditing.setActive(true))
+                        onLayoutToolChange('door');
+                      setWallVisible(false);
+                      labels.deactivate();
+                      setSizeVisible(false);
+                      return;
+                    }
+                    if (session.doorEditing.active)
+                      session.doorEditing.setActive(false);
                     changeTool(tool);
                     setSizeVisible(false);
                     if (tool === 'label') labels.activate();
@@ -289,6 +307,15 @@ function StudioSurface({
                 </button>
               ))}
             </div>
+          )}
+          {view === '3d' && (
+            <button
+              type="button"
+              aria-pressed={session.doorEditing.active}
+              onClick={() => session.doorEditing.setActive(true)}
+            >
+              Door
+            </button>
           )}
           <button
             type="button"
@@ -349,9 +376,10 @@ function StudioSurface({
           )}
           <StudioArrangePanel
             session={session}
-            expanded={arrangeVisible}
+            expanded={arrangeVisible && !session.doorEditing.active}
             onAppearanceDemandChange={setAppearanceDemand}
           />
+          <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
           {labels.controls}
           {view === 'layout' && wallVisible && layoutTool === 'wall' && (
             <StudioWallControls
@@ -374,6 +402,8 @@ function StudioSurface({
             labelEditing={labels.editing}
             documentContext={session.document}
             wallEditing={session.wallEditing}
+            doorEditing={session.doorEditing}
+            onExitDoorTool={exitDoor}
             intentEpoch={session.intentEpoch}
             onExitWallTool={exitWall}
           />

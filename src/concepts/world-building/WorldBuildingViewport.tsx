@@ -121,6 +121,7 @@ export interface WorldBuildingViewportProps {
       | 'wall'
       | 'door';
     doorEditing?: StudioDoorEditing;
+    intentEpoch?: number;
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;
@@ -907,9 +908,12 @@ export function WorldSceneContents(
           )}
           selectedWallId={props.roomAuthoring.selectedWallId ?? null}
           doorBindings={props.roomAuthoring.doorBindings}
+          doorEditing={props.roomAuthoring.doorEditing}
+          intentEpoch={props.roomAuthoring.intentEpoch}
           selectable={
-            ['select', 'move', 'rotate'].includes(props.roomAuthoring.tool) &&
-            !props.roomAuthoring.activeConcealmentId
+            ['select', 'move', 'rotate', 'door'].includes(
+              props.roomAuthoring.tool
+            ) && !props.roomAuthoring.activeConcealmentId
           }
           onSelectWall={(id) => {
             if (!isGizmoPointer()) props.roomAuthoring?.onSelectWall?.(id);
@@ -938,6 +942,10 @@ export function WorldSceneContents(
           if (rectangular && !cell) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
+          if (roomTool === 'door') {
+            props.roomAuthoring?.doorEditing?.cancelPreview();
+            return;
+          }
           const authoring = props.roomAuthoring;
           const actor =
             authoring?.selectedActorTarget !== undefined
