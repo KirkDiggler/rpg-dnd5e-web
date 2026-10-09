@@ -113,6 +113,8 @@
 
 .es-canvas {
   position: relative;
+  /* Keep scene Html annotations beneath Studio's contextual chrome. */
+  isolation: isolate;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 300px;
@@ -313,6 +315,21 @@
 }
 .es-wall-options small {
   color: var(--wb-muted);
+}
+
+/* Arrange is compact independently of the wider creation palettes. The
+ * context layer stays pointer-transparent outside its right-aligned panels. */
+.es-arrange {
+  align-self: flex-end;
+  box-sizing: border-box;
+  width: min(24rem, 100%);
+}
+.es-arrange .wb-light-grid label {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.es-arrange .wb-light-grid input {
+  min-width: 0;
 }
 
 /* Stacked precision rows; units are canonical scene units, never meters/feet. */
