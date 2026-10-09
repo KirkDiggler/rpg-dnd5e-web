@@ -16,7 +16,8 @@ without deleting committed content.
 
 Layout offers **Paint**, **Erase** and **Rectangle** over canonical walkable hex
 cells, **Select** and **Wall** over existing canonical structural walls, Size, and
-**Label** placement/selection/drag/rename/move/delete. Brush strokes sample visited
+**Label** placement/selection/drag, with selected rename/move/delete in **Arrange**.
+Brush strokes sample visited
 cells (no interpolation); rectangles include cell centers within the world-XZ
 box. Middle-drag pans, wheel zooms, and Escape cancels. Framing operations and
 view switching do not create document history.
@@ -26,7 +27,7 @@ columns/rows span `-floor(count/2)` through `ceil(count/2)-1`; even counts take
 the extra negative side. Negative odd rows also stagger +½ column. Existing
 coordinates never translate. Untagged legacy radius workspaces are identified as
 nonrectangular and remain unchanged until explicit Apply. Labels are 2D plain-text
-annotations, not gameplay regions, floor/policy membership or arrangement content.
+annotations, not gameplay regions, floor/policy membership or 3D scenery.
 Their IDs/text are at most 120 characters, with at most 256 labels. A rectangular
 resize or first label promotes the scene to version 2; older scene-1-only web
 readers refuse it rather than strip metadata. See the
@@ -224,12 +225,67 @@ do not replace it with a new doorless wall or hand-write an unchecked second sch
    document becomes persistable without dropping policy. Do not seed invalid
    storage to bypass the strict load gate.
 
+## Shared Arrange procedure
+
+Arrange is a collapsible precision companion, not a second document owner.
+Creation palettes remain separate. A single active noun drives selected fields,
+3D gizmos and supported shortcuts; remembered scenery must not receive actor or
+Layout keyboard edits. Units are canonical world units, displayed degrees and
+height percentages, or actor/start hex q/r—not physical metres or a universal
+XYZ/scale interface. This increment does not implement asset-backed doorways or
+observer privacy.
+
+Use the populated context and exact full-document comparisons above:
+
+1. Select a rotated wall in Layout. **Arrange** shows midpoint X/Z, Y facing,
+   length/fixed endpoint and appearance height/thickness/elevation. Apply without
+   typing: exact line/openings, stored bytes/write count and Undo availability
+   must remain unchanged despite rounded displays. Stage several fields and
+   Apply/Enter once; one Undo restores the whole original, not a partial form.
+   Invalid late input refuses the entire form. Deliberate appearance replacement
+   stages in Arrange; drawing appearance remains independent.
+2. Use the actual wall body/endpoint drag, then the loaded wall Y-ring in 3D.
+   Positive Three.js Y yaw follows `previewWallTransform`, not `rotateWall`'s
+   mathematical XZ sign. Preserve openings, attached-door state and bindings.
+   Layout gesture previews are local SVG; 3D owner previews additionally update
+   clean Arrange fields, show **Preview**, and disable Apply until completion.
+3. With real loaded props, select one prop/group: inspect actual world XYZ and
+   absolute Y facing. Select two independent roots: inspect **Selection pivot**
+   and relative **Rotate by**, never fabricated absolute facing. Numeric XYZ,
+   yaw and height followed by existing arrows/plane/gizmo movement share the
+   same document/history. Group descendants and supported decorations transform
+   once; height affects selected pieces, not support-only decorations. Applying
+   100% to already-default pieces must not materialize absent `heightScale`.
+4. Collapse during a real 3D gesture, then expand during preview. Check canvas
+   element identity, unchanged tool/selection, no writes before release, and no
+   phantom Undo entry. Same-target preview/pose renders must not reopen a
+   collapsed panel; a new explicit selection may. Cancel live gestures with
+   Escape, capture loss and view change. Numeric Escape/Cancel, blur, collapse
+   and view/target retirement must never commit staging.
+5. Pick a fresh monster and party start on the real 3D surface. Monsters expose
+   q/r plus the eight supported compass names/default; start exposes q/r only.
+   Actor location/facing Apply is atomic; **Asset default** deletes optional
+   facing. R/Duplicate must not operate on remembered scenery. Select a label
+   through the Layout picker or canvas, then rename/move with Arrange Enter;
+   one Undo restores both text and position. Retired callbacks must not mutate
+   the previously active noun.
+6. Capture expanded/collapsed desktop and narrow contexts. Check two permanent
+   bands, horizontal toolbar overflow, scroll-to-Apply, visible keyboard focus
+   and errors, independent creation palettes and usable canvas. Record actual
+   render observations, not HTTP success or thumbnails alone.
+7. Traverse numeric/gizmo edits with Undo/Redo, then reload in the same disposable
+   context. Compare complete normalized JSON/YAML and local bytes, retaining
+   source identity, policy/scope, optional-field presence, bindings, groups,
+   support and lights. Reload restores content, not history. Record unavailable
+   backend/provider capabilities and unexercised interactions explicitly.
+
 ## Automated checks
 
 Run individually from the web worktree with matching local dependencies:
 
 ```bash
-npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
+npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/mapLabelEdits.test.ts
+npm run test:run -- src/concepts/encounter-studio/StudioArrangePanel.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
 npm run test:run -- src/concepts/world-building/sceneState.test.ts src/concepts/world-building/serialization.test.ts src/concepts/world-building/roomDraft.test.ts src/concepts/world-building/singleRoomDungeon.test.ts src/compositions/roomDocument.test.ts
 npm run test:run -- src/concepts/world-building/WorldBuilderWorkspace.test.tsx src/concepts/world-building/WorldBuildingViewport.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.ts
 npm run typecheck

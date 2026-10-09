@@ -29,6 +29,11 @@ import {
   type RoomHexCell,
 } from '../world-building/roomDraft';
 import {
+  moveSelection,
+  rotateSelection,
+  setSelectionHeight,
+} from '../world-building/sceneState';
+import {
   MAX_JSON_LENGTH,
   parseSceneJson,
   stringifyScene,
@@ -40,6 +45,7 @@ import {
 import { scopeFrom } from '../world-building/siteScope';
 import {
   createWall,
+  previewWallTransform,
   reshapeWallEndpoint,
   resizeWallLength,
   rotateWall,
@@ -2159,5 +2165,246 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     const final = owner.session;
     owner.unmount();
     expect(final.commitArrange(intent)).toBe(false);
+  });
+});
+
+// Joined presentation → owner → canonical helpers/history/storage/codecs.
+// Callback-driven 3D gestures stop at the explicitly mocked Canvas above;
+// the separate disposable App browser walk proves actual loaded gizmos.
+describe('Arrange joined presentation and canonical document receipts', () => {
+  it('atomic group fields then a gizmo preview/commit share full-document undo/redo, codecs and reload without losing support or source', async () => {
+    const original = seed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    switchTo('3D');
+    act(() => viewport().onSelect(['furniture', 'table', 'studio-decoration']));
+    const group = original.draft.scene.groups.find(
+      (item) => item.id === 'furniture'
+    )!;
+    expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
+      String(group.transform.x)
+    );
+    const writes = storage.roomWrites();
+    changeField('World X', String(group.transform.x + 0.25));
+    changeField('World Y', String(group.transform.y + 0.125));
+    changeField('Y facing (degrees)', '30');
+    changeField('Height scale (%)', '125');
+    expect(storage.document()).toEqual(original); // typing is not preview/persistence
+    submitForm('Arrange selected noun');
+    const scene = setSelectionHeight(
+      rotateSelection(
+        moveSelection(
+          original.draft.scene,
+          ['furniture', 'table', 'studio-decoration'],
+          { x: 0.25, y: 0.125, z: 0 }
+        ),
+        ['furniture', 'table', 'studio-decoration'],
+        Math.PI / 6 - group.transform.rotationY
+      ),
+      ['furniture', 'table', 'studio-decoration'],
+      1.25
+    );
+    const numeric = { ...original, draft: { ...original.draft, scene } };
+    expect(storage.document()).toEqual(numeric);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(
+      scene.items.find((item) => item.id === 'studio-decoration')
+    ).toMatchObject({ parentId: 'furniture', supportId: 'table' });
+    const gestureScene = moveSelection(
+      viewport().scene,
+      viewport().selectedIds,
+      { x: 0.5, y: 0, z: -0.25 }
+    );
+    const beforePreview = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    act(() => viewport().onTransformPreview(gestureScene));
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(beforePreview);
+    expect(screen.getByText(/^Preview ·/)).not.toBeNull();
+    expect((button('Apply Arrange') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
+      String(Number((group.transform.x + 0.75).toFixed(6)))
+    ); // display rounding only; full canonical equality is checked below
+    act(() => viewport().onTransformCommit(gestureScene));
+    const final = {
+      ...numeric,
+      draft: { ...numeric.draft, scene: gestureScene },
+    };
+    expect(storage.document()).toEqual(final);
+    expect(storage.roomWrites()).toBe(writes + 2);
+    expect(source.worldId).toBe('joined-test-world');
+    expect(source.writer!.createComposition).not.toHaveBeenCalled();
+    switchTo('Layout');
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(numeric);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(numeric);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(final);
+    expectCodecs(final);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(final);
+    switchTo('3D');
+    expect(viewport().scene).toEqual(final.draft.scene);
+    expect(storage.document().draft.room.propBindings).toEqual(
+      original.draft.room.propBindings
+    );
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('wall atomic fields, real Layout body drag and positive-Y gizmo rotation traverse the same history and preserve attachment/scope through reload', async () => {
+    const original = rotatedSeed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    fireEvent.click(button('Select'));
+    selectWall(storage, original.draft.room.walls![0]);
+    const writes = storage.roomWrites();
+    changeField('Wall midpoint X', '0.5');
+    changeField('Appearance height', '3.5');
+    changeField('Appearance elevation', '0.125');
+    submitForm('Arrange selected noun');
+    const numericWall = setWallAppearance(
+      translateWall(original.draft.room.walls![0], { x: 0.5, z: 0 }),
+      {
+        ...original.draft.room.walls![0].appearance,
+        height: 3.5,
+        elevation: 0.125,
+      }
+    );
+    const numeric = {
+      ...original,
+      draft: {
+        ...original.draft,
+        room: { ...original.draft.room, walls: [numericWall] },
+      },
+    };
+    expect(storage.document()).toEqual(numeric);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const midpoint = wallMidpoint(numericWall);
+    const start = pointer(storage, midpoint);
+    const end = pointer(storage, { x: midpoint.x + 0.25, z: midpoint.z + 0.5 });
+    fireEvent.pointerDown(wallHit('studio-wall'), start);
+    fireEvent.pointerMove(surface(), end);
+    // Layout's SVG gesture preview is local; 3D owner previews below additionally
+    // synchronize Arrange. Do not claim a Layout → Arrange preview seam.
+    expect(surface().querySelector('[data-wall-feedback]')).not.toBeNull();
+    expect(storage.document()).toEqual(numeric);
+    fireEvent.pointerUp(surface(), end);
+    const dragged = storage.document();
+    expect(dragged.draft.room.walls![0].line.start.x).toBeCloseTo(
+      numericWall.line.start.x + 0.25,
+      12
+    );
+    expect(dragged.draft.room.walls![0].line.start.z).toBeCloseTo(
+      numericWall.line.start.z + 0.5,
+      12
+    );
+    expect(storage.roomWrites()).toBe(writes + 2);
+    switchTo('3D');
+    const nextWall = previewWallTransform({
+      wall: dragged.draft.room.walls![0],
+      mode: 'rotate',
+      change: { x: 0, z: 0, rotationY: 0.2 },
+    });
+    act(() => viewport().roomAuthoring!.onWallTransformPreview!(nextWall));
+    expect(storage.document()).toEqual(dragged);
+    expect(
+      Number(
+        (screen.getByLabelText('Y facing (degrees)') as HTMLInputElement).value
+      )
+    ).toBeCloseTo((wallDirectionYaw(nextWall) * 180) / Math.PI, 6);
+    act(() => viewport().roomAuthoring!.onWallTransformCommit!(nextWall));
+    const final = {
+      ...dragged,
+      draft: {
+        ...dragged.draft,
+        room: { ...dragged.draft.room, walls: [nextWall] },
+      },
+    };
+    expect(storage.document()).toEqual(final);
+    expect(storage.roomWrites()).toBe(writes + 3);
+    expect(final.draft.room.walls![0].openings).toEqual(
+      original.draft.room.walls![0].openings
+    );
+    expect(final.draft.room.doorBindings).toEqual(
+      original.draft.room.doorBindings
+    );
+    expect(final.scope).toEqual(original.scope);
+    for (const expected of [dragged, numeric, original]) {
+      fireEvent.click(button('Undo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    for (const expected of [numeric, dragged, final]) {
+      fireEvent.click(button('Redo'));
+      expect(storage.document()).toEqual(expected);
+    }
+    expectCodecs(final);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(final);
+    expect(
+      surface().querySelector('[data-rendered-wall-id="studio-wall"]')
+    ).not.toBeNull();
+  });
+
+  it('untouched rounded fields, default height absence, staged cancellation and fresh actor selection preserve bytes/write count and real history', async () => {
+    const original = rotatedSeed();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Select'));
+    selectWall(storage, original.draft.room.walls![0]);
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.roomWrites();
+    submitForm('Arrange selected noun');
+    changeField('Wall midpoint X', '0');
+    submitForm('Arrange selected noun');
+    changeField('Wall length', '-');
+    submitForm('Arrange selected noun');
+    expect(screen.getByRole('alert').textContent).toContain('finite numeric');
+    fireEvent.keyDown(screen.getByLabelText('Wall length'), { key: 'Escape' });
+    changeField('Wall midpoint X', '1');
+    fireEvent.click(button('Cancel Arrange'));
+    switchTo('3D');
+    act(() => viewport().onSelect(['studio-decoration']));
+    changeField('Height scale (%)', '100');
+    submitForm('Arrange selected noun');
+    expect(
+      storage
+        .document()
+        .draft.scene.items.find((item) => item.id === 'studio-decoration')
+    ).not.toHaveProperty('heightScale');
+    changeField('World X', '1');
+    const late = viewport();
+    const lateScene = moved(late.scene);
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: original.draft.room.monsterDeclarations[0].id,
+      })
+    );
+    expect(screen.queryByLabelText('World X')).toBeNull();
+    expect(screen.getByLabelText('Starting facing')).not.toBeNull();
+    act(() => late.onTransformCommit(lateScene));
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'start' })
+    );
+    expect(screen.queryByLabelText('Starting facing')).toBeNull();
+    changeField('Starting hex q', String(original.draft.room.partyStart!.q));
+    submitForm('Arrange selected noun');
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.roomWrites()).toBe(writes);
+    expectCodecs(storage.document());
   });
 });
