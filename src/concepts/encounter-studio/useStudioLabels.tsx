@@ -25,17 +25,14 @@ export function useStudioLabels(
   const setSelectedId = session.mapLabelSelection.select;
   const [newText, setNewText] = useState('');
   const [placementText, setPlacementText] = useState<string | null>(null);
-  const [rename, setRename] = useState('');
   const [x, setX] = useState('0');
   const [z, setZ] = useState('0');
   const [error, setError] = useState<string | null>(null);
   const labels = session.document.draft.scene.mapLabels ?? [];
-  const selected = labels.find((label) => label.id === selectedId);
   const cancel = (): void => {
     setPlacementText(null);
-    setRename(selected?.text ?? '');
-    setX(String(selected?.location.x ?? 0));
-    setZ(String(selected?.location.z ?? 0));
+    setX('0');
+    setZ('0');
     setError(null);
   };
   useEffect(() => {
@@ -44,22 +41,12 @@ export function useStudioLabels(
     setPlacementText(null);
   }, [session.document]);
   useEffect(() => {
-    // Selection/document changes reset selected-label drafts independently of
-    // placement, which can have been armed in the same selection-clearing event.
-    setRename(selected?.text ?? '');
-    setX(String(selected?.location.x ?? 0));
-    setZ(String(selected?.location.z ?? 0));
-    setError(null);
-  }, [session.document, selected]);
-  useEffect(() => {
     setPlacementText(null);
     setVisible(false);
   }, [view, session.document.draft.id]);
   const select = (id: string | null): void => {
     // Selection alone must not retire an in-flight label drag's owner intent.
     setSelectedId(id);
-    if (id !== null) setVisible(true);
-    else if (!active) setVisible(false);
     setPlacementText(null);
   };
   const result = (accepted: boolean): boolean => {
@@ -186,36 +173,6 @@ export function useStudioLabels(
               ))}
             </select>
           </label>
-          {selected && (
-            <form
-              className="es-buttons"
-              aria-label="Rename map label"
-              onSubmit={(event): void => {
-                event.preventDefault();
-                result(session.renameMapLabel(selected.id, rename));
-              }}
-            >
-              <label>
-                Rename label
-                <input
-                  aria-label="Rename label"
-                  value={rename}
-                  maxLength={120}
-                  onChange={(event) => setRename(event.target.value)}
-                />
-              </label>
-              <button type="submit">Apply label name</button>
-              <button type="button" onClick={cancel}>
-                Cancel label edit
-              </button>
-              <button
-                type="button"
-                onClick={() => result(session.deleteMapLabel(selected.id))}
-              >
-                Delete label
-              </button>
-            </form>
-          )}
           <form
             className="es-buttons"
             aria-label="Map label coordinates"
@@ -223,15 +180,14 @@ export function useStudioLabels(
               event.preventDefault();
               const location = coordinates();
               if (!location) return;
-              if (selected) move(selected.id, location);
-              else if (placementText) create(placementText, location);
+              if (placementText) create(placementText, location);
               else setError('Type a name and choose Place label on map first.');
             }}
           >
             <label>
               World X
               <input
-                aria-label="Label world X"
+                aria-label="New label world X"
                 inputMode="decimal"
                 value={x}
                 onChange={(event) => setX(event.target.value)}
@@ -240,15 +196,13 @@ export function useStudioLabels(
             <label>
               World Z
               <input
-                aria-label="Label world Z"
+                aria-label="New label world Z"
                 inputMode="decimal"
                 value={z}
                 onChange={(event) => setZ(event.target.value)}
               />
             </label>
-            <button type="submit">
-              {selected ? 'Apply label position' : 'Place label at coordinates'}
-            </button>
+            <button type="submit">Place label at coordinates</button>
           </form>
           {placementText && (
             <>

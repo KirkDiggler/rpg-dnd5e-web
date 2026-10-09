@@ -6,14 +6,59 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { projectStudioArrange } from '../world-building/studioArrange';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { StudioArrangePanel } from './StudioArrangePanel';
 import type { EncounterStudioSession } from './studioSession';
 import { StudioWallControls } from './StudioWallControls';
 
 afterEach(cleanup);
-function fixture(): Pick<EncounterStudioSession, 'document' | 'wallEditing'> {
+function fixture(): EncounterStudioSession {
   return {
     document: createPopulatedStudioDocument(),
+    viewportProps: {
+      scene: createPopulatedStudioDocument().draft.scene,
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select',
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+    },
+    arrange: null,
+    intentEpoch: 0,
+    commitArrange: vi.fn(() => true),
+    mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
+    renameDocument: vi.fn(() => true),
+    canUndo: false,
+    canRedo: false,
+    undo: vi.fn(),
+    redo: vi.fn(),
+    commitFloor: vi.fn(() => true),
+    resizeWorkspace: vi.fn(() => true),
+    createMapLabel: vi.fn(() => true),
+    moveMapLabel: vi.fn(() => true),
+    renameMapLabel: vi.fn(() => true),
+    deleteMapLabel: vi.fn(() => true),
+    cancelTransients: vi.fn(),
+    propTool: 'select',
+    setPropTool: vi.fn(),
+    propControls: {
+      palette: null,
+      tree: null,
+      selection: null,
+      arrangeExtras: null,
+    },
+    saveStatus: '',
+    notice: null,
+    autosaveBlocked: false,
+    saveLocalDraft: vi.fn(),
+    dismissNotice: vi.fn(),
     wallEditing: {
       selectedId: null,
       assetRef: null,
@@ -53,6 +98,21 @@ function props(
   drawing = true
 ): Parameters<typeof StudioWallControls>[0] {
   return { session, drawing, onDismiss: vi.fn(), onExitWallTool: vi.fn() };
+}
+
+function selectedPanel(session: EncounterStudioSession): React.JSX.Element {
+  const arrange = projectStudioArrange({
+    draft: session.document.draft,
+    target: { kind: 'wall', id: session.wallEditing.selectedId! },
+    selectionRevision: 1,
+  });
+  return (
+    <StudioArrangePanel
+      session={{ ...session, arrange }}
+      expanded
+      onAppearanceDemandChange={() => {}}
+    />
+  );
 }
 describe('Studio wall presentation', () => {
   it('ranks wall matches without excluding creative choices; named loading/error native buttons stay selectable', () => {
@@ -101,15 +161,17 @@ describe('Studio wall presentation', () => {
   it('thumbnail updates never reset staged values; unsupported imported appearance is explicit and unchanged', () => {
     const session = fixture();
     session.wallEditing = { ...session.wallEditing, selectedId: 'studio-wall' };
-    const initial = props(session, false);
-    const view = render(<StudioWallControls {...initial} />);
+    const view = render(selectedPanel(session));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change wall appearance' })
+    );
     expect(
       screen.getByText(/Unsupported imported appearance/).textContent
     ).toContain('dnd5e:env:dark-fortress:45_wall_01');
     fireEvent.change(screen.getByLabelText('Wall length'), {
       target: { value: '9.123' },
     });
-    fireEvent.change(screen.getByLabelText('Wall move X'), {
+    fireEvent.change(screen.getByLabelText('Wall midpoint X'), {
       target: { value: '4.56' },
     });
     const cosmetic = {
@@ -125,61 +187,70 @@ describe('Studio wall presentation', () => {
         })),
       },
     };
-    view.rerender(<StudioWallControls {...initial} session={cosmetic} />);
+    view.rerender(selectedPanel(cosmetic));
     expect(
       (screen.getByLabelText('Wall length') as HTMLInputElement).value
     ).toBe('9.123');
     expect(
-      (screen.getByLabelText('Wall move X') as HTMLInputElement).value
+      (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
     ).toBe('4.56');
     expect(session.wallEditing.edit).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Dismiss wall controls' })
+    view.rerender(
+      <StudioArrangePanel
+        session={cosmetic}
+        expanded={false}
+        onAppearanceDemandChange={() => {}}
+      />
     );
-    expect(initial.onDismiss).toHaveBeenCalledTimes(1);
     expect(session.wallEditing.remove).not.toHaveBeenCalled();
     const replacement = {
       ...cosmetic,
       document: createPopulatedStudioDocument(),
     };
-    view.rerender(<StudioWallControls {...initial} session={replacement} />);
+    view.rerender(selectedPanel(replacement));
     expect(
       (screen.getByLabelText('Wall length') as HTMLInputElement).value
     ).toBe('8');
   });
-  it('numeric invalid/refused edits stay staged and visible; helper clamps exact length to protect attached openings', () => {
+  it('numeric invalid/refused edits stay staged and visible; the whole dirty patch reaches the owner', () => {
     const session = fixture();
     session.wallEditing = {
       ...session.wallEditing,
       selectedId: 'studio-wall',
       edit: vi.fn(() => false),
     };
-    render(<StudioWallControls {...props(session, false)} />);
-    fireEvent.change(screen.getByLabelText('Wall move X'), {
+    session.commitArrange = vi.fn(() => false);
+    render(selectedPanel(session));
+    fireEvent.change(screen.getByLabelText('Wall midpoint X'), {
       target: { value: '' },
     });
-    fireEvent.submit(screen.getByRole('form', { name: 'Wall movement' }));
+    fireEvent.submit(
+      screen.getByRole('form', { name: 'Arrange selected noun' })
+    );
     expect(session.wallEditing.edit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toMatch(/finite numeric/);
-    fireEvent.change(screen.getByLabelText('Wall move X'), {
+    fireEvent.change(screen.getByLabelText('Wall midpoint X'), {
       target: { value: '1' },
     });
-    fireEvent.submit(screen.getByRole('form', { name: 'Wall movement' }));
+    fireEvent.submit(
+      screen.getByRole('form', { name: 'Arrange selected noun' })
+    );
     expect(screen.getByRole('alert').textContent).toMatch(/refused/);
     expect(
-      (screen.getByLabelText('Wall move X') as HTMLInputElement).value
+      (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
     ).toBe('1');
     fireEvent.change(screen.getByLabelText('Wall length'), {
       target: { value: '2' },
     });
-    fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
-    expect(session.wallEditing.edit).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        id: 'studio-wall',
-        line: { start: { x: -4, z: -3 }, end: { x: 3, z: -3 } },
-        openings: session.document.draft.room.walls![0].openings,
-      })
+    fireEvent.submit(
+      screen.getByRole('form', { name: 'Arrange selected noun' })
     );
+    expect(session.commitArrange).toHaveBeenLastCalledWith({
+      kind: 'wall-edit',
+      target: { kind: 'wall', id: 'studio-wall' },
+      midpoint: { x: 1 },
+      length: { value: 2, anchor: 'start' },
+    });
   });
   it('Escape in drawing context exits the Wall tool; dismissal alone does not disarm it', () => {
     const initial = props(fixture());
@@ -206,26 +277,36 @@ describe('M1 untouched precision display', () => {
       wall.openings = [];
       wall.blocker.footprint.width = Math.hypot(3, 2);
       session.wallEditing = { ...session.wallEditing, selectedId: wall.id };
-      render(<StudioWallControls {...props(session, false)} />);
-      fireEvent.change(screen.getByLabelText('Length endpoint'), {
+      render(selectedPanel(session));
+      fireEvent.change(screen.getByLabelText('Fixed endpoint'), {
         target: { value: endpoint },
       });
       expect(
         (screen.getByLabelText('Wall length') as HTMLInputElement).value
       ).toBe('3.605551');
-      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
-      expect(session.wallEditing.edit).toHaveBeenLastCalledWith(wall);
+      fireEvent.submit(
+        screen.getByRole('form', { name: 'Arrange selected noun' })
+      );
+      expect(session.commitArrange).not.toHaveBeenCalled();
       fireEvent.change(screen.getByLabelText('Wall length'), {
         target: { value: '3.605552' },
       });
-      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
-      expect(session.wallEditing.edit).not.toHaveBeenLastCalledWith(wall);
+      fireEvent.submit(
+        screen.getByRole('form', { name: 'Arrange selected noun' })
+      );
+      expect(session.commitArrange).toHaveBeenLastCalledWith({
+        kind: 'wall-edit',
+        target: { kind: 'wall', id: wall.id },
+        length: { value: 3.605552, anchor: endpoint },
+      });
       fireEvent.change(screen.getByLabelText('Wall length'), {
         target: { value: '' },
       });
-      fireEvent.submit(screen.getByRole('form', { name: 'Wall exact length' }));
+      fireEvent.submit(
+        screen.getByRole('form', { name: 'Arrange selected noun' })
+      );
       expect(screen.getByRole('alert').textContent).toMatch(/finite numeric/);
-      expect(session.wallEditing.edit).toHaveBeenCalledTimes(2);
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
     }
   );
 });

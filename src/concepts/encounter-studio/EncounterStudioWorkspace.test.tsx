@@ -1,8 +1,9 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft } from '../world-building/roomDraft';
+import { projectStudioArrange } from '../world-building/studioArrange';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import type {
@@ -28,6 +29,7 @@ vi.mock('../world-building/WorldBuildingConcept', () => ({
     studioPresentation: EncounterStudioPresentation;
   }) => {
     const [, refresh] = useState(0);
+    const bound = useRef(false);
     observed.ownerProps = props;
     observed.events.push(`render:${props.studioPresentation.view}`);
     useEffect(() => {
@@ -42,9 +44,29 @@ vi.mock('../world-building/WorldBuildingConcept', () => ({
         ...observed.session!.mapLabelSelection,
         selectedId: id,
       };
+      const old = observed.session!.arrange;
+      observed.session = {
+        ...observed.session!,
+        arrange: projectStudioArrange({
+          draft: observed.session!.document.draft,
+          target: id === null ? null : { kind: 'label', id },
+          selectionRevision: (old?.selectionRevision ?? 0) + 1,
+        }),
+      };
       refresh((value) => value + 1);
       return true;
     });
+    if (!bound.current) {
+      bound.current = true;
+      observed.session.cancelTransients = vi.fn(() => {
+        observed.events.push('cancel');
+        observed.session = {
+          ...observed.session!,
+          intentEpoch: observed.session!.intentEpoch + 1,
+        };
+        refresh((value) => value + 1);
+      });
+    }
     return props.studioPresentation.render(observed.session);
   },
 }));
@@ -168,7 +190,7 @@ function createSession(): EncounterStudioSession {
           <button>Repeat existing piece</button>
         </div>
       ),
-      arrangeExtras: null,
+      arrangeExtras: <div>Reused actions and light controls</div>,
       tree: <div>Reused scene tree</div>,
       selection: <div>Reused selection visuals</div>,
     },
@@ -299,7 +321,7 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
       observed.session?.viewportProps.scene
     );
     expect(screen.getByText('Reused scene tree')).toBeTruthy();
-    expect(screen.getByText('Reused selection visuals')).toBeTruthy();
+    expect(screen.queryByText('Reused selection visuals')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Repeat existing piece' })
     ).toBeTruthy();
@@ -520,8 +542,8 @@ describe('staged workspace dimensions and label controls', () => {
     submit('New map label');
     expect(observed.layoutProps?.labelEditing?.placementText).toBe('Kitchen');
     expect(screen.getByText(/Placing “Kitchen”/)).toBeTruthy();
-    change('Label world X', '1.25');
-    change('Label world Z', '-2');
+    change('New label world X', '1.25');
+    change('New label world Z', '-2');
     submit('Map label coordinates');
     expect(observed.session?.createMapLabel).toHaveBeenCalledExactlyOnceWith(
       'Kitchen',
@@ -566,34 +588,41 @@ describe('staged workspace dimensions and label controls', () => {
     change('Rename label', 'Courtyard');
     expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
-    expect(screen.queryByLabelText('Rename label')).toBeNull();
+    expect(
+      (screen.getByLabelText('Rename label') as HTMLInputElement).value
+    ).toBe('Kitchen');
     click('Label');
     change('Existing label', 'kitchen-2');
     expect(
       (screen.getByLabelText('Rename label') as HTMLInputElement).value
     ).toBe('Kitchen');
     change('Rename label', 'Courtyard');
-    submit('Rename map label');
-    expect(observed.session?.renameMapLabel).toHaveBeenCalledExactlyOnceWith(
-      'kitchen-2',
-      'Courtyard'
-    );
+    submit('Arrange selected noun');
+    expect(observed.session?.commitArrange).toHaveBeenLastCalledWith({
+      kind: 'label-edit',
+      target: { kind: 'label', id: 'kitchen-2' },
+      text: 'Courtyard',
+    });
     change('Label world X', '2');
     change('Label world Z', '3');
-    submit('Map label coordinates');
-    expect(observed.session?.moveMapLabel).toHaveBeenCalledExactlyOnceWith(
-      'kitchen-2',
-      { x: 2, z: 3 }
-    );
+    submit('Arrange selected noun');
+    expect(observed.session?.commitArrange).toHaveBeenLastCalledWith({
+      kind: 'label-edit',
+      target: { kind: 'label', id: 'kitchen-2' },
+      location: { x: 2, z: 3 },
+    });
     click('Delete label');
-    expect(observed.session?.deleteMapLabel).toHaveBeenCalledExactlyOnceWith(
-      'kitchen-2'
-    );
+    expect(observed.session?.commitArrange).toHaveBeenLastCalledWith({
+      kind: 'label-remove',
+      target: { kind: 'label', id: 'kitchen-2' },
+    });
     change('Rename label', 'Never commit');
     click('3D');
     click('Layout');
-    expect(screen.queryByLabelText('Rename label')).toBeNull();
-    expect(observed.session?.renameMapLabel).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByLabelText('Rename label') as HTMLInputElement).value
+    ).toBe('Kitchen');
+    expect(observed.session?.commitArrange).toHaveBeenCalledTimes(3);
     expect(observed.session?.viewportProps.selectedIds).toEqual([
       'selected-prop',
     ]);
@@ -611,5 +640,103 @@ describe('staged workspace dimensions and label controls', () => {
     expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
     expect(observed.session?.createMapLabel).not.toHaveBeenCalled();
     expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
+  });
+});
+
+describe('shared Arrange context lifecycle', () => {
+  it('collapse and preview/thumbnail rerenders preserve canvas, tool and selection; a new explicit noun expands', () => {
+    const session = observed.session!;
+    session.document.draft.scene.items.push({
+      id: 'prop',
+      kind: 'prop',
+      assetRef: 'dnd5e:props:dark-fortress:alchemy_tools_01',
+      label: 'Test prop',
+      transform: { x: 1.25, y: 0, z: 2.5, rotationY: 0.123 },
+    });
+    const selection = projectStudioArrange({
+      draft: session.document.draft,
+      target: { kind: 'scene', ids: ['prop'] },
+      selectionRevision: 1,
+    })!;
+    observed.session = { ...session, arrange: selection };
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
+    click('3D');
+    const canvas = screen.getByLabelText('Controlled 3D surface');
+    const epoch = observed.session!.intentEpoch;
+    const originalSelection = observed.session!.arrange;
+    const tool = observed.session!.propTool;
+    const toggle = screen.getByRole('button', { name: 'Arrange' });
+    expect(toggle.getAttribute('aria-controls')).toBe('studio-arrange-panel');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.change(screen.getByLabelText('World X'), {
+      target: { value: '1.75' },
+    });
+    click('Arrange');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('form', { name: 'Arrange selected noun' })
+    ).toBeNull();
+    expect(observed.session!.arrange).toBe(originalSelection);
+    expect(observed.session!.intentEpoch).toBe(epoch);
+    expect(observed.session!.propTool).toBe(tool);
+    if (selection.kind !== 'scene')
+      throw new Error('Expected scene projection');
+    observed.session = {
+      ...observed.session!,
+      arrange: {
+        ...selection,
+        preview: {
+          position: { x: 2, y: 0.5, z: 3 },
+          yaw: selection.yaw,
+          height: selection.height,
+        },
+      },
+      wallEditing: {
+        ...observed.session!.wallEditing,
+        options: [
+          {
+            ref: 'wall',
+            label: 'Wall',
+            wallMatch: true,
+            thumbnail: {
+              status: 'ready',
+              image: 'data:image/png;base64,preview',
+            },
+          },
+        ],
+      },
+    };
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
+    expect(observed.viewportUnmounts).toBe(0);
+    expect(observed.ownerMounts).toBe(1);
+    click('Arrange');
+    expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
+      '1.75'
+    );
+    expect((screen.getByLabelText('World Y') as HTMLInputElement).value).toBe(
+      '0.5'
+    );
+    click('Arrange');
+    observed.session!.document.draft.scene.mapLabels = [
+      { id: 'label', text: 'New label', location: { x: 0, z: 1 } },
+    ];
+    observed.session = {
+      ...observed.session!,
+      arrange: projectStudioArrange({
+        draft: observed.session!.document.draft,
+        target: { kind: 'label', id: 'label' },
+        selectionRevision: 2,
+      }),
+    };
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText('Rename label')).toBeTruthy();
+    expect(observed.session!.commitArrange).not.toHaveBeenCalled();
+    expect(observed.session!.intentEpoch).toBe(epoch);
+    expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
   });
 });

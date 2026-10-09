@@ -11,6 +11,7 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
+import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioDimensions } from './StudioDimensions';
 import type {
   EncounterStudioSession,
@@ -67,21 +68,30 @@ function StudioSurface({
     () => changeTool('label'),
     () => changeTool('select')
   );
-  const seenWallSelection = useRef(session.wallEditing.selectedId);
+  const [arrangeVisible, setArrangeVisible] = useState(
+    session.arrange !== null
+  );
+  const [appearanceDemand, setAppearanceDemand] = useState(false);
+  const seenSelection = useRef(session.arrange?.selectionRevision);
   useEffect(() => {
-    // A new selection opens controls but NEVER changes tool/epoch: C captured
-    // a drag. A tool exit alone must not reopen a context just dismissed.
-    if (
-      seenWallSelection.current !== session.wallEditing.selectedId &&
-      layoutTool === 'select'
-    )
-      setWallVisible(session.wallEditing.selectedId !== null);
-    seenWallSelection.current = session.wallEditing.selectedId;
-  }, [session.wallEditing.selectedId, layoutTool]);
+    const revision = session.arrange?.selectionRevision;
+    if (revision !== undefined && revision !== seenSelection.current)
+      setArrangeVisible(true);
+    seenSelection.current = revision;
+  }, [session.arrange?.selectionRevision]);
   useEffect(() => {
-    onThumbnailDemandChange(view === 'layout' && wallVisible);
+    onThumbnailDemandChange(
+      (view === 'layout' && wallVisible && layoutTool === 'wall') ||
+        appearanceDemand
+    );
     return () => onThumbnailDemandChange(false);
-  }, [view, wallVisible, onThumbnailDemandChange]);
+  }, [
+    view,
+    wallVisible,
+    layoutTool,
+    appearanceDemand,
+    onThumbnailDemandChange,
+  ]);
   const exitWall = (): void => {
     changeTool('select');
     setWallVisible(false);
@@ -257,11 +267,7 @@ function StudioSurface({
                     setSizeVisible(false);
                     if (tool === 'label') labels.activate();
                     else labels.deactivate();
-                    setWallVisible(
-                      tool === 'wall' ||
-                        (tool === 'select' &&
-                          session.wallEditing.selectedId !== null)
-                    );
+                    setWallVisible(tool === 'wall');
                   }}
                 >
                   {tool[0].toUpperCase() + tool.slice(1)}
@@ -293,6 +299,14 @@ function StudioSurface({
             }}
           >
             Size
+          </button>
+          <button
+            type="button"
+            aria-expanded={arrangeVisible}
+            aria-controls="studio-arrange-panel"
+            onClick={() => setArrangeVisible(!arrangeVisible)}
+          >
+            Arrange
           </button>
           <div
             className="es-buttons"
@@ -333,8 +347,13 @@ function StudioSurface({
               />
             </div>
           )}
+          <StudioArrangePanel
+            session={session}
+            expanded={arrangeVisible}
+            onAppearanceDemandChange={setAppearanceDemand}
+          />
           {labels.controls}
-          {view === 'layout' && wallVisible && (
+          {view === 'layout' && wallVisible && layoutTool === 'wall' && (
             <StudioWallControls
               session={session}
               drawing={layoutTool === 'wall'}
@@ -375,7 +394,6 @@ function StudioSurface({
             aria-label="Scene and selected props"
           >
             {session.propControls.tree}
-            {session.propControls.selection}
           </aside>
         </div>
       )}

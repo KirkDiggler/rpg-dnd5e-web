@@ -13,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +46,7 @@ import {
   setWallAppearance,
   snapWallPoint,
   translateWall,
+  wallDirectionYaw,
   wallMidpoint,
 } from '../world-building/structuralWallEditing';
 import type {
@@ -693,8 +695,8 @@ function paintWorkspace(storage: MemoryStorage): void {
 function createLabelAt(text: string, location: WorldPoint): void {
   changeField('Label name', text);
   submitForm('New map label');
-  changeField('Label world X', String(location.x));
-  changeField('Label world Z', String(location.z));
+  changeField('New label world X', String(location.x));
+  changeField('New label world Z', String(location.z));
   submitForm('Map label coordinates');
 }
 function expectCodecs(document: RoomDraftDocument): void {
@@ -826,8 +828,14 @@ describe('Task 6 populated workspace/label integration', () => {
     const writes = storage.roomWrites();
     resize(73, 48); // no-op dimensions
     changeField('Existing label', kitchenId);
-    submitForm('Rename map label'); // same text
-    submitForm('Map label coordinates'); // same point
+    changeField('Rename label', 'Staged only');
+    changeField('Rename label', 'Kitchen');
+    submitForm('Arrange selected noun'); // explicit same text
+    changeField('Label world X', '-7');
+    changeField('Label world X', '-8');
+    changeField('Label world Z', '-5');
+    changeField('Label world Z', '-6');
+    submitForm('Arrange selected noun'); // explicit same point
     changeField('Rename label', 'Never committed');
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
     fireEvent.click(button('Label'));
@@ -1035,12 +1043,20 @@ describe('compact header canonical naming through the populated owner', () => {
 const castleWallRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
 const snapLabel = 'Snap to hex centres, corners and side midpoints';
 function chooseAppearance(ref: string, search: string): void {
-  changeField('Search wall appearances', search);
+  const creation = screen.queryByRole('region', { name: 'New wall palette' });
+  if (!creation && !screen.queryByLabelText('Search wall appearances'))
+    fireEvent.click(button('Change wall appearance'));
+  const region =
+    creation ?? screen.getByRole('region', { name: 'Arrange selection' });
+  fireEvent.change(within(region).getByLabelText('Search wall appearances'), {
+    target: { value: search },
+  });
   fireEvent.click(
-    screen
+    within(region)
       .getByRole('group', { name: 'Wall appearance choices' })
       .querySelector(`[data-wall-appearance-ref="${ref}"]`)!
   );
+  if (!creation) submitForm('Arrange selected noun');
 }
 function rotatedSeed(): RoomDraftDocument {
   const document = seed(true);
@@ -1245,13 +1261,21 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(wall.blocker.footprint.width).toBeCloseTo(7.5);
     states.push(storage.document());
     changeField('Wall length', '8');
-    submitForm('Wall exact length');
+    submitForm('Arrange selected noun');
     wall = resizeWallLength({ wall, endpoint: 'end', length: 8 }).wall;
     expect(storage.document()).toEqual(withWall(states.at(-1)!, wall));
     states.push(storage.document());
-    changeField('Wall rotate degrees', '15');
-    submitForm('Wall rotation');
-    wall = rotateWall(wall, { angle: Math.PI / 12 });
+    const requestedYawDegrees =
+      ((wallDirectionYaw(wall) - Math.PI / 12) * 180) / Math.PI;
+    // Arrange accepts absolute degrees, not the retired delta form. Derive the
+    // exact oracle from that input and the PRE-edit yaw, never the edited result.
+    // Degree conversion can differ by one ULP from the old literal PI / 12.
+    const expectedAngle =
+      wallDirectionYaw(wall) - (requestedYawDegrees * Math.PI) / 180;
+    expect(expectedAngle).toBeCloseTo(Math.PI / 12); // same +15° XZ direction
+    changeField('Y facing (degrees)', String(requestedYawDegrees));
+    submitForm('Arrange selected noun');
+    wall = rotateWall(wall, { angle: expectedAngle });
     expect(storage.document()).toEqual(withWall(states.at(-1)!, wall));
     states.push(storage.document());
     chooseAppearance(castleWallRef, 'castle_wall_01');
@@ -1351,13 +1375,15 @@ describe('joined structural walls in the populated Studio document', () => {
     fireEvent.click(button('Select'));
     const wall = original.draft.room.walls![0];
     selectWall(storage, wall);
-    fireEvent.click(button('Dismiss wall controls'));
+    fireEvent.click(button('Arrange'));
     selectWall(storage, wall); // unchanged selection does not force controls to reappear
-    expect(screen.queryByLabelText('Wall length')).toBeNull();
-    fireEvent.click(button('Select')); // explicit reopen
-    changeField('Wall move X', '0');
-    changeField('Wall move Z', '0');
-    submitForm('Wall movement');
+    expect(
+      screen.queryByRole('form', { name: 'Arrange selected noun' })
+    ).toBeNull();
+    fireEvent.click(button('Arrange')); // explicit reopen
+    changeField('Wall midpoint X', String(wallMidpoint(wall).x));
+    changeField('Wall midpoint Z', String(wallMidpoint(wall).z));
+    submitForm('Arrange selected noun');
     const end = pointer(storage, wall.line.end);
     fireEvent.pointerDown(
       surface().querySelector(`[data-wall-endpoint="end"]`)!,
@@ -1365,8 +1391,8 @@ describe('joined structural walls in the populated Studio document', () => {
     );
     fireEvent.pointerMove(surface(), end);
     fireEvent.pointerUp(surface(), end);
-    changeField('Wall move X', '999');
-    submitForm('Wall movement');
+    changeField('Wall midpoint X', String(wallMidpoint(wall).x + 999));
+    submitForm('Arrange selected noun');
     expect(
       screen
         .getAllByRole('alert')

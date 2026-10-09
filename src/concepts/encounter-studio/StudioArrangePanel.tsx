@@ -1,0 +1,290 @@
+import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
+import { useEffect, useState } from 'react';
+import {
+  arrangeFields,
+  arrangeIntent,
+  type ArrangeDraft,
+  type ArrangeField,
+  type ArrangeFieldKey,
+} from './StudioArrangeFields';
+import type {
+  EncounterStudioSession,
+  StudioArrangeSelection,
+} from './studioSession';
+import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
+
+function StudioArrangeField({
+  field,
+  draft,
+  onChange,
+}: {
+  field: ArrangeField;
+  draft: ArrangeDraft;
+  onChange(key: ArrangeFieldKey, value: string): void;
+}): React.JSX.Element {
+  return (
+    <label className="es-arrange-row">
+      <span>{field.label}</span>
+      {field.choices ? (
+        <select
+          aria-label={field.label}
+          value={draft[field.key] ?? field.value}
+          onChange={(event) => onChange(field.key, event.target.value)}
+        >
+          {field.choices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          aria-label={field.label}
+          inputMode={field.numeric ? 'decimal' : undefined}
+          placeholder={field.placeholder}
+          value={draft[field.key] ?? field.value}
+          onChange={(event) => onChange(field.key, event.target.value)}
+        />
+      )}
+    </label>
+  );
+}
+
+function selectionName(
+  selection: StudioArrangeSelection,
+  session: EncounterStudioSession
+): string {
+  switch (selection.kind) {
+    case 'scene': {
+      const scene = session.document.draft.scene;
+      const root = [...scene.items, ...scene.groups].find(
+        (entity) => entity.id === selection.rootIds[0]
+      );
+      return selection.rootCount === 1
+        ? root?.label || root?.id || 'Scenery'
+        : `${selection.rootCount} scenery roots`;
+    }
+    case 'wall':
+      return selection.wall.label || selection.wall.id;
+    case 'label':
+      return selection.label.text;
+    case 'actor':
+      return selection.monster.id;
+    case 'start':
+      return 'Party start';
+  }
+}
+
+/** Local form tokens only; all canonical updates cross the atomic owner seam. */
+function SelectedArrange({
+  session,
+  selection,
+  expanded,
+  onAppearanceDemandChange,
+}: {
+  session: EncounterStudioSession;
+  selection: StudioArrangeSelection;
+  expanded: boolean;
+  onAppearanceDemandChange(visible: boolean): void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<ArrangeDraft>({});
+  const [error, setError] = useState<string | null>(null);
+  const [appearanceVisible, setAppearanceVisible] = useState(false);
+  const preview =
+    (selection.kind === 'scene' || selection.kind === 'wall') &&
+    !!selection.preview;
+  const reset = (): void => {
+    setDraft({});
+    setError(null);
+  };
+  useEffect(() => {
+    setDraft({});
+    setError(null);
+  }, [session.document, session.intentEpoch]);
+  useEffect(() => {
+    onAppearanceDemandChange(
+      expanded && appearanceVisible && selection.kind === 'wall'
+    );
+    return () => onAppearanceDemandChange(false);
+  }, [expanded, appearanceVisible, selection.kind, onAppearanceDemandChange]);
+  return (
+    <section
+      hidden={!expanded}
+      id="studio-arrange-panel"
+      className="es-context-panel es-arrange"
+      aria-label="Arrange selection"
+    >
+      <h2>Arrange · {selectionName(selection, session)}</h2>
+      <p className="es-help">
+        {selection.kind === 'scene'
+          ? selection.rootCount === 1
+            ? 'World position · world units'
+            : 'Selection pivot · world units'
+          : selection.kind === 'wall'
+            ? 'Wall midpoint and dimensions · world units'
+            : selection.kind === 'label'
+              ? 'World position · world units'
+              : 'Starting hex · q / r'}
+      </p>
+      {preview && (
+        <p role="status">
+          Preview · Finish or cancel the canvas gesture before applying.
+        </p>
+      )}
+      {selection.kind === 'actor' && (
+        <p className="es-help">{selection.monster.ref}</p>
+      )}
+      <form
+        aria-label="Arrange selected noun"
+        aria-describedby={error ? 'arrange-error' : undefined}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (preview) return;
+          try {
+            const intent = arrangeIntent(selection, draft);
+            if (!intent) return;
+            if (session.commitArrange(intent)) reset();
+            else
+              setError(
+                'Arrange edit refused. Review the document notice; your inputs are unchanged.'
+              );
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          }
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === 'Enter' &&
+            event.target instanceof HTMLInputElement &&
+            !event.nativeEvent.isComposing
+          ) {
+            event.preventDefault();
+            event.currentTarget.requestSubmit();
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            reset();
+          }
+        }}
+      >
+        <div className="es-arrange-fields">
+          {arrangeFields(selection, FACING_NAMES).map((field) => (
+            <StudioArrangeField
+              key={field.key}
+              field={field}
+              draft={draft}
+              onChange={(key, value) => {
+                setDraft((previous) => ({ ...previous, [key]: value }));
+                setError(null);
+              }}
+            />
+          ))}
+        </div>
+        {selection.kind === 'wall' && (
+          <>
+            {!appearanceVisible && (
+              <p className="es-help">
+                {session.wallEditing.options.some(
+                  (option) => option.ref === selection.appearance.assetRef
+                )
+                  ? `Appearance: ${selection.appearance.assetRef}`
+                  : `Unsupported imported appearance: ${selection.appearance.assetRef}. Preserved until you explicitly choose a replacement.`}
+              </p>
+            )}
+            <button
+              type="button"
+              aria-expanded={appearanceVisible}
+              aria-controls="arrange-wall-choices"
+              onClick={() => setAppearanceVisible(!appearanceVisible)}
+            >
+              Change wall appearance
+            </button>
+            {appearanceVisible && (
+              <div id="arrange-wall-choices">
+                <StudioWallAppearanceChoices
+                  options={session.wallEditing.options}
+                  assetRef={draft.assetRef ?? selection.appearance.assetRef}
+                  onChoose={(ref) =>
+                    setDraft((previous) => ({ ...previous, assetRef: ref }))
+                  }
+                />
+              </div>
+            )}
+            {draft.assetRef !== undefined && (
+              <p className="es-help">Appearance staged · Apply to replace.</p>
+            )}
+          </>
+        )}
+        <div className="es-buttons">
+          <button type="submit" disabled={preview}>
+            Apply Arrange
+          </button>
+          <button type="button" onClick={reset}>
+            Cancel Arrange
+          </button>
+          {(selection.kind === 'wall' || selection.kind === 'label') && (
+            <button
+              type="button"
+              disabled={preview}
+              onClick={() => {
+                const accepted =
+                  selection.kind === 'wall'
+                    ? session.commitArrange({
+                        kind: 'wall-remove',
+                        target: selection.target,
+                      })
+                    : session.commitArrange({
+                        kind: 'label-remove',
+                        target: selection.target,
+                      });
+                if (!accepted)
+                  setError('Removal refused. Review the document notice.');
+              }}
+            >
+              {selection.kind === 'wall' ? 'Remove wall' : 'Delete label'}
+            </button>
+          )}
+        </div>
+        {error && (
+          <p role="alert" id="arrange-error">
+            {error}
+          </p>
+        )}
+      </form>
+      {selection.kind === 'scene' && session.propControls.arrangeExtras}
+    </section>
+  );
+}
+
+export function StudioArrangePanel({
+  session,
+  expanded,
+  onAppearanceDemandChange,
+}: {
+  session: EncounterStudioSession;
+  expanded: boolean;
+  onAppearanceDemandChange(visible: boolean): void;
+}): React.JSX.Element {
+  return session.arrange ? (
+    <SelectedArrange
+      key={`${session.arrange.selectionKey}:${session.arrange.selectionRevision}`}
+      session={session}
+      selection={session.arrange}
+      expanded={expanded}
+      onAppearanceDemandChange={onAppearanceDemandChange}
+    />
+  ) : (
+    <section
+      hidden={!expanded}
+      id="studio-arrange-panel"
+      className="es-context-panel es-arrange"
+      aria-label="Arrange selection"
+    >
+      <h2>Arrange</h2>
+      <p className="es-help">
+        Select an object to arrange its supported values.
+      </p>
+    </section>
+  );
+}

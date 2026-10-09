@@ -314,3 +314,42 @@
 .es-wall-options small {
   color: var(--wb-muted);
 }
+
+/* Stacked precision rows; units are canonical scene units, never meters/feet. */
+.es-arrange[hidden] {
+  display: none;
+}
+.es-arrange h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.es-arrange form,
+.es-arrange-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.es-arrange .es-arrange-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 10rem);
+  gap: 0.6rem;
+  padding: 0.2rem 0.4rem;
+  background: var(--wb-raised);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.es-arrange .es-arrange-row input,
+.es-arrange .es-arrange-row select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.25rem 0.4rem;
+}
+.es-arrange-row input[inputmode='decimal'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.es-arrange [role='alert'] {
+  color: #ffe2a6;
+}
