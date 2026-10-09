@@ -12,6 +12,7 @@ import {
   layoutWallPieces,
   MAX_WALL_PIECES_PER_WALL,
   removeWallOpening,
+  reshapeWallEndpoint,
   resizeWallLength,
   rotateWall,
   setWallAppearance,
@@ -399,6 +400,289 @@ describe('exact length resize', () => {
   });
 });
 
+describe('endpoint reshape', () => {
+  it('resizes then rotates the end about the fixed start without openings', () => {
+    const source = wall({ openings: [] });
+    const result = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'end',
+      point: { x: 0, z: 6 },
+    });
+    expect(result.wall.line.start).toEqual(source.line.start);
+    expect(result.wall.line.end.x).toBeCloseTo(0, 12);
+    expect(result.wall.line.end.z).toBeCloseTo(6, 12);
+    expect(result.appliedLength).toBeCloseTo(6, 12);
+    expect(result.clamped).toBe(false);
+    expect(result.wall.blocker.footprint.width).toBeCloseTo(8, 12);
+  });
+
+  it('clamps at the opening edge and rotates its attached door with the wall', () => {
+    const door = {
+      id: 'door-1',
+      assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+    };
+    const source = wall({
+      openings: [{ id: 'opening-1', position: 7, width: 2, door }],
+    });
+    const result = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'end',
+      point: { x: 0, z: 6 },
+    });
+    expect(result.wall.line.start).toEqual({ x: 0, z: 0 });
+    expect(result.wall.line.end.x).toBeCloseTo(0, 12);
+    expect(result.wall.line.end.z).toBeCloseTo(8, 12);
+    expect(result.appliedLength).toBeCloseTo(8, 12);
+    expect(result.clamped).toBe(true);
+    expect(result.wall.openings).toEqual(source.openings);
+    expect(result.wall.openings[0]!.door).toBe(door);
+    const point = openingPoint(result.wall, 'opening-1');
+    expect(point.x).toBeCloseTo(0, 12);
+    expect(point.z).toBeCloseTo(7, 12);
+    expect(result.wall).toMatchObject({
+      id: source.id,
+      label: source.label,
+      appearance: source.appearance,
+      blocker: {
+        ...source.blocker,
+        footprint: { ...source.blocker.footprint, width: 10 },
+      },
+    });
+  });
+
+  it('rebases local openings on a start drag before rotating about the fixed end', () => {
+    const source = wall();
+    const result = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'start',
+      point: { x: 10, z: -12 },
+    });
+    expect(result.wall.line.end).toEqual(source.line.end);
+    expect(result.wall.line.start.x).toBeCloseTo(10, 12);
+    expect(result.wall.line.start.z).toBeCloseTo(-12, 12);
+    expect(result.appliedLength).toBeCloseTo(12, 12);
+    expect(result.clamped).toBe(false);
+    expect(result.wall.openings[0]).toEqual({
+      id: 'opening-1',
+      position: 9,
+      width: 2,
+    });
+    const point = openingPoint(result.wall, 'opening-1');
+    expect(point.x).toBeCloseTo(10, 12);
+    expect(point.z).toBeCloseTo(-3, 12);
+    expect(result.wall.blocker.footprint.width).toBeCloseTo(14, 12);
+  });
+
+  it('clamps a start drag to the nearest opening edge on the requested ray', () => {
+    const source = wall();
+    const result = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'start',
+      point: { x: 10, z: -2 },
+    });
+    expect(result.wall.line.end).toEqual(source.line.end);
+    expect(result.wall.line.start.x).toBeCloseTo(10, 12);
+    expect(result.wall.line.start.z).toBeCloseTo(-4, 12);
+    expect(result.appliedLength).toBeCloseTo(4, 12);
+    expect(result.clamped).toBe(true);
+    expect(result.wall.openings[0]).toEqual({
+      id: 'opening-1',
+      position: 1,
+      width: 2,
+    });
+    const point = openingPoint(result.wall, 'opening-1');
+    expect(point.x).toBeCloseTo(10, 12);
+    expect(point.z).toBeCloseTo(-3, 12);
+    expect(result.wall.blocker.footprint.width).toBeCloseTo(6, 12);
+  });
+
+  it.each(['start', 'end'] as const)(
+    'handles a rotated wall with negative coordinates dragging %s',
+    (endpoint) => {
+      const source = wall({
+        line: { start: { x: -8, z: -9 }, end: { x: -2, z: -1 } },
+      });
+      const fixed = source.line[endpoint === 'start' ? 'end' : 'start'];
+      const result = reshapeWallEndpoint({
+        wall: source,
+        endpoint,
+        point: { x: fixed.x - 9.6, z: fixed.z + 7.2 },
+      });
+      expect(result.wall.line[endpoint === 'start' ? 'end' : 'start']).toEqual(
+        fixed
+      );
+      expect(result.wall.line[endpoint].x).toBeCloseTo(fixed.x - 9.6, 12);
+      expect(result.wall.line[endpoint].z).toBeCloseTo(fixed.z + 7.2, 12);
+      expect(result.appliedLength).toBeCloseTo(12, 12);
+      expect(result.clamped).toBe(false);
+      // The doorway remains 7 from the fixed start or 3 from the fixed end.
+      const point = openingPoint(result.wall, 'opening-1');
+      const distance = endpoint === 'end' ? 7 : 3;
+      expect(point.x).toBeCloseTo(fixed.x - 0.8 * distance, 12);
+      expect(point.z).toBeCloseTo(fixed.z + 0.6 * distance, 12);
+      expect(result.wall.openings[0]!.position).toBe(
+        endpoint === 'end' ? 7 : 9
+      );
+    }
+  );
+
+  it.each(['start', 'end'] as const)(
+    'retains an exactly unchanged %s without floating-point pose drift',
+    (endpoint) => {
+      const source = wall({
+        line: { start: { x: -2.7, z: -3.1 }, end: { x: 3.2, z: 5.7 } },
+      });
+      const result = reshapeWallEndpoint({
+        wall: source,
+        endpoint,
+        point: { ...source.line[endpoint] },
+      });
+      expect(result.wall).toEqual(source);
+      expect(result.wall).not.toBe(source);
+      expect(result.clamped).toBe(false);
+      expect(result.appliedLength).toBe(Math.hypot(5.9, 8.8));
+    }
+  );
+
+  it('rotates through the fixed endpoint at unchanged radius without rebasing openings', () => {
+    const source = wall();
+    const result = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'end',
+      point: { x: -10, z: 0 },
+    });
+    expect(result.wall.line.start).toEqual(source.line.start);
+    expect(result.wall.line.end.x).toBeCloseTo(-10, 12);
+    expect(result.wall.line.end.z).toBeCloseTo(0, 12);
+    expect(result.wall.openings).toEqual(source.openings);
+    expect(result.wall.blocker).toEqual(source.blocker);
+    expect(result.appliedLength).toBe(10);
+    expect(result.clamped).toBe(false);
+    const point = openingPoint(result.wall, 'opening-1');
+    expect(point.x).toBeCloseTo(-7, 12);
+    expect(point.z).toBeCloseTo(0, 12);
+  });
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    'preserves independent blocker flags movement=%s sight=%s',
+    (blocksMovement, blocksLineOfSight) => {
+      const source = wall();
+      source.blocker.blocksMovement = blocksMovement;
+      source.blocker.blocksLineOfSight = blocksLineOfSight;
+      const result = reshapeWallEndpoint({
+        wall: source,
+        endpoint: 'end',
+        point: { x: -12, z: -5 },
+      });
+      expect(result.wall.blocker).toEqual({
+        ...source.blocker,
+        footprint: { ...source.blocker.footprint, width: 15 },
+      });
+      expect(result.wall.appearance).toEqual(source.appearance);
+      expect(result.wall.id).toBe(source.id);
+      expect(result.wall.label).toBe(source.label);
+    }
+  );
+
+  it.each(['start', 'end'] as const)(
+    'protects the outermost of multiple opening edges on a %s drag',
+    (endpoint) => {
+      const source = wall({
+        openings: [
+          { id: 'far-opening', position: 7, width: 2 },
+          { id: 'near-opening', position: 2, width: 2 },
+        ],
+      });
+      const fixed = source.line[endpoint === 'start' ? 'end' : 'start'];
+      const result = reshapeWallEndpoint({
+        wall: source,
+        endpoint,
+        point: { x: fixed.x, z: fixed.z - 1 },
+      });
+      const radius = endpoint === 'start' ? 9 : 8;
+      expect(result.appliedLength).toBeCloseTo(radius, 12);
+      expect(result.clamped).toBe(true);
+      expect(result.wall.line[endpoint].x).toBeCloseTo(fixed.x, 12);
+      expect(result.wall.line[endpoint].z).toBeCloseTo(fixed.z - radius, 12);
+      expect(result.wall.openings.map((opening) => opening.id)).toEqual(
+        source.openings.map((opening) => opening.id)
+      );
+      for (const opening of source.openings) {
+        const point = openingPoint(result.wall, opening.id);
+        const distance =
+          endpoint === 'end' ? opening.position : 10 - opening.position;
+        expect(point.x).toBeCloseTo(fixed.x, 12);
+        expect(point.z).toBeCloseTo(fixed.z - distance, 12);
+      }
+    }
+  );
+
+  it('preserves the existing collinear resize result without an extra rotation', () => {
+    const source = wall();
+    expect(
+      reshapeWallEndpoint({
+        wall: source,
+        endpoint: 'start',
+        point: { x: -2, z: 0 },
+      })
+    ).toEqual(
+      resizeWallLength({ wall: source, endpoint: 'start', length: 12 })
+    );
+  });
+
+  it.each(['start', 'end'] as const)(
+    'refuses nonfinite and zero-radius %s requests immutably',
+    (endpoint) => {
+      const source = wall();
+      const before = structuredClone(source);
+      const fixed = source.line[endpoint === 'start' ? 'end' : 'start'];
+      for (const point of [
+        fixed,
+        { x: NaN, z: 1 },
+        { x: 1, z: Infinity },
+        { x: -Infinity, z: 1 },
+        { x: 1, z: NaN },
+      ]) {
+        expect(() =>
+          reshapeWallEndpoint({ wall: source, endpoint, point })
+        ).toThrow('Structural wall edit');
+        expect(source).toEqual(before);
+      }
+    }
+  );
+
+  it.each(['start', 'end'] as const)(
+    'refuses a %s request with nonpositive resulting blocker width immutably',
+    (endpoint) => {
+      const source = wall({
+        openings: [],
+        blocker: {
+          footprint: { width: 4, depth: 0.25, offsetX: 1, offsetZ: -1 },
+          blocksMovement: false,
+          blocksLineOfSight: false,
+        },
+      });
+      const before = structuredClone(source);
+      const fixed = source.line[endpoint === 'start' ? 'end' : 'start'];
+      for (const radius of [6, 5]) {
+        expect(() =>
+          reshapeWallEndpoint({
+            wall: source,
+            endpoint,
+            point: { x: fixed.x, z: fixed.z + radius },
+          })
+        ).toThrow(/Structural wall edit:.*nonpositive blocker width/);
+        expect(source).toEqual(before);
+      }
+    }
+  );
+});
+
 describe('doorless opening editing', () => {
   it('adds an opening and refuses overlap, extent and duplicate identity', () => {
     const next = addWallOpening(wall({ openings: [] }), {
@@ -630,6 +914,16 @@ describe('no source mutation', () => {
     Object.freeze(source.line.end);
     Object.freeze(source.line);
     Object.freeze(source);
+    reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'end',
+      point: { x: -2, z: 14 },
+    });
+    reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'start',
+      point: { x: 10, z: -12 },
+    });
     resizeWallLength({ wall: source, endpoint: 'end', length: 14 });
     translateWall(source, { x: 1, z: 1 });
     rotateWall(source, { angle: 0.5 });
