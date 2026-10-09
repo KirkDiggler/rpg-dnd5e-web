@@ -21,6 +21,7 @@ import { useCreateLobby } from '../../api/useCreateLobby';
 import { useJoinLobby } from '../../api/useJoinLobby';
 import { useListDungeons } from '../../api/useListDungeons';
 import { useLobbyStream } from '../../api/useLobbyStream';
+import { useSeatedElsewhere } from '../../api/useSeatedElsewhere';
 import { useSetLobbyReady } from '../../api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '../../api/useStartLobbyEncounter';
 import { errorMessage } from '../../utils/combatFormat';
@@ -29,6 +30,7 @@ import { ErrorDisplay } from '../ui/Feedback';
 import { DungeonPicker } from './DungeonPicker';
 import { JoinCodeChip } from './JoinCodeChip';
 import { PartyRoster } from './PartyRoster';
+import { SeatNotice } from './SeatNotice';
 
 /**
  * Placeholder campaign scope — CreateLobbyRequest.campaign_id is
@@ -205,7 +207,9 @@ export function LobbyFlow({
     }
   };
 
-  const handleStart = async () => {
+  // `retry` is the single automatic relaunch after Abandon run freed the
+  // seat: a refusal there is shown as an error, never offered again.
+  const handleStart = async (retry = false) => {
     if (!lobbyId) return;
     setError(null);
     try {
@@ -220,6 +224,7 @@ export function LobbyFlow({
       setLobbyId(null);
       onEncounterStarted(resp.encounterId, myCharacterIdRef.current);
     } catch (err) {
+      if (!retry && (await seated.noteRefusal(err))) return;
       setError(errorMessage(err));
     }
   };
@@ -231,6 +236,19 @@ export function LobbyFlow({
   const allReady = members.length > 0 && members.every((m) => m.isReady);
   const me = members.find((m) => m.playerId === playerId);
   const myCharacterId = me?.characterId || characterId;
+  const seated = useSeatedElsewhere(myCharacterId);
+  const seatName = members.find(
+    (m) => m.characterId === seated.seat?.character
+  )?.characterName;
+  const seatNotice = (
+    <SeatNotice
+      seated={seated}
+      name={seatName}
+      onAbandoned={(afterRefusal) => {
+        if (afterRefusal) void handleStart(true);
+      }}
+    />
+  );
   // Cache the latest seat for the imperative start handlers (stream event +
   // StartEncounter response) without mutating a ref during render.
   useEffect(() => {
@@ -323,6 +341,7 @@ export function LobbyFlow({
           </Button>
         </div>
 
+        {seatNotice}
         {error && <ErrorDisplay message={error} />}
 
         <Button variant="ghost" size="sm" onClick={onBack}>
@@ -427,6 +446,7 @@ export function LobbyFlow({
         )}
       </div>
 
+      {seatNotice}
       {error && <ErrorDisplay message={error} />}
 
       <Button
