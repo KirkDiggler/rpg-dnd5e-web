@@ -1,8 +1,14 @@
 import { DESKTOP_HOTBAR_PROFILES } from '@/concepts/desktop-hotbar/fixtures';
 import { create } from '@bufbuild/protobuf';
 import {
+  ActionInformationSchema,
+  AttackRefSchema,
   CastOptionSchema,
+  DamageType,
   DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
@@ -49,6 +55,125 @@ afterEach(() => {
 });
 
 describe('DesktopActionSurface', () => {
+  it('reads provider base facts above contextual effects before selection and replaces refreshed information', () => {
+    const source = ready.declarations.find(
+      (offer) => offer.verb === Verb.ATTACK
+    )!;
+    const offer = create(DeclarationSchema, {
+      ...source,
+      attack: create(AttackRefSchema, {
+        name: 'Warhammer',
+        ref: 'dnd5e:weapons:warhammer',
+        damageType: DamageType.BLUDGEONING,
+      }),
+      information: create(ActionInformationSchema, {
+        description: 'Provider weapon explanation.',
+        details: [
+          {
+            label: 'Base damage',
+            value: '1d8 + STR modifier (+3) · Bludgeoning',
+          },
+        ],
+      }),
+      effects: [
+        create(EffectRowSchema, {
+          id: 'rage',
+          name: 'Rage',
+          description: 'Provider effect explanation.',
+          state: EffectState.APPLIES,
+          participation: EffectParticipation.CONTRIBUTES_NOW,
+          reason: 'Applies to this attack.',
+          benefit: '+2 damage',
+        }),
+      ],
+    });
+    const select = vi.fn();
+    const view = render(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[offer]}
+        onSelectDeclaration={select}
+      />
+    );
+    fireEvent.focus(screen.getByRole('button', { name: 'Warhammer' }));
+    const card = screen.getByRole('tooltip');
+    expect(
+      within(card).getByText('Provider weapon explanation.')
+    ).toBeVisible();
+    const base = within(card).getByText(
+      '1d8 + STR modifier (+3) · Bludgeoning'
+    );
+    expect(
+      base.compareDocumentPosition(within(card).getByText('Rage')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(within(card).getByText('+2 damage')).toBeVisible();
+    expect(select).not.toHaveBeenCalled();
+    const refreshed = create(DeclarationSchema, {
+      ...offer,
+      information: create(ActionInformationSchema, {
+        description: 'Refreshed provider text.',
+      }),
+      effects: [],
+    });
+    view.rerender(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[refreshed]}
+        onSelectDeclaration={select}
+      />
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Refreshed provider text.'
+    );
+    expect(within(screen.getByRole('tooltip')).queryByText('Rage')).toBeNull();
+    expect(
+      within(screen.getByRole('tooltip')).queryByText(
+        '1d8 + STR modifier (+3) · Bludgeoning'
+      )
+    ).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('explains each current choice before submitting only its ID, without inventing missing text', () => {
+    const source = ready.declarations.find((offer) => offer.id === 'command')!;
+    const offer = create(DeclarationSchema, {
+      ...source,
+      options: [
+        create(CastOptionSchema, {
+          id: 'provider-option',
+          label: 'Provider choice',
+          description: 'Provider-authored choice meaning.',
+        }),
+        create(CastOptionSchema, {
+          id: 'no-description',
+          label: 'Unexplained choice',
+        }),
+      ],
+    });
+    const select = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[offer]}
+        optionDeclaration={offer}
+        onSelectCastOption={select}
+      />
+    );
+    const choice = screen.getByRole('button', { name: 'Provider choice' });
+    expect(choice).toHaveAttribute(
+      'aria-description',
+      'Provider-authored choice meaning.'
+    );
+    expect(screen.getByText('Provider-authored choice meaning.')).toBeVisible();
+    expect(screen.getByText('Description not provided.')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Unexplained choice' })
+    ).not.toBeDisabled();
+    expect(select).not.toHaveBeenCalled();
+    fireEvent.click(choice);
+    expect(select).toHaveBeenCalledExactlyOnceWith('provider-option');
+  });
   it('omits favorite controls and ignores supplied pins unless explicitly opted in', () => {
     const onChange = vi.fn();
     const view = render(

@@ -1,6 +1,7 @@
 import { DESKTOP_HOTBAR_PROFILES } from '@/concepts/desktop-hotbar/fixtures';
 import { create } from '@bufbuild/protobuf';
 import {
+  ActionInformationSchema,
   DeclarationSchema,
   ShortfallSchema,
   Verb,
@@ -21,11 +22,21 @@ describe('DesktopEffects', () => {
       effects: [],
       candidates: [],
       available: false,
+      information: create(ActionInformationSchema, {
+        description: 'Provider base explanation despite no effects.',
+        details: [
+          { label: 'Base damage', value: 'Provider damage expression' },
+        ],
+      }),
       why: create(ShortfallSchema, { text: 'Provider refusal' }),
     });
     render(<DesktopEffects declaration={plain} authorityFresh={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Longsword' }));
     const card = screen.getByRole('region', { name: 'Longsword information' });
+    expect(card).toHaveTextContent(
+      'Provider base explanation despite no effects.'
+    );
+    expect(card).toHaveTextContent('Provider damage expression');
     expect(card).toHaveTextContent(/slashing/i);
     expect(card).toHaveTextContent('Costs');
     expect(card).toHaveTextContent('Action');

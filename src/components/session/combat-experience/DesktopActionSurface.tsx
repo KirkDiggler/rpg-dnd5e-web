@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ActionArt } from './ActionArt';
-import { buildActionTooltip, slotLabel } from './actionTooltip';
+import { ActionInformationContent } from './ActionInformationContent';
+import {
+  buildActionTooltip,
+  informationDescription,
+  slotLabel,
+} from './actionTooltip';
 import { castLabel } from './castLabel';
 import { DesktopActionSection } from './DesktopActionSection';
 import styles from './DesktopActionSurface.module.css';
@@ -12,7 +17,6 @@ import {
   type DesktopHotbarLayout,
   type DesktopHotbarSection,
 } from './desktopHotbarLayout';
-import { EffectRows } from './EffectRows';
 import { isMultiMemberDeclaration } from './memberTargeting';
 import { currentExecutableDeclaration } from './organizedActionPresentation';
 import type { OrganizedActionSurfaceProps } from './OrganizedActionSurface';
@@ -284,24 +288,37 @@ export function DesktopActionSurface({
           </header>
           <div className={styles.choiceOptions}>
             {choosing.options.map((option, index) => (
-              <button
-                type="button"
+              <div
+                className={styles.choiceOption}
                 key={`${option.id}:${index}`}
-                data-testid={`cast-option-${option.id}`}
-                disabled={
-                  !authorityFresh ||
-                  !option.id ||
-                  !option.label.trim() ||
-                  choosing.options.filter(
-                    (candidate) => candidate.id === option.id
-                  ).length !== 1
-                }
-                onClick={() => selectOption(option.id)}
               >
-                {option.label.trim()
-                  ? option.label
-                  : 'Choice label unavailable'}
-              </button>
+                <button
+                  type="button"
+                  data-testid={`cast-option-${option.id}`}
+                  aria-label={
+                    option.label.trim()
+                      ? option.label
+                      : 'Choice label unavailable'
+                  }
+                  aria-description={informationDescription(option.description)}
+                  disabled={
+                    !authorityFresh ||
+                    !option.id ||
+                    !option.label.trim() ||
+                    choosing.options.filter(
+                      (candidate) => candidate.id === option.id
+                    ).length !== 1
+                  }
+                  onClick={() => selectOption(option.id)}
+                >
+                  <span>
+                    {option.label.trim()
+                      ? option.label
+                      : 'Choice label unavailable'}
+                  </span>
+                </button>
+                <small>{informationDescription(option.description)}</small>
+              </div>
             ))}
             <button
               type="button"
@@ -311,9 +328,6 @@ export function DesktopActionSurface({
               Cancel
             </button>
           </div>
-          <small>
-            No option descriptions are supplied by the current contract.
-          </small>
           {!authorityFresh && <p>Actions may be out of date</p>}
         </div>
       )}
@@ -344,15 +358,12 @@ export function DesktopActionSurface({
                 <strong>{tooltip.title}</strong>
               </div>
             </header>
-            <dl>
-              {tooltip.lines.map((line) => (
-                <div key={line.label}>
-                  <dt>{line.label}</dt>
-                  <dd>{line.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <EffectRows lines={tooltip.effects} />
+            <ActionInformationContent
+              description={tooltip.description}
+              lines={tooltip.lines}
+              effects={tooltip.effects}
+              effectsLabel="Effects"
+            />
             {refusal && (
               <p className={styles.refusal}>Unavailable — {refusal}</p>
             )}

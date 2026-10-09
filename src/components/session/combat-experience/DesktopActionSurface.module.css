@@ -247,9 +247,19 @@
 .choiceTray {
   position: absolute;
   z-index: 31;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + var(--desktop-targeting-clearance, 0px) + 10px);
   left: 0;
   width: min(430px, 100%);
+  max-height: max(
+    64px,
+    calc(
+      100cqh - var(--hotbar-surface-height, 280px) -
+        var(--desktop-targeting-clearance, 0px) - 36px
+    )
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
   padding: 14px;
   border: 1px solid #b79862;
   border-radius: 6px;
@@ -280,6 +290,16 @@
   flex-wrap: wrap;
   gap: 7px;
   margin-bottom: 10px;
+}
+.choiceOption {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+.choiceOption small {
+  line-height: 1.5;
 }
 .choiceOptions button {
   min-height: 34px;

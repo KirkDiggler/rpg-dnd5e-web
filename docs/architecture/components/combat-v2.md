@@ -48,6 +48,31 @@ area keeps private-state absence/freshness explicit. Action inspection renders
 provider base information even with no effects and adds contextual effect rows
 when present. No unrelated attack supplies an idle inspection context.
 
+`buildActionTooltip` reads `Declaration.information.description` and its ordered
+label/value details verbatim, before the existing typed damage-type, cost and
+target facts. The UI never parses damage notation, infers a description from a
+name, or combines contextual effects into a total. Missing text is explicitly
+marked; missing metadata does not change availability. Repeated detail labels
+remain separate ordered rows.
+
+`ActionInformationContent` shares that base-first body across desktop, compact,
+pinned and target inspections. Candidate answers remain tied to their action;
+target-held effects are still a separate list. A compact hover card accepts the
+pointer for scrolling, and keyboard focus can pin it without selecting. Its
+position clears the measured collection menu, while dimensions stay bounded by
+the owning frame. Provider refreshes replace the text under the same current ID.
+
+Cast and reaction choices show `CastOption.description` before commitment,
+outside the action button so stale/disabled controls do not dim their explanation.
+Compact option lists scroll under width pressure; their bounded description
+regions are keyboard-focusable and cannot submit. Only the original option ID
+is sent on deliberate selection. Reaction information and End Turn descriptions
+also use the provider fields, without changing the existing execution gates.
+
+The UI consumes these optional fields; field support in the SDK does not prove
+that a running provider populates them. Provider delivery and gameplay gaps are
+tracked through rpg-project#543 rather than patched with client-side rules.
+
 `CombatExperienceStoryExchange.deliverySource` carries live/catch-up provenance
 through the existing story/pacing projection. Temporary desktop notices consume
 only newly released live entries; initial/recovered/unknown-provenance entries

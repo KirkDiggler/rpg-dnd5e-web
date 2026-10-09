@@ -15,9 +15,12 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { ActionInformationContent } from './ActionInformationContent';
 import {
   actionTooltipText,
   buildActionTooltip,
+  informationDescription,
+  informationDetail,
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
@@ -158,8 +161,9 @@ function ActionTooltipCard({ tooltip }: { tooltip: ActionTooltip }) {
   return (
     <span className={styles.actionTooltip} aria-hidden="true">
       <strong>{tooltip.title}</strong>
-      {tooltip.lines.map((line) => (
-        <span key={line.label}>
+      <span>{informationDescription(tooltip.description)}</span>
+      {tooltip.lines.map(informationDetail).map((line, index) => (
+        <span key={`${index}:${line.label}`}>
           <em>{line.label}</em>
           {line.value}
         </span>
@@ -428,14 +432,21 @@ function CastOptionGroup({
   onCancel?: () => void;
 }) {
   return (
-    <div className={styles.actionGroup} data-testid="cast-options">
+    <div
+      className={`${styles.actionGroup} ${styles.describedOptions}`}
+      data-testid="cast-options"
+    >
       <span className={styles.groupLabel}>{castLabel(declaration)}</span>
       {declaration.options.map((option, index) => (
-        <span className={styles.actionOfferSlot} key={`${option.id}:${index}`}>
+        <span
+          className={`${styles.actionOfferSlot} ${styles.describedOption}`}
+          key={`${option.id}:${index}`}
+        >
           <button
             type="button"
             className={styles.actionOffer}
             data-testid={`cast-option-${option.id}`}
+            aria-description={informationDescription(option.description)}
             disabled={!authorityFresh}
             onClick={() => onSelectOption(option.id)}
           >
@@ -444,6 +455,14 @@ function CastOptionGroup({
             </span>
             <span className={styles.actionLabel}>{option.label}</span>
           </button>
+          <span
+            className={styles.optionDescription}
+            role="note"
+            aria-label={`${option.label} description`}
+            tabIndex={0}
+          >
+            {informationDescription(option.description)}
+          </span>
         </span>
       ))}
       {onCancel && (
@@ -787,6 +806,7 @@ function ActionDockContents({
   // would only invite clicks that cannot land.
   const reactionWindow = reactionWindowDeclaration(declarations);
   if (reactionWindow) {
+    const reactionInformation = buildActionTooltip(reactionWindow);
     const windowKind = reactionWindowKind(reactionWindow);
     if (windowKind === 'roll' && !rollWindowReady) {
       return (
@@ -849,21 +869,40 @@ function ActionDockContents({
         >
           <span>{declarationLabel(reactionWindow)}</span>
           <strong>{headline}</strong>
+          <div
+            className={styles.reactionInformation}
+            role="region"
+            aria-label={`${declarationLabel(reactionWindow)} information`}
+            tabIndex={0}
+          >
+            <ActionInformationContent
+              description={reactionInformation.description}
+              lines={reactionInformation.lines}
+              effects={reactionInformation.effects}
+            />
+          </div>
           <small>
             {authorityFresh
               ? prompt
               : 'Waiting for current Turn and Afford authority.'}
           </small>
         </div>
-        <div className={styles.actionGroup} data-testid="reaction-choices">
+        <div
+          className={`${styles.actionGroup} ${styles.describedOptions}`}
+          data-testid="reaction-choices"
+        >
           <span className={styles.groupLabel}>Reaction</span>
           {reactionWindow.options.length > 0 ? (
             reactionWindow.options.map((option) => (
-              <span className={styles.actionOfferSlot} key={option.id}>
+              <span
+                className={`${styles.actionOfferSlot} ${styles.describedOption}`}
+                key={option.id}
+              >
                 <button
                   type="button"
                   className={styles.actionOffer}
                   data-testid={`reaction-option-${option.id}`}
+                  aria-description={informationDescription(option.description)}
                   disabled={!authorityFresh}
                   onClick={() =>
                     onSelectDeclaration(
@@ -876,6 +915,14 @@ function ActionDockContents({
                   <span className={styles.actionLabel}>{option.label}</span>
                   <CostBadge slot={reactionWindow.slot} />
                 </button>
+                <span
+                  className={styles.optionDescription}
+                  role="note"
+                  aria-label={`${option.label} description`}
+                  tabIndex={0}
+                >
+                  {informationDescription(option.description)}
+                </span>
               </span>
             ))
           ) : (
@@ -1083,6 +1130,7 @@ function ActionDockContents({
           <button
             type="button"
             className={styles.endTurn}
+            aria-description={actionTooltipText(buildActionTooltip(endTurn))}
             disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
             title={
               !authorityFresh
@@ -1090,7 +1138,7 @@ function ActionDockContents({
                 : endTurnBlocked
                   ? 'Finish the Death Save roll before ending turn'
                   : endTurn.available
-                    ? 'End turn'
+                    ? actionTooltipText(buildActionTooltip(endTurn))
                     : endTurn.why?.text || 'Unavailable'
             }
             onClick={() => onEndTurn(endTurn)}

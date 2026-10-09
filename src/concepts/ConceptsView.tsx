@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
 import { DungeonBuilderSandbox } from '../author/DungeonBuilderSandbox';
+import { ActionInformationConcept } from './action-information/ActionInformationConcept';
 import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
 import { CharacterCustomizationConcept } from './character-customization/CharacterCustomizationConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
@@ -22,6 +23,7 @@ import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentCon
 import { WorldBuildingConcept } from './world-building/WorldBuildingConcept';
 
 type ConceptPage =
+  | 'action-information'
   | 'attack-die-3d'
   | 'class-selection'
   | 'character-customization'
@@ -44,6 +46,7 @@ type ConceptPage =
   | 'room-authoring';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
+  { id: 'action-information', label: 'Action Information' },
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
   { id: 'class-selection', label: 'Class Selection' },
   { id: 'character-customization', label: 'Character Customization' },
@@ -166,6 +169,7 @@ export function ConceptsView({ onBack, compositionSource }: ConceptsViewProps) {
         {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {activePage === 'organized-hud' && <OrganizedHudConcept />}
         {activePage === 'desktop-hotbar' && <DesktopHotbarConcept />}
+        {activePage === 'action-information' && <ActionInformationConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — the same `DungeonBuilder` on a fixture

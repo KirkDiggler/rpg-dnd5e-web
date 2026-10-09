@@ -842,10 +842,22 @@ describe('SessionEncounterView production combat integration', () => {
     try {
       const spell = create(DeclarationSchema, {
         id: 'live-cast',
+        information: {
+          description: 'Provider explanation of this cast.',
+          details: [{ label: 'Provider base fact', value: 'Verbatim fact' }],
+        },
         // Contract-shape regression: multi-member plus provider-authored options.
         options: [
-          { id: 'first', label: 'First mode' },
-          { id: 'second', label: 'Second mode' },
+          {
+            id: 'first',
+            label: 'First mode',
+            description: 'First provider mode explanation.',
+          },
+          {
+            id: 'second',
+            label: 'Second mode',
+            description: 'Second provider mode explanation.',
+          },
         ],
         verb: Verb.CAST,
         slot: Slot.ACTION,
@@ -876,7 +888,23 @@ describe('SessionEncounterView production combat integration', () => {
       expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
       expect(screen.getByText('Leveled spells')).toBeTruthy();
       expect(screen.queryByRole('region', { name: 'Items' })).toBeNull();
+      fireEvent.focus(screen.getByRole('button', { name: 'Bless' }));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider explanation of this cast.'
+      );
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Verbatim fact'
+      );
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('cast-options')).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      expect(screen.getByText('First provider mode explanation.')).toBeTruthy();
+      expect(
+        screen
+          .getByRole('button', { name: 'First mode' })
+          .getAttribute('aria-description')
+      ).toBe('First provider mode explanation.');
+      expect(hoisted.castFn).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'First mode' }));
       act(() => {
         hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');

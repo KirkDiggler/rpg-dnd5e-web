@@ -7,18 +7,13 @@
  * already writes "movement: 20 ft needed, 15 ft left", and a client composing
  * its own version of that sentence is how the two drift apart.
  *
- * # Damage dice are NOT here, and that is a wire gap, not an oversight
+ * # Base information is provider-authored, separate from contextual effects
  *
- * Kirk asked for "what damage the weapon does". The session `AttackRef`
- * carries ref, name and damage TYPE and, in its own words, "nothing of its
- * arithmetic" — so "1d8+3" is not on this seam at all. `WeaponData.damageDice`
- * exists, but in the character/equipment domain (`dnd5e.api.v1alpha1`), which
- * the combat panel does not load and which would be a second, unversioned
- * source of truth about the weapon being swung.
- *
- * So this shows the damage type it does have. Carrying the number across the
- * seam is rpg-project#307 (deferred, deliberately): when that lands,
- * `damageLine` is the one place that changes.
+ * `Declaration.information` supplies the explanation and ordered base facts
+ * for this exact offer. Copy its text; never parse damage notation or look up
+ * another equipment catalogue to reconstruct missing values. Existing typed
+ * cost, target and damage-type facts remain visible, including when a provider
+ * has not yet adopted the information fields (rpg-project#543).
  *
  * # Effect rows are drawn, never recognised (rpg-project#520)
  *
@@ -82,6 +77,8 @@ export interface ActionEffectLine {
 
 export interface ActionTooltip {
   title: string;
+  /** Plain-text content from this declaration; empty means not supplied. */
+  description: string;
   lines: readonly ActionTooltipLine[];
   /** The declaration's own rows, before any target is considered. */
   effects: readonly ActionEffectLine[];
@@ -208,7 +205,7 @@ export function slotLabel(slot: Slot): string {
 
 /**
  * The damage the offer deals, as far as this seam knows it. Today that is the
- * TYPE only; see this module's own doc comment for why the dice are absent.
+ * TYPE only. Richer base facts, when supplied, are copied from information.
  */
 function damageLine(declaration: Declaration): ActionTooltipLine | null {
   if (declaration.verb !== Verb.ATTACK) return null;
@@ -227,21 +224,27 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
   // server compiles no action definition for either, so there is no authored
   // title to prefer.
   const title =
-    declaration.verb === Verb.ATTACK
-      ? declaration.attack?.name || 'Attack'
-      : declaration.verb === Verb.ACTIVATE
-        ? declaration.ability?.name || 'Ability'
-        : declaration.verb === Verb.DEATH_SAVE
-          ? declaration.deathSave?.name || 'Death Save'
-          : declaration.verb === Verb.CAST
-            ? castLabel(declaration)
-            : declaration.verb === Verb.INTIMIDATE
-              ? 'Intimidate'
-              : declaration.verb === Verb.PERSUADE
-                ? 'Persuade'
-                : 'Move';
+    declaration.verb === Verb.REACT
+      ? declaration.reaction?.name || 'Reaction'
+      : declaration.verb === Verb.END_TURN
+        ? 'End turn'
+        : declaration.verb === Verb.ATTACK
+          ? declaration.attack?.name || 'Attack'
+          : declaration.verb === Verb.ACTIVATE
+            ? declaration.ability?.name || 'Ability'
+            : declaration.verb === Verb.DEATH_SAVE
+              ? declaration.deathSave?.name || 'Death Save'
+              : declaration.verb === Verb.CAST
+                ? castLabel(declaration)
+                : declaration.verb === Verb.INTIMIDATE
+                  ? 'Intimidate'
+                  : declaration.verb === Verb.PERSUADE
+                    ? 'Persuade'
+                    : 'Move';
 
-  const lines: ActionTooltipLine[] = [];
+  const lines: ActionTooltipLine[] = (
+    declaration.information?.details ?? []
+  ).map(({ label, value }) => ({ label, value }));
 
   const damage = damageLine(declaration);
   if (damage) lines.push(damage);
@@ -304,6 +307,7 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
 
   return {
     title,
+    description: declaration.information?.description ?? '',
     lines,
     effects: effectLinesFor(declaration),
     refusal: declaration.available
@@ -312,14 +316,33 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
   };
 }
 
+/** Neutral missing-data copy shared by action and option inspection. */
+export function informationDescription(description: string): string {
+  return description.trim() ? description : 'Description not provided.';
+}
+
+/** Missing-cell diagnostics are identical for visual and accessible readers. */
+export function informationDetail(line: ActionTooltipLine): ActionTooltipLine {
+  return {
+    label: line.label.trim() ? line.label : 'Detail label not provided',
+    value: line.value.trim() ? line.value : 'Value not provided',
+  };
+}
+
 /** Flattened one-line form, for a native `title` or an aria description. */
 export function actionTooltipText(tooltip: ActionTooltip): string {
-  const parts = tooltip.lines.map((line) => `${line.label}: ${line.value}`);
+  const parts = tooltip.lines
+    .map(informationDetail)
+    .map((line) => `${line.label}: ${line.value}`);
   for (const effect of tooltip.effects) {
     parts.push(
       `${effect.name}: ${effect.stateWord}${effect.reason ? ` — ${effect.reason}` : ''}${effect.benefit ? ` (${effect.benefit})` : ''}`
     );
   }
   if (tooltip.refusal) parts.push(`Unavailable — ${tooltip.refusal}`);
-  return [tooltip.title, ...parts].join(' · ');
+  return [
+    tooltip.title,
+    informationDescription(tooltip.description),
+    ...parts,
+  ].join(' · ');
 }

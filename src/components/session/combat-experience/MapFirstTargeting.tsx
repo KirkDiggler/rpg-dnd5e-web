@@ -8,12 +8,12 @@ import {
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { ActionInformationContent } from './ActionInformationContent';
 import {
   buildActionTooltip,
   effectLinesFor,
   heldEffectLinesFor,
 } from './actionTooltip';
-import { EffectRows } from './EffectRows';
 import styles from './MapFirstTargeting.module.css';
 import {
   memberTargetingView,
@@ -108,7 +108,10 @@ export function MapFirstTargeting({
   const optionMatches =
     declaration?.options.filter((option) => option.id === optionId) ?? [];
   const option = optionMatches.length === 1 ? optionMatches[0] : undefined;
-  const action = declaration ? buildActionTooltip(declaration).title : 'Action';
+  const actionInformation = declaration
+    ? buildActionTooltip(declaration)
+    : undefined;
+  const action = actionInformation?.title ?? 'Action';
   const label = `${action}${option?.label ? ` · ${option.label}` : ''}`;
   const statusFor = (member: string): string => {
     const selected = view.selected.find((target) => target.member === member);
@@ -453,14 +456,15 @@ export function MapFirstTargeting({
               Last received information — may be out of date.
             </p>
           )}
-          {actorLines.length > 0 && (
-            <EffectRows lines={actorLines} label="Your action effects" />
-          )}
-          {heldLines.length > 0 && (
-            <>
-              <h4>On this target</h4>
-              <EffectRows lines={heldLines} label="On this target" />
-            </>
+          {actionInformation && (
+            <ActionInformationContent
+              description={actionInformation.description}
+              lines={actionInformation.lines}
+              effects={actorLines}
+              effectsLabel="Your action effects"
+              targetEffects={heldLines}
+              targetEffectsLabel="On this target"
+            />
           )}
           {!actorLines.length && !heldLines.length && (
             <p>No effect information supplied for this target.</p>
