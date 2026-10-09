@@ -47,6 +47,19 @@ afterEach(() => {
 });
 
 describe('DesktopHotbarConcept', () => {
+  it('shows the explicit Longsword base-damage fixture separately from effects without issuing intent', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Martial' }));
+    fireEvent.focus(screen.getByRole('button', { name: 'Longsword' }));
+    const card = screen.getByRole('tooltip', { name: 'Longsword details' });
+    expect(card).toHaveTextContent('1d8 + STR modifier (+3) · Slashing');
+    expect(card).toHaveTextContent('One-handed');
+    expect(
+      within(card).getByRole('list', { name: 'Effects' })
+    ).toHaveTextContent('+2 damage');
+    expect(card).not.toHaveTextContent('1d8 +5');
+    expect(screen.getByRole('status')).toHaveTextContent('No intent sent');
+  });
   it('opens the real multi-target surface directly and cancels without RPC', () => {
     render(<DesktopHotbarConcept />);
     expect(screen.getByTestId('desktop-action-surface')).toBeInTheDocument();
