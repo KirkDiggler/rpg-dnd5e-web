@@ -126,7 +126,13 @@ const effectsOffer = () =>
     minTargets: 1,
     maxTargets: 2,
     spell: { name: 'Provider action', ref: 'fixture:spells:action' },
-    information: { description: 'Provider base explanation.' },
+    information: {
+      description: 'Provider base explanation.',
+      details: [
+        { label: 'Base damage', value: '1d8 + STR modifier (+3) · Slashing' },
+        { label: 'Grip', value: 'One-handed' },
+      ],
+    },
     effects: [
       {
         id: 'actor-row',
@@ -212,6 +218,16 @@ describe('read-only target-hover effects', () => {
       name: 'Alpha target information',
     });
     expect(alpha).toHaveAttribute('data-preview', 'true');
+    const baseDamage = within(alpha).getByText(
+      '1d8 + STR modifier (+3) · Slashing'
+    );
+    expect(baseDamage).toBeVisible();
+    expect(
+      baseDamage.compareDocumentPosition(
+        within(alpha).getByText('Alpha-held effect')
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(alpha).toHaveTextContent('One-handed');
     expect(
       within(alpha).getByRole('list', { name: 'Your action effects' })
     ).toHaveTextContent('Alpha-specific answer.');
@@ -226,6 +242,8 @@ describe('read-only target-hover effects', () => {
       name: 'Beta target information',
     });
     expect(beta).toHaveTextContent('Beta-specific answer.');
+    expect(beta).toHaveTextContent('1d8 + STR modifier (+3) · Slashing');
+    expect(beta).not.toHaveTextContent('1d8 +5');
     expect(beta).toHaveTextContent('Beta-held effect');
     expect(beta).toHaveTextContent('Provider target refusal.');
     expect(beta).not.toHaveTextContent('Alpha-specific answer.');

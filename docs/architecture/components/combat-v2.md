@@ -104,8 +104,10 @@ Both cap long content and keep inspection separate from command execution.
 While a member-targeted action is armed, the existing canvas hover identity also
 opens a read-only target-effect peek. It resolves an exact unique current
 candidate, including unavailable candidates; it never changes selected IDs or
-calls choose/confirm. The preview puts observed target-held rows first, followed
-by the actor's target-specific answers, keeping the two lists separate. Empty
+calls choose/confirm. The preview shows the selected action's supplied base facts first, then
+observed target-held rows and the actor's target-specific answers, keeping the
+two effect lists separate. `ActionInformationFacts` shares verbatim base rows
+with the full action card; no target-adjusted damage total is derived. Empty
 rows mean no supplied information, not a condition-free creature.
 
 Automatic peeks are pointer-transparent and take no focus, so they cannot steal

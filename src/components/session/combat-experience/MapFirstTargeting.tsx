@@ -8,7 +8,10 @@ import {
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ActionInformationContent } from './ActionInformationContent';
+import {
+  ActionInformationContent,
+  ActionInformationFacts,
+} from './ActionInformationContent';
 import {
   buildActionTooltip,
   effectLinesFor,
@@ -531,6 +534,9 @@ export function MapFirstTargeting({
             />
           ) : (
             <>
+              <ActionInformationFacts
+                lines={declaration.information?.details ?? []}
+              />
               {heldLines.length > 0 && <h4>On this target</h4>}
               <EffectRows lines={heldLines} label="On this target" />
               {actorLines.length > 0 && <h4>Your action effects</h4>}
