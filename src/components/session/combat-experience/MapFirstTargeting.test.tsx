@@ -2,6 +2,9 @@ import { create } from '@bufbuild/protobuf';
 import {
   AbilityRefSchema,
   DeclarationSchema,
+  EffectParticipation,
+  EffectState,
+  Slot,
   SpellRefSchema,
   TargetCandidateSchema,
   TargetKind,
@@ -112,6 +115,362 @@ function Harness({
     />
   );
 }
+
+const effectsOffer = () =>
+  create(DeclarationSchema, {
+    id: 'effect-offer',
+    verb: Verb.CAST,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    minTargets: 1,
+    maxTargets: 2,
+    spell: { name: 'Provider action', ref: 'fixture:spells:action' },
+    information: { description: 'Provider base explanation.' },
+    effects: [
+      {
+        id: 'actor-row',
+        name: 'Actor effect',
+        description: 'Provider actor description.',
+        state: EffectState.DEPENDS,
+        participation: EffectParticipation.CONTRIBUTES_NOW,
+        reason: 'Choose a target.',
+      },
+    ],
+    candidates: [
+      {
+        member: 'a',
+        available: true,
+        effects: [
+          {
+            id: 'actor-row',
+            state: EffectState.APPLIES,
+            reason: 'Alpha-specific answer.',
+            benefit: '+2 supplied benefit',
+          },
+        ],
+        heldEffects: [
+          {
+            id: 'held-a',
+            name: 'Alpha-held effect',
+            description: 'Observed Alpha effect.',
+            state: EffectState.APPLIES,
+            participation: EffectParticipation.CONTRIBUTES_NOW,
+            reason: 'Alpha target-held answer.',
+          },
+        ],
+      },
+      {
+        member: 'b',
+        available: false,
+        why: { text: 'Provider target refusal.' },
+        effects: [
+          {
+            id: 'actor-row',
+            state: EffectState.DOES_NOT_APPLY,
+            reason: 'Beta-specific answer.',
+          },
+        ],
+        heldEffects: [
+          {
+            id: 'held-b',
+            name: 'Beta-held effect',
+            description: 'Observed Beta effect.',
+            state: EffectState.DEPENDS,
+            participation: EffectParticipation.CONTRIBUTES_NOW,
+            reason: 'Beta target-held answer.',
+          },
+        ],
+      },
+    ],
+  });
+
+describe('read-only target-hover effects', () => {
+  it('shows each hovered candidate answer and held rows separately without picking, confirming or moving focus', () => {
+    const choose = vi.fn(),
+      confirm = vi.fn(),
+      cancel = vi.fn();
+    const selected = Object.freeze(['a']);
+    const props = {
+      input: {
+        declaration: effectsOffer(),
+        selectedMembers: selected,
+        authorityFresh: true,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: choose,
+      onConfirm: confirm,
+      onCancel: cancel,
+    };
+    const view = render(<MapFirstTargeting {...props} />);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    const focused = document.activeElement;
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    const alpha = screen.getByRole('tooltip', {
+      name: 'Alpha target information',
+    });
+    expect(alpha).toHaveAttribute('data-preview', 'true');
+    expect(
+      within(alpha).getByRole('list', { name: 'Your action effects' })
+    ).toHaveTextContent('Alpha-specific answer.');
+    expect(
+      within(alpha).getByRole('list', { name: 'On this target' })
+    ).toHaveTextContent('Alpha-held effect');
+    expect(within(alpha).queryByRole('button')).toBeNull();
+    expect(alpha).not.toHaveTextContent('Provider base explanation.');
+    expect(document.activeElement).toBe(focused);
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="b" />);
+    const beta = screen.getByRole('tooltip', {
+      name: 'Beta target information',
+    });
+    expect(beta).toHaveTextContent('Beta-specific answer.');
+    expect(beta).toHaveTextContent('Beta-held effect');
+    expect(beta).toHaveTextContent('Provider target refusal.');
+    expect(beta).not.toHaveTextContent('Alpha-specific answer.');
+    expect(selected).toEqual(['a']);
+    expect(choose).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pointer-transparent peek readable and preserves explicit full inspection until closed', () => {
+    const cancel = vi.fn(),
+      choose = vi.fn();
+    const props = {
+      input: {
+        declaration: effectsOffer(),
+        selectedMembers: [],
+        authorityFresh: true,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: choose,
+      onCancel: cancel,
+    };
+    const view = render(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget={null} />);
+    expect(
+      screen.getByRole('tooltip', { name: 'Alpha target information' })
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect target' }));
+    const full = screen.getByRole('region', {
+      name: 'Alpha target information',
+    });
+    expect(full).toHaveTextContent('Provider base explanation.');
+    expect(full).toHaveFocus();
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="b" />);
+    expect(
+      screen.getByRole('region', { name: 'Alpha target information' })
+    ).toBeVisible();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.keyDown(full, { key: 'Escape' });
+    expect(
+      screen.queryByRole('region', { name: 'Alpha target information' })
+    ).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('drops foreign, ambiguous and withdrawn candidates; labels stale and empty provider answers honestly', () => {
+    const declaration = effectsOffer();
+    const props = {
+      input: {
+        declaration,
+        selectedMembers: [],
+        authorityFresh: false,
+        turnAllowed: true,
+      },
+      host,
+      memberNames: names,
+      onChoose: vi.fn(),
+    };
+    const view = render(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('may be out of date');
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="foreign" />);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    const duplicate = create(DeclarationSchema, {
+      ...declaration,
+      candidates: [declaration.candidates[0], declaration.candidates[0]],
+    });
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{ ...props.input, declaration: duplicate }}
+        hoveredTarget="a"
+      />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    view.rerender(<MapFirstTargeting {...props} hoveredTarget="a" />);
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{
+          ...props.input,
+          declaration: create(DeclarationSchema, {
+            ...declaration,
+            candidates: [],
+          }),
+        }}
+        hoveredTarget="a"
+      />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{ ...props.input, declaration: offer() }}
+        hoveredTarget="a"
+      />
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'No effect information supplied for this target.'
+    );
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{
+          ...props.input,
+          declaration: create(DeclarationSchema, { ...declaration, id: '' }),
+        }}
+        hoveredTarget="a"
+      />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{
+          ...props.input,
+          declaration: create(DeclarationSchema, {
+            ...declaration,
+            targetKind: TargetKind.NONE,
+          }),
+        }}
+        hoveredTarget="a"
+      />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    view.rerender(
+      <MapFirstTargeting
+        {...props}
+        input={{ ...props.input, declaration: undefined }}
+        hoveredTarget={null}
+      />
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('does not let a sticky target peek cover another dock control inspection', () => {
+    const dock = document.createElement('div');
+    dock.dataset.desktopDock = 'true';
+    const action = document.createElement('button');
+    dock.append(action);
+    document.body.append(dock);
+    try {
+      const choose = vi.fn();
+      render(
+        <MapFirstTargeting
+          input={{
+            declaration: effectsOffer(),
+            selectedMembers: [],
+            authorityFresh: true,
+            turnAllowed: true,
+          }}
+          host={host}
+          memberNames={names}
+          onChoose={choose}
+          hoveredTarget="a"
+        />
+      );
+      expect(
+        screen.getByRole('tooltip', { name: 'Alpha target information' })
+      ).toBeVisible();
+      const over = (element: HTMLElement) => {
+        const event = new MouseEvent('pointerover', { bubbles: true });
+        Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+        fireEvent(element, event);
+      };
+      over(action);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      over(document.body);
+      expect(
+        screen.getByRole('tooltip', { name: 'Alpha target information' })
+      ).toBeVisible();
+      expect(choose).not.toHaveBeenCalled();
+    } finally {
+      dock.remove();
+    }
+  });
+
+  it('inspects selected chips without toggling the selected member', () => {
+    const choose = vi.fn();
+    const selected = Object.freeze(['a']);
+    render(
+      <MapFirstTargeting
+        input={{
+          declaration: effectsOffer(),
+          selectedMembers: selected,
+          authorityFresh: true,
+          turnAllowed: true,
+        }}
+        host={host}
+        memberNames={names}
+        onChoose={choose}
+      />
+    );
+    const chip = screen.getByRole('button', { name: 'Inspect selected Alpha' });
+    fireEvent.focus(chip);
+    expect(
+      screen.getByRole('tooltip', { name: 'Alpha target information' })
+    ).toHaveTextContent('Alpha-specific answer.');
+    fireEvent.click(chip);
+    expect(
+      screen.getByRole('region', { name: 'Alpha target information' })
+    ).toHaveTextContent('Provider base explanation.');
+    expect(selected).toEqual(['a']);
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('uses mouse/pen row hover and keyboard focus for inspection, but not touch entry', () => {
+    const choose = vi.fn();
+    render(
+      <MapFirstTargeting
+        input={{
+          declaration: effectsOffer(),
+          selectedMembers: [],
+          authorityFresh: true,
+          turnAllowed: true,
+        }}
+        host={host}
+        memberNames={names}
+        onChoose={choose}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Targets (2)' }));
+    const info = screen.getByRole('button', { name: 'Inspect Beta target' });
+    const enter = (pointerType: string) => {
+      const event = new MouseEvent('pointerover', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: pointerType });
+      fireEvent(info, event);
+    };
+    enter('touch');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    enter('mouse');
+    expect(
+      screen.getByRole('tooltip', { name: 'Beta target information' })
+    ).toBeVisible();
+    fireEvent.focus(screen.getByRole('checkbox', { name: 'Alpha' }));
+    expect(
+      screen.getByRole('tooltip', { name: 'Alpha target information' })
+    ).toBeVisible();
+    expect(choose).not.toHaveBeenCalled();
+  });
+});
 
 describe('map-first member targeting', () => {
   it('does not open a list/effects window automatically and keeps the map mounted', () => {

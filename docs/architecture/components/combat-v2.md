@@ -100,6 +100,23 @@ Selection and dispatch share one current-offer boundary:
 The compact targeting panel sits below the room label. Desktop targeting uses
 a strip above the toolbar, with selected-member chips and an optional list.
 Both cap long content and keep inspection separate from command execution.
+
+While a member-targeted action is armed, the existing canvas hover identity also
+opens a read-only target-effect peek. It resolves an exact unique current
+candidate, including unavailable candidates; it never changes selected IDs or
+calls choose/confirm. The preview puts observed target-held rows first, followed
+by the actor's target-specific answers, keeping the two lists separate. Empty
+rows mean no supplied information, not a condition-free creature.
+
+Automatic peeks are pointer-transparent and take no focus, so they cannot steal
+map-target clicks. The last valid peek remains readable when the pointer leaves
+the map, but stays out of the way of other dock-control inspections. List/chip
+mouse or pen entry and keyboard focus use the same candidate lookup. Explicit
+Info controls open and focus the existing scrollable full reader; that reader
+keeps its named target until closed or changed. Close/Escape clears inspection,
+not the action or its picks. Withdrawn/ambiguous candidates and action changes
+cannot retain another target's old rows. No new provider read or wire field is
+introduced by this UI path.
 Desktop multi-member CAST selection toggles map/list/chip picks; reaching the
 provider maximum never casts. Separate confirmation echoes the ordered members
 and chosen option. Re-clicking an armed multi-target icon preserves its picks;

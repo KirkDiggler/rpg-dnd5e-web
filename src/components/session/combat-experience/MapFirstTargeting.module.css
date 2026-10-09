@@ -215,6 +215,11 @@
 .details {
   width: min(360px, calc(100cqw - 64px));
 }
+/* Automatic inspection must never steal a click intended for the map.
+   The existing Info controls open the interactive, scrollable reader. */
+.details[data-preview='true'] {
+  pointer-events: none;
+}
 .details[data-list-open='true'] {
   left: 410px;
 }
