@@ -43,6 +43,7 @@ import {
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
+import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 // World-space polygons stay stable through pan/zoom and preview-only renders.
 const LayoutGrid = memo(function LayoutGrid({
@@ -81,6 +82,14 @@ type Gesture = {
   client: ClientPoint;
   moved: boolean;
   commitFloor: LayoutViewportProps['onCommit'];
+  region?: {
+    id: string;
+    initial: readonly RoomHexCell[];
+    mode: LayoutFloorTool;
+    commit: NonNullable<
+      LayoutViewportProps['regionEditing']
+    >['setExplicitRegionArea'];
+  };
   wall?: {
     source?: StructuralWall;
     endpoint?: 'start' | 'end';
@@ -128,6 +137,10 @@ export function LayoutViewport({
   documentContext,
   wallEditing,
   doorEditing,
+  regionEditing,
+  selectedRegion,
+  regionTool = 'paint',
+  onExitRegionTool,
   onExitDoorTool,
   intentEpoch,
   onExitWallTool,
@@ -149,6 +162,8 @@ export function LayoutViewport({
   doorEditingRef.current = doorEditing;
   const doorModeRef = useRef({ tool, onExitDoorTool });
   doorModeRef.current = { tool, onExitDoorTool };
+  const regionModeRef = useRef({ tool, onExitRegionTool });
+  regionModeRef.current = { tool, onExitRegionTool };
   const labelEditingRef = useRef(labelEditing);
   labelEditingRef.current = labelEditing;
 
@@ -199,6 +214,8 @@ export function LayoutViewport({
         labelEditingRef.current?.onCancel();
         if (doorModeRef.current.tool === 'door')
           doorModeRef.current.onExitDoorTool?.();
+        if (regionModeRef.current.tool === 'region')
+          regionModeRef.current.onExitRegionTool?.();
         if (wallModeRef.current.tool === 'wall')
           wallModeRef.current.onExitWallTool?.();
       }
@@ -223,15 +240,23 @@ export function LayoutViewport({
     wallEditing?.assetRef,
     wallEditing?.snapEnabled,
     hasWallEditing,
+    regionTool,
     labelEditing?.active,
     abandon,
   ]);
 
   useLayoutEffect(() => {
+    // Linked projection changes caused by selecting a label must not cancel
+    // that initiating label drag. Only a region gesture owns this target fence.
+    const region = gestureRef.current?.region;
+    if (region && region.id !== selectedRegion?.id) abandon();
+  }, [selectedRegion?.id, abandon]);
+
+  useLayoutEffect(() => {
     // Choosing an existing label cancels arming, not the grab that selected it.
     // Changing/canceling an armed placement still retires its live gesture.
     if (gestureRef.current?.label?.id === null) abandon();
-  }, [labelEditing?.placementText, abandon]);
+  }, [labelEditing?.placementText, labelEditing?.placementKind, abandon]);
 
   useLayoutEffect(() => {
     const gesture = gestureRef.current?.door;
@@ -473,6 +498,7 @@ export function LayoutViewport({
       labelEditing?.onCancel();
       if (tool === 'wall') onExitWallTool?.();
       if (tool === 'door') onExitDoorTool?.();
+      if (tool === 'region') onExitRegionTool?.();
       return;
     }
     if (
@@ -556,7 +582,7 @@ export function LayoutViewport({
         ? endpoint
         : undefined;
     const labelId =
-      tool !== 'wall' && !endpointHit
+      tool !== 'wall' && tool !== 'region' && !endpointHit
         ? target?.closest('[data-label-id]')?.getAttribute('data-label-id')
         : null;
     const label =
@@ -565,7 +591,10 @@ export function LayoutViewport({
         : undefined;
     const labelMode =
       tool === 'label' ||
-      (tool !== 'select' && tool !== 'wall' && labelEditing?.active);
+      (tool !== 'select' &&
+        tool !== 'wall' &&
+        tool !== 'region' &&
+        labelEditing?.active);
     const placing =
       event.button === 0 && labelMode && !label && labelEditing?.placementText;
     const source =
@@ -573,6 +602,7 @@ export function LayoutViewport({
         ? draft.room.walls?.find((wall) => wall.id === wallId)
         : undefined;
     if (event.button === 0) {
+      if (tool === 'region' && (!regionEditing || !selectedRegion)) return;
       if (tool === 'wall' && (!wallEditing || !wallEditing.assetRef)) {
         wallEditing?.reportRefusal('Choose a wall appearance before drawing.');
         return;
@@ -599,13 +629,31 @@ export function LayoutViewport({
             ? 'wall'
             : label || placing
               ? 'label'
-              : (tool as LayoutFloorTool),
+              : tool === 'region'
+                ? regionTool
+                : (tool as LayoutFloorTool),
       anchor,
       client: pointerPoint(event),
       moved: false,
       commitFloor: onCommit,
       cells: new Map(),
     };
+    if (
+      event.button === 0 &&
+      tool === 'region' &&
+      regionEditing &&
+      selectedRegion
+    ) {
+      gesture.region = {
+        id: selectedRegion.id,
+        initial:
+          selectedRegion.boundary.kind === 'explicit'
+            ? selectedRegion.boundary.cells
+            : [],
+        mode: regionTool,
+        commit: regionEditing.setExplicitRegionArea,
+      };
+    }
     if (event.button === 0 && wallEditing && (tool === 'wall' || source)) {
       const editing = wallEditing;
       if (source) {
@@ -714,6 +762,14 @@ export function LayoutViewport({
       ) {
         gesture.label.commit(location);
       }
+    } else if (gesture.region && cells.length > 0) {
+      const edit = gesture.region;
+      const next = new Map(edit.initial.map((cell) => [cellKey(cell), cell]));
+      for (const cell of cells) {
+        if (edit.mode === 'erase') next.delete(cellKey(cell));
+        else next.set(cellKey(cell), cell);
+      }
+      edit.commit(edit.id, [...next.values()]);
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
       gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
@@ -762,6 +818,7 @@ export function LayoutViewport({
         labelEditing?.onCancel();
         if (tool === 'wall') onExitWallTool?.();
         if (tool === 'door') onExitDoorTool?.();
+        if (tool === 'region') onExitRegionTool?.();
       }}
       onKeyDown={(event): void => {
         if (event.target !== event.currentTarget) return;
@@ -778,6 +835,7 @@ export function LayoutViewport({
           event.key === 'Enter' &&
           tool !== 'wall' &&
           tool !== 'select' &&
+          tool !== 'region' &&
           labelEditing?.placementText
         ) {
           event.preventDefault();
@@ -789,13 +847,15 @@ export function LayoutViewport({
     >
       <title>Layout floor surface</title>
       <desc>
-        {tool === 'wall'
-          ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
-          : tool === 'select'
-            ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
-            : tool === 'label' || labelEditing?.active
-              ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
-              : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+        {tool === 'region'
+          ? `Drag to ${regionTool} region membership only; floor is unchanged.`
+          : tool === 'wall'
+            ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
+            : tool === 'select'
+              ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
+              : tool === 'label' || labelEditing?.active
+                ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
+                : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -806,6 +866,13 @@ export function LayoutViewport({
         >
           <LayoutGrid cells={workspace} committed={committed} />
         </g>
+      )}
+      {transform && regionEditing && (
+        <RegionBoundaryOverlay
+          resolutions={regionEditing.resolutions}
+          selectedId={selectedRegion?.id}
+          transform={worldTransform}
+        />
       )}
       {transform && (
         <g
@@ -819,9 +886,17 @@ export function LayoutViewport({
               key={cellKey(cell)}
               data-preview-cell={cellKey(cell)}
               points={polygonPoints(cell)}
-              fill={tool === 'erase' ? '#d47867' : '#67d8c2'}
+              fill={
+                (tool === 'region' ? regionTool : tool) === 'erase'
+                  ? '#d47867'
+                  : '#67d8c2'
+              }
               fillOpacity={0.6}
-              stroke={tool === 'erase' ? '#ffb29f' : '#a7ffeb'}
+              stroke={
+                (tool === 'region' ? regionTool : tool) === 'erase'
+                  ? '#ffb29f'
+                  : '#a7ffeb'
+              }
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
               strokeDasharray="5 3"
@@ -860,6 +935,8 @@ export function LayoutViewport({
           transform={transform}
           selectedId={labelEditing.selectedId}
           preview={labelPreview}
+          regions={draft.scene.authoringRegions}
+          resolutions={regionEditing?.resolutions}
           onSelect={(id): void => {
             labelEditing.onSelect(id);
             wallEditing?.select(null);

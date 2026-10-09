@@ -3048,3 +3048,311 @@ describe('Arrange joined presentation and canonical document receipts', () => {
     expectCodecs(storage.document());
   });
 });
+
+describe('Layout room/explicit area controls joined to the real owner', () => {
+  function regionSeed(open = false): RoomDraftDocument {
+    const document = seed();
+    const north = document.draft.room.walls![0];
+    north.line = { start: { x: 0, z: 0 }, end: { x: 8, z: 0 } };
+    const wall = (
+      id: string,
+      start: WorldPoint,
+      end: WorldPoint
+    ): StructuralWall => ({
+      ...structuredClone(north),
+      id,
+      label: id,
+      line: { start, end },
+      openings: [],
+    });
+    document.draft.room.walls = [
+      north,
+      wall('east', { x: 8, z: 0 }, { x: 8, z: 4 }),
+      wall('south', { x: 8, z: 4 }, { x: 0, z: 4 }),
+      ...(!open
+        ? [
+            wall('west', { x: 0, z: 4 }, { x: 0, z: 0 }),
+            wall('divider', { x: 4, z: 0 }, { x: 4, z: 4 }),
+          ]
+        : []),
+    ];
+    return document;
+  }
+  function place(name: string, x: number, z: number, kind = 'room'): void {
+    fireEvent.click(button('Label'));
+    fireEvent.change(screen.getByLabelText('Label kind'), {
+      target: { value: kind },
+    });
+    fireEvent.change(screen.getByLabelText('Label name'), {
+      target: { value: name },
+    });
+    fireEvent.click(button('Place label on map'));
+    fireEvent.change(screen.getByLabelText('New label world X'), {
+      target: { value: String(x) },
+    });
+    fireEvent.change(screen.getByLabelText('New label world Z'), {
+      target: { value: String(z) },
+    });
+    fireEvent.click(button('Place label at coordinates'));
+  }
+  function selectLabel(name: string): void {
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: `Select map label ${name}` }),
+      { key: 'Enter' }
+    );
+  }
+  function areaCount(): number {
+    return surface().querySelectorAll('[data-region-id]').length;
+  }
+  const change = (name: string, value: string): void => {
+    fireEvent.change(screen.getByLabelText(name), { target: { value } });
+  };
+
+  it('creates two adjacent rooms; divider x4→5 follows without witness writes, break/repair and label crossing have honest status', async () => {
+    const original = regionSeed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    place('Left room', 1, 2);
+    place('Right room', 7, 2);
+    const pair = structuredClone(
+      storage.document().draft.scene.authoringRegions!
+    );
+    expect(pair).toHaveLength(2);
+    expect(areaCount()).toBe(2);
+    expect(storage.document().draft.room).toEqual(original.draft.room);
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Select'));
+    const divider = surface().querySelector('[data-wall-id="divider"]')!;
+    fireEvent.pointerDown(divider, {
+      ...at({ q: 2, r: 1 }),
+      button: 0,
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 2, r: 1 }),
+      button: 0,
+      pointerId: 7,
+    });
+    change('Wall midpoint X', '5');
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
+    expect(areaCount()).toBe(2);
+    expect(
+      surface()
+        .querySelector(`[data-region-id="${pair[0].id}"] polygon`)
+        ?.getAttribute('points')
+    ).toMatch(/5,0/);
+    // Removing the logical divider cannot adopt the larger outer enclosure.
+    fireEvent.click(button('Remove wall'));
+    expect(areaCount()).toBe(0);
+    selectLabel('Left room');
+    expect(
+      screen.getByText(/Automatic · Unresolved/, { selector: 'p' })
+    ).toBeTruthy();
+    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
+    fireEvent.click(button('Undo'));
+    expect(areaCount()).toBe(2);
+    selectLabel('Left room');
+    const beforeMove = storage.roomWrites();
+    change('Label world X', '7');
+    fireEvent.keyDown(screen.getByLabelText('Label world X'), { key: 'Enter' });
+    expect(storage.roomWrites()).toBe(beforeMove + 1);
+    expect(areaCount()).toBe(1);
+    expect(
+      screen.getByText(/outside its accepted enclosure/, { selector: 'p' })
+    ).toBeTruthy();
+    expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
+    fireEvent.click(button('Use enclosing walls'));
+    expect(areaCount()).toBe(0);
+    expect(
+      screen.getByText(/Multiple room labels claim/, { selector: 'p' })
+    ).toBeTruthy();
+    fireEvent.click(button('Undo'));
+    fireEvent.click(button('Undo'));
+    expect(areaCount()).toBe(2);
+    const final = storage.document();
+    expect(final.scope).toEqual(original.scope);
+    expect(final.draft.room.doorBindings).toEqual(
+      original.draft.room.doorBindings
+    );
+    expect(final.draft.scene.items).toEqual(original.draft.scene.items);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(final);
+    expect(areaCount()).toBe(2);
+    // Reload actual scene3 owner output with only the attached door's initial
+    // state changed. Studio offers no new state-editing control in this slice.
+    cleanup();
+    const opened = structuredClone(final);
+    const attached = opened.draft.room.walls![0].openings.find(
+      (opening) => opening.door
+    )!;
+    opened.draft.room.doorBindings![attached.door!.id] = {};
+    const openStorage = new MemoryStorage(opened);
+    mount(openStorage);
+    await settled();
+    expect(areaCount()).toBe(2);
+    expect(openStorage.document().draft.scene.authoringRegions).toEqual(pair);
+  });
+
+  it('paints forest beside meadow without floor/prop/policy changes, cancels pending area edits, preserves selection through views and shares history', async () => {
+    const original = seed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    place('Forest', 0, 0);
+    selectLabel('Forest');
+    expect(
+      screen.getByText(/No enclosure accepted/, { selector: 'p' })
+    ).toBeTruthy();
+    fireEvent.click(button('Define explicit area'));
+    const writes = storage.roomWrites();
+    fireEvent.pointerDown(surface(), { ...at(zero), button: 0, pointerId: 7 });
+    fireEvent.pointerMove(surface(), { ...at(one), pointerId: 7 });
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.pointerUp(surface(), { ...at(one), button: 0, pointerId: 7 });
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Define explicit area'));
+    gesture(zero, one);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const forest = storage.document().draft.scene.authoringRegions![0];
+    expect(forest.boundary).toEqual({ kind: 'explicit', cells: [zero, one] });
+    expect(
+      screen.getByText('Explicit · Resolved', { selector: 'p' })
+    ).toBeTruthy();
+    gesture(zero, one);
+    expect(storage.roomWrites()).toBe(writes + 1); // accepted no-op
+    fireEvent.click(button('Rectangle region'));
+    gesture(one, two);
+    expect(
+      storage.document().draft.scene.authoringRegions![0].boundary
+    ).toEqual({ kind: 'explicit', cells: [zero, one, two] });
+    fireEvent.click(button('Erase region'));
+    gesture(two);
+    expect(
+      storage.document().draft.scene.authoringRegions![0].boundary
+    ).toEqual(forest.boundary);
+    const beforeView = storage.document();
+    fireEvent.pointerDown(surface(), { ...at(two), button: 0, pointerId: 7 });
+    switchTo('3D');
+    switchTo('Layout');
+    fireEvent.pointerUp(surface(), { ...at(two), button: 0, pointerId: 7 });
+    expect(storage.document()).toEqual(beforeView);
+    expect(button('Select').getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen
+        .getByRole('button', { name: 'Select map label Forest' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    place('Meadow', 4, 0);
+    selectLabel('Meadow');
+    fireEvent.click(button('Define explicit area'));
+    gesture({ q: 3, r: 0 });
+    expect(areaCount()).toBe(2);
+    const distinctRegions = storage.document();
+    gesture(zero); // explicit overlap is visible, not an implicit membership transfer
+    expect(areaCount()).toBe(0);
+    expect(
+      screen.getByText(/Regions overlap.*no region takes priority/, {
+        selector: 'p',
+      })
+    ).toBeTruthy();
+    expect(storage.document().draft.scene.authoringRegions![0]).toEqual(
+      distinctRegions.draft.scene.authoringRegions![0]
+    );
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(distinctRegions);
+    expect(areaCount()).toBe(2);
+    const afterRegions = storage.document();
+    expect(afterRegions.draft.room).toEqual(original.draft.room);
+    expect(afterRegions.scope).toEqual(original.scope);
+    expect(afterRegions.draft.scene.items).toEqual(original.draft.scene.items);
+    expect(afterRegions.draft.scene.groups).toEqual(
+      original.draft.scene.groups
+    );
+    fireEvent.click(button('Done area editing'));
+    place('Plain note', -5, 0, 'note');
+    selectLabel('Plain note');
+    expect(
+      screen.queryByRole('button', { name: 'Define explicit area' })
+    ).toBeNull();
+    expect(button('Delete label')).toBeTruthy();
+    fireEvent.click(button('Paint'));
+    gesture({ q: 4, r: 0 });
+    const withFloor = storage.document();
+    fireEvent.click(button('Undo'));
+    expect(storage.document().draft.room).toEqual(original.draft.room);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(withFloor);
+    selectLabel('Meadow');
+    fireEvent.click(button('Delete region and label'));
+    expect(storage.document().draft.scene.authoringRegions).toHaveLength(1);
+    expect(
+      storage
+        .document()
+        .draft.scene.mapLabels!.some((label) => label.text === 'Meadow')
+    ).toBe(false);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(withFloor);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(withFloor);
+    expect(areaCount()).toBe(2);
+  });
+
+  it('keeps initial unbound author intent after wall closure until the explicit bind control, then binding is a no-op', async () => {
+    const original = regionSeed(true);
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    place('Initially open', 2, 2);
+    selectLabel('Initially open');
+    const unbound = storage.document().draft.scene.authoringRegions![0];
+    expect(unbound.boundary).toEqual({ kind: 'automatic' });
+    // Real wall gesture on the existing owner facade; appearance choice is a UI action.
+    fireEvent.click(button('Wall'));
+    const choices = screen.getByRole('group', {
+      name: 'Wall appearance choices',
+    });
+    const choice = choices.querySelector(
+      `[data-wall-appearance-ref="${original.draft.room.walls![0].appearance.assetRef}"]`
+    )!;
+    expect(choice).not.toBeNull();
+    fireEvent.click(choice);
+    const point = (x: number, z: number) => {
+      const p = worldToClient(
+        { x, z },
+        createLayoutTransform(bounds, { center: { x: 0, z: 0 }, zoom: 1 }, 12)
+      )!;
+      return { clientX: p.x, clientY: p.y, button: 0, pointerId: 7 };
+    };
+    fireEvent.pointerDown(surface(), point(0, 4));
+    fireEvent.pointerMove(surface(), point(0, 0));
+    fireEvent.pointerUp(surface(), point(0, 0));
+    expect(storage.document().draft.room.walls).toHaveLength(4);
+    expect(storage.document().draft.scene.authoringRegions![0]).toEqual(
+      unbound
+    );
+    expect(areaCount()).toBe(0);
+    fireEvent.click(button('Select'));
+    selectLabel('Initially open');
+    expect(
+      screen.getByText(/No enclosure accepted/, { selector: 'p' })
+    ).toBeTruthy();
+    fireEvent.click(button('Use enclosing walls'));
+    expect(areaCount()).toBe(1);
+    expect(
+      screen.getByText('Automatic · Resolved', { selector: 'p' })
+    ).toBeTruthy();
+    const bound = storage.document();
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Use enclosing walls'));
+    expect(storage.document()).toEqual(bound);
+    expect(storage.roomWrites()).toBe(writes);
+  });
+});

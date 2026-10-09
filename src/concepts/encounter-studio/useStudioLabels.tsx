@@ -23,6 +23,8 @@ export function useStudioLabels(
   const [visible, setVisible] = useState(false);
   const selectedId = session.mapLabelSelection.selectedId;
   const setSelectedId = session.mapLabelSelection.select;
+  const [kind, setKind] = useState<'note' | 'room'>('note');
+  const [placementKind, setPlacementKind] = useState<'note' | 'room'>('note');
   const [newText, setNewText] = useState('');
   const [placementText, setPlacementText] = useState<string | null>(null);
   const [x, setX] = useState('0');
@@ -60,7 +62,11 @@ export function useStudioLabels(
     return accepted;
   };
   const create = (text: string, location: WorldPoint): boolean =>
-    result(session.createMapLabel(text, location));
+    result(
+      placementKind === 'room'
+        ? session.regionEditing.createRoomLabel(text, location)
+        : session.createMapLabel(text, location)
+    );
   const move = (id: string, location: WorldPoint): boolean =>
     result(session.moveMapLabel(id, location));
   const coordinates = (): WorldPoint | null => {
@@ -90,6 +96,7 @@ export function useStudioLabels(
     editing: {
       active,
       placementText,
+      placementKind,
       selectedId,
       onSelect: select,
       onCreate: create,
@@ -140,10 +147,25 @@ export function useStudioLabels(
                 onActivate();
               }
               setSelectedId(null);
+              setPlacementKind(kind);
               setPlacementText(newText);
               setError(null);
             }}
           >
+            <label>
+              Label kind
+              <select
+                aria-label="Label kind"
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value as 'note' | 'room');
+                  setPlacementText(null);
+                }}
+              >
+                <option value="room">Room · linked boundary</option>
+                <option value="note">Note · text only</option>
+              </select>
+            </label>
             <label>
               Label name
               <input
@@ -207,8 +229,10 @@ export function useStudioLabels(
           {placementText && (
             <>
               <p className="es-help">
-                Placing “{placementText}”: click inside the map, or focus the
-                map and press Enter to place at the view center. Escape cancels.
+                Placing “{placementText}” (
+                {placementKind === 'room' ? 'Room' : 'Note'}): click inside the
+                map, or focus the map and press Enter to place at the view
+                center. Escape cancels.
               </p>
               <button type="button" onClick={cancel}>
                 Cancel placement

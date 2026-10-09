@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import type { RegionResolution } from '../world-building/authoringRegions';
+import type {
+  AuthoringRegion,
+  RegionResolution,
+} from '../world-building/authoringRegions';
 import type {
   RoomDraft,
   RoomDraftDocument,
@@ -54,7 +57,13 @@ export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
-export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label' | 'door';
+export type LayoutTool =
+  | LayoutFloorTool
+  | 'select'
+  | 'wall'
+  | 'label'
+  | 'door'
+  | 'region';
 
 export type StudioWallThumbnail =
   | { status: 'loading' }
@@ -97,6 +106,8 @@ export interface LayoutFrame {
 export interface LayoutLabelEditing {
   active: boolean;
   placementText: string | null;
+  /** Explicit creation choice; absent preserves legacy Note consumers. */
+  placementKind?: 'note' | 'room';
   selectedId: string | null;
   onSelect(id: string | null): void;
   onCreate(text: string, location: WorldPoint): boolean;
@@ -114,6 +125,11 @@ export interface LayoutViewportProps {
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
   doorEditing?: StudioDoorEditing;
+  regionEditing?: StudioRegionEditing;
+  /** Derived from the existing linked-label selection, never a second store. */
+  selectedRegion?: Readonly<AuthoringRegion>;
+  regionTool?: LayoutFloorTool;
+  onExitRegionTool?(): void;
   onExitDoorTool?(): void;
   /** Owner generation: option/tool/view cancellation fences late releases. */
   intentEpoch?: number;

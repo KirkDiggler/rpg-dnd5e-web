@@ -616,3 +616,36 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(joined.calls).toHaveLength(0);
   });
 });
+
+describe('linked room label Arrange affordances', () => {
+  it('projects mode/reason on the existing label selection and removes only the linked pair, atomically', () => {
+    const joined = owner();
+    act(() =>
+      expect(
+        joined.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
+      ).toBe(true)
+    );
+    const before = joined.session.document;
+    const region = before.draft.scene.authoringRegions![0];
+    act(() => joined.session.mapLabelSelection.select(region.labelId));
+    expect(
+      screen.getByText(/Automatic · Unresolved.*No enclosure accepted/)
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Delete label' })).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete region and label' })
+    );
+    expect(joined.calls.at(-1)).toEqual({
+      kind: 'region-remove',
+      target: { kind: 'label', id: region.labelId },
+      regionId: region.id,
+    });
+    expect(
+      joined.session.document.draft.scene.authoringRegions
+    ).toBeUndefined();
+    expect(joined.session.document.draft.room).toEqual(before.draft.room);
+    expect(joined.session.document.scope).toEqual(before.scope);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+  });
+});

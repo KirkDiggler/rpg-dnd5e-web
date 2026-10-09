@@ -370,3 +370,22 @@
 .es-arrange [role='alert'] {
   color: #ffe2a6;
 }
+
+/* Region intent stays in the existing compact context band, not a new dock. */
+.es-region-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 24rem;
+}
+.es-region-controls h2,
+.es-region-controls p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.es-region-controls [role='status'] {
+  padding: 0.35rem;
+  border-left: 2px solid var(--wb-accent);
+  background: var(--wb-raised);
+}

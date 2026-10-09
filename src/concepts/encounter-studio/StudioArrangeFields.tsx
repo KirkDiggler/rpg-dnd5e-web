@@ -1,4 +1,6 @@
 import type {
+  AuthoringRegion,
+  RegionResolution,
   StructuralWall,
   StudioArrangeIntent,
   StudioArrangeSelection,
@@ -272,4 +274,37 @@ export function arrangeIntent(
         location: cell(selection.cell),
       };
   }
+}
+
+const reasons: Record<
+  Extract<RegionResolution, { status: 'unresolved' }>['reason'],
+  string
+> = {
+  unbound:
+    'No enclosure accepted. Use enclosing walls or define an explicit area.',
+  open: 'The enclosure is open. Repair the walls or define an explicit area.',
+  'seed-on-boundary':
+    'The label is on a boundary. Move it inside the intended area.',
+  'outside-bound-enclosure':
+    'The label is outside its accepted enclosure. Move it back or explicitly rebind.',
+  'boundary-changed':
+    'The accepted boundary changed. Repair it or explicitly rebind.',
+  'unsupported-geometry':
+    'This wall geometry is unsupported. Define an explicit area.',
+  'uncertain-geometry':
+    'The geometry cannot be certified. Define an explicit area.',
+  'duplicate-room-label':
+    'Multiple room labels claim this enclosure. Move or delete a linked pair.',
+  overlap: 'Regions overlap. Edit their definitions; no region takes priority.',
+  'empty-explicit': 'The explicit area is empty. Paint or select cells.',
+};
+
+export function regionStatus(
+  region: Readonly<AuthoringRegion>,
+  resolution?: RegionResolution
+): string {
+  const mode = region.boundary.kind === 'automatic' ? 'Automatic' : 'Explicit';
+  return resolution?.status === 'resolved'
+    ? `${mode} · Resolved`
+    : `${mode} · Unresolved · ${resolution?.status === 'unresolved' ? reasons[resolution.reason] : 'Boundary unavailable.'}`;
 }

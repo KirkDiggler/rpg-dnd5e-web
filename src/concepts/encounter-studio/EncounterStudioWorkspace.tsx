@@ -17,6 +17,7 @@ import { StudioDoorControls } from './StudioDoorControls';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
+  LayoutFloorTool,
   LayoutFrame,
   LayoutTool,
 } from './studioSession';
@@ -55,6 +56,9 @@ function StudioSurface({
   onThumbnailDemandChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
+  const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
+  const selectedRegion =
+    session.arrange?.kind === 'label' ? session.arrange.region : undefined;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sizeVisible, setSizeVisible] = useState(false);
   const [wallVisible, setWallVisible] = useState(false);
@@ -112,7 +116,8 @@ function StudioSurface({
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
     if (session.doorEditing.active) session.doorEditing.setActive(false);
-    if (layoutTool === 'door') onLayoutToolChange('select');
+    if (layoutTool === 'door' || layoutTool === 'region')
+      onLayoutToolChange('select');
     session.cancelTransients();
     setSizeVisible(false);
     setWallVisible(false);
@@ -378,9 +383,68 @@ function StudioSurface({
             session={session}
             expanded={arrangeVisible && !session.doorEditing.active}
             onAppearanceDemandChange={setAppearanceDemand}
+            onDefineRegion={
+              view === 'layout'
+                ? () => {
+                    labels.editing.onCancel();
+                    changeTool('region');
+                    setRegionTool('paint');
+                  }
+                : undefined
+            }
           />
           <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
           {labels.controls}
+          {view === 'layout' && layoutTool === 'region' && selectedRegion && (
+            <div
+              className="es-context-panel es-region-controls"
+              aria-label="Explicit region area controls"
+            >
+              <h2>
+                Explicit area ·{' '}
+                {session.arrange?.kind === 'label'
+                  ? session.arrange.label.text
+                  : ''}
+              </h2>
+              <p className="es-help">
+                Only region membership changes. Floor, walls and props stay
+                untouched. Drag, then release to apply once. Escape cancels.
+              </p>
+              <div className="es-buttons">
+                {(['paint', 'erase', 'rectangle'] as const).map((mode) => (
+                  <button
+                    type="button"
+                    key={mode}
+                    aria-pressed={regionTool === mode}
+                    onClick={() => {
+                      session.cancelTransients();
+                      setRegionTool(mode);
+                    }}
+                  >
+                    {mode === 'paint'
+                      ? 'Paint region'
+                      : mode === 'erase'
+                        ? 'Erase region'
+                        : 'Rectangle region'}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    session.regionEditing.setExplicitRegionArea(
+                      selectedRegion.id,
+                      []
+                    );
+                  }}
+                >
+                  Clear explicit area
+                </button>
+                <button type="button" onClick={() => changeTool('select')}>
+                  Done area editing
+                </button>
+              </div>
+            </div>
+          )}
           {view === 'layout' && wallVisible && layoutTool === 'wall' && (
             <StudioWallControls
               session={session}
@@ -403,6 +467,10 @@ function StudioSurface({
             documentContext={session.document}
             wallEditing={session.wallEditing}
             doorEditing={session.doorEditing}
+            regionEditing={session.regionEditing}
+            selectedRegion={selectedRegion}
+            regionTool={regionTool}
+            onExitRegionTool={() => changeTool('select')}
             onExitDoorTool={exitDoor}
             intentEpoch={session.intentEpoch}
             onExitWallTool={exitWall}

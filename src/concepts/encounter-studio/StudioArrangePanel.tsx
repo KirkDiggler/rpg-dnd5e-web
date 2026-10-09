@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   arrangeFields,
   arrangeIntent,
+  regionStatus,
   type ArrangeDraft,
   type ArrangeField,
   type ArrangeFieldKey,
@@ -83,11 +84,13 @@ function SelectedArrange({
   selection,
   expanded,
   onAppearanceDemandChange,
+  onDefineRegion,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
   expanded: boolean;
   onAppearanceDemandChange(visible: boolean): void;
+  onDefineRegion?(): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +142,37 @@ function SelectedArrange({
       )}
       {selection.kind === 'actor' && (
         <p className="es-help">{selection.monster.ref}</p>
+      )}
+      {selection.kind === 'label' && selection.region && (
+        <div className="es-region-controls" aria-label="Room boundary">
+          <p role="status">
+            {regionStatus(selection.region, selection.resolution)}
+          </p>
+          {onDefineRegion && (
+            <div className="es-buttons">
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !session.commitArrange({
+                      kind: 'region-bind',
+                      target: selection.target,
+                      regionId: selection.region!.id,
+                    })
+                  )
+                    setError(
+                      'Binding refused. No supported enclosure at this label; define an explicit area or repair the walls.'
+                    );
+                }}
+              >
+                Use enclosing walls
+              </button>
+              <button type="button" onClick={onDefineRegion}>
+                Define explicit area
+              </button>
+            </div>
+          )}
+        </div>
       )}
       <form
         aria-label="Arrange selected noun"
@@ -247,10 +281,16 @@ function SelectedArrange({
                           kind: 'door-remove',
                           target: selection.target,
                         })
-                      : session.commitArrange({
-                          kind: 'label-remove',
-                          target: selection.target,
-                        });
+                      : selection.region
+                        ? session.commitArrange({
+                            kind: 'region-remove',
+                            target: selection.target,
+                            regionId: selection.region.id,
+                          })
+                        : session.commitArrange({
+                            kind: 'label-remove',
+                            target: selection.target,
+                          });
                 if (!accepted)
                   setError('Removal refused. Review the document notice.');
               }}
@@ -259,7 +299,9 @@ function SelectedArrange({
                 ? 'Remove wall'
                 : selection.kind === 'door'
                   ? 'Delete doorway'
-                  : 'Delete label'}
+                  : selection.region
+                    ? 'Delete region and label'
+                    : 'Delete label'}
             </button>
           )}
         </div>
@@ -278,10 +320,12 @@ export function StudioArrangePanel({
   session,
   expanded,
   onAppearanceDemandChange,
+  onDefineRegion,
 }: {
   session: EncounterStudioSession;
   expanded: boolean;
   onAppearanceDemandChange(visible: boolean): void;
+  onDefineRegion?(): void;
 }): React.JSX.Element {
   return session.arrange ? (
     <SelectedArrange
@@ -290,6 +334,7 @@ export function StudioArrangePanel({
       selection={session.arrange}
       expanded={expanded}
       onAppearanceDemandChange={onAppearanceDemandChange}
+      onDefineRegion={onDefineRegion}
     />
   ) : (
     <section

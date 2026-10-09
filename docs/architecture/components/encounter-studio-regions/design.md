@@ -16,8 +16,8 @@ flowchart LR
 
 Authoring areas are scene metadata, not `room.implicitRegionId`, floor,
 concealment, collision or engine visibility. The geometry, intent and Layout
-components are planned consumers of the definition contract; the source map in
-[the walkthrough](README.md) distinguishes them from the schema owner.
+components consume the definition contract; the source map in
+[the walkthrough](README.md) names their separate responsibilities.
 
 ## Law
 

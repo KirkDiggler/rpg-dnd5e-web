@@ -1743,3 +1743,193 @@ describe('controlled Layout wall gestures', () => {
     }
   );
 });
+
+describe('explicit region gesture routing', () => {
+  const region = {
+    id: 'forest',
+    labelId: 'forest-label',
+    boundary: { kind: 'explicit' as const, cells: [{ q: 0, r: 0 }] },
+  };
+  function regionProps(
+    overrides: Partial<LayoutViewportProps> = {}
+  ): LayoutViewportProps {
+    return props({
+      tool: 'region',
+      selectedRegion: region,
+      regionTool: 'paint',
+      regionEditing: {
+        resolutions: [],
+        createRoomLabel: vi.fn(),
+        useEnclosingWalls: vi.fn(),
+        removeRegionAndLabel: vi.fn(),
+        setExplicitRegionArea: vi.fn(() => true),
+      },
+      ...overrides,
+    });
+  }
+  it('stages membership only and releases one whole replacement; region hits never move labels or touch floor', () => {
+    const input = regionProps();
+    const create = vi.fn();
+    const move = vi.fn();
+    render(
+      <LayoutViewport
+        {...input}
+        labelEditing={{
+          active: false,
+          selectedId: 'forest-label',
+          placementText: null,
+          onSelect: vi.fn(),
+          onCreate: create,
+          onMove: move,
+          onCancel: vi.fn(),
+        }}
+      />
+    );
+    fireEvent.pointerDown(surface(), {
+      ...at({ q: 1, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(surface(), { ...at({ q: 2, r: 0 }), pointerId: 1 });
+    expect(input.regionEditing!.setExplicitRegionArea).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 2, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    expect(
+      input.regionEditing!.setExplicitRegionArea
+    ).toHaveBeenCalledExactlyOnceWith('forest', [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 2, r: 0 },
+    ]);
+    expect(input.onCommit).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+  it.each([
+    'escape',
+    'capture',
+    'document',
+    'target',
+    'epoch',
+    'mode',
+  ] as const)('retires %s without region or floor writes', (retirement) => {
+    const input = regionProps();
+    const { rerender } = render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), {
+      ...at({ q: 1, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    if (retirement === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+    if (retirement === 'capture')
+      fireEvent.lostPointerCapture(surface(), { pointerId: 1 });
+    if (retirement === 'document')
+      rerender(<LayoutViewport {...input} draft={{ ...input.draft }} />);
+    if (retirement === 'target')
+      rerender(<LayoutViewport {...input} selectedRegion={undefined} />);
+    if (retirement === 'epoch')
+      rerender(<LayoutViewport {...input} intentEpoch={2} />);
+    if (retirement === 'mode')
+      rerender(<LayoutViewport {...input} regionTool="erase" />);
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 2, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    expect(input.regionEditing!.setExplicitRegionArea).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('erases only selected membership; rectangle sampling never falls through to floor', () => {
+    const input = regionProps({ regionTool: 'erase' });
+    const { rerender } = render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), {
+      ...at({ q: 0, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 0, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    expect(input.regionEditing!.setExplicitRegionArea).toHaveBeenLastCalledWith(
+      'forest',
+      []
+    );
+    rerender(<LayoutViewport {...input} regionTool="rectangle" />);
+    fireEvent.pointerDown(surface(), {
+      ...at({ q: 0, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(surface(), { ...at({ q: 1, r: 0 }), pointerId: 1 });
+    fireEvent.pointerUp(surface(), {
+      ...at({ q: 1, r: 0 }),
+      button: 0,
+      pointerId: 1,
+    });
+    expect(input.regionEditing!.setExplicitRegionArea).toHaveBeenLastCalledWith(
+      'forest',
+      [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ]
+    );
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+});
+
+it('selecting a linked room label preserves the initiating drag when its region projection appears', () => {
+  const draft = createPopulatedStudioDocument().draft;
+  draft.scene.mapLabels = [
+    { id: 'label', text: 'Room', location: { x: 0, z: 0 } },
+  ];
+  const move = vi.fn<(id: string, location: WorldPoint) => boolean>(() => true);
+  function JoinedLabel(): React.JSX.Element {
+    const [selected, select] = useState<string | null>(null);
+    return (
+      <LayoutViewport
+        {...props({ draft, tool: 'select' })}
+        selectedRegion={
+          selected
+            ? {
+                id: 'region',
+                labelId: 'label',
+                boundary: { kind: 'automatic' },
+              }
+            : undefined
+        }
+        labelEditing={{
+          active: false,
+          selectedId: selected,
+          placementText: null,
+          onSelect: select,
+          onCreate: vi.fn(),
+          onMove: move,
+          onCancel: vi.fn(),
+        }}
+      />
+    );
+  }
+  render(<JoinedLabel />);
+  fireEvent.pointerDown(
+    screen.getByRole('button', { name: 'Select map label Room' }),
+    { ...position({ x: 0, z: 0 }), button: 0, pointerId: 1 }
+  );
+  fireEvent.pointerMove(surface(), {
+    ...position({ x: 1, z: 0 }),
+    pointerId: 1,
+  });
+  fireEvent.pointerUp(surface(), {
+    ...position({ x: 1, z: 0 }),
+    button: 0,
+    pointerId: 1,
+  });
+  expect(move).toHaveBeenCalledOnce();
+  expect(move.mock.calls[0][0]).toBe('label');
+  expect(move.mock.calls[0][1].x).toBeCloseTo(1, 12);
+});

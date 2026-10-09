@@ -6,9 +6,8 @@
 [design law](design.md) describe a scene-owned area definition linked to a room
 label. It reuses authored wall sources, map-label anchors, workspace cells and
 the canonical Studio document/history. It introduces no second gameplay region,
-floor owner, visibility authority or saved derived polygon. This walkthrough
-covers the boundary contract; geometry, intents and Layout components below are
-explicitly planned consumers, not implied available producers.
+floor owner, visibility authority or saved derived polygon. This walkthrough covers the definition, geometry, owner and Layout seams.
+Provider carriage and gameplay behavior are separate contracts.
 
 ## Component shape
 
@@ -17,15 +16,15 @@ flowchart LR
   subgraph WB[Web world-building]
     T[types.ts WorldScene and MapLabel] --> A[authoringRegions.ts definitions]
     C[serialization.ts / roomDraft.ts codec] --> O[WorldBuildingConcept document owner]
-    A --> G[regionBoundaryGeometry.ts planned pure projection]
+    A --> G[regionBoundaryGeometry.ts pure projection]
     W[room.walls sources] --> G
     O --> G
-    E[regionEdits.ts planned immutable intents] -->|RoomDraft| O
+    E[regionEdits.ts immutable intents] -->|RoomDraft| O
     O -->|RoomDraftDocument| C
   end
   subgraph Studio[Web encounter-studio]
-    G -->|RegionResolution| V[RegionBoundaryOverlay planned Layout projection]
-    O -->|studioSession planned linked-label projection| U[LayoutViewport / StudioArrangePanel planned controls]
+    G -->|RegionResolution| V[RegionBoundaryOverlay Layout projection]
+    O -->|studioSession linked-label projection| U[LayoutViewport / StudioArrangePanel controls]
     U -->|boolean owner intents| E
     V --> U
   end
@@ -33,17 +32,17 @@ flowchart LR
 
 ## Ownership and contracts
 
-| Component                                                        | Owns                                                                 | Input → output                                                                                                                        |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `types.ts`                                                       | `WorldScene.version`, optional definitions; `MapLabel.text/location` | Scene3 → `AuthoringRegion[]` linked by `labelId`                                                                                      |
-| `authoringRegions.ts`                                            | Definition grammar and copy-only witness comparison                  | Unknown intent + `MapLabel[]` + optional workspace/reserved IDs → validated `AuthoringRegion[]`; `EnclosureWitness` → comparison copy |
-| `serialization.ts`, `roomDraft.ts`, `workspaceContentBounds.ts`  | Persisted shape/size and protected workspace content                 | `RoomDraftDocument` → validated document / JSON; invalid data → refusal                                                               |
-| Planned `regionBoundaryPredicates.ts`                            | Certified geometric classifications                                  | Authored X/Z inputs → certified relation or uncertainty                                                                               |
-| Planned `regionBoundaryGeometry.ts`                              | Transient face and conflict resolution                               | `Readonly<RoomDraft>` → `RegionResolution[]`; draft + `WorldPoint` → certified ring/witness or unresolved reason                      |
-| Planned `regionEdits.ts`                                         | Immutable explicit boundary intents                                  | Draft + create/bind/paint/pair-delete arguments → `RoomDraft` or refusal; equal intent → original reference                           |
-| `WorldBuildingConcept.tsx` with planned region intents           | Canonical document/history and intent fences                         | Region intent → boolean acceptance and one document transaction                                                                       |
-| `studioSession.ts` with planned optional linked-label projection | Read-only owner seam                                                 | Existing `{kind:'label',id}` selection → optional region/resolution and owner intents                                                 |
-| Planned `RegionBoundaryOverlay.tsx` and Layout/Arrange controls  | Visible boundary, unresolved explanation, initiating gesture         | Projections → Layout display; explicit gesture → owner intent                                                                         |
+| Component                                                       | Owns                                                                 | Input → output                                                                                                                        |
+| --------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`                                                      | `WorldScene.version`, optional definitions; `MapLabel.text/location` | Scene3 → `AuthoringRegion[]` linked by `labelId`                                                                                      |
+| `authoringRegions.ts`                                           | Definition grammar and copy-only witness comparison                  | Unknown intent + `MapLabel[]` + optional workspace/reserved IDs → validated `AuthoringRegion[]`; `EnclosureWitness` → comparison copy |
+| `serialization.ts`, `roomDraft.ts`, `workspaceContentBounds.ts` | Persisted shape/size and protected workspace content                 | `RoomDraftDocument` → validated document / JSON; invalid data → refusal                                                               |
+| `regionBoundaryPredicates.ts`                                   | Certified geometric classifications                                  | Authored X/Z inputs → certified relation or uncertainty                                                                               |
+| `regionBoundaryGeometry.ts`                                     | Transient face and conflict resolution                               | `Readonly<RoomDraft>` → `RegionResolution[]`; draft + `WorldPoint` → certified ring/witness or unresolved reason                      |
+| `regionEdits.ts`                                                | Immutable explicit boundary intents                                  | Draft + create/bind/paint/pair-delete arguments → `RoomDraft` or refusal; equal intent → original reference                           |
+| `WorldBuildingConcept.tsx` with region intents                  | Canonical document/history and intent fences                         | Region intent → boolean acceptance and one document transaction                                                                       |
+| `studioSession.ts` with optional linked-label projection        | Read-only owner seam                                                 | Existing `{kind:'label',id}` selection → optional region/resolution and owner intents                                                 |
+| `RegionBoundaryOverlay.tsx` and Layout/Arrange controls         | Visible boundary, unresolved explanation, initiating gesture         | Projections → Layout display; explicit gesture → owner intent                                                                         |
 
 The definition validator does not look up faces or prune missing wall references.
 The codec does not bind witnesses, upgrade scenes on load or relax policy gates.
@@ -57,12 +56,12 @@ The Layout renderer does not make game rules or visibility claims.
 
 A kitchen room label is a `MapLabel` named `kitchen-label` with anchor `{x:2,z:1}`.
 The explicit create-room-label intent pairs it with region `kitchen-region`.
-For walls A `(0,0)→(4,0)`, B `(4,0)→(2,4)`, C `(2,4)→(0,0)`, planned certified
+For walls A `(0,0)→(4,0)`, B `(4,0)→(2,4)`, C `(2,4)→(0,0)`, certified
 acquisition produces the CCW `EnclosureWitness` `[A+,B+,C+]`. Here `+` means the
 actual `BoundaryRun.direction: 'start-to-end'`, not a saved coordinate.
 
 The owner accepts a single `RoomDraftDocument` with scene3. The codec carries
-that oriented source word and the label link; it adds no polygon. Planned pure
+that oriented source word and the label link; it adds no polygon. pure
 resolution derives a `RegionResolution` with `area.kind:'polygon'` for Layout.
 The region identity survives every hop; the ring is derived and disposable.
 
@@ -112,16 +111,16 @@ controls or engine discovery claims cross this seam (R12).
 ## Where a change lands
 
 A new persisted boundary variant lands in `authoringRegions.ts` and its codec
-consumers, not an overlay. A broader junction certificate lands in the planned
+consumers, not an overlay. A broader junction certificate lands in the
 predicate/geometry pair and revisits R10. A clearer unresolved explanation lands
-in planned Layout/Arrange controls consuming `RegionResolution`, without
-rewriting a definition. A boundary-edit gesture lands in planned `regionEdits`
+in Layout/Arrange controls consuming `RegionResolution`, without
+rewriting a definition. A boundary-edit gesture lands in `regionEdits`
 and owner intents, not floor mutators.
 
 ## Source map
 
-Paths are relative to this Web repository. **Planned** means a contract target,
-not an implemented producer or a delivery-status claim.
+Paths are relative to this Web repository. Layout consumers use the guarded
+owner facade; none persists a resolution or mutates floor for region edits.
 
 | Concern / symbols                                                                                        | Path                                                                                                                                                           | Scope                                           |
 | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -132,10 +131,22 @@ not an implemented producer or a delivery-status claim.
 | `validateWorkspaceContent`                                                                               | `src/concepts/world-building/workspaceContentBounds.ts`                                                                                                        | Shrink protection                               |
 | `moveMapLabel`, `renameMapLabel`, guarded `deleteMapLabel`                                               | `src/concepts/world-building/mapLabelEdits.ts`                                                                                                                 | Label-only edits                                |
 | `encodeSingleRoomDungeon`                                                                                | `src/concepts/world-building/singleRoomDungeon.ts`                                                                                                             | Whole-draft source carriage, not provider proof |
-| Certified predicates                                                                                     | `src/concepts/world-building/regionBoundaryPredicates.ts`                                                                                                      | Planned geometry owner                          |
-| `findEnclosureAtPoint`, `resolveAuthoringRegions`                                                        | `src/concepts/world-building/regionBoundaryGeometry.ts`                                                                                                        | Planned transient projection                    |
-| `createRoomLabel`, `useEnclosingWalls`, `setExplicitRegionArea`, `removeRegionAndLabel`                  | `src/concepts/world-building/regionEdits.ts`                                                                                                                   | Planned immutable intent owner                  |
-| Canonical commit and preview-ID reservation; region intents                                              | `src/concepts/world-building/WorldBuildingConcept.tsx`                                                                                                         | Existing owner, planned region intents          |
-| Optional linked-label Arrange projection and intents                                                     | `src/concepts/world-building/studioArrange.ts`, `src/concepts/encounter-studio/studioSession.ts`                                                               | Planned region seam extension                   |
-| Boundary projection                                                                                      | `src/concepts/encounter-studio/RegionBoundaryOverlay.tsx`                                                                                                      | Planned Layout-only presentation                |
-| Gesture/status controls                                                                                  | `src/concepts/encounter-studio/LayoutViewport.tsx`, `useStudioLabels.tsx`, `StudioArrangePanel.tsx`, `StudioArrangeFields.tsx`, `EncounterStudioWorkspace.tsx` | Planned region consumers                        |
+| Certified predicates                                                                                     | `src/concepts/world-building/regionBoundaryPredicates.ts`                                                                                                      | geometry owner                                  |
+| `findEnclosureAtPoint`, `resolveAuthoringRegions`                                                        | `src/concepts/world-building/regionBoundaryGeometry.ts`                                                                                                        | transient projection                            |
+| `createRoomLabel`, `useEnclosingWalls`, `setExplicitRegionArea`, `removeRegionAndLabel`                  | `src/concepts/world-building/regionEdits.ts`                                                                                                                   | immutable intent owner                          |
+| Canonical commit and preview-ID reservation; region intents                                              | `src/concepts/world-building/WorldBuildingConcept.tsx`                                                                                                         | Existing owner, region intents                  |
+| Optional linked-label Arrange projection and intents                                                     | `src/concepts/world-building/studioArrange.ts`, `src/concepts/encounter-studio/studioSession.ts`                                                               | region seam extension                           |
+| Boundary projection                                                                                      | `src/concepts/encounter-studio/RegionBoundaryOverlay.tsx`                                                                                                      | Layout-only presentation                        |
+| Gesture/status controls                                                                                  | `src/concepts/encounter-studio/LayoutViewport.tsx`, `useStudioLabels.tsx`, `StudioArrangePanel.tsx`, `StudioArrangeFields.tsx`, `EncounterStudioWorkspace.tsx` | region consumers                                |
+
+`useStudioLabels` carries an explicit Note/Room placement choice.
+`StudioArrangePanel` consumes the existing label selection with optional linked
+region/resolution, displays mode/reason and submits bind/pair-delete intents.
+`EncounterStudioWorkspace` stages Paint/Erase/Rectangle region mode;
+`LayoutViewport` stages cell membership locally and calls
+`StudioRegionEditing.setExplicitRegionArea` once on release. Escape, capture loss,
+document/epoch/mode/target retirement abandon the preview. Region mode ignores
+label/wall hits, never calls `commitFloor` and retires on a 3D round trip.
+`MapLabelOverlay` keeps unresolved labels selectable with a warning and explanation;
+`RegionBoundaryOverlay` draws only current resolved areas. These are 2D-only
+projections, not lighting or visibility renderers.

@@ -130,18 +130,19 @@ overhang is permitted; private model bounds do not define eligibility.
 **Label** offers named placement by pointer, keyboard at view center or exact
 world X/Z, selection, drag, staged rename, coordinate move and delete. Apply/Enter
 commits; Escape, capture loss, navigation or document/tool changes cancel previews
-without history. Labels are plain text 2D annotations such as Kitchen/Courtyard,
+without history. Notes are plain text 2D annotations such as Kitchen/Courtyard,
 not gameplay regions, floor ownership, blocking/discovery data, assets, support
 relations or arrangement members. No 3D label renderer is promised. Label-only
-edits leave workspace and gameplay policy unchanged.
+edits leave workspace and gameplay policy unchanged. Linked Room labels and their
+separate authoring boundary intent are described below.
 
-`WorldScene.version` supports 1/2. Version 2 optionally carries
+`WorldScene.version` supports 1/2/3. Scene3 region metadata is described below. Version 2 optionally carries
 `mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
 labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
 continuous world points inside the workspace, and at most 256 labels are accepted.
 Absent labels means none; deleting the last removes `mapLabels` without demoting
-the scene. First label or explicit rectangular resize promotes the scene to 2,
-even if the rectangle has no labels. Version-1 scenes carrying label metadata
+the scene. First Note or explicit rectangular resize on scene1 promotes the scene to 2,
+even if the rectangle has no labels; scene3 is preserved. Version-1 scenes carrying label metadata
 are refused. Older scene-1-only web readers refuse scene 2 rather than silently
 strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
 data, not YAML comments/formatting. Envelope versions, storage namespaces and
@@ -159,6 +160,47 @@ Workspace capacity is **not** fully paintable maximum capacity: the populated
 73 × 48 / 3504-cell castle fits, but fully painting 128 × 128 exceeds this budget
 and is refused before history/storage. A sparse 128 × 128 document fits. These
 bounds do not promise browser latency or performance acceptance.
+
+## Studio authoring region boundary (#1245)
+
+**Label kind** explicitly chooses **Note · text only** or **Room · linked boundary**.
+Old notes remain unchanged and are never inferred as rooms. Room placement creates
+one label/region pair in scene3. `MapLabel` alone owns name/anchor; the linked
+`AuthoringRegion` owns automatic oriented source-walk intent or explicit cells.
+Scene1/2 reads do not upgrade, materialize empty metadata or strip unknown keys.
+Existing scene3 label/resize edits do not downgrade. Empty region collections are
+omitted without demotion; authored empty explicit areas retain their intent.
+
+Layout draws only current resolved areas. Linked labels remain selectable through
+the existing Arrange arbiter, with automatic/explicit mode, unresolved warning and
+reason. Full wall spans, including openings/doors in every state, are logical
+boundaries. Supported unambiguous wall motion follows the accepted oriented walk;
+breaks, seed moves outside it, duplicates/conflicts and unsupported or uncertain
+geometry remain unresolved, with no valid-looking stale polygon or conflict winner.
+Only explicit create/bind acquires a witness. Closing an initially unbound room
+still requires **Use enclosing walls**. Repairing a known bound walk may resolve
+without a metadata write. Missing source references remain persisted intent.
+
+**Use enclosing walls**, **Define explicit area**, and **Delete region and label**
+are explicit repair commands. Raw linked-label deletion refuses. Paint/Erase/
+Rectangle region controls stage membership locally and submit one complete area
+replacement on release, never floor mutators. Paint/Rectangle add cells to an
+existing explicit area; Erase removes them. Starting from automatic intent starts
+an empty explicit membership set; no floor membership or inferred polygon is
+adopted. **Clear explicit area** retains the pair with unresolved empty intent.
+No hidden cell transfers, floor/prop deletion, binding or scope changes occur.
+Escape, capture loss, view/document/epoch/mode/target retirement cancel previews
+without writes. 3D round trips preserve definitions/selection but retire region
+painting. No 3D boundary renderer, regional lighting/audio controls or gameplay
+visibility authority is supplied.
+
+The one document/history owner enforces strict pair-creation and ordinary
+boundary-definition gates. Unresolved alone is valid metadata; it does not relax
+existing invalid-policy gates. Accepted no-ops do not add history/storage writes.
+The source map and conservative geometric refusals live in the
+[region walkthrough](../../../docs/architecture/components/encounter-studio-regions/README.md).
+Provider carriage/export acceptance requires a separate actual-pin probe; this
+contract makes no provider readiness claim.
 
 ## Structural-wall authoring (#527 in rpg-project)
 
@@ -672,11 +714,12 @@ SceneEnvelope {
   kind: "rpg-world-building-scene"
   version: 1
   scene: WorldScene {
-    version: 1 | 2
+    version: 1 | 2 | 3
     id, name
     items: WorldProp[]
     groups: WorldGroup[]
-    mapLabels?: [{ id, text, location: { x, z } }] // scene 2 only
+    mapLabels?: [{ id, text, location: { x, z } }] // scene 2/3
+    authoringRegions?: AuthoringRegion[] // scene 3 only; see authoring region boundary
   }
 }
 
