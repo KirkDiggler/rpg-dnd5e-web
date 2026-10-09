@@ -39,6 +39,14 @@ export function StudioWallAppearanceChoices({
           aria-label="Search wall appearances"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              // A filter is presentation-only even inside the Arrange form:
+              // block native implicit submit AND the form's Enter handler.
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
         />
       </label>
       <p className="es-help">

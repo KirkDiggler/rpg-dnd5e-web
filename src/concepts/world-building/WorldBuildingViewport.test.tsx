@@ -5,9 +5,19 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { cleanup, act as ownerAct, render } from '@testing-library/react';
 import * as THREE from 'three';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EncounterStudioSession } from '../encounter-studio/studioSession';
+import {
+  createRoomDraft,
+  ROOM_DRAFT_STORAGE_KEY,
+  setRoomPartyStart,
+  stringifyRoomDraft,
+} from './roomDraft';
+import { createEmptyScene } from './sceneState';
 import type { WorldProp } from './types';
+import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const modelState = vi.hoisted(() => ({
   value: 'loaded' as 'loaded' | 'pending' | 'error',
@@ -21,6 +31,10 @@ const loadedScene = new THREE.Group();
 loadedScene.add(
   new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())
 );
+
+vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
+  ThumbnailRenderer: () => null,
+}));
 
 vi.mock('@react-three/drei', () => ({
   Html: () => null,
@@ -1576,6 +1590,96 @@ describe('room actor markers and snapped setup gestures', () => {
     // It clears the selection instead, which is what makes "select a creature,
     // edit it, then click something else" possible.
     expect(onSelectActor).toHaveBeenCalledWith(null);
+  });
+
+  it('joins typed party-start ground Move to its owner: one click spends Move, unarmed click is inert, explicit rearm works', async () => {
+    const draft = setRoomPartyStart(
+      createRoomDraft(createEmptyScene('one-shot-scene'), 'one-shot-room'),
+      { q: 0, r: 0 }
+    );
+    const bytes = new Map([
+      [ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft)],
+    ]);
+    const setItem = vi.fn((key: string, value: string) => {
+      bytes.set(key, value);
+    });
+    let session: EncounterStudioSession;
+    const mounted = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={{ getItem: (key) => bytes.get(key) ?? null, setItem }}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const writes = () =>
+      setItem.mock.calls.filter(([key]) => key === ROOM_DRAFT_STORAGE_KEY)
+        .length;
+    ownerAct(() =>
+      session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+        kind: 'start',
+      })
+    );
+    ownerAct(() => session.setPropTool('move'));
+    const before = session!.document;
+    const count = writes();
+    const draw = () => (
+      <WorldSceneContents
+        {...session!.viewportProps}
+        showCompositionBounds={false}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(draw());
+    const ground = () =>
+      renderer.scene.findByProps({ name: 'world-building-finite-ground' });
+    const click = async (q: number, r: number) => {
+      await ownerAct(async () => {
+        await renderer.fireEvent(
+          ground(),
+          'pointerDown',
+          groundEvent(worldPoint(q, r))
+        );
+      });
+      await renderer.update(draw());
+    };
+    try {
+      await click(1, 0);
+      expect(session!.document.draft.room.partyStart).toEqual({ q: 1, r: 0 });
+      expect(session!.propTool).toBe('select');
+      expect(session!.viewportProps.roomAuthoring!.tool).toBe('select');
+      expect(writes()).toBe(count + 1);
+      const first = session!.document;
+      const firstBytes = bytes.get(ROOM_DRAFT_STORAGE_KEY);
+      await click(0, 1);
+      expect(session!.document).toBe(first);
+      expect(bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(firstBytes);
+      expect(writes()).toBe(count + 1);
+      ownerAct(() =>
+        session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+          kind: 'start',
+        })
+      );
+      ownerAct(() => session.setPropTool('move'));
+      await renderer.update(draw());
+      await click(0, 1);
+      expect(session!.document.draft.room.partyStart).toEqual({ q: 0, r: 1 });
+      expect(session!.propTool).toBe('select');
+      expect(writes()).toBe(count + 2);
+      ownerAct(() => session.undo());
+      expect(session!.document).toEqual(first);
+      ownerAct(() => session.undo());
+      expect(session!.document).toEqual(before);
+      expect(session!.canUndo).toBe(false);
+    } finally {
+      await renderer.unmount();
+      mounted.unmount();
+      cleanup();
+    }
   });
 
   it('typed ground routing distinguishes actor start, party start and null despite a stale legacy start id', async () => {

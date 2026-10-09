@@ -242,6 +242,54 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(joined.writes()).toBeGreaterThan(writes);
   });
 
+  it.each(['Apply', 'field Enter'])(
+    'search Enter preserves dirty wall fields/swap, bytes and history until legitimate %s',
+    (method) => {
+      const joined = owner();
+      joined.selectWall();
+      const before = joined.session.document;
+      const bytes = joined.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+      const writes = joined.writes();
+      change('Appearance elevation', '0.25');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Change wall appearance' })
+      );
+      change('Search wall appearances', 'castle_wall');
+      const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
+      fireEvent.click(
+        document.querySelector(`[data-wall-appearance-ref="${ref}"]`)!
+      );
+      const search = screen.getByLabelText('Search wall appearances');
+      expect(fireEvent.keyDown(search, { key: 'Enter' })).toBe(false); // cancels native implicit submission too
+      expect(joined.calls).toHaveLength(0);
+      expect(joined.session.document).toBe(before);
+      expect(joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+      expect(joined.writes()).toBe(writes);
+      expect(joined.session.canUndo).toBe(false);
+      expect(joined.session.canRedo).toBe(false);
+      expect(token('Appearance elevation')).toBe('0.25');
+      expect(token('Search wall appearances')).toBe('castle_wall');
+      expect(
+        document
+          .querySelector(`[data-wall-appearance-ref="${ref}"]`)!
+          .getAttribute('aria-pressed')
+      ).toBe('true');
+      if (method === 'Apply') apply();
+      else
+        fireEvent.keyDown(screen.getByLabelText('Appearance elevation'), {
+          key: 'Enter',
+        });
+      expect(joined.calls).toHaveLength(1);
+      expect(joined.writes()).toBe(writes + 1);
+      expect(
+        joined.session.document.draft.room.walls![0].appearance
+      ).toMatchObject({ elevation: 0.25, assetRef: ref });
+      act(() => joined.session.undo());
+      expect(joined.session.document).toEqual(before);
+      expect(joined.session.canUndo).toBe(false);
+    }
+  );
+
   it('wall position, facing, fixed-endpoint length, dimensions and explicit appearance choice form one transaction', () => {
     const joined = owner();
     joined.selectWall();

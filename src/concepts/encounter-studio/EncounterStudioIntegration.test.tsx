@@ -1652,6 +1652,100 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     };
   }
 
+  it.each([
+    ['actor', 'scene'],
+    ['actor', 'actor'],
+    ['actor', 'round-trip'],
+    ['start', 'scene'],
+    ['start', 'actor'],
+    ['start', 'round-trip'],
+  ] as const)(
+    'retires captured %s movement on %s selection before the next render without history or writes',
+    (noun, change) => {
+      const owner = arrangeOwner();
+      const target =
+        noun === 'actor'
+          ? { kind: 'actor' as const, id: 'goblin-1' }
+          : { kind: 'start' as const };
+      act(() =>
+        owner.session.viewportProps.roomAuthoring!.onSelectActorTarget!(target)
+      );
+      act(() => owner.session.setPropTool('move'));
+      const stale = owner.session;
+      const before = stale.document;
+      const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+      const writes = owner.storage.roomWrites();
+      act(() => {
+        if (change === 'actor')
+          stale.viewportProps.roomAuthoring!.onSelectActorTarget!({
+            kind: 'actor',
+            id: 'skeleton-b',
+          });
+        else stale.viewportProps.onSelect(['table']);
+        if (change === 'round-trip')
+          stale.viewportProps.roomAuthoring!.onSelectActorTarget!(target);
+        if (noun === 'actor')
+          stale.viewportProps.roomAuthoring!.onMoveMonster!('goblin-1', {
+            q: 1,
+            r: 0,
+          });
+        else stale.viewportProps.roomAuthoring!.onStartGesture!({ q: 1, r: 0 });
+      });
+      expect(owner.session.document).toBe(before);
+      expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+      expect(owner.storage.roomWrites()).toBe(writes);
+      expect(owner.session.canUndo).toBe(false);
+      expect(owner.session.canRedo).toBe(false);
+      expect(owner.session.intentEpoch).toBe(stale.intentEpoch);
+      act(() =>
+        owner.session.viewportProps.roomAuthoring!.onSelectActorTarget!(target)
+      );
+      act(() => {
+        if (noun === 'actor')
+          owner.session.viewportProps.roomAuthoring!.onMoveMonster!(
+            'goblin-1',
+            { q: 1, r: 0 }
+          );
+        else
+          owner.session.viewportProps.roomAuthoring!.onStartGesture!({
+            q: 1,
+            r: 0,
+          });
+      });
+      expect(owner.storage.roomWrites()).toBe(writes + 1);
+      expect(owner.session.document).not.toBe(before);
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      expect(owner.session.canUndo).toBe(false);
+    }
+  );
+
+  it('refuses a requested actor ID different from the captured Move target without spending its mode', () => {
+    const owner = arrangeOwner();
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: 'goblin-1',
+      })
+    );
+    act(() => owner.session.setPropTool('move'));
+    const before = owner.session.document;
+    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.roomWrites();
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onMoveMonster!('skeleton-b', {
+        q: 1,
+        r: 0,
+      })
+    );
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.session.propTool).toBe('move');
+    expect(owner.session.viewportProps.roomAuthoring!.tool).toBe('move');
+  });
+
   it('composes scene position/yaw/height once; invalid late fields and exact defaults never write or add history', () => {
     const owner = arrangeOwner();
     act(() => owner.session.viewportProps.onSelect(['studio-decoration']));

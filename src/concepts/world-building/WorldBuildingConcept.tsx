@@ -3476,6 +3476,14 @@ export function WorldBuildingConcept({
       setSelectedLabelId(null);
   }, [roomDraft, selectedLabelId]);
   const capturedTargetKey = studioTargetKey(activeStudioTarget);
+  // Movement is armed for the captured noun, not merely any still-existing
+  // actor ID. Selection revisions retire queued clicks without cancelling
+  // the general epoch needed by initializing wall/label drags.
+  const studioMovementIsActive = (target: StudioArrangeTarget): boolean =>
+    roomTool === 'move' &&
+    studioTargetKey(target) === capturedTargetKey &&
+    studioTargetKey(activeStudioTargetRef.current) === capturedTargetKey &&
+    selectionRevisionRef.current === selectionRevision;
   const wallGestureActive = (id: string): boolean =>
     activeStudioTargetRef.current?.kind === 'wall' &&
     activeStudioTargetRef.current.id === id &&
@@ -3877,12 +3885,33 @@ export function WorldBuildingConcept({
               ),
             onMoveMonster:
               viewportInputs.roomAuthoring.onMoveMonster &&
-              guardViewportCallback(viewportInputs.roomAuthoring.onMoveMonster),
+              guardViewportCallback((id, cell) => {
+                if (isStudio) {
+                  if (
+                    !studioMovementIsActive({ kind: 'actor', id }) ||
+                    refuseWhilePublishing()
+                  )
+                    return;
+                  setTool('select');
+                }
+                viewportInputs.roomAuthoring!.onMoveMonster!(id, cell);
+              }),
             onStartGesture:
               viewportInputs.roomAuthoring.onStartGesture &&
-              guardViewportCallback(
-                viewportInputs.roomAuthoring.onStartGesture
-              ),
+              guardViewportCallback((cell) => {
+                // Dedicated placement and legacy creation keep their own
+                // behavior. Only typed Studio relocation spends Move.
+                if (isStudio && roomTool !== 'start') {
+                  if (
+                    !studioMovementIsActive({ kind: 'start' }) ||
+                    refuseWhilePublishing()
+                  )
+                    return;
+                  setTool('select');
+                  setRoomTool('select');
+                }
+                viewportInputs.roomAuthoring!.onStartGesture!(cell);
+              }),
             onSelectActor:
               viewportInputs.roomAuthoring.onSelectActor &&
               guardViewportCallback(viewportInputs.roomAuthoring.onSelectActor),

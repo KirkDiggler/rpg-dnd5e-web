@@ -252,6 +252,26 @@ describe('Studio wall presentation', () => {
       length: { value: 2, anchor: 'start' },
     });
   });
+  it('creation appearance search Enter remains a filter and never arms an asset or commits Arrange', () => {
+    const session = fixture();
+    const initial = props(session);
+    render(<StudioWallControls {...initial} />);
+    const search = screen.getByLabelText('Search wall appearances');
+    fireEvent.change(search, { target: { value: 'CREATIVE' } });
+    expect(fireEvent.keyDown(search, { key: 'Enter' })).toBe(false);
+    expect((search as HTMLInputElement).value).toBe('CREATIVE');
+    expect(
+      within(
+        screen.getByRole('group', { name: 'Wall appearance choices' })
+      ).getAllByRole('button')
+    ).toHaveLength(1);
+    expect(session.wallEditing.setAsset).not.toHaveBeenCalled();
+    expect(session.wallEditing.create).not.toHaveBeenCalled();
+    expect(session.commitArrange).not.toHaveBeenCalled();
+    expect(initial.onDismiss).not.toHaveBeenCalled();
+    expect(initial.onExitWallTool).not.toHaveBeenCalled();
+  });
+
   it('Escape in drawing context exits the Wall tool; dismissal alone does not disarm it', () => {
     const initial = props(fixture());
     render(<StudioWallControls {...initial} />);
