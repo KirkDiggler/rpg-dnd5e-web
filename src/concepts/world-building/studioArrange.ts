@@ -25,6 +25,7 @@ import {
   wallMidpoint,
 } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
+import type { StudioDoorPreview, StudioDoorTarget } from './studioDoorEditing';
 import type { MapLabel, WorldPoint, WorldScene, WorldTransform } from './types';
 
 /** Existing author identities, not renderer sentinels or a new selection store.
@@ -35,7 +36,8 @@ export type StudioArrangeTarget =
   | { readonly kind: 'wall'; readonly id: string }
   | { readonly kind: 'label'; readonly id: string }
   | { readonly kind: 'actor'; readonly id: string }
-  | { readonly kind: 'start' };
+  | { readonly kind: 'start' }
+  | StudioDoorTarget;
 
 export type StudioArrangeHeight =
   | { readonly kind: 'value'; readonly scale: number }
@@ -79,6 +81,21 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly wall: Readonly<StructuralWall>;
         readonly preview?: StudioWallArrangeValues;
       })
+    | {
+        readonly kind: 'door';
+        readonly target: StudioDoorTarget;
+        readonly wall: Readonly<StructuralWall>;
+        readonly opening: Readonly<StructuralWall['openings'][number]>;
+        readonly door: Readonly<
+          NonNullable<StructuralWall['openings'][number]['door']>
+        >;
+        readonly position: number;
+        readonly width: number;
+        readonly preview?: {
+          readonly position: number;
+          readonly width: number;
+        };
+      }
     | {
         readonly kind: 'label';
         readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
@@ -142,6 +159,13 @@ export interface StudioStartArrangeEdit {
  * list of separately committed property commands. Labels use the owner's
  * existing complete-document label transaction; deletes keep existing gates. */
 export type StudioArrangeIntent =
+  | {
+      readonly kind: 'door-edit';
+      readonly target: StudioDoorTarget;
+      readonly position?: number;
+      readonly width?: number;
+    }
+  | { readonly kind: 'door-remove'; readonly target: StudioDoorTarget }
   | StudioSceneArrangeEdit
   | StudioWallArrangeEdit
   | {
@@ -167,6 +191,7 @@ export interface StudioArrangeProjectionInput {
   readonly selectionRevision: number;
   readonly previewScene?: WorldScene | null;
   readonly previewWall?: StructuralWall | null;
+  readonly previewDoor?: StudioDoorPreview | null;
 }
 
 function validSceneTarget(scene: WorldScene, ids: readonly string[]): boolean {
@@ -235,6 +260,38 @@ export function projectStudioArrange(
       ...(input.previewScene &&
       validSceneTarget(input.previewScene, selectedIds)
         ? { preview: sceneValues(input.previewScene, selectedIds) }
+        : {}),
+    };
+  }
+  if (target.kind === 'door') {
+    const wall = draft.room.walls?.find((wall) => wall.id === target.wallId);
+    const opening = wall?.openings.find(
+      (opening) =>
+        opening.id === target.openingId && opening.door?.id === target.doorId
+    );
+    if (!wall || !opening?.door) return null;
+    const preview = input.previewDoor;
+    return {
+      kind: 'door',
+      target,
+      selectionKey: JSON.stringify({
+        kind: 'door',
+        wallId: target.wallId,
+        openingId: target.openingId,
+        doorId: target.doorId,
+      }),
+      selectionRevision,
+      wall,
+      opening,
+      door: opening.door,
+      position: opening.position,
+      width: opening.width,
+      ...(preview?.valid &&
+      preview.purpose === 'move' &&
+      preview.target.wallId === target.wallId &&
+      preview.target.openingId === target.openingId &&
+      preview.target.doorId === target.doorId
+        ? { preview: { position: preview.position, width: preview.width } }
         : {}),
     };
   }

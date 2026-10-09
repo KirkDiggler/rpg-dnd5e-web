@@ -290,6 +290,36 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     }
   );
 
+  it('attached door exposes only owning-wall position/width and commits its whole dirty form once', () => {
+    const joined = owner();
+    const target = {
+      kind: 'door' as const,
+      wallId: 'studio-wall',
+      openingId: 'studio-opening',
+      doorId: 'studio-door',
+    };
+    act(() => expect(joined.session.doorEditing.select(target)).toBe(true));
+    const before = joined.session.document;
+    const writes = joined.writes();
+    expect(screen.queryByLabelText('World X')).toBeNull();
+    expect(screen.queryByLabelText('Y facing (degrees)')).toBeNull();
+    expect(token('Along wall position')).toBe('6');
+    expect(token('Door width')).toBe('2');
+    change('Along wall position', '6.125');
+    change('Door width', '1.5');
+    fireEvent.keyDown(screen.getByLabelText('Door width'), { key: 'Enter' });
+    expect(joined.calls).toEqual([
+      { kind: 'door-edit', target, position: 6.125, width: 1.5 },
+    ]);
+    expect(joined.writes()).toBe(writes + 1);
+    expect(joined.session.document.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    expect(joined.session.canUndo).toBe(false);
+  });
+
   it('wall position, facing, fixed-endpoint length, dimensions and explicit appearance choice form one transaction', () => {
     const joined = owner();
     joined.selectWall();

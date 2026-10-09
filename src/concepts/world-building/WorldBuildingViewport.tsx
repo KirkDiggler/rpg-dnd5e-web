@@ -56,6 +56,7 @@ import { snapWallPoint } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import { StructuralWallVisual } from './StructuralWallVisual';
 import type { StudioArrangeTarget } from './studioArrange';
+import type { StudioDoorEditing } from './studioDoorEditing';
 import type { WorldPoint, WorldScene, WorldTransform } from './types';
 import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
@@ -117,7 +118,9 @@ export interface WorldBuildingViewportProps {
       | 'repeat'
       | 'monster'
       | 'start'
-      | 'wall';
+      | 'wall'
+      | 'door';
+    doorEditing?: StudioDoorEditing;
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;

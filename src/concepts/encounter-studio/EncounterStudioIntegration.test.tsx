@@ -1652,6 +1652,151 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     };
   }
 
+  it('complete door placement preview and closed binding are one ordinary owner transaction; Arrange/no-op/delete preserve unrelated scope', () => {
+    const owner = arrangeOwner();
+    const ref = 'dnd5e:env:dark-fortress:wall_door_double_01';
+    const original = owner.session.document;
+    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.roomWrites();
+    act(() => expect(owner.session.doorEditing.setAsset(ref)).toBe(true));
+    act(() => expect(owner.session.doorEditing.setActive(true)).toBe(true));
+    const placement = owner.session.doorEditing;
+    act(() =>
+      expect(placement.previewPlacement('studio-wall', { x: -2, z: -3 })).toBe(
+        false
+      )
+    ); // existing arch overlap
+    expect(owner.session.doorEditing.preview?.valid).toBe(false);
+    expect(owner.session.document).toBe(original);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() =>
+      expect(
+        placement.previewPlacement('studio-wall', { x: -0.25, z: -3 })
+      ).toBe(true)
+    );
+    expect(owner.session.doorEditing.previewPlacement).toBe(
+      placement.previewPlacement
+    );
+    expect(owner.storage.roomWrites()).toBe(writes);
+    act(() =>
+      expect(placement.create('studio-wall', { x: -0.25, z: -3 })).toBe(true)
+    );
+    const created = owner.session.document;
+    const selected = owner.session.arrange!;
+    if (selected.kind !== 'door') throw new Error('Expected attached door');
+    expect(selected.position).toBe(3.75);
+    expect(created.draft.room.doorBindings![selected.door.id]).toEqual({
+      closed: true,
+    });
+    expect(created.scope).toEqual(original.scope);
+    expect(owner.session.doorEditing.assetRef).toBe(ref);
+    expect(owner.session.doorEditing.active).toBe(false);
+    expect(owner.session.propTool).toBe('select');
+    expect(owner.storage.roomWrites()).toBe(writes + 1);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'door-edit',
+          target: selected.target,
+          position: selected.position,
+          width: selected.width,
+        })
+      ).toBe(true)
+    );
+    expect(owner.session.document).toBe(created);
+    expect(owner.storage.roomWrites()).toBe(writes + 1);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'door-edit',
+          target: selected.target,
+          position: 4,
+          width: NaN,
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.document).toBe(created);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'door-edit',
+          target: selected.target,
+          position: 3.875,
+          width: 1.5,
+        })
+      ).toBe(true)
+    );
+    const edited = owner.session.document;
+    expect(edited.draft.room.doorBindings).toEqual(
+      created.draft.room.doorBindings
+    );
+    expect(owner.storage.roomWrites()).toBe(writes + 2);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'door-remove',
+          target: selected.target,
+        })
+      ).toBe(true)
+    );
+    expect(owner.session.document).toEqual(original);
+    expect(owner.storage.roomWrites()).toBe(writes + 3);
+    for (const expected of [edited, created, original]) {
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(expected);
+    }
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('door move permits only its intended single initializing selection, not another target/round trip; previews retain locked binding', () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.room.doorBindings!['studio-door'] = {
+      locked: [{ ability: 'dex', dc: 14 }],
+    };
+    const owner = arrangeOwner(document);
+    const target = {
+      kind: 'door' as const,
+      wallId: 'studio-wall',
+      openingId: 'studio-opening',
+      doorId: 'studio-door',
+    };
+    const initial = owner.session;
+    act(() => {
+      expect(initial.doorEditing.select(target)).toBe(true);
+      expect(initial.wallEditing.select(null)).toBe(true); // neutral must not cancel the selecting grab
+      expect(initial.doorEditing.previewMove(target, 6.125)).toBe(true);
+    });
+    expect(owner.session.intentEpoch).toBe(initial.intentEpoch);
+    expect(owner.session.doorEditing.preview).toMatchObject({
+      valid: true,
+      purpose: 'move',
+    });
+    expect(owner.session.document.draft.room.doorBindings).toEqual(
+      document.draft.room.doorBindings
+    );
+    act(() => expect(initial.doorEditing.move(target, 6.125)).toBe(true));
+    const moved = owner.session.document;
+    expect(moved.draft.room.doorBindings).toEqual(
+      document.draft.room.doorBindings
+    );
+    const stale = owner.session;
+    const writes = owner.storage.roomWrites();
+    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    act(() => {
+      stale.viewportProps.onSelect(['table']);
+      stale.doorEditing.select(target);
+      expect(stale.doorEditing.move(target, 6.25)).toBe(false);
+      expect(stale.doorEditing.previewMove(target, 6.25)).toBe(false);
+    });
+    expect(owner.session.document).toBe(moved);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    const beforeView = owner.session;
+    owner.switchView('layout');
+    act(() => expect(beforeView.doorEditing.move(target, 6.25)).toBe(false));
+    expect(owner.session.document).toBe(moved);
+  });
+
   it.each([
     ['actor', 'scene'],
     ['actor', 'actor'],

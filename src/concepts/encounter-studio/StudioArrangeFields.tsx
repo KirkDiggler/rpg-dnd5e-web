@@ -19,7 +19,9 @@ export type ArrangeFieldKey =
   | 'text'
   | 'facing'
   | 'assetRef'
-  | 'anchor';
+  | 'anchor'
+  | 'position'
+  | 'width';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
 export interface ArrangeField {
   key: ArrangeFieldKey;
@@ -101,6 +103,15 @@ export function arrangeFields(
         ),
       ];
     }
+    case 'door':
+      return [
+        numeric(
+          'position',
+          'Along wall position',
+          (selection.preview ?? selection).position
+        ),
+        numeric('width', 'Door width', (selection.preview ?? selection).width),
+      ];
     case 'label':
       return [
         { key: 'text', label: 'Rename label', value: selection.label.text },
@@ -167,6 +178,15 @@ export function arrangeIntent(
     return location;
   };
   switch (selection.kind) {
+    case 'door':
+      return {
+        kind: 'door-edit',
+        target: selection.target,
+        ...(draft.position !== undefined
+          ? { position: number('position') }
+          : {}),
+        ...(draft.width !== undefined ? { width: number('width') } : {}),
+      };
     case 'scene':
       return {
         kind: 'scene-edit',

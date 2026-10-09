@@ -66,6 +66,8 @@ function selectionName(
     }
     case 'wall':
       return selection.wall.label || selection.wall.id;
+    case 'door':
+      return `Door · ${selection.door.assetRef}`;
     case 'label':
       return selection.label.text;
     case 'actor':
@@ -91,7 +93,9 @@ function SelectedArrange({
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
   const preview =
-    (selection.kind === 'scene' || selection.kind === 'wall') &&
+    (selection.kind === 'scene' ||
+      selection.kind === 'wall' ||
+      selection.kind === 'door') &&
     !!selection.preview;
   const reset = (): void => {
     setDraft({});
@@ -122,9 +126,11 @@ function SelectedArrange({
             : 'Selection pivot · world units'
           : selection.kind === 'wall'
             ? 'Wall midpoint and dimensions · world units'
-            : selection.kind === 'label'
-              ? 'World position · world units'
-              : 'Starting hex · q / r'}
+            : selection.kind === 'door'
+              ? 'Along owning wall · world units'
+              : selection.kind === 'label'
+                ? 'World position · world units'
+                : 'Starting hex · q / r'}
       </p>
       {preview && (
         <p role="status">
@@ -223,7 +229,9 @@ function SelectedArrange({
           <button type="button" onClick={reset}>
             Cancel Arrange
           </button>
-          {(selection.kind === 'wall' || selection.kind === 'label') && (
+          {(selection.kind === 'wall' ||
+            selection.kind === 'label' ||
+            selection.kind === 'door') && (
             <button
               type="button"
               disabled={preview}
@@ -234,15 +242,24 @@ function SelectedArrange({
                         kind: 'wall-remove',
                         target: selection.target,
                       })
-                    : session.commitArrange({
-                        kind: 'label-remove',
-                        target: selection.target,
-                      });
+                    : selection.kind === 'door'
+                      ? session.commitArrange({
+                          kind: 'door-remove',
+                          target: selection.target,
+                        })
+                      : session.commitArrange({
+                          kind: 'label-remove',
+                          target: selection.target,
+                        });
                 if (!accepted)
                   setError('Removal refused. Review the document notice.');
               }}
             >
-              {selection.kind === 'wall' ? 'Remove wall' : 'Delete label'}
+              {selection.kind === 'wall'
+                ? 'Remove wall'
+                : selection.kind === 'door'
+                  ? 'Delete doorway'
+                  : 'Delete label'}
             </button>
           )}
         </div>

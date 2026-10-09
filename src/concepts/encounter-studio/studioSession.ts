@@ -10,9 +10,16 @@ import type {
   StudioArrangeIntent,
   StudioArrangeSelection,
 } from '../world-building/studioArrange';
+import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
 import type { WorldPoint } from '../world-building/types';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+export type {
+  StudioDoorAppearanceOption,
+  StudioDoorEditing,
+  StudioDoorPreview,
+  StudioDoorTarget,
+} from '../world-building/studioDoorEditing';
 
 // Layout consumers can use the canonical geometry/document types through this
 // seam; these are re-exports, never parallel Studio model definitions.
@@ -40,7 +47,7 @@ export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
-export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label';
+export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label' | 'door';
 
 export type StudioWallThumbnail =
   | { status: 'loading' }
@@ -99,6 +106,8 @@ export interface LayoutViewportProps {
   onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
+  doorEditing?: StudioDoorEditing;
+  onExitDoorTool?(): void;
   /** Owner generation: option/tool/view cancellation fences late releases. */
   intentEpoch?: number;
   /** Presentation-only exit; preserve the owner’s armed appearance and snap. */
@@ -120,6 +129,7 @@ export interface EncounterStudioSession {
     readonly selectedId: string | null;
     select(id: string | null): boolean;
   };
+  doorEditing: StudioDoorEditing;
   wallEditing: StudioWallEditing;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
