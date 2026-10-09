@@ -1578,6 +1578,104 @@ describe('room actor markers and snapped setup gestures', () => {
     expect(onSelectActor).toHaveBeenCalledWith(null);
   });
 
+  it('typed ground routing distinguishes actor start, party start and null despite a stale legacy start id', async () => {
+    const onMoveMonster = vi.fn();
+    const onStartGesture = vi.fn();
+    const onSelectActorTarget = vi.fn();
+    const onSelectActor = vi.fn();
+    const draw = (
+      target:
+        | { kind: 'actor'; id: string }
+        | { kind: 'start' }
+        | null
+        | undefined,
+      tool: 'move' | 'select' = 'move'
+    ) => (
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        showCompositionBounds={false}
+        roomAuthoring={{
+          tool,
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [{ ...ACTOR, id: 'start' }],
+          partyStart: { q: -1, r: 0 },
+          selectedActorId: 'start',
+          selectedActorTarget: target,
+          onSelectActorTarget,
+          onSelectActor,
+          onMoveMonster,
+          onStartGesture,
+        }}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(
+      draw({ kind: 'actor', id: 'start' })
+    );
+    const ground = () =>
+      renderer.scene.findByProps({ name: 'world-building-finite-ground' });
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).toHaveBeenCalledExactlyOnceWith('start', {
+      q: 0,
+      r: 1,
+    });
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.update(draw({ kind: 'start' }));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onStartGesture).toHaveBeenCalledExactlyOnceWith({ q: 0, r: 1 });
+    onMoveMonster.mockClear();
+    onStartGesture.mockClear();
+    await renderer.update(draw(null));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).not.toHaveBeenCalled();
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.update(draw({ kind: 'actor', id: 'start' }, 'select'));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onSelectActorTarget).toHaveBeenCalledWith(null);
+    expect(onSelectActor).not.toHaveBeenCalled();
+    await renderer.update(draw(undefined)); // old consumer has no typed contract
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).toHaveBeenCalledExactlyOnceWith('start', {
+      q: 0,
+      r: 1,
+    });
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.unmount();
+  });
+
   it('places or moves the party start from one gesture and keeps it unmistakable', async () => {
     const onStartGesture = vi.fn();
     const onSelectActor = vi.fn();

@@ -1,6 +1,6 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft } from '../world-building/roomDraft';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
@@ -27,6 +27,7 @@ vi.mock('../world-building/WorldBuildingConcept', () => ({
   WorldBuildingConcept: (props: {
     studioPresentation: EncounterStudioPresentation;
   }) => {
+    const [, refresh] = useState(0);
     observed.ownerProps = props;
     observed.events.push(`render:${props.studioPresentation.view}`);
     useEffect(() => {
@@ -36,6 +37,14 @@ vi.mock('../world-building/WorldBuildingConcept', () => ({
       };
     }, []);
     if (!observed.session) throw new Error('Missing fake owner session');
+    observed.session.mapLabelSelection.select = vi.fn((id: string | null) => {
+      observed.session!.mapLabelSelection = {
+        ...observed.session!.mapLabelSelection,
+        selectedId: id,
+      };
+      refresh((value) => value + 1);
+      return true;
+    });
     return props.studioPresentation.render(observed.session);
   },
 }));
@@ -99,6 +108,9 @@ function createSession(): EncounterStudioSession {
   return {
     document: { draft, scope: {} },
     intentEpoch: 0,
+    arrange: null,
+    commitArrange: vi.fn(() => true),
+    mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     wallEditing: {
       selectedId: null,
@@ -156,6 +168,7 @@ function createSession(): EncounterStudioSession {
           <button>Repeat existing piece</button>
         </div>
       ),
+      arrangeExtras: null,
       tree: <div>Reused scene tree</div>,
       selection: <div>Reused selection visuals</div>,
     },

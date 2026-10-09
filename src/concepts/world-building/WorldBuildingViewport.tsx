@@ -55,6 +55,7 @@ import { StructuralConcealmentGuides } from './StructuralConcealmentGuides';
 import { snapWallPoint } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import { StructuralWallVisual } from './StructuralWallVisual';
+import type { StudioArrangeTarget } from './studioArrange';
 import type { WorldPoint, WorldScene, WorldTransform } from './types';
 import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
@@ -145,6 +146,15 @@ export interface WorldBuildingViewportProps {
     monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
     partyStart?: RoomHexCell | null;
     armedMonsterRef?: string | null;
+    /** Typed Studio identity. Explicit null masks legacy remembered IDs; only
+     * an absent contract uses the old string consumer boundary. */
+    selectedActorTarget?: Extract<
+      StudioArrangeTarget,
+      { kind: 'actor' | 'start' }
+    > | null;
+    onSelectActorTarget?: (
+      target: Extract<StudioArrangeTarget, { kind: 'actor' | 'start' }> | null
+    ) => void;
     selectedActorId?: string | null;
     onSelectActor?: (actorId: string | null) => void;
     onPlaceMonster?: (cell: RoomHexCell) => void;
@@ -925,7 +935,15 @@ export function WorldSceneContents(
           if (rectangular && !cell) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
-          const actor = props.roomAuthoring?.selectedActorId;
+          const authoring = props.roomAuthoring;
+          const actor =
+            authoring?.selectedActorTarget !== undefined
+              ? authoring.selectedActorTarget
+              : authoring?.selectedActorId
+                ? authoring.selectedActorId === 'start'
+                  ? { kind: 'start' as const }
+                  : { kind: 'actor' as const, id: authoring.selectedActorId }
+                : null;
           if (props.roomAuthoring?.activeConcealmentId) {
             // Pick authored floor, not empty workspace; never game legality.
             pickConcealmentCell(cell);
@@ -956,7 +974,12 @@ export function WorldSceneContents(
               return;
             }
             if (actor) {
-              props.roomAuthoring?.onMoveMonster?.(actor, cell);
+              // Preserve the old string consumer's routing when the typed
+              // contract is absent; Studio never takes that ambiguous path.
+              if (authoring?.selectedActorTarget === undefined)
+                authoring?.onMoveMonster?.(authoring.selectedActorId!, cell);
+              else if (actor.kind === 'start') authoring.onStartGesture?.(cell);
+              else authoring.onMoveMonster?.(actor.id, cell);
               return;
             }
           }
@@ -965,7 +988,9 @@ export function WorldSceneContents(
           // clears the actor and selects whatever is under the cursor — which,
           // on bare ground, is nothing.
           if (roomTool === 'select' && actor) {
-            props.roomAuthoring?.onSelectActor?.(null);
+            if (authoring?.onSelectActorTarget)
+              authoring.onSelectActorTarget(null);
+            else authoring?.onSelectActor?.(null);
           }
           if (roomTool === 'repeat') {
             const descriptor = props.roomAuthoring?.repeat;
@@ -1226,6 +1251,27 @@ export function WorldSceneContents(
           monsterBindings={props.roomAuthoring.monsterBindings}
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
+          selectedActorTarget={props.roomAuthoring.selectedActorTarget}
+          onSelectActorTarget={
+            props.roomAuthoring.onSelectActorTarget
+              ? (target) => {
+                  const authoring = props.roomAuthoring;
+                  if (authoring?.activeConcealmentId) {
+                    pickConcealmentCell(
+                      target?.kind === 'start'
+                        ? authoring.partyStart
+                        : target?.kind === 'actor'
+                          ? authoring.monsters?.find(
+                              (monster) => monster.id === target.id
+                            )?.startingCell.location
+                          : null
+                    );
+                    return;
+                  }
+                  authoring?.onSelectActorTarget?.(target);
+                }
+              : undefined
+          }
           onSelectActor={(actor) => {
             const authoring = props.roomAuthoring;
             if (authoring?.activeConcealmentId) {

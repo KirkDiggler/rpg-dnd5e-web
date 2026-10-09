@@ -285,6 +285,9 @@ function createAppStudioSession(): EncounterStudioSession {
   return {
     document: { draft, scope: {} },
     intentEpoch: 0,
+    arrange: null,
+    commitArrange: vi.fn(() => true),
+    mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     wallEditing: {
       selectedId: null,
@@ -326,7 +329,12 @@ function createAppStudioSession(): EncounterStudioSession {
     cancelTransients: vi.fn(),
     propTool: 'select',
     setPropTool: vi.fn(),
-    propControls: { palette: null, tree: null, selection: null },
+    propControls: {
+      palette: null,
+      tree: null,
+      selection: null,
+      arrangeExtras: null,
+    },
     saveStatus: 'Saved locally',
     notice: null,
     autosaveBlocked: false,

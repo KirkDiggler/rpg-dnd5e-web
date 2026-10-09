@@ -5174,6 +5174,11 @@ describe('Studio owner facade', () => {
   it('ordinary prop edits cannot escape rectangular membership through the scalar envelope', () => {
     const owner = mountStudio(populatedStorage());
     act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(true));
+    act(() =>
+      owner.session.viewportProps.onSelect([
+        owner.session.document.draft.scene.items[0].id,
+      ])
+    );
     const before = owner.session.document;
     const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     const writes = owner.storage.writes;
@@ -5355,6 +5360,11 @@ describe('Studio owner facade', () => {
     );
     const owner = mountStudio(storage);
     act(() => owner.session.createMapLabel('Kitchen', { x: 0, z: 0 }));
+    act(() =>
+      owner.session.viewportProps.onSelect([
+        owner.session.document.draft.scene.items[0].id,
+      ])
+    );
     const before = structuredClone(owner.session.document);
     const transformed = structuredClone(before.draft.scene);
     transformed.items[0].transform.rotationY += 0.1;
@@ -5443,6 +5453,11 @@ describe('Studio owner facade', () => {
 
   it('refused commit retains document history and reports the refusal', () => {
     const owner = mountStudio(populatedStorage());
+    act(() =>
+      owner.session.viewportProps.onSelect([
+        owner.session.document.draft.scene.items[0].id,
+      ])
+    );
     const before = owner.session.document;
     const bad = structuredClone(before.draft.scene);
     bad.items[0].transform.x = 9999;
@@ -5508,7 +5523,8 @@ describe('Studio owner facade', () => {
         noun === 'actor'
           ? owner.session.viewportProps.roomAuthoring!.selectedActorId
           : owner.session.viewportProps.roomAuthoring!.selectedWallId
-      ).toBe(noun === 'actor' ? 'goblin-1' : 'studio-wall');
+      ).toBe(noun === 'actor' ? null : 'studio-wall');
+      expect(owner.session.arrange?.kind).toBe(noun);
     }
   );
 

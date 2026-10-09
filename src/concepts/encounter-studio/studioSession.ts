@@ -6,6 +6,10 @@ import type {
 } from '../world-building/roomDraft';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
+import type {
+  StudioArrangeIntent,
+  StudioArrangeSelection,
+} from '../world-building/studioArrange';
 import type { WorldPoint } from '../world-building/types';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
@@ -110,6 +114,12 @@ export interface EncounterStudioSession {
   document: Readonly<RoomDraftDocument>;
   viewportProps: WorldBuildingViewportProps;
   readonly intentEpoch: number;
+  readonly arrange: StudioArrangeSelection | null;
+  commitArrange(intent: StudioArrangeIntent): boolean;
+  mapLabelSelection: {
+    readonly selectedId: string | null;
+    select(id: string | null): boolean;
+  };
   wallEditing: StudioWallEditing;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
@@ -131,7 +141,12 @@ export interface EncounterStudioSession {
   cancelTransients(): void;
   propTool: WorldBuildingTool;
   setPropTool(tool: WorldBuildingTool): void;
-  propControls: { palette: ReactNode; tree: ReactNode; selection: ReactNode };
+  propControls: {
+    palette: ReactNode;
+    tree: ReactNode;
+    selection: ReactNode;
+    arrangeExtras: ReactNode;
+  };
   saveStatus: string;
   notice: string | null;
   autosaveBlocked: boolean;

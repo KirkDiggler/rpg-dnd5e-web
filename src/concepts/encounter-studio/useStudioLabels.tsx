@@ -21,7 +21,8 @@ export function useStudioLabels(
   controls: ReactNode;
 } {
   const [visible, setVisible] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = session.mapLabelSelection.selectedId;
+  const setSelectedId = session.mapLabelSelection.select;
   const [newText, setNewText] = useState('');
   const [placementText, setPlacementText] = useState<string | null>(null);
   const [rename, setRename] = useState('');
@@ -49,12 +50,10 @@ export function useStudioLabels(
     setX(String(selected?.location.x ?? 0));
     setZ(String(selected?.location.z ?? 0));
     setError(null);
-    if (!selected) setSelectedId(null);
   }, [session.document, selected]);
   useEffect(() => {
     setPlacementText(null);
     setVisible(false);
-    setSelectedId(null);
   }, [view, session.document.draft.id]);
   const select = (id: string | null): void => {
     // Selection alone must not retire an in-flight label drag's owner intent.
