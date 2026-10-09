@@ -348,12 +348,13 @@ describe('read-only target-hover effects', () => {
     );
     expect(screen.queryByRole('tooltip')).toBeNull();
     view.rerender(<MapFirstTargeting {...props} hoveredTarget="a" />);
-    expect(screen.getByRole('tooltip')).toHaveTextContent('may be out of date');
+    const alpha = screen.getByRole('tooltip');
+    expect(alpha).toHaveTextContent('may be out of date');
     view.rerender(<MapFirstTargeting {...props} hoveredTarget="foreign" />);
     expect(
       screen.getByRole('tooltip', { name: 'Alpha target information' })
     ).toBeVisible();
-    expect(screen.queryByRole('tooltip', { name: /foreign/ })).toBeNull();
+    expect(screen.getByRole('tooltip')).toBe(alpha);
     const duplicate = create(DeclarationSchema, {
       ...declaration,
       candidates: [declaration.candidates[0], declaration.candidates[0]],
