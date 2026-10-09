@@ -7,6 +7,25 @@ import {
 } from './actionTooltip';
 import { EffectRows } from './EffectRows';
 
+/** The same ordered provider facts in full action cards and compact target peeks. */
+export function ActionInformationFacts({
+  lines,
+}: {
+  lines: readonly ActionTooltipLine[];
+}) {
+  if (!lines.length) return null;
+  return (
+    <dl className={styles.facts}>
+      {lines.map(informationDetail).map((line, index) => (
+        <div key={`${index}:${line.label}`}>
+          <dt>{line.label}</dt>
+          <dd>{line.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 /** Shared read-only body: action meaning and base facts, then contextual answers. */
 export function ActionInformationContent({
   description,
@@ -32,16 +51,7 @@ export function ActionInformationContent({
       <p className={description.trim() ? styles.description : styles.missing}>
         {informationDescription(description)}
       </p>
-      {lines.length > 0 && (
-        <dl className={styles.facts}>
-          {lines.map(informationDetail).map((line, index) => (
-            <div key={`${index}:${line.label}`}>
-              <dt>{line.label}</dt>
-              <dd>{line.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <ActionInformationFacts lines={lines} />
       {effects.length > 0 && (
         <section className={styles.effects}>
           <h4>{effectsLabel}</h4>

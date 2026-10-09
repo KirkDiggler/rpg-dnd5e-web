@@ -37,6 +37,8 @@ import {
   DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
+  EffectParticipation,
+  EffectState,
   FootprintOrigin,
   FootprintSchema,
   FootprintShape,
@@ -866,9 +868,36 @@ describe('SessionEncounterView production combat integration', () => {
         minTargets: 1,
         maxTargets: 2,
         spell: { ref: 'dnd5e:spells:bless', name: 'Bless' },
+        effects: [
+          {
+            id: 'provided-effect',
+            name: 'Provider actor effect',
+            description: 'Provider effect description.',
+            state: EffectState.DEPENDS,
+            participation: EffectParticipation.CONTRIBUTES_NOW,
+            reason: 'Depends on target.',
+          },
+        ],
         candidates: ['char-1', 'skeleton-1'].map((member) => ({
           member,
           available: true,
+          effects: [
+            {
+              id: 'provided-effect',
+              state: EffectState.APPLIES,
+              reason: `Provider answer for ${member}.`,
+            },
+          ],
+          heldEffects: [
+            {
+              id: `held-${member}`,
+              name: 'Provider target-held effect',
+              description: 'Observed provider effect.',
+              state: EffectState.APPLIES,
+              participation: EffectParticipation.CONTRIBUTES_NOW,
+              reason: 'Observed target answer.',
+            },
+          ],
         })),
       });
       readyTurn([spell, endTurnDeclaration()]);
@@ -906,6 +935,27 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBe('First provider mode explanation.');
       expect(hoisted.castFn).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'First mode' }));
+      act(() => hoisted.lastCanvasProps.current?.onHoverEntity?.('skeleton-1'));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider answer for skeleton-1.'
+      );
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider target-held effect'
+      );
+      expect(screen.getByRole('tooltip').getAttribute('data-preview')).toBe(
+        'true'
+      );
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toEqual([]);
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      expect(screen.getByTestId('session-canvas')).toBe(canvas);
+      act(() => hoisted.lastCanvasProps.current?.onHoverEntity?.('char-1'));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider answer for char-1.'
+      );
+      expect(screen.getByRole('tooltip').textContent).not.toContain(
+        'Provider answer for skeleton-1.'
+      );
+      expect(hoisted.castFn).not.toHaveBeenCalled();
       act(() => {
         hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
       });
