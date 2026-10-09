@@ -636,6 +636,8 @@ function submitForm(name: string): void {
   fireEvent.submit(screen.getByRole('form', { name }));
 }
 function resize(width: number, height: number): void {
+  if (!screen.queryByLabelText('Width (hexes)'))
+    fireEvent.click(button('Size'));
   changeField('Width (hexes)', String(width));
   changeField('Height (hexes)', String(height));
   submitForm('Workspace dimensions');
@@ -808,6 +810,8 @@ describe('Task 6 populated workspace/label integration', () => {
     submitForm('Map label coordinates'); // same point
     changeField('Rename label', 'Never committed');
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
+    fireEvent.click(button('Label'));
+    fireEvent.click(button('Size'));
     changeField('Width (hexes)', '74');
     fireEvent.click(button('Cancel dimensions'));
     changeField('Label name', 'Never placed');
@@ -817,6 +821,7 @@ describe('Task 6 populated workspace/label integration', () => {
     expect(screen.getByText(/Placing “Never placed”/)).not.toBeNull();
     fireEvent.keyDown(screen.getByLabelText('Label name'), { key: 'Escape' });
     expect(screen.queryByText(/Placing “Never placed”/)).toBeNull();
+    fireEvent.click(button('Label'));
     submitForm('New map label');
     expect(screen.getByText(/Placing “Never placed”/)).not.toBeNull();
     fireEvent.click(button('Cancel placement'));
@@ -936,4 +941,72 @@ describe('Task 6 populated workspace/label integration', () => {
     expect(storage.document()).toEqual(good);
     expect((button('Redo') as HTMLButtonElement).disabled).toBe(true);
   }, 60000);
+});
+
+describe('compact header canonical naming through the populated owner', () => {
+  it('trimmed rename synchronizes both names once, preserves IDs/scope/key, and shares history/reload; refusal and navigation never commit staging', async () => {
+    const original = seed();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    const rename = (): void => {
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Rename encounter / })
+      );
+    };
+    rename();
+    changeField('Encounter name', '  Castle encounter  ');
+    const writes = storage.roomWrites();
+    fireEvent.click(button('Apply encounter name'));
+    const renamed = {
+      ...original,
+      draft: {
+        ...original.draft,
+        name: 'Castle encounter',
+        scene: { ...original.draft.scene, name: 'Castle encounter' },
+      },
+    };
+    expect(storage.document()).toEqual(renamed);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(screen.queryByLabelText('Encounter name')).toBeNull();
+    rename();
+    changeField('Encounter name', ' Castle encounter ');
+    submitForm('Rename encounter');
+    expect(storage.roomWrites()).toBe(writes + 1); // trimmed no-op, not another history frame
+    rename();
+    changeField('Encounter name', '   ');
+    submitForm('Rename encounter');
+    expect(screen.getByLabelText('Encounter name')).toBeTruthy();
+    expect(screen.getByText(/Rename refused/)).toBeTruthy();
+    expect(storage.document()).toEqual(renamed);
+    changeField('Encounter name', 'x'.repeat(121));
+    submitForm('Rename encounter');
+    expect(storage.document()).toEqual(renamed);
+    changeField('Encounter name', 'Discard Escape');
+    fireEvent.keyDown(screen.getByLabelText('Encounter name'), {
+      key: 'Escape',
+    });
+    expect(screen.queryByLabelText('Encounter name')).toBeNull();
+    rename();
+    changeField('Encounter name', 'Discard navigation');
+    switchTo('3D');
+    switchTo('Layout');
+    expect(storage.document()).toEqual(renamed);
+    expect(screen.queryByLabelText('Encounter name')).toBeNull();
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(renamed);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(renamed);
+    expect(
+      storage.setItem.mock.calls.every(
+        ([key]) =>
+          key === ROOM_DRAFT_STORAGE_KEY || !key.includes('encounter-studio')
+      )
+    ).toBe(true);
+  });
 });

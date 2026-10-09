@@ -206,3 +206,111 @@
   stroke: #235349;
   stroke-width: 6;
 }
+
+/* Two permanent bands. Overflow scrolls, never becomes permanent extra rows. */
+.es-header,
+.es-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-height: 3rem;
+}
+.es-header > *,
+.es-toolbar > * {
+  flex-shrink: 0;
+}
+.es-header .es-buttons,
+.es-toolbar .es-buttons,
+.es-save {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.es-header .es-save {
+  width: auto;
+}
+.es-title {
+  min-width: 12rem;
+}
+.es-title > button {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.15rem 0.4rem;
+}
+.es-title input {
+  width: 14rem;
+}
+.es-tools-container {
+  position: relative;
+  flex: 0 0 auto;
+}
+.es-context-layer {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0.75rem;
+  z-index: 5;
+  width: min(38rem, calc(100% - 1.5rem));
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.es-context-panel {
+  pointer-events: auto;
+  padding: 0.85rem;
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px #0008;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.es-context-panel label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-context-panel input[inputmode='decimal'] {
+  width: 6rem;
+}
+.es-wall-search {
+  flex-wrap: wrap;
+}
+.es-wall-search input {
+  flex: 1;
+  min-width: 8rem;
+}
+.es-wall-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+.es-wall-options button {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.es-wall-options img,
+.es-wall-thumbnail-fallback {
+  width: 100%;
+  height: 96px;
+  object-fit: contain;
+}
+.es-wall-thumbnail-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--wb-bg);
+  color: var(--wb-muted);
+}
+.es-wall-options small {
+  color: var(--wb-muted);
+}

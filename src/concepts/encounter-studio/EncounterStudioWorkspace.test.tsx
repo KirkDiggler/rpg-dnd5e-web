@@ -194,6 +194,19 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(screen.getByRole('button', { name: 'Erase' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Rectangle' })).toBeTruthy();
     expect(observed.layoutProps?.tool).toBe('paint');
+    expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
+      2
+    );
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByLabelText('Label name')).toBeNull();
+    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(observed.layoutProps?.wallEditing).toBe(
+      observed.session?.wallEditing
+    );
+    expect(observed.layoutProps?.documentContext).toBe(
+      observed.session?.document
+    );
+    expect(observed.layoutProps?.intentEpoch).toBe(0);
     expect(screen.queryByLabelText('Prop palette')).toBeNull();
     expect(screen.queryByText('Reused scene tree')).toBeNull();
     expect(
@@ -427,6 +440,7 @@ describe('staged workspace dimensions and label controls', () => {
   };
   it('identifies legacy shape, stages hex counts and applies one exact intent without self-retiring', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Size');
     expect(screen.getByText(/legacy hex-radius.*not a rectangle/)).toBeTruthy();
     expect(
       (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
@@ -439,7 +453,8 @@ describe('staged workspace dimensions and label controls', () => {
       73,
       48
     );
-    expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
+    expect(observed.session?.cancelTransients).toHaveBeenCalledTimes(1); // opening only; never before Apply
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
     expect(observed.layoutProps?.frame).toEqual({
       center: { x: 0, z: 0 },
       zoom: 1,
@@ -449,6 +464,7 @@ describe('staged workspace dimensions and label controls', () => {
     'retains invalid width %j without owner/history intent',
     (width) => {
       render(<EncounterStudioWorkspace compositionSource={source} />);
+      click('Size');
       change('Width (hexes)', width);
       change('Height (hexes)', '48');
       submit('Workspace dimensions');
@@ -462,6 +478,7 @@ describe('staged workspace dimensions and label controls', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Pan and zoom test surface');
     const frame = observed.layoutProps?.frame;
+    click('Size');
     change('Width (hexes)', '2');
     change('Height (hexes)', '2');
     submit('Workspace dimensions');
@@ -475,6 +492,8 @@ describe('staged workspace dimensions and label controls', () => {
     fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
       key: 'Escape',
     });
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    click('Size');
     expect(
       (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
     ).toBe('');
@@ -514,6 +533,7 @@ describe('staged workspace dimensions and label controls', () => {
     fireEvent.keyDown(screen.getByLabelText('Label name'), { key: 'Escape' });
     expect(observed.layoutProps?.labelEditing?.placementText).toBeNull();
     expect(screen.queryByText(/Placing “Courtyard”/)).toBeNull();
+    click('Label');
     submit('New map label');
     expect(observed.layoutProps?.labelEditing?.placementText).toBe('Courtyard');
     change('Existing label', 'kitchen');
@@ -533,6 +553,9 @@ describe('staged workspace dimensions and label controls', () => {
     change('Rename label', 'Courtyard');
     expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
+    expect(screen.queryByLabelText('Rename label')).toBeNull();
+    click('Label');
+    change('Existing label', 'kitchen-2');
     expect(
       (screen.getByLabelText('Rename label') as HTMLInputElement).value
     ).toBe('Kitchen');

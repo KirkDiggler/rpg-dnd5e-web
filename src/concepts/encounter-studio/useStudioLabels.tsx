@@ -9,7 +9,10 @@ import type {
 /** UI-private staged controls. Canonical labels/IDs always come from session. */
 export function useStudioLabels(
   session: EncounterStudioSession,
-  view: EncounterStudioView
+  view: EncounterStudioView,
+  active: boolean,
+  onActivate: () => void,
+  onDismiss: () => void
 ): {
   active: boolean;
   activate(): void;
@@ -17,7 +20,7 @@ export function useStudioLabels(
   editing: LayoutLabelEditing;
   controls: ReactNode;
 } {
-  const [active, setActive] = useState(false);
+  const [visible, setVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newText, setNewText] = useState('');
   const [placementText, setPlacementText] = useState<string | null>(null);
@@ -50,12 +53,14 @@ export function useStudioLabels(
   }, [session.document, selected]);
   useEffect(() => {
     setPlacementText(null);
-    setActive(false);
+    setVisible(false);
     setSelectedId(null);
   }, [view, session.document.draft.id]);
   const select = (id: string | null): void => {
     // Selection alone must not retire an in-flight label drag's owner intent.
     setSelectedId(id);
+    if (id !== null) setVisible(true);
+    else if (!active) setVisible(false);
     setPlacementText(null);
   };
   const result = (accepted: boolean): boolean => {
@@ -87,12 +92,12 @@ export function useStudioLabels(
   return {
     active,
     activate: (): void => {
-      setActive(true);
+      setVisible(true);
       setSelectedId(null);
       cancel();
     },
     deactivate: (): void => {
-      setActive(false);
+      setVisible(false);
       setSelectedId(null);
       cancel();
     },
@@ -103,20 +108,37 @@ export function useStudioLabels(
       onSelect: select,
       onCreate: create,
       onMove: move,
-      onCancel: cancel,
+      onCancel: () => {
+        cancel();
+        setVisible(false);
+        if (active || visible) onDismiss();
+      },
     },
     controls:
-      (active || selected) && view === 'layout' ? (
+      visible && view === 'layout' ? (
         <div
-          className="es-label-controls es-toolbar"
+          className="es-label-controls es-context-panel"
           aria-label="Map label controls"
           onKeyDown={(event): void => {
             if (event.key === 'Escape') {
               event.preventDefault();
+              event.stopPropagation();
               cancel();
+              setVisible(false);
+              onDismiss();
             }
           }}
         >
+          <button
+            type="button"
+            onClick={() => {
+              cancel();
+              setVisible(false);
+              onDismiss();
+            }}
+          >
+            Dismiss label controls
+          </button>
           <form
             className="es-buttons"
             aria-label="New map label"
@@ -129,8 +151,7 @@ export function useStudioLabels(
                 return;
               }
               if (!active) {
-                session.cancelTransients();
-                setActive(true);
+                onActivate();
               }
               setSelectedId(null);
               setPlacementText(newText);

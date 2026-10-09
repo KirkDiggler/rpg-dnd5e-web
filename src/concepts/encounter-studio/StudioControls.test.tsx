@@ -1,11 +1,13 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRoomDraft,
@@ -25,8 +27,20 @@ vi.mock('@react-three/fiber', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@react-three/fiber')>()),
   Canvas: () => <div data-testid="webgl-boundary" />,
 }));
+interface ThumbnailRequest {
+  requestKey: string;
+  onComplete(key: string, image: string): void;
+  onError(key: string, message: string): void;
+  onRootError(message: string): void;
+}
+const worker = vi.hoisted(() => ({ latest: null as ThumbnailRequest | null }));
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
-  ThumbnailRenderer: () => null,
+  ThumbnailRenderer: (props: ThumbnailRequest) => {
+    useEffect(() => {
+      worker.latest = props;
+    }, [props]);
+    return <div data-testid="thumbnail-worker" />;
+  },
 }));
 
 const bounds = { left: 30, top: 70, width: 960, height: 600 };
@@ -72,6 +86,7 @@ class MemoryStorage implements KeyValueStorage {
 let source: CompositionSource;
 let captures: Set<number>;
 beforeEach(() => {
+  worker.latest = null;
   source = {
     worldId: 'controls-test-world',
     reader: {
@@ -185,6 +200,7 @@ describe('Task 5 controls through the real owner', () => {
     const original = storage.document();
     mount(storage);
     await ready();
+    click('Size');
     change('Width (hexes)', '73');
     change('Height (hexes)', '48');
     expect(storage.document()).toEqual(original);
@@ -322,6 +338,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(screen.queryByText(/Placing “Courtyard”/)).toBeNull();
     expect(storage.document()).toEqual(kitchen);
     expect(storage.writes()).toBe(before);
+    click('Label');
     change('Existing label', first.id);
     submit('New map label');
     expect(screen.getByText(/Placing “Courtyard”/)).toBeTruthy();
@@ -358,6 +375,7 @@ describe('Task 5 controls through the real owner', () => {
     const storage = new MemoryStorage();
     mount(storage);
     await ready();
+    click('Size');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     submit('Workspace dimensions');
@@ -367,6 +385,7 @@ describe('Task 5 controls through the real owner', () => {
     place(storage, { x: 5, z: 0 });
     const accepted = storage.document();
     const before = storage.writes();
+    click('Size');
     change('Width (hexes)', '2');
     change('Height (hexes)', '2');
     submit('Workspace dimensions');
@@ -401,5 +420,400 @@ describe('Task 5 controls through the real owner', () => {
     expect(storage.document().draft.scene.mapLabels).toBeUndefined();
     click('Undo');
     expect(storage.document().draft.workspace.kind).toBeUndefined();
+  });
+});
+
+function drawWall(
+  storage: MemoryStorage,
+  first: WorldPoint,
+  last: WorldPoint
+): void {
+  fireEvent.pointerDown(surface(), {
+    ...point(storage, first),
+    pointerId: 7,
+    button: 0,
+  });
+  fireEvent.pointerMove(surface(), { ...point(storage, last), pointerId: 7 });
+  fireEvent.pointerUp(surface(), {
+    ...point(storage, last),
+    pointerId: 7,
+    button: 0,
+  });
+}
+const castleRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
+function chooseCastle(): void {
+  change('Search wall appearances', 'castle_wall_01');
+  fireEvent.click(
+    document.querySelector(`[data-wall-appearance-ref="${castleRef}"]`)!
+  );
+}
+
+describe('compact Studio wall UI through the actual owner and Layout', () => {
+  it('default has exactly two bands; Size Apply/Cancel/Escape/reopen do not resize hidden content', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    const original = storage.document();
+    fireEvent.keyDown(surface(), { key: 'Escape' });
+    expect(
+      screen.getByRole('button', { name: 'Paint' }).getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(storage.document()).toEqual(original);
+    expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
+      2
+    );
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByLabelText('Label name')).toBeNull();
+    expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
+    click('Size');
+    change('Width (hexes)', '9');
+    change('Height (hexes)', '7');
+    click('Cancel dimensions');
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(storage.document()).toEqual(original);
+    click('Size');
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('');
+    change('Width (hexes)', '9');
+    change('Height (hexes)', '7');
+    fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
+      key: 'Escape',
+    });
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(storage.document()).toEqual(original);
+    click('Size');
+    change('Width (hexes)', '9');
+    change('Height (hexes)', '7');
+    submit('Workspace dimensions');
+    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    const committed = storage.document();
+    const writes = storage.writes();
+    click('Size');
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('9');
+    click('Size'); // hiding alone never reframes/resizes/history
+    expect(storage.writes()).toBe(writes);
+    expect(storage.document()).toEqual(committed);
+    click('Undo');
+    expect(storage.document()).toEqual(original);
+  });
+  it('Wall is enabled unarmed, demands thumbnails only while visible, preserves armed appearance and snap, and draws consecutively', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Wall');
+    expect(screen.getByText(/No appearance armed/)).toBeTruthy();
+    expect(screen.getAllByTestId('thumbnail-worker')).toHaveLength(1);
+    drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });
+    expect(
+      screen.getByText(/Choose a wall appearance before drawing/)
+    ).toBeTruthy();
+    expect(storage.document().draft.room.walls ?? []).toHaveLength(0);
+    chooseCastle(); // still-loading imagery never disables selection
+    click('Dismiss wall controls');
+    expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Wall' }).getAttribute('aria-pressed')
+    ).toBe('true');
+    drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });
+    drawWall(storage, { x: 1, z: 1 }, { x: 3, z: 1 });
+    const walls = storage.document().draft.room.walls!;
+    expect(walls).toHaveLength(2);
+    expect(walls.every((wall) => wall.appearance.assetRef === castleRef)).toBe(
+      true
+    );
+    fireEvent.keyDown(surface(), { key: 'Escape' });
+    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    click('Undo');
+    expect(storage.document().draft.room.walls).toHaveLength(1);
+    click('Redo');
+    expect(storage.document().draft.room.walls).toEqual(walls);
+    click('Wall');
+    fireEvent.click(
+      screen.getByLabelText('Snap to hex centres, corners and side midpoints')
+    );
+    fireEvent.keyDown(screen.getByLabelText('Search wall appearances'), {
+      key: 'Escape',
+    });
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    click('3D');
+    click('Layout');
+    click('Wall');
+    expect(
+      (
+        screen.getByLabelText(
+          'Snap to hex centres, corners and side midpoints'
+        ) as HTMLInputElement
+      ).checked
+    ).toBe(true);
+    expect(
+      document
+        .querySelector(`[data-wall-appearance-ref="${castleRef}"]`)!
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    click('Dismiss wall controls');
+    fireEvent.keyDown(surface(), { key: 'Escape' });
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(storage.document().draft.room.walls).toEqual(walls);
+  });
+  it('Select opens precision without fencing captured movement; numeric/edit/appearance/remove and root Delete share real history', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Wall');
+    chooseCastle();
+    click('Dismiss wall controls');
+    drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });
+    const original = storage.document().draft.room.walls![0];
+    click('Select');
+    const hit = surface().querySelector(`line[data-wall-id="${original.id}"]`)!;
+    fireEvent.pointerDown(hit, {
+      ...point(storage, { x: -2, z: -2 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(screen.getByLabelText('Wall length')).toBeTruthy(); // selection/demand rerender while drag is captured
+    change('Wall length', '2.25');
+    act(() =>
+      worker.latest!.onComplete(
+        worker.latest!.requestKey,
+        'data:image/png;base64,cosmetic'
+      )
+    );
+    expect(
+      (screen.getByLabelText('Wall length') as HTMLInputElement).value
+    ).toBe('2.25');
+    fireEvent.pointerMove(surface(), {
+      ...point(storage, { x: -1, z: -1 }),
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...point(storage, { x: -1, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(storage.document().draft.room.walls![0].line).toEqual({
+      start: { x: -2, z: -1 },
+      end: { x: 0, z: -1 },
+    });
+    change('Wall length', '3');
+    fireEvent.keyDown(screen.getByLabelText('Wall length'), { key: 'Delete' });
+    expect(storage.document().draft.room.walls).toHaveLength(1);
+    submit('Wall exact length');
+    expect(storage.document().draft.room.walls![0].line.end.x).toBe(1);
+    change('Wall move X', '1');
+    submit('Wall movement');
+    expect(storage.document().draft.room.walls![0].line.start.x).toBe(-1);
+    const beforeRefusal = storage.document();
+    change('Wall move X', '9999');
+    submit('Wall movement');
+    expect(storage.document()).toEqual(beforeRefusal);
+    expect(
+      (screen.getByLabelText('Wall move X') as HTMLInputElement).value
+    ).toBe('9999');
+    expect(screen.getByText(/Wall edit refused/)).toBeTruthy();
+    change('Wall rotate degrees', '90');
+    submit('Wall rotation');
+    const rotated = storage.document().draft.room.walls![0];
+    expect(rotated.line.start.z).toBeCloseTo(-2.5);
+    expect(rotated.line.end.z).toBeCloseTo(0.5);
+    expect(rotated.id).toBe(original.id);
+    expect(rotated.blocker.blocksMovement).toBe(
+      original.blocker.blocksMovement
+    );
+    change('Search wall appearances', 'castle_wall_02');
+    fireEvent.click(
+      document.querySelector(
+        '[data-wall-appearance-ref="dnd5e:env:fantasy-kingdom:castle_wall_02"]'
+      )!
+    );
+    const appearanceChanged = storage.document().draft.room.walls![0];
+    expect(appearanceChanged).toEqual({
+      ...rotated,
+      appearance: {
+        ...rotated.appearance,
+        assetRef: 'dnd5e:env:fantasy-kingdom:castle_wall_02',
+      },
+    });
+    const committed = storage.document();
+    click('Dismiss wall controls');
+    expect(storage.document()).toEqual(committed);
+    click('Select');
+    click('Remove wall');
+    expect(storage.document().draft.room.walls ?? []).toEqual([]);
+    click('Undo');
+    expect(storage.document().draft.room.walls).toEqual([appearanceChanged]);
+    // Undo clears selection. A select-only click is not an edit, even when controls open.
+    const before = storage.writes();
+    const restoredHit = surface().querySelector(
+      `line[data-wall-id="${original.id}"]`
+    )!;
+    fireEvent.pointerDown(restoredHit, {
+      ...point(storage, { x: 0.5, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...point(storage, { x: 0.5, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(storage.writes()).toBe(before);
+    fireEvent.keyDown(surface(), { key: 'Delete' });
+    expect(storage.document().draft.room.walls ?? []).toEqual([]);
+  });
+  it('actual picker reaches non-wall choices, no-results and renderer errors without disabling assets', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Wall');
+    change('Search wall appearances', 'alchemy_tools_01');
+    const choice = document.querySelector(
+      '[data-wall-appearance-ref="dnd5e:props:dark-fortress:alchemy_tools_01"]'
+    )!;
+    expect(choice).not.toBeNull();
+    act(() => worker.latest!.onRootError('WebGL unavailable test'));
+    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+    fireEvent.click(choice);
+    click('Dismiss wall controls');
+    drawWall(storage, { x: 0, z: 0 }, { x: 2, z: 0 });
+    expect(storage.document().draft.room.walls![0].appearance.assetRef).toBe(
+      'dnd5e:props:dark-fortress:alchemy_tools_01'
+    );
+    click('Wall');
+    change('Search wall appearances', 'no-such-appearance');
+    expect(screen.getByText(/No matching wall appearances/)).toBeTruthy();
+  });
+  it('Label Dismiss and Escape keep committed labels but never revive canceled placement', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Label');
+    change('Label name', 'Kitchen');
+    submit('New map label');
+    place(storage, { x: 0, z: 0 });
+    const committed = storage.document();
+    submit('New map label');
+    click('Dismiss label controls');
+    expect(screen.queryByLabelText('Label name')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    click('Label');
+    expect(screen.queryByText(/Placing “Kitchen”/)).toBeNull();
+    submit('New map label');
+    fireEvent.keyDown(surface(), { key: 'Escape' });
+    expect(screen.queryByLabelText('Label name')).toBeNull();
+    expect(storage.document()).toEqual(committed);
+  });
+});
+
+describe('direct selected endpoint through Studio', () => {
+  it('reshapes a rotated wall with stable identity and exactly one commit, then undo restores it', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    click('Wall');
+    chooseCastle();
+    click('Dismiss wall controls');
+    drawWall(storage, { x: -2, z: -2 }, { x: 2, z: 0 });
+    const original = storage.document();
+    const wall = original.draft.room.walls![0];
+    click('Select');
+    const hit = surface().querySelector(`line[data-wall-id="${wall.id}"]`)!;
+    fireEvent.pointerDown(hit, {
+      ...point(storage, { x: 0, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerUp(surface(), {
+      ...point(storage, { x: 0, z: -1 }),
+      pointerId: 7,
+      button: 0,
+    });
+    const handle = surface().querySelector(
+      `[data-wall-id="${wall.id}"][data-wall-endpoint="end"]`
+    )!;
+    const writes = storage.writes();
+    fireEvent.pointerDown(handle, {
+      ...point(storage, wall.line.end),
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerMove(surface(), {
+      ...point(storage, { x: 1, z: 3 }),
+      pointerId: 7,
+    });
+    expect(storage.writes()).toBe(writes);
+    fireEvent.pointerUp(surface(), {
+      ...point(storage, { x: 1, z: 3 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(storage.writes()).toBe(writes + 1);
+    const changed = storage.document().draft.room.walls![0];
+    expect(changed.id).toBe(wall.id);
+    expect(changed.line.start).toEqual(wall.line.start);
+    expect(changed.line.end.x).toBeCloseTo(1);
+    expect(changed.line.end.z).toBeCloseTo(3);
+    expect(changed.appearance).toEqual(wall.appearance);
+    click('Undo');
+    expect(storage.document()).toEqual(original);
+  });
+});
+
+describe('cosmetic presentation arrivals', () => {
+  it('real thumbnail completion preserves staged name/Size drafts without history; an actual owner commit resets Size staging', async () => {
+    const storage = new MemoryStorage();
+    mount(storage);
+    await ready();
+    const original = storage.document();
+    click('Wall');
+    fireEvent.click(screen.getByRole('button', { name: /^Rename encounter / }));
+    change('Encounter name', 'Staged name');
+    click('Size');
+    change('Width (hexes)', '9');
+    change('Height (hexes)', '7');
+    const writes = storage.writes();
+    act(() =>
+      worker.latest!.onComplete(
+        worker.latest!.requestKey,
+        'data:image/png;base64,cosmetic'
+      )
+    );
+    expect(
+      (screen.getByLabelText('Encounter name') as HTMLInputElement).value
+    ).toBe('Staged name');
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('9');
+    expect(storage.document()).toEqual(original);
+    expect(storage.writes()).toBe(writes);
+    submit('Rename encounter');
+    expect(storage.document().draft.name).toBe('Staged name');
+    expect(
+      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
+    ).toBe('');
+    click('Cancel dimensions');
+    click('Undo');
+    expect(storage.document()).toEqual(original);
   });
 });

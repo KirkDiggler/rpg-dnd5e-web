@@ -9,10 +9,12 @@ export function StudioDimensions({
   session,
   onFrameChange,
   view,
+  onDismiss,
 }: {
   session: EncounterStudioSession;
   view: EncounterStudioView;
   onFrameChange(frame: LayoutFrame): void;
+  onDismiss(): void;
 }): React.JSX.Element {
   const workspace = session.document.draft.workspace;
   const width =
@@ -26,11 +28,12 @@ export function StudioDimensions({
     setWidthDraft(width);
     setHeightDraft(height);
     setError(null);
-  }, [width, height, session.document.draft.id, view]);
+  }, [width, height, session.document, view]);
   const cancel = (): void => {
     setWidthDraft(width);
     setHeightDraft(height);
     setError(null);
+    onDismiss();
   };
   return (
     <form
@@ -57,6 +60,7 @@ export function StudioDimensions({
         if (session.resizeWorkspace(w, h)) {
           setError(null);
           onFrameChange({ center: { x: 0, z: 0 }, zoom: 1 });
+          onDismiss();
         } else {
           setError(
             'Resize refused. Keep these inputs; review the document notice, then fix the content or choose larger dimensions.'
@@ -66,6 +70,7 @@ export function StudioDimensions({
       onKeyDown={(event): void => {
         if (event.key === 'Escape') {
           event.preventDefault();
+          event.stopPropagation();
           cancel();
         }
       }}

@@ -1,5 +1,11 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
-import { useCallback, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
@@ -9,9 +15,10 @@ import { StudioDimensions } from './StudioDimensions';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
-  LayoutFloorTool,
   LayoutFrame,
+  LayoutTool,
 } from './studioSession';
+import { StudioWallControls } from './StudioWallControls';
 import { useStudioLabels } from './useStudioLabels';
 
 interface EncounterStudioWorkspaceProps {
@@ -24,11 +31,12 @@ interface EncounterStudioWorkspaceProps {
 interface StudioSurfaceProps {
   session: EncounterStudioSession;
   view: EncounterStudioView;
-  floorTool: LayoutFloorTool;
+  layoutTool: LayoutTool;
   frame: LayoutFrame;
   onViewChange(next: EncounterStudioView): void;
-  onFloorToolChange(next: LayoutFloorTool): void;
+  onLayoutToolChange(next: LayoutTool): void;
   onFrameChange(next: LayoutFrame): void;
+  onThumbnailDemandChange(visible: boolean): void;
   onBack?: () => void;
 }
 
@@ -37,18 +45,61 @@ interface StudioSurfaceProps {
 function StudioSurface({
   session,
   view,
-  floorTool,
+  layoutTool,
   frame,
   onViewChange,
-  onFloorToolChange,
+  onLayoutToolChange,
   onFrameChange,
+  onThumbnailDemandChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const labels = useStudioLabels(session, view);
+  const [sizeVisible, setSizeVisible] = useState(false);
+  const [wallVisible, setWallVisible] = useState(false);
+  const changeTool = (next: LayoutTool): void => {
+    if (next !== layoutTool) session.cancelTransients();
+    onLayoutToolChange(next);
+  };
+  const labels = useStudioLabels(
+    session,
+    view,
+    layoutTool === 'label',
+    () => changeTool('label'),
+    () => changeTool('select')
+  );
+  const seenWallSelection = useRef(session.wallEditing.selectedId);
+  useEffect(() => {
+    // A new selection opens controls but NEVER changes tool/epoch: C captured
+    // a drag. A tool exit alone must not reopen a context just dismissed.
+    if (
+      seenWallSelection.current !== session.wallEditing.selectedId &&
+      layoutTool === 'select'
+    )
+      setWallVisible(session.wallEditing.selectedId !== null);
+    seenWallSelection.current = session.wallEditing.selectedId;
+  }, [session.wallEditing.selectedId, layoutTool]);
+  useEffect(() => {
+    onThumbnailDemandChange(view === 'layout' && wallVisible);
+    return () => onThumbnailDemandChange(false);
+  }, [view, wallVisible, onThumbnailDemandChange]);
+  const exitWall = (): void => {
+    changeTool('select');
+    setWallVisible(false);
+  };
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(session.document.draft.name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  useEffect(() => {
+    setName(session.document.draft.name);
+    setRenameError(null);
+  }, [session.document]);
+
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
     session.cancelTransients();
+    setSizeVisible(false);
+    setWallVisible(false);
+    setRenaming(false);
     onViewChange(next);
   };
 
@@ -65,7 +116,52 @@ function StudioSurface({
         )}
         <div className="es-title">
           <h1>Encounter Studio</h1>
-          <p>{session.document.draft.name}</p>
+          {renaming ? (
+            <form
+              aria-label="Rename encounter"
+              className="es-buttons"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (session.renameDocument(name)) setRenaming(false);
+                else
+                  setRenameError(
+                    'Rename refused. Use a nonblank name of at most 120 characters; review the document notice.'
+                  );
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setRenaming(false);
+                }
+              }}
+            >
+              <input
+                aria-label="Encounter name"
+                value={name}
+                maxLength={120}
+                autoFocus
+                onChange={(event) => setName(event.target.value)}
+              />
+              <button type="submit">Apply encounter name</button>
+              <button type="button" onClick={() => setRenaming(false)}>
+                Cancel rename
+              </button>
+              {renameError && <span role="alert">{renameError}</span>}
+            </form>
+          ) : (
+            <button
+              type="button"
+              aria-label={`Rename encounter ${session.document.draft.name}`}
+              onClick={() => {
+                setName(session.document.draft.name);
+                setRenameError(null);
+                setRenaming(true);
+              }}
+            >
+              {session.document.draft.name}
+            </button>
+          )}
         </div>
         <nav className="es-buttons" aria-label="Studio view">
           <button
@@ -83,22 +179,6 @@ function StudioSurface({
             3D
           </button>
         </nav>
-        <div className="es-buttons" role="group" aria-label="Document history">
-          <button
-            type="button"
-            disabled={!session.canUndo}
-            onClick={session.undo}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            disabled={!session.canRedo}
-            onClick={session.redo}
-          >
-            Redo
-          </button>
-        </div>
         <div className="es-save">
           <span className="es-local">LOCAL DRAFT</span>
           <span role="status">{session.saveStatus}</span>
@@ -150,86 +230,133 @@ function StudioSurface({
           </span>
         </div>
       )}
-      <div className="es-toolbar">
-        {view === 'layout' ? (
-          <div className="es-buttons" role="group" aria-label="Floor tools">
-            {(['paint', 'erase', 'rectangle'] as const).map((tool) => (
-              <button
-                key={tool}
-                type="button"
-                aria-pressed={!labels.active && floorTool === tool}
-                onClick={() => {
-                  session.cancelTransients();
-                  labels.deactivate();
-                  onFloorToolChange(tool);
-                }}
-              >
-                {tool === 'paint'
-                  ? 'Paint'
-                  : tool === 'erase'
-                    ? 'Erase'
-                    : 'Rectangle'}
-              </button>
-            ))}
+      <div className="es-tools-container">
+        <div
+          className="es-toolbar"
+          role="toolbar"
+          aria-label="Studio editing tools"
+        >
+          {view === 'layout' ? (
+            <div className="es-buttons" role="group" aria-label="Layout tools">
+              {(
+                [
+                  'select',
+                  'paint',
+                  'erase',
+                  'rectangle',
+                  'wall',
+                  'label',
+                ] as const
+              ).map((tool) => (
+                <button
+                  key={tool}
+                  type="button"
+                  aria-pressed={layoutTool === tool}
+                  onClick={() => {
+                    changeTool(tool);
+                    setSizeVisible(false);
+                    if (tool === 'label') labels.activate();
+                    else labels.deactivate();
+                    setWallVisible(
+                      tool === 'wall' ||
+                        (tool === 'select' &&
+                          session.wallEditing.selectedId !== null)
+                    );
+                  }}
+                >
+                  {tool[0].toUpperCase() + tool.slice(1)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="es-buttons" role="group" aria-label="Prop tools">
+              {(['select', 'move', 'rotate'] as const).map((tool) => (
+                <button
+                  key={tool}
+                  type="button"
+                  aria-pressed={
+                    session.viewportProps.roomAuthoring?.tool === tool
+                  }
+                  onClick={() => session.setPropTool(tool)}
+                >
+                  {tool[0].toUpperCase() + tool.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            aria-expanded={sizeVisible}
+            onClick={() => {
+              if (!sizeVisible) session.cancelTransients();
+              setSizeVisible(!sizeVisible);
+            }}
+          >
+            Size
+          </button>
+          <div
+            className="es-buttons"
+            role="group"
+            aria-label="Document history"
+          >
             <button
               type="button"
-              aria-pressed={labels.active}
-              onClick={() => {
-                session.cancelTransients();
-                labels.activate();
-              }}
+              disabled={!session.canUndo}
+              onClick={session.undo}
             >
-              Label
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={!session.canRedo}
+              onClick={session.redo}
+            >
+              Redo
             </button>
           </div>
-        ) : (
-          <div className="es-buttons" role="group" aria-label="Prop tools">
-            {(['select', 'move', 'rotate'] as const).map((tool) => (
-              <button
-                key={tool}
-                type="button"
-                aria-pressed={
-                  session.viewportProps.roomAuthoring?.tool === tool
-                }
-                onClick={() => session.setPropTool(tool)}
-              >
-                {tool === 'select'
-                  ? 'Select'
-                  : tool === 'move'
-                    ? 'Move'
-                    : 'Rotate'}
-              </button>
-            ))}
-          </div>
-        )}
-        <p className="es-help">
-          {view === 'layout'
-            ? labels.active
-              ? 'Type a name, then Place label on map · Select/drag labels or use coordinates · Esc cancels'
-              : 'Drag to edit floor · Middle drag to pan · Wheel to zoom · Esc cancels'
-            : session.viewportProps.roomAuthoring?.tool === 'repeat'
-              ? 'Repeat active · Drag on floor to repeat pieces · Esc / right-click cancels'
-              : 'Drag assets onto ground or tabletop · Middle drag orbits · Shift-middle pans · Wheel zooms'}
-        </p>
+          {view === '3d' && (
+            <p className="es-help">
+              {session.viewportProps.roomAuthoring?.tool === 'repeat'
+                ? 'Repeat active · Drag on floor to repeat pieces · Esc / right-click cancels'
+                : 'Drag assets onto ground or tabletop · Middle drag orbits · Shift-middle pans · Wheel zooms'}
+            </p>
+          )}
+        </div>
+        <div className="es-context-layer">
+          {sizeVisible && (
+            <div className="es-context-panel">
+              <StudioDimensions
+                session={session}
+                view={view}
+                onFrameChange={onFrameChange}
+                onDismiss={() => setSizeVisible(false)}
+              />
+            </div>
+          )}
+          {labels.controls}
+          {view === 'layout' && wallVisible && (
+            <StudioWallControls
+              session={session}
+              drawing={layoutTool === 'wall'}
+              onDismiss={() => setWallVisible(false)}
+              onExitWallTool={exitWall}
+            />
+          )}
+        </div>
       </div>
-      <div className="es-toolbar">
-        <StudioDimensions
-          session={session}
-          view={view}
-          onFrameChange={onFrameChange}
-        />
-      </div>
-      {labels.controls}
       {view === 'layout' ? (
         <div className="es-canvas">
           <LayoutViewport
             draft={session.document.draft}
-            tool={floorTool}
+            tool={layoutTool}
             frame={frame}
             onFrameChange={onFrameChange}
             onCommit={session.commitFloor}
             labelEditing={labels.editing}
             documentContext={session.document}
+            wallEditing={session.wallEditing}
+            intentEpoch={session.intentEpoch}
+            onExitWallTool={exitWall}
           />
         </div>
       ) : (
@@ -265,7 +392,8 @@ export function EncounterStudioWorkspace({
   onBack,
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [view, setView] = useState<EncounterStudioView>('layout');
-  const [floorTool, setFloorTool] = useState<LayoutFloorTool>('paint');
+  const [layoutTool, setLayoutTool] = useState<LayoutTool>('paint');
+  const [thumbnailDemand, setThumbnailDemand] = useState(false);
   const [frame, setFrame] = useState<LayoutFrame>({
     center: { x: 0, z: 0 },
     zoom: 1,
@@ -275,15 +403,16 @@ export function EncounterStudioWorkspace({
       <StudioSurface
         session={session}
         view={view}
-        floorTool={floorTool}
+        layoutTool={layoutTool}
         frame={frame}
         onViewChange={setView}
-        onFloorToolChange={setFloorTool}
+        onLayoutToolChange={setLayoutTool}
         onFrameChange={setFrame}
+        onThumbnailDemandChange={setThumbnailDemand}
         onBack={onBack}
       />
     ),
-    [view, floorTool, frame, onBack]
+    [view, layoutTool, frame, onBack]
   );
 
   return (
@@ -292,7 +421,7 @@ export function EncounterStudioWorkspace({
       compositionSource={compositionSource}
       storage={storage}
       idFactory={idFactory}
-      studioPresentation={{ view, render: renderPresentation }}
+      studioPresentation={{ view, thumbnailDemand, render: renderPresentation }}
     />
   );
 }
