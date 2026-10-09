@@ -22,15 +22,23 @@ import type {
   LayoutFloorTool,
   LayoutViewportProps,
   RoomHexCell,
+  StructuralWall,
+  StudioWallEditing,
   WorldPoint,
 } from './studioSession';
 
+import {
+  reshapeWallEndpoint,
+  snapWallPoint,
+  translateWall,
+} from '../world-building/structuralWallEditing';
 import { usePresentationWorkspace } from '../world-building/usePresentationWorkspace';
 import {
   containsWorkspacePoint,
   workspaceBounds,
 } from '../world-building/workspaceGeometry';
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 
 // World-space polygons stay stable through pan/zoom and preview-only renders.
@@ -66,7 +74,18 @@ const polygonPoints = (cell: RoomHexCell): string =>
 type Gesture = {
   pointerId: number;
   surface: SVGSVGElement;
-  tool: LayoutFloorTool | 'pan' | 'label';
+  tool: LayoutFloorTool | 'pan' | 'label' | 'wall';
+  client: ClientPoint;
+  moved: boolean;
+  commitFloor: LayoutViewportProps['onCommit'];
+  wall?: {
+    source?: StructuralWall;
+    endpoint?: 'start' | 'end';
+    start: WorldPoint;
+    preview: LayoutWallPreview | null;
+    valid: boolean;
+    editing: StudioWallEditing;
+  };
   anchor: WorldPoint;
   cells: Map<string, RoomHexCell>;
   label?: {
@@ -86,7 +105,7 @@ const pointerPoint = (
 });
 
 /** Controlled schematic only: the owner decides whether a completed floor or
- * label gesture is accepted. Previews and pointer capture are transient. */
+ * wall or label gesture is accepted. Previews and pointer capture are transient. */
 export function LayoutViewport({
   draft,
   tool,
@@ -95,6 +114,9 @@ export function LayoutViewport({
   onCommit,
   labelEditing,
   documentContext,
+  wallEditing,
+  intentEpoch,
+  onExitWallTool,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -104,6 +126,11 @@ export function LayoutViewport({
     id: string;
     location: WorldPoint;
   } | null>(null);
+  const [wallPreview, setWallPreview] = useState<LayoutWallPreview | null>(
+    null
+  );
+  const wallModeRef = useRef({ tool, onExitWallTool });
+  wallModeRef.current = { tool, onExitWallTool };
   const labelEditingRef = useRef(labelEditing);
   labelEditingRef.current = labelEditing;
 
@@ -123,6 +150,7 @@ export function LayoutViewport({
     if (updatePreview) {
       setPreview([]);
       setLabelPreview(null);
+      setWallPreview(null);
     }
   }, []);
 
@@ -149,6 +177,8 @@ export function LayoutViewport({
       if (event.key === 'Escape') {
         abandon();
         labelEditingRef.current?.onCancel();
+        if (wallModeRef.current.tool === 'wall')
+          wallModeRef.current.onExitWallTool?.();
       }
     };
     window.addEventListener('keydown', escape);
@@ -160,9 +190,20 @@ export function LayoutViewport({
     };
   }, [abandon]);
 
+  const hasWallEditing = !!wallEditing;
   useLayoutEffect(() => {
     abandon();
-  }, [tool, draft, documentContext, labelEditing?.active, abandon]);
+  }, [
+    tool,
+    draft,
+    documentContext,
+    intentEpoch,
+    wallEditing?.assetRef,
+    wallEditing?.snapEnabled,
+    hasWallEditing,
+    labelEditing?.active,
+    abandon,
+  ]);
 
   useLayoutEffect(() => {
     // Choosing an existing label cancels arming, not the grab that selected it.
@@ -232,9 +273,110 @@ export function LayoutViewport({
   ): void => {
     const currentTransform = eventTransform(event.currentTarget);
     const point = pointerPoint(event);
-    if (!currentTransform) return;
+    if (!currentTransform) {
+      if (gesture.wall) {
+        gesture.wall.valid = false;
+        gesture.wall.preview = null;
+        setWallPreview(null);
+        gesture.wall.editing.reportRefusal(
+          'Wall gesture unavailable: canvas geometry changed.'
+        );
+      }
+      return;
+    }
     const rect = currentTransform.bounds;
+    const changed =
+      point.x !== gesture.client.x || point.y !== gesture.client.y;
+    if (changed) gesture.moved = true;
+    gesture.client = point;
+    if (gesture.wall) {
+      // Selection reflow/frame roundtrips at an unchanged client pointer are
+      // never authoring movement. Reuse the last applied preview on release.
+      if (!changed) return;
+      const edit = gesture.wall;
+      const world = clientToWorld(point, currentTransform);
+      if (!world) {
+        edit.valid = false;
+        edit.preview = null;
+        setWallPreview(null);
+        edit.editing.reportRefusal(
+          'Wall gesture requires a finite pointer location.'
+        );
+        return;
+      }
+      try {
+        let candidate: LayoutWallPreview;
+        const enabled = edit.editing.snapEnabled;
+        if (!edit.source) {
+          const target = snapWallPoint({ point: world, enabled });
+          candidate = {
+            line: { start: edit.start, end: target.point },
+            point: target.point,
+            feedback: target.snapped ? 'Snapped' : 'Free point',
+          };
+        } else if (edit.endpoint) {
+          const requested =
+            !enabled &&
+            world.x === gesture.anchor.x &&
+            world.z === gesture.anchor.z
+              ? edit.source.line[edit.endpoint]
+              : world;
+          const target = snapWallPoint({ point: requested, enabled });
+          const result = reshapeWallEndpoint({
+            wall: edit.source,
+            endpoint: edit.endpoint,
+            point: target.point,
+          });
+          candidate = {
+            wall: result.wall,
+            line: result.wall.line,
+            point: result.wall.line[edit.endpoint],
+            feedback: result.clamped
+              ? 'Clamped to preserve openings'
+              : target.snapped
+                ? 'Snapped'
+                : 'Free point',
+          };
+        } else {
+          const target = snapWallPoint({
+            point: {
+              x: edit.source.line.start.x + (world.x - gesture.anchor.x),
+              z: edit.source.line.start.z + (world.z - gesture.anchor.z),
+            },
+            enabled,
+          });
+          const delta = {
+            x: target.point.x - edit.source.line.start.x,
+            z: target.point.z - edit.source.line.start.z,
+          };
+          // A zero translation is not a transform: even identity pivot math
+          // can round fractional endpoints and would invent an authoring edit.
+          const wall =
+            delta.x === 0 && delta.z === 0
+              ? edit.source
+              : translateWall(edit.source, delta);
+          candidate = {
+            wall,
+            line: wall.line,
+            point: wall.line.start,
+            feedback: target.snapped ? 'Snapped' : 'Free point',
+          };
+        }
+        edit.valid = true;
+        edit.preview = candidate;
+        setWallPreview(candidate);
+      } catch (error) {
+        edit.valid = false;
+        edit.preview = null;
+        setWallPreview(null);
+        edit.editing.reportRefusal(
+          error instanceof Error ? error.message : 'Wall edit refused.'
+        );
+      }
+      return;
+    }
     if (gesture.label) {
+      if (gesture.label.id && !changed) return;
       const world = clientToWorld(point, currentTransform);
       const location =
         world &&
@@ -282,6 +424,7 @@ export function LayoutViewport({
     if (event.button === 2) {
       abandon();
       labelEditing?.onCancel();
+      if (tool === 'wall') onExitWallTool?.();
       return;
     }
     if (
@@ -295,33 +438,102 @@ export function LayoutViewport({
       eventTransform(event.currentTarget)
     );
     if (!anchor) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const wallId = target
+      ?.closest('[data-wall-id]')
+      ?.getAttribute('data-wall-id');
+    const endpoint = target
+      ?.closest('[data-wall-endpoint]')
+      ?.getAttribute('data-wall-endpoint');
+    const endpointHit =
+      tool === 'select' &&
+      wallId === wallEditing?.selectedId &&
+      (endpoint === 'start' || endpoint === 'end')
+        ? endpoint
+        : undefined;
     const labelId =
-      event.target instanceof Element
-        ? event.target.closest('[data-label-id]')?.getAttribute('data-label-id')
+      tool !== 'wall' && !endpointHit
+        ? target?.closest('[data-label-id]')?.getAttribute('data-label-id')
         : null;
     const label =
       labelEditing && labelId
         ? draft.scene.mapLabels?.find((candidate) => candidate.id === labelId)
         : undefined;
-    const placing = event.button === 0 && !label && labelEditing?.placementText;
-    if (event.button === 0 && labelEditing?.active && !label && !placing)
-      return;
-    if (placing && !containsWorkspacePoint(presentationWorkspace, anchor))
-      return;
+    const labelMode =
+      tool === 'label' ||
+      (tool !== 'select' && tool !== 'wall' && labelEditing?.active);
+    const placing =
+      event.button === 0 && labelMode && !label && labelEditing?.placementText;
+    const source =
+      tool === 'select' && wallEditing && !label && wallId
+        ? draft.room.walls?.find((wall) => wall.id === wallId)
+        : undefined;
+    if (event.button === 0) {
+      if (tool === 'wall' && (!wallEditing || !wallEditing.assetRef)) {
+        wallEditing?.reportRefusal('Choose a wall appearance before drawing.');
+        return;
+      }
+      if (tool === 'select' && !label && !source) {
+        wallEditing?.select(null);
+        labelEditing?.onSelect(null);
+        return;
+      }
+      if (labelMode && !label && !placing) return;
+      if (placing && !containsWorkspacePoint(presentationWorkspace, anchor))
+        return;
+    }
     event.preventDefault();
     event.currentTarget.focus();
     const gesture: Gesture = {
       pointerId: event.pointerId,
       surface: event.currentTarget,
-      tool: event.button === 1 ? 'pan' : label || placing ? 'label' : tool,
+      tool:
+        event.button === 1
+          ? 'pan'
+          : tool === 'wall' || source
+            ? 'wall'
+            : label || placing
+              ? 'label'
+              : (tool as LayoutFloorTool),
       anchor,
+      client: pointerPoint(event),
+      moved: false,
+      commitFloor: onCommit,
       cells: new Map(),
     };
+    if (event.button === 0 && wallEditing && (tool === 'wall' || source)) {
+      const editing = wallEditing;
+      if (source) {
+        if (!editing.select(source.id)) return;
+        labelEditing?.onSelect(null);
+      }
+      const start = snapWallPoint({
+        point: anchor,
+        enabled: editing.snapEnabled,
+      }).point;
+      gesture.wall = {
+        source,
+        endpoint: endpointHit,
+        start,
+        preview: null,
+        valid: true,
+        editing,
+      };
+      if (!source) {
+        gesture.wall.preview = {
+          line: { start, end: start },
+          point: start,
+          feedback: editing.snapEnabled ? 'Snapped' : 'Free point',
+        };
+        setWallPreview(gesture.wall.preview);
+      }
+    }
     if (event.button === 0 && labelEditing && (label || placing)) {
-      // Capture the live owner intent at gesture start. Callback-only/frame
-      // rerenders preserve it; document/tool/view retirement still fences it.
       const editing = labelEditing;
-      if (label) editing.onSelect(label.id);
+      if (label) {
+        editing.onSelect(label.id);
+        wallEditing?.select(null);
+      }
       gesture.label = {
         id: label?.id ?? null,
         origin: label?.location ?? anchor,
@@ -361,7 +573,19 @@ export function LayoutViewport({
     if (gesture.tool !== 'pan') sample(event, gesture);
     const cells = [...gesture.cells.values()];
     abandon();
-    if (gesture.label) {
+    if (gesture.wall) {
+      const { source, preview, valid, editing } = gesture.wall;
+      if (!gesture.moved || !valid || !preview) return;
+      if (source && preview.wall) {
+        if (JSON.stringify(source) !== JSON.stringify(preview.wall))
+          editing.edit(preview.wall);
+      } else if (
+        preview.line.start.x !== preview.line.end.x ||
+        preview.line.start.z !== preview.line.end.z
+      ) {
+        editing.create(preview.line);
+      }
+    } else if (gesture.label) {
       const { id, location, origin, valid } = gesture.label;
       if (
         valid &&
@@ -370,7 +594,7 @@ export function LayoutViewport({
         gesture.label.commit(location);
       }
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
-      onCommit(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
+      gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
   };
   const cancelPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
@@ -408,10 +632,25 @@ export function LayoutViewport({
         event.preventDefault();
         abandon();
         labelEditing?.onCancel();
+        if (tool === 'wall') onExitWallTool?.();
       }}
       onKeyDown={(event): void => {
         if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter' && labelEditing?.placementText) {
+        if (
+          (event.key === 'Delete' || event.key === 'Backspace') &&
+          tool === 'select' &&
+          wallEditing?.selectedId
+        ) {
+          event.preventDefault();
+          abandon();
+          wallEditing.remove(wallEditing.selectedId);
+        }
+        if (
+          event.key === 'Enter' &&
+          tool !== 'wall' &&
+          tool !== 'select' &&
+          labelEditing?.placementText
+        ) {
           event.preventDefault();
           if (containsWorkspacePoint(presentationWorkspace, frame.center)) {
             labelEditing.onCreate(labelEditing.placementText, frame.center);
@@ -421,9 +660,13 @@ export function LayoutViewport({
     >
       <title>Layout floor surface</title>
       <desc>
-        {labelEditing?.active
-          ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
-          : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+        {tool === 'wall'
+          ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
+          : tool === 'select'
+            ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
+            : tool === 'label' || labelEditing?.active
+              ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
+              : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -457,13 +700,36 @@ export function LayoutViewport({
           ))}
         </g>
       )}
+      {transform && (
+        <LayoutWallOverlay
+          walls={draft.room.walls ?? []}
+          transform={transform}
+          selectedId={wallEditing?.selectedId ?? null}
+          interactive={tool === 'select' && !!wallEditing}
+          preview={wallPreview}
+          layer="body"
+        />
+      )}
       {transform && labelEditing && (
         <MapLabelOverlay
           labels={draft.scene.mapLabels ?? []}
           transform={transform}
           selectedId={labelEditing.selectedId}
           preview={labelPreview}
-          onSelect={labelEditing.onSelect}
+          onSelect={(id): void => {
+            labelEditing.onSelect(id);
+            wallEditing?.select(null);
+          }}
+        />
+      )}
+      {transform && (
+        <LayoutWallOverlay
+          walls={draft.room.walls ?? []}
+          transform={transform}
+          selectedId={wallEditing?.selectedId ?? null}
+          interactive={tool === 'select' && !!wallEditing}
+          preview={wallPreview}
+          layer="handles"
         />
       )}
     </svg>

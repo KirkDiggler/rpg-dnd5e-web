@@ -9,6 +9,12 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { walkableCellsInWorldRectangle } from '../world-building/roomDraft';
 import {
+  reshapeWallEndpoint,
+  rotateWall,
+  snapWallPoint,
+  translateWall,
+} from '../world-building/structuralWallEditing';
+import {
   centeredRoomWorkspace,
   workspaceBounds,
 } from '../world-building/workspaceGeometry';
@@ -24,6 +30,8 @@ import type {
   LayoutFrame,
   LayoutViewportProps,
   RoomHexCell,
+  StructuralWall,
+  StudioWallEditing,
   WorldPoint,
 } from './studioSession';
 
@@ -542,8 +550,11 @@ describe('controlled Layout floor surface', () => {
     expect(previewCells()).toEqual(['0,0']);
     fireEvent.pointerMove(surface(), { ...at(one, next.frame), pointerId: 7 });
     fireEvent.pointerUp(surface(), { ...at(one, next.frame), pointerId: 7 });
-    expect(input.onCommit).not.toHaveBeenCalled();
-    expect(next.onCommit).toHaveBeenCalledExactlyOnceWith([zero, one], 'paint');
+    expect(next.onCommit).not.toHaveBeenCalled();
+    expect(input.onCommit).toHaveBeenCalledExactlyOnceWith(
+      [zero, one],
+      'paint'
+    );
   });
 
   it('middle pan and anchored clamped wheel zoom never commit floor', () => {
@@ -1070,4 +1081,665 @@ describe('2D map label pointer ownership and shared transforms', () => {
     );
     expect(input.onCommit).not.toHaveBeenCalled();
   });
+});
+
+describe('controlled Layout wall gestures', () => {
+  function walls(
+    overrides: Partial<LayoutViewportProps> = {}
+  ): LayoutViewportProps & { wallEditing: StudioWallEditing } {
+    const input = props({ tool: 'wall', ...overrides });
+    return {
+      ...input,
+      intentEpoch: 1,
+      wallEditing: {
+        selectedId: null,
+        assetRef: input.draft.room.walls![0].appearance.assetRef,
+        snapEnabled: false,
+        options: [],
+        select: vi.fn(() => true),
+        setAsset: vi.fn(() => true),
+        setSnap: vi.fn(() => true),
+        create: vi.fn(() => true),
+        edit: vi.fn(() => true),
+        remove: vi.fn(() => true),
+        reportRefusal: vi.fn(),
+        ...overrides.wallEditing,
+      },
+    };
+  }
+  function body(id = 'studio-wall'): Element {
+    return surface().querySelector(`line[data-wall-id="${id}"]`)!;
+  }
+  function handle(endpoint: 'start' | 'end'): Element {
+    return surface().querySelector(`[data-wall-endpoint="${endpoint}"]`)!;
+  }
+  function down(
+    node: Element,
+    point: WorldPoint,
+    pointerId = 7,
+    button = 0
+  ): void {
+    fireEvent.pointerDown(node, { ...position(point), pointerId, button });
+  }
+  function move(point: WorldPoint, pointerId = 7): void {
+    fireEvent.pointerMove(surface(), { ...position(point), pointerId });
+  }
+  function up(point: WorldPoint, pointerId = 7, button = 0): void {
+    fireEvent.pointerUp(surface(), { ...position(point), pointerId, button });
+  }
+  function expectPreviewEndpoint(
+    endpoint: 'start' | 'end',
+    point: WorldPoint
+  ): void {
+    const client = position(point);
+    expect(Number(handle(endpoint).getAttribute('cx'))).toBeCloseTo(
+      client.clientX - bounds.left
+    );
+    expect(Number(handle(endpoint).getAttribute('cy'))).toBeCloseTo(
+      client.clientY - bounds.top
+    );
+  }
+  function endpointWall(input: LayoutViewportProps): StructuralWall {
+    const wall = input.draft.room.walls![0];
+    wall.line = { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } };
+    wall.openings = [
+      {
+        id: 'studio-opening',
+        position: 7,
+        width: 2,
+        door: wall.openings[1].door,
+      },
+    ];
+    wall.blocker = {
+      blocksMovement: false,
+      blocksLineOfSight: true,
+      footprint: { width: 12, depth: 0.6, offsetX: 0.2, offsetZ: -0.1 },
+    };
+    return wall;
+  }
+
+  it.each([false, true])(
+    'creates consecutive strokes with snapped/free feedback and preview/commit parity: %s',
+    (snapEnabled) => {
+      const input = walls();
+      input.wallEditing = { ...input.wallEditing, snapEnabled: snapEnabled };
+      render(<LayoutViewport {...input} />);
+      const a = { x: 0.23, z: 0.21 },
+        b = { x: 2.12, z: 1.07 };
+      for (const id of [7, 8]) {
+        down(surface(), a, id);
+        move(b, id);
+        expect(input.wallEditing.create).toHaveBeenCalledTimes(id - 7);
+        const start = snapWallPoint({ point: a, enabled: snapEnabled }).point;
+        const end = snapWallPoint({ point: b, enabled: snapEnabled }).point;
+        const line = surface().querySelector('[data-wall-preview="create"]')!;
+        expect(Number(line.getAttribute('x1'))).toBeCloseTo(
+          position(start).clientX - bounds.left
+        );
+        expect(Number(line.getAttribute('y2'))).toBeCloseTo(
+          position(end).clientY - bounds.top
+        );
+        expect(
+          surface()
+            .querySelector('[data-wall-feedback]')
+            ?.getAttribute('data-wall-feedback')
+        ).toBe(snapEnabled ? 'Snapped' : 'Free point');
+        up(b, id);
+        const candidate = vi.mocked(input.wallEditing.create).mock.calls[
+          id - 7
+        ][0];
+        expect(candidate.start.x).toBeCloseTo(start.x);
+        expect(candidate.start.z).toBeCloseTo(start.z);
+        expect(candidate.end.x).toBeCloseTo(end.x);
+        expect(candidate.end.z).toBeCloseTo(end.z);
+        expect(surface().querySelector('[data-wall-preview]')).toBeNull();
+      }
+      expect(input.wallEditing.create).toHaveBeenCalledTimes(2);
+      expect(input.onCommit).not.toHaveBeenCalled();
+    }
+  );
+  it('zero-length/unchanged-client strokes and unarmed drawing produce no content intent', () => {
+    const input = walls();
+    const { rerender } = render(<LayoutViewport {...input} />);
+    const a = { x: 0.123456789, z: -0.987654321 };
+    down(surface(), a);
+    move(a);
+    up(a);
+    expect(input.wallEditing.create).not.toHaveBeenCalled();
+    rerender(
+      <LayoutViewport
+        {...input}
+        wallEditing={{ ...input.wallEditing, assetRef: null }}
+      />
+    );
+    down(surface(), a);
+    move({ x: 2, z: 1 });
+    up({ x: 2, z: 1 });
+    expect(input.wallEditing.reportRefusal).toHaveBeenCalledExactlyOnceWith(
+      'Choose a wall appearance before drawing.'
+    );
+    expect(input.wallEditing.create).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('Wall ignores label hits, while Select prioritizes endpoints, labels, wall bodies, then empty deselection', () => {
+    const input = walls({ tool: 'select' });
+    input.draft.scene.mapLabels = [
+      {
+        id: 'label',
+        text: 'Wall label',
+        location: input.draft.room.walls![0].line.start,
+      },
+    ];
+    input.labelEditing = {
+      active: false,
+      selectedId: 'label',
+      placementText: null,
+      onSelect: vi.fn(),
+      onMove: vi.fn(() => true),
+      onCreate: vi.fn(() => true),
+      onCancel: vi.fn(),
+    };
+    input.wallEditing = { ...input.wallEditing, selectedId: 'studio-wall' };
+    const { rerender } = render(<LayoutViewport {...input} />);
+    const a = input.draft.room.walls![0].line.start;
+    down(handle('start'), a);
+    up(a);
+    expect(input.wallEditing.select).toHaveBeenLastCalledWith('studio-wall');
+    expect(input.labelEditing.onSelect).toHaveBeenLastCalledWith(null);
+    const label = surface().querySelector('[data-label-id]')!;
+    // Actual DOM layer order makes endpoints higher than labels, labels higher than bodies.
+    expect(
+      surface()
+        .querySelector('.es-layout-walls-body')!
+        .compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      label.compareDocumentPosition(handle('start')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    down(label, a);
+    up(a);
+    expect(input.labelEditing.onSelect).toHaveBeenLastCalledWith('label');
+    expect(input.wallEditing.select).toHaveBeenLastCalledWith(null);
+    down(body(), a);
+    up(a);
+    expect(input.labelEditing.onSelect).toHaveBeenLastCalledWith(null);
+    down(surface(), { x: 0, z: 0 });
+    up({ x: 0, z: 0 });
+    expect(input.wallEditing.select).toHaveBeenLastCalledWith(null);
+    expect(input.labelEditing.onSelect).toHaveBeenLastCalledWith(null);
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+    rerender(<LayoutViewport {...input} tool="wall" />);
+    down(surface().querySelector('[data-label-id]')!, a);
+    move({ x: 0, z: 0 });
+    up({ x: 0, z: 0 });
+    expect(input.wallEditing.create).toHaveBeenCalledTimes(1);
+    expect(input.labelEditing.onMove).not.toHaveBeenCalled();
+  });
+  it.each(['paint', 'erase', 'rectangle', 'label', 'select'] as const)(
+    'keeps %s isolated from wall drawing',
+    (tool) => {
+      const input = walls({ tool });
+      render(<LayoutViewport {...input} />);
+      down(surface(), { x: 0, z: 0 });
+      move({ x: 1, z: 1 });
+      up({ x: 1, z: 1 });
+      expect(input.wallEditing.create).not.toHaveBeenCalled();
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+      if (tool === 'label' || tool === 'select')
+        expect(input.onCommit).not.toHaveBeenCalled();
+      else expect(input.onCommit).toHaveBeenCalledTimes(1);
+      if (tool !== 'select')
+        expect(surface().querySelector('line[data-wall-id]')).toBeNull();
+    }
+  );
+  it('middle-button pan wins over selected endpoint and label hits', () => {
+    const input = walls({ tool: 'select' });
+    input.wallEditing = { ...input.wallEditing, selectedId: 'studio-wall' };
+    render(<LayoutViewport {...input} />);
+    down(handle('start'), { x: -4, z: -3 }, 7, 1);
+    move({ x: -3, z: -2 });
+    up({ x: -3, z: -2 }, 7, 1);
+    expect(input.onFrameChange).toHaveBeenCalledTimes(1);
+    expect(input.wallEditing.select).not.toHaveBeenCalled();
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it('rigid move snaps the proposed start once, preserves the rotated vector and all attachment/blocker fields', () => {
+    const input = walls({ tool: 'select' });
+    const source = rotateWall(input.draft.room.walls![0], { angle: 0.37 });
+    input.draft.room.walls = [source];
+    input.wallEditing = { ...input.wallEditing, snapEnabled: true };
+    input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+    render(<LayoutViewport {...input} />);
+    const anchor = { x: 0.25, z: -3.1 },
+      target = { x: 1.7, z: -1.9 };
+    down(body(), anchor);
+    move(target);
+    const snapped = snapWallPoint({
+      point: {
+        x: source.line.start.x + target.x - anchor.x,
+        z: source.line.start.z + target.z - anchor.z,
+      },
+      enabled: true,
+    }).point;
+    const expected = translateWall(source, {
+      x: snapped.x - source.line.start.x,
+      z: snapped.z - source.line.start.z,
+    });
+    expectPreviewEndpoint('start', expected.line.start);
+    expectPreviewEndpoint('end', expected.line.end);
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    up(target);
+    const candidate = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+    expect(candidate.line.start.x).toBeCloseTo(expected.line.start.x);
+    expect(candidate.line.end.z).toBeCloseTo(expected.line.end.z);
+    expect(candidate.openings).toEqual(source.openings);
+    expect(candidate.blocker).toEqual(source.blocker);
+    expect(candidate.appearance).toEqual(source.appearance);
+    expect(candidate.line.end.x - candidate.line.start.x).toBeCloseTo(
+      source.line.end.x - source.line.start.x
+    );
+    expect(input.draft.room.walls![0]).toEqual(source);
+  });
+  it.each([
+    {
+      endpoint: 'end' as const,
+      target: { x: 0, z: 6 },
+      clamped: true,
+      rotated: false,
+    },
+    {
+      endpoint: 'start' as const,
+      target: { x: 10, z: -2 },
+      clamped: true,
+      rotated: false,
+    },
+    {
+      endpoint: 'start' as const,
+      target: { x: 10, z: -12 },
+      clamped: false,
+      rotated: false,
+    },
+    {
+      endpoint: 'end' as const,
+      target: { x: -2, z: 6 },
+      clamped: true,
+      rotated: true,
+    },
+    {
+      endpoint: 'start' as const,
+      target: { x: 5, z: -5 },
+      clamped: false,
+      rotated: true,
+    },
+  ])(
+    'endpoint $endpoint rotated=$rotated previews/submits the protected helper result and retains attached data',
+    ({ endpoint, target, clamped, rotated }) => {
+      const input = walls({ tool: 'select' });
+      const original = endpointWall(input);
+      const source = rotated
+        ? rotateWall(original, { angle: 0.4, pivot: { x: 0, z: 0 } })
+        : original;
+      input.draft.room.walls = [source];
+      input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+      const before = structuredClone(input.draft);
+      render(<LayoutViewport {...input} />);
+      down(handle(endpoint), source.line[endpoint]);
+      move(target);
+      const expected = reshapeWallEndpoint({
+        wall: source,
+        endpoint,
+        point: target,
+      });
+      expect(expected.clamped).toBe(clamped);
+      expectPreviewEndpoint(endpoint, expected.wall.line[endpoint]);
+      expectPreviewEndpoint(
+        endpoint === 'start' ? 'end' : 'start',
+        source.line[endpoint === 'start' ? 'end' : 'start']
+      );
+      expect(
+        surface()
+          .querySelector('[data-wall-feedback]')
+          ?.getAttribute('data-wall-feedback')
+      ).toBe(clamped ? 'Clamped to preserve openings' : 'Free point');
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+      up(target);
+      const candidate = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+      expect(candidate.line[endpoint].x).toBeCloseTo(
+        expected.wall.line[endpoint].x
+      );
+      expect(candidate.line[endpoint].z).toBeCloseTo(
+        expected.wall.line[endpoint].z
+      );
+      expect(candidate.openings[0].position).toBeCloseTo(
+        expected.wall.openings[0].position
+      );
+      expect(candidate.openings[0].door).toEqual(source.openings[0].door);
+      expect(candidate.appearance).toEqual(source.appearance);
+      expect(candidate.blocker.footprint.width).toBeCloseTo(
+        expected.wall.blocker.footprint.width
+      );
+      expect(candidate.blocker.footprint.depth).toBe(
+        source.blocker.footprint.depth
+      );
+      expect(candidate.blocker.blocksMovement).toBe(false);
+      expect(candidate.blocker.blocksLineOfSight).toBe(true);
+      expect(input.draft).toEqual(before);
+    }
+  );
+  it('free end-to-(0,6) without an opening lands at requested point; snapped endpoints use the snap helper first', () => {
+    const input = walls({ tool: 'select' });
+    const wall = endpointWall(input);
+    wall.openings = [];
+    input.wallEditing = { ...input.wallEditing, selectedId: wall.id };
+    const { rerender } = render(<LayoutViewport {...input} />);
+    down(handle('end'), wall.line.end);
+    move({ x: 0, z: 6 });
+    up({ x: 0, z: 6 });
+    const first = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+    expect(first.line.end.x).toBeCloseTo(0);
+    expect(first.line.end.z).toBeCloseTo(6);
+    input.wallEditing = { ...input.wallEditing, snapEnabled: true };
+    rerender(<LayoutViewport {...input} />);
+    const target = { x: 0.15, z: 5.9 };
+    down(handle('end'), wall.line.end);
+    move(target);
+    const snapped = snapWallPoint({ point: target, enabled: true }).point;
+    const expected = reshapeWallEndpoint({
+      wall,
+      endpoint: 'end',
+      point: snapped,
+    }).wall;
+    expectPreviewEndpoint('end', expected.line.end);
+    up(target);
+    const second = vi.mocked(input.wallEditing.edit).mock.calls[1][0];
+    expect(second.line.end.x).toBeCloseTo(expected.line.end.x);
+    expect(second.line.end.z).toBeCloseTo(expected.line.end.z);
+  });
+  it('fractional selection and control-panel reflow at unchanged client pointer never move a wall', () => {
+    const input = walls({ tool: 'select' });
+    const wall = input.draft.room.walls![0];
+    wall.line.start.x = -4.123456789;
+    const { rerender } = render(<LayoutViewport {...input} />);
+    const hit = position({ x: -2.123456789, z: -3 });
+    fireEvent.pointerDown(body(), { ...hit, pointerId: 7 });
+    bounds = { ...bounds, top: bounds.top + 60, height: bounds.height - 60 };
+    rerender(
+      <LayoutViewport
+        {...input}
+        wallEditing={{ ...input.wallEditing, selectedId: wall.id }}
+      />
+    );
+    fireEvent.pointerMove(surface(), { ...hit, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...hit, pointerId: 7 });
+    expect(input.wallEditing.select).toHaveBeenCalledWith(wall.id);
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it.each(['body', 'start', 'end'] as const)(
+    'returning a fractional %s drag to its original pointer is a no-op',
+    (kind) => {
+      const input = walls({ tool: 'select' });
+      const source = rotateWall(input.draft.room.walls![0], {
+        angle: 0.123456789,
+      });
+      input.draft.room.walls = [source];
+      input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+      render(<LayoutViewport {...input} />);
+      const anchor =
+        kind === 'body'
+          ? { x: -1.123456789, z: -3.987654321 }
+          : source.line[kind];
+      down(kind === 'body' ? body() : handle(kind), anchor);
+      move({ x: anchor.x + 1, z: anchor.z + 1 });
+      move(anchor);
+      up(anchor);
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+      expect(input.onCommit).not.toHaveBeenCalled();
+    }
+  );
+  it('endpoint blocker-width refusal reports through the provider and discards the invalid candidate', () => {
+    const input = walls({ tool: 'select' });
+    const source = endpointWall(input);
+    source.openings = [];
+    source.blocker.footprint.width = 1;
+    input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+    render(<LayoutViewport {...input} />);
+    down(handle('end'), source.line.end);
+    move({ x: 0, z: 6 });
+    up({ x: 0, z: 6 });
+    expect(input.wallEditing.reportRefusal).toHaveBeenCalledWith(
+      expect.stringContaining('blocker')
+    );
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    expect(source.blocker.footprint.width).toBe(1);
+  });
+  it.each(['epoch', 'scope'] as const)(
+    'a %s replacement fences endpoint callbacks and permits only fresh gestures',
+    (reason) => {
+      const input = walls({ tool: 'select' });
+      const source = endpointWall(input);
+      input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+      const documentContext = { draft: input.draft, scope: {} };
+      const { rerender } = render(
+        <LayoutViewport {...input} documentContext={documentContext} />
+      );
+      down(handle('end'), source.line.end);
+      move({ x: 0, z: 6 });
+      const nextEdit = vi.fn(() => true);
+      rerender(
+        <LayoutViewport
+          {...input}
+          intentEpoch={reason === 'epoch' ? 2 : 1}
+          documentContext={
+            reason === 'scope' ? { ...documentContext } : documentContext
+          }
+          wallEditing={{ ...input.wallEditing, edit: nextEdit }}
+        />
+      );
+      up({ x: 0, z: 6 });
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+      expect(nextEdit).not.toHaveBeenCalled();
+      down(handle('end'), source.line.end, 8);
+      move({ x: 0, z: 6 }, 8);
+      up({ x: 0, z: 6 }, 8);
+      expect(nextEdit).toHaveBeenCalledTimes(1);
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    }
+  );
+  it('preserves preview/captured callbacks across selection, frame, thumbnail and callback-only rerenders', () => {
+    const input = walls({ tool: 'select' });
+    const source = input.draft.room.walls![0];
+    const { rerender } = render(<LayoutViewport {...input} />);
+    down(body(), { x: 0, z: -3 });
+    move({ x: 1, z: -2 });
+    const nextEdit = vi.fn(() => true);
+    const frame = { center: { x: 2, z: 1 }, zoom: 2 };
+    rerender(
+      <LayoutViewport
+        {...input}
+        frame={frame}
+        wallEditing={{
+          ...input.wallEditing,
+          selectedId: source.id,
+          edit: nextEdit,
+          options: [
+            {
+              ref: source.appearance.assetRef,
+              label: 'Ready',
+              wallMatch: true,
+              thumbnail: { status: 'ready', image: 'image' },
+            },
+          ],
+        }}
+      />
+    );
+    const previewClient = worldToClient(
+      { x: -3, z: -2 },
+      createLayoutTransform(bounds, frame, 12)
+    )!;
+    expect(Number(handle('start').getAttribute('cx'))).toBeCloseTo(
+      previewClient.x - bounds.left
+    );
+    // Release at the same client pointer as last preview: frame changes cannot alter it.
+    up({ x: 1, z: -2 });
+    expect(nextEdit).not.toHaveBeenCalled();
+    const candidate = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+    expect(candidate.line.start).toEqual({ x: -3, z: -2 });
+  });
+  it.each([
+    'escape',
+    'right-click',
+    'capture-loss',
+    'cancel',
+    'tool',
+    'document',
+    'epoch',
+    'asset',
+    'snap',
+    'unmount',
+  ] as const)(
+    '%s retires a captured wall gesture without a late release',
+    (reason) => {
+      const input = walls({ onExitWallTool: vi.fn() });
+      const { rerender, unmount } = render(<LayoutViewport {...input} />);
+      const node = surface();
+      down(node, { x: 0, z: 0 });
+      move({ x: 2, z: 1 });
+      if (reason === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+      if (reason === 'right-click') fireEvent.contextMenu(node);
+      if (reason === 'capture-loss')
+        fireEvent.lostPointerCapture(node, { pointerId: 7 });
+      if (reason === 'cancel') fireEvent.pointerCancel(node, { pointerId: 7 });
+      if (reason === 'tool')
+        rerender(<LayoutViewport {...input} tool="select" />);
+      if (reason === 'document')
+        rerender(<LayoutViewport {...input} draft={{ ...input.draft }} />);
+      if (reason === 'epoch')
+        rerender(
+          <LayoutViewport
+            {...input}
+            intentEpoch={2}
+            wallEditing={{ ...input.wallEditing, create: vi.fn(() => true) }}
+          />
+        );
+      if (reason === 'asset')
+        rerender(
+          <LayoutViewport
+            {...input}
+            wallEditing={{ ...input.wallEditing, assetRef: 'different' }}
+          />
+        );
+      if (reason === 'snap')
+        rerender(
+          <LayoutViewport
+            {...input}
+            wallEditing={{ ...input.wallEditing, snapEnabled: true }}
+          />
+        );
+      if (reason === 'unmount') unmount();
+      fireEvent.pointerUp(node, { ...position({ x: 2, z: 1 }), pointerId: 7 });
+      expect(input.wallEditing.create).not.toHaveBeenCalled();
+      expect(input.onCommit).not.toHaveBeenCalled();
+      expect(captures.size).toBe(0);
+      expect(input.onExitWallTool).toHaveBeenCalledTimes(
+        reason === 'escape' || reason === 'right-click' ? 1 : 0
+      );
+      expect(input.wallEditing.setAsset).not.toHaveBeenCalled();
+    }
+  );
+  it('unavailable release geometry refuses instead of committing the last valid wall preview', () => {
+    const input = walls();
+    render(<LayoutViewport {...input} />);
+    down(surface(), { x: 0, z: 0 });
+    move({ x: 2, z: 1 });
+    const releasePoint = position({ x: 2, z: 1 });
+    bounds.width = 0;
+    fireEvent.pointerUp(surface(), { ...releasePoint, pointerId: 7 });
+    expect(input.wallEditing.create).not.toHaveBeenCalled();
+    expect(input.wallEditing.reportRefusal).toHaveBeenCalledExactlyOnceWith(
+      'Wall gesture unavailable: canvas geometry changed.'
+    );
+    expect(surface().querySelector('[data-wall-preview]')).toBeNull();
+  });
+  it('another pointer cannot replace/sample/finish/cancel the owner; primary right click exits Wall', () => {
+    const input = walls({ onExitWallTool: vi.fn() });
+    render(<LayoutViewport {...input} />);
+    down(surface(), { x: 0, z: 0 });
+    move({ x: 2, z: 1 });
+    down(surface(), { x: 4, z: 3 }, 8);
+    move({ x: 4, z: 3 }, 8);
+    up({ x: 4, z: 3 }, 8);
+    fireEvent.pointerCancel(surface(), { pointerId: 8 });
+    fireEvent.lostPointerCapture(surface(), { pointerId: 8 });
+    expect(input.wallEditing.create).not.toHaveBeenCalled();
+    up({ x: 2, z: 1 });
+    expect(input.wallEditing.create).toHaveBeenCalledExactlyOnceWith({
+      start: { x: 0, z: 0 },
+      end: { x: 2, z: 1 },
+    });
+    down(surface(), { x: 0, z: 0 }, 9);
+    down(surface(), { x: 2, z: 1 }, 9, 2);
+    up({ x: 2, z: 1 }, 9);
+    expect(input.onExitWallTool).toHaveBeenCalledTimes(1);
+    expect(input.wallEditing.create).toHaveBeenCalledTimes(1);
+  });
+  it('helper refusal/collapsed endpoint and owner-refused edit leave canonical wall untouched', () => {
+    const input = walls({ tool: 'select' });
+    const source = endpointWall(input);
+    input.wallEditing = { ...input.wallEditing, selectedId: source.id };
+    input.wallEditing.edit = vi.fn(() => false);
+    const before = structuredClone(input.draft);
+    render(<LayoutViewport {...input} />);
+    down(handle('end'), source.line.end);
+    move(source.line.start);
+    up(source.line.start);
+    expect(input.wallEditing.reportRefusal).toHaveBeenCalledWith(
+      expect.stringContaining('endpoint radius')
+    );
+    expect(input.wallEditing.edit).not.toHaveBeenCalled();
+    down(body(), { x: 5, z: 0 });
+    move({ x: 5, z: 1 });
+    up({ x: 5, z: 1 });
+    up({ x: 5, z: 1 });
+    expect(input.wallEditing.edit).toHaveBeenCalledTimes(1);
+    expect(input.draft).toEqual(before);
+    expect(surface().querySelector('[data-wall-feedback]')).toBeNull();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+  it.each(['Delete', 'Backspace'])(
+    '%s deletes only selected walls from root canvas Select focus, never label controls or text',
+    (key) => {
+      const input = walls({ tool: 'select' });
+      input.wallEditing = { ...input.wallEditing, selectedId: 'studio-wall' };
+      const { rerender } = render(
+        <>
+          <input aria-label="outside text" />
+          <textarea />
+          <select />
+          <div contentEditable />
+          <LayoutViewport {...input} />
+        </>
+      );
+      const canvas = surface();
+      for (const target of [
+        screen.getByLabelText('outside text'),
+        document.querySelector('textarea')!,
+        document.querySelector('select')!,
+        document.querySelector('[contenteditable]')!,
+        handle('end'),
+      ])
+        fireEvent.keyDown(target, { key });
+      expect(input.wallEditing.remove).not.toHaveBeenCalled();
+      fireEvent.keyDown(canvas, { key });
+      expect(input.wallEditing.remove).toHaveBeenCalledExactlyOnceWith(
+        'studio-wall'
+      );
+      rerender(<LayoutViewport {...input} tool="paint" />);
+      fireEvent.keyDown(surface(), { key });
+      expect(input.wallEditing.remove).toHaveBeenCalledTimes(1);
+    }
+  );
 });

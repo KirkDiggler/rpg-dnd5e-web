@@ -67,7 +67,7 @@ export interface LayoutLabelEditing {
   active: boolean;
   placementText: string | null;
   selectedId: string | null;
-  onSelect(id: string): void;
+  onSelect(id: string | null): void;
   onCreate(text: string, location: WorldPoint): boolean;
   onMove(id: string, location: WorldPoint): boolean;
   onCancel(): void;
@@ -76,11 +76,16 @@ export interface LayoutLabelEditing {
 /** A controlled presentation: no document copy, persistence or history owner. */
 export interface LayoutViewportProps {
   draft: Readonly<RoomDraft>;
-  tool: LayoutFloorTool;
+  tool: LayoutTool;
   frame: LayoutFrame;
   onFrameChange(next: LayoutFrame): void;
   onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
   labelEditing?: LayoutLabelEditing;
+  wallEditing?: StudioWallEditing;
+  /** Owner generation: option/tool/view cancellation fences late releases. */
+  intentEpoch?: number;
+  /** Presentation-only exit; preserve the owner’s armed appearance and snap. */
+  onExitWallTool?(): void;
   /** Optional complete-owner snapshot identity: scope-only navigation also
    * retires previews. Absent retains existing draft-identity cancellation. */
   documentContext?: Readonly<RoomDraftDocument>;

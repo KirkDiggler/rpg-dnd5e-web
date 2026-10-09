@@ -53,7 +53,7 @@ export function useStudioLabels(
     setActive(false);
     setSelectedId(null);
   }, [view, session.document.draft.id]);
-  const select = (id: string): void => {
+  const select = (id: string | null): void => {
     // Selection alone must not retire an in-flight label drag's owner intent.
     setSelectedId(id);
     setPlacementText(null);
