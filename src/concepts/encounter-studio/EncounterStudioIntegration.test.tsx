@@ -1789,6 +1789,221 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     };
   }
 
+  it('joins real room definitions, T-wall motion/break/repair, interleaved edits and full-document history without witness adoption', () => {
+    const original = createPopulatedStudioDocument();
+    const north = original.draft.room.walls![0];
+    const extra = (
+      id: string,
+      start: WorldPoint,
+      end: WorldPoint
+    ): StructuralWall => ({
+      ...structuredClone(north),
+      id,
+      label: id,
+      line: { start, end },
+      openings: [],
+    });
+    original.draft.room.walls!.push(
+      extra('east', { x: 4, z: -3 }, { x: 4, z: 3 }),
+      extra('south', { x: 4, z: 3 }, { x: -4, z: 3 }),
+      extra('west', { x: -4, z: 3 }, { x: -4, z: -3 }),
+      extra('middle', { x: 0, z: -3 }, { x: 0, z: 3 })
+    );
+    const owner = arrangeOwner(original);
+    const snapshots = [structuredClone(owner.session.document)];
+    const accepted = (operation: () => boolean): void => {
+      const writes = owner.storage.roomWrites();
+      act(() => expect(operation()).toBe(true));
+      expect(owner.storage.roomWrites()).toBe(writes + 1);
+      snapshots.push(structuredClone(owner.session.document));
+    };
+    accepted(() =>
+      owner.session.regionEditing.createRoomLabel('Left', { x: -2, z: 0 })
+    );
+    accepted(() =>
+      owner.session.regionEditing.createRoomLabel('Right', { x: 2, z: 0 })
+    );
+    const regions = owner.session.document.draft.scene.authoringRegions!;
+    const intent = structuredClone(regions);
+    expect(
+      owner.session.regionEditing.resolutions.map((r) => r.status)
+    ).toEqual(['resolved', 'resolved']);
+    act(() => owner.session.wallEditing.select('middle'));
+    const middle = owner.session.document.draft.room.walls!.find(
+      (w) => w.id === 'middle'
+    )!;
+    accepted(() =>
+      owner.session.wallEditing.edit({
+        ...middle,
+        line: { start: { x: 1, z: -3 }, end: { x: 1, z: 3 } },
+      })
+    );
+    expect(
+      owner.session.regionEditing.resolutions.map((r) => r.status)
+    ).toEqual(['resolved', 'resolved']);
+    expect(owner.session.document.draft.scene.authoringRegions).toEqual(intent);
+    const completeMiddle = owner.session.document.draft.room.walls!.find(
+      (w) => w.id === 'middle'
+    )!;
+    accepted(() =>
+      owner.session.wallEditing.edit({
+        ...completeMiddle,
+        line: { ...completeMiddle.line, end: { x: 1, z: 2 } },
+      })
+    );
+    expect(
+      owner.session.regionEditing.resolutions.every(
+        (r) => r.status === 'unresolved'
+      )
+    ).toBe(true);
+    const broken = owner.session.document;
+    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.roomWrites();
+    owner.switchView('layout');
+    owner.switchView('3d');
+    expect(owner.session.document).toBe(broken);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    accepted(() => owner.session.wallEditing.edit(completeMiddle));
+    expect(
+      owner.session.regionEditing.resolutions.map((r) => r.status)
+    ).toEqual(['resolved', 'resolved']);
+    accepted(() => owner.session.createMapLabel('Plain note', { x: 0, z: 4 }));
+    accepted(() => owner.session.commitFloor([{ q: 3, r: 0 }], 'paint'));
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    accepted(() =>
+      owner.session.commitArrange({
+        kind: 'scene-edit',
+        target: { kind: 'scene', ids: ['table'] },
+        position: { x: 1.25 },
+      })
+    );
+    expect(owner.session.document.draft.scene.authoringRegions).toEqual(intent);
+    expect(owner.session.document.scope).toEqual(original.scope);
+    expect(owner.session.document.draft.room.doorBindings).toEqual(
+      original.draft.room.doorBindings
+    );
+    act(() => owner.session.mapLabelSelection.select(regions[0].labelId));
+    const beforeAreaRoom = structuredClone(owner.session.document.draft.room);
+    accepted(() =>
+      owner.session.regionEditing.setExplicitRegionArea(regions[0].id, [])
+    );
+    expect(owner.session.document.draft.room).toEqual(beforeAreaRoom);
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'label',
+      resolution: { reason: 'empty-explicit' },
+    });
+    const final = snapshots[snapshots.length - 1];
+    for (const expected of snapshots.slice(0, -1).reverse()) {
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(expected);
+    }
+    expect(owner.session.canUndo).toBe(false);
+    for (const expected of snapshots.slice(1)) {
+      act(() => owner.session.redo());
+      expect(owner.session.document).toEqual(expected);
+    }
+    owner.unmount();
+    const loaded = arrangeOwner(owner.storage.document());
+    expect(loaded.session.document).toEqual(final);
+    expect(loaded.session.regionEditing.resolutions[0]).toMatchObject({
+      reason: 'empty-explicit',
+    });
+  });
+
+  it('joins initially unbound label, wall closure, explicit binding and stale link rejection', () => {
+    const original = createPopulatedStudioDocument();
+    const north = original.draft.room.walls![0];
+    const extra = (
+      id: string,
+      start: WorldPoint,
+      end: WorldPoint
+    ): StructuralWall => ({
+      ...structuredClone(north),
+      id,
+      label: id,
+      line: { start, end },
+      openings: [],
+    });
+    original.draft.room.walls!.push(
+      extra('east', { x: 4, z: -3 }, { x: 4, z: 3 }),
+      extra('south', { x: 4, z: 3 }, { x: -4, z: 3 })
+    );
+    const owner = arrangeOwner(original);
+    act(() =>
+      expect(
+        owner.session.regionEditing.createRoomLabel('Initially open', {
+          x: 0,
+          z: 0,
+        })
+      ).toBe(true)
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    const intent = structuredClone(region);
+    act(() => owner.session.wallEditing.setAsset(north.appearance.assetRef));
+    act(() =>
+      expect(
+        owner.session.wallEditing.create({
+          start: { x: -4, z: 3 },
+          end: { x: -4, z: -3 },
+        })
+      ).toBe(true)
+    );
+    expect(owner.session.document.draft.scene.authoringRegions![0]).toEqual(
+      intent
+    );
+    expect(owner.session.regionEditing.resolutions[0]).toMatchObject({
+      reason: 'unbound',
+    });
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const retired = owner.session.regionEditing;
+    act(() =>
+      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
+        true
+      )
+    );
+    const bound = owner.session.document;
+    expect(owner.session.regionEditing.resolutions[0].status).toBe('resolved');
+    act(() => expect(retired.setExplicitRegionArea(region.id, [])).toBe(false));
+    const writes = owner.storage.roomWrites();
+    act(() =>
+      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
+        true
+      )
+    );
+    expect(owner.session.document).toBe(bound);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'region-area',
+          target: { kind: 'label', id: region.labelId },
+          regionId: 'unrelated',
+          cells: [],
+        })
+      ).toBe(false)
+    );
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'label-remove',
+          target: { kind: 'label', id: region.labelId },
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.document).toBe(bound);
+    act(() => owner.session.undo());
+    expect(owner.session.regionEditing.resolutions[0]).toMatchObject({
+      reason: 'unbound',
+    });
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(bound);
+    owner.unmount();
+    const loaded = arrangeOwner(owner.storage.document());
+    expect(loaded.session.regionEditing.resolutions[0].status).toBe('resolved');
+    expect(loaded.session.document.scope).toEqual(original.scope);
+  });
+
   it('placement preview identities never alias an open authored door on another wall or a binding key', () => {
     const document = createPopulatedStudioDocument();
     const source = document.draft.room.walls![0];

@@ -53,6 +53,13 @@ import {
   selectionOptionSections,
 } from './propOptionSections';
 import { PropOrders } from './PropOrders';
+import { resolveAuthoringRegions } from './regionBoundaryGeometry';
+import {
+  useEnclosingWalls as bindEnclosingWalls,
+  createRoomLabel,
+  removeRegionAndLabel,
+  setExplicitRegionArea,
+} from './regionEdits';
 import { addRepeatedProps } from './repeatPlacement';
 import {
   assertRoomDocumentSize,
@@ -3511,6 +3518,11 @@ export function WorldBuildingConcept({
       return rejectEdit(error);
     }
   };
+  // Pure derived metadata: floor/policy/UI changes cannot acquire a witness.
+  const regionResolutions = useMemo(
+    () => resolveAuthoringRegions(roomDraft),
+    [roomDraft]
+  );
   const selectStudioLabel = (id: string | null): boolean => {
     if (refuseWhilePublishing()) return false;
     if (
@@ -3533,7 +3545,12 @@ export function WorldBuildingConcept({
     if (refuseWhilePublishing()) return;
     if (
       target &&
-      !projectStudioArrange({ draft: roomDraft, target, selectionRevision })
+      !projectStudioArrange({
+        draft: roomDraft,
+        target,
+        selectionRevision,
+        regionResolutions,
+      })
     ) {
       rejectEdit(new Error('Actor target no longer exists.'));
       return;
@@ -3553,6 +3570,7 @@ export function WorldBuildingConcept({
       draft: roomDraft,
       target: activeStudioTargetRef.current,
       selectionRevision,
+      regionResolutions,
     })
   )
     activeStudioTargetRef.current = null;
@@ -3598,6 +3616,7 @@ export function WorldBuildingConcept({
     previewScene,
     previewWall,
     previewDoor,
+    regionResolutions,
   });
   const commitArrange = (intent: StudioArrangeIntent): boolean => {
     if (
@@ -3647,6 +3666,32 @@ export function WorldBuildingConcept({
             draft: applyStudioActorArrange(roomDraft, intent),
             scope: siteScope,
           });
+        case 'region-bind':
+        case 'region-area':
+        case 'region-remove': {
+          if (
+            arrange.kind !== 'label' ||
+            arrange.region?.id !== intent.regionId ||
+            arrange.region.labelId !== intent.target.id
+          )
+            return false;
+          const current = roomHistoryRef.current.present;
+          const linked = current.draft.scene.authoringRegions?.find(
+            (r) => r.id === intent.regionId
+          );
+          if (!linked || linked.labelId !== intent.target.id) return false;
+          const draft =
+            intent.kind === 'region-bind'
+              ? bindEnclosingWalls(current.draft, intent.regionId)
+              : intent.kind === 'region-area'
+                ? setExplicitRegionArea(
+                    current.draft,
+                    intent.regionId,
+                    intent.cells
+                  )
+                : removeRegionAndLabel(current.draft, intent.regionId);
+          return commitRoomDocument({ ...current, draft });
+        }
         case 'label-remove':
         case 'label-edit':
           return applyRoomIntent((current) => {
@@ -4299,6 +4344,68 @@ export function WorldBuildingConcept({
             selectedId:
               activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
             select: guardSnapshotIntent(selectStudioLabel),
+          },
+          regionEditing: {
+            resolutions: regionResolutions,
+            createRoomLabel: guardSnapshotIntent(
+              (text: string, location: WorldPoint): boolean => {
+                if (
+                  selectionRevisionRef.current !== selectionRevision ||
+                  refuseWhilePublishing()
+                )
+                  return false;
+                try {
+                  const current = roomHistoryRef.current.present;
+                  return commitRoomDocument(
+                    {
+                      ...current,
+                      draft: createRoomLabel(
+                        current.draft,
+                        idFactory(),
+                        idFactory(),
+                        text,
+                        location
+                      ),
+                    },
+                    selectedIds,
+                    true
+                  );
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            useEnclosingWalls: guardSnapshotIntent(
+              (regionId: string): boolean =>
+                arrange?.kind === 'label'
+                  ? commitArrange({
+                      kind: 'region-bind',
+                      target: arrange.target,
+                      regionId,
+                    })
+                  : false
+            ),
+            setExplicitRegionArea: guardSnapshotIntent(
+              (regionId: string, cells: readonly RoomHexCell[]): boolean =>
+                arrange?.kind === 'label'
+                  ? commitArrange({
+                      kind: 'region-area',
+                      target: arrange.target,
+                      regionId,
+                      cells,
+                    })
+                  : false
+            ),
+            removeRegionAndLabel: guardSnapshotIntent(
+              (regionId: string): boolean =>
+                arrange?.kind === 'label'
+                  ? commitArrange({
+                      kind: 'region-remove',
+                      target: arrange.target,
+                      regionId,
+                    })
+                  : false
+            ),
           },
           renameDocument: guardSnapshotIntent(renameDocument),
           wallEditing: {

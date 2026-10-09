@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { RegionResolution } from '../world-building/authoringRegions';
 import type {
   RoomDraft,
   RoomDraftDocument,
@@ -14,6 +15,12 @@ import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
 import type { WorldPoint } from '../world-building/types';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+export type {
+  AuthoringRegion,
+  BoundaryRun,
+  EnclosureWitness,
+  RegionResolution,
+} from '../world-building/authoringRegions';
 export type {
   StudioDoorAppearanceOption,
   StudioDoorEditing,
@@ -117,6 +124,24 @@ export interface LayoutViewportProps {
   documentContext?: Readonly<RoomDraftDocument>;
 }
 
+/** Definitions belong to the one document owner. Area commits replace region
+ * cells, never floor; bound intents require the current linked-label selection.
+ * Captured callbacks retire on document/epoch/selection changes. */
+export interface StudioRegionEditing {
+  readonly resolutions: readonly RegionResolution[];
+  /** Atomic pair creation uses the existing strict label codec gate. Unbound
+   * geometry alone is valid metadata, not a publication/creation refusal. */
+  createRoomLabel(text: string, location: WorldPoint): boolean;
+  /** Definition operations use ordinary shape/bounds/size gates and retain
+   * editable unfinished policies. Equal accepted intents add no history. */
+  useEnclosingWalls(regionId: string): boolean;
+  setExplicitRegionArea(
+    regionId: string,
+    cells: readonly RoomHexCell[]
+  ): boolean;
+  removeRegionAndLabel(regionId: string): boolean;
+}
+
 /** Render-time projection of the existing owner, never a second store.
  * Consumers must not mutate or serialize document. No publishing/play seam. */
 export interface EncounterStudioSession {
@@ -131,6 +156,7 @@ export interface EncounterStudioSession {
   };
   doorEditing: StudioDoorEditing;
   wallEditing: StudioWallEditing;
+  regionEditing: StudioRegionEditing;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
   canUndo: boolean;

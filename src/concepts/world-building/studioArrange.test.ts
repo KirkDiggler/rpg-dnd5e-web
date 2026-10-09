@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { createRoomLabel, setExplicitRegionArea } from './regionEdits';
 import {
   createRoomDraft,
   placeRoomMonster,
@@ -28,6 +29,51 @@ import {
   type StudioArrangeSelection,
   type StudioArrangeTarget,
 } from './studioArrange';
+
+describe('linked label Arrange projection', () => {
+  it('projects real definitions/resolution without a separate region target or render write', () => {
+    const value = createRoomLabel(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      'region',
+      'label',
+      'Forest',
+      { x: 0, z: 0 }
+    );
+    const before = JSON.stringify(value);
+    const target = { kind: 'label' as const, id: 'label' };
+    const unbound = projectStudioArrange({
+      draft: value,
+      target,
+      selectionRevision: 7,
+    });
+    expect(unbound).toMatchObject({
+      kind: 'label',
+      target,
+      selectionRevision: 7,
+      region: { id: 'region' },
+      resolution: { reason: 'unbound' },
+    });
+    const painted = setExplicitRegionArea(value, 'region', [{ q: 0, r: 0 }]);
+    expect(
+      projectStudioArrange({ draft: painted, target, selectionRevision: 7 })
+    ).toMatchObject({
+      resolution: {
+        status: 'resolved',
+        area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+      },
+    });
+    expect(JSON.stringify(value)).toBe(before);
+    const note = draft();
+    const projection = projectStudioArrange({
+      draft: note,
+      target,
+      selectionRevision: 1,
+    });
+    expect(projection?.kind).toBe('label');
+    expect(projection).not.toHaveProperty('region');
+    expect(projection).not.toHaveProperty('resolution');
+  });
+});
 
 const WALL_ASSET = 'dnd5e:env:dark-fortress:45_wall_01';
 function wall(): StructuralWall {

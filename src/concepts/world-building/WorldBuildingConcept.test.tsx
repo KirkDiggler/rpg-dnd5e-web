@@ -4549,6 +4549,95 @@ describe('Room transaction compatibility and retirement', () => {
     ).toEqual([{ id: 'intel-1', reveals: { fact: 'author-chosen-fact' } }]);
   });
 
+  it('ordinary region bind/area/pair removal preserve unfinished policy while label and resize gates stay strict', () => {
+    const storage = new MemoryStorage();
+    const document = createPopulatedStudioDocument();
+    const north = document.draft.room.walls![0];
+    const points = [
+      { x: -4, z: -3 },
+      { x: 4, z: -3 },
+      { x: 4, z: 3 },
+      { x: -4, z: 3 },
+    ];
+    for (let i = 1; i < 4; i++)
+      document.draft.room.walls!.push({
+        ...structuredClone(north),
+        id: `side-${i}`,
+        label: 'Side',
+        line: { start: points[i], end: points[(i + 1) % 4] },
+        openings: [],
+      });
+    document.draft.scene.version = 3;
+    document.draft.scene.mapLabels = [
+      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
+    ];
+    document.draft.scene.authoringRegions = [
+      { id: 'region', labelId: 'room-label', boundary: { kind: 'automatic' } },
+    ];
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    let session: EncounterStudioSession | undefined;
+    const idFactory = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept roomMode storage={storage} idFactory={idFactory} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    mounted.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={idFactory}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const policy = session!.document.scope;
+    const beforeCreation = session!.document;
+    act(() =>
+      expect(
+        session!.regionEditing.createRoomLabel('Refused pair', { x: 1, z: 0 })
+      ).toBe(false)
+    );
+    expect(session!.document).toBe(beforeCreation);
+    const region = session!.document.draft.scene.authoringRegions![0];
+    act(() => session!.mapLabelSelection.select(region.labelId));
+    act(() =>
+      expect(session!.regionEditing.setExplicitRegionArea(region.id, [])).toBe(
+        true
+      )
+    );
+    act(() =>
+      expect(session!.regionEditing.useEnclosingWalls(region.id)).toBe(true)
+    );
+    expect(session!.regionEditing.resolutions[0].status).toBe('resolved');
+    const explicit = session!.document;
+    expect(explicit.scope).toEqual(policy);
+    act(() =>
+      expect(session!.renameMapLabel(region.labelId, 'Strict rename')).toBe(
+        false
+      )
+    );
+    act(() =>
+      expect(session!.moveMapLabel(region.labelId, { x: 1, z: 0 })).toBe(false)
+    );
+    act(() => expect(session!.resizeWorkspace(73, 48)).toBe(false));
+    expect(session!.document).toBe(explicit);
+    act(() =>
+      expect(session!.regionEditing.removeRegionAndLabel(region.id)).toBe(true)
+    );
+    expect(session!.document.scope).toEqual(policy);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(session!.notice).toMatch(/must name a fact/);
+  });
+
   it('new resize/label intents refuse unfinished scope without dropping the editable policy', () => {
     const storage = new MemoryStorage();
     let session: EncounterStudioSession | undefined;
@@ -4573,6 +4662,18 @@ describe('Room transaction compatibility and retirement', () => {
       />
     );
     const before = session!.document;
+    const writes = storage.writes;
+    act(() =>
+      expect(
+        session!.regionEditing.createRoomLabel('Refused room', { x: 0, z: 0 })
+      ).toBe(false)
+    );
+    expect(session!.document).toBe(before);
+    expect(session!.document.draft.scene).not.toHaveProperty(
+      'authoringRegions'
+    );
+    expect(session!.document.draft.scene).not.toHaveProperty('mapLabels');
+    expect(storage.writes).toBe(writes);
     act(() =>
       expect(session!.createMapLabel('Kitchen', { x: 0, z: 0 })).toBe(false)
     );
@@ -4767,6 +4868,213 @@ describe('Studio owner facade', () => {
     expect(owner.session.canUndo).toBe(false);
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.writes).toBe(writes);
+  });
+
+  it('region facade creates one pair transaction, reuses label selection, rejects raw deletion and paints no floor', () => {
+    const owner = mountStudio(populatedStorage());
+    const before = structuredClone(owner.session.document);
+    const stale = owner.session.regionEditing;
+    act(() =>
+      expect(
+        owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
+      ).toBe(true)
+    );
+    const created = owner.session.document;
+    const resolutions = owner.session.regionEditing.resolutions;
+    owner.rerender();
+    expect(owner.session.regionEditing.resolutions).toBe(resolutions);
+    const region = created.draft.scene.authoringRegions![0];
+    expect(created.draft.scene.version).toBe(3);
+    expect(created.draft.room).toEqual(before.draft.room);
+    expect(created.scope).toEqual(before.scope);
+    expect(owner.session.regionEditing.resolutions).toEqual([
+      { id: region.id, status: 'unresolved', reason: 'unbound' },
+    ]);
+    act(() =>
+      expect(stale.createRoomLabel('Retired document', { x: 1, z: 0 })).toBe(
+        false
+      )
+    );
+    act(() =>
+      expect(
+        owner.session.regionEditing.setExplicitRegionArea(region.id, [])
+      ).toBe(false)
+    );
+    act(() =>
+      expect(owner.session.mapLabelSelection.select(region.labelId)).toBe(true)
+    );
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'label',
+      region,
+      resolution: { reason: 'unbound' },
+    });
+    act(() => expect(owner.session.deleteMapLabel(region.labelId)).toBe(false));
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'label-remove',
+          target: { kind: 'label', id: region.labelId },
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.document).toBe(created);
+    act(() =>
+      expect(
+        owner.session.regionEditing.setExplicitRegionArea(region.id, [
+          { q: 0, r: 0 },
+        ])
+      ).toBe(true)
+    );
+    const painted = owner.session.document;
+    expect(painted.draft.room).toEqual(before.draft.room);
+    expect(painted.scope).toEqual(before.scope);
+    const writes = owner.storage.writes;
+    act(() =>
+      expect(
+        owner.session.regionEditing.setExplicitRegionArea(region.id, [
+          { q: 0, r: 0 },
+          { q: 0, r: 0 },
+        ])
+      ).toBe(true)
+    );
+    expect(owner.session.document).toBe(painted);
+    expect(owner.storage.writes).toBe(writes);
+    act(() =>
+      expect(owner.session.regionEditing.useEnclosingWalls(region.id)).toBe(
+        false
+      )
+    );
+    expect(owner.session.document).toBe(painted);
+    act(() =>
+      expect(owner.session.regionEditing.removeRegionAndLabel(region.id)).toBe(
+        true
+      )
+    );
+    expect(owner.session.document.draft.scene).not.toHaveProperty(
+      'authoringRegions'
+    );
+    expect(owner.session.document.draft.scene).not.toHaveProperty('mapLabels');
+    expect(owner.session.document.draft.scene.version).toBe(3);
+    for (const expected of [painted, created, before]) {
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(expected);
+    }
+    expect(owner.session.canUndo).toBe(false);
+    for (const expected of [created, painted]) {
+      act(() => owner.session.redo());
+      expect(owner.session.document).toEqual(expected);
+    }
+    owner.unmount();
+    const loaded = mountStudio(owner.storage);
+    expect(loaded.session.document).toEqual(painted);
+  });
+
+  it('fresh region facade refuses every definition intent under the publishing lock', async () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.scene.version = 3;
+    document.draft.scene.mapLabels = [
+      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
+    ];
+    document.draft.scene.authoringRegions = [
+      { id: 'region', labelId: 'room-label', boundary: { kind: 'automatic' } },
+    ];
+    const storage = new MemoryStorage();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    const onPlay = vi.fn();
+    let session: EncounterStudioSession | undefined;
+    const capture = (next: EncounterStudioSession) => {
+      session = next;
+      return null;
+    };
+    const mounted = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+        studioPresentation={{ view: '3d', render: capture }}
+      />
+    );
+    act(() =>
+      expect(session!.mapLabelSelection.select('room-label')).toBe(true)
+    );
+    mounted.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+      />
+    );
+    openIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+    await waitFor(() => expect(publishRpc.gets).toHaveLength(1));
+    mounted.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        roomPublishing={{ characterId: 'char-1', onPlay }}
+        studioPresentation={{ view: '3d', render: capture }}
+      />
+    );
+    expect(session!.arrange).toMatchObject({
+      kind: 'label',
+      region: { id: 'region' },
+    });
+    const before = session!.document;
+    const writes = storage.writes;
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    act(() => {
+      expect(
+        session!.regionEditing.createRoomLabel('Locked', { x: 0, z: 0 })
+      ).toBe(false);
+      expect(session!.regionEditing.useEnclosingWalls('region')).toBe(false);
+      expect(session!.regionEditing.setExplicitRegionArea('region', [])).toBe(
+        false
+      );
+      expect(session!.regionEditing.removeRegionAndLabel('region')).toBe(false);
+    });
+    expect(session!.document).toBe(before);
+    expect(storage.writes).toBe(writes);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+  });
+
+  it('region callbacks retire synchronously on selection round trips, epoch, view, undo and unmount', () => {
+    const owner = mountStudio(populatedStorage(), true);
+    act(() =>
+      expect(
+        owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
+      ).toBe(true)
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const selected = owner.session.regionEditing;
+    act(() => {
+      owner.session.wallEditing.select('studio-wall');
+      expect(selected.setExplicitRegionArea(region.id, [])).toBe(false);
+      owner.session.mapLabelSelection.select(region.labelId);
+      expect(selected.removeRegionAndLabel(region.id)).toBe(false);
+    });
+    const canceled = owner.session.regionEditing;
+    act(() => {
+      owner.session.cancelTransients();
+      expect(canceled.createRoomLabel('Canceled', { x: 1, z: 0 })).toBe(false);
+      expect(canceled.setExplicitRegionArea(region.id, [])).toBe(false);
+    });
+    const switched = owner.session.regionEditing;
+    owner.switchView('layout');
+    owner.switchView('3d');
+    act(() => expect(switched.useEnclosingWalls(region.id)).toBe(false));
+    const beforeUndo = owner.session.regionEditing;
+    act(() => {
+      owner.session.undo();
+      expect(beforeUndo.removeRegionAndLabel(region.id)).toBe(false);
+    });
+    act(() => owner.session.redo());
+    const retired = owner.session.regionEditing;
+    owner.unmount();
+    expect(retired.createRoomLabel('Unmounted', { x: 0, z: 0 })).toBe(false);
   });
 
   it('renames through the canonical ordinary commit, preserving identity/scope and one no-op-safe history', () => {

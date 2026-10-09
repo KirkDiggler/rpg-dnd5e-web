@@ -1,3 +1,5 @@
+import type { AuthoringRegion, RegionResolution } from './authoringRegions';
+import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
   moveRoomMonster,
@@ -100,6 +102,8 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'label';
         readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
         readonly label: Readonly<MapLabel>;
+        readonly region?: Readonly<AuthoringRegion>;
+        readonly resolution?: RegionResolution;
       }
     | {
         readonly kind: 'actor';
@@ -182,6 +186,17 @@ export type StudioArrangeIntent =
       readonly kind: 'label-remove';
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
     }
+  | {
+      readonly kind: 'region-bind' | 'region-remove';
+      readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
+      readonly regionId: string;
+    }
+  | {
+      readonly kind: 'region-area';
+      readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
+      readonly regionId: string;
+      readonly cells: readonly RoomHexCell[];
+    }
   | StudioActorArrangeEdit
   | StudioStartArrangeEdit;
 
@@ -192,6 +207,7 @@ export interface StudioArrangeProjectionInput {
   readonly previewScene?: WorldScene | null;
   readonly previewWall?: StructuralWall | null;
   readonly previewDoor?: StudioDoorPreview | null;
+  readonly regionResolutions?: readonly RegionResolution[];
 }
 
 function validSceneTarget(scene: WorldScene, ids: readonly string[]): boolean {
@@ -325,7 +341,24 @@ export function projectStudioArrange(
       const label = draft.scene.mapLabels?.find(
         (candidate) => candidate.id === target.id
       );
-      return label ? { ...identity, kind: 'label', target, label } : null;
+      if (!label) return null;
+      const region = draft.scene.authoringRegions?.find(
+        (r) => r.labelId === label.id
+      );
+      return {
+        ...identity,
+        kind: 'label',
+        target,
+        label,
+        ...(region
+          ? {
+              region,
+              resolution: (
+                input.regionResolutions ?? resolveAuthoringRegions(draft)
+              ).find((r) => r.id === region.id),
+            }
+          : {}),
+      };
     }
     case 'actor': {
       const monster = draft.room.monsterDeclarations.find(

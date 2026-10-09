@@ -130,6 +130,13 @@ function createSession(): EncounterStudioSession {
   return {
     document: { draft, scope: {} },
     intentEpoch: 0,
+    regionEditing: {
+      resolutions: [],
+      createRoomLabel: vi.fn(() => true),
+      useEnclosingWalls: vi.fn(() => true),
+      setExplicitRegionArea: vi.fn(() => true),
+      removeRegionAndLabel: vi.fn(() => true),
+    },
     doorEditing: {
       assetRef: null,
       active: false,
