@@ -118,6 +118,13 @@ describe('complete grouped Studio door candidates', () => {
       openingId: 'opening',
       doorId: 'door',
     });
+    expect(
+      doorPreviewIds(original, [
+        'preview-opening',
+        'preview-door',
+        'preview-door-',
+      ])
+    ).toEqual({ openingId: 'preview-opening-', doorId: 'preview-door--' });
     expect(() =>
       editStudioDoor(
         original,

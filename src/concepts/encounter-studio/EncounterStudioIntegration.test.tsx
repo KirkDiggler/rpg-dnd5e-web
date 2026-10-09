@@ -1789,6 +1789,53 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     };
   }
 
+  it('placement preview identities never alias an open authored door on another wall or a binding key', () => {
+    const document = createPopulatedStudioDocument();
+    const source = document.draft.room.walls![0];
+    document.draft.room.walls!.push({
+      ...source,
+      id: 'other-wall',
+      line: { start: { x: -4, z: 4 }, end: { x: 4, z: 4 } },
+      openings: [
+        {
+          id: 'other-opening',
+          position: 4,
+          width: 2,
+          door: {
+            id: 'preview-door',
+            assetRef: source.openings[1].door!.assetRef,
+          },
+        },
+      ],
+    });
+    document.draft.room.doorBindings!['preview-door'] = {};
+    document.draft.room.doorBindings!['preview-door-'] = { closed: true };
+    const owner = arrangeOwner(document);
+    const before = owner.session.document;
+    const writes = owner.storage.roomWrites();
+    act(() =>
+      owner.session.doorEditing.setAsset(source.openings[1].door!.assetRef)
+    );
+    act(() => owner.session.doorEditing.setActive(true));
+    act(() =>
+      expect(
+        owner.session.doorEditing.previewPlacement('studio-wall', {
+          x: -0.25,
+          z: -3,
+        })
+      ).toBe(true)
+    );
+    const preview = owner.session.doorEditing.preview!;
+    if (!preview.valid) throw new Error('Expected valid preview');
+    expect(preview.target.doorId).not.toBe('preview-door');
+    expect(preview.target.doorId).not.toBe('preview-door-');
+    expect(owner.session.document).toBe(before);
+    expect(
+      owner.session.document.draft.room.doorBindings!['preview-door']
+    ).toEqual({});
+    expect(owner.storage.roomWrites()).toBe(writes);
+  });
+
   it('complete door placement preview and closed binding are one ordinary owner transaction; Arrange/no-op/delete preserve unrelated scope', () => {
     const owner = arrangeOwner();
     const ref = 'dnd5e:env:dark-fortress:wall_door_double_01';

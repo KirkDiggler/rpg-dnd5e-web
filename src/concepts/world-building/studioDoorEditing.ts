@@ -205,12 +205,17 @@ export function removeStudioDoor(
     throw new Error('Door target no longer exists.');
   return removeWallOpening(wall, target.openingId);
 }
-/** Collision-free local preview identities; never written or reserved in data. */
-export function doorPreviewIds(wall: StructuralWall): {
+/** Collision-free transient identities, excluding the owner's complete ID set.
+ * Never written or reserved in canonical data. */
+export function doorPreviewIds(
+  wall: StructuralWall,
+  unavailable: readonly string[] = []
+): {
   openingId: string;
   doorId: string;
 } {
   const used = new Set([
+    ...unavailable,
     wall.id,
     ...wall.openings.flatMap((o) => [o.id, ...(o.door ? [o.door.id] : [])]),
   ]);

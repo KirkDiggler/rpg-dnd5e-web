@@ -3712,7 +3712,20 @@ export function WorldBuildingConcept({
       if (!entry) throw new Error('Choose a complete door appearance first.');
       const width = studioDoorAssetWidth(entry);
       const pose = clampDoorPosition(wall, doorAlongWall(wall, point), width);
-      const ids = doorPreviewIds(wall);
+      const ids = doorPreviewIds(wall, [
+        ...roomDraft.scene.items.map((item) => item.id),
+        ...roomDraft.scene.groups.map((group) => group.id),
+        ...(roomDraft.scene.mapLabels ?? []).map((label) => label.id),
+        ...roomDraft.room.monsterDeclarations.map((monster) => monster.id),
+        ...(roomDraft.room.walls ?? []).flatMap((candidate) => [
+          candidate.id,
+          ...candidate.openings.flatMap((opening) => [
+            opening.id,
+            ...(opening.door ? [opening.door.id] : []),
+          ]),
+        ]),
+        ...Object.keys(roomDraft.room.doorBindings ?? {}),
+      ]);
       const next = createStudioDoor(wall, {
         ...ids,
         assetRef: entry.ref,
