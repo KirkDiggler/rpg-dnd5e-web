@@ -1054,3 +1054,54 @@ describe('promoted canonical room JSON/YAML seam', () => {
     });
   });
 });
+
+describe('scene3 source forwarding only (not provider acceptance)', () => {
+  it('forwards bound, unbound and empty explicit definitions without changing root/play/gameplay/scope contracts', () => {
+    const draft = goldenDraft();
+    const legacy = parse(encodeSingleRoomDungeon({ key: 'crypt-room', draft }));
+    draft.scene.version = 3;
+    draft.scene.mapLabels = ['bound', 'unbound', 'explicit'].map((id) => ({
+      id,
+      text: id,
+      location: { x: 0, z: 0 },
+    }));
+    draft.scene.authoringRegions = [
+      {
+        id: 'bound-region',
+        labelId: 'bound',
+        boundary: {
+          kind: 'automatic',
+          witness: {
+            walk: [
+              { wallId: 'A-missing', direction: 'start-to-end' },
+              { wallId: 'B-missing', direction: 'start-to-end' },
+              { wallId: 'C-missing', direction: 'start-to-end' },
+            ],
+          },
+        },
+      },
+      {
+        id: 'unbound-region',
+        labelId: 'unbound',
+        boundary: { kind: 'automatic' },
+      },
+      {
+        id: 'explicit-region',
+        labelId: 'explicit',
+        boundary: { kind: 'explicit', cells: [] },
+      },
+    ];
+    const yaml = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    const source = parse(yaml);
+    expect(source.version).toBe(legacy.version);
+    expect(source.play).toEqual(legacy.play);
+    expect(source.room.room).toEqual(legacy.room.room);
+    expect(source.room.workspace).toEqual(legacy.room.workspace);
+    expect(source.room.scene.version).toBe(3);
+    expect(source.room.scene.authoringRegions).toEqual(
+      draft.scene.authoringRegions
+    );
+    expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
+    expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(yaml))).toBe(yaml);
+  });
+});

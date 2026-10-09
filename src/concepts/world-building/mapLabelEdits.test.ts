@@ -126,3 +126,40 @@ describe('immutable presentation-only map label intents', () => {
     ).toThrow(/workspace/);
   });
 });
+
+describe('scene3 linked-label preservation', () => {
+  it('preserves accepted witness/version under rename, move, new note and note deletion; raw linked deletion refuses', () => {
+    const draft = createMapLabel(empty(), 'label', 'Kitchen', { x: 0, z: 0 });
+    draft.scene.version = 3;
+    draft.scene.authoringRegions = [
+      {
+        id: 'region',
+        labelId: 'label',
+        boundary: {
+          kind: 'automatic',
+          witness: {
+            walk: [
+              { wallId: 'C', direction: 'start-to-end' },
+              { wallId: 'A', direction: 'start-to-end' },
+              { wallId: 'B', direction: 'start-to-end' },
+            ],
+          },
+        },
+      },
+    ];
+    const bytes = stringifyRoomDraft(draft);
+    expect(renameMapLabel(draft, 'label', ' Kitchen ')).toBe(draft);
+    expect(moveMapLabel(draft, 'label', { x: 0, z: 0 })).toBe(draft);
+    const renamed = renameMapLabel(draft, 'label', 'Hall');
+    const moved = moveMapLabel(renamed, 'label', { x: 1, z: 0 });
+    const note = createMapLabel(moved, 'note', 'Annotation', { x: 0, z: 0 });
+    const deleted = deleteMapLabel(note, 'note');
+    for (const next of [renamed, moved, note, deleted]) {
+      expect(next.scene.version).toBe(3);
+      expect(next.scene.authoringRegions).toBe(draft.scene.authoringRegions);
+      expect(next.room).toBe(draft.room);
+    }
+    expect(() => deleteMapLabel(draft, 'label')).toThrow(/region-and-label/);
+    expect(stringifyRoomDraft(draft)).toBe(bytes);
+  });
+});

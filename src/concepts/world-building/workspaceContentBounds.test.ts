@@ -281,3 +281,41 @@ describe('protected explicit workspace conversion', () => {
     expect(expanded.draft.scene.version).toBe(2);
   });
 });
+
+describe('authoring region workspace coverage', () => {
+  it('protects explicit area and linked anchors on shrink without floor ownership or a saved automatic polygon', () => {
+    const value = draft();
+    value.workspace = centeredRoomWorkspace(7, 7);
+    value.scene.version = 3;
+    value.scene.mapLabels = [
+      { id: 'label', text: 'Forest', location: { x: 0, z: 0 } },
+    ];
+    value.scene.authoringRegions = [
+      {
+        id: 'region',
+        labelId: 'label',
+        boundary: { kind: 'explicit', cells: [{ q: 2, r: 0 }] },
+      },
+    ];
+    expect(value.room.walkableHexes).toEqual([]);
+    const document = validateRoomDocument({ draft: value, scope: {} });
+    const before = JSON.stringify(document);
+    expect(resizeRoomWorkspace(document, 7, 7)).toBe(document);
+    expect(() => resizeRoomWorkspace(document, 1, 1)).toThrow(
+      /authoringRegions.*workspace/
+    );
+    expect(JSON.stringify(document)).toBe(before);
+    const tiny = { ...value, workspace: centeredRoomWorkspace(1, 1) };
+    expect(() => validateWorkspaceContent(tiny, {})).toThrow(
+      /authoringRegions/
+    );
+    value.scene.authoringRegions[0].boundary = { kind: 'automatic' };
+    expect(
+      resizeRoomWorkspace({ draft: value, scope: {} }, 1, 1).draft.scene.version
+    ).toBe(3);
+    value.scene.mapLabels[0].location = { x: 3, z: 0 };
+    expect(() =>
+      resizeRoomWorkspace({ draft: value, scope: {} }, 1, 1)
+    ).toThrow(/location.*workspace/);
+  });
+});

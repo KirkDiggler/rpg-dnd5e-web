@@ -4720,6 +4720,55 @@ describe('Studio owner facade', () => {
     return storage;
   }
 
+  it('reserves scene3 region identities in transient door placement without changing author intent', () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.scene.version = 3;
+    document.draft.scene.mapLabels = [
+      { id: 'room-label', text: 'Room', location: { x: 0, z: 0 } },
+    ];
+    document.draft.scene.authoringRegions = [
+      {
+        id: 'preview-door',
+        labelId: 'room-label',
+        boundary: { kind: 'automatic' },
+      },
+    ];
+    const storage = new MemoryStorage();
+    storage.setItem(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    const owner = mountStudio(storage);
+    owner.switchView('layout');
+    const before = owner.session.document;
+    const bytes = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.writes;
+    const door = owner.session.doorEditing;
+    const ref = door.options[0].ref;
+    act(() => expect(door.setAsset(ref)).toBe(true));
+    act(() => expect(owner.session.doorEditing.setActive(true)).toBe(true));
+    act(() =>
+      expect(
+        owner.session.doorEditing.previewPlacement('studio-wall', {
+          x: 0,
+          z: -3,
+        })
+      ).toBe(true)
+    );
+    const preview = owner.session.doorEditing.preview;
+    expect(preview?.valid).toBe(true);
+    if (!preview?.valid)
+      throw new Error('Expected a valid door placement preview');
+    expect(preview.target.doorId).toBe('preview-door-');
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.document.draft.scene.authoringRegions).toEqual(
+      document.draft.scene.authoringRegions
+    );
+    expect(owner.session.canUndo).toBe(false);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(storage.writes).toBe(writes);
+  });
+
   it('renames through the canonical ordinary commit, preserving identity/scope and one no-op-safe history', () => {
     const owner = mountStudio(populatedStorage());
     const before = structuredClone(owner.session.document);

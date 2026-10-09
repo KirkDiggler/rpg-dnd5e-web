@@ -3716,6 +3716,7 @@ export function WorldBuildingConcept({
         ...roomDraft.scene.items.map((item) => item.id),
         ...roomDraft.scene.groups.map((group) => group.id),
         ...(roomDraft.scene.mapLabels ?? []).map((label) => label.id),
+        ...(roomDraft.scene.authoringRegions ?? []).map((region) => region.id),
         ...roomDraft.room.monsterDeclarations.map((monster) => monster.id),
         ...(roomDraft.room.walls ?? []).flatMap((candidate) => [
           candidate.id,

@@ -76,6 +76,11 @@ export function validateWorkspaceContent(
     point(group.transform, `scene.groups[${group.id}].transform`);
   for (const label of draft.scene.mapLabels ?? [])
     point(label.location, `scene.mapLabels[${label.id}].location`);
+  for (const region of draft.scene.authoringRegions ?? [])
+    if (region.boundary.kind === 'explicit')
+      region.boundary.cells.forEach((p, i) =>
+        cell(p, `scene.authoringRegions[${region.id}].boundary.cells[${i}]`)
+      );
   for (const exit of scope.exits ?? [])
     cell(exit.cell, `scope.exits[${exit.id}].cell`);
   for (const [id, concealment] of Object.entries(scope.concealments ?? {}))
