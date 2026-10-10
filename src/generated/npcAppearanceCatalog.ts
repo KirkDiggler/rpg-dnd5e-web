@@ -3,12 +3,12 @@
 import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: 'abb2eaaee861f71ea0ce0da1947293197b1615fd',
+  commit: '9a2c348aabbcaf317072539681a866132dbacd3c',
   manifestSha256:
-    'bec6f939065d68ddefb6b055884d3cf6bb747dc99f39407c5e8dd3c644989b7a',
+    '5b381d677cf2b25bd7eff0a7e17a3e7b59c6dab0777993a6dcb534c532c99757',
   selectionSha256:
-    '282ebcca1561f4c7f6661d53b2db93e0060358cc5947d3be3669a23c912b6c7c',
-  releases: Object.freeze(['goblin-war-camp-v1']),
+    'ab158f8fe56d2f0277c187d6d79f466efdebecd40de358391ed97233e22a132c',
+  releases: Object.freeze(['goblin-war-camp-v1', 'kingdom-npcs-v1']),
 });
 
 export interface GeneratedNpcAppearance {
@@ -429,6 +429,363 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
     rootWrapper:
       'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:blacksmith-female-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleBlacksmithFemale01',
+    assetRef: 'dnd5e:npcs:kingdom:blacksmith-female-01',
+    displayName: 'Blacksmith Female',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Blacksmith_Female_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-blacksmith-female-01.glb',
+    downedUrl: '/models/synty/npcs/castle-blacksmith-female-01-downed.glb',
+    standingSha256:
+      '165dbed302cf840e486b301b5013750c27e40b044e0130c600171571b22a83cd',
+    downedSha256:
+      '1133ba4cec093891749a05a99637898d06d6be0aac9e214cdf3b9d238b5a4dd9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:blacksmith-male-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleBlacksmithMale01',
+    assetRef: 'dnd5e:npcs:kingdom:blacksmith-male-01',
+    displayName: 'Blacksmith Male',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Blacksmith_Male_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-blacksmith-male-01.glb',
+    downedUrl: '/models/synty/npcs/castle-blacksmith-male-01-downed.glb',
+    standingSha256:
+      '2499519f220a989e11857e8bcb8d0ad022e3c82a4984ccd83694afb839c518cf',
+    downedSha256:
+      'a562b880d899e9984ac90ee1de65e9cccca96990bd0f04b2c67e5e3f0a972914',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:hermit-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleHermit01',
+    assetRef: 'dnd5e:npcs:kingdom:hermit-01',
+    displayName: 'Hermit',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Hermit_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-hermit-01.glb',
+    downedUrl: '/models/synty/npcs/castle-hermit-01-downed.glb',
+    standingSha256:
+      '61907dd32b263c5da01116e5d6eca8d0fad34b96e5b151d8115482ef9363b5ba',
+    downedSha256:
+      '2d1811a870720563d3083929cd4f7fe54adbf5e3fdb5bff46f46eb32521bdea9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:jester-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleJester01',
+    assetRef: 'dnd5e:npcs:kingdom:jester-01',
+    displayName: 'Jester',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Jester_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-jester-01.glb',
+    downedUrl: '/models/synty/npcs/castle-jester-01-downed.glb',
+    standingSha256:
+      '0b35980128ac6e34f47ba4d44593a3bcfe3f478707903f2350338c3f3bde8246',
+    downedSha256:
+      'd86b07db8ee4ee4d705679861a67a26cf6e1ba7abd672f3656fd34cf29491322',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:king-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleKing01',
+    assetRef: 'dnd5e:npcs:kingdom:king-01',
+    displayName: 'King',
+    rulesRef: null,
+    sourceName: 'SK_Chr_King_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-king-01.glb',
+    downedUrl: '/models/synty/npcs/castle-king-01-downed.glb',
+    standingSha256:
+      '37aefaf6dac890f6e8c9822f8321e3f5de8b1998a78a6093ff8427b7ddbd91b1',
+    downedSha256:
+      '610fc511e28461ccba57d2699f2a3dda1f027ada9d3967dfdca89673b0b04254',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:mage-cape-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleMageCape01',
+    assetRef: 'dnd5e:npcs:kingdom:mage-cape-01',
+    displayName: 'Mage Cape',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Mage_Cape_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-mage-cape-01.glb',
+    downedUrl: '/models/synty/npcs/castle-mage-cape-01-downed.glb',
+    standingSha256:
+      '5e084ae4bcdf4df4ac814da4dde5f8bfcb8669adca9aa0cb5832d4354aa82312',
+    downedSha256:
+      'afe45b3181f83dc7814ef7896885e264d7f6e62b7bf052f1ddc77a6f3920e2f2',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:merchant-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleMerchant01',
+    assetRef: 'dnd5e:npcs:kingdom:merchant-01',
+    displayName: 'Merchant',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Merchant_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-merchant-01.glb',
+    downedUrl: '/models/synty/npcs/castle-merchant-01-downed.glb',
+    standingSha256:
+      'ea45de3e8dcaa4b6d2f52a76fdcf3c914f2e435243c04452a9102719c5f7a3d0',
+    downedSha256:
+      '45ff1276024bef898874c8010ff6e92e9630a54af0957ad7b5a96aedf94895b6',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:monk-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleMonk01',
+    assetRef: 'dnd5e:npcs:kingdom:monk-01',
+    displayName: 'Monk',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Monk_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-monk-01.glb',
+    downedUrl: '/models/synty/npcs/castle-monk-01-downed.glb',
+    standingSha256:
+      '4e882890361178ddcc0e7092ef1a8630524e29a8fc35bbb08d9ea1dcc9e1b793',
+    downedSha256:
+      '8a1d4072d6e518af2b6c2d78b2b9919b5742e9849f95d6cd2fbc8cde435be515',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:nun-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleNun01',
+    assetRef: 'dnd5e:npcs:kingdom:nun-01',
+    displayName: 'Nun',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Nun_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-nun-01.glb',
+    downedUrl: '/models/synty/npcs/castle-nun-01-downed.glb',
+    standingSha256:
+      'dfd70c1e0423f5a8c52602c20e77c10a26e834f4b0af2fe3e89c4ddcf325c64a',
+    downedSha256:
+      'ac6426db9f2278a94b88d162977f0b0bfd1317f85cd88fa356b11afb09744252',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:peasant-female-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castlePeasantFemale01',
+    assetRef: 'dnd5e:npcs:kingdom:peasant-female-01',
+    displayName: 'Peasant Female',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Peasant_Female_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-peasant-female-01.glb',
+    downedUrl: '/models/synty/npcs/castle-peasant-female-01-downed.glb',
+    standingSha256:
+      'aabb7b13da3dee6d2eaf490a0555c294c1c088bc13361ae4c0fe226291c5159b',
+    downedSha256:
+      '196094c3df7fdf1841c84edf6c831151c88a728288704d6e4dd4f8514f3ec3da',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:peasant-male-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castlePeasantMale01',
+    assetRef: 'dnd5e:npcs:kingdom:peasant-male-01',
+    displayName: 'Peasant Male',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Peasant_Male_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-peasant-male-01.glb',
+    downedUrl: '/models/synty/npcs/castle-peasant-male-01-downed.glb',
+    standingSha256:
+      '674a59cfdd8e14390b09d177f96bd1084a307e32d776a466cc24a8d5385313ed',
+    downedSha256:
+      '6c572d9f7c03392ee9283e2e237321769ea1ece18d48b8adbf6629e1686be7f7',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:priest-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castlePriest01',
+    assetRef: 'dnd5e:npcs:kingdom:priest-01',
+    displayName: 'Priest',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Priest_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-priest-01.glb',
+    downedUrl: '/models/synty/npcs/castle-priest-01-downed.glb',
+    standingSha256:
+      '2c809521e5b9e9001c1cc23f7768e3e459366a7fc2ca34573317c05c17cef082',
+    downedSha256:
+      '6e4b433fac8557018a080f9934da8046441604793f798c592df32d944f5c6cde',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:prince-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castlePrince01',
+    assetRef: 'dnd5e:npcs:kingdom:prince-01',
+    displayName: 'Prince',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Prince_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-prince-01.glb',
+    downedUrl: '/models/synty/npcs/castle-prince-01-downed.glb',
+    standingSha256:
+      '9539d892a2efa4ce745a2c5e99a0d556a367ca5673d46cd7ebf3203432e70d2b',
+    downedSha256:
+      '592862c1c7c2de18fae4ddefabf25d9b3cbd1da233eb8d087eba8bd04d67595f',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:princess-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castlePrincess01',
+    assetRef: 'dnd5e:npcs:kingdom:princess-01',
+    displayName: 'Princess',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Princess_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-princess-01.glb',
+    downedUrl: '/models/synty/npcs/castle-princess-01-downed.glb',
+    standingSha256:
+      '36bf79f3e995e7dabeaa7d4c1ce8cf25f155ec262bb6c744b78ef072067b463e',
+    downedSha256:
+      '0528c88f5b82fdf7fe27c2cbd2b9ffc173bd2b92cda2020758cc618f97745ca7',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:rider-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleRider01',
+    assetRef: 'dnd5e:npcs:kingdom:rider-01',
+    displayName: 'Rider',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Rider_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-rider-01.glb',
+    downedUrl: '/models/synty/npcs/castle-rider-01-downed.glb',
+    standingSha256:
+      'efc5fc8cb12f3cfd5cf0a694c1c33cdd4ab47663e3be415a5d70caef47a0f7ee',
+    downedSha256:
+      '35452ba9116fe863e5832aff70768ba56997e1961dabb203a144eddeb0d9825f',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:soldier-female-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleSoldierFemale01',
+    assetRef: 'dnd5e:npcs:kingdom:soldier-female-01',
+    displayName: 'Soldier Female',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Soldier_Female_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-soldier-female-01.glb',
+    downedUrl: '/models/synty/npcs/castle-soldier-female-01-downed.glb',
+    standingSha256:
+      '2eea56922f2e5853517ff1a1e45107feaa8bf395ec775ad748102396e1575b73',
+    downedSha256:
+      '57361c2f4b82c4627a9e73f8c14798429a47d4c31e3620accf7a718789e72a26',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
+    forwardAxis: '+Z',
+  }),
+  'dnd5e:npcs:kingdom:soldier-male-01': Object.freeze({
+    releaseId: 'kingdom-npcs-v1',
+    manifestId: 'castleSoldierMale01',
+    assetRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+    displayName: 'Soldier Male',
+    rulesRef: null,
+    sourceName: 'SK_Chr_Soldier_Male_01',
+    sourcePack: 'polygon-fantasy-kingdom',
+    standingUrl: '/models/synty/npcs/castle-soldier-male-01.glb',
+    downedUrl: '/models/synty/npcs/castle-soldier-male-01-downed.glb',
+    standingSha256:
+      'd7803ccd2553537d494d296a74199e751c04532661cd41d96df94c43ef868a8b',
+    downedSha256:
+      'a86cada0c129c464267c2ca62126c74c259a747fa0fd202e10be2cbe77f7dc82',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 55,
+    pose: 'Human-authored Idle_Relaxed (frames 2-55) and in-place Walk_Forward (frames 2-33), 30 fps; static source-derived downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Root' (node 56): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Root' (node 1): identity.",
     forwardAxis: '+Z',
   }),
 });

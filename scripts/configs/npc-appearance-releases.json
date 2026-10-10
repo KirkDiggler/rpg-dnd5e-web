@@ -1,128 +1,269 @@
 {
+  "releases": [
+    {
+      "appearances": [
+        {
+          "assetRef": "dnd5e:npcs:goblin:warrior-male-01",
+          "displayName": "Warrior Male 01",
+          "downedSha256": "1b69eb82c8322f5b396dfb84caf22b80ab3de5cad9abe887a7d6bec5a7fbac0d",
+          "jointCount": 50,
+          "manifestId": "goblinWarriorMale01",
+          "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:archer-male-01",
+          "displayName": "Archer Male 01",
+          "downedSha256": "e621e035f365c41d478c91fbb6b008f02675be90e9d1012d28f027a7c08b2071",
+          "jointCount": 50,
+          "manifestId": "goblinArcherMale01",
+          "standingSha256": "f149b4a950cca28a37f452d88a63a627b4a4aa1f4c00a810d9035cba3c5c2614"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:archer-female-01",
+          "displayName": "Archer Female 01",
+          "downedSha256": "1385fb00a17a5e3429ba4d039fc0c1ed52fc78a5a6fe9f07ea66580f663803eb",
+          "jointCount": 50,
+          "manifestId": "goblinArcherFemale01",
+          "standingSha256": "3d9263f5768cc57c2df42d0092535e7f012f8ba3adbc5792822374ee49c086a7"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:knight-01",
+          "displayName": "Knight 01",
+          "downedSha256": "8bb6c4ba24eccb70092c4ab0e08ec024e173b375f788a9db63b069f73e80ddb8",
+          "jointCount": 50,
+          "manifestId": "goblinKnight01",
+          "standingSha256": "d8f31c9058322ad8e6682aa1e33ec1f34dea50d2b8918389dda0ad453075e372"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:shaman-01",
+          "displayName": "Shaman 01",
+          "downedSha256": "b486c8143a653e34d10a35646eddad5317b93f943a673de6ae457de56ad8da27",
+          "jointCount": 50,
+          "manifestId": "goblinShaman01",
+          "standingSha256": "9aa2a48e0c152398c581f693f1d2a14c3d7edadcacdcfdeb62a0486c6b4f9f20"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:king-01",
+          "displayName": "King 01",
+          "downedSha256": "035950254845fb224f5666e9609bca2060a2603ccc37818f2c4be9dec80bdb6a",
+          "jointCount": 50,
+          "manifestId": "goblinKing01",
+          "standingSha256": "4c3517ca43d8add315c90d1a48879120b51d5a209f8c02ea6482761a8ab193f6"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:beast-tamer-01",
+          "displayName": "Beast Tamer 01",
+          "downedSha256": "a028e1f558f2f718d7ab1746b304d745dcc5f47c5ba30ed7225e1ebfec34d017",
+          "jointCount": 50,
+          "manifestId": "goblinBeastTamer01",
+          "standingSha256": "886eaacbd6121ba955ef5ea9e924cda4a0de39385631e9484d1e32d1261a6064"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:cook-01",
+          "displayName": "Cook 01",
+          "downedSha256": "ab4c86e1e1929621378e8f261997bff23f9e96a640b3ad90c6f612760aefd42c",
+          "jointCount": 50,
+          "manifestId": "goblinCook01",
+          "standingSha256": "b217624604a004e78ba7b3267edebd7e26d2b05de5bf9c215789b2419b853795"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01",
+          "displayName": "Prisoner 01",
+          "downedSha256": "fbfc3e4dbe0a7643fdecd56ef1eb0259c46a8b6ceac5bf5659461bf83ec46356",
+          "jointCount": 50,
+          "manifestId": "goblinPrisoner01",
+          "standingSha256": "0c5535d587009dfe0657d12ee6b9fd703f12d282e58c2799e628f965aa3885d6"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02",
+          "displayName": "Prisoner 02",
+          "downedSha256": "5049bcd1c9be36b4125135c91faabec522f64635e313b54f17a825cdeb0d5147",
+          "jointCount": 50,
+          "manifestId": "goblinPrisoner02",
+          "standingSha256": "758ce0e950044f6b90ea7e3c684f13813fa0b52014d81e6aead12060b6c69389"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03",
+          "displayName": "Prisoner 03",
+          "downedSha256": "edbf48297b1ce8d851013cfae5f57d687e21d110a0a6e3b499818b14ad800843",
+          "jointCount": 50,
+          "manifestId": "goblinPrisoner03",
+          "standingSha256": "a738215711177dad9e8cfbf2552d8b4b6128962d754055c7a10dabe6108a3c50"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:ranger-01",
+          "displayName": "Ranger 01",
+          "downedSha256": "7a658e8f37dac3e924736fae784752bae0f7197c5056de81d9b24488a34994bb",
+          "jointCount": 50,
+          "manifestId": "goblinRanger01",
+          "standingSha256": "27f03eb0f3ca1e9968b76a6baaea1472c420e160d496cc3c0df2e046d2311172"
+        },
+        {
+          "assetRef": "dnd5e:npcs:goblin:wizard-01",
+          "displayName": "Wizard 01",
+          "downedSha256": "4a6042dd3237c30378db7b990d3c72c29128c818cac687d3163c19c7b99ac6bd",
+          "jointCount": 50,
+          "manifestId": "goblinWizard01",
+          "standingSha256": "1c7ade7d4eb1536ff85db8195d775eb308764493310070f716054f3878852285"
+        }
+      ],
+      "releaseId": "goblin-war-camp-v1"
+    },
+    {
+      "appearances": [
+        {
+          "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01",
+          "displayName": "Blacksmith Female",
+          "downedSha256": "1133ba4cec093891749a05a99637898d06d6be0aac9e214cdf3b9d238b5a4dd9",
+          "jointCount": 55,
+          "manifestId": "castleBlacksmithFemale01",
+          "standingSha256": "165dbed302cf840e486b301b5013750c27e40b044e0130c600171571b22a83cd"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01",
+          "displayName": "Blacksmith Male",
+          "downedSha256": "a562b880d899e9984ac90ee1de65e9cccca96990bd0f04b2c67e5e3f0a972914",
+          "jointCount": 55,
+          "manifestId": "castleBlacksmithMale01",
+          "standingSha256": "2499519f220a989e11857e8bcb8d0ad022e3c82a4984ccd83694afb839c518cf"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:hermit-01",
+          "displayName": "Hermit",
+          "downedSha256": "2d1811a870720563d3083929cd4f7fe54adbf5e3fdb5bff46f46eb32521bdea9",
+          "jointCount": 55,
+          "manifestId": "castleHermit01",
+          "standingSha256": "61907dd32b263c5da01116e5d6eca8d0fad34b96e5b151d8115482ef9363b5ba"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:jester-01",
+          "displayName": "Jester",
+          "downedSha256": "d86b07db8ee4ee4d705679861a67a26cf6e1ba7abd672f3656fd34cf29491322",
+          "jointCount": 55,
+          "manifestId": "castleJester01",
+          "standingSha256": "0b35980128ac6e34f47ba4d44593a3bcfe3f478707903f2350338c3f3bde8246"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:king-01",
+          "displayName": "King",
+          "downedSha256": "610fc511e28461ccba57d2699f2a3dda1f027ada9d3967dfdca89673b0b04254",
+          "jointCount": 55,
+          "manifestId": "castleKing01",
+          "standingSha256": "37aefaf6dac890f6e8c9822f8321e3f5de8b1998a78a6093ff8427b7ddbd91b1"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:mage-cape-01",
+          "displayName": "Mage Cape",
+          "downedSha256": "afe45b3181f83dc7814ef7896885e264d7f6e62b7bf052f1ddc77a6f3920e2f2",
+          "jointCount": 55,
+          "manifestId": "castleMageCape01",
+          "standingSha256": "5e084ae4bcdf4df4ac814da4dde5f8bfcb8669adca9aa0cb5832d4354aa82312"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:merchant-01",
+          "displayName": "Merchant",
+          "downedSha256": "45ff1276024bef898874c8010ff6e92e9630a54af0957ad7b5a96aedf94895b6",
+          "jointCount": 55,
+          "manifestId": "castleMerchant01",
+          "standingSha256": "ea45de3e8dcaa4b6d2f52a76fdcf3c914f2e435243c04452a9102719c5f7a3d0"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:monk-01",
+          "displayName": "Monk",
+          "downedSha256": "8a1d4072d6e518af2b6c2d78b2b9919b5742e9849f95d6cd2fbc8cde435be515",
+          "jointCount": 55,
+          "manifestId": "castleMonk01",
+          "standingSha256": "4e882890361178ddcc0e7092ef1a8630524e29a8fc35bbb08d9ea1dcc9e1b793"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:nun-01",
+          "displayName": "Nun",
+          "downedSha256": "ac6426db9f2278a94b88d162977f0b0bfd1317f85cd88fa356b11afb09744252",
+          "jointCount": 55,
+          "manifestId": "castleNun01",
+          "standingSha256": "dfd70c1e0423f5a8c52602c20e77c10a26e834f4b0af2fe3e89c4ddcf325c64a"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:peasant-female-01",
+          "displayName": "Peasant Female",
+          "downedSha256": "196094c3df7fdf1841c84edf6c831151c88a728288704d6e4dd4f8514f3ec3da",
+          "jointCount": 55,
+          "manifestId": "castlePeasantFemale01",
+          "standingSha256": "aabb7b13da3dee6d2eaf490a0555c294c1c088bc13361ae4c0fe226291c5159b"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:peasant-male-01",
+          "displayName": "Peasant Male",
+          "downedSha256": "6c572d9f7c03392ee9283e2e237321769ea1ece18d48b8adbf6629e1686be7f7",
+          "jointCount": 55,
+          "manifestId": "castlePeasantMale01",
+          "standingSha256": "674a59cfdd8e14390b09d177f96bd1084a307e32d776a466cc24a8d5385313ed"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:priest-01",
+          "displayName": "Priest",
+          "downedSha256": "6e4b433fac8557018a080f9934da8046441604793f798c592df32d944f5c6cde",
+          "jointCount": 55,
+          "manifestId": "castlePriest01",
+          "standingSha256": "2c809521e5b9e9001c1cc23f7768e3e459366a7fc2ca34573317c05c17cef082"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:prince-01",
+          "displayName": "Prince",
+          "downedSha256": "592862c1c7c2de18fae4ddefabf25d9b3cbd1da233eb8d087eba8bd04d67595f",
+          "jointCount": 55,
+          "manifestId": "castlePrince01",
+          "standingSha256": "9539d892a2efa4ce745a2c5e99a0d556a367ca5673d46cd7ebf3203432e70d2b"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:princess-01",
+          "displayName": "Princess",
+          "downedSha256": "0528c88f5b82fdf7fe27c2cbd2b9ffc173bd2b92cda2020758cc618f97745ca7",
+          "jointCount": 55,
+          "manifestId": "castlePrincess01",
+          "standingSha256": "36bf79f3e995e7dabeaa7d4c1ce8cf25f155ec262bb6c744b78ef072067b463e"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:rider-01",
+          "displayName": "Rider",
+          "downedSha256": "35452ba9116fe863e5832aff70768ba56997e1961dabb203a144eddeb0d9825f",
+          "jointCount": 55,
+          "manifestId": "castleRider01",
+          "standingSha256": "efc5fc8cb12f3cfd5cf0a694c1c33cdd4ab47663e3be415a5d70caef47a0f7ee"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:soldier-female-01",
+          "displayName": "Soldier Female",
+          "downedSha256": "57361c2f4b82c4627a9e73f8c14798429a47d4c31e3620accf7a718789e72a26",
+          "jointCount": 55,
+          "manifestId": "castleSoldierFemale01",
+          "standingSha256": "2eea56922f2e5853517ff1a1e45107feaa8bf395ec775ad748102396e1575b73"
+        },
+        {
+          "assetRef": "dnd5e:npcs:kingdom:soldier-male-01",
+          "displayName": "Soldier Male",
+          "downedSha256": "a86cada0c129c464267c2ca62126c74c259a747fa0fd202e10be2cbe77f7dc82",
+          "jointCount": 55,
+          "manifestId": "castleSoldierMale01",
+          "standingSha256": "d7803ccd2553537d494d296a74199e751c04532661cd41d96df94c43ef868a8b"
+        }
+      ],
+      "releaseId": "kingdom-npcs-v1"
+    }
+  ],
   "schemaVersion": 1,
   "weaponSets": [
     {
-      "manifestId": "goblinWarriorMale01",
       "assetRef": "dnd5e:npcs:goblin:warrior-male-01",
-      "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444",
-      "catalogSha256": "062faf88d2d3e31b3dcd186b7a10a31f8cb672366f364e89d57059bf1937ee68"
+      "catalogSha256": "062faf88d2d3e31b3dcd186b7a10a31f8cb672366f364e89d57059bf1937ee68",
+      "manifestId": "goblinWarriorMale01",
+      "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444"
     },
     {
-      "manifestId": "skeletonSoldier01",
       "assetRef": "dnd5e:npcs:skeleton:soldier-01",
-      "standingSha256": "00d151eaeb7d0ee53dca26dc1a122a86e61a13d990a6879803e6b0d517d25ba0",
-      "catalogSha256": "b49e5d117ca9553028511ebeccbf0ef10afa728fbdf1c8bac2e7044f9d5e107e"
-    }
-  ],
-  "releases": [
-    {
-      "releaseId": "goblin-war-camp-v1",
-      "appearances": [
-        {
-          "manifestId": "goblinWarriorMale01",
-          "assetRef": "dnd5e:npcs:goblin:warrior-male-01",
-          "displayName": "Warrior Male 01",
-          "jointCount": 50,
-          "standingSha256": "1518fca36d874ef31613d3adb1acf8b414332eca31692940a52d4ceeb9bfa444",
-          "downedSha256": "1b69eb82c8322f5b396dfb84caf22b80ab3de5cad9abe887a7d6bec5a7fbac0d"
-        },
-        {
-          "manifestId": "goblinArcherMale01",
-          "assetRef": "dnd5e:npcs:goblin:archer-male-01",
-          "displayName": "Archer Male 01",
-          "jointCount": 50,
-          "standingSha256": "f149b4a950cca28a37f452d88a63a627b4a4aa1f4c00a810d9035cba3c5c2614",
-          "downedSha256": "e621e035f365c41d478c91fbb6b008f02675be90e9d1012d28f027a7c08b2071"
-        },
-        {
-          "manifestId": "goblinArcherFemale01",
-          "assetRef": "dnd5e:npcs:goblin:archer-female-01",
-          "displayName": "Archer Female 01",
-          "jointCount": 50,
-          "standingSha256": "3d9263f5768cc57c2df42d0092535e7f012f8ba3adbc5792822374ee49c086a7",
-          "downedSha256": "1385fb00a17a5e3429ba4d039fc0c1ed52fc78a5a6fe9f07ea66580f663803eb"
-        },
-        {
-          "manifestId": "goblinKnight01",
-          "assetRef": "dnd5e:npcs:goblin:knight-01",
-          "displayName": "Knight 01",
-          "jointCount": 50,
-          "standingSha256": "d8f31c9058322ad8e6682aa1e33ec1f34dea50d2b8918389dda0ad453075e372",
-          "downedSha256": "8bb6c4ba24eccb70092c4ab0e08ec024e173b375f788a9db63b069f73e80ddb8"
-        },
-        {
-          "manifestId": "goblinShaman01",
-          "assetRef": "dnd5e:npcs:goblin:shaman-01",
-          "displayName": "Shaman 01",
-          "jointCount": 50,
-          "standingSha256": "9aa2a48e0c152398c581f693f1d2a14c3d7edadcacdcfdeb62a0486c6b4f9f20",
-          "downedSha256": "b486c8143a653e34d10a35646eddad5317b93f943a673de6ae457de56ad8da27"
-        },
-        {
-          "manifestId": "goblinKing01",
-          "assetRef": "dnd5e:npcs:goblin:king-01",
-          "displayName": "King 01",
-          "jointCount": 50,
-          "standingSha256": "4c3517ca43d8add315c90d1a48879120b51d5a209f8c02ea6482761a8ab193f6",
-          "downedSha256": "035950254845fb224f5666e9609bca2060a2603ccc37818f2c4be9dec80bdb6a"
-        },
-        {
-          "manifestId": "goblinBeastTamer01",
-          "assetRef": "dnd5e:npcs:goblin:beast-tamer-01",
-          "displayName": "Beast Tamer 01",
-          "jointCount": 50,
-          "standingSha256": "886eaacbd6121ba955ef5ea9e924cda4a0de39385631e9484d1e32d1261a6064",
-          "downedSha256": "a028e1f558f2f718d7ab1746b304d745dcc5f47c5ba30ed7225e1ebfec34d017"
-        },
-        {
-          "manifestId": "goblinCook01",
-          "assetRef": "dnd5e:npcs:goblin:cook-01",
-          "displayName": "Cook 01",
-          "jointCount": 50,
-          "standingSha256": "b217624604a004e78ba7b3267edebd7e26d2b05de5bf9c215789b2419b853795",
-          "downedSha256": "ab4c86e1e1929621378e8f261997bff23f9e96a640b3ad90c6f612760aefd42c"
-        },
-        {
-          "manifestId": "goblinPrisoner01",
-          "assetRef": "dnd5e:npcs:goblin:prisoner-01",
-          "displayName": "Prisoner 01",
-          "jointCount": 50,
-          "standingSha256": "0c5535d587009dfe0657d12ee6b9fd703f12d282e58c2799e628f965aa3885d6",
-          "downedSha256": "fbfc3e4dbe0a7643fdecd56ef1eb0259c46a8b6ceac5bf5659461bf83ec46356"
-        },
-        {
-          "manifestId": "goblinPrisoner02",
-          "assetRef": "dnd5e:npcs:goblin:prisoner-02",
-          "displayName": "Prisoner 02",
-          "jointCount": 50,
-          "standingSha256": "758ce0e950044f6b90ea7e3c684f13813fa0b52014d81e6aead12060b6c69389",
-          "downedSha256": "5049bcd1c9be36b4125135c91faabec522f64635e313b54f17a825cdeb0d5147"
-        },
-        {
-          "manifestId": "goblinPrisoner03",
-          "assetRef": "dnd5e:npcs:goblin:prisoner-03",
-          "displayName": "Prisoner 03",
-          "jointCount": 50,
-          "standingSha256": "a738215711177dad9e8cfbf2552d8b4b6128962d754055c7a10dabe6108a3c50",
-          "downedSha256": "edbf48297b1ce8d851013cfae5f57d687e21d110a0a6e3b499818b14ad800843"
-        },
-        {
-          "manifestId": "goblinRanger01",
-          "assetRef": "dnd5e:npcs:goblin:ranger-01",
-          "displayName": "Ranger 01",
-          "jointCount": 50,
-          "standingSha256": "27f03eb0f3ca1e9968b76a6baaea1472c420e160d496cc3c0df2e046d2311172",
-          "downedSha256": "7a658e8f37dac3e924736fae784752bae0f7197c5056de81d9b24488a34994bb"
-        },
-        {
-          "manifestId": "goblinWizard01",
-          "assetRef": "dnd5e:npcs:goblin:wizard-01",
-          "displayName": "Wizard 01",
-          "jointCount": 50,
-          "standingSha256": "1c7ade7d4eb1536ff85db8195d775eb308764493310070f716054f3878852285",
-          "downedSha256": "4a6042dd3237c30378db7b990d3c72c29128c818cac687d3163c19c7b99ac6bd"
-        }
-      ]
+      "catalogSha256": "b49e5d117ca9553028511ebeccbf0ef10afa728fbdf1c8bac2e7044f9d5e107e",
+      "manifestId": "skeletonSoldier01",
+      "standingSha256": "00d151eaeb7d0ee53dca26dc1a122a86e61a13d990a6879803e6b0d517d25ba0"
     }
   ]
 }
