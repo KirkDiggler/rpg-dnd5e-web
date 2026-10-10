@@ -146,7 +146,10 @@ describe('world asset catalog generator', () => {
       outputPath: fixture.output,
     });
     const generated = readFileSync(fixture.output, 'utf8');
-    expect(generated).toContain(`/models/synty/${thumbnail.file}`);
+    // Cache identity follows the image bytes, not only the model's digest.
+    expect(generated).toContain(
+      `/models/synty/${thumbnail.file}?v=${thumbnail.sha256}`
+    );
     expect(generated).toContain(thumbnail.sha256);
     expect(generated).toContain('thumbnail?:');
     expect(generated).not.toContain(fixture.provider);

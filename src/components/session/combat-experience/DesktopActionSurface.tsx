@@ -1,6 +1,17 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ActionArt } from './ActionArt';
-import { buildActionTooltip, slotLabel } from './actionTooltip';
+import { ActionInformationContent } from './ActionInformationContent';
+import {
+  buildActionTooltip,
+  informationDescription,
+  slotLabel,
+} from './actionTooltip';
 import { castLabel } from './castLabel';
 import { DesktopActionSection } from './DesktopActionSection';
 import styles from './DesktopActionSurface.module.css';
@@ -12,7 +23,6 @@ import {
   type DesktopHotbarLayout,
   type DesktopHotbarSection,
 } from './desktopHotbarLayout';
-import { EffectRows } from './EffectRows';
 import { isMultiMemberDeclaration } from './memberTargeting';
 import { currentExecutableDeclaration } from './organizedActionPresentation';
 import type { OrganizedActionSurfaceProps } from './OrganizedActionSurface';
@@ -34,6 +44,8 @@ export function DesktopActionSurface({
 }: OrganizedActionSurfaceProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
+  const groupsRef = useRef<HTMLDivElement>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(0);
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -62,6 +74,64 @@ export function DesktopActionSurface({
   const [feedback, setFeedback] = useState('');
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [pointerInCard, setPointerInCard] = useState(false);
+  const closeInspection = useCallback((): void => {
+    setInspectedId(null);
+    setPointerInCard(false);
+    groupsRef.current?.focus();
+  }, []);
+  // Keep the named reader during pointer travel across the map, not on a timer.
+  // Other dock controls and deliberate outside clicks end that reading session.
+  useEffect(() => {
+    if (!inspectedId) return;
+    const otherControl = (event: Event): void => {
+      const target = event.target;
+      const surface = surfaceRef.current;
+      if (!(target instanceof Element) || !surface) return;
+      if (readerRef.current?.contains(target)) return;
+      if (surface.contains(target) && target.closest('[data-offer-id]')) return;
+      const dock = surface.closest('[data-desktop-dock]') ?? surface;
+      if (
+        dock.contains(target) &&
+        target.closest('button, select, input, a, [role="button"]')
+      )
+        setInspectedId(null);
+    };
+    const pointerOver = (event: PointerEvent): void => {
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen')
+        otherControl(event);
+    };
+    const outsidePress = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !surfaceRef.current?.contains(event.target)
+      )
+        setInspectedId(null);
+    };
+    const outsideEscape = (event: KeyboardEvent): void => {
+      // Hover leaves focus on the page. Run after scoped readers/dialogs,
+      // but before the window-level Escape that cancels the armed action.
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        event.target instanceof Node &&
+        !surfaceRef.current?.contains(event.target)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeInspection();
+      }
+    };
+    document.addEventListener('keydown', outsideEscape);
+    window.addEventListener('pointerover', pointerOver);
+    window.addEventListener('focusin', otherControl);
+    window.addEventListener('pointerdown', outsidePress, true);
+    return () => {
+      document.removeEventListener('keydown', outsideEscape);
+      window.removeEventListener('pointerover', pointerOver);
+      window.removeEventListener('focusin', otherControl);
+      window.removeEventListener('pointerdown', outsidePress, true);
+    };
+  }, [inspectedId, closeInspection]);
   const groups = desktopHotbarGroups(declarations, presentation);
   const offers = groups.flatMap((group) => group.offers);
   const inspected = offers.find((offer) => offer.id === inspectedId);
@@ -169,10 +239,7 @@ export function DesktopActionSurface({
       data-embedded={embedded}
       data-editing={editing}
       data-rows={rows}
-      onPointerLeave={() => {
-        setInspectedId(null);
-        setPointerInCard(false);
-      }}
+      onPointerLeave={() => setPointerInCard(false)}
       onBlur={(event) => {
         if (
           !event.currentTarget.contains(event.relatedTarget) &&
@@ -184,12 +251,17 @@ export function DesktopActionSurface({
         if (event.key === 'Escape' && (editing || choosing || inspectedId)) {
           if (editing) setEditMode(false);
           else if (choosing) cancelChoice();
-          else setInspectedId(null);
+          else closeInspection();
           event.stopPropagation();
         }
       }}
     >
-      <div className={styles.groups} aria-label="Action sections" tabIndex={0}>
+      <div
+        ref={groupsRef}
+        className={styles.groups}
+        aria-label="Action sections"
+        tabIndex={0}
+      >
         {groups.map((group) => (
           <DesktopActionSection
             key={group.key}
@@ -284,24 +356,37 @@ export function DesktopActionSurface({
           </header>
           <div className={styles.choiceOptions}>
             {choosing.options.map((option, index) => (
-              <button
-                type="button"
+              <div
+                className={styles.choiceOption}
                 key={`${option.id}:${index}`}
-                data-testid={`cast-option-${option.id}`}
-                disabled={
-                  !authorityFresh ||
-                  !option.id ||
-                  !option.label.trim() ||
-                  choosing.options.filter(
-                    (candidate) => candidate.id === option.id
-                  ).length !== 1
-                }
-                onClick={() => selectOption(option.id)}
               >
-                {option.label.trim()
-                  ? option.label
-                  : 'Choice label unavailable'}
-              </button>
+                <button
+                  type="button"
+                  data-testid={`cast-option-${option.id}`}
+                  aria-label={
+                    option.label.trim()
+                      ? option.label
+                      : 'Choice label unavailable'
+                  }
+                  aria-description={informationDescription(option.description)}
+                  disabled={
+                    !authorityFresh ||
+                    !option.id ||
+                    !option.label.trim() ||
+                    choosing.options.filter(
+                      (candidate) => candidate.id === option.id
+                    ).length !== 1
+                  }
+                  onClick={() => selectOption(option.id)}
+                >
+                  <span>
+                    {option.label.trim()
+                      ? option.label
+                      : 'Choice label unavailable'}
+                  </span>
+                </button>
+                <small>{informationDescription(option.description)}</small>
+              </div>
             ))}
             <button
               type="button"
@@ -311,15 +396,13 @@ export function DesktopActionSurface({
               Cancel
             </button>
           </div>
-          <small>
-            No option descriptions are supplied by the current contract.
-          </small>
           {!authorityFresh && <p>Actions may be out of date</p>}
         </div>
       )}
       {!choosing && inspected && tooltip && (
         <div className={styles.inspectionBridge}>
           <div
+            ref={readerRef}
             className={styles.inspection}
             role="tooltip"
             aria-label={`${tooltip.title} details`}
@@ -343,16 +426,21 @@ export function DesktopActionSurface({
                 <small>{slotLabel(inspected.slot)}</small>
                 <strong>{tooltip.title}</strong>
               </div>
+              <button
+                type="button"
+                className={styles.closeInspection}
+                aria-label="Close action information"
+                onClick={closeInspection}
+              >
+                Close
+              </button>
             </header>
-            <dl>
-              {tooltip.lines.map((line) => (
-                <div key={line.label}>
-                  <dt>{line.label}</dt>
-                  <dd>{line.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <EffectRows lines={tooltip.effects} />
+            <ActionInformationContent
+              description={tooltip.description}
+              lines={tooltip.lines}
+              effects={tooltip.effects}
+              effectsLabel="Effects"
+            />
             {refusal && (
               <p className={styles.refusal}>Unavailable — {refusal}</p>
             )}

@@ -48,6 +48,39 @@ area keeps private-state absence/freshness explicit. Action inspection renders
 provider base information even with no effects and adds contextual effect rows
 when present. No unrelated attack supplies an idle inspection context.
 
+`buildActionTooltip` reads `Declaration.information.description` and its ordered
+label/value details verbatim, before the existing typed damage-type, cost and
+target facts. The UI never parses damage notation, infers a description from a
+name, or combines contextual effects into a total. Missing text is explicitly
+marked; missing metadata does not change availability. Repeated detail labels
+remain separate ordered rows.
+
+`ActionInformationContent` shares that base-first body across desktop, compact,
+pinned and target inspections. Candidate answers remain tied to their action;
+target-held effects are still a separate list. A compact hover card accepts the
+pointer for scrolling, and keyboard focus can pin it without selecting. Its
+position clears the measured collection menu, while dimensions stay bounded by
+the owning frame. Provider refreshes replace the text under the same current ID.
+
+The desktop action reader retains its named offer during pointer travel across
+empty space, so even a far-right icon's long text can be reached and scrolled.
+Another offer replaces it; withdrawal removes it. Close/Escape dismisses only
+information and returns focus to the action sections. Outside presses and other
+dock-control hover/focus dismiss it without swallowing their input. Opening
+never takes focus or dispatches a command; no invisible map-wide hover shield or
+timed transit window is used.
+
+Cast and reaction choices show `CastOption.description` before commitment,
+outside the action button so stale/disabled controls do not dim their explanation.
+Compact option lists scroll under width pressure; their bounded description
+regions are keyboard-focusable and cannot submit. Only the original option ID
+is sent on deliberate selection. Reaction information and End Turn descriptions
+also use the provider fields, without changing the existing execution gates.
+
+The UI consumes these optional fields; field support in the SDK does not prove
+that a running provider populates them. Provider delivery and gameplay gaps are
+tracked through rpg-project#543 rather than patched with client-side rules.
+
 `CombatExperienceStoryExchange.deliverySource` carries live/catch-up provenance
 through the existing story/pacing projection. Temporary desktop notices consume
 only newly released live entries; initial/recovered/unknown-provenance entries
@@ -75,6 +108,28 @@ Selection and dispatch share one current-offer boundary:
 The compact targeting panel sits below the room label. Desktop targeting uses
 a strip above the toolbar, with selected-member chips and an optional list.
 Both cap long content and keep inspection separate from command execution.
+
+While a member-targeted action is armed, the existing canvas hover identity also
+opens a read-only target-effect peek. It resolves an exact unique current
+candidate, including unavailable candidates; it never changes selected IDs or
+calls choose/confirm. The preview shows the selected action's supplied base facts first, then
+observed target-held rows and the actor's target-specific answers, keeping the
+two effect lists separate. `ActionInformationFacts` shares verbatim base rows
+with the full action card; no target-adjusted damage total is derived. Empty
+rows mean no supplied information, not a condition-free creature.
+
+Opening a peek takes no focus and sends no intent. Its scrollable surface is
+pointer-reachable and keyboard-focusable: clicks and wheel gestures belong to
+that reader, not the map underneath. The last named candidate stays visible
+while the pointer crosses empty space or a non-candidate on its way to the
+panel. Close preview/Escape dismisses information, not the armed action. The
+peek still stays out of the way of other dock-control inspections. List/chip
+mouse or pen entry and keyboard focus use the same candidate lookup. Explicit
+Info controls open and focus the existing scrollable full reader; that reader
+keeps its named target until closed or changed. Close/Escape clears inspection,
+not the action or its picks. Withdrawn/ambiguous candidates and action changes
+cannot retain another target's old rows. No new provider read or wire field is
+introduced by this UI path.
 Desktop multi-member CAST selection toggles map/list/chip picks; reaching the
 provider maximum never casts. Separate confirmation echoes the ordered members
 and chosen option. Re-clicking an armed multi-target icon preserves its picks;

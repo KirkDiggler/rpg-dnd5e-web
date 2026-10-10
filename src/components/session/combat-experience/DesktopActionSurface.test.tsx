@@ -1,12 +1,19 @@
 import { DESKTOP_HOTBAR_PROFILES } from '@/concepts/desktop-hotbar/fixtures';
 import { create } from '@bufbuild/protobuf';
 import {
+  ActionInformationSchema,
+  AttackRefSchema,
   CastOptionSchema,
+  DamageType,
   DeclarationSchema,
+  EffectParticipation,
+  EffectRowSchema,
+  EffectState,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -49,6 +56,125 @@ afterEach(() => {
 });
 
 describe('DesktopActionSurface', () => {
+  it('reads provider base facts above contextual effects before selection and replaces refreshed information', () => {
+    const source = ready.declarations.find(
+      (offer) => offer.verb === Verb.ATTACK
+    )!;
+    const offer = create(DeclarationSchema, {
+      ...source,
+      attack: create(AttackRefSchema, {
+        name: 'Warhammer',
+        ref: 'dnd5e:weapons:warhammer',
+        damageType: DamageType.BLUDGEONING,
+      }),
+      information: create(ActionInformationSchema, {
+        description: 'Provider weapon explanation.',
+        details: [
+          {
+            label: 'Base damage',
+            value: '1d8 + STR modifier (+3) · Bludgeoning',
+          },
+        ],
+      }),
+      effects: [
+        create(EffectRowSchema, {
+          id: 'rage',
+          name: 'Rage',
+          description: 'Provider effect explanation.',
+          state: EffectState.APPLIES,
+          participation: EffectParticipation.CONTRIBUTES_NOW,
+          reason: 'Applies to this attack.',
+          benefit: '+2 damage',
+        }),
+      ],
+    });
+    const select = vi.fn();
+    const view = render(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[offer]}
+        onSelectDeclaration={select}
+      />
+    );
+    fireEvent.focus(screen.getByRole('button', { name: 'Warhammer' }));
+    const card = screen.getByRole('tooltip');
+    expect(
+      within(card).getByText('Provider weapon explanation.')
+    ).toBeVisible();
+    const base = within(card).getByText(
+      '1d8 + STR modifier (+3) · Bludgeoning'
+    );
+    expect(
+      base.compareDocumentPosition(within(card).getByText('Rage')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(within(card).getByText('+2 damage')).toBeVisible();
+    expect(select).not.toHaveBeenCalled();
+    const refreshed = create(DeclarationSchema, {
+      ...offer,
+      information: create(ActionInformationSchema, {
+        description: 'Refreshed provider text.',
+      }),
+      effects: [],
+    });
+    view.rerender(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[refreshed]}
+        onSelectDeclaration={select}
+      />
+    );
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Refreshed provider text.'
+    );
+    expect(within(screen.getByRole('tooltip')).queryByText('Rage')).toBeNull();
+    expect(
+      within(screen.getByRole('tooltip')).queryByText(
+        '1d8 + STR modifier (+3) · Bludgeoning'
+      )
+    ).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('explains each current choice before submitting only its ID, without inventing missing text', () => {
+    const source = ready.declarations.find((offer) => offer.id === 'command')!;
+    const offer = create(DeclarationSchema, {
+      ...source,
+      options: [
+        create(CastOptionSchema, {
+          id: 'provider-option',
+          label: 'Provider choice',
+          description: 'Provider-authored choice meaning.',
+        }),
+        create(CastOptionSchema, {
+          id: 'no-description',
+          label: 'Unexplained choice',
+        }),
+      ],
+    });
+    const select = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        declarations={[offer]}
+        optionDeclaration={offer}
+        onSelectCastOption={select}
+      />
+    );
+    const choice = screen.getByRole('button', { name: 'Provider choice' });
+    expect(choice).toHaveAttribute(
+      'aria-description',
+      'Provider-authored choice meaning.'
+    );
+    expect(screen.getByText('Provider-authored choice meaning.')).toBeVisible();
+    expect(screen.getByText('Description not provided.')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Unexplained choice' })
+    ).not.toBeDisabled();
+    expect(select).not.toHaveBeenCalled();
+    fireEvent.click(choice);
+    expect(select).toHaveBeenCalledExactlyOnceWith('provider-option');
+  });
   it('omits favorite controls and ignores supplied pins unless explicitly opted in', () => {
     const onChange = vi.fn();
     const view = render(
@@ -185,7 +311,158 @@ describe('DesktopActionSurface', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
     expect(select).not.toHaveBeenCalled();
     fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
+  });
+  it('keeps the named reader across empty-space transit, with inert scroll, click and close', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        armedDeclarationId="bane"
+        onSelectDeclaration={select}
+        onCancelSelection={cancel}
+      />
+    );
+    const focus = document.activeElement;
+    const enter = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(enter, 'pointerType', { value: 'mouse' });
+    fireEvent(screen.getByRole('button', { name: 'Cure Wounds' }), enter);
+    const reader = screen.getByRole('tooltip');
+    expect(document.activeElement).toBe(focus);
+    fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
+    const transit = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(transit, 'pointerType', { value: 'mouse' });
+    fireEvent(document.body, transit);
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    fireEvent.pointerEnter(reader);
+    fireEvent.wheel(reader, { deltaY: 300 });
+    fireEvent.click(reader);
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close action information' })
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(document.activeElement).toHaveAttribute(
+      'aria-label',
+      'Action sections'
+    );
+    fireEvent.focus(screen.getByRole('button', { name: 'Cure Wounds' }));
+    fireEvent.keyDown(screen.getByRole('tooltip'), { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(select).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+  it('dismisses a mouse-opened reader with Escape from the unfocused page, not the armed action', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        armedDeclarationId="bane"
+        onSelectDeclaration={select}
+        onCancelSelection={cancel}
+      />
+    );
+    const event = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+    fireEvent(screen.getByRole('button', { name: 'Bane' }), event);
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    const handledEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    handledEscape.preventDefault();
+    fireEvent(document.body, handledEscape);
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    const windowEscape = vi.fn();
+    window.addEventListener('keydown', windowEscape);
+    try {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(windowEscape).not.toHaveBeenCalled();
+      // Once the reader closes, its listener must not consume later Escape.
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(windowEscape).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('keydown', windowEscape);
+    }
+    expect(document.activeElement).toHaveAttribute(
+      'aria-label',
+      'Action sections'
+    );
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(select).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+  it('keeps the reader mounted when keyboard focus reaches its Close control', () => {
+    render(<DesktopActionSurface {...defaults} />);
+    fireEvent.focus(screen.getByRole('button', { name: 'Bane' }));
+    const reader = screen.getByRole('tooltip');
+    const close = screen.getByRole('button', {
+      name: 'Close action information',
+    });
+    act(() => close.focus());
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+  it('replaces the named reader when another offered action is hovered, without selecting', () => {
+    const select = vi.fn();
+    render(<DesktopActionSurface {...defaults} onSelectDeclaration={select} />);
+    for (const name of ['Bane', 'Cure Wounds']) {
+      const event = new MouseEvent('pointerover', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+      fireEvent(screen.getByRole('button', { name }), event);
+      expect(screen.getByRole('tooltip')).toHaveAccessibleName(
+        `${name} details`
+      );
+    }
+    expect(select).not.toHaveBeenCalled();
+  });
+  it('dismisses on other dock controls and outside clicks but not its own reader or offers', () => {
+    render(
+      <div data-desktop-dock>
+        <button>Inspect status</button>
+        <DesktopActionSurface {...defaults} />
+      </div>
+    );
+    const open = () =>
+      fireEvent.focus(screen.getByRole('button', { name: 'Bane' }));
+    const over = (element: Element, pointerType = 'mouse') => {
+      const event = new MouseEvent('pointerover', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: pointerType });
+      fireEvent(element, event);
+    };
+    open();
+    over(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Bane');
+    over(screen.getByRole('button', { name: 'Inspect status' }), 'touch');
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    over(screen.getByRole('button', { name: 'Inspect status' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    fireEvent.focusIn(screen.getByRole('button', { name: 'Inspect status' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    over(screen.getByRole('combobox', { name: 'Hotbar rows' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    fireEvent.pointerDown(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
   it('keeps refused actions inspectable and blocks dispatch, while the supplied bonus action works', () => {
     const select = vi.fn();

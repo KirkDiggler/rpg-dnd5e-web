@@ -40,6 +40,50 @@ const valueFor = (
 ) => tooltip.lines.find((line) => line.label === label)?.value;
 
 describe('buildActionTooltip', () => {
+  it('copies provider descriptions and ordered base facts independently of effects or availability', () => {
+    const offer = create(DeclarationSchema, {
+      verb: Verb.ACTIVATE,
+      ability: { name: 'Provider action', ref: 'provider:actions:unknown' },
+      available: false,
+      information: {
+        description: 'An explanation owned by the provider.',
+        details: [
+          {
+            label: 'Base damage',
+            value: '1d8 + STR modifier (+3) · Bludgeoning',
+          },
+          { label: 'Base damage', value: '1d4 · Fire' },
+          { label: 'Remaining', value: '0' },
+        ],
+      },
+      effects: [],
+      why: { text: 'Provider refusal' },
+    });
+    const tooltip = buildActionTooltip(offer);
+    expect(tooltip.description).toBe(offer.information?.description);
+    expect(tooltip.lines.slice(0, 3)).toEqual(
+      offer.information?.details.map(({ label, value }) => ({ label, value }))
+    );
+    expect(tooltip.effects).toEqual([]);
+    expect(tooltip.refusal).toBe('Provider refusal');
+    expect(actionTooltipText(tooltip)).toContain(
+      'An explanation owned by the provider.'
+    );
+    offer.information!.details[0].value = 'new response';
+    expect(tooltip.lines[0].value).toBe(
+      '1d8 + STR modifier (+3) · Bludgeoning'
+    );
+  });
+
+  it('does not derive missing descriptions or damage dice from an action identity', () => {
+    const offer = create(DeclarationSchema, {
+      verb: Verb.ACTIVATE,
+      ability: { name: 'Dodge', ref: 'dnd5e:combat_abilities:dodge' },
+      available: true,
+    });
+    expect(buildActionTooltip(offer).description).toBe('');
+    expect(buildActionTooltip(offer).lines).toEqual([]);
+  });
   it('titles an attack with the weapon the server named', () => {
     const tooltip = buildActionTooltip(
       declaration({
@@ -139,6 +183,28 @@ describe('buildActionTooltip', () => {
 });
 
 describe('actionTooltipText', () => {
+  it('uses the same explicit missing-cell markers in accessible and visual information', () => {
+    const tooltip = buildActionTooltip(
+      create(DeclarationSchema, {
+        information: {
+          description: 'Provider text.',
+          details: [
+            { label: ' ', value: 'Known value' },
+            { label: 'Known label', value: '\t' },
+            { label: 'Zero', value: '0' },
+          ],
+        },
+      })
+    );
+    expect(actionTooltipText(tooltip)).toContain(
+      'Detail label not provided: Known value'
+    );
+    expect(actionTooltipText(tooltip)).toContain(
+      'Known label: Value not provided'
+    );
+    expect(actionTooltipText(tooltip)).toContain('Zero: 0');
+  });
+
   it('flattens to one readable line', () => {
     const tooltip = buildActionTooltip(
       declaration({
@@ -150,7 +216,7 @@ describe('actionTooltipText', () => {
       } as Partial<Declaration>)
     );
     expect(actionTooltipText(tooltip)).toBe(
-      'Longsword · Damage: slashing · Costs: Action'
+      'Longsword · Description not provided. · Damage: slashing · Costs: Action'
     );
   });
 

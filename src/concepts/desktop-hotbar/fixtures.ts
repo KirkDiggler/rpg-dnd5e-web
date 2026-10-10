@@ -6,6 +6,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AbilityRefSchema,
+  ActionInformationSchema,
   AttackRefSchema,
   CastOptionSchema,
   CostComponentSchema,
@@ -389,7 +390,26 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
     fixtures: martial.fixtures.map((fixture) => ({
       ...fixture,
       declarations: [
-        ...fixture.declarations,
+        ...fixture.declarations.map((offer) =>
+          offer.id === 'offer:aldric:longsword:action'
+            ? create(DeclarationSchema, {
+                ...offer,
+                // Explicit example provider payload, not character-stat
+                // inference or a production weapon-description lookup.
+                information: create(ActionInformationSchema, {
+                  description:
+                    'Make a melee attack with the weapon you are wielding.',
+                  details: [
+                    {
+                      label: 'Base damage',
+                      value: '1d8 + STR modifier (+3) · Slashing',
+                    },
+                    { label: 'Grip', value: 'One-handed' },
+                  ],
+                }),
+              })
+            : offer
+        ),
         declarations.find((offer) => offer.id === 'unarmed-strike')!,
       ],
     })),

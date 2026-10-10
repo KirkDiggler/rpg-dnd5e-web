@@ -37,6 +37,8 @@ import {
   DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
+  EffectParticipation,
+  EffectState,
   FootprintOrigin,
   FootprintSchema,
   FootprintShape,
@@ -842,10 +844,22 @@ describe('SessionEncounterView production combat integration', () => {
     try {
       const spell = create(DeclarationSchema, {
         id: 'live-cast',
+        information: {
+          description: 'Provider explanation of this cast.',
+          details: [{ label: 'Provider base fact', value: 'Verbatim fact' }],
+        },
         // Contract-shape regression: multi-member plus provider-authored options.
         options: [
-          { id: 'first', label: 'First mode' },
-          { id: 'second', label: 'Second mode' },
+          {
+            id: 'first',
+            label: 'First mode',
+            description: 'First provider mode explanation.',
+          },
+          {
+            id: 'second',
+            label: 'Second mode',
+            description: 'Second provider mode explanation.',
+          },
         ],
         verb: Verb.CAST,
         slot: Slot.ACTION,
@@ -854,9 +868,36 @@ describe('SessionEncounterView production combat integration', () => {
         minTargets: 1,
         maxTargets: 2,
         spell: { ref: 'dnd5e:spells:bless', name: 'Bless' },
+        effects: [
+          {
+            id: 'provided-effect',
+            name: 'Provider actor effect',
+            description: 'Provider effect description.',
+            state: EffectState.DEPENDS,
+            participation: EffectParticipation.CONTRIBUTES_NOW,
+            reason: 'Depends on target.',
+          },
+        ],
         candidates: ['char-1', 'skeleton-1'].map((member) => ({
           member,
           available: true,
+          effects: [
+            {
+              id: 'provided-effect',
+              state: EffectState.APPLIES,
+              reason: `Provider answer for ${member}.`,
+            },
+          ],
+          heldEffects: [
+            {
+              id: `held-${member}`,
+              name: 'Provider target-held effect',
+              description: 'Observed provider effect.',
+              state: EffectState.APPLIES,
+              participation: EffectParticipation.CONTRIBUTES_NOW,
+              reason: 'Observed target answer.',
+            },
+          ],
         })),
       });
       readyTurn([spell, endTurnDeclaration()]);
@@ -876,8 +917,45 @@ describe('SessionEncounterView production combat integration', () => {
       expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
       expect(screen.getByText('Leveled spells')).toBeTruthy();
       expect(screen.queryByRole('region', { name: 'Items' })).toBeNull();
+      fireEvent.focus(screen.getByRole('button', { name: 'Bless' }));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider explanation of this cast.'
+      );
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Verbatim fact'
+      );
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('cast-options')).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Bless' }));
+      expect(screen.getByText('First provider mode explanation.')).toBeTruthy();
+      expect(
+        screen
+          .getByRole('button', { name: 'First mode' })
+          .getAttribute('aria-description')
+      ).toBe('First provider mode explanation.');
+      expect(hoisted.castFn).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'First mode' }));
+      act(() => hoisted.lastCanvasProps.current?.onHoverEntity?.('skeleton-1'));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider answer for skeleton-1.'
+      );
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider target-held effect'
+      );
+      expect(screen.getByRole('tooltip').getAttribute('data-preview')).toBe(
+        'true'
+      );
+      expect(hoisted.lastCanvasProps.current?.selectedTargets).toEqual([]);
+      expect(hoisted.castFn).not.toHaveBeenCalled();
+      expect(screen.getByTestId('session-canvas')).toBe(canvas);
+      act(() => hoisted.lastCanvasProps.current?.onHoverEntity?.('char-1'));
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        'Provider answer for char-1.'
+      );
+      expect(screen.getByRole('tooltip').textContent).not.toContain(
+        'Provider answer for skeleton-1.'
+      );
+      expect(hoisted.castFn).not.toHaveBeenCalled();
       act(() => {
         hoisted.lastCanvasProps.current?.onEntityClick?.('char-1');
       });
@@ -5304,6 +5382,48 @@ describe('SessionEncounterView production combat integration', () => {
       ).toBeUndefined()
     );
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the server’s refusal of an unequip in its own words and leaves the hand unchanged', async () => {
+    readyScene();
+    const sword = { module: 'dnd5e', type: 'item', id: 'longsword' };
+    const initial = privateCharacterData({
+      equipped: { main_hand: sword },
+      inventory: [
+        {
+          ref: sword,
+          name: 'Longsword',
+          statLine: '1d8 slashing',
+          iconKey: '',
+          kind: 'weapon',
+          equipmentType: 'weapon',
+          slotKeys: ['main_hand'],
+        },
+      ],
+      slots: [
+        { key: 'main_hand', displayLabel: 'Main Hand', accepts: ['weapon'] },
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({ character: initial });
+    hoisted.unequipItemFn.mockRejectedValue(
+      new ConnectError('it is not your turn', Code.FailedPrecondition)
+    );
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+        'dnd5e:item:longsword'
+      )
+    );
+
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    await screen.findByTestId('equipment-popover');
+    fireEvent.click(screen.getByTestId('equip-socket-main_hand'));
+
+    expect(await screen.findByText('it is not your turn')).toBeTruthy();
+    expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+      'dnd5e:item:longsword'
+    );
   });
 
   it('replaces the visible main hand directly from the authoritative EquipItem response', async () => {

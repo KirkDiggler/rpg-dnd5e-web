@@ -12,6 +12,7 @@ import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useLobbyCharacterId } from './api/useLobbyCharacterId';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
+import { useSeatedElsewhere } from './api/useSeatedElsewhere';
 import './App.css';
 import { shouldRenderGlobalDevTools, type AppView } from './appView';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
@@ -20,6 +21,7 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { LevelUpView } from './character/level-up/LevelUpView';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
+import { SeatNotice } from './components/game/SeatNotice';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
@@ -740,6 +742,12 @@ function HomeView({
   const { data: characters } = useListCharacters({ playerId, sessionId });
   const { data: drafts } = useListDrafts({ playerId, sessionId });
 
+  // The seat stays visible on Home, so Back from a refused launch lands on
+  // the same notice (the server's answer, not a client flag).
+  const seated = useSeatedElsewhere(
+    selectedType === 'character' ? selectedId : null
+  );
+
   // Find the selected character or draft
   const selectedCharacter =
     selectedType === 'character' && selectedId
@@ -804,6 +812,10 @@ function HomeView({
         onSelect={onSelect}
         onCreateClick={onCreateClick}
       />
+
+      {selectedCharacter && (
+        <SeatNotice seated={seated} name={selectedCharacter.name} />
+      )}
 
       {/* Selected Character Panel */}
       <SelectedCharacterPanel

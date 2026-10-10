@@ -9,6 +9,10 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ActionInformationContent,
+  ActionInformationFacts,
+} from './ActionInformationContent';
+import {
   buildActionTooltip,
   effectLinesFor,
   heldEffectLinesFor,
@@ -74,9 +78,11 @@ export function MapFirstTargeting({
   );
   const root = useRef<HTMLElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const detailsCard = useRef<HTMLDivElement>(null);
   const targetsButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const [height, setHeight] = useState(0);
+  const [overOtherDockControls, setOverOtherDockControls] = useState(false);
   const prefix = useId();
   const candidates = [
     ...new Map(
@@ -86,6 +92,7 @@ export function MapFirstTargeting({
     ).values(),
   ];
   const uniqueCandidate = (member: string) => {
+    if (!declaration?.id || !view.memberTargeted) return undefined;
     const matches =
       declaration?.candidates.filter(
         (candidate) => candidate.member === member
@@ -108,7 +115,10 @@ export function MapFirstTargeting({
   const optionMatches =
     declaration?.options.filter((option) => option.id === optionId) ?? [];
   const option = optionMatches.length === 1 ? optionMatches[0] : undefined;
-  const action = declaration ? buildActionTooltip(declaration).title : 'Action';
+  const actionInformation = declaration
+    ? buildActionTooltip(declaration)
+    : undefined;
+  const action = actionInformation?.title ?? 'Action';
   const label = `${action}${option?.label ? ` · ${option.label}` : ''}`;
   const statusFor = (member: string): string => {
     const selected = view.selected.find((target) => target.member === member);
@@ -137,18 +147,49 @@ export function MapFirstTargeting({
     current.details && uniqueCandidate(current.details)
       ? current.details
       : null;
+  const inspected = details ?? (overOtherDockControls ? null : preview);
   const hoveredIsCandidate = Boolean(
-    hoveredTarget &&
-    candidates.some((candidate) => candidate.member === hoveredTarget)
+    hoveredTarget && uniqueCandidate(hoveredTarget)
   );
+  const previewTarget = (member: string): void => {
+    if (uniqueCandidate(member)) update({ preview: member });
+  };
+  const previewDescription = (member: string): string | undefined =>
+    !details && !overOtherDockControls && preview === member
+      ? `${prefix}-target-information`
+      : undefined;
   useEffect(() => {
     if ((current.details && !details) || (current.preview && !preview))
       update({ details: details, preview: preview });
   }, [current.details, current.preview, details, preview, update]);
   useEffect(() => {
-    if (hoveredTarget)
-      update({ preview: hoveredIsCandidate ? hoveredTarget : null });
+    // Keep the last named candidate while the pointer travels to its reader,
+    // even if it crosses empty ground or a non-candidate model on the way.
+    // Only another unique current candidate supplies replacement information.
+    if (hoveredTarget && hoveredIsCandidate) update({ preview: hoveredTarget });
   }, [hoveredTarget, hoveredIsCandidate, update]);
+  // A sticky map peek must not cover an action's own hover card. Preserve the
+  // inspected identity, but hide the automatic peek while using other dock UI.
+  useEffect(() => {
+    const overOtherControls = (target: EventTarget | null): boolean =>
+      Boolean(
+        target instanceof Element &&
+        target.closest('[data-desktop-dock]') &&
+        !root.current?.contains(target)
+      );
+    const pointer = (event: PointerEvent): void => {
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen')
+        setOverOtherDockControls(overOtherControls(event.target));
+    };
+    const focus = (event: FocusEvent): void =>
+      setOverOtherDockControls(overOtherControls(event.target));
+    window.addEventListener('pointerover', pointer);
+    window.addEventListener('focusin', focus);
+    return () => {
+      window.removeEventListener('pointerover', pointer);
+      window.removeEventListener('focusin', focus);
+    };
+  }, []);
   useEffect(() => {
     const node = root.current;
     if (!node || typeof ResizeObserver === 'undefined') return;
@@ -179,6 +220,9 @@ export function MapFirstTargeting({
         ?.focus({ preventScroll: true });
   }, [current.list, scope]);
   useEffect(() => {
+    if (details) detailsCard.current?.focus({ preventScroll: true });
+  }, [details]);
+  useEffect(() => {
     if (!details && !current.list) return;
     const outside = (event: PointerEvent): void => {
       if (
@@ -198,7 +242,7 @@ export function MapFirstTargeting({
     return () => window.removeEventListener('pointerdown', outside);
   }, [details, current.list, update]);
   const closeDetails = (): void => {
-    update({ details: null });
+    update({ details: null, preview: null });
     targetsButton.current?.focus();
   };
   const choose = (member: string): void => {
@@ -208,9 +252,9 @@ export function MapFirstTargeting({
     }
   };
   const actorLines =
-    declaration && details ? effectLinesFor(declaration, details) : [];
+    declaration && inspected ? effectLinesFor(declaration, inspected) : [];
   const heldLines =
-    declaration && details ? heldEffectLinesFor(declaration, details) : [];
+    declaration && inspected ? heldEffectLinesFor(declaration, inspected) : [];
   if (!host) return null;
   return createPortal(
     <section
@@ -232,7 +276,7 @@ export function MapFirstTargeting({
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
         event.stopPropagation();
-        if (details) closeDetails();
+        if (details || preview) closeDetails();
         else if (current.list) {
           update({ list: false });
           targetsButton.current?.focus();
@@ -273,6 +317,15 @@ export function MapFirstTargeting({
         >
           Targets ({candidates.length})
         </button>
+        {inspected && !details && (
+          <button
+            type="button"
+            aria-label="Close target preview"
+            onClick={closeDetails}
+          >
+            Close preview
+          </button>
+        )}
         {declaration?.options.length && onChangeChoice ? (
           <button
             type="button"
@@ -304,11 +357,20 @@ export function MapFirstTargeting({
               key={target.member}
               data-selected-member={target.member}
               data-valid={target.valid}
+              onPointerEnter={(event) => {
+                if (
+                  event.pointerType === 'mouse' ||
+                  event.pointerType === 'pen'
+                )
+                  previewTarget(target.member);
+              }}
             >
               <button
                 type="button"
                 className={styles.chipName}
                 aria-label={`Inspect selected ${nameFor(target.member, index)}`}
+                aria-describedby={previewDescription(target.member)}
+                onFocus={() => previewTarget(target.member)}
                 disabled={!uniqueCandidate(target.member)}
                 title={
                   target.valid
@@ -381,16 +443,28 @@ export function MapFirstTargeting({
               key={candidate.member}
               className={styles.targetRow}
               data-checked={selectedIds.includes(candidate.member)}
+              onFocus={() => previewTarget(candidate.member)}
+              onPointerEnter={(event) => {
+                if (
+                  event.pointerType === 'mouse' ||
+                  event.pointerType === 'pen'
+                )
+                  previewTarget(candidate.member);
+              }}
             >
               {view.multi ? (
                 <label>
                   <input
                     type="checkbox"
                     aria-label={nameFor(candidate.member, index)}
-                    aria-describedby={`${prefix}-reason-${index}`}
+                    aria-describedby={[
+                      `${prefix}-reason-${index}`,
+                      previewDescription(candidate.member),
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     checked={selectedIds.includes(candidate.member)}
                     disabled={!canChoose(candidate.member)}
-                    onFocus={() => update({ preview: candidate.member })}
                     onChange={() => choose(candidate.member)}
                   />
                   <span>
@@ -405,7 +479,7 @@ export function MapFirstTargeting({
                   type="button"
                   className={styles.singleTarget}
                   disabled={!canChoose(candidate.member)}
-                  onFocus={() => update({ preview: candidate.member })}
+                  aria-describedby={previewDescription(candidate.member)}
                   onClick={() => choose(candidate.member)}
                 >
                   <strong>{nameFor(candidate.member, index)}</strong>
@@ -415,6 +489,7 @@ export function MapFirstTargeting({
               <button
                 type="button"
                 aria-label={`Inspect ${nameFor(candidate.member, index)} target`}
+                aria-describedby={previewDescription(candidate.member)}
                 disabled={!uniqueCandidate(candidate.member)}
                 onClick={() =>
                   update({
@@ -429,37 +504,54 @@ export function MapFirstTargeting({
           ))}
         </div>
       )}
-      {details && declaration && (
+      {inspected && declaration && (
         <div
+          ref={detailsCard}
+          id={`${prefix}-target-information`}
           className={styles.details}
           data-list-open={current.list}
-          role="region"
-          aria-label={`${nameFor(details)} target information`}
+          data-preview={!details}
+          role={details ? 'region' : 'tooltip'}
+          aria-label={`${nameFor(inspected)} target information`}
           tabIndex={0}
         >
           <header>
             <div>
-              <strong>{nameFor(details)}</strong>
+              <strong>{nameFor(inspected)}</strong>
               <small>
-                For {label} · {statusFor(details)}
+                {details ? 'Inspection' : 'Preview — use Info for full details'}{' '}
+                · For {label} · {statusFor(inspected)}
               </small>
             </div>
-            <button type="button" onClick={closeDetails}>
-              Close information
-            </button>
+            {details && (
+              <button type="button" onClick={closeDetails}>
+                Close information
+              </button>
+            )}
           </header>
           {!input.authorityFresh && (
             <p className={styles.notice}>
               Last received information — may be out of date.
             </p>
           )}
-          {actorLines.length > 0 && (
-            <EffectRows lines={actorLines} label="Your action effects" />
-          )}
-          {heldLines.length > 0 && (
+          {details && actionInformation ? (
+            <ActionInformationContent
+              description={actionInformation.description}
+              lines={actionInformation.lines}
+              effects={actorLines}
+              effectsLabel="Your action effects"
+              targetEffects={heldLines}
+              targetEffectsLabel="On this target"
+            />
+          ) : (
             <>
-              <h4>On this target</h4>
+              <ActionInformationFacts
+                lines={declaration.information?.details ?? []}
+              />
+              {heldLines.length > 0 && <h4>On this target</h4>}
               <EffectRows lines={heldLines} label="On this target" />
+              {actorLines.length > 0 && <h4>Your action effects</h4>}
+              <EffectRows lines={actorLines} label="Your action effects" />
             </>
           )}
           {!actorLines.length && !heldLines.length && (

@@ -1,9 +1,9 @@
 import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useEffect, useRef, useState } from 'react';
 import { ActionArt } from './ActionArt';
+import { ActionInformationContent } from './ActionInformationContent';
 import { buildActionTooltip, effectLinesFor } from './actionTooltip';
 import styles from './DesktopEffects.module.css';
-import { EffectRows } from './EffectRows';
 import type { ActionIconPresentation } from './organizedActionPresentation';
 
 /** Base action information and contextual effects, never commands or global applicability. */
@@ -166,17 +166,11 @@ export function DesktopEffects({
           {!authorityFresh && (
             <p>Last received details — may be out of date.</p>
           )}
-          <dl>
-            {tooltip.lines.map((line) => (
-              <div key={line.label}>
-                <dt>{line.label}</dt>
-                <dd>{line.value}</dd>
-              </div>
-            ))}
-          </dl>
-          <EffectRows
-            lines={inspectingAction ? lines : inspected ? [inspected] : []}
-            label="Effect details"
+          <ActionInformationContent
+            description={tooltip.description}
+            lines={tooltip.lines}
+            effects={inspectingAction ? lines : inspected ? [inspected] : []}
+            effectsLabel="Effect details"
           />
           {tooltip.refusal && <p>Unavailable — {tooltip.refusal}</p>}
           {!pinned && <small>Click the icon to pin these details.</small>}
