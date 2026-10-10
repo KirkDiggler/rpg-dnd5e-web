@@ -25,17 +25,39 @@ export function RegionLightingSurfaceProvider({
   projection,
   pointLights,
   onDiagnostic,
+  onDiagnosticsChange,
   children,
 }: {
   projection: RegionLightingProjection;
   pointLights: readonly RenderablePointLight[];
   onDiagnostic(diagnostic: RegionLightingDiagnostic): void;
+  onDiagnosticsChange?(diagnostics: readonly RegionLightingDiagnostic[]): void;
   children(binding: RegionLightingMaterialBinding | undefined): ReactNode;
 }): ReactNode {
   const { gl, invalidate } = useThree();
   const callback = useRef(onDiagnostic);
   callback.current = onDiagnostic;
-  const reported = useRef(new Set<string>());
+  const statusCallback = useRef(onDiagnosticsChange);
+  statusCallback.current = onDiagnosticsChange;
+  // Current render status, not a lifetime log. Material refusals survive field
+  // uploads because the stable binding does not rerun material treatment.
+  const reported = useRef(new Map<string, RegionLightingDiagnostic>());
+  const shaderFailed = useRef(false);
+  const retire = useCallback((all: boolean, keep?: string): void => {
+    let changed = false;
+    for (const [key, diagnostic] of reported.current) {
+      if (
+        key !== keep &&
+        (all ||
+          diagnostic.reason === 'field-build' ||
+          diagnostic.reason === 'gpu-capacity')
+      ) {
+        reported.current.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) statusCallback.current?.([...reported.current.values()]);
+  }, []);
   const [binding, setBinding] = useState<RegionLightingMaterialBinding>();
   const active = useRef<RegionLightingMaterialBinding | undefined>(undefined);
   const resources = useRef<RegionLightingFieldTextures | undefined>(undefined);
@@ -44,13 +66,15 @@ export function RegionLightingSurfaceProvider({
     (diagnostic: RegionLightingDiagnostic): void => {
       const key = JSON.stringify(diagnostic);
       if (!reported.current.has(key)) {
-        reported.current.add(key);
+        reported.current.set(key, diagnostic);
         callback.current(diagnostic);
+        statusCallback.current?.([...reported.current.values()]);
       }
       if (
         diagnostic.reason === 'shader-compile' ||
         diagnostic.reason === 'shader-contract'
       ) {
+        shaderFailed.current = true;
         setFailed(true);
         invalidate();
       }
@@ -84,10 +108,15 @@ export function RegionLightingSurfaceProvider({
   }, [gl, report]);
 
   useLayoutEffect(() => {
-    setFailed(false);
-    if (!projection.areas.length) {
+    const retireField = (): void => {
+      retire(true);
+      shaderFailed.current = false;
+      setFailed(false);
       setBinding(undefined);
       invalidate();
+    };
+    if (!projection.areas.length) {
+      retireField();
       return;
     }
     let field;
@@ -95,11 +124,23 @@ export function RegionLightingSurfaceProvider({
       field = buildSpatialBackgroundField(toSpatialBackgroundAreas(projection));
     } catch (error) {
       setBinding(undefined);
-      report({ reason: 'field-build', message: String(error) });
+      const diagnostic: RegionLightingDiagnostic = {
+        reason: 'field-build',
+        message: String(error),
+      };
+      retire(false, JSON.stringify(diagnostic));
+      report(diagnostic);
       invalidate();
       return;
     }
     if (!field.triangles.length) {
+      retireField();
+      return;
+    }
+    // Upload success cannot repair a material/program contract failure. Keep
+    // the fallback until lighting retires, when material treatment also retires.
+    if (shaderFailed.current) {
+      retire(false);
       setBinding(undefined);
       invalidate();
       return;
@@ -124,10 +165,16 @@ export function RegionLightingSurfaceProvider({
     } catch (error) {
       textures?.dispose();
       setBinding(undefined);
-      report({ reason: 'gpu-capacity', message: String(error) });
+      const diagnostic: RegionLightingDiagnostic = {
+        reason: 'gpu-capacity',
+        message: String(error),
+      };
+      retire(false, JSON.stringify(diagnostic));
+      report(diagnostic);
       invalidate();
       return;
     }
+    retire(false);
     resources.current = textures;
     const b = active.current ?? {
       uniforms: {
@@ -163,7 +210,7 @@ export function RegionLightingSurfaceProvider({
       textures.dispose();
       if (resources.current === textures) resources.current = undefined;
     };
-  }, [projection, gl, invalidate, report]);
+  }, [projection, gl, invalidate, report, retire]);
   useLayoutEffect(() => {
     if (failed) {
       resources.current?.dispose();

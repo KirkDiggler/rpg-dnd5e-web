@@ -171,6 +171,88 @@ describe('Canvas-local region surface provider', () => {
       expect.objectContaining({ reason: 'field-build' })
     );
   });
+  it('publishes current field status, deduplicates an active failure and reports it again after recovery', () => {
+    let observed: RegionLightingMaterialBinding | undefined;
+    const diagnostic = vi.fn(),
+      status = vi.fn();
+    const child = (b: RegionLightingMaterialBinding | undefined): null => {
+      observed = b;
+      return null;
+    };
+    const draw = (p: RegionLightingProjection) => (
+      <RegionLightingSurfaceProvider
+        projection={p}
+        pointLights={[]}
+        onDiagnostic={diagnostic}
+        onDiagnosticsChange={status}
+      >
+        {child}
+      </RegionLightingSurfaceProvider>
+    );
+    const view = render(draw(projection(0.2)));
+    const initial = observed!;
+    const dispose = vi.spyOn(initial.uniforms.rlTriangles.value, 'dispose');
+    state.gl.capabilities.maxTextureSize = 1;
+    view.rerender(draw(projection(0.3)));
+    expect(observed).toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
+    const failure = diagnostic.mock.calls[0]![0];
+    expect(status).toHaveBeenLastCalledWith([failure]);
+    view.rerender(draw(projection(0.4)));
+    expect(diagnostic).toHaveBeenCalledOnce();
+    expect(status).toHaveBeenCalledOnce();
+    state.gl.capabilities.maxTextureSize = 4096;
+    view.rerender(draw(projection(0.2)));
+    expect(observed).toBe(initial);
+    expect(status).toHaveBeenLastCalledWith([]);
+    state.gl.capabilities.maxTextureSize = 1;
+    view.rerender(draw(projection(0.3)));
+    expect(diagnostic).toHaveBeenCalledTimes(2);
+    expect(status).toHaveBeenLastCalledWith([failure]);
+    view.rerender(draw(projection(NaN)));
+    expect(status).toHaveBeenLastCalledWith([
+      expect.objectContaining({ reason: 'field-build' }),
+    ]);
+  });
+  it('keeps shader-contract fallback and resources retired across projection changes until no-field retirement', () => {
+    let observed: RegionLightingMaterialBinding | undefined;
+    const status = vi.fn();
+    const draw = (p: RegionLightingProjection) => (
+      <RegionLightingSurfaceProvider
+        projection={p}
+        pointLights={[]}
+        onDiagnostic={vi.fn()}
+        onDiagnosticsChange={status}
+      >
+        {(b) => {
+          observed = b;
+          return null;
+        }}
+      </RegionLightingSurfaceProvider>
+    );
+    const view = render(draw(projection(0.2)));
+    const binding = observed!;
+    const dispose = vi.spyOn(binding.uniforms.rlTriangles.value, 'dispose');
+    const failure = {
+      reason: 'shader-contract' as const,
+      message: 'missing chunk',
+    };
+    act(() => binding.reportDiagnostic(failure));
+    expect(observed).toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
+    const uploads = state.gl.initTexture.mock.calls.length;
+    view.rerender(draw(projection(0.3)));
+    expect(observed).toBeUndefined();
+    expect(state.gl.initTexture.mock.calls.length).toBe(uploads);
+    expect(status).toHaveBeenLastCalledWith([failure]);
+    view.rerender(draw({ areas: [] }));
+    expect(status).toHaveBeenLastCalledWith([]);
+    view.rerender(draw(projection(0.3)));
+    expect(observed).toBe(binding);
+    act(() => binding.reportDiagnostic(failure));
+    expect(observed).toBeUndefined();
+    expect(status).toHaveBeenLastCalledWith([failure]);
+  });
   it('chains shader errors, disables only marked compile failures and restores exact prior callback under StrictMode', () => {
     const previous = vi.fn();
     state.gl.debug.onShaderError = previous;

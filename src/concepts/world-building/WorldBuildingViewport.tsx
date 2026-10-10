@@ -656,6 +656,9 @@ export function WorldSceneContents(
   props: WorldBuildingViewportProps & {
     showCompositionBounds: boolean;
     onLightingDiagnostic?: (diagnostic: RegionLightingDiagnostic) => void;
+    onLightingDiagnosticsChange?: (
+      diagnostics: readonly RegionLightingDiagnostic[]
+    ) => void;
   }
 ) {
   const {
@@ -1459,6 +1462,7 @@ export function WorldSceneContents(
       projection={props.roomAuthoring?.regionLighting ?? EMPTY_REGION_LIGHTING}
       pointLights={pointLights}
       onDiagnostic={props.onLightingDiagnostic ?? IGNORE_LIGHTING_DIAGNOSTIC}
+      onDiagnosticsChange={props.onLightingDiagnosticsChange}
     >
       {renderSurfaces}
     </RegionLightingSurfaceProvider>
@@ -1479,18 +1483,6 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
   const [lightingDiagnostics, setLightingDiagnostics] = useState<
     readonly RegionLightingDiagnostic[]
   >([]);
-  const reportLightingDiagnostic = useCallback(
-    (diagnostic: RegionLightingDiagnostic): void => {
-      setLightingDiagnostics((current) =>
-        current.some(
-          (value) => JSON.stringify(value) === JSON.stringify(diagnostic)
-        )
-          ? current
-          : [...current, diagnostic]
-      );
-    },
-    []
-  );
   /** The placement anchor and the composition-bounds guide are the prop
    * composer's vocabulary. In room authoring they are a leak, so the legend,
    * the toggle and the meshes are all absent (rpg-dnd5e-web#1152). */
@@ -1512,7 +1504,7 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
         <WorldSceneContents
           {...props}
           showCompositionBounds={showCompositionBounds}
-          onLightingDiagnostic={reportLightingDiagnostic}
+          onLightingDiagnosticsChange={setLightingDiagnostics}
         />
       </Canvas>
       {lightingDiagnostics.length > 0 && (
