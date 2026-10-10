@@ -48,6 +48,13 @@ area keeps private-state absence/freshness explicit. Action inspection renders
 provider base information even with no effects and adds contextual effect rows
 when present. No unrelated attack supplies an idle inspection context.
 
+The desktop grid reserves its auto-sized bottom row for the full-width action
+bar. The open Story/Debug log stretches through the remaining middle row, so
+its lower edge follows the bar as rows or content change. Normal and wide Debug
+share that boundary; entries scroll inside the log while its header and footer
+stay visible. No fixed bottom inset or duplicate height measurement is needed.
+`scripts/verify-combat-log-layout.mjs` checks the rendered geometry and scrolling.
+
 `buildActionTooltip` reads `Declaration.information.description` and its ordered
 label/value details verbatim, before the existing typed damage-type, cost and
 target facts. The UI never parses damage notation, infers a description from a

@@ -804,6 +804,27 @@ describe('CombatExperience shared production shell', () => {
 });
 
 describe('CombatExperience responsive and accessibility contract', () => {
+  it('keeps the desktop open log in the remaining grid row rather than using a fixed bottom inset', () => {
+    // Structural guard only: scripts/verify-combat-log-layout.mjs checks actual
+    // rectangles and scrolling, which jsdom cannot measure.
+    const css = readFileSync(
+      'src/components/session/combat-experience/CombatExperience.module.css',
+      'utf8'
+    );
+    const rule = css.match(
+      /\.combatExperience\[data-desktop-hotbar='true'\]\s+\.storyLog:not\(\.storyLogCollapsed\)\s*\{([^}]+)\}/
+    )?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/position:\s*relative;/);
+    expect(rule).toMatch(/grid-row:\s*2;/);
+    expect(rule).toMatch(/grid-column:\s*1\s*\/\s*-1;/);
+    expect(rule).toMatch(/bottom:\s*auto;/);
+    // Equal-specificity legacy rules must not override the desktop grid row.
+    const legacyRow = css.indexOf('grid-row: 2 / 4;');
+    expect(legacyRow).toBeGreaterThan(-1);
+    expect(css.indexOf(rule!)).toBeGreaterThan(legacyRow);
+  });
+
   it('retains focus, reduced-motion, 768px floor, and horizontal action overflow CSS', () => {
     const css = readFileSync(
       'src/components/session/combat-experience/CombatExperience.module.css',
