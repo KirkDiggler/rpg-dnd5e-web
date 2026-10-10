@@ -110,11 +110,123 @@ function rewriteCatalog(fixture: Fixture) {
   commit(fixture.provider, 'mutate fixture');
 }
 
+const thumbnailPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAABS0lEQVR4nO3TwQnDMBQFwTj4rjjY/RdoMCkhRcQwBO3cJR4sf9m38Yjz1ANmVwCsAFgBsAJgBcAKgBUAKwBWAKwAWAGwAmAFwAqAFQArAFYArADY+svj8/rcNONvHO/XvR92AVgBsAJgBcAKgBUAKwBWAKwAWAGwAmAFwAqAFQArAFYArABYAbACYAXACoAVACsAVgCsAFgBsAJgBcAKgBUAKwBWAKwAWAGwAmAFwAqAFQArAFYArABYAbACYAXACoAVACsAVgCsAFgBsAJgBcAKgBUAKwBWAKwAWAGwAmAFwAqAFQArAFYArABYAbACYAXACoAVACsAVgCsAFgBsAJgBcAKgBUAKwBWAGzZt6E3TK0LwAqAFQArAFYArABYAbACYAXACoAVACsAVgCsAFgBsAJgBcAKgBUAKwBWAKwAWAGwAmAFwAqAfQHwNwRpjg21hQAAAABJRU5ErkJggg==',
+  'base64'
+);
+function addThumbnail(fixture: Fixture) {
+  const thumbnail = {
+    file: `thumbnails/world-assets/${digest(String(fixture.catalog.assets[0]!.ref))}.png`,
+    sha256: digest(thumbnailPng),
+    sizeBytes: thumbnailPng.length,
+    width: 128,
+    height: 128,
+  };
+  put(
+    join(fixture.provider, 'harness/models/synty', thumbnail.file),
+    thumbnailPng
+  );
+  put(join(fixture.runtime, thumbnail.file), thumbnailPng);
+  fixture.catalog.assets[0]!.thumbnail = thumbnail;
+  return thumbnail;
+}
+
 afterEach(() => {
   temporary.splice(0).forEach((root) => rmSync(root, { recursive: true }));
 });
 
 describe('world asset catalog generator', () => {
+  it('accepts verified provider thumbnails and projects only runtime image metadata', () => {
+    const fixture = makeFixture();
+    const thumbnail = addThumbnail(fixture);
+    rewriteCatalog(fixture);
+    generateWorldAssetCatalog({
+      providerRoot: fixture.provider,
+      runtimeRoot: fixture.runtime,
+      outputPath: fixture.output,
+    });
+    const generated = readFileSync(fixture.output, 'utf8');
+    expect(generated).toContain(`/models/synty/${thumbnail.file}`);
+    expect(generated).toContain(thumbnail.sha256);
+    expect(generated).toContain('thumbnail?:');
+    expect(generated).not.toContain(fixture.provider);
+    const legacy = makeFixture();
+    generateWorldAssetCatalog({
+      providerRoot: legacy.provider,
+      runtimeRoot: legacy.runtime,
+      outputPath: legacy.output,
+    });
+    expect(readFileSync(legacy.output, 'utf8')).not.toContain('thumbnail:');
+  });
+
+  it.each([
+    ['file', '../escape.png'],
+    ['file', '/absolute.png'],
+    ['file', 'https://example.com/image.png'],
+    ['file', `textures/${'a'.repeat(64)}.png`],
+    ['sha256', 'bad'],
+    ['sizeBytes', 0],
+    ['sizeBytes', 1024 * 1024 + 1],
+    ['width', 256],
+    ['height', true],
+    ['privateSource', '/tmp/source'],
+  ])('refuses thumbnail %s=%s', (key, value) => {
+    const fixture = makeFixture();
+    const thumbnail = addThumbnail(fixture) as Record<string, unknown>;
+    thumbnail[key] = value;
+    rewriteCatalog(fixture);
+    expect(() =>
+      generateWorldAssetCatalog({
+        providerRoot: fixture.provider,
+        runtimeRoot: fixture.runtime,
+        outputPath: fixture.output,
+      })
+    ).toThrow();
+  });
+
+  it('refuses missing, stale and symlinked synchronized thumbnails without changing output', () => {
+    const fixture = makeFixture();
+    const thumbnail = addThumbnail(fixture);
+    rewriteCatalog(fixture);
+    put(fixture.output, 'old output');
+    const file = join(fixture.runtime, thumbnail.file);
+    for (const kind of ['stale', 'missing', 'symlink']) {
+      if (kind === 'stale') put(file, 'stale bytes');
+      else if (kind === 'missing') unlinkSync(file);
+      else
+        symlinkSync(
+          join(fixture.provider, 'harness/models/synty', thumbnail.file),
+          file
+        );
+      expect(() =>
+        generateWorldAssetCatalog({
+          providerRoot: fixture.provider,
+          runtimeRoot: fixture.runtime,
+          outputPath: fixture.output,
+        })
+      ).toThrow();
+      expect(readFileSync(fixture.output, 'utf8')).toBe('old output');
+    }
+  });
+
+  it('refuses a hash-bound image with incorrect PNG dimensions', () => {
+    const fixture = makeFixture();
+    const thumbnail = addThumbnail(fixture);
+    const bytes = Buffer.from(thumbnailPng);
+    bytes.writeUInt32BE(64, 16);
+    thumbnail.sha256 = digest(bytes);
+    put(join(fixture.provider, 'harness/models/synty', thumbnail.file), bytes);
+    put(join(fixture.runtime, thumbnail.file), bytes);
+    rewriteCatalog(fixture);
+    expect(() =>
+      generateWorldAssetCatalog({
+        providerRoot: fixture.provider,
+        runtimeRoot: fixture.runtime,
+        outputPath: fixture.output,
+      })
+    ).toThrow(/dimensions/);
+  });
+
   it('pins deterministic exact refs, catalog/recipe hashes, and synchronized GLB bytes without provider identity', () => {
     const fixture = makeFixture();
     fixture.catalog.assets.unshift({ ...fixture.catalog.assets[0]! });
