@@ -62,11 +62,17 @@ components consume the definition contract; the source map in
   equality never sorts away adjacency or treats reversal as equivalent.
 - **R10 — Geometry is conservatively supported.** A supported candidate is one
   bounded nonzero simple face with one ring: no holes, repeated geometric edges
-  or vertices, interior slits, positive-length collinear overlap or coincident
-  indistinguishable sources. Shared endpoints, certified axis T contacts and
-  certified proper crossings may connect; uncertified classification/order or
-  multiway coalescing is unresolved. No distance/epsilon welding. Extending
-  these limits requires revisiting witness sufficiency.
+  or vertices, or interior slits. Exact axis-collinear coverage forms one
+  geometric span with transient source provenance; an overlapping straight
+  boundary run requires exactly one source covering its entire face span.
+  Multiple full-span owners or no full-span owner are unresolved, never chosen
+  by ID, input order or length. Non-overlapping end-to-end source transitions
+  retain their junctions. Shared endpoints, certified axis T contacts and
+  certified proper crossings may connect; non-axis collinearity, uncertified
+  classification/order or multiway coalescing is unresolved. Raw face validity
+  precedes provenance/ring compression. No distance/epsilon welding or endpoint
+  rewrite; uncovered intervals remain gaps. Extending these limits requires
+  revisiting witness sufficiency.
 - **R11 — Conflicts do not choose winners.** Duplicate room labels and positive
   area overlap remain unresolved. Explicit overlap is a cell-set question;
   adjacency is not overlap. Automatic conflicts include containment. No hidden
@@ -77,11 +83,12 @@ components consume the definition contract; the source map in
 
 ## Rulings
 
-| ID     | status  | scope                                                                                         | ruled by                                                                                                                                                   | date                                |
-| ------ | ------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| R1–R2  | settled | Room-label entry point, distinct notes, full-wall authoring boundary                          | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                  | Agreement record in linked issue    |
-| R3–R11 | settled | First boundary increment's technical contracts, lifecycle, validation and conservative limits | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details | Checked-plan record in linked issue |
-| R12    | settled | Boundary-only scope; visual lighting, sound and gameplay bridge are separate increments       | KirkDiggler product direction and parent-derived increment scope, [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                        | Agreement record in linked issue    |
+| ID         | status  | scope                                                                                   | ruled by                                                                                                                                                                 | date                                |
+| ---------- | ------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                    | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                | Agreement record in linked issue    |
+| R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details               | Checked-plan record in linked issue |
+| R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance    | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel | 2026-10-10                          |
+| R12        | settled | Boundary-only scope; visual lighting, sound and gameplay bridge are separate increments | KirkDiggler product direction and parent-derived increment scope, [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                      | Agreement record in linked issue    |
 
 ## Open
 

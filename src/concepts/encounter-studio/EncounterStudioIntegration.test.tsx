@@ -18,6 +18,7 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import { createRoomLabel } from '../world-building/regionEdits';
 import {
   assertRoomDocumentSize,
   parseRoomDocumentJson,
@@ -61,6 +62,7 @@ import type {
   WorldScene,
 } from '../world-building/types';
 import {
+  centeredRoomWorkspace,
   workspaceBounds,
   workspaceCells,
 } from '../world-building/workspaceGeometry';
@@ -1788,6 +1790,113 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
       unmount: mounted.unmount,
     };
   }
+
+  it('keeps exact overlapped exterior coverage as a no-op bind through the real owner without rewriting the accepted document', () => {
+    // Sanitized six-line geometry only; no operator document/policy enters tests.
+    const original = createPopulatedStudioDocument();
+    original.draft.workspace = centeredRoomWorkspace(64, 32);
+    const source = original.draft.room.walls![0];
+    const lines = [
+      [
+        { x: -29.444863728670914, z: 16 },
+        { x: -5.196152422706631, z: 16 },
+      ],
+      [
+        { x: -29.44486372867091, z: 16 },
+        { x: -29.44486372867091, z: 7 },
+      ],
+      [
+        { x: -29.444863728670914, z: 7 },
+        { x: -5.196152422706631, z: 7 },
+      ],
+      [
+        { x: -5.196152422706631, z: 16 },
+        { x: -5.196152422706631, z: 7 },
+      ],
+      [
+        { x: -5.196152422706632, z: 7 },
+        { x: 8.660254037844386, z: 7 },
+      ],
+      [
+        { x: -5.196152422706632, z: 16 },
+        { x: 8.660254037844386, z: 16 },
+      ],
+    ];
+    const walls = lines.map(
+      ([start, end], i): StructuralWall => ({
+        ...structuredClone(source),
+        id: i === 0 ? source.id : `coverage-${i}`,
+        label: 'Coverage',
+        line: { start, end },
+        openings: i === 0 ? source.openings : [],
+      })
+    );
+    original.draft.room.walls = walls.slice(0, 4);
+    original.draft = createRoomLabel(
+      original.draft,
+      'room-area',
+      'room-label',
+      'Room',
+      { x: -19.609612065022446, z: 11.406561842131094 }
+    );
+    original.draft.room.walls = walls;
+    const owner = arrangeOwner(original);
+    act(() =>
+      expect(owner.session.mapLabelSelection.select('room-label')).toBe(true)
+    );
+    const before = owner.session.document;
+    const bytes = owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.roomWrites();
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'label',
+      region: { id: 'room-area' },
+      resolution: { status: 'resolved' },
+    });
+    act(() =>
+      expect(owner.session.regionEditing.useEnclosingWalls('room-area')).toBe(
+        true
+      )
+    );
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(owner.storage.roomWrites()).toBe(writes);
+    expect(owner.session.canUndo).toBe(false);
+    owner.switchView('layout');
+    owner.switchView('3d');
+    act(() =>
+      expect(owner.session.regionEditing.useEnclosingWalls('room-area')).toBe(
+        true
+      )
+    );
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.document.draft.room).toEqual(original.draft.room);
+    expect(owner.session.document.scope).toEqual(original.scope);
+    expect(owner.storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    // Fresh acquisition uses the same graph, not a bound-only rescue. The
+    // duplicate label conflict is intentional; no other definition wins.
+    act(() =>
+      expect(
+        owner.session.regionEditing.createRoomLabel('Second room', {
+          x: -20,
+          z: 12,
+        })
+      ).toBe(true)
+    );
+    expect(
+      owner.session.document.draft.scene.authoringRegions![1].boundary
+    ).toEqual(before.draft.scene.authoringRegions![0].boundary);
+    expect(
+      owner.session.regionEditing.resolutions.map((r) =>
+        r.status === 'unresolved' ? r.reason : 'resolved'
+      )
+    ).toEqual(['duplicate-room-label', 'duplicate-room-label']);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    owner.unmount();
+    const loaded = arrangeOwner(owner.storage.document());
+    expect(loaded.session.document).toEqual(before);
+    expect(loaded.session.regionEditing.resolutions[0].status).toBe('resolved');
+  });
 
   it('joins real room definitions, T-wall motion/break/repair, interleaved edits and full-document history without witness adoption', () => {
     const original = createPopulatedStudioDocument();

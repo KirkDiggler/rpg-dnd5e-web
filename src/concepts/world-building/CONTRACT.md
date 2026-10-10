@@ -181,6 +181,16 @@ Only explicit create/bind acquires a witness. Closing an initially unbound room
 still requires **Use enclosing walls**. Repairing a known bound walk may resolve
 without a metadata write. Missing source references remain persisted intent.
 
+Exact axis-collinear overlap is handled as continuous geometric coverage with
+transient source provenance, never endpoint welding or source mutation. An
+overlapping maximal straight face boundary run requires exactly one authored
+source covering its entire span; partial exterior extensions do not replace that
+owner. Multiple full-span owners or no full-span owner remain unresolved, without
+an ID/order/length preference. Raw simple-face validation precedes compression;
+non-overlapping source transitions retain their junctions. A true uncovered
+interval remains open at any representable size. Non-axis collinearity,
+uncertified intersections, holes and interior slits remain conservatively refused.
+
 **Use enclosing walls**, **Define explicit area**, and **Delete region and label**
 are explicit repair commands. Raw linked-label deletion refuses. Paint/Erase/
 Rectangle region controls stage membership locally and submit one complete area

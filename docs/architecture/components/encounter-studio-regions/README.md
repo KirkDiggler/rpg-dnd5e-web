@@ -103,8 +103,21 @@ invalid policies through an existing strict gate (R4).
 ## Edges
 
 A ring is planar X/Z authoring geometry, not a navigation mesh. Full wall spans
-include openings regardless of door state (R2). Holes, slits, coincident sources
-and uncertified intersection ordering have visible refusals (R10). Explicit
+include openings regardless of door state (R2). Exact axis-collinear overlaps
+are geometric coverage, not a reason to snap or rewrite source endpoints (R10).
+The graph splits their union at actual endpoints/junctions, retains each span's
+covering sources, and validates the raw simple face before selecting provenance.
+For an overlapping maximal straight face run, exactly one source must cover the
+entire run. A partial exterior extension can then leave the original side's
+oriented source identity unchanged; two full-span sources remain ambiguous.
+A chain with overlaps but no full-span source is conservatively refused.
+Non-overlapping end-to-end sources retain their transition and witness junction.
+Only same-owner/direction subdivisions disappear from the disposable display
+ring. Consecutive chosen sources therefore still determine unique junctions;
+overlap does not introduce a second persisted geometry or source preference.
+Uncovered intervals, however small, remain gaps. Non-axis collinearity, holes,
+slits, ambiguous coverage and uncertified intersection ordering have visible
+refusals (R10). Explicit
 cells may be empty while retaining intent (R6). No regional lighting/audio
 controls or engine discovery claims cross this seam (R12).
 

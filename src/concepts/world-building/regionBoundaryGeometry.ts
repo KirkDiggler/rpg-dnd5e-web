@@ -6,6 +6,7 @@ import {
 import {
   canonicalizeEnclosureWitness,
   enclosureWitnessesEqual,
+  type BoundaryRun,
   type EnclosureWitness,
   type RegionResolution,
 } from './authoringRegions';
@@ -37,17 +38,20 @@ export type EnclosureResult =
   | { status: 'resolved'; ring: WorldPoint[]; witness: EnclosureWitness }
   | { status: 'unresolved'; reason: Reason };
 type Node = { p: CertifiedPoint; edges: Edge[] };
+type Source = { wall: StructuralWall; forward: boolean };
 type Edge = {
   from: Node;
   to: Node;
   wall: StructuralWall;
   forward: boolean;
+  sources: Source[];
   twin: Edge;
   used: boolean;
 };
 type Face = { nodes: Node[]; witness: EnclosureWitness };
 type Graph = {
   faces: Face[];
+  unsupportedFaces: Node[][];
   failures: { walls: StructuralWall[]; reason: Reason }[];
   walls: StructuralWall[];
 };
@@ -70,6 +74,94 @@ function vector(edge: Edge): CertifiedPoint {
 function quadrant(p: WorldPoint): number {
   return p.z >= 0 ? (p.x >= 0 ? 0 : 1) : p.x < 0 ? 2 : 3;
 }
+function wallAxis(wall: StructuralWall): 'x' | 'z' | null {
+  return wall.line.start.z === wall.line.end.z
+    ? 'x'
+    : wall.line.start.x === wall.line.end.x
+      ? 'z'
+      : null;
+}
+function axisCoverage(
+  a: StructuralWall,
+  b: StructuralWall
+): WorldPoint[] | null {
+  const axis = wallAxis(a);
+  if (!axis || wallAxis(b) !== axis) return null;
+  const fixed = axis === 'x' ? 'z' : 'x';
+  if (a.line.start[fixed] !== b.line.start[fixed]) return null;
+  const low = Math.max(
+    Math.min(a.line.start[axis], a.line.end[axis]),
+    Math.min(b.line.start[axis], b.line.end[axis])
+  );
+  const high = Math.min(
+    Math.max(a.line.start[axis], a.line.end[axis]),
+    Math.max(b.line.start[axis], b.line.end[axis])
+  );
+  if (low >= high) return null; // Strict coverage, never a gap-closing tolerance.
+  return [a.line.start, a.line.end, b.line.start, b.line.end].filter(
+    (p) => p[axis] >= low && p[axis] <= high
+  );
+}
+function splitOrder(
+  wall: StructuralWall,
+  point: CertifiedPoint,
+  parameter: Interval
+): Interval {
+  const axis = wallAxis(wall);
+  if (!axis) return parameter;
+  // Exact axis coordinates certify even adjacent binary64 values; normalized
+  // parameter arithmetic would obscure that order with overlapping intervals.
+  const value = point[axis];
+  return wall.line.end[axis] > wall.line.start[axis]
+    ? value
+    : [-value[1], -value[0]];
+}
+function sameAxisRun(a: Edge, b: Edge): boolean {
+  const axis = wallAxis(a.wall);
+  if (!axis || wallAxis(b.wall) !== axis) return false;
+  const fixed = axis === 'x' ? 'z' : 'x';
+  const aPositive =
+    a.wall.line.end[axis] > a.wall.line.start[axis] === a.forward;
+  const bPositive =
+    b.wall.line.end[axis] > b.wall.line.start[axis] === b.forward;
+  return (
+    a.wall.line.start[fixed] === b.wall.line.start[fixed] &&
+    aPositive === bPositive
+  );
+}
+/** Provenance is selected only after the raw simple face is certified. An
+ * overlapping straight run needs ONE source covering its full span; partial
+ * exterior coverage is not another owner. No preference by ID/order/length. */
+function faceSources(walk: Edge[]): BoundaryRun[] | null {
+  const chosen = walk.map((e) => e.sources[0]);
+  for (let i = 0; i < walk.length; i++) {
+    if (sameAxisRun(walk[(i + walk.length - 1) % walk.length], walk[i]))
+      continue;
+    const indices = [i];
+    while (
+      indices.length < walk.length &&
+      sameAxisRun(
+        walk[indices[indices.length - 1]],
+        walk[(i + indices.length) % walk.length]
+      )
+    )
+      indices.push((i + indices.length) % walk.length);
+    if (!indices.some((j) => walk[j].sources.length > 1)) continue;
+    const candidates = walk[i].sources.filter((s) =>
+      indices.every((j) =>
+        walk[j].sources.some((other) => other.wall === s.wall)
+      )
+    );
+    if (candidates.length !== 1) return null;
+    for (const j of indices)
+      chosen[j] = walk[j].sources.find((s) => s.wall === candidates[0].wall)!;
+  }
+  return chosen.map((s) => ({
+    wallId: s.wall.id,
+    direction: s.forward ? 'start-to-end' : 'end-to-start',
+  }));
+}
+
 /** Transient graph only. Identity is exact authored endpoints or a unique
  * source-pair intersection; overlapping intersection intervals never coalesce.
  * Failure is isolated to connected source components; disconnected sound
@@ -93,8 +185,14 @@ function buildGraph(walls: StructuralWall[]): Graph {
     return node;
   };
   const splits = walls.map((w) => [
-    { t: [0, 0] as Interval, node: endpoint(w.line.start) },
-    { t: [1, 1] as Interval, node: endpoint(w.line.end) },
+    {
+      order: splitOrder(w, exactPoint(w.line.start), [0, 0]),
+      node: endpoint(w.line.start),
+    },
+    {
+      order: splitOrder(w, exactPoint(w.line.end), [1, 1]),
+      node: endpoint(w.line.end),
+    },
   ]);
   const parents = walls.map((_, i) => i);
   const root = (i: number): number => {
@@ -115,6 +213,20 @@ function buildGraph(walls: StructuralWall[]): Graph {
     for (let j = i + 1; j < walls.length; j++) {
       const a = walls[i].line,
         b = walls[j].line;
+      const coverage = axisCoverage(walls[i], walls[j]);
+      if (coverage) {
+        join(i, j);
+        for (const p of coverage)
+          for (const index of [i, j]) {
+            const node = endpoint(p);
+            if (!splits[index].some((s) => s.node === node))
+              splits[index].push({
+                order: splitOrder(walls[index], node.p, [0, 0]),
+                node,
+              });
+          }
+        continue;
+      }
       const contact = segmentContact(a.start, a.end, b.start, b.end);
       if (contact.kind === 'none') continue;
       join(i, j);
@@ -142,23 +254,37 @@ function buildGraph(walls: StructuralWall[]): Graph {
         [j, contact.b],
       ] as const) {
         if (!splits[index].some((s) => s.node === node))
-          splits[index].push({ t, node });
+          splits[index].push({
+            order: splitOrder(walls[index], node.p, t),
+            node,
+          });
       }
     }
   for (let i = 0; i < walls.length; i++) {
-    const ordered = splits[i].sort((a, b) => a.t[0] - b.t[0]);
+    const ordered = splits[i].sort((a, b) => a.order[0] - b.order[0]);
     for (let j = 1; j < ordered.length; j++) {
-      if (ordered[j - 1].t[1] >= ordered[j].t[0]) {
+      if (ordered[j - 1].order[1] >= ordered[j].order[0]) {
         bad.set(i, 'uncertain-geometry');
         continue;
       }
       const from = ordered[j - 1].node,
         to = ordered[j].node;
+      const covered = wallAxis(walls[i])
+        ? from.edges.find(
+            (e) => e.to === to && wallAxis(e.wall) === wallAxis(walls[i])
+          )
+        : undefined;
+      if (covered) {
+        covered.sources.push({ wall: walls[i], forward: true });
+        covered.twin.sources.push({ wall: walls[i], forward: false });
+        continue;
+      }
       const edge = {
         from,
         to,
         wall: walls[i],
         forward: true,
+        sources: [{ wall: walls[i], forward: true }],
         used: false,
       } as Edge;
       const twin = {
@@ -166,6 +292,7 @@ function buildGraph(walls: StructuralWall[]): Graph {
         to: from,
         wall: walls[i],
         forward: false,
+        sources: [{ wall: walls[i], forward: false }],
         used: false,
         twin: edge,
       };
@@ -196,6 +323,7 @@ function buildGraph(walls: StructuralWall[]): Graph {
     if (badRoots.get(r) !== 'unsupported-geometry') badRoots.set(r, reason);
   }
   const faces: Face[] = [];
+  const unsupportedFaces: Node[][] = [];
   for (const node of nodes)
     for (const first of node.edges) {
       if (first.used || badRoots.has(root(wallIndices.get(first.wall)!)))
@@ -230,7 +358,22 @@ function buildGraph(walls: StructuralWall[]): Graph {
         );
         continue;
       }
-      const faceNodes = walk.map((e) => e.from);
+      const sources = faceSources(walk);
+      if (!sources) {
+        unsupportedFaces.push(walk.map((e) => e.from));
+        continue;
+      }
+      // Remove only same-owner/direction subdivisions, AFTER raw validation.
+      // Collinear transitions between distinct sources remain visible.
+      const faceNodes = walk
+        .filter((_, i) => {
+          const previous = sources[(i + sources.length - 1) % sources.length];
+          return (
+            previous.wallId !== sources[i].wallId ||
+            previous.direction !== sources[i].direction
+          );
+        })
+        .map((e) => e.from);
       let start = 0;
       for (let i = 1; i < faceNodes.length; i++)
         if (
@@ -242,15 +385,13 @@ function buildGraph(walls: StructuralWall[]): Graph {
       faces.push({
         nodes: [...faceNodes.slice(start), ...faceNodes.slice(0, start)],
         witness: canonicalizeEnclosureWitness({
-          walk: walk.map((e) => ({
-            wallId: e.wall.id,
-            direction: e.forward ? 'start-to-end' : 'end-to-start',
-          })),
+          walk: sources,
         }),
       });
     }
   return {
     walls,
+    unsupportedFaces,
     faces: faces.filter(
       (f) =>
         !badRoots.has(
@@ -282,6 +423,18 @@ function lookup(graph: Graph, point: WorldPoint): EnclosureResult {
   }
   const failure = graph.failures.find((f) => inBounds(f.walls, point));
   if (failure) return { status: 'unresolved', reason: failure.reason };
+  for (const nodes of graph.unsupportedFaces) {
+    const result = pointInRing(
+      nodes.map((n) => n.p),
+      point
+    );
+    if (result === 'inside')
+      return { status: 'unresolved', reason: 'unsupported-geometry' };
+    if (result === 'boundary')
+      return { status: 'unresolved', reason: 'seed-on-boundary' };
+    if (result === 'uncertain')
+      return { status: 'unresolved', reason: 'uncertain-geometry' };
+  }
   const containing: Face[] = [];
   for (const face of graph.faces) {
     const result = pointInRing(
@@ -428,7 +581,7 @@ export function resolveAuthoringRegions(
     (r) => r.boundary.kind === 'automatic' && r.boundary.witness
   )
     ? buildGraph([...(draft.room.walls ?? [])])
-    : ({ faces: [], failures: [], walls: [] } as Graph);
+    : ({ faces: [], unsupportedFaces: [], failures: [], walls: [] } as Graph);
   const witnesses = new Map<string, EnclosureWitness>();
   const rings = new Map<string, CertifiedPoint[]>();
   const results = regions.map((region): RegionResolution => {

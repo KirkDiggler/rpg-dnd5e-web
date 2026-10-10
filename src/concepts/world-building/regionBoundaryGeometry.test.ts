@@ -6,7 +6,10 @@ import {
   findEnclosureAtPoint,
   resolveAuthoringRegions,
 } from './regionBoundaryGeometry';
-import { createRoomLabel, useEnclosingWalls } from './regionEdits';
+import {
+  useEnclosingWalls as bindEnclosingWalls,
+  createRoomLabel,
+} from './regionEdits';
 import {
   createRoomDraft,
   parseRoomDocumentJson,
@@ -15,6 +18,7 @@ import {
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import type { StructuralWall } from './structuralWalls';
+import type { WorldPoint } from './types';
 import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 const p = (x: number, z: number) => ({ x, z });
 function wall(
@@ -72,6 +76,344 @@ function word(draft: RoomDraft, point = p(2, 1)): string[] {
 function reason(draft: RoomDraft): unknown {
   return resolveAuthoringRegions(draft)[0];
 }
+// Sanitized operator-walk geometry: only source lines/seed are retained. No
+// operator IDs, castle assets, floor, policy or profile data are fixture input.
+function exteriorCoverageRoom(): RoomDraft {
+  const draft = room([
+    wall('bottom', -29.444863728670914, 16, -5.196152422706631, 16),
+    wall('left', -29.44486372867091, 16, -29.44486372867091, 7),
+    wall('top', -29.444863728670914, 7, -5.196152422706631, 7),
+    wall('right', -5.196152422706631, 16, -5.196152422706631, 7),
+    wall('exterior-top', -5.196152422706632, 7, 8.660254037844386, 7),
+    wall('exterior-bottom', -5.196152422706632, 16, 8.660254037844386, 16),
+  ]);
+  draft.workspace = centeredRoomWorkspace(64, 32);
+  return draft;
+}
+const coverageSeed = p(-19.609612065022446, 11.406561842131094);
+
+describe('exact collinear coverage provenance', () => {
+  it('handles vertical coverage and retains distinct non-overlapping end-to-end source transitions', () => {
+    const horizontal = exteriorCoverageRoom();
+    const swap = (point: WorldPoint): WorldPoint => ({
+      x: point.z,
+      z: point.x,
+    });
+    const vertical = {
+      ...horizontal,
+      workspace: centeredRoomWorkspace(64, 64),
+      room: {
+        ...horizontal.room,
+        walls: horizontal.room.walls!.map((w) => ({
+          ...w,
+          line: { start: swap(w.line.start), end: swap(w.line.end) },
+        })),
+      },
+    };
+    const base = {
+      ...vertical,
+      room: { ...vertical.room, walls: vertical.room.walls!.slice(0, 4) },
+    };
+    const bound = createRoomLabel(
+      base,
+      'region',
+      'label',
+      'Room',
+      swap(coverageSeed)
+    );
+    const extended = { ...bound, room: vertical.room };
+    expect(findEnclosureAtPoint(extended, swap(coverageSeed))).toEqual(
+      findEnclosureAtPoint(base, swap(coverageSeed))
+    );
+    expect(bindEnclosingWalls(extended, 'region')).toBe(extended);
+    const joined = room([
+      ...rectangle().slice(1),
+      wall('A', 0, 0, 4, 0),
+      wall('A-next', 4, 0, 8, 0),
+    ]);
+    const candidate = findEnclosureAtPoint(joined, p(2, 2));
+    expect(candidate.status).toBe('resolved');
+    if (candidate.status !== 'resolved') throw new Error(candidate.reason);
+    expect(candidate.witness.walk.map((r) => r.wallId)).toEqual([
+      'A',
+      'A-next',
+      'B',
+      'C',
+      'D',
+    ]);
+    expect(candidate.ring).toContainEqual(p(4, 0)); // Real source transition retained.
+  });
+  it('supports sizeable exterior overlaps and source permutations without choosing by order or direction', () => {
+    const full = exteriorCoverageRoom();
+    const base = {
+      ...full,
+      room: { ...full.room, walls: full.room.walls!.slice(0, 4) },
+    };
+    const bound = createRoomLabel(
+      base,
+      'region',
+      'label',
+      'Room',
+      coverageSeed
+    );
+    const expected = findEnclosureAtPoint(base, coverageSeed);
+    const walls = full.room.walls!.map((w, i) =>
+      i < 4 ? w : { ...w, line: { ...w.line, start: p(-10, w.line.start.z) } }
+    );
+    for (const order of [
+      walls,
+      [...walls].reverse(),
+      [...walls.slice(2), ...walls.slice(0, 2)],
+    ]) {
+      for (const reverseExtras of [false, true]) {
+        const sources = order.map((w) =>
+          reverseExtras && w.id.startsWith('exterior')
+            ? { ...w, line: { start: w.line.end, end: w.line.start } }
+            : w
+        );
+        const draft = { ...bound, room: { ...bound.room, walls: sources } };
+        expect(findEnclosureAtPoint(draft, coverageSeed)).toEqual(expected);
+        expect(bindEnclosingWalls(draft, 'region')).toBe(draft);
+      }
+    }
+    for (const id of ['top', 'bottom', 'left', 'right']) {
+      const draft = {
+        ...bound,
+        room: {
+          ...bound.room,
+          walls: walls.map((w) =>
+            w.id === id
+              ? { ...w, line: { start: w.line.end, end: w.line.start } }
+              : w
+          ),
+        },
+      };
+      expect(findEnclosureAtPoint(draft, coverageSeed).status).toBe('resolved');
+      expect(resolveAuthoringRegions(draft)[0]).toMatchObject({
+        status: 'unresolved',
+        reason: 'boundary-changed',
+      });
+      const rebound = bindEnclosingWalls(draft, 'region');
+      expect(resolveAuthoringRegions(rebound)[0].status).toBe('resolved');
+      expect(rebound.scene.authoringRegions).not.toEqual(
+        bound.scene.authoringRegions
+      );
+    }
+  });
+  it('does not close even a one-ULP uncovered interval; an irrelevant exterior gap does not break the original side', () => {
+    const full = exteriorCoverageRoom();
+    const base = {
+      ...full,
+      room: { ...full.room, walls: full.room.walls!.slice(0, 4) },
+    };
+    const expected = findEnclosureAtPoint(base, coverageSeed);
+    const exteriorGap = {
+      ...full,
+      room: {
+        ...full.room,
+        walls: full.room.walls!.map((w) =>
+          w.id.startsWith('exterior')
+            ? {
+                ...w,
+                line: {
+                  ...w.line,
+                  start: p(-5.19615242270663, w.line.start.z),
+                },
+              }
+            : w
+        ),
+      },
+    };
+    expect(findEnclosureAtPoint(exteriorGap, coverageSeed)).toEqual(expected);
+    for (const end of [-5.196152422706632, -5.446152422706631]) {
+      const walls = full.room.walls!.map((w) =>
+        w.id === 'top'
+          ? { ...w, line: { ...w.line, end: p(end, 7) } }
+          : w.id === 'exterior-top'
+            ? { ...w, line: { ...w.line, start: p(-5.196152422706631, 7) } }
+            : w
+      );
+      const gap = { ...full, room: { ...full.room, walls } };
+      expect(findEnclosureAtPoint(gap, coverageSeed).status).toBe('unresolved');
+      const unbound = createRoomLabel(
+        gap,
+        'region',
+        'label',
+        'Room',
+        coverageSeed
+      );
+      const before = JSON.stringify(unbound);
+      expect(() => bindEnclosingWalls(unbound, 'region')).toThrow();
+      expect(JSON.stringify(unbound)).toBe(before);
+      expect(unbound.scene.authoringRegions![0].boundary).toEqual({
+        kind: 'automatic',
+      });
+    }
+  });
+  it('refuses multiple full-span owners or overlapping coverage with no full-span owner', () => {
+    const full = exteriorCoverageRoom();
+    const top = full.room.walls![2];
+    for (const start of [top.line.start, p(-32, 7)]) {
+      const ambiguous = {
+        ...full,
+        room: {
+          ...full.room,
+          walls: [
+            ...full.room.walls!,
+            { ...top, id: 'other-owner', line: { start, end: top.line.end } },
+          ],
+        },
+      };
+      expect(findEnclosureAtPoint(ambiguous, coverageSeed)).toMatchObject({
+        reason: 'unsupported-geometry',
+      });
+    }
+    const chain = {
+      ...full,
+      room: {
+        ...full.room,
+        walls: full.room.walls!.map((w) =>
+          w.id === 'top'
+            ? { ...w, line: { ...w.line, end: p(-15, 7) } }
+            : w.id === 'exterior-top'
+              ? { ...w, line: { ...w.line, start: p(-16, 7) } }
+              : w
+        ),
+      },
+    };
+    expect(findEnclosureAtPoint(chain, coverageSeed)).toMatchObject({
+      reason: 'unsupported-geometry',
+    });
+  });
+  it('resolves a valid neighbor, isolates ambiguous ownership, and does not hide partitions, holes or interior slits', () => {
+    const full = exteriorCoverageRoom();
+    const neighbor = {
+      ...full,
+      room: {
+        ...full.room,
+        walls: [
+          ...full.room.walls!,
+          wall('east', 8.660254037844386, 7, 8.660254037844386, 16),
+        ],
+      },
+    };
+    let labelled = createRoomLabel(
+      neighbor,
+      'one',
+      'one-label',
+      'One',
+      coverageSeed
+    );
+    labelled = createRoomLabel(labelled, 'two', 'two-label', 'Two', p(0, 11));
+    expect(resolveAuthoringRegions(labelled).map((r) => r.status)).toEqual([
+      'resolved',
+      'resolved',
+    ]);
+    const ambiguous = {
+      ...labelled,
+      room: {
+        ...labelled.room,
+        walls: [
+          ...labelled.room.walls!,
+          { ...full.room.walls![2], id: 'duplicate-top' },
+        ],
+      },
+    };
+    expect(resolveAuthoringRegions(ambiguous)).toMatchObject([
+      { status: 'unresolved', reason: 'unsupported-geometry' },
+      { status: 'resolved' },
+    ]);
+    const base = createRoomLabel(full, 'region', 'label', 'Room', coverageSeed);
+    const partition = {
+      ...base,
+      room: {
+        ...base.room,
+        walls: [...base.room.walls!, wall('divider', -18, 7, -18, 16)],
+      },
+    };
+    expect(findEnclosureAtPoint(partition, coverageSeed).status).toBe(
+      'resolved'
+    );
+    expect(findEnclosureAtPoint(partition, p(-10, 11)).status).toBe('resolved');
+    expect(resolveAuthoringRegions(partition)[0]).toMatchObject({
+      reason: 'boundary-changed',
+    });
+    const slit = {
+      ...base,
+      room: {
+        ...base.room,
+        walls: [
+          ...base.room.walls!,
+          wall('slit', -29.44486372867091, 11, -25, 11),
+        ],
+      },
+    };
+    expect(findEnclosureAtPoint(slit, coverageSeed)).toMatchObject({
+      reason: 'unsupported-geometry',
+    });
+    const hole = {
+      ...base,
+      room: {
+        ...base.room,
+        walls: [
+          ...base.room.walls!,
+          wall('h1', -15, 9, -12, 9),
+          wall('h2', -12, 9, -12, 12),
+          wall('h3', -12, 12, -15, 12),
+          wall('h4', -15, 12, -15, 9),
+        ],
+      },
+    };
+    expect(findEnclosureAtPoint(hole, coverageSeed)).toMatchObject({
+      reason: 'unsupported-geometry',
+    });
+  });
+  it('retains the same unique full-span source walk with either or both exterior overlaps', () => {
+    const full = exteriorCoverageRoom();
+    const base = {
+      ...full,
+      room: { ...full.room, walls: full.room.walls!.slice(0, 4) },
+    };
+    const bound = createRoomLabel(
+      base,
+      'region',
+      'label',
+      'Room',
+      coverageSeed
+    );
+    const expected = findEnclosureAtPoint(base, coverageSeed);
+    expect(expected.status).toBe('resolved');
+    for (const extras of [[4], [5], [4, 5]]) {
+      const draft = {
+        ...bound,
+        room: {
+          ...bound.room,
+          walls: [
+            ...base.room.walls!,
+            ...extras.map((i) => full.room.walls![i]),
+          ],
+        },
+      };
+      const before = JSON.stringify(draft);
+      const candidate = findEnclosureAtPoint(draft, coverageSeed);
+      expect(candidate).toEqual(expected);
+      expect(resolveAuthoringRegions(draft)[0].status).toBe('resolved');
+      expect(bindEnclosingWalls(draft, 'region')).toBe(draft);
+      const initiallyBound = createRoomLabel(
+        { ...full, room: { ...full.room, walls: draft.room.walls } },
+        'fresh',
+        'fresh-label',
+        'Fresh',
+        coverageSeed
+      );
+      expect(initiallyBound.scene.authoringRegions![0].boundary).toEqual(
+        bound.scene.authoringRegions![0].boundary
+      );
+      expect(JSON.stringify(draft)).toBe(before);
+    }
+  });
+});
+
 describe('source-oriented faces and pure resolution', () => {
   it('counterexample 1: reflected same source set is not the accepted face', () => {
     const accepted = createRoomLabel(
@@ -92,7 +434,7 @@ describe('source-oriented faces and pure resolution', () => {
       status: 'unresolved',
       reason: 'boundary-changed',
     });
-    expect(reason(useEnclosingWalls(reflected, 'region'))).toMatchObject({
+    expect(reason(bindEnclosingWalls(reflected, 'region'))).toMatchObject({
       status: 'resolved',
     });
   });
@@ -143,7 +485,7 @@ describe('source-oriented faces and pure resolution', () => {
     expect(reason(crossed)).toMatchObject({
       reason: 'outside-bound-enclosure',
     });
-    expect(reason(useEnclosingWalls(crossed, 'left'))).toMatchObject({
+    expect(reason(bindEnclosingWalls(crossed, 'left'))).toMatchObject({
       reason: 'duplicate-room-label',
     });
     expect(reason(moveMapLabel(moved, 'left-label', p(-1, 2)))).toMatchObject({
@@ -259,7 +601,7 @@ describe('source-oriented faces and pure resolution', () => {
     expect(JSON.stringify(closed)).toBe(before);
     const loaded = parseRoomDocumentJson(stringifyRoomDraft(closed, {})).draft;
     expect(reason(loaded)).toMatchObject({ reason: 'unbound' });
-    expect(reason(useEnclosingWalls(loaded, 'region'))).toMatchObject({
+    expect(reason(bindEnclosingWalls(loaded, 'region'))).toMatchObject({
       status: 'resolved',
     });
   });
