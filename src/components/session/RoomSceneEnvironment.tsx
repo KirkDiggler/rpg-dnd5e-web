@@ -215,9 +215,14 @@ function RoomSceneFloorMarker({
 
 /** The whole authored workspace floor — the same Crypt geometry/UV
  * contract the editor presents (`WorkspaceFloorSurface`), at the
- * authoring radius `horizontalLimit + 1`. Catalog or texture trouble is
+ * complete workspace (legacy envelope or rectangular cell union). Catalog or texture trouble is
  * reported by name, never by quietly dropping the floor. */
-function RoomSceneFloor({ radius }: { radius: number }) {
+function RoomSceneFloor({
+  workspace,
+}: {
+  workspace: RoomScenePresentation['workspace'];
+}) {
+  const radius = workspace.horizontalLimit + 1;
   const shellCatalog = useDungeonShellCatalog();
   if (shellCatalog.status !== 'ready') {
     return (
@@ -235,6 +240,7 @@ function RoomSceneFloor({ radius }: { radius: number }) {
         fallback={<RoomSceneFloorMarker tone="error" radius={radius} />}
       >
         <WorkspaceFloorSurface
+          workspace={workspace}
           radius={radius}
           profile={shellCatalog.catalog.profiles.crypt.floor}
         />
@@ -263,7 +269,7 @@ export function RoomSceneEnvironment({
   return (
     <>
       {renderWorkspaceFloor && (
-        <RoomSceneFloor radius={presentation.workspace.horizontalLimit + 1} />
+        <RoomSceneFloor workspace={presentation.workspace} />
       )}
       {items.map((item) => (
         <RoomSceneItem

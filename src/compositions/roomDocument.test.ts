@@ -1,14 +1,23 @@
+import { createPopulatedStudioDocument } from '@/concepts/encounter-studio/fixtures/studioDocument';
+import { createMapLabel } from '@/concepts/world-building/mapLabelEdits';
+import {
+  createRoomLabel,
+  setRegionLighting,
+} from '@/concepts/world-building/regionEdits';
 import {
   createRoomDraft,
+  resizeRoomWorkspace,
   stringifyRoomDraft,
   type RoomDraft,
   type RoomPropDeclaration,
 } from '@/concepts/world-building/roomDraft';
 import { createEmptyScene } from '@/concepts/world-building/sceneState';
+import { stringifyScene } from '@/concepts/world-building/serialization';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import { compositionMetadata } from './compositionMetadata';
+import { decodeCompositionScene } from './compositionScene';
 import {
   decodeRoomDocumentJson,
   encodeRoomDocument,
@@ -321,4 +330,49 @@ describe('room snapshot document', () => {
       );
     }
   });
+});
+
+it('preserves promoted room snapshots and scene-composition metadata through actual adapters', () => {
+  const room = resizeRoomWorkspace(
+    { draft: richRoomDraft(), scope: {} },
+    73,
+    48
+  ).draft;
+  const labeled = createMapLabel(room, 'label', 'Kitchen', {
+    x: 1.125,
+    z: -2.75,
+  });
+  expect(decodeRoomDocumentJson(encodeRoomDocument(labeled))).toEqual(labeled);
+  const composition = create(CompositionSchema, {
+    json: stringifyScene(labeled.scene),
+  });
+  expect(decodeCompositionScene(composition)).toEqual(labeled.scene);
+});
+
+it('scene4 room snapshots intentionally preserve the whole draft only; scene composition retains optional lighting', () => {
+  const document = createPopulatedStudioDocument();
+  document.draft = setRegionLighting(
+    createRoomLabel(
+      document.draft,
+      'lighting-region',
+      'lighting-label',
+      'Room',
+      { x: 0, z: 0 }
+    ),
+    'lighting-region',
+    { background: 1 }
+  );
+  const encoded = encodeRoomDocument(document.draft);
+  const snapshot = JSON.parse(encoded);
+  expect(snapshot.version).toBe(2);
+  expect(snapshot.draft.version).toBe(3);
+  expect(snapshot.draft.scene.version).toBe(4);
+  expect(snapshot).not.toHaveProperty('scope');
+  expect(decodeRoomDocumentJson(encoded)).toEqual(document.draft);
+  expect(encodeRoomDocument(decodeRoomDocumentJson(encoded))).toBe(encoded);
+  expect(
+    decodeCompositionScene(
+      create(CompositionSchema, { json: stringifyScene(document.draft.scene) })
+    )
+  ).toEqual(document.draft.scene);
 });

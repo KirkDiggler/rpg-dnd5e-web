@@ -5,20 +5,24 @@ export const APP_VIEWS = [
   'level-up',
   'lobby',
   'concepts',
-  'author',
   'world-builder',
+  'encounter-studio',
   'world-settings',
 ] as const;
 
 export type AppView = (typeof APP_VIEWS)[number];
 
 /**
- * Global development controls belong to the app shell, not Concepts Lab.
+ * Global development controls belong to the app shell, not Concepts Lab or Studio.
  * Use the same gate for the floating buttons and an already-open debug panel.
  */
 export function shouldRenderGlobalDevTools(
   mode: string,
   currentView: AppView
 ): boolean {
-  return mode === 'development' && currentView !== 'concepts';
+  return (
+    mode === 'development' &&
+    currentView !== 'concepts' &&
+    currentView !== 'encounter-studio'
+  );
 }

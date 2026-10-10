@@ -1,11 +1,29 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createRoomDraft, placeRoomMonster, type RoomDraft } from './roomDraft';
+import { parse, stringify } from 'yaml';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
+import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
+import { createMapLabel, deleteMapLabel } from './mapLabelEdits';
+import {
+  createRoomLabel,
+  setExplicitRegionArea,
+  setRegionLighting,
+} from './regionEdits';
+import {
+  createRoomDraft,
+  parseRoomDocumentJson,
+  placeRoomMonster,
+  resizeRoomWorkspace,
+  stringifyRoomDraft,
+  type RoomDraft,
+} from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from './singleRoomDungeon';
+import { scopeFrom } from './siteScope';
+import { workspaceCells } from './workspaceGeometry';
 
 /** The canonical writer's output for a document with NO v4 key, captured from
  * the encoder as it stood before this slice (rpg-dnd5e-web#1136) and committed
@@ -873,4 +891,269 @@ describe('the version a document claims', () => {
     expect(emitted.startsWith('version: 3\n')).toBe(true);
     expect(emitted).not.toContain('startingCell');
   });
+});
+
+describe('promoted canonical room JSON/YAML seam', () => {
+  it('preserves a populated 3504-cell castle, complete supported gameplay/scope and presentation through JSON → YAML → JSON', () => {
+    const source = decodeWorldBuilderV4Site();
+    const resized = resizeRoomWorkspace(
+      { draft: source.draft, scope: scopeFrom(source) },
+      73,
+      48
+    );
+    resized.draft.room.walkableHexes = workspaceCells(resized.draft.workspace);
+    resized.draft.scene.items.push({
+      id: 'books',
+      kind: 'prop',
+      assetRef: 'dnd5e:props:books',
+      label: 'Books',
+      transform: { x: -2.2, y: 1, z: 1.3, rotationY: -0.8 },
+      parentId: 'furniture',
+      supportId: 'table',
+      pointLight: {
+        enabled: true,
+        offset: { x: 0, y: 1, z: 0 },
+        color: '#ff9900',
+        intensity: 1,
+        range: 4,
+      },
+    });
+    resized.draft.room.arrangementDeclarations.template = {
+      unplaced: {
+        blocksMovement: false,
+        blocksLineOfSight: true,
+        footprint: { width: 12, depth: 12, offsetX: 12, offsetZ: 12 },
+      },
+    };
+    resized.draft.room.propBindings = {
+      books: { holdable: true, holds: ['intel'], arrives: { fact: 'arrived' } },
+    };
+    resized.draft.room.monsterDeclarations[0]!.startingCell.facing = 'sw';
+    resized.draft.room.monsterBindings!['goblin-1']!.arrives = {
+      fact: 'arrived',
+    };
+    resized.draft.room.monsterBindings!['goblin-1']!.holds = ['intel'];
+    resized.draft.room.walls = [
+      {
+        id: 'wall',
+        label: 'Wall',
+        line: { start: { x: -8, z: -6 }, end: { x: 8, z: 6 } },
+        appearance: {
+          assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+          height: 3,
+          thickness: 0.3,
+          elevation: -0.1,
+        },
+        blocker: {
+          blocksMovement: false,
+          blocksLineOfSight: true,
+          footprint: { width: 22, depth: 0.5, offsetX: 1, offsetZ: -0.2 },
+        },
+        openings: [
+          {
+            id: 'opening',
+            position: 7,
+            width: 2,
+            door: {
+              id: 'door',
+              assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+            },
+          },
+        ],
+      },
+    ];
+    resized.draft.room.doorBindings!.door = {
+      closed: true,
+      locked: [{ ability: 'str', dc: 12 }],
+    };
+    resized.scope = {
+      ...resized.scope,
+      tables: { shared: { time: [{ hold: {} }] } },
+      intel: [{ id: 'intel', reveals: { fact: 'known' } }],
+      exits: [{ id: 'exit', cell: { q: 0, r: 0 } }],
+      endings: [{ id: 'ending', when: { fact: 'finished' } }],
+      scenarios: { escape: { exit: 'exit' } },
+      concealments: {
+        secret: {
+          checks: [{ ability: 'wis', dc: 12 }],
+          cells: [{ q: 1, r: 0 }],
+          props: ['door'],
+          attempts: { max: 3, reset_hexes: 2, lifetime: 'run' },
+        },
+      },
+    };
+    resized.draft.room.monsterBindings!['goblin-1']!.table = 'shared';
+    resized.draft = createMapLabel(
+      createMapLabel(resized.draft, 'kitchen', 'Kitchen', {
+        x: -40.25,
+        z: -20.5,
+      }),
+      'courtyard',
+      'Courtyard',
+      { x: 30.75, z: 15.25 }
+    );
+    const json = stringifyRoomDraft(resized.draft, resized.scope),
+      parsed = parseRoomDocumentJson(json);
+    expect(parsed).toEqual(resized);
+    const yaml = encodeSingleRoomDungeon({
+      key: 'castle',
+      draft: parsed.draft,
+      ...parsed.scope,
+    });
+    expect(parse(yaml)).toMatchObject({
+      version: 4,
+      room: {
+        version: 3,
+        scene: { version: 2 },
+        workspace: { kind: 'centered-odd-r' },
+      },
+    });
+    const decoded = decodeSingleRoomDungeon(yaml);
+    expect(decoded.draft).toEqual(resized.draft);
+    expect(scopeFrom(decoded)).toEqual(resized.scope);
+    expect(stringifyRoomDraft(decoded.draft, scopeFrom(decoded))).toBe(json);
+    expect(encodeSingleRoomDungeon(decoded)).toBe(yaml);
+    const unlabeled = deleteMapLabel(
+      deleteMapLabel(decoded.draft, 'kitchen'),
+      'courtyard'
+    );
+    expect(unlabeled.room).toEqual(decoded.draft.room);
+    expect(unlabeled.workspace).toEqual(decoded.draft.workspace);
+  });
+  it('validates scope cells through actual YAML readers/writers, not only the draft block', () => {
+    const draft = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      1,
+      1
+    ).draft;
+    const yaml = encodeSingleRoomDungeon({ key: 'small', draft });
+    const root = parse(yaml);
+    root.version = 4;
+    root.exits = [{ id: 'exit', cell: { q: 1, r: 0 } }];
+    expect(() => decodeSingleRoomDungeon(stringify(root))).toThrow(
+      /scope.exits.*exit/
+    );
+    expect(() =>
+      encodeSingleRoomDungeon({ key: 'small', draft, exits: root.exits })
+    ).toThrow(/scope.exits.*exit/);
+    delete root.exits;
+    root.concealments = {
+      secret: { checks: [{ ability: 'wis', dc: 12 }], cells: [{ q: 1, r: 0 }] },
+    };
+    expect(() => decodeSingleRoomDungeon(stringify(root))).toThrow(
+      /scope.concealments.*secret/
+    );
+  });
+  it('keeps YAML root version selection unchanged for presentation-only metadata on legacy workspace', () => {
+    const draft = createMapLabel(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      'label',
+      'Kitchen',
+      { x: 0, z: 0 }
+    );
+    const yaml = encodeSingleRoomDungeon({ key: 'labels', draft });
+    expect(parse(yaml).version).toBe(3);
+    expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
+    expect(decodeSingleRoomDungeon(yaml).draft.workspace).toEqual({
+      hexRadius: 6,
+      horizontalLimit: 12,
+    });
+  });
+});
+
+describe('scene3 source forwarding only (not provider acceptance)', () => {
+  it('forwards bound, unbound and empty explicit definitions without changing root/play/gameplay/scope contracts', () => {
+    const draft = goldenDraft();
+    const legacy = parse(encodeSingleRoomDungeon({ key: 'crypt-room', draft }));
+    draft.scene.version = 3;
+    draft.scene.mapLabels = ['bound', 'unbound', 'explicit'].map((id) => ({
+      id,
+      text: id,
+      location: { x: 0, z: 0 },
+    }));
+    draft.scene.authoringRegions = [
+      {
+        id: 'bound-region',
+        labelId: 'bound',
+        boundary: {
+          kind: 'automatic',
+          witness: {
+            walk: [
+              { wallId: 'A-missing', direction: 'start-to-end' },
+              { wallId: 'B-missing', direction: 'start-to-end' },
+              { wallId: 'C-missing', direction: 'start-to-end' },
+            ],
+          },
+        },
+      },
+      {
+        id: 'unbound-region',
+        labelId: 'unbound',
+        boundary: { kind: 'automatic' },
+      },
+      {
+        id: 'explicit-region',
+        labelId: 'explicit',
+        boundary: { kind: 'explicit', cells: [] },
+      },
+    ];
+    const yaml = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    const source = parse(yaml);
+    expect(source.version).toBe(legacy.version);
+    expect(source.play).toEqual(legacy.play);
+    expect(source.room.room).toEqual(legacy.room.room);
+    expect(source.room.workspace).toEqual(legacy.room.workspace);
+    expect(source.room.scene.version).toBe(3);
+    expect(source.room.scene.authoringRegions).toEqual(
+      draft.scene.authoringRegions
+    );
+    expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
+    expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(yaml))).toBe(yaml);
+  });
+});
+
+it('scene4 JSON → YAML → JSON preserves full populated payload and scope (Web codecs, not provider proof)', () => {
+  const document = createPopulatedStudioDocument();
+  const base = parse(
+    encodeSingleRoomDungeon({
+      key: 'lighting-codec',
+      draft: document.draft,
+      ...document.scope,
+    })
+  );
+  document.draft = setRegionLighting(
+    createRoomLabel(
+      document.draft,
+      'lighting-region',
+      'lighting-label',
+      'Room',
+      { x: 0, z: 0 }
+    ),
+    'lighting-region',
+    { background: 0.153728 }
+  );
+  for (const draft of [
+    document.draft,
+    setExplicitRegionArea(document.draft, 'lighting-region', []),
+    setExplicitRegionArea(document.draft, 'lighting-region', [{ q: 0, r: 0 }]),
+  ]) {
+    const bytes = stringifyRoomDraft(draft, document.scope);
+    const loaded = parseRoomDocumentJson(bytes);
+    const yaml = encodeSingleRoomDungeon({
+      key: 'lighting-codec',
+      draft: loaded.draft,
+      ...loaded.scope,
+    });
+    const source = parse(yaml);
+    expect(source.version).toBe(base.version);
+    expect(source.room.version).toBe(3);
+    expect(source.room.scene.version).toBe(4);
+    source.room.scene = base.room.scene;
+    expect(source).toEqual(base);
+    const decoded = decodeSingleRoomDungeon(yaml);
+    expect(decoded.draft).toEqual(draft);
+    expect(scopeFrom(decoded)).toEqual(document.scope);
+    expect(stringifyRoomDraft(decoded.draft, scopeFrom(decoded))).toBe(bytes);
+    expect(encodeSingleRoomDungeon(decoded)).toBe(yaml);
+  }
 });

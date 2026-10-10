@@ -1,7 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import type {
+  EncounterStudioPresentation,
+  EncounterStudioSession,
+} from './concepts/encounter-studio/studioSession';
+import { createRoomDraft } from './concepts/world-building/roomDraft';
 import { FEEL_LAB_LAYER_Z } from './feel/layer';
 
 const hoisted = vi.hoisted(() => ({
@@ -26,6 +37,10 @@ const hoisted = vi.hoisted(() => ({
     guildId: null as string | null,
   },
   sourceFactoryCalls: [] as unknown[],
+  readerOnlySource: false,
+  studioMounts: 0,
+  studioUnmounts: 0,
+  studioOwnerProps: null as Record<string, unknown> | null,
   worldBuilderConceptProps: null as null | {
     roomPublishing?: {
       characterId: string | null;
@@ -89,8 +104,11 @@ vi.mock('./author/AuthorView', () => ({
   AuthorView: () => <div>Author View</div>,
 }));
 
+// A visible sentinel makes retirement fail if App mounts the old entry again.
 vi.mock('./author/DungeonBuilderHomeButton', () => ({
-  DungeonBuilderHomeButton: () => null,
+  DungeonBuilderHomeButton: () => (
+    <button type="button">Open Dungeon Builder</button>
+  ),
 }));
 
 vi.mock('./character/creation/CharacterDraftContext', () => ({
@@ -170,11 +188,32 @@ vi.mock('./concepts/ConceptsView', () => ({
 vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
   WorldBuildingConcept: (props: {
     onBack: () => void;
+    compositionSource?: { worldId: string };
+    studioPresentation?: EncounterStudioPresentation;
     roomPublishing?: {
       characterId: string | null;
       onPlay: (encounterId: string, characterId: string) => void;
     };
   }) => {
+    const isStudio = Boolean(props.studioPresentation);
+    useEffect(() => {
+      if (!isStudio) return;
+      hoisted.studioMounts++;
+      return () => {
+        hoisted.studioUnmounts++;
+      };
+    }, [isStudio]);
+    if (props.studioPresentation) {
+      hoisted.studioOwnerProps = props;
+      return (
+        <div
+          data-testid="studio-owner"
+          data-world-id={props.compositionSource?.worldId}
+        >
+          {props.studioPresentation.render(createAppStudioSession())}
+        </div>
+      );
+    }
     hoisted.worldBuilderConceptProps = props;
     return (
       <section>
@@ -195,11 +234,15 @@ vi.mock('./compositions/rpcCompositionSource', () => ({
       return {
         worldId: input.auth.guildId,
         reader: {},
-        writer: {},
+        ...(hoisted.readerOnlySource ? {} : { writer: {} }),
       };
     }
     if (input.auth.kind === 'dev' && input.mode === 'development') {
-      return { worldId: 'test-world', reader: {}, writer: {} };
+      return {
+        worldId: 'test-world',
+        reader: {},
+        ...(hoisted.readerOnlySource ? {} : { writer: {} }),
+      };
     }
     return undefined;
   },
@@ -234,6 +277,94 @@ vi.mock('./toolkit-contributor-sandbox/route', () => ({
   isToolkitContributorSandboxRoute: () => false,
 }));
 
+function createAppStudioSession(): EncounterStudioSession {
+  const draft = createRoomDraft(
+    { version: 1, id: 'scene-1', name: 'Studio draft', items: [], groups: [] },
+    'room-1'
+  );
+  return {
+    document: { draft, scope: {} },
+    intentEpoch: 0,
+    regionEditing: {
+      resolutions: [],
+      createRoomLabel: vi.fn(() => true),
+      useEnclosingWalls: vi.fn(() => true),
+      setExplicitRegionArea: vi.fn(() => true),
+      removeRegionAndLabel: vi.fn(() => true),
+    },
+    doorEditing: {
+      assetRef: null,
+      active: false,
+      options: [],
+      selectedTarget: null,
+      preview: null,
+      setAsset: vi.fn(() => true),
+      setActive: vi.fn(() => true),
+      select: vi.fn(() => true),
+      previewPlacement: vi.fn(() => true),
+      create: vi.fn(() => true),
+      previewMove: vi.fn(() => true),
+      move: vi.fn(() => true),
+      cancelPreview: vi.fn(),
+    },
+    arrange: null,
+    commitArrange: vi.fn(() => true),
+    mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
+    renameDocument: vi.fn(() => true),
+    wallEditing: {
+      selectedId: null,
+      assetRef: null,
+      snapEnabled: false,
+      options: [],
+      select: vi.fn(() => true),
+      setAsset: vi.fn(() => true),
+      setSnap: vi.fn(() => true),
+      create: vi.fn(() => true),
+      edit: vi.fn(() => true),
+      remove: vi.fn(() => true),
+      reportRefusal: vi.fn(),
+    },
+    viewportProps: {
+      scene: draft.scene,
+      previewScene: null,
+      selectedIds: [],
+      tool: 'select',
+      activeDrag: null,
+      onSelect: vi.fn(),
+      onDrop: vi.fn(),
+      onDragFinished: vi.fn(),
+      onTransformPreview: vi.fn(),
+      onTransformCommit: vi.fn(),
+      onTransformReject: vi.fn(),
+      onAssetState: vi.fn(),
+    },
+    canUndo: false,
+    canRedo: false,
+    undo: vi.fn(),
+    redo: vi.fn(),
+    commitFloor: vi.fn(() => true),
+    resizeWorkspace: vi.fn(() => true),
+    createMapLabel: vi.fn(() => true),
+    moveMapLabel: vi.fn(() => true),
+    renameMapLabel: vi.fn(() => true),
+    deleteMapLabel: vi.fn(() => true),
+    cancelTransients: vi.fn(),
+    propTool: 'select',
+    setPropTool: vi.fn(),
+    propControls: {
+      palette: null,
+      tree: null,
+      selection: null,
+      arrangeExtras: null,
+    },
+    saveStatus: 'Saved locally',
+    notice: null,
+    autosaveBlocked: false,
+    saveLocalDraft: vi.fn(),
+    dismissNotice: vi.fn(),
+  };
+}
+
 beforeEach(() => {
   hoisted.activeLobby.data = null;
   hoisted.activeLobby.loading = false;
@@ -246,6 +377,9 @@ beforeEach(() => {
   hoisted.authDecision.playerId = 'test-player';
   hoisted.authDecision.guildId = null;
   hoisted.sourceFactoryCalls.length = 0;
+  hoisted.readerOnlySource = false;
+  hoisted.studioMounts = hoisted.studioUnmounts = 0;
+  hoisted.studioOwnerProps = null;
   hoisted.worldBuilderConceptProps = null;
   hoisted.discord.user = null;
   hoisted.discord.isDiscord = false;
@@ -602,5 +736,173 @@ describe('App global development tools', () => {
     const classes = row.className.split(/\s+/);
     expect(classes).toContain('bottom-48');
     expect(classes).not.toContain('bottom-4');
+  });
+});
+
+describe('App Encounter Studio current-world entry', () => {
+  it('Home offers only World Builder and Studio as authoring entries under the same source gate', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+    expect(
+      await screen.findByRole('button', { name: 'Open Encounter Studio' })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Open World Builder' })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /Dungeon Builder/i })
+    ).toBeNull();
+    expect(
+      within(
+        screen.getByRole('group', { name: 'Encounter authoring' })
+      ).getAllByRole('button')
+    ).toHaveLength(2);
+    expect(hoisted.sourceFactoryCalls).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open Encounter Studio' })
+    );
+    expect(screen.getByTestId('studio-owner').dataset.worldId).toBe(
+      'test-world'
+    );
+    expect(hoisted.studioOwnerProps).toHaveProperty('roomMode', true);
+  });
+
+  it('reader-only source can enter Studio without publishing controls', async () => {
+    vi.stubEnv('MODE', 'development');
+    hoisted.readerOnlySource = true;
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Encounter Studio' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Encounter Studio' })
+    ).toBeTruthy();
+    expect(hoisted.studioOwnerProps).not.toHaveProperty('roomPublishing');
+    expect(hoisted.studioOwnerProps).not.toHaveProperty('onPlay');
+    expect(hoisted.studioOwnerProps).not.toHaveProperty('characterId');
+    expect(hoisted.studioOwnerProps?.compositionSource).not.toHaveProperty(
+      'writer'
+    );
+    expect(screen.queryByText(/Save & Play|Publish/i)).toBeNull();
+  });
+
+  it('missing Discord guild and production Dev do not invent Studio access', async () => {
+    vi.stubEnv('MODE', 'production');
+    const { rerender } = render(<App />);
+    await waitFor(() => expect(hoisted.sourceFactoryCalls).toHaveLength(1));
+    expect(
+      screen.queryByRole('button', { name: 'Open Encounter Studio' })
+    ).toBeNull();
+    hoisted.authDecision.kind = 'discord';
+    hoisted.authDecision.playerId = 'player-1';
+    hoisted.discord.user = { id: 'player-1' };
+    hoisted.discord.isDiscord = true;
+    rerender(<App />);
+    expect(
+      await screen.findByText(
+        'Open this Activity in a server to access its world'
+      )
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Open Encounter Studio',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Open World Builder',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open Encounter Studio' })
+    );
+    expect(screen.queryByTestId('studio-owner')).toBeNull();
+  });
+
+  it('credential identity replacement retires the prior Studio owner', async () => {
+    vi.stubEnv('MODE', 'production');
+    hoisted.authDecision.kind = 'discord';
+    hoisted.authDecision.playerId = 'player-1';
+    hoisted.authDecision.guildId = 'guild-a';
+    hoisted.discord.user = { id: 'player-1' };
+    hoisted.discord.isDiscord = true;
+    const { rerender } = render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Encounter Studio' })
+    );
+    const firstOwner = screen.getByTestId('studio-owner');
+    expect(firstOwner.dataset.worldId).toBe('guild-a');
+    hoisted.discord.authSessionId++;
+    // The same guild but a new credential epoch must retire the owner too.
+    rerender(<App />);
+    expect(screen.queryByTestId('studio-owner')).toBeNull();
+    expect(hoisted.studioUnmounts).toBe(1);
+    const secondOwner = await screen.findByTestId('studio-owner');
+    expect(secondOwner).not.toBe(firstOwner);
+    expect(secondOwner.dataset.worldId).toBe('guild-a');
+    expect(hoisted.studioMounts).toBe(2);
+
+    hoisted.discord.authSessionId++;
+    hoisted.authDecision.guildId = 'guild-b';
+    rerender(<App />);
+    expect(screen.queryByTestId('studio-owner')).toBeNull();
+    expect((await screen.findByTestId('studio-owner')).dataset.worldId).toBe(
+      'guild-b'
+    );
+    expect(hoisted.studioMounts).toBe(3);
+    expect(hoisted.studioUnmounts).toBe(2);
+  });
+
+  it('loss of current-world source retires Studio without falling into character creation', async () => {
+    vi.stubEnv('MODE', 'production');
+    hoisted.authDecision.kind = 'discord';
+    hoisted.authDecision.guildId = 'guild-a';
+    const { rerender } = render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Encounter Studio' })
+    );
+    hoisted.authDecision.guildId = null;
+    hoisted.discord.authSessionId++;
+    rerender(<App />);
+    expect(screen.queryByTestId('studio-owner')).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Encounter Studio unavailable' })
+    ).toBeTruthy();
+    expect(screen.queryByText('Character Creation')).toBeNull();
+    expect(
+      screen.getByText('Open this Activity in a server to access its world')
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Home' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+  });
+
+  it('Studio is full bleed and Back returns Home', async () => {
+    vi.stubEnv('MODE', 'development');
+    vi.stubEnv('VITE_FEEL_LAB', '1');
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Encounter Studio' })
+    );
+    const studio = screen.getByRole('region', {
+      name: 'Encounter Studio workspace',
+    });
+    const root = studio.closest('.min-h-screen');
+    expect(root?.classList.contains('p-0')).toBe(true);
+    expect(root?.classList.contains('p-8')).toBe(false);
+    expect(screen.queryByText('Theme Selector')).toBeNull();
+    expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Leave Encounter Studio' })
+    );
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(hoisted.studioUnmounts).toBe(1);
+    expect(
+      screen.getByRole('button', { name: 'Open World Builder' })
+    ).toBeTruthy();
   });
 });

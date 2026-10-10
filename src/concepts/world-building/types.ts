@@ -3,6 +3,8 @@
  * continuous transforms and stable author identities that today's dungeon
  * wire does not. See CONTRACT.md before treating this as a server contract.
  */
+import type { AuthoringRegion } from './authoringRegions';
+
 export interface WorldTransform {
   x: number;
   /** Height above the shared dungeon floor surface. */
@@ -50,8 +52,18 @@ export interface WorldGroup {
   parentId?: string;
 }
 
+export interface MapLabel {
+  id: string;
+  text: string;
+  location: WorldPoint;
+}
+
 export interface WorldScene {
-  version: 1;
+  version: 1 | 2 | 3 | 4;
+  /** Presentation-only annotations; version 1 refuses this metadata. */
+  mapLabels?: MapLabel[];
+  /** Scene3/4 author intent only, never gameplay regions or a saved derived polygon. */
+  authoringRegions?: AuthoringRegion[];
   id: string;
   name: string;
   items: WorldProp[];

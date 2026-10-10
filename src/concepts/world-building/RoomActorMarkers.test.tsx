@@ -157,3 +157,60 @@ it('uses the shared skeleton-safe model renderer inside each snapped actor trans
     await renderer.unmount();
   }
 });
+
+it('typed actor start and party start have distinct picks/highlights; typed null never falls back to legacy start', async () => {
+  const select = vi.fn();
+  const legacy = vi.fn();
+  const monster = {
+    id: 'start',
+    ref: 'dnd5e:monsters:skeleton',
+    startingCell: { location: { q: 0, r: 0 } },
+  };
+  const draw = (
+    target: { kind: 'actor'; id: string } | { kind: 'start' } | null
+  ) => (
+    <RoomActorMarkers
+      monsters={[monster]}
+      partyStart={{ q: 1, r: 0 }}
+      selectedActorId="start"
+      onSelectActor={legacy}
+      selectedActorTarget={target}
+      onSelectActorTarget={select}
+    />
+  );
+  const renderer = await ReactThreeTestRenderer.create(
+    draw({ kind: 'actor', id: 'start' })
+  );
+  const actorRing = () =>
+    renderer.scene
+      .findByProps({ name: 'room-monster-start' })
+      .findByProps({ name: 'room-actor-ring-start' });
+  const startRing = () =>
+    renderer.scene
+      .findByProps({ name: 'room-party-start' })
+      .findByProps({ name: 'room-actor-ring-start' });
+  const color = (ring: ReturnType<typeof actorRing>) =>
+    (
+      (ring.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+    ).color.getHexString();
+  expect(color(actorRing())).toBe('fbbf24');
+  expect(color(startRing())).not.toBe('fbbf24');
+  await renderer.fireEvent(actorRing(), 'pointerDown', {
+    button: 0,
+    stopPropagation: vi.fn(),
+  });
+  expect(select).toHaveBeenLastCalledWith({ kind: 'actor', id: 'start' });
+  await renderer.fireEvent(startRing(), 'pointerDown', {
+    button: 0,
+    stopPropagation: vi.fn(),
+  });
+  expect(select).toHaveBeenLastCalledWith({ kind: 'start' });
+  expect(legacy).not.toHaveBeenCalled();
+  await renderer.update(draw({ kind: 'start' }));
+  expect(color(actorRing())).not.toBe('fbbf24');
+  expect(color(startRing())).toBe('fbbf24');
+  await renderer.update(draw(null));
+  expect(color(actorRing())).not.toBe('fbbf24');
+  expect(color(startRing())).not.toBe('fbbf24');
+  await renderer.unmount();
+});

@@ -859,6 +859,10 @@ describe('private game asset sync boundary', () => {
       join(fixture.syntySource, 'world-assets', 'probe.glb'),
       'world-v1'
     );
+    await put(
+      join(fixture.syntySource, 'thumbnails/world-assets/probe.png'),
+      'thumb-v1'
+    );
     await commitFixture(fixture.assetsRoot, 'world revision');
     const { stdout: worldPin } = await execFileAsync(
       'git',
@@ -875,6 +879,14 @@ describe('private game asset sync boundary', () => {
     await put(
       join(fixture.syntySource, 'world-assets', 'probe.glb'),
       'world-v2'
+    );
+    await put(
+      join(fixture.syntySource, 'thumbnails/world-assets/probe.png'),
+      'thumb-v2'
+    );
+    await put(
+      join(fixture.syntySource, 'thumbnails/other/keep.png'),
+      'other-head'
     );
     await commitFixture(fixture.assetsRoot, 'later revision');
     const { stdout: laterPin } = await execFileAsync(
@@ -916,6 +928,18 @@ describe('private game asset sync boundary', () => {
       )
     ).resolves.toBe('world-v1');
     await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/world-assets/probe.png'),
+        'utf8'
+      )
+    ).resolves.toBe('thumb-v1');
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/other/keep.png'),
+        'utf8'
+      )
+    ).resolves.toBe('other-head');
+    await expect(
       readFile(fixture.npcStandingDestination, 'utf8')
     ).resolves.toBe('fixture-standing-model');
     // A serving mirror never rewrites the tracked catalogs.
@@ -941,6 +965,98 @@ describe('private game asset sync boundary', () => {
       { cwd: fixture.assetsRoot, env: gitEnvironment }
     );
     expect(providerStatus).toBe('');
+  });
+
+  it('does not leak HEAD thumbnails into an older world pin without thumbnails', async () => {
+    const fixture = await makeFixture();
+    await put(join(fixture.syntySource, 'world-assets/probe.glb'), 'old-world');
+    await commitFixture(fixture.assetsRoot, 'old world without thumbnails');
+    const { stdout: oldPin } = await execFileAsync(
+      'git',
+      ['rev-parse', 'HEAD'],
+      { cwd: fixture.assetsRoot, env: gitEnvironment }
+    );
+    await put(
+      join(fixture.syntySource, 'thumbnails/world-assets/new.png'),
+      'new-only'
+    );
+    await commitFixture(fixture.assetsRoot, 'new thumbnail');
+    await putPinnedCatalogs(fixture, { world: oldPin.trim() });
+    await put(
+      join(fixture.syntyDestination, 'thumbnails/world-assets/stale.png'),
+      'stale'
+    );
+    await runPinnedRuntimeSync(fixture.assetsRoot, fixture.webRoot);
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/world-assets/new.png')
+      )
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/world-assets/stale.png')
+      )
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('world-only sync owns thumbnail images but not other thumbnail families', async () => {
+    const fixture = await makeFixture();
+    await put(join(fixture.syntySource, 'world-assets/probe.glb'), 'world');
+    await put(
+      join(fixture.syntySource, 'thumbnails/world-assets/probe.png'),
+      'published-image'
+    );
+    await commitFixture(fixture.assetsRoot, 'thumbnail source');
+    await put(
+      join(fixture.syntyDestination, 'thumbnails/other/keep.png'),
+      'keep'
+    );
+    const generator = join(fixture.webRoot, 'world-generator.mjs');
+    await put(
+      generator,
+      `import fs from 'node:fs'; const output=process.argv[process.argv.indexOf('--output')+1]; fs.writeFileSync(output,'fixture catalog');`
+    );
+    const run = () =>
+      execFileAsync('sh', [syncScript, '--world-assets'], {
+        cwd: repoRoot,
+        env: {
+          ...gitEnvironment,
+          RPG_GAME_ASSETS_PATH: fixture.assetsRoot,
+          RPG_WEB_ROOT: fixture.webRoot,
+          ASSETS_SYNC_SKIP_UPDATE: '1',
+          RPG_WORLD_ASSET_CATALOG_GENERATOR: generator,
+          RPG_WORLD_ASSET_CATALOG_RUNNER: process.execPath,
+        },
+      });
+    await run();
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/world-assets/probe.png'),
+        'utf8'
+      )
+    ).resolves.toBe('published-image');
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/other/keep.png'),
+        'utf8'
+      )
+    ).resolves.toBe('keep');
+    await rm(join(fixture.syntySource, 'thumbnails/world-assets'), {
+      recursive: true,
+    });
+    await commitFixture(fixture.assetsRoot, 'legacy no thumbnails');
+    await run();
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/world-assets/probe.png')
+      )
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      readFile(
+        join(fixture.syntyDestination, 'thumbnails/other/keep.png'),
+        'utf8'
+      )
+    ).resolves.toBe('keep');
   });
 
   it('fails a pinned mirror when no committed catalog carries a provider pin', async () => {

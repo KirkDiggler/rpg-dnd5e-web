@@ -1,6 +1,8 @@
 // @vitest-environment node
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { createMapLabel } from './mapLabelEdits';
+import { createRoomDraft } from './roomDraft';
 import {
   addProp,
   createEmptyScene,
@@ -17,6 +19,7 @@ import {
   setPropPointLight,
   setSelectionHeight,
   stampArrangement,
+  topLevelSelectedIds,
   undoHistory,
   updateHistory,
 } from './sceneState';
@@ -27,6 +30,46 @@ const ids = (...values: string[]) => {
 };
 
 describe('world-building continuous scene math', () => {
+  it('keeps equal effective heights and absent defaults untouched', () => {
+    let scene = addProp(
+      createEmptyScene('height-noop'),
+      'dnd5e:props:books',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'default'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 1, y: 0, z: 0, rotationY: 0 },
+      'scaled'
+    );
+    scene.items[1]!.heightScale = 2;
+    expect(setSelectionHeight(scene, ['default'], 1)).toBe(scene);
+    const next = setSelectionHeight(scene, ['default', 'scaled'], 1);
+    expect(next.items[0]).toBe(scene.items[0]);
+    expect(next.items[0]).not.toHaveProperty('heightScale');
+    expect(next.items[1]!.heightScale).toBe(1);
+    expect(setSelectionHeight(next, ['default', 'scaled'], 1)).toBe(next);
+  });
+  it('exports deterministic roots excluding selected ancestors and supports', () => {
+    let scene = addProp(
+      createEmptyScene('roots'),
+      'dnd5e:props:books',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'support'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candle',
+      { x: 1, y: 1, z: 0, rotationY: 0 },
+      'child',
+      { supportId: 'support' }
+    );
+    expect(
+      topLevelSelectedIds(scene, ['child', 'support', 'support', 'gone'])
+    ).toEqual(['support']);
+    expect(topLevelSelectedIds(scene, ['gone'])).toEqual([]);
+  });
   it('changes only visual height for selected props and excludes support decorations', () => {
     let scene = createEmptyScene('height');
     scene = addProp(
@@ -673,4 +716,44 @@ describe('world-building undo history', () => {
     expect(history.present.name).toBe('Edit 1');
     expect(undoHistory(history)).toBe(history);
   });
+});
+
+it('preserves promoted labels through real prop edits, duplication, history and arrangement stamping without capturing labels in templates', () => {
+  const draft = createMapLabel(
+    createRoomDraft(createEmptyScene('scene'), 'room'),
+    'label',
+    'Kitchen',
+    { x: 0.1, z: -0.2 }
+  );
+  const scene = addProp(
+    draft.scene,
+    'dnd5e:props:books',
+    { x: 0, y: 0, z: 0, rotationY: 0 },
+    'books'
+  );
+  const arrangement = saveArrangement(
+    scene,
+    ['books'],
+    'template',
+    'Books',
+    '2026-09-14T00:00:00.000Z'
+  );
+  expect(arrangement).not.toHaveProperty('mapLabels');
+  expect(arrangement.version).toBe(1);
+  const duplicated = duplicateSelection(scene, ['books'], () => 'copy').scene;
+  const stamped = stampArrangement(
+    duplicated,
+    arrangement,
+    { x: 2, z: 1 },
+    () => 'stamp'
+  ).scene;
+  const moved = moveSelection(stamped, ['stamp'], { x: 1, y: 0, z: 1 });
+  for (const value of [scene, duplicated, stamped, moved]) {
+    expect(value.version).toBe(2);
+    expect(value.mapLabels).toEqual(draft.scene.mapLabels);
+  }
+  const history = updateHistory(createHistory(scene), moved);
+  expect(redoHistory(undoHistory(history)).present.mapLabels).toEqual(
+    draft.scene.mapLabels
+  );
 });

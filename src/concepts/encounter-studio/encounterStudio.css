@@ -1,0 +1,391 @@
+.encounter-studio {
+  --wb-bg: #101923;
+  --wb-panel: #15222c;
+  --wb-raised: #203340;
+  --wb-border: #3c5666;
+  --wb-text: #e4eff4;
+  --wb-muted: #b4c8d3;
+  --wb-accent: #83e6cf;
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  color-scheme: dark;
+  font:
+    14px/1.45 system-ui,
+    sans-serif;
+}
+
+.encounter-studio button,
+.encounter-studio input,
+.encounter-studio select,
+.encounter-studio textarea {
+  border: 1px solid var(--wb-border);
+  border-radius: 5px;
+  padding: 0.45rem 0.65rem;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  font: inherit;
+}
+
+.encounter-studio button {
+  cursor: pointer;
+}
+.encounter-studio button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.encounter-studio button[aria-pressed='true'] {
+  background: #235349;
+  border-color: var(--wb-accent);
+}
+.encounter-studio button:hover:not(:disabled) {
+  border-color: var(--wb-accent);
+}
+.encounter-studio :focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: 2px;
+}
+
+.es-header,
+.es-toolbar,
+.es-warning {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-panel);
+}
+
+.es-title {
+  margin-right: auto;
+}
+.es-title h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.es-title p {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: 0.8rem;
+}
+.es-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.es-save {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: 34rem;
+  font-size: 0.8rem;
+}
+.es-local {
+  color: var(--wb-accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.es-warning {
+  margin: 0;
+  color: #ffe2a6;
+  background: #332b20;
+}
+.es-warning > span:first-child {
+  flex: 1;
+}
+.es-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--wb-muted);
+}
+
+.es-canvas {
+  position: relative;
+  /* Keep scene Html annotations beneath Studio's contextual chrome. */
+  isolation: isolate;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 300px;
+  overflow: hidden;
+}
+
+.es-3d {
+  display: grid;
+  grid-template-columns: minmax(200px, 250px) minmax(0, 1fr) minmax(
+      200px,
+      270px
+    );
+  flex: 1 1 auto;
+  min-height: 300px;
+  overflow: hidden;
+}
+
+.es-props {
+  overflow: auto;
+  min-height: 0;
+  border-left: 1px solid var(--wb-border);
+}
+.es-palette {
+  border-left: 0;
+  border-right: 1px solid var(--wb-border);
+}
+.encounter-studio .wb-panel h3 {
+  font-size: 0.9rem;
+  color: var(--wb-accent);
+}
+.encounter-studio .wb-help {
+  font-size: 0.8rem;
+  color: var(--wb-muted);
+}
+.encounter-studio .wb-palette-entry small {
+  color: var(--wb-muted);
+}
+.encounter-studio .wb-palette-search {
+  background: var(--wb-panel);
+}
+
+@media (max-width: 800px) {
+  .es-save {
+    width: 100%;
+    max-width: none;
+  }
+  .es-3d {
+    overflow: visible;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(300px, 1fr) 230px;
+    min-height: 530px;
+  }
+  .es-3d > .es-canvas {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .es-props {
+    grid-row: 2;
+    border-top: 1px solid var(--wb-border);
+  }
+  .es-header,
+  .es-toolbar {
+    padding: 0.5rem;
+  }
+}
+
+.es-dimensions label,
+.es-label-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.es-dimensions input,
+.es-label-controls input[inputmode='decimal'] {
+  width: 5rem;
+}
+.es-label-controls input:not([inputmode]),
+.es-label-controls select {
+  width: 12rem;
+  max-width: 100%;
+}
+.es-dimensions [role='alert'],
+.es-label-controls [role='alert'] {
+  width: 100%;
+  color: #ffe2a6;
+}
+.es-map-labels text:focus-visible {
+  outline: none;
+  fill: #a7ffeb;
+  stroke: #235349;
+  stroke-width: 6;
+}
+
+/* Two permanent bands. Overflow scrolls, never becomes permanent extra rows. */
+.es-header,
+.es-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-height: 3rem;
+}
+.es-header > *,
+.es-toolbar > * {
+  flex-shrink: 0;
+}
+.es-header .es-buttons,
+.es-toolbar .es-buttons,
+.es-save {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.es-header .es-save {
+  width: auto;
+}
+.es-title {
+  min-width: 12rem;
+}
+.es-title > button {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.15rem 0.4rem;
+}
+.es-title input {
+  width: 14rem;
+}
+.es-tools-container {
+  position: relative;
+  flex: 0 0 auto;
+}
+.es-context-layer {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0.75rem;
+  z-index: 5;
+  width: min(38rem, calc(100% - 1.5rem));
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.es-context-panel {
+  pointer-events: auto;
+  padding: 0.85rem;
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px #0008;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.es-context-panel label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.es-context-panel input[inputmode='decimal'] {
+  width: 6rem;
+}
+.es-wall-search {
+  flex-wrap: wrap;
+}
+.es-wall-search input {
+  flex: 1;
+  min-width: 8rem;
+}
+.es-wall-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+.es-wall-options button {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.es-wall-options img,
+.es-wall-thumbnail-fallback {
+  width: 100%;
+  height: 96px;
+  object-fit: contain;
+}
+.es-wall-thumbnail-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--wb-bg);
+  color: var(--wb-muted);
+}
+.es-wall-options small {
+  color: var(--wb-muted);
+}
+
+/* Arrange is compact independently of the wider creation palettes. The
+ * context layer stays pointer-transparent outside its right-aligned panels. */
+.es-arrange {
+  align-self: flex-end;
+  box-sizing: border-box;
+  width: min(24rem, 100%);
+}
+.es-arrange .wb-light-grid label {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.es-arrange .wb-light-grid input {
+  min-width: 0;
+}
+
+/* Stacked precision rows; units are canonical scene units, never meters/feet. */
+.es-arrange[hidden] {
+  display: none;
+}
+.es-arrange h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.es-arrange form,
+.es-arrange-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.es-arrange .es-arrange-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 10rem);
+  gap: 0.6rem;
+  padding: 0.2rem 0.4rem;
+  background: var(--wb-raised);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.es-arrange .es-arrange-row input,
+.es-arrange .es-arrange-row select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.25rem 0.4rem;
+}
+.es-arrange-row input[inputmode='decimal'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.es-arrange [role='alert'] {
+  color: #ffe2a6;
+}
+
+/* Region intent stays in the existing compact context band, not a new dock. */
+.es-region-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 24rem;
+}
+.es-region-controls h2,
+.es-region-controls p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.es-region-controls [role='status'] {
+  padding: 0.35rem;
+  border-left: 2px solid var(--wb-accent);
+  background: var(--wb-raised);
+}

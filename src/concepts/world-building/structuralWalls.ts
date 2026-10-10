@@ -8,6 +8,10 @@ import {
   type WallOpeningGeometry,
 } from './structuralWallGeometry';
 import type { WorldPoint } from './types';
+import {
+  containsWorkspacePoint,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 /** One opening's optional attached door: a stable identity and a catalog
  * appearance. THERE IS NO STORED POSE — the owning opening resolves the
@@ -78,7 +82,8 @@ function booleanAt(value: unknown, path: string): boolean {
 function pointAt(
   value: unknown,
   path: string,
-  horizontalLimit: number
+  horizontalLimit: number,
+  workspace?: RoomWorkspace
 ): WorldPoint {
   const point = objectShape(value, path);
   rejectUnknownKeys(point, ['x', 'z'], path);
@@ -91,6 +96,11 @@ function pointAt(
     if (Math.abs(coordinate) > horizontalLimit)
       throw new Error(`${path}.${axis}: outside the authoring workspace`);
   }
+  if (
+    workspace?.kind === 'centered-odd-r' &&
+    !containsWorkspacePoint(workspace, { x, z })
+  )
+    throw new Error(`${path}: outside the authoring workspace`);
   return { x, z };
 }
 
@@ -101,6 +111,7 @@ function pointAt(
 export function validateStructuralWalls(input: {
   value: unknown;
   horizontalLimit: number;
+  workspace?: RoomWorkspace;
   itemIds: ReadonlySet<string>;
 }): StructuralWall[] {
   const path = 'room.room.walls';
@@ -201,9 +212,15 @@ export function validateStructuralWalls(input: {
         start: pointAt(
           line.start,
           `${location}.line.start`,
-          input.horizontalLimit
+          input.horizontalLimit,
+          input.workspace
         ),
-        end: pointAt(line.end, `${location}.line.end`, input.horizontalLimit),
+        end: pointAt(
+          line.end,
+          `${location}.line.end`,
+          input.horizontalLimit,
+          input.workspace
+        ),
       },
       appearance: {
         assetRef,

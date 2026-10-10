@@ -114,6 +114,7 @@ export function StructuralWallPanel({
   });
   const [lengthEndpoint, setLengthEndpoint] = useState<'start' | 'end'>('end');
   const [lengthValue, setLengthValue] = useState('0');
+  const [lengthEdited, setLengthEdited] = useState(false);
   const [appliedLength, setAppliedLength] = useState<string | null>(null);
   const [blocker, setBlocker] = useState<StructuralWall['blocker']>({
     footprint: { width: 1, depth: 0.25, offsetX: 0, offsetZ: 0 },
@@ -146,6 +147,7 @@ export function StructuralWallPanel({
     setLabel(wall.label);
     setAppearance({ ...wall.appearance });
     setLengthValue(String(Number(wallLengthOf(wall).toFixed(6))));
+    setLengthEdited(false);
     setBlocker({
       ...wall.blocker,
       footprint: { ...wall.blocker.footprint },
@@ -181,8 +183,9 @@ export function StructuralWallPanel({
     }
   };
 
-  const lengthNumber = Number(lengthValue);
   const wallLengthValue = wall ? wallLengthOf(wall) : 0;
+  // Readable display rounding is not an edit to the canonical length.
+  const lengthNumber = lengthEdited ? Number(lengthValue) : wallLengthValue;
 
   return (
     <div className="wb-wall-panel" data-testid="structural-wall-panel">
@@ -344,7 +347,10 @@ export function StructuralWallPanel({
                 step="0.1"
                 aria-label="Exact length"
                 value={lengthValue}
-                onChange={(event) => setLengthValue(event.target.value)}
+                onChange={(event) => {
+                  setLengthValue(event.target.value);
+                  setLengthEdited(true);
+                }}
               />
             </label>
             <button

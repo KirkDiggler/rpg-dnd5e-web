@@ -1,8 +1,8 @@
 import { parse, stringify } from 'yaml';
 import {
   ROOM_DRAFT_ENVELOPE_VERSION,
-  parseRoomDraftJson,
-  stringifyRoomDraft,
+  parseRoomDocumentJson,
+  validateRoomDocument,
   type RoomDraft,
 } from './roomDraft';
 import {
@@ -15,7 +15,6 @@ import {
   validateSiteExits,
   validateSiteFactions,
   validateSiteScenarios,
-  validateSiteScope,
   validateSiteTables,
   type SiteConcealments,
   type SiteDisposition,
@@ -193,9 +192,10 @@ export function encodeSingleRoomDungeon(
 ): string {
   if (!input.key || typeof input.key !== 'string')
     throw new Error('Dungeon key must be non-empty.');
-  const draft = JSON.parse(stringifyRoomDraft(input.draft)) as {
-    draft: RoomDraft;
-  };
+  const draft = validateRoomDocument({
+    draft: input.draft,
+    scope: scopeFrom(input),
+  });
   // The scope is validated on the way OUT as the draft is, so an encoder can
   // never write a site block the strict decoder would refuse to read back.
   //
@@ -205,7 +205,7 @@ export function encodeSingleRoomDungeon(
   // input interface gained `tables` while both publish call sites did not.
   // `validateSiteScope` already owns the per-key validation AND the
   // "an empty value is an absent key" rule this block was open-coding.
-  const scope = validateSiteScope(scopeFrom(input));
+  const scope = draft.scope;
   return stringify({
     version: carriesV4Keys(draft.draft, scope) ? 4 : 3,
     key: input.key,
@@ -353,8 +353,18 @@ function decodeSingleRoomRoot(
     kind: 'rpg-room-authoring-draft',
     version: ROOM_DRAFT_ENVELOPE_VERSION,
     draft: root.room,
+    scope: {
+      tables,
+      factions,
+      dispositions,
+      intel,
+      exits,
+      endings,
+      scenarios,
+      concealments,
+    },
   });
-  const draft = parseRoomDraftJson(draftJson);
+  const draft = parseRoomDocumentJson(draftJson).draft;
   if (version === 3 && (draft.room.walls?.length ?? 0) > 0)
     throw new Error(
       'room.room.walls: structural walls require root version 4.'

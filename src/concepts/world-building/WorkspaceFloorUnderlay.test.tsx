@@ -40,6 +40,7 @@ import {
   WorkspaceFloorUnderlay,
 } from './WorkspaceFloorUnderlay';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
+import { centeredRoomWorkspace } from './workspaceGeometry';
 
 const PROFILE: DungeonShellFloorProfile = {
   diffuse: 'textures/Dungeons_Texture_FloorTile_09_01.png',
@@ -54,6 +55,42 @@ beforeAll(() => {
 });
 
 describe('workspace floor underlay', () => {
+  it('batches rectangle cells and disposes geometry replacements without retiring the still-live texture', async () => {
+    textureState.mode = 'ready';
+    const base = new THREE.Texture();
+    textureState.base = base;
+    const clone = vi.spyOn(base, 'clone');
+    const workspace = centeredRoomWorkspace(73, 48);
+    const view = await ReactThreeTestRenderer.create(
+      <WorkspaceFloorSurface workspace={workspace} profile={PROFILE} />
+    );
+    const mesh = view.scene.findByProps({ name: 'workspace-floor-underlay' })
+      .instance as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+    const first = mesh.geometry;
+    const owned = mesh.material.map!;
+    const dispose = vi.spyOn(first, 'dispose'),
+      disposeTexture = vi.spyOn(owned, 'dispose');
+    expect(first.getAttribute('position').count).toBe(3504 * 18);
+    await view.update(
+      <WorkspaceFloorSurface workspace={{ ...workspace }} profile={PROFILE} />
+    );
+    expect(mesh.geometry).toBe(first);
+    expect(dispose).not.toHaveBeenCalled();
+    await view.update(
+      <WorkspaceFloorSurface
+        workspace={centeredRoomWorkspace(128, 128)}
+        profile={PROFILE}
+      />
+    );
+    expect(mesh.geometry.getAttribute('position').count).toBe(16384 * 18);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(clone).toHaveBeenCalledTimes(1);
+    expect(disposeTexture).not.toHaveBeenCalled();
+    const disposeLast = vi.spyOn(mesh.geometry, 'dispose');
+    await view.unmount();
+    expect(disposeLast).toHaveBeenCalledTimes(1);
+    expect(disposeTexture).toHaveBeenCalledTimes(1);
+  });
   it.each(['pending', 'error'] as const)(
     'keeps the interactive plain ground present when texture loading is %s',
     async (mode) => {
@@ -151,4 +188,55 @@ describe('workspace floor underlay', () => {
     await renderer.unmount();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+});
+
+it('owns only a cloned Basic receiver, retaining native map/tint flags across uniform updates and restoring baseline', async () => {
+  const { createTestLightingBinding } =
+    await import('@/rendering/regionLightingTestFixtures');
+  const binding = createTestLightingBinding();
+  textureState.mode = 'ready';
+  textureState.base = new THREE.Texture();
+  const view = await ReactThreeTestRenderer.create(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+    />
+  );
+  const mesh = view.scene.findByProps({ name: 'workspace-floor-underlay' })
+      .instance as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>,
+    source = mesh.material,
+    map = source.map;
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+      visualLighting={binding}
+    />
+  );
+  const owned = mesh.material;
+  expect(owned).not.toBe(source);
+  expect(owned.map).toBe(map);
+  expect(owned.color.equals(source.color)).toBe(true);
+  expect(owned.toneMapped).toBe(false);
+  expect(owned.customProgramCacheKey()).toContain('workspace-basic');
+  const dispose = vi.spyOn(owned, 'dispose');
+  binding.uniforms.rlPointCount.value = 1;
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+      visualLighting={binding}
+    />
+  );
+  expect(mesh.material).toBe(owned);
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+    />
+  );
+  expect(mesh.material).toBe(source);
+  expect(dispose).toHaveBeenCalledOnce();
+  await view.unmount();
+  binding.dispose();
 });

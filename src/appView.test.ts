@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { APP_VIEWS, shouldRenderGlobalDevTools, type AppView } from './appView';
 
 const OTHER_APP_VIEWS = APP_VIEWS.filter(
-  (view): view is Exclude<AppView, 'concepts'> => view !== 'concepts'
+  (view): view is Exclude<AppView, 'concepts' | 'encounter-studio'> =>
+    view !== 'concepts' && view !== 'encounter-studio'
 );
 
 describe('global development tools visibility', () => {
@@ -18,6 +19,15 @@ describe('global development tools visibility', () => {
     expect(
       debugPanelRequested && shouldRenderGlobalDevTools('development', 'home')
     ).toBe(true);
+  });
+
+  it('registers Studio and leaves its full-window canvas free of global dev tools', () => {
+    expect(APP_VIEWS).toContain('encounter-studio');
+    expect(APP_VIEWS).toContain('world-builder');
+    expect(APP_VIEWS).not.toContain('author');
+    expect(shouldRenderGlobalDevTools('development', 'encounter-studio')).toBe(
+      false
+    );
   });
 
   it.each(OTHER_APP_VIEWS)(

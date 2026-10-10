@@ -3,6 +3,247 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
+## Current Encounter Studio boundary (#1232, #1239, #1233, project#545)
+
+Home offers **Encounter Studio** alongside World Builder under the same
+current-world source availability and identity lifecycle. Studio mounts one
+room-mode `WorldBuildingConcept`; its typed presentation facade projects the
+existing document and commands, not a second store. Layout and the existing 3D
+viewport may unmount independently without replacing the document owner.
+
+Studio keeps two permanent chrome bands: document/name/save/view header and
+editing/history toolbar. Header rename commits the trimmed canonical scene and
+draft names together, preserving identity and site scope. Size opens staged
+workspace dimensions; accepted Apply commits before dismissing the fields.
+Cancel/Escape dismiss without content changes. Wall and Label contexts dismiss
+without deleting committed content; their staged forms are not document state.
+
+Layout offers Paint, Erase and Rectangle on canonical walkable cells, Select,
+Wall, explicit Size and presentation-only map labels. A completed
+stroke/rectangle or wall gesture is one bounds/size-checked whole-document history
+transaction. The 3D view reuses prop placement, selection, Move/Rotate, repeat,
+grouping, support, height and visual-light controls. Both views use the same draft **and complete
+site scope**, shared Undo/Redo and persistence. View changes and Layout pan/zoom
+create no history. Switching cancels unfinished gestures/transforms/drops and
+preserves committed selection and Layout framing; hidden prop mutation shortcuts
+are gated in Layout. Undo/Redo retain their existing selection-clearing behavior.
+The 3D camera is not promised to survive renderer remounts.
+
+Studio resumes World Builder's local draft under
+`rpg.concepts.world-building.room-draft.v3` (`ROOM_DRAFT_STORAGE_KEY`), not a
+Studio namespace or copied document. Despite the suffix, the current serialized
+room envelope is **version 5** with draft version 3 and optional normalized scope.
+Missing current bytes permit the existing legacy-key lookup then blank fallback;
+present unreadable/unsupported current bytes are refused and preserved with
+visible feedback and autosave blocked. Explicit **Replace unreadable local
+draft** replaces those bytes. A failed write retains the latest in-memory
+document and last successfully stored bytes. Reload restores content, not history.
+The storage key remains origin-global, not world/session-namespaced.
+
+Floor edits/history/reload preserve supported walls/openings/attached doors and
+state, props/declarations/bindings, transforms/groups/supports/lights,
+monsters/bindings/party start and all scope fields. Shape validation does not grade
+gameplay legality. Source availability is not proof of remote write permission.
+Studio exposes no publication, lobby launch, Save & Play, world-snapshot,
+import/reset or policy-editing commands. Room-management/focus tools, discovery
+simulation, new opening/door creation tools, asset markings and gameplay camera
+presets are outside this slice. Map labels do not supply those capabilities.
+Missing room-navigation controls do not imply unsupported multi-room gameplay.
+
+See [the safe verification procedure](../../../docs/how-to/encounter-studio-verification.md)
+for disposable-context interaction checks and the DOM tests' WebGL boundary.
+The older sections below describe their own extensions or the standalone prop
+composer; they do not narrow this current Studio boundary.
+
+## Studio Layout walls and compact contexts (#1233)
+
+Wall opens searchable repeatable appearance choices, ranking case-insensitive
+wall name/ref matches first without inventing asset categories. Other eligible
+repeatable choices remain accessible. Generated asset previews use published
+provider PNG URLs, not a client model-capture queue. Loading is image-local;
+missing/error images retain named selectable fallbacks without loading a GLB,
+substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
+assets without a door leaf role. No appearance is armed by default.
+
+Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
+centres/corners/side midpoints, and retains its presentation-only choice across
+context dismissal and view changes. Both preview and release use the same pure
+helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
+Wall and cancels the unfinished gesture without clearing appearance or snap.
+
+Select picks a wall body for rigid translation or a selected endpoint for direct
+reshape. Endpoint reshape composes protected collinear resize then rotation about
+the opposite endpoint: opening distances/identities and attached doors travel with
+the changed bearing. Opening edges clamp length; the preview displays the actual
+applied endpoint on the requested ray, not the unreachable raw pointer. Numeric
+length remains collinear, and move/rotation/appearance controls are secondary.
+Appearance changes do not change the independent blocker. Neither renderer stores
+derived spans or a second door pose; the existing 3D consumes the same canonical
+walls and door bindings.
+
+Selected endpoint handles precede labels, then wall bodies, then empty-space
+deselection; middle-button pan wins. Paint/Erase/Rectangle remain floor-owned.
+Wall ignores existing wall/label hits; Label owns label gestures. Selection and
+cosmetic reflow do not invalidate an active drag or create content edits. Preview,
+unchanged release, zero-length drawing, cancellation, refusal and retired-epoch
+release create no history. Accepted edits submit before settings dismissal, not
+after canceling their own owner intent.
+
+Remove deletes the owning wall/openings and attached-door bindings in one history
+entry. Site concealment reference lists are independently authored policy and stay
+unchanged, even when they name removed identities; server validation names
+unresolved references before publication/play. Undo restores the owned identities
+and bindings so those unchanged references resolve again. Unrelated bindings and
+all other scope fields remain intact. An editable post-removal draft is not a
+claim of publishability. Ordinary wall/name edits retain unfinished editable
+policy; save/export still require complete codec validation.
+
+## Centered workspaces and map annotations (#1239)
+
+**Width (hexes)** and **Height (hexes)** stage integer counts in `1..128`.
+**Apply dimensions** is one atomic resize; Cancel/Escape or navigation does not
+commit. Growth adds capacity, never floor, content translation, scaling or
+policy membership. A fresh draft retains the small legacy hex-radius workspace.
+Untagged `{hexRadius, horizontalLimit}` documents remain legacy until explicit
+Apply; the controls identify them as nonrectangular and do not invent dimensions.
+
+The saved rectangle is `{kind:"centered-odd-r", widthHexes, heightHexes,
+hexRadius, horizontalLimit}`. It contains exactly width × height cells (maximum
+16384). Absolute odd-r coordinates use `row=r`, `col=q+floor(r/2)`, and
+`q=col-floor(row/2)`. Columns range from `-floor(width/2)` through
+`ceil(width/2)-1`; rows use the same rule. Even counts take the extra negative-side
+cell. Odd rows, including negative odd rows, stagger +½ column. The original
+axial/world origin stays fixed, not cosmetically recentered. Both views consume
+one shared cell union, boundary and world AABB. The derived enclosing hex radius
+and scalar horizontal limit remain saved for existing consumers, are checked on
+read, and are not independent membership authorities or editable controls.
+
+A shrink protects floor, actors/start, exit/concealment cells, prop/group anchors,
+labels, authored prop footprints, wall line/thickness/blocker and derived
+opening/door poses. Protected extent AABBs must fit wholly in the closed union
+of workspace hex polygons; boundary contact is allowed. This conservative check
+can refuse a rotated shape whose exact shape fits. A refusal names the offending
+identity/path and leaves geometry, document, history and stored bytes intact.
+Template-local arrangement declarations are not placed geometry. Pure loaded-mesh
+overhang is permitted; private model bounds do not define eligibility.
+
+**Label** offers named placement by pointer, keyboard at view center or exact
+world X/Z, selection, drag, staged rename, coordinate move and delete. Apply/Enter
+commits; Escape, capture loss, navigation or document/tool changes cancel previews
+without history. Notes are plain text 2D annotations such as Kitchen/Courtyard,
+not gameplay regions, floor ownership, blocking/discovery data, assets, support
+relations or arrangement members. No 3D label renderer is promised. Label-only
+edits leave workspace and gameplay policy unchanged. Linked Room labels and their
+separate authoring boundary intent are described below.
+
+`WorldScene.version` supports 1/2/3/4. Scene3 boundary metadata and optional
+scene4 lighting intent are described below. Version 2 optionally carries
+`mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
+labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
+continuous world points inside the workspace, and at most 256 labels are accepted.
+Absent labels means none; deleting the last removes `mapLabels` without demoting
+the scene. First Note or explicit rectangular resize on scene1 promotes the scene to 2,
+even if the rectangle has no labels; scene3/4 are preserved. Version-1 scenes carrying label metadata
+are refused. Older scene-1-only web readers refuse scene 2 rather than silently
+strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
+data, not YAML comments/formatting. Envelope versions, storage namespaces and
+existing v3/v4 local-envelope refusals remain unchanged. Toolkit presentation
+retains the opaque authored metadata; labels do not compile into gameplay policy.
+
+Bounds validity, editable-draft size and completed persistence are distinct gates.
+Ordinary edits preserve unfinished policy rows while checking existing shapes,
+rectangular bounds and canonical serialized size before history insertion. Explicit
+resize/label intents and save/export require complete codec validation. An editable
+unfinished policy is not thereby persistable; no fact is invented or policy dropped.
+Storage quota failure remains a visible save failure, not a successful persistence
+claim. The unchanged 500000-character envelope budget includes the complete scope.
+Workspace capacity is **not** fully paintable maximum capacity: the populated
+73 × 48 / 3504-cell castle fits, but fully painting 128 × 128 exceeds this budget
+and is refused before history/storage. A sparse 128 × 128 document fits. These
+bounds do not promise browser latency or performance acceptance.
+
+## Studio authoring region boundary (#1245)
+
+**Label kind** explicitly chooses **Note · text only** or **Room · linked boundary**.
+Old notes remain unchanged and are never inferred as rooms. Room placement creates
+one label/region pair in scene3. `MapLabel` alone owns name/anchor; the linked
+`AuthoringRegion` owns automatic oriented source-walk intent or explicit cells.
+Scene1/2 reads do not upgrade, materialize empty metadata or strip unknown keys.
+Existing scene3 label/resize edits do not downgrade. Empty region collections are
+omitted without demotion; authored empty explicit areas retain their intent.
+
+Layout draws only current resolved areas. Linked labels remain selectable through
+the existing Arrange arbiter, with automatic/explicit mode, unresolved warning and
+reason. Full wall spans, including openings/doors in every state, are logical
+boundaries. Supported unambiguous wall motion follows the accepted oriented walk;
+breaks, seed moves outside it, duplicates/conflicts and unsupported or uncertain
+geometry remain unresolved, with no valid-looking stale polygon or conflict winner.
+Only explicit create/bind acquires a witness. Closing an initially unbound room
+still requires **Use enclosing walls**. Repairing a known bound walk may resolve
+without a metadata write. Missing source references remain persisted intent.
+
+Exact axis-collinear overlap is handled as continuous geometric coverage with
+transient source provenance, never endpoint welding or source mutation. An
+overlapping maximal straight face boundary run requires exactly one authored
+source covering its entire span; partial exterior extensions do not replace that
+owner. Multiple full-span owners or no full-span owner remain unresolved, without
+an ID/order/length preference. Raw simple-face validation precedes compression;
+non-overlapping source transitions retain their junctions. A true uncovered
+interval remains open at any representable size. Non-axis collinearity,
+uncertified intersections, holes and interior slits remain conservatively refused.
+
+**Use enclosing walls**, **Define explicit area**, and **Delete region and label**
+are explicit repair commands. Raw linked-label deletion refuses. Paint/Erase/
+Rectangle region controls stage membership locally and submit one complete area
+replacement on release, never floor mutators. Paint/Rectangle add cells to an
+existing explicit area; Erase removes them. Starting from automatic intent starts
+an empty explicit membership set; no floor membership or inferred polygon is
+adopted. **Clear explicit area** retains the pair with unresolved empty intent.
+No hidden cell transfers, floor/prop deletion, binding or scope changes occur.
+Escape, capture loss, view/document/epoch/mode/target retirement cancel previews
+without writes. 3D round trips preserve definitions/selection but retire region
+painting. There is no 3D boundary overlay, audio control or gameplay visibility
+authority.
+
+Linked-label Arrange stages **Background light (%)** (0..100) and **Use baseline
+appearance** in the same dirty-only label-edit as rename/move. An unset input is
+blank with a100 placeholder and **Baseline · no region light authored**; untouched
+fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
+absence: it opts the configured floor into the placed-light receiver. Reset stages
+null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
+one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
+view/target/epoch/document retirement discard linked-label staging without writes;
+blur never submits. Ordinary notes expose no region fields. Configured unresolved
+labels show **Lighting saved · not applied until boundary resolves**, alongside the
+boundary reason.
+
+Only an actual lighting set opts into scene4. Its optional exact
+`lighting:{background:number}` is finite0..1; no defaults, derived polygons or
+source settings are persisted. Load never promotes and reset never demotes.
+Lighting alone with text/location absent uses the ordinary document gate;
+explicit label tokens, including equal values, retain strict complete-policy
+validation. Save/export remain strict.
+
+Studio3D consumes only configured, currently resolved projection. Actual floor,
+prop, wall, attached-door and cap fragments sample world-XZ rather than object
+centres. Background scales directional/indirect illumination, not placed point
+lights or emissive terms. The textured Basic workspace floor adds local response
+only inside configured resolved regions; outside/unconfigured floor stays legacy.
+Unresolved/conflicting definitions retain settings with no stale applied extent.
+There is one per-instance material-treatment owner; cached geometry/maps and
+Play/thumbnail/actor/guide materials stay unchanged. Unsupported materials or
+field/shader failures visibly explain unapplied lighting; fallback is not proof
+of required native-surface support. This is editor appearance, not occlusion,
+physical transport, gameplay lighting, sight or darkvision.
+
+The one document/history owner enforces strict pair-creation and ordinary
+boundary-definition gates. Unresolved alone is valid metadata; it does not relax
+existing invalid-policy gates. Accepted no-ops do not add history/storage writes.
+The source map and conservative geometric refusals live in the
+[region walkthrough](../../../docs/architecture/components/encounter-studio-regions/README.md).
+Provider carriage/export acceptance requires a separate actual-pin probe; this
+contract makes no provider readiness claim.
+
 ## Structural-wall authoring (#527 in rpg-project)
 
 The room document optionally carries `room.walls`. Each wall owns a stable id,
@@ -308,13 +549,11 @@ and the saved snapshot list with open), `Publish & Play`
 `Save`/`Reload`/`New` and publish verbs are refused while a publishing
 transaction runs, and the route keeps its `publishingBusy` nav lock.
 
-**The site scope persists with the draft** (#1160). `factions`/`dispositions`
-are editor state carried in the room document's history entry, and the local
-draft's storage envelope — under the same `ROOM_DRAFT_STORAGE_KEY` — carries
-them beside the `draft` in a **v4** envelope, emitted only when a scope is
-authored; a document that authors none keeps the byte-identical **v3** bytes
-and reads back unchanged. Authoring is therefore not lost on reload, and a
-reloaded room publishes the document it was saved as. **Semantic checks are the
+**The site scope persists with the draft** (#1160). All supported scope fields
+are editor state carried in the room document's history entry and beside the
+`draft` in the current **v5** local envelope under `ROOM_DRAFT_STORAGE_KEY`.
+Empty normalized scope is omitted. Authoring is therefore not lost on reload,
+and a reloaded room publishes the document it was saved as. **Semantic checks are the
 SERVER's**: the `Publish & Play` `validate_only` preview (with a deliberate
 `Validate with server` verb) surfaces the engine's path-addressed refusals
 verbatim. The client's strict-shape layer refuses only what it cannot
@@ -517,10 +756,12 @@ SceneEnvelope {
   kind: "rpg-world-building-scene"
   version: 1
   scene: WorldScene {
-    version: 1
+    version: 1 | 2 | 3 | 4
     id, name
     items: WorldProp[]
     groups: WorldGroup[]
+    mapLabels?: [{ id, text, location: { x, z } }] // scene 2/3/4
+    authoringRegions?: AuthoringRegion[] // scene 3/4; optional lighting only in4
   }
 }
 
@@ -564,7 +805,8 @@ LibraryEnvelope {
 }
 ```
 
-Bounds are deliberately finite: X/Z `[-12, 12]`, Y `[0, 8]`, at most 200
+Standalone prop-composer bounds are deliberately finite: X/Z `[-12, 12]`,
+Y `[0, 8]`, at most 200
 props and 80 groups per scene/arrangement, at most 40 arrangements, strings up
 to their field-specific limits, rotations within `[-100π, 100π]`, and imported
 JSON up to 500,000 characters. Parsers reject malformed/wrong-version
@@ -579,7 +821,8 @@ composition placement applies once. Rendering selects at most the established
 12 point lights: dungeon selection uses its current view focus, while composer
 and standalone/thumbnail selection currently use the composition origin rather
 than camera position. Authored sources illuminate meshes but do not add crypt
-floor pools. This is visual rendering only: intensity is not a physical
+floor pools. Studio's configured-only Basic floor receiver is the independent
+visual authoring path described above, not a gameplay pool. This is visual rendering only: intensity is not a physical
 measurement, range is not D&D bright/dim distance, and no visibility or
 lit-cell facts are computed.
 
@@ -608,11 +851,18 @@ promotion shape.
 
 ## Shared renderer and asset receipt
 
-Generated catalog entries receive palette thumbnails automatically from the
-browser's existing serial composition-thumbnail capture surface, using the
-exact asset ref and promoted GLB hash as cache identity. There is no operator
-bake, thumbnail promotion, persisted composition, or second asset pipeline;
-legacy baked PNGs (including the Skeleton Dog Plushie) remain unchanged.
+Generated catalog entries use provider-published default-appearance 128×128 PNGs.
+The catalog binds path, digest, byte size and dimensions; its generator verifies
+provider and synchronized bytes and includes the image digest in the URL for
+cache invalidation. The world provider pin owns both `world-assets/` and
+`thumbnails/world-assets/`. Older pins without thumbnails cannot inherit newer
+HEAD thumbnails.
+
+Catalog browsing never mounts a GLB thumbnail renderer. Image loading/error state
+belongs to the image component, not document history or the palette owner. An
+absent or failed image yields a named selectable placeholder; it never triggers
+automatic model capture. Actual placement still loads the selected model.
+Composition/NPC capture and legacy baked PNGs remain separate and unchanged.
 
 `PropModel` retains its default `source-origin` behavior for every existing game
 caller. The concept opts into `bounds-floor-center`, measured from the loaded
@@ -714,7 +964,10 @@ Notable measured facts from `browser-evidence.json`:
   The harness returns valid empty gRPC-web responses only to unrelated App hooks
   and records them separately; World Building makes no API request.
 
-## Remaining limits
+## Standalone prop-composition limits
+
+These limits describe the original prop composer, not current room-mode or
+Encounter Studio floor/structural-wall authoring.
 
 - Persistence is browser-local only: no campaign wiring, backend promotion,
   collaboration, sharing, ACLs, or marketplace behavior.

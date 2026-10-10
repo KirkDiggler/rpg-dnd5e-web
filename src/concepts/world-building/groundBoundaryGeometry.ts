@@ -1,10 +1,22 @@
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import * as THREE from 'three';
+import { workspaceBoundary, type RoomWorkspace } from './workspaceGeometry';
 
 export function createGroundBoundaryGeometry(
-  radius: number,
-  roomAuthoring: boolean
+  workspace: number | RoomWorkspace,
+  roomAuthoring: boolean = true
 ): THREE.BufferGeometry {
+  if (typeof workspace !== 'number' && workspace.kind === 'centered-odd-r') {
+    return new THREE.BufferGeometry().setFromPoints(
+      workspaceBoundary(workspace).flatMap(({ a, b }) =>
+        [a, b].map(
+          (p) => new THREE.Vector3(p.x, DUNGEON_SURFACE_Y + 0.015, p.z)
+        )
+      )
+    );
+  }
+  const radius =
+    typeof workspace === 'number' ? workspace : workspace.horizontalLimit + 1;
   if (roomAuthoring) {
     const ground = new THREE.CircleGeometry(radius, 6);
     const position = ground.getAttribute('position');

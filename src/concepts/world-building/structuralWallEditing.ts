@@ -437,6 +437,51 @@ export function resizeWallLength(input: {
   return { wall: next, appliedLength, clamped: geometry.clamped };
 }
 
+/** Reshape one endpoint toward a world point, keeping the opposite endpoint
+ * fixed. Protected collinear resize preserves opening world positions first;
+ * rotation then carries those openings (and their attached doors) with the
+ * wall. A clamped result lies on the requested ray at the applied radius, not
+ * at the unreachable cursor point. No independent opening/door pose is stored. */
+export function reshapeWallEndpoint(input: {
+  wall: StructuralWall;
+  endpoint: 'start' | 'end';
+  point: WorldPoint;
+}): { wall: StructuralWall; appliedLength: number; clamped: boolean } {
+  finite(input.point.x, 'point.x');
+  finite(input.point.z, 'point.z');
+  const originalLength = wallLength(input.wall);
+  const fixedEndpoint = input.endpoint === 'start' ? 'end' : 'start';
+  const pivot = input.wall.line[fixedEndpoint];
+  const dx = input.point.x - pivot.x;
+  const dz = input.point.z - pivot.z;
+  const length = Math.hypot(dx, dz);
+  finitePositive(length, 'endpoint radius');
+  const originalPoint = input.wall.line[input.endpoint];
+  // Even a zero-angle transform or same-length resize can round a diagonal
+  // line. Exact unchanged input is a value no-op, with the usual fresh copy.
+  if (input.point.x === originalPoint.x && input.point.z === originalPoint.z) {
+    return {
+      wall: cloneWall(input.wall),
+      appliedLength: originalLength,
+      clamped: false,
+    };
+  }
+  const resized = resizeWallLength({
+    wall: input.wall,
+    endpoint: input.endpoint,
+    length,
+  });
+  const resizedPoint = resized.wall.line[input.endpoint];
+  const angle =
+    Math.atan2(dz, dx) -
+    Math.atan2(resizedPoint.z - pivot.z, resizedPoint.x - pivot.x);
+  return {
+    ...resized,
+    wall:
+      angle === 0 ? resized.wall : rotateWall(resized.wall, { angle, pivot }),
+  };
+}
+
 /** Replace a wall's appearance. The blocker rectangle, openings and identity
  * are untouched, so an asset swap can never change what the wall blocks. */
 export function setWallAppearance(

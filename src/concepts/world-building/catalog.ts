@@ -99,6 +99,7 @@ const generatedEntries: GeneratedWorldBuildingCatalogEntry[] = Object.values(
     ref: asset.ref,
     label: asset.displayName,
     category: asset.category,
+    thumbnail: asset.thumbnail?.url,
     asset,
     // This is provider-authored data. Do not infer support behavior from a
     // category, label, tag, or measured dimensions.
