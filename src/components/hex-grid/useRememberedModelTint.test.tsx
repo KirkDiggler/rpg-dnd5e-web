@@ -50,6 +50,7 @@ describe('single per-instance memory/lighting material owner', () => {
     const a = new THREE.Mesh(geometry, [source, source]),
       b = new THREE.Mesh(geometry, source);
     root.add(a, b);
+    const originalArray = a.material;
     const sourceDispose = vi.spyOn(source, 'dispose'),
       mapDispose = vi.spyOn(map, 'dispose'),
       geometryDispose = vi.spyOn(geometry, 'dispose'),
@@ -60,7 +61,7 @@ describe('single per-instance memory/lighting material owner', () => {
         <Owner root={root} />
       </StrictMode>
     );
-    expect(a.material).toEqual([source, source]);
+    expect(a.material).toBe(originalArray);
     expect(b.material).toBe(source);
     expect(clone).not.toHaveBeenCalled();
     view.rerender(
@@ -81,7 +82,7 @@ describe('single per-instance memory/lighting material owner', () => {
     expect(b.material).toBe(owned);
     expect(clone).toHaveBeenCalledTimes(1);
     view.unmount();
-    expect(a.material).toEqual([source, source]);
+    expect(a.material).toBe(originalArray);
     expect(b.material).toBe(source);
     expect(dispose).toHaveBeenCalledOnce();
     expect(sourceDispose).not.toHaveBeenCalled();

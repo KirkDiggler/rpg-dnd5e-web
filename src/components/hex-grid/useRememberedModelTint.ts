@@ -21,6 +21,9 @@ export function useRememberedModelTint(
   const [provenance] = useState(
     () => new WeakMap<THREE.Material, THREE.Material>()
   );
+  const [arrayProvenance] = useState(
+    () => new WeakMap<THREE.Material[], THREE.Material[]>()
+  );
   useEffect(() => {
     const root = 'current' in object ? object.current : object;
     if (!root) return;
@@ -62,14 +65,16 @@ export function useRememberedModelTint(
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
       const source = Array.isArray(mesh.material)
-        ? mesh.material.map(original)
+        ? (arrayProvenance.get(mesh.material) ?? mesh.material)
         : original(mesh.material);
       originals.set(mesh, source);
-      if (remembered || visualLighting)
-        mesh.material = Array.isArray(source)
-          ? source.map(treat)
-          : treat(source);
-      else mesh.material = source;
+      if (remembered || visualLighting) {
+        if (Array.isArray(source)) {
+          const materials = source.map(treat);
+          arrayProvenance.set(materials, source);
+          mesh.material = materials;
+        } else mesh.material = treat(source);
+      } else mesh.material = source;
     });
     return () => {
       originals.forEach((source, mesh) => {
@@ -80,6 +85,7 @@ export function useRememberedModelTint(
   }, [
     object,
     provenance,
+    arrayProvenance,
     remembered,
     revision,
     visualLighting,
