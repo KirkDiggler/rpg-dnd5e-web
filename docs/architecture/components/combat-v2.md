@@ -62,6 +62,14 @@ pointer for scrolling, and keyboard focus can pin it without selecting. Its
 position clears the measured collection menu, while dimensions stay bounded by
 the owning frame. Provider refreshes replace the text under the same current ID.
 
+The desktop action reader retains its named offer during pointer travel across
+empty space, so even a far-right icon's long text can be reached and scrolled.
+Another offer replaces it; withdrawal removes it. Close/Escape dismisses only
+information and returns focus to the action sections. Outside presses and other
+dock-control hover/focus dismiss it without swallowing their input. Opening
+never takes focus or dispatches a command; no invisible map-wide hover shield or
+timed transit window is used.
+
 Cast and reaction choices show `CastOption.description` before commitment,
 outside the action button so stale/disabled controls do not dim their explanation.
 Compact option lists scroll under width pressure; their bounded description

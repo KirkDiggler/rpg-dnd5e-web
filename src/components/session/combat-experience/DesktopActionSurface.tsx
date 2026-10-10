@@ -38,6 +38,8 @@ export function DesktopActionSurface({
 }: OrganizedActionSurfaceProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const choiceRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
+  const groupsRef = useRef<HTMLDivElement>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(0);
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -66,6 +68,48 @@ export function DesktopActionSurface({
   const [feedback, setFeedback] = useState('');
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [pointerInCard, setPointerInCard] = useState(false);
+  // Keep the named reader during pointer travel across the map, not on a timer.
+  // Other dock controls and deliberate outside clicks end that reading session.
+  useEffect(() => {
+    if (!inspectedId) return;
+    const otherControl = (event: Event): void => {
+      const target = event.target;
+      const surface = surfaceRef.current;
+      if (!(target instanceof Element) || !surface) return;
+      if (readerRef.current?.contains(target)) return;
+      if (surface.contains(target) && target.closest('[data-offer-id]')) return;
+      const dock = surface.closest('[data-desktop-dock]') ?? surface;
+      if (
+        dock.contains(target) &&
+        target.closest('button, select, input, a, [role="button"]')
+      )
+        setInspectedId(null);
+    };
+    const pointerOver = (event: PointerEvent): void => {
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen')
+        otherControl(event);
+    };
+    const outsidePress = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !surfaceRef.current?.contains(event.target)
+      )
+        setInspectedId(null);
+    };
+    window.addEventListener('pointerover', pointerOver);
+    window.addEventListener('focusin', otherControl);
+    window.addEventListener('pointerdown', outsidePress, true);
+    return () => {
+      window.removeEventListener('pointerover', pointerOver);
+      window.removeEventListener('focusin', otherControl);
+      window.removeEventListener('pointerdown', outsidePress, true);
+    };
+  }, [inspectedId]);
+  const closeInspection = (): void => {
+    setInspectedId(null);
+    setPointerInCard(false);
+    groupsRef.current?.focus();
+  };
   const groups = desktopHotbarGroups(declarations, presentation);
   const offers = groups.flatMap((group) => group.offers);
   const inspected = offers.find((offer) => offer.id === inspectedId);
@@ -173,10 +217,7 @@ export function DesktopActionSurface({
       data-embedded={embedded}
       data-editing={editing}
       data-rows={rows}
-      onPointerLeave={() => {
-        setInspectedId(null);
-        setPointerInCard(false);
-      }}
+      onPointerLeave={() => setPointerInCard(false)}
       onBlur={(event) => {
         if (
           !event.currentTarget.contains(event.relatedTarget) &&
@@ -188,12 +229,17 @@ export function DesktopActionSurface({
         if (event.key === 'Escape' && (editing || choosing || inspectedId)) {
           if (editing) setEditMode(false);
           else if (choosing) cancelChoice();
-          else setInspectedId(null);
+          else closeInspection();
           event.stopPropagation();
         }
       }}
     >
-      <div className={styles.groups} aria-label="Action sections" tabIndex={0}>
+      <div
+        ref={groupsRef}
+        className={styles.groups}
+        aria-label="Action sections"
+        tabIndex={0}
+      >
         {groups.map((group) => (
           <DesktopActionSection
             key={group.key}
@@ -334,6 +380,7 @@ export function DesktopActionSurface({
       {!choosing && inspected && tooltip && (
         <div className={styles.inspectionBridge}>
           <div
+            ref={readerRef}
             className={styles.inspection}
             role="tooltip"
             aria-label={`${tooltip.title} details`}
@@ -357,6 +404,14 @@ export function DesktopActionSurface({
                 <small>{slotLabel(inspected.slot)}</small>
                 <strong>{tooltip.title}</strong>
               </div>
+              <button
+                type="button"
+                className={styles.closeInspection}
+                aria-label="Close action information"
+                onClick={closeInspection}
+              >
+                Close
+              </button>
             </header>
             <ActionInformationContent
               description={tooltip.description}

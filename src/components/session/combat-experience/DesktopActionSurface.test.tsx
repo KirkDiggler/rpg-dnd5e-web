@@ -310,7 +310,82 @@ describe('DesktopActionSurface', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
     expect(select).not.toHaveBeenCalled();
     fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Cure Wounds');
+  });
+  it('keeps the named reader across empty-space transit, with inert scroll, click and close', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        armedDeclarationId="bane"
+        onSelectDeclaration={select}
+        onCancelSelection={cancel}
+      />
+    );
+    const focus = document.activeElement;
+    const enter = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(enter, 'pointerType', { value: 'mouse' });
+    fireEvent(screen.getByRole('button', { name: 'Cure Wounds' }), enter);
+    const reader = screen.getByRole('tooltip');
+    expect(document.activeElement).toBe(focus);
+    fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
+    fireEvent.pointerOver(document.body);
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    fireEvent.pointerEnter(reader);
+    fireEvent.wheel(reader, { deltaY: 300 });
+    fireEvent.click(reader);
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close action information' })
+    );
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(document.activeElement).toHaveAttribute(
+      'aria-label',
+      'Action sections'
+    );
+    fireEvent.focus(screen.getByRole('button', { name: 'Cure Wounds' }));
+    fireEvent.keyDown(screen.getByRole('tooltip'), { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(select).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+  it('dismisses on other dock controls and outside clicks but not its own reader or offers', () => {
+    render(
+      <div data-desktop-dock>
+        <button>Inspect status</button>
+        <DesktopActionSurface {...defaults} />
+      </div>
+    );
+    const open = () =>
+      fireEvent.focus(screen.getByRole('button', { name: 'Bane' }));
+    const over = (element: Element, pointerType = 'mouse') => {
+      const event = new MouseEvent('pointerover', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: pointerType });
+      fireEvent(element, event);
+    };
+    open();
+    over(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Bane');
+    over(screen.getByRole('button', { name: 'Inspect status' }), 'touch');
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    over(screen.getByRole('button', { name: 'Inspect status' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    fireEvent.focusIn(screen.getByRole('button', { name: 'Inspect status' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    over(screen.getByRole('combobox', { name: 'Hotbar rows' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    open();
+    fireEvent.pointerDown(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
   it('keeps refused actions inspectable and blocks dispatch, while the supplied bonus action works', () => {
     const select = vi.fn();

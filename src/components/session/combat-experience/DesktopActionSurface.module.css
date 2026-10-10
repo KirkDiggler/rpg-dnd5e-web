@@ -405,6 +405,19 @@
 .inspection:focus-visible {
   outline: 2px solid #f0d99f;
 }
+.closeInspection {
+  margin-left: auto;
+  align-self: flex-start;
+  padding: 4px 8px;
+  color: #eee9dd;
+  background: #28343b;
+  border: 1px solid #8e7954;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.closeInspection:focus-visible {
+  outline: 2px solid #f0d99f;
+}
 .inspection header {
   display: flex;
   align-items: center;
