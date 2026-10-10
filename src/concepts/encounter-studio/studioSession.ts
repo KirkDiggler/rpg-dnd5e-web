@@ -22,6 +22,7 @@ export type {
   AuthoringRegion,
   BoundaryRun,
   EnclosureWitness,
+  RegionLighting,
   RegionResolution,
 } from '../world-building/authoringRegions';
 export type {

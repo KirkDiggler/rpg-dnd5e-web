@@ -1,7 +1,9 @@
 import {
   enclosureWitnessesEqual,
   validateAuthoringRegions,
+  validateRegionLighting,
   type AuthoringRegion,
+  type RegionLighting,
 } from './authoringRegions';
 import { createMapLabel } from './mapLabelEdits';
 import { findEnclosureAtPoint } from './regionBoundaryGeometry';
@@ -14,10 +16,14 @@ function requireRegion(draft: RoomDraft, id: string): AuthoringRegion {
   return region;
 }
 function withRegions(draft: RoomDraft, regions: AuthoringRegion[]): RoomDraft {
-  const scene = { ...draft.scene, version: 3 as const };
+  const scene = {
+    ...draft.scene,
+    version: draft.scene.version === 4 ? (4 as const) : (3 as const),
+  };
   // Whole-document cross-noun identities remain the owner validator's gate.
   const valid = validateAuthoringRegions(regions, scene.mapLabels ?? [], {
     workspace: draft.workspace,
+    allowLighting: scene.version === 4,
     reservedIds: new Set([
       draft.id,
       scene.id,
@@ -122,5 +128,34 @@ export function removeRegionAndLabel(
   return withRegions(
     { ...draft, scene },
     draft.scene.authoringRegions!.filter((r) => r.id !== regionId)
+  );
+}
+
+/** Null resets to absence. A real setting opts in to scene4; no helper demotes it. */
+export function setRegionLighting(
+  draft: RoomDraft,
+  regionId: string,
+  lighting: Readonly<RegionLighting> | null
+): RoomDraft {
+  const region = requireRegion(draft, regionId);
+  const value = lighting === null ? null : validateRegionLighting(lighting);
+  if (
+    value === null
+      ? !Object.hasOwn(region, 'lighting')
+      : region.lighting?.background === value.background
+  )
+    return draft;
+  const regions = draft.scene.authoringRegions!.map((r) => {
+    if (r.id !== regionId) return r;
+    const next = { ...r };
+    if (value === null) delete next.lighting;
+    else next.lighting = value;
+    return next;
+  });
+  return withRegions(
+    value === null
+      ? draft
+      : { ...draft, scene: { ...draft.scene, version: 4 } },
+    regions
   );
 }

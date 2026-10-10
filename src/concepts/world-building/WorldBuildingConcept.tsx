@@ -59,7 +59,9 @@ import {
   createRoomLabel,
   removeRegionAndLabel,
   setExplicitRegionArea,
+  setRegionLighting,
 } from './regionEdits';
+import { projectRegionLighting } from './regionLighting';
 import { addRepeatedProps } from './repeatPlacement';
 import {
   assertRoomDocumentSize,
@@ -3482,6 +3484,14 @@ export function WorldBuildingConcept({
     () => resolveAuthoringRegions(roomDraft),
     [roomDraft]
   );
+  const regionLighting = useMemo(
+    () =>
+      projectRegionLighting(
+        roomDraft.scene.authoringRegions ?? [],
+        regionResolutions
+      ),
+    [roomDraft, regionResolutions]
+  );
   const selectStudioLabel = (id: string | null): boolean => {
     if (refuseWhilePublishing()) return false;
     if (
@@ -3652,26 +3662,57 @@ export function WorldBuildingConcept({
           return commitRoomDocument({ ...current, draft });
         }
         case 'label-remove':
-        case 'label-edit':
           return applyRoomIntent((current) => {
             const label = current.draft.scene.mapLabels?.find(
               (candidate) => candidate.id === intent.target.id
             );
             if (!label) throw new Error('Label target no longer exists.');
-            let draft = current.draft;
-            if (intent.kind === 'label-remove')
-              draft = deleteMapLabel(draft, label.id);
-            else {
-              if (intent.text !== undefined)
-                draft = renameMapLabel(draft, label.id, intent.text);
-              if (intent.location)
-                draft = moveMapLabel(draft, label.id, {
-                  ...label.location,
-                  ...intent.location,
-                });
-            }
-            return { ...current, draft };
+            return {
+              ...current,
+              draft: deleteMapLabel(current.draft, label.id),
+            };
           });
+        case 'label-edit': {
+          const current = roomHistoryRef.current.present;
+          const label = current.draft.scene.mapLabels?.find(
+            (candidate) => candidate.id === intent.target.id
+          );
+          if (!label) throw new Error('Label target no longer exists.');
+          let draft = current.draft;
+          if (Object.hasOwn(intent, 'regionLighting')) {
+            const patch = intent.regionLighting!;
+            const linked = current.draft.scene.authoringRegions?.find(
+              (region) => region.id === patch.regionId
+            );
+            if (
+              arrange.kind !== 'label' ||
+              arrange.region?.id !== patch.regionId ||
+              arrange.region.labelId !== label.id ||
+              !linked ||
+              linked.labelId !== label.id
+            )
+              return false;
+            draft = setRegionLighting(draft, patch.regionId, patch.value);
+          }
+          if (intent.text !== undefined)
+            draft = renameMapLabel(draft, label.id, intent.text);
+          if (intent.location)
+            draft = moveMapLabel(draft, label.id, {
+              ...label.location,
+              ...intent.location,
+            });
+          // Explicit label tokens, even equal values, and empty old intent
+          // retain the complete policy gate. Only lighting alone is ordinary.
+          const lightingOnly =
+            Object.hasOwn(intent, 'regionLighting') &&
+            !Object.hasOwn(intent, 'text') &&
+            !Object.hasOwn(intent, 'location');
+          return commitRoomDocument(
+            { ...current, draft },
+            selectedIds,
+            !lightingOnly
+          );
+        }
       }
     } catch (error) {
       return rejectEdit(error);
@@ -3925,7 +3966,11 @@ export function WorldBuildingConcept({
       ? {
           tool: roomTool,
           ...(isStudio
-            ? { doorEditing, intentEpoch: viewportGenerationRef.current }
+            ? {
+                doorEditing,
+                intentEpoch: viewportGenerationRef.current,
+                regionLighting,
+              }
             : {}),
           workspace: roomDraft.workspace,
           walkableHexes: roomDraft.room.walkableHexes,

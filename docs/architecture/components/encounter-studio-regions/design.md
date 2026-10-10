@@ -11,6 +11,9 @@ flowchart LR
     O --> E[regionEdits immutable transaction]
     E --> D
     O --> H[RoomDraftDocument history and codec]
+    D --> F[regionLighting configured resolved projection]
+    G --> F
+    F --> V[Studio viewport presentation seam]
   end
 ```
 
@@ -41,13 +44,14 @@ components consume the definition contract; the source map in
   selection, cancellation and publishing fences. Exact no-ops add no history or
   storage writes. Pair deletion removes only region and label; raw linked label
   deletion refuses.
-- **R6 — Scene3 is opt-in.** Scene1/2 refuse `authoringRegions`, retain their
+- **R6 — Scene versions are opt-in.** Scene1/2 refuse `authoringRegions`, retain their
   existing reads and are not upgraded by load. Label edits and resize preserve
-  scene3; empty region collections are omitted without demotion. Authored empty
-  explicit cells remain present. Storage envelope, room-draft and source-root
-  versions are separate axes, not promoted with the scene.
+  scene3/4; empty region collections are omitted without demotion. Only an actual
+  lighting write opts in to scene4; reset and last-pair deletion retain scene4. Scene3
+  refuses lighting, scene4 permits its absence. Authored empty explicit cells
+  remain present. Storage envelope, room-draft and source-root versions are separate axes, not promoted with the scene.
 - **R7 — Invalid intent fails closed.** Definitions have unique reserved IDs,
-  one-to-one existing label links and exact variants. Unknown scene3 intent is
+  one-to-one existing label links and exact variants. Unknown scene3/4 intent is
   refused, not stripped. Missing source walls are valid unresolved references.
   Comparison canonicalizes copies without rewriting accepted stored walks.
 - **R8 — Capacity belongs to the document and workspace.** Regions are bounded
@@ -77,24 +81,35 @@ components consume the definition contract; the source map in
   area overlap remain unresolved. Explicit overlap is a cell-set question;
   adjacency is not overlap. Automatic conflicts include containment. No hidden
   floor/cell transfer or overlap priority repairs another definition.
-- **R12 — Presentation is not gameplay.** This boundary contract has no region
-  lighting/sound placeholders, runtime visibility, engine rules or provider
-  acceptance claim. Such capabilities need their own owning contracts.
+- **R12 — Presentation is not gameplay.** Region background light is optional
+  Web visual intent, not gameplay illumination, sight, discovery, occlusion or
+  provider semantics. Placed light declarations remain independent. Sound and
+  engine capabilities need their own owning contracts; Web codec tests do not
+  establish provider acceptance.
+- **R13 — Optional lighting has one owner and honest extents.** Scene4 alone
+  permits `AuthoringRegion.lighting: {background: number}`, an exact finite
+  0..1 shape without defaults. Absence is baseline appearance, distinct from
+  authored `1`. Reset removes the field; equal set/reset-absent are reference noops.
+  The existing label-edit intent joins dirty label fields and lighting into one
+  fenced transaction. Only lighting present with text/location absent uses the
+  ordinary document gate; explicit label fields (even equal values) and empty
+  old label intent retain strict policy validation. Save/export gates remain
+  strict. Pure projection includes only configured, currently resolved IDs;
+  unresolved/conflicting intent persists without any applied or cached extent.
+  Projection does not acquire a boundary or infer ownership from floor/props.
 
 ## Rulings
 
-| ID         | status  | scope                                                                                   | ruled by                                                                                                                                                                 | date                                |
-| ---------- | ------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                    | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                | Agreement record in linked issue    |
-| R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details               | Checked-plan record in linked issue |
-| R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance    | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel | 2026-10-10                          |
-| R12        | settled | Boundary-only scope; visual lighting, sound and gameplay bridge are separate increments | KirkDiggler product direction and parent-derived increment scope, [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                      | Agreement record in linked issue    |
+| ID         | status  | scope                                                                                                      | ruled by                                                                                                                                                                                                                                        | date                                              |
+| ---------- | ------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                                       | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                                                                                       | Agreement record in linked issue                  |
+| R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                                   | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details                                                                                      | Checked-plan record in linked issue               |
+| R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance                       | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel                                                                        | 2026-10-10                                        |
+| R12–R13    | settled | Optional visual lighting, scene4 opt-in, single transaction and honest projection; gameplay/sound excluded | KirkDiggler [product agreement](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093673500) and parent-derived [checked technical plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093792827) | Agreement and checked-plan record in linked issue |
 
 ## Open
 
-No required ownership or schema decision is open for this boundary increment.
-Visual region-lighting controls and their relationship to placed-asset lights
-are outside this contract (R12). Sound and engine illumination/visibility need
-separate provider-owned contracts (R12). Curved/polyline sources, holes, exact
-arithmetic fallback and broader angled junction support require an explicit
+No required ownership or schema decision is open for optional visual intent.
+Sound and engine illumination/visibility need separate provider-owned contracts
+(R12). Curved/polyline sources, holes, exact arithmetic fallback and broader angled junction support require an explicit
 extension of the supported geometry and witness proof (R9–R10).

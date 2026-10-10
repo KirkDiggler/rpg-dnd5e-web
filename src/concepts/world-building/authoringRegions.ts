@@ -13,9 +13,11 @@ export type BoundaryRun = {
   direction: 'start-to-end' | 'end-to-start';
 };
 export type EnclosureWitness = { walk: BoundaryRun[] };
+export type RegionLighting = { background: number };
 export type AuthoringRegion = {
   id: string;
   labelId: string;
+  lighting?: RegionLighting;
   boundary:
     | { kind: 'automatic'; witness?: EnclosureWitness }
     | { kind: 'explicit'; cells: RoomHexCell[] };
@@ -139,11 +141,32 @@ export function validateEnclosureWitness(
   return { walk };
 }
 
+/** Exact optional visual intent: absence is not an authored baseline value. */
+export function validateRegionLighting(
+  value: unknown,
+  path = 'Region lighting'
+): RegionLighting {
+  const input = objectShape(value, path);
+  rejectUnknownKeys(input, ['background'], path);
+  if (
+    typeof input.background !== 'number' ||
+    !Number.isFinite(input.background) ||
+    input.background < 0 ||
+    input.background > 1
+  )
+    throw new Error(`${path}.background must be a finite number from 0 to 1.`);
+  return { background: input.background };
+}
+
 /** No geometry acquisition or default fields. Workspace absence means no guessed bounds. */
 export function validateAuthoringRegions(
   value: unknown,
   labels: readonly MapLabel[],
-  options: { workspace?: RoomWorkspace; reservedIds?: ReadonlySet<string> } = {}
+  options: {
+    workspace?: RoomWorkspace;
+    reservedIds?: ReadonlySet<string>;
+    allowLighting?: boolean;
+  } = {}
 ): AuthoringRegion[] {
   if (!Array.isArray(value) || value.length > labels.length)
     throw new Error(
@@ -155,7 +178,19 @@ export function validateAuthoringRegions(
   return value.map((value, index): AuthoringRegion => {
     const path = `scene.authoringRegions[${index}]`;
     const input = objectShape(value, path);
-    rejectUnknownKeys(input, ['id', 'labelId', 'boundary'], path);
+    rejectUnknownKeys(
+      input,
+      [
+        'id',
+        'labelId',
+        'boundary',
+        ...(options.allowLighting ? ['lighting'] : []),
+      ],
+      path
+    );
+    const lighting = Object.hasOwn(input, 'lighting')
+      ? { lighting: validateRegionLighting(input.lighting, `${path}.lighting`) }
+      : {};
     const regionId = id(input.id, `${path}.id`);
     if (ids.has(regionId) || labelIds.has(regionId))
       throw new Error(`${path}.id: duplicate region identity ${regionId}.`);
@@ -172,6 +207,7 @@ export function validateAuthoringRegions(
       return {
         id: regionId,
         labelId,
+        ...lighting,
         boundary: {
           kind: 'automatic',
           ...(Object.hasOwn(boundary, 'witness')
@@ -214,6 +250,11 @@ export function validateAuthoringRegions(
         throw new Error(`${cellPath}: outside the authoring workspace.`);
       return parsed;
     });
-    return { id: regionId, labelId, boundary: { kind: 'explicit', cells } };
+    return {
+      id: regionId,
+      labelId,
+      ...lighting,
+      boundary: { kind: 'explicit', cells },
+    };
   });
 }

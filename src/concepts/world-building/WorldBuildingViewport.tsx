@@ -32,6 +32,7 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import type { RegionLightingProjection } from './regionLighting';
 import { layoutRepeatedProps } from './repeatPlacement';
 import { RepeatPlacementPreview } from './RepeatPlacementPreview';
 import {
@@ -108,6 +109,8 @@ export interface WorldBuildingViewportProps {
    * world units by both model loaders. */
   onMeasuredBounds?: (id: string, measurement: MeasuredWorldPropBounds) => void;
   roomAuthoring?: {
+    /** Committed Studio-only configured/resolved areas; no preview acquisition. */
+    regionLighting?: RegionLightingProjection;
     tool:
       | 'select'
       | 'move'

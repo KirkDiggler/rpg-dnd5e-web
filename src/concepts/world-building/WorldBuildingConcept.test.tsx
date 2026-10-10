@@ -4627,6 +4627,54 @@ describe('Room transaction compatibility and retirement', () => {
     expect(session!.document).toBe(beforeCreation);
     const region = session!.document.draft.scene.authoringRegions![0];
     act(() => session!.mapLabelSelection.select(region.labelId));
+    const beforeLighting = session!.document;
+    const writesBeforeLighting = storage.writes;
+    const lightingIntent = {
+      kind: 'label-edit' as const,
+      target: { kind: 'label' as const, id: region.labelId },
+      regionLighting: { regionId: region.id, value: { background: 0.15 } },
+    };
+    for (const explicitLabel of [
+      { text: 'Room' },
+      { location: { x: 0, z: 0 } },
+    ]) {
+      act(() =>
+        expect(
+          session!.commitArrange({ ...lightingIntent, ...explicitLabel })
+        ).toBe(false)
+      );
+      expect(session!.document).toBe(beforeLighting);
+    }
+    act(() =>
+      expect(
+        session!.commitArrange({
+          kind: 'label-edit',
+          target: lightingIntent.target,
+        })
+      ).toBe(false)
+    );
+    act(() => expect(session!.commitArrange(lightingIntent)).toBe(true));
+    const lit = session!.document;
+    expect(lit.draft.scene.version).toBe(4);
+    expect(lit.draft.scene.authoringRegions![0].lighting).toEqual({
+      background: 0.15,
+    });
+    expect(lit.scope).toEqual(policy);
+    act(() => expect(session!.commitArrange(lightingIntent)).toBe(true));
+    expect(session!.document).toBe(lit);
+    act(() => session!.saveLocalDraft());
+    expect(() => stringifyRoomDraft(lit.draft, lit.scope)).toThrow(
+      /must name a fact/
+    );
+    expect(() =>
+      encodeSingleRoomDungeon({
+        key: 'incomplete',
+        draft: lit.draft,
+        ...lit.scope,
+      })
+    ).toThrow(/must name a fact/);
+    expect(storage.writes).toBe(writesBeforeLighting);
+    expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     act(() =>
       expect(session!.regionEditing.setExplicitRegionArea(region.id, [])).toBe(
         true
@@ -4987,6 +5035,273 @@ describe('Studio owner facade', () => {
     expect(loaded.session.document).toEqual(painted);
   });
 
+  it('one joined label form is one history step; absence/authored1/reset, noops and reload preserve the whole payload', () => {
+    const owner = mountStudio(populatedStorage(), true);
+    act(() =>
+      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const target = { kind: 'label' as const, id: region.labelId };
+    const before = structuredClone(owner.session.document);
+    const baselineDocument = owner.session.document;
+    const baselineBytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const baselineWrites = owner.storage.writes;
+    for (let i = 0; i < 3; i++)
+      act(() =>
+        expect(
+          owner.session.commitArrange({
+            kind: 'label-edit',
+            target,
+            regionLighting: { regionId: region.id, value: null },
+          })
+        ).toBe(true)
+      );
+    expect(owner.session.document).toBe(baselineDocument);
+    expect(owner.session.document.draft.scene.version).toBe(3);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(baselineBytes);
+    expect(owner.storage.writes).toBe(baselineWrites);
+    const joined = {
+      kind: 'label-edit' as const,
+      target,
+      text: 'Kitchen',
+      location: { x: 1, z: 0 },
+      regionLighting: { regionId: region.id, value: { background: 1 } },
+    };
+    act(() => expect(owner.session.commitArrange(joined)).toBe(true));
+    const accepted = owner.session.document;
+    const expected = structuredClone(before);
+    expected.draft.scene.version = 4;
+    expected.draft.scene.mapLabels![0].text = 'Kitchen';
+    expected.draft.scene.mapLabels![0].location = { x: 1, z: 0 };
+    expected.draft.scene.authoringRegions![0].lighting = { background: 1 };
+    expect(accepted).toEqual(expected);
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'label',
+      region: { lighting: { background: 1 } },
+      resolution: { reason: 'unbound' },
+    });
+    expect(owner.session.viewportProps.roomAuthoring?.regionLighting).toEqual({
+      areas: [],
+    });
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    for (let i = 0; i < 3; i++)
+      act(() => expect(owner.session.commitArrange(joined)).toBe(true));
+    expect(owner.session.document).toBe(accepted);
+    expect(owner.storage.writes).toBe(writes);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    expect(
+      owner.session.document.draft.scene.authoringRegions![0]
+    ).not.toHaveProperty('lighting');
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(accepted);
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'label-edit',
+          target,
+          regionLighting: { regionId: region.id, value: null },
+        })
+      ).toBe(true)
+    );
+    const reset = owner.session.document;
+    expect(reset.draft.scene.version).toBe(4);
+    expect(reset.draft.scene.authoringRegions![0]).not.toHaveProperty(
+      'lighting'
+    );
+    const resetWrites = owner.storage.writes;
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'label-edit',
+          target,
+          regionLighting: { regionId: region.id, value: null },
+        })
+      ).toBe(true)
+    );
+    expect(owner.session.document).toBe(reset);
+    expect(owner.storage.writes).toBe(resetWrites);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(accepted);
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(reset);
+    owner.unmount();
+    const loaded = mountStudio(owner.storage);
+    expect(loaded.session.document).toEqual(reset);
+  });
+
+  it('invalid joined lighting and stale/wrong linked targets refuse atomically with zero history or storage writes', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() =>
+      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const target = { kind: 'label' as const, id: region.labelId };
+    const before = owner.session.document;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    for (const value of [
+      undefined,
+      {},
+      { background: 101 },
+      { background: NaN },
+      { background: Infinity },
+      { background: 0.15, tint: 'red' },
+    ]) {
+      act(() =>
+        expect(
+          owner.session.commitArrange({
+            kind: 'label-edit',
+            target,
+            text: 'Valid rename',
+            location: { x: 1 },
+            regionLighting: { regionId: region.id, value: value as never },
+          })
+        ).toBe(false)
+      );
+      expect(owner.session.document).toBe(before);
+    }
+    for (const regionId of ['missing', 'studio-wall'])
+      act(() =>
+        expect(
+          owner.session.commitArrange({
+            kind: 'label-edit',
+            target,
+            text: 'Valid rename',
+            regionLighting: { regionId, value: { background: 0.15 } },
+          })
+        ).toBe(false)
+      );
+    act(() =>
+      expect(
+        owner.session.commitArrange({
+          kind: 'label-edit',
+          target,
+          text: 'Valid rename',
+          location: { x: 9999 },
+          regionLighting: { regionId: region.id, value: { background: 0.15 } },
+        })
+      ).toBe(false)
+    );
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.writes).toBe(writes);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.scene).not.toHaveProperty(
+      'authoringRegions'
+    );
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('owner projection follows accepted area edits, not wall gesture previews, and clears on unresolved intent', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() =>
+      owner.session.regionEditing.createRoomLabel('Forest', { x: 0, z: 0 })
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const target = { kind: 'label' as const, id: region.labelId };
+    act(() =>
+      owner.session.commitArrange({
+        kind: 'label-edit',
+        target,
+        regionLighting: { regionId: region.id, value: { background: 0.15 } },
+      })
+    );
+    act(() =>
+      owner.session.regionEditing.setExplicitRegionArea(region.id, [
+        { q: 0, r: 0 },
+      ])
+    );
+    const field = owner.session.viewportProps.roomAuthoring!.regionLighting;
+    expect(field).toEqual({
+      areas: [
+        {
+          regionId: region.id,
+          background: 0.15,
+          area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+        },
+      ],
+    });
+    owner.rerender();
+    expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toBe(
+      field
+    );
+    act(() => owner.session.wallEditing.select('studio-wall'));
+    const wall = structuredClone(owner.session.document.draft.room.walls![0]);
+    wall.line.start.x += 1;
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onWallTransformPreview!(wall)
+    );
+    expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toBe(
+      field
+    );
+    act(() => owner.session.cancelTransients());
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    act(() => owner.session.regionEditing.setExplicitRegionArea(region.id, []));
+    expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toEqual({
+      areas: [],
+    });
+    expect(
+      owner.session.document.draft.scene.authoringRegions![0].lighting
+    ).toEqual({ background: 0.15 });
+    act(() => owner.session.undo());
+    expect(owner.session.viewportProps.roomAuthoring!.regionLighting).toEqual(
+      field
+    );
+  });
+
+  it('lighting callbacks retire on target round-trip, epoch, view, document, preview and unmount', () => {
+    const owner = mountStudio(populatedStorage(), true);
+    act(() =>
+      owner.session.regionEditing.createRoomLabel('Room', { x: 0, z: 0 })
+    );
+    const region = owner.session.document.draft.scene.authoringRegions![0];
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const intent = {
+      kind: 'label-edit' as const,
+      target: { kind: 'label' as const, id: region.labelId },
+      regionLighting: { regionId: region.id, value: { background: 0.15 } },
+    };
+    const stale = [owner.session];
+    act(() => {
+      owner.session.wallEditing.select('studio-wall');
+      owner.session.mapLabelSelection.select(region.labelId);
+      expect(stale[0].commitArrange(intent)).toBe(false);
+    });
+    stale.push(owner.session);
+    act(() => owner.session.cancelTransients());
+    stale.push(owner.session);
+    owner.switchView('layout');
+    owner.switchView('3d');
+    stale.push(owner.session);
+    act(() => owner.session.renameDocument('Changed document'));
+    stale.push(owner.session);
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    const scene = structuredClone(owner.session.viewportProps.scene);
+    scene.items[0].transform.x += 1;
+    act(() => owner.session.viewportProps.onTransformPreview(scene));
+    expect(owner.session.viewportProps.previewScene).toEqual(scene);
+    const before = owner.session.document;
+    const bytes = owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY);
+    const writes = owner.storage.writes;
+    for (const retired of stale)
+      act(() => expect(retired.commitArrange(intent)).toBe(false));
+    expect(owner.session.document).toBe(before);
+    expect(owner.storage.writes).toBe(writes);
+    expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    act(() => owner.session.cancelTransients());
+    act(() => owner.session.mapLabelSelection.select(region.labelId));
+    const unmounted = owner.session;
+    owner.unmount();
+    expect(unmounted.commitArrange(intent)).toBe(false);
+    expect(owner.storage.writes).toBe(writes);
+  });
+
   it('fresh region facade refuses every definition intent under the publishing lock', async () => {
     const document = createPopulatedStudioDocument();
     document.draft.scene.version = 3;
@@ -5052,6 +5367,13 @@ describe('Studio owner facade', () => {
         false
       );
       expect(session!.regionEditing.removeRegionAndLabel('region')).toBe(false);
+      expect(
+        session!.commitArrange({
+          kind: 'label-edit',
+          target: { kind: 'label', id: 'room-label' },
+          regionLighting: { regionId: 'region', value: { background: 0.15 } },
+        })
+      ).toBe(false);
     });
     expect(session!.document).toBe(before);
     expect(storage.writes).toBe(writes);

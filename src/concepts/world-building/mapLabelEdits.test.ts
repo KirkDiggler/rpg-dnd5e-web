@@ -5,6 +5,7 @@ import {
   moveMapLabel,
   renameMapLabel,
 } from './mapLabelEdits';
+import { createRoomLabel, setRegionLighting } from './regionEdits';
 import {
   createRoomDraft,
   resizeRoomWorkspace,
@@ -162,4 +163,26 @@ describe('scene3 linked-label preservation', () => {
     expect(() => deleteMapLabel(draft, 'label')).toThrow(/region-and-label/);
     expect(stringifyRoomDraft(draft)).toBe(bytes);
   });
+});
+
+it('all label helpers retain scene4 settings; equal rename/move preserve exact bytes and refs', () => {
+  const draft = setRegionLighting(
+    createRoomLabel(empty(), 'region', 'label', 'Room', { x: 0, z: 0 }),
+    'region',
+    { background: 0.153728 }
+  );
+  const bytes = stringifyRoomDraft(draft);
+  expect(renameMapLabel(draft, 'label', 'Room')).toBe(draft);
+  expect(moveMapLabel(draft, 'label', { x: 0, z: 0 })).toBe(draft);
+  expect(stringifyRoomDraft(draft)).toBe(bytes);
+  const created = createMapLabel(draft, 'note', 'Note', { x: 1, z: 0 });
+  for (const result of [
+    created,
+    renameMapLabel(created, 'note', 'Changed'),
+    moveMapLabel(created, 'note', { x: 2, z: 0 }),
+    deleteMapLabel(created, 'note'),
+  ]) {
+    expect(result.scene.version).toBe(4);
+    expect(result.scene.authoringRegions).toEqual(draft.scene.authoringRegions);
+  }
 });

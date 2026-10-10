@@ -59,10 +59,10 @@ export interface MapLabel {
 }
 
 export interface WorldScene {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   /** Presentation-only annotations; version 1 refuses this metadata. */
   mapLabels?: MapLabel[];
-  /** Scene3 author intent only, never gameplay regions or a saved derived polygon. */
+  /** Scene3/4 author intent only, never gameplay regions or a saved derived polygon. */
   authoringRegions?: AuthoringRegion[];
   id: string;
   name: string;

@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { createRoomLabel, setExplicitRegionArea } from './regionEdits';
+import {
+  createRoomLabel,
+  setExplicitRegionArea,
+  setRegionLighting,
+} from './regionEdits';
 import {
   createRoomDraft,
   placeRoomMonster,
@@ -786,4 +790,28 @@ describe('Arrange atomic actor/start candidates', () => {
       })
     ).toThrow(/no longer exists/);
   });
+});
+
+it('linked label Arrange carries canonical authored lighting even when unresolved, not a default', () => {
+  const value = setRegionLighting(
+    createRoomLabel(draft(), 'region-light', 'lighting-label', 'Room', {
+      x: 0,
+      z: 0,
+    }),
+    'region-light',
+    { background: 1 }
+  );
+  const result = projectStudioArrange({
+    draft: value,
+    target: { kind: 'label', id: 'lighting-label' },
+    selectionRevision: 3,
+  });
+  expect(result).toMatchObject({
+    kind: 'label',
+    region: { id: 'region-light', lighting: { background: 1 } },
+    resolution: { status: 'unresolved', reason: 'unbound' },
+  });
+  expect(value.scene.authoringRegions![0].boundary).not.toHaveProperty(
+    'witness'
+  );
 });

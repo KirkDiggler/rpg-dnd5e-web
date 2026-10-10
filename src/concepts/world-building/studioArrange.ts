@@ -1,4 +1,8 @@
-import type { AuthoringRegion, RegionResolution } from './authoringRegions';
+import type {
+  AuthoringRegion,
+  RegionLighting,
+  RegionResolution,
+} from './authoringRegions';
 import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
@@ -181,6 +185,10 @@ export type StudioArrangeIntent =
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
       readonly text?: string;
       readonly location?: Partial<WorldPoint>;
+      readonly regionLighting?: {
+        readonly regionId: string;
+        readonly value: Readonly<RegionLighting> | null;
+      };
     }
   | {
       readonly kind: 'label-remove';

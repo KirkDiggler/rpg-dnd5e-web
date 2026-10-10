@@ -1114,9 +1114,12 @@ function validateDraft(value: unknown): RoomDraft {
   if (
     workspace.kind === 'centered-odd-r' &&
     input.scene?.version !== 2 &&
-    input.scene?.version !== 3
+    input.scene?.version !== 3 &&
+    input.scene?.version !== 4
   )
-    throw new Error('Centered room workspace requires scene version 2 or 3.');
+    throw new Error(
+      'Centered room workspace requires scene version 2, 3 or 4.'
+    );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
     throw new Error(
@@ -1387,7 +1390,11 @@ export function resizeRoomWorkspace(
       scene: {
         ...document.draft.scene,
         version:
-          document.draft.scene.version === 3 ? (3 as const) : (2 as const),
+          document.draft.scene.version === 4
+            ? (4 as const)
+            : document.draft.scene.version === 3
+              ? (3 as const)
+              : (2 as const),
       },
     },
     scope: document.scope,

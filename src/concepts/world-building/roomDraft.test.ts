@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import { createMapLabel } from './mapLabelEdits';
+import {
+  createRoomLabel,
+  setExplicitRegionArea,
+  setRegionLighting,
+} from './regionEdits';
 import {
   assertRoomDocumentSize,
   clearRoomPartyStart,
@@ -1725,4 +1731,41 @@ describe('scene3 authoring intent codec and identity boundary', () => {
     expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(prior);
     expect(storage.writes).toEqual([]);
   });
+});
+
+it('scene4 full document JSON/reload/resize retains settings, scope and independent version axes', () => {
+  const document = createPopulatedStudioDocument();
+  document.draft = setRegionLighting(
+    createRoomLabel(
+      document.draft,
+      'lighting-region',
+      'lighting-label',
+      'Room',
+      { x: 0, z: 0 }
+    ),
+    'lighting-region',
+    { background: 0.153728 }
+  );
+  const bytes = stringifyRoomDraft(document.draft, document.scope);
+  expect(JSON.parse(bytes).version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
+  const loaded = parseRoomDocumentJson(bytes);
+  expect(loaded).toEqual(document);
+  expect(stringifyRoomDraft(loaded.draft, loaded.scope)).toBe(bytes);
+  const resized = resizeRoomWorkspace(loaded, 73, 48);
+  const expected = structuredClone(document);
+  expected.draft.workspace = resized.draft.workspace;
+  expect(resized).toEqual(expected);
+  expect(resizeRoomWorkspace(resized, 73, 48)).toBe(resized);
+  for (const draft of [
+    document.draft,
+    setExplicitRegionArea(document.draft, 'lighting-region', []),
+    setRegionLighting(document.draft, 'lighting-region', null),
+  ]) {
+    expect(parseRoomDraftJson(stringifyRoomDraft(draft))).toEqual(draft);
+    expect(draft.scene.version).toBe(4);
+  }
+  delete document.draft.scene.authoringRegions;
+  expect(
+    parseRoomDraftJson(stringifyRoomDraft(document.draft)).scene.version
+  ).toBe(4);
 });

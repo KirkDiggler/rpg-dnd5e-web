@@ -299,11 +299,20 @@ export function validateScene(
   options: SceneValidationOptions = {}
 ): WorldScene {
   const input = object(value);
-  if (input.version !== 1 && input.version !== 2 && input.version !== 3)
-    throw new Error('Scene version must be 1, 2 or 3.');
-  if (input.version !== 3 && Object.hasOwn(input, 'authoringRegions'))
-    throw new Error('authoringRegions requires scene version 3.');
-  if (input.version === 3)
+  if (
+    input.version !== 1 &&
+    input.version !== 2 &&
+    input.version !== 3 &&
+    input.version !== 4
+  )
+    throw new Error('Scene version must be 1, 2, 3 or 4.');
+  if (
+    input.version !== 3 &&
+    input.version !== 4 &&
+    Object.hasOwn(input, 'authoringRegions')
+  )
+    throw new Error('authoringRegions requires scene version 3 or 4.');
+  if (input.version === 3 || input.version === 4)
     rejectUnknownKeys(
       input,
       [
@@ -335,6 +344,7 @@ export function validateScene(
   const sceneId = string(input.id, 'scene.id', 120);
   const authoringRegions = Object.hasOwn(input, 'authoringRegions')
     ? validateAuthoringRegions(input.authoringRegions, mapLabels, {
+        allowLighting: input.version === 4,
         workspace: options.workspace,
         reservedIds: new Set([
           sceneId,

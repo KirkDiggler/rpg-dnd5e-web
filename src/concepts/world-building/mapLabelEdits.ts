@@ -6,7 +6,12 @@ function withLabels(draft: RoomDraft, labels: MapLabel[]): RoomDraft {
   const valid = validateMapLabels(labels, { workspace: draft.workspace });
   const scene = {
     ...draft.scene,
-    version: draft.scene.version === 3 ? (3 as const) : (2 as const),
+    version:
+      draft.scene.version === 4
+        ? (4 as const)
+        : draft.scene.version === 3
+          ? (3 as const)
+          : (2 as const),
   };
   if (valid.length > 0) scene.mapLabels = valid;
   else delete scene.mapLabels;

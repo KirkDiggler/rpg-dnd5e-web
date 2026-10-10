@@ -191,3 +191,43 @@ describe('authoring region definition contracts (no geometry acquisition)', () =
       ).toThrow();
   });
 });
+
+describe('optional visual lighting grammar', () => {
+  it('copies exact authored values only with allowLighting and never supplies defaults', () => {
+    const input = { ...automatic, lighting: { background: 0.153728 } };
+    expect(
+      validateAuthoringRegions([input], labels, { allowLighting: true })
+    ).toEqual([input]);
+    expect(() => validateAuthoringRegions([input], labels)).toThrow();
+    expect(
+      validateAuthoringRegions([automatic], labels, { allowLighting: true })[0]
+    ).not.toHaveProperty('lighting');
+  });
+  it('refuses unknown/null/undefined/nonfinite/out-of-range settings atomically', () => {
+    for (const lighting of [
+      null,
+      undefined,
+      {},
+      { background: '0.15' },
+      { background: NaN },
+      { background: Infinity },
+      { background: -0.01 },
+      { background: 1.01 },
+      { background: 0.15, tint: 'red' },
+    ]) {
+      expect(() =>
+        validateAuthoringRegions([{ ...automatic, lighting }], labels, {
+          allowLighting: true,
+        })
+      ).toThrow();
+    }
+    for (const background of [0, 1])
+      expect(
+        validateAuthoringRegions(
+          [{ ...automatic, lighting: { background } }],
+          labels,
+          { allowLighting: true }
+        )[0].lighting
+      ).toEqual({ background });
+  });
+});
