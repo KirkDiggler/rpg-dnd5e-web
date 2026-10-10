@@ -55,6 +55,13 @@ export interface GeneratedWorldAsset {
   boundsMeters: [number, number, number];
   tags: string[];
   supportsDecoration: boolean;
+  thumbnail?: Readonly<{
+    url: string;
+    sha256: string;
+    sizeBytes: number;
+    width: number;
+    height: number;
+  }>;
   roles?: ReadonlyArray<
     Readonly<{ role: 'frame' | 'leaf' | 'above'; node: string; door?: string }>
   >;
