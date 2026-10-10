@@ -48,7 +48,6 @@ function owner(document = createPopulatedStudioDocument()) {
     setItem,
   };
   const calls: StudioArrangeIntent[] = [];
-  const demand = vi.fn();
   let session: EncounterStudioSession;
   let expanded = true;
   const presentation = () => (
@@ -69,7 +68,6 @@ function owner(document = createPopulatedStudioDocument()) {
                 },
               }}
               expanded={expanded}
-              onAppearanceDemandChange={demand}
             />
           );
         },
@@ -83,7 +81,6 @@ function owner(document = createPopulatedStudioDocument()) {
     },
     calls,
     bytes,
-    demand,
     writes: () =>
       setItem.mock.calls.filter(([key]) => key === ROOM_DRAFT_STORAGE_KEY)
         .length,
@@ -328,7 +325,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const writes = joined.writes();
     expect(screen.queryByLabelText('World Y')).toBeNull();
     expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
-    expect(joined.demand).toHaveBeenLastCalledWith(false);
+    expect(document.querySelector('[data-wall-appearance-ref]')).toBeNull();
     change('Wall midpoint X', '1');
     change('Wall midpoint Z', '-2');
     change('Y facing (degrees)', '30');
@@ -340,7 +337,9 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Change wall appearance' })
     );
-    expect(joined.demand).toHaveBeenLastCalledWith(true);
+    expect(
+      document.querySelector('[data-wall-appearance-ref] img')
+    ).not.toBeNull();
     const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
     fireEvent.click(
       document.querySelector(`[data-wall-appearance-ref="${ref}"]`)!
@@ -677,13 +676,7 @@ describe('linked label staged background joined to owner', () => {
           view: 'layout',
           render: (next) => {
             session = next;
-            return (
-              <StudioArrangePanel
-                session={next}
-                expanded
-                onAppearanceDemandChange={() => {}}
-              />
-            );
+            return <StudioArrangePanel session={next} expanded />;
           },
         }}
       />

@@ -67,7 +67,6 @@ export type LayoutTool =
   | 'region';
 
 export type StudioWallThumbnail =
-  | { status: 'loading' }
   | { status: 'ready'; image: string }
   | { status: 'error'; message: string };
 
@@ -211,9 +210,5 @@ export interface EncounterStudioSession {
 
 export interface EncounterStudioPresentation {
   view: EncounterStudioView;
-  /** Nonpersisted demand: set true while Layout appearance controls are visible.
-   * Absent/false pauses capture in Layout without dropping queue/cache keys.
-   * 3D and legacy palettes always demand the same single capture host. */
-  thumbnailDemand?: boolean;
   render(session: EncounterStudioSession): ReactNode;
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { AssetThumbnailImage } from '../world-building/AssetThumbnailImage';
 import type { StudioWallAppearanceOption } from './studioSession';
 
-/** One reusable choice surface; the existing owner supplies the single cache/host. */
+/** One image-only choice surface; unavailable previews remain selectable. */
 export function StudioWallAppearanceChoices({
   options: available,
   assetRef,
@@ -71,20 +72,15 @@ export function StudioWallAppearanceChoices({
             data-wall-appearance-ref={option.ref}
             onClick={() => onChoose(option.ref)}
           >
-            {option.thumbnail.status === 'ready' ? (
-              <img
-                src={option.thumbnail.image}
-                alt=""
-                width={128}
-                height={128}
-              />
-            ) : (
-              <span className="es-wall-thumbnail-fallback">
-                {option.thumbnail.status === 'loading'
-                  ? 'Loading preview…'
-                  : 'Preview unavailable'}
-              </span>
-            )}
+            <AssetThumbnailImage
+              url={
+                option.thumbnail.status === 'ready'
+                  ? option.thumbnail.image
+                  : undefined
+              }
+              label={option.label}
+              fallbackClassName="es-wall-thumbnail-fallback"
+            />
             <span>{option.label}</span>
             {option.wallMatch && <small>Wall match</small>}
             {option.thumbnail.status === 'error' && (

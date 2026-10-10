@@ -96,7 +96,7 @@ function fixture(): EncounterStudioSession {
           ref: 'wall',
           label: 'Castle wall',
           wallMatch: true,
-          thumbnail: { status: 'loading' },
+          thumbnail: { status: 'error', message: 'No published preview' },
         },
         {
           ref: 'ready',
@@ -128,13 +128,7 @@ function selectedPanel(session: EncounterStudioSession): React.JSX.Element {
     target: { kind: 'wall', id: session.wallEditing.selectedId! },
     selectionRevision: 1,
   });
-  return (
-    <StudioArrangePanel
-      session={{ ...session, arrange }}
-      expanded
-      onAppearanceDemandChange={() => {}}
-    />
-  );
+  return <StudioArrangePanel session={{ ...session, arrange }} expanded />;
 }
 describe('Studio wall presentation', () => {
   it('ranks wall matches without excluding creative choices; named loading/error native buttons stay selectable', () => {
@@ -162,8 +156,12 @@ describe('Studio wall presentation', () => {
     );
     expect(session.wallEditing.setAsset).toHaveBeenNthCalledWith(1, 'wall');
     expect(session.wallEditing.setAsset).toHaveBeenNthCalledWith(2, 'creative');
-    expect(screen.getByText('Loading preview…')).toBeTruthy();
-    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+    expect(
+      screen.getByLabelText('Preview unavailable for Castle wall')
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText('Preview unavailable for Creative table')
+    ).toBeTruthy();
     expect(document.querySelector('img')?.getAttribute('src')).toBe(
       'data:image/png;base64,ready'
     );
@@ -217,13 +215,7 @@ describe('Studio wall presentation', () => {
       (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
     ).toBe('4.56');
     expect(session.wallEditing.edit).not.toHaveBeenCalled();
-    view.rerender(
-      <StudioArrangePanel
-        session={cosmetic}
-        expanded={false}
-        onAppearanceDemandChange={() => {}}
-      />
-    );
+    view.rerender(<StudioArrangePanel session={cosmetic} expanded={false} />);
     expect(session.wallEditing.remove).not.toHaveBeenCalled();
     const replacement = {
       ...cosmetic,

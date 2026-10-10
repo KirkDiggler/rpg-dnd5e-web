@@ -59,10 +59,10 @@ composer; they do not narrow this current Studio boundary.
 
 Wall opens searchable repeatable appearance choices, ranking case-insensitive
 wall name/ref matches first without inventing asset categories. Other eligible
-repeatable choices remain accessible. Generated images use the existing single
-serial capture queue/cache; Layout requests capture while the context is visible.
-Loading/error images retain named selectable fallbacks, never substitute an asset
-or delete an authored wall. Eligibility remains the catalog's measured generated
+repeatable choices remain accessible. Generated asset previews use published
+provider PNG URLs, not a client model-capture queue. Loading is image-local;
+missing/error images retain named selectable fallbacks without loading a GLB,
+substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
 assets without a door leaf role. No appearance is armed by default.
 
 Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
@@ -851,11 +851,18 @@ promotion shape.
 
 ## Shared renderer and asset receipt
 
-Generated catalog entries receive palette thumbnails automatically from the
-browser's existing serial composition-thumbnail capture surface, using the
-exact asset ref and promoted GLB hash as cache identity. There is no operator
-bake, thumbnail promotion, persisted composition, or second asset pipeline;
-legacy baked PNGs (including the Skeleton Dog Plushie) remain unchanged.
+Generated catalog entries use provider-published default-appearance 128×128 PNGs.
+The catalog binds path, digest, byte size and dimensions; its generator verifies
+provider and synchronized bytes and includes the image digest in the URL for
+cache invalidation. The world provider pin owns both `world-assets/` and
+`thumbnails/world-assets/`. Older pins without thumbnails cannot inherit newer
+HEAD thumbnails.
+
+Catalog browsing never mounts a GLB thumbnail renderer. Image loading/error state
+belongs to the image component, not document history or the palette owner. An
+absent or failed image yields a named selectable placeholder; it never triggers
+automatic model capture. Actual placement still loads the selected model.
+Composition/NPC capture and legacy baked PNGs remain separate and unchanged.
 
 `PropModel` retains its default `source-origin` behavior for every existing game
 caller. The concept opts into `bounds-floor-center`, measured from the loaded

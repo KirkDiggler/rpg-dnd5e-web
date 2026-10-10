@@ -1,13 +1,11 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
-  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from '@testing-library/react';
-import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRoomDraft,
@@ -27,19 +25,9 @@ vi.mock('@react-three/fiber', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@react-three/fiber')>()),
   Canvas: () => <div data-testid="webgl-boundary" />,
 }));
-interface ThumbnailRequest {
-  requestKey: string;
-  onComplete(key: string, image: string): void;
-  onError(key: string, message: string): void;
-  onRootError(message: string): void;
-}
-const worker = vi.hoisted(() => ({ latest: null as ThumbnailRequest | null }));
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
-  ThumbnailRenderer: (props: ThumbnailRequest) => {
-    useEffect(() => {
-      worker.latest = props;
-    }, [props]);
-    return <div data-testid="thumbnail-worker" />;
+  ThumbnailRenderer: () => {
+    throw new Error('Catalog thumbnails must not capture models');
   },
 }));
 
@@ -86,7 +74,6 @@ class MemoryStorage implements KeyValueStorage {
 let source: CompositionSource;
 let captures: Set<number>;
 beforeEach(() => {
-  worker.latest = null;
   source = {
     worldId: 'controls-test-world',
     reader: {
@@ -501,13 +488,16 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     click('Undo');
     expect(storage.document()).toEqual(original);
   });
-  it('Wall is enabled unarmed, demands thumbnails only while visible, preserves armed appearance and snap, and draws consecutively', async () => {
+  it('Wall is enabled unarmed, uses static previews, preserves armed appearance and snap, and draws consecutively', async () => {
     const storage = new MemoryStorage();
     mount(storage);
     await ready();
     click('Wall');
     expect(screen.getByText(/No appearance armed/)).toBeTruthy();
-    expect(screen.getAllByTestId('thumbnail-worker')).toHaveLength(1);
+    expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
+    expect(
+      document.querySelector('[data-wall-appearance-ref] img')
+    ).not.toBeNull();
     drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });
     expect(
       screen.getByText(/Choose a wall appearance before drawing/)
@@ -593,12 +583,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(screen.getByLabelText('Wall length')).toBeTruthy(); // selection/demand rerender while drag is captured
     change('Wall length', '2.25');
     click('Change wall appearance');
-    act(() =>
-      worker.latest!.onComplete(
-        worker.latest!.requestKey,
-        'data:image/png;base64,cosmetic'
-      )
-    );
+    fireEvent.load(document.querySelector('[data-wall-appearance-ref] img')!);
     expect(
       (screen.getByLabelText('Wall length') as HTMLInputElement).value
     ).toBe('2.25');
@@ -694,7 +679,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       '[data-wall-appearance-ref="dnd5e:props:dark-fortress:alchemy_tools_01"]'
     )!;
     expect(choice).not.toBeNull();
-    act(() => worker.latest!.onRootError('WebGL unavailable test'));
+    fireEvent.error(choice.querySelector('img')!);
     expect(screen.getByText('Preview unavailable')).toBeTruthy();
     fireEvent.click(choice);
     click('Dismiss wall controls');
@@ -799,12 +784,7 @@ describe('cosmetic presentation arrivals', () => {
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     const writes = storage.writes();
-    act(() =>
-      worker.latest!.onComplete(
-        worker.latest!.requestKey,
-        'data:image/png;base64,cosmetic'
-      )
-    );
+    fireEvent.load(document.querySelector('[data-wall-appearance-ref] img')!);
     expect(
       (screen.getByLabelText('Encounter name') as HTMLInputElement).value
     ).toBe('Staged name');

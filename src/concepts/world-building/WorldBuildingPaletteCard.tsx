@@ -1,11 +1,9 @@
-import type { ThumbnailResult } from '@/author/useSerialThumbnailQueue';
 import { memo } from 'react';
+import { AssetThumbnailImage } from './AssetThumbnailImage';
 import type { WorldBuildingCatalogEntry } from './catalog';
 
 export interface WorldBuildingPaletteCardProps {
   entry: WorldBuildingCatalogEntry;
-  /** Undefined is the stable pending state; do not allocate a loading result. */
-  generatedThumbnail?: ThumbnailResult;
   roomMode: boolean;
   repeatDisabled: boolean;
   onDragStart: (ref: string, transfer: DataTransfer) => void;
@@ -13,44 +11,32 @@ export interface WorldBuildingPaletteCardProps {
   onRepeat: (ref: string) => void;
 }
 
-/** Immutable catalog entries and per-key queue results let unchanged card
- * bodies skip thumbnail-only updates without freezing their owner actions. */
+/** Static catalog images keep loading/error state local to the image. */
 export const WorldBuildingPaletteCard = memo(function WorldBuildingPaletteCard({
   entry,
-  generatedThumbnail,
   roomMode,
   repeatDisabled,
   onDragStart,
   onDragEnd,
   onRepeat,
 }: WorldBuildingPaletteCardProps) {
-  const thumbnail =
-    entry.thumbnail ??
-    (generatedThumbnail?.status === 'ready'
-      ? generatedThumbnail.image
-      : undefined);
-  const thumbnailState =
-    entry.source === 'legacy'
-      ? 'legacy'
-      : (generatedThumbnail?.status ?? 'loading');
   return (
     <article
       className="wb-palette-entry"
       draggable
       aria-label={`Drag ${entry.label} into scene`}
-      data-thumbnail-state={thumbnailState}
+      data-thumbnail-source={
+        entry.source === 'generated' ? 'provider' : 'legacy'
+      }
       data-asset-ref={entry.ref}
       onDragStart={(event) => onDragStart(entry.ref, event.dataTransfer)}
       onDragEnd={onDragEnd}
     >
-      {thumbnail ? (
-        <img src={thumbnail} alt="" draggable={false} />
-      ) : (
-        <span className="wb-swatch">
-          {entry.label.slice(0, 2)}
-          {generatedThumbnail?.status === 'error' ? ' !' : ''}
-        </span>
-      )}
+      <AssetThumbnailImage
+        url={entry.thumbnail}
+        label={entry.label}
+        fallbackClassName="wb-swatch"
+      />
       <span>
         <strong>{entry.label}</strong>
         <small>
@@ -71,15 +57,6 @@ export const WorldBuildingPaletteCard = memo(function WorldBuildingPaletteCard({
           >
             Repeat
           </button>
-        )}
-        {entry.source === 'generated' && (
-          <span className="sr-only">
-            {generatedThumbnail?.status === 'error'
-              ? `Thumbnail unavailable${generatedThumbnail.message ? `: ${generatedThumbnail.message}` : ''}`
-              : generatedThumbnail?.status === 'ready'
-                ? 'Thumbnail ready'
-                : 'Thumbnail loading'}
-          </span>
         )}
       </span>
     </article>

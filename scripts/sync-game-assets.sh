@@ -182,6 +182,14 @@ if [ "$WORLD_ASSETS_ONLY" = "1" ]; then
   WORLD_SRC="$ASSETS_DIR/harness/models/synty/world-assets"
   SYNTY_DEST="$WEB_ROOT/public/models/synty"
   WORLD_DEST="$SYNTY_DEST/world-assets"
+  THUMB_SRC="$ASSETS_DIR/harness/models/synty/thumbnails/world-assets"
+  THUMB_DEST="$SYNTY_DEST/thumbnails/world-assets"
+  for ENTRY in "$ASSETS_DIR/harness/models/synty/thumbnails" "$THUMB_SRC" "$SYNTY_DEST" "$SYNTY_DEST/thumbnails" "$THUMB_DEST"; do
+    if [ -L "$ENTRY" ] || { [ -e "$ENTRY" ] && [ ! -d "$ENTRY" ]; }; then
+      echo "ERROR: world thumbnail root must be a real directory: $ENTRY" >&2
+      exit 1
+    fi
+  done
   WORLD_OUTPUT="$WEB_ROOT/src/generated/worldAssetCatalog.ts"
   if [ ! -f "$WORLD_GENERATOR" ] || [ -L "$WORLD_GENERATOR" ]; then
     echo "ERROR: world asset catalog generator must be a real file: $WORLD_GENERATOR" >&2
@@ -209,6 +217,16 @@ if [ "$WORLD_ASSETS_ONLY" = "1" ]; then
     --provider-root "$ASSETS_DIR" \
     --output "$WORLD_STAGE"
   sync_runtime_root "$WORLD_SRC" "$WORLD_DEST"
+  if [ -d "$THUMB_SRC" ]; then
+    sync_runtime_root "$THUMB_SRC" "$THUMB_DEST"
+  else
+    # Older world pins own no thumbnails; clear only this catalog's subtree.
+    EMPTY_THUMBS=$(mktemp -d "${TMPDIR:-/tmp}/rpg-empty-world-thumbnails.XXXXXX")
+    trap 'rm -f "$WORLD_STAGE"; rmdir "$EMPTY_THUMBS"' EXIT HUP INT TERM
+    sync_runtime_root "$EMPTY_THUMBS" "$THUMB_DEST"
+    rmdir "$EMPTY_THUMBS"
+    trap 'rm -f "$WORLD_STAGE"' EXIT HUP INT TERM
+  fi
   "$WORLD_RUNNER" "$WORLD_GENERATOR" \
     --provider-root "$ASSETS_DIR" \
     --runtime-root "$SYNTY_DEST" \
@@ -279,21 +297,26 @@ if [ "$PINNED_RUNTIME" = "1" ]; then
     overlay_pinned_subtree() {
       OVERLAY_PIN=$1
       OVERLAY_SUBTREE=$2
+      OVERLAY_OPTIONAL=${3:-0}
       [ -n "$OVERLAY_PIN" ] || return 0
       [ "$OVERLAY_PIN" != "$ASSETS_HEAD" ] || return 0
       [ -n "$OVERLAY_SUBTREE" ] || return 0
       echo "  harness/models/synty/$OVERLAY_SUBTREE <- $OVERLAY_PIN"
       rm -rf "$MIRROR_ROOT/harness/models/synty/$OVERLAY_SUBTREE"
+      if [ "$OVERLAY_OPTIONAL" = "1" ] && ! git -C "$ASSETS_DIR" cat-file -e "$OVERLAY_PIN:harness/models/synty/$OVERLAY_SUBTREE" 2>/dev/null; then
+        return 0
+      fi
       git -C "$ASSETS_DIR" archive "$OVERLAY_PIN" "harness/models/synty/$OVERLAY_SUBTREE" \
         | tar -x -C "$MIRROR_ROOT"
     }
 
     # Catalog-to-subtree contract: customization and NPC appearance each own one
-    # subtree; the world catalog owns world-assets. Every other synty entry and
+    # subtree; the world catalog owns world-assets and its thumbnails. Every other synty entry and
     # the custom dice roots carry no committed pin and stay at provider HEAD.
     overlay_pinned_subtree "$CHARACTER_PIN" characters
     overlay_pinned_subtree "$NPC_PIN" npcs
     overlay_pinned_subtree "$WORLD_PIN" world-assets
+    overlay_pinned_subtree "$WORLD_PIN" thumbnails/world-assets 1
   fi
 fi
 
