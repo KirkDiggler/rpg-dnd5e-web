@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ActionArt } from './ActionArt';
 import { ActionInformationContent } from './ActionInformationContent';
 import {
@@ -68,6 +74,11 @@ export function DesktopActionSurface({
   const [feedback, setFeedback] = useState('');
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [pointerInCard, setPointerInCard] = useState(false);
+  const closeInspection = useCallback((): void => {
+    setInspectedId(null);
+    setPointerInCard(false);
+    groupsRef.current?.focus();
+  }, []);
   // Keep the named reader during pointer travel across the map, not on a timer.
   // Other dock controls and deliberate outside clicks end that reading session.
   useEffect(() => {
@@ -96,20 +107,31 @@ export function DesktopActionSurface({
       )
         setInspectedId(null);
     };
+    const outsideEscape = (event: KeyboardEvent): void => {
+      // Hover leaves focus on the page. Run after scoped readers/dialogs,
+      // but before the window-level Escape that cancels the armed action.
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        event.target instanceof Node &&
+        !surfaceRef.current?.contains(event.target)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeInspection();
+      }
+    };
+    document.addEventListener('keydown', outsideEscape);
     window.addEventListener('pointerover', pointerOver);
     window.addEventListener('focusin', otherControl);
     window.addEventListener('pointerdown', outsidePress, true);
     return () => {
+      document.removeEventListener('keydown', outsideEscape);
       window.removeEventListener('pointerover', pointerOver);
       window.removeEventListener('focusin', otherControl);
       window.removeEventListener('pointerdown', outsidePress, true);
     };
-  }, [inspectedId]);
-  const closeInspection = (): void => {
-    setInspectedId(null);
-    setPointerInCard(false);
-    groupsRef.current?.focus();
-  };
+  }, [inspectedId, closeInspection]);
   const groups = desktopHotbarGroups(declarations, presentation);
   const offers = groups.flatMap((group) => group.offers);
   const inspected = offers.find((offer) => offer.id === inspectedId);

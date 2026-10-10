@@ -13,6 +13,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import '@testing-library/jest-dom/vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -330,7 +331,9 @@ describe('DesktopActionSurface', () => {
     const reader = screen.getByRole('tooltip');
     expect(document.activeElement).toBe(focus);
     fireEvent.pointerLeave(screen.getByTestId('desktop-action-surface'));
-    fireEvent.pointerOver(document.body);
+    const transit = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(transit, 'pointerType', { value: 'mouse' });
+    fireEvent(document.body, transit);
     expect(screen.getByRole('tooltip')).toBe(reader);
     fireEvent.pointerEnter(reader);
     fireEvent.wheel(reader, { deltaY: 300 });
@@ -353,6 +356,80 @@ describe('DesktopActionSurface', () => {
     );
     expect(select).not.toHaveBeenCalled();
     expect(cancel).not.toHaveBeenCalled();
+  });
+  it('dismisses a mouse-opened reader with Escape from the unfocused page, not the armed action', () => {
+    const select = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <DesktopActionSurface
+        {...defaults}
+        armedDeclarationId="bane"
+        onSelectDeclaration={select}
+        onCancelSelection={cancel}
+      />
+    );
+    const event = new MouseEvent('pointerover', { bubbles: true });
+    Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+    fireEvent(screen.getByRole('button', { name: 'Bane' }), event);
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    const handledEscape = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    handledEscape.preventDefault();
+    fireEvent(document.body, handledEscape);
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    const windowEscape = vi.fn();
+    window.addEventListener('keydown', windowEscape);
+    try {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(windowEscape).not.toHaveBeenCalled();
+      // Once the reader closes, its listener must not consume later Escape.
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(windowEscape).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('keydown', windowEscape);
+    }
+    expect(document.activeElement).toHaveAttribute(
+      'aria-label',
+      'Action sections'
+    );
+    expect(screen.getByRole('button', { name: 'Bane' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(select).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+  it('keeps the reader mounted when keyboard focus reaches its Close control', () => {
+    render(<DesktopActionSurface {...defaults} />);
+    fireEvent.focus(screen.getByRole('button', { name: 'Bane' }));
+    const reader = screen.getByRole('tooltip');
+    const close = screen.getByRole('button', {
+      name: 'Close action information',
+    });
+    act(() => close.focus());
+    expect(screen.getByRole('tooltip')).toBe(reader);
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+  it('replaces the named reader when another offered action is hovered, without selecting', () => {
+    const select = vi.fn();
+    render(<DesktopActionSurface {...defaults} onSelectDeclaration={select} />);
+    for (const name of ['Bane', 'Cure Wounds']) {
+      const event = new MouseEvent('pointerover', { bubbles: true });
+      Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+      fireEvent(screen.getByRole('button', { name }), event);
+      expect(screen.getByRole('tooltip')).toHaveAccessibleName(
+        `${name} details`
+      );
+    }
+    expect(select).not.toHaveBeenCalled();
   });
   it('dismisses on other dock controls and outside clicks but not its own reader or offers', () => {
     render(
