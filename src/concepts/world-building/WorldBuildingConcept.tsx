@@ -4344,6 +4344,15 @@ export function WorldBuildingConcept({
           arrange,
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
+          commitTables: guardSnapshotIntent(
+            (tables: SiteScope['tables']): boolean => {
+              const current = roomHistoryRef.current.present;
+              const scope = { ...current.scope };
+              if (tables === undefined) delete scope.tables;
+              else scope.tables = tables;
+              return commitRoomDocument({ ...current, scope });
+            }
+          ),
           mapLabelSelection: {
             selectedId:
               activeStudioTarget?.kind === 'label' ? selectedLabelId : null,

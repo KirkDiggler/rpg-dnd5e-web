@@ -309,6 +309,7 @@ function createAppStudioSession(): EncounterStudioSession {
     },
     arrange: null,
     commitArrange: vi.fn(() => true),
+    commitTables: vi.fn(() => true),
     mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     wallEditing: {

@@ -211,9 +211,9 @@ blank with a100 placeholder and **Baseline · no region light authored**; untouc
 fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
 absence: it opts the configured floor into the placed-light receiver. Reset stages
 null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
-one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
-view/target/epoch/document retirement discard linked-label staging without writes;
-blur never submits. Ordinary notes expose no region fields. Configured unresolved
+one transaction; invalid tokens refuse the whole form. Cancel/Escape and
+view/target/epoch/document retirement discard linked-label staging without writes.
+Sidebar collapse and section navigation preserve staging; blur never submits. Ordinary notes expose no region fields. Configured unresolved
 labels show **Lighting saved · not applied until boundary resolves**, alongside the
 boundary reason.
 
@@ -457,6 +457,33 @@ also applies to current local drafts: old bytes are preserved on refusal.
 There is no v5 document or schema alias, and no automatic rewrite of saved
 compositions. Server error paths are displayed verbatim by the publish panel.
 The engine example is pinned to toolkit merge `6cbee563`.
+
+## Studio options sidebar (#1256)
+
+Studio has one right-hand options slot. Arrange, Walls and Tables are its visible
+sections; Size, door creation, labels and region painting reuse the same slot
+when explicitly requested. Only one section is visible. The Options button and
+unmodified N toggle the sidebar without remounting the canvas or changing the
+active section, tool, selection, document or history. N does not intercept
+editable controls, composition, repeated keys or modified shortcuts.
+
+Sections stay mounted when hidden. Local form drafts survive section changes and
+collapse; a canonical document/selection/intent replacement still retires Arrange
+staging. Selection changes update Arrange without forcing a different section or
+reopening the sidebar. Wall drawing remains a Layout tool; showing its options
+alone does not arm drawing. Thumbnail demand follows actual section visibility.
+
+Tables edit the encounter's root declarations independently of map selection.
+The existing TablesPanel, entry grammar and vocabulary are shared, not copied.
+Studio table names commit only on explicit Apply/Enter; Cancel/Escape discards the
+name token. Entry fields keep their existing document-edit semantics. Multiple
+entries may be authored on each trigger. Section navigation never submits a name.
+
+`EncounterStudioSession.commitTables` accepts only `SiteScope.tables`, preserving
+all other scope, geometry and bindings through the existing guarded document
+transaction. Absence omits the key; equal writes add no history. Retired callbacks
+refuse. Undo/Redo, draft storage and strict completed save/export share the one
+owner. Renaming/removing tables does not rewrite references or compute behavior.
 
 ## Shared answer tables at the root (#1201)
 

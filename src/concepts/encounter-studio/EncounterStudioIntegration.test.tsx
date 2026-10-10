@@ -326,6 +326,84 @@ function moved(scene: WorldScene): WorldScene {
   return next;
 }
 
+describe('Studio configuration tables through the real owner', () => {
+  it('authors multiple rows, preserves unrelated data, shares Undo/Redo and reloads in either view', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    const mounted = mount(storage);
+    const baseline = storage.document();
+    fireEvent.click(button('Tables'));
+    fireEvent.click(button('Add table'));
+    expect(storage.document().scope.tables).toEqual({ 'table-1': {} });
+    fireEvent.click(screen.getByLabelText('Table table-1'));
+    fireEvent.change(screen.getByLabelText('Table id for table-1'), {
+      target: { value: 'patrol' },
+    });
+    fireEvent.click(button('Apply table name'));
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(2);
+    const declared = storage.document();
+    expect(declared.draft).toEqual(baseline.draft);
+    expect({ ...declared.scope, tables: undefined }).toEqual({
+      ...baseline.scope,
+      tables: undefined,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(1);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(declared);
+    switchTo('3D');
+    expect(
+      screen
+        .getByRole('button', { name: 'Tables' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(storage.document()).toEqual(declared);
+    mounted.unmount();
+    mount(storage);
+    fireEvent.click(button('Tables'));
+    expect(screen.getByLabelText('Table patrol')).toBeTruthy();
+    expect(storage.document()).toEqual(declared);
+  });
+
+  it('table intents preserve absence on no-op and reject a captured stale snapshot', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const initial = session.document;
+    const writes = storage.roomWrites();
+    act(() => expect(session.commitTables(undefined)).toBe(true));
+    expect(session.document).toBe(initial);
+    expect(storage.roomWrites()).toBe(writes);
+    const stale = session.commitTables;
+    act(() => expect(session.commitTables({ patrol: {} })).toBe(true));
+    const changed = session.document;
+    act(() => expect(stale({ obsolete: {} })).toBe(false));
+    expect(session.document).toBe(changed);
+    expect(session.document.scope.tables).toEqual({ patrol: {} });
+    act(() => session.undo());
+    expect(session.document.scope).not.toHaveProperty('tables');
+  });
+});
+
 describe('Encounter Studio joined document boundary', () => {
   it('draw switch return undo redo reload uses one document and preserves the populated payload', async () => {
     const original = seed(true);
@@ -667,7 +745,7 @@ function submitForm(name: string): void {
   fireEvent.submit(screen.getByRole('form', { name }));
 }
 function resize(width: number, height: number): void {
-  if (!screen.queryByLabelText('Width (hexes)'))
+  if (!screen.queryByRole('textbox', { name: 'Width (hexes)' }))
     fireEvent.click(button('Size'));
   changeField('Width (hexes)', String(width));
   changeField('Height (hexes)', String(height));
@@ -836,7 +914,9 @@ describe('Task 6 populated workspace/label integration', () => {
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
     resize(73, 48); // no-op dimensions
+    fireEvent.click(button('Label'));
     changeField('Existing label', kitchenId);
+    fireEvent.click(button('Arrange'));
     changeField('Rename label', 'Staged only');
     changeField('Rename label', 'Kitchen');
     submitForm('Arrange selected noun'); // explicit same text
@@ -851,6 +931,7 @@ describe('Task 6 populated workspace/label integration', () => {
     fireEvent.click(button('Size'));
     changeField('Width (hexes)', '74');
     fireEvent.click(button('Cancel dimensions'));
+    fireEvent.click(button('Label'));
     changeField('Label name', 'Never placed');
     submitForm('New map label');
     // Arming from a selected label must really succeed before cancellation:
@@ -1053,7 +1134,10 @@ const castleWallRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
 const snapLabel = 'Snap to hex centres, corners and side midpoints';
 function chooseAppearance(ref: string, search: string): void {
   const creation = screen.queryByRole('region', { name: 'New wall palette' });
-  if (!creation && !screen.queryByLabelText('Search wall appearances'))
+  if (
+    !creation &&
+    !screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+  )
     fireEvent.click(button('Change wall appearance'));
   const region =
     creation ?? screen.getByRole('region', { name: 'Arrange selection' });
@@ -1322,7 +1406,9 @@ describe('joined structural walls in the populated Studio document', () => {
       states.push(next);
     }
     fireEvent.click(button('Dismiss wall controls'));
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     expect(storage.document()).toEqual(states.at(-1));
     fireEvent.click(button('Wall'));
     expect((screen.getByLabelText(snapLabel) as HTMLInputElement).checked).toBe(
@@ -1492,12 +1578,12 @@ describe('joined structural walls in the populated Studio document', () => {
     fireEvent.click(button('Select'));
     const wall = original.draft.room.walls![0];
     selectWall(storage, wall);
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
     selectWall(storage, wall); // unchanged selection does not force controls to reappear
     expect(
       screen.queryByRole('form', { name: 'Arrange selected noun' })
     ).toBeNull();
-    fireEvent.click(button('Arrange')); // explicit reopen
+    fireEvent.click(button('Options (N)')); // explicit reopen
     changeField('Wall midpoint X', String(wallMidpoint(wall).x));
     changeField('Wall midpoint Z', String(wallMidpoint(wall).z));
     submitForm('Arrange selected noun');
@@ -3210,6 +3296,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
       screen.getByRole('button', { name: `Select map label ${name}` }),
       { key: 'Enter' }
     );
+    fireEvent.click(button('Arrange'));
   }
   function areaCount(): number {
     return surface().querySelectorAll('[data-region-id]').length;
@@ -3587,11 +3674,11 @@ describe('Studio staged region lighting integrated presentation', () => {
     const writes = storage.roomWrites();
     field('Background light (%)', '15');
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    fireEvent.click(button('Arrange'));
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
+    fireEvent.click(button('Options (N)'));
     expect(
       (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
-    ).toBe('');
+    ).toBe('15');
     field('Background light (%)', '15');
     switchTo('3D');
     expect(viewport().roomAuthoring!.regionLighting!.areas).toEqual([]);

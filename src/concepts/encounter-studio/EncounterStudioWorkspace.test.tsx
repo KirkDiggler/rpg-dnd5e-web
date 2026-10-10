@@ -154,6 +154,7 @@ function createSession(): EncounterStudioSession {
     },
     arrange: null,
     commitArrange: vi.fn(() => true),
+    commitTables: vi.fn(() => true),
     mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     wallEditing: {
@@ -254,9 +255,11 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(screen.queryByLabelText('Label name')).toBeNull();
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     expect(observed.layoutProps?.wallEditing).toBe(
       observed.session?.wallEditing
     );
@@ -510,8 +513,8 @@ describe('staged workspace dimensions and label controls', () => {
       73,
       48
     );
-    expect(observed.session?.cancelTransients).toHaveBeenCalledTimes(1); // opening only; never before Apply
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(observed.layoutProps?.frame).toEqual({
       center: { x: 0, z: 0 },
       zoom: 1,
@@ -549,7 +552,7 @@ describe('staged workspace dimensions and label controls', () => {
     fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
       key: 'Escape',
     });
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     click('Size');
     expect(
       (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
@@ -607,6 +610,7 @@ describe('staged workspace dimensions and label controls', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Label');
     change('Existing label', 'kitchen-2');
+    click('Arrange');
     change('Rename label', 'Courtyard');
     expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
@@ -615,6 +619,7 @@ describe('staged workspace dimensions and label controls', () => {
     ).toBe('Kitchen');
     click('Label');
     change('Existing label', 'kitchen-2');
+    click('Arrange');
     expect(
       (screen.getByLabelText('Rename label') as HTMLInputElement).value
     ).toBe('Kitchen');
@@ -666,7 +671,84 @@ describe('staged workspace dimensions and label controls', () => {
 });
 
 describe('shared Arrange context lifecycle', () => {
-  it('collapse and preview/thumbnail rerenders preserve canvas, tool and selection; a new explicit noun expands', () => {
+  it('keeps exactly one sidebar section, name drafts and the canvas across section switches and N', () => {
+    observed.session!.document.scope.tables = { patrol: {} };
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
+    const canvas = screen.getByLabelText('Layout floor surface');
+    click('Tables');
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    const name = screen.getByLabelText('Table id for patrol');
+    fireEvent.change(name, { target: { value: 'Night watch' } });
+    fireEvent.blur(name);
+    click('Walls');
+    expect(screen.queryByRole('button', { name: 'Add table' })).toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'New wall palette' })
+    ).toBeTruthy();
+    click('Tables');
+    expect(
+      screen.queryByRole('region', { name: 'New wall palette' })
+    ).toBeNull();
+    expect(
+      (screen.getByLabelText('Table id for patrol') as HTMLInputElement).value
+    ).toBe('Night watch');
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(
+      screen.queryByRole('complementary', { name: 'Studio options' })
+    ).toBeNull();
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(
+      screen
+        .getByRole('button', { name: 'Tables' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    observed.session = { ...observed.session!, arrange: null };
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(
+      screen
+        .getByRole('button', { name: 'Tables' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByLabelText('Layout floor surface')).toBe(canvas);
+    expect(observed.layoutUnmounts).toBe(0);
+    expect(observed.session!.commitTables).not.toHaveBeenCalled();
+    click('Apply table name');
+    expect(observed.session!.commitTables).toHaveBeenCalledWith({
+      'Night watch': {},
+    });
+  });
+
+  it('N ignores text fields, selects, contenteditable, modifiers, repeats and composition', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    click('Walls');
+    const search = screen.getByRole('searchbox');
+    fireEvent.keyDown(search, { key: 'n' });
+    for (const flag of [
+      'ctrlKey',
+      'metaKey',
+      'altKey',
+      'shiftKey',
+      'repeat',
+      'isComposing',
+    ]) {
+      fireEvent.keyDown(window, { key: 'n', [flag]: true });
+    }
+    for (const tag of ['textarea', 'select', 'div']) {
+      const target = document.createElement(tag);
+      if (tag === 'div') target.setAttribute('contenteditable', 'true');
+      document.body.append(target);
+      fireEvent.keyDown(target, { key: 'n' });
+      target.remove();
+    }
+    expect(
+      screen
+        .getByRole('button', { name: 'Options (N)' })
+        .getAttribute('aria-expanded')
+    ).toBe('true');
+  });
+  it('collapse and preview/thumbnail rerenders preserve canvas, tool and selection; selection does not reopen options', () => {
     const session = observed.session!;
     session.document.draft.scene.items.push({
       id: 'prop',
@@ -689,13 +771,25 @@ describe('shared Arrange context lifecycle', () => {
     const epoch = observed.session!.intentEpoch;
     const originalSelection = observed.session!.arrange;
     const tool = observed.session!.propTool;
-    const toggle = screen.getByRole('button', { name: 'Arrange' });
-    expect(toggle.getAttribute('aria-controls')).toBe('studio-arrange-panel');
+    const toggle = screen.getByRole('button', { name: 'Options (N)' });
+    expect(toggle.getAttribute('aria-controls')).toBe('studio-sidebar');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.change(screen.getByLabelText('World X'), {
       target: { value: '1.75' },
     });
+    click('Tables');
+    expect(
+      screen.queryByRole('form', { name: 'Arrange selected noun' })
+    ).toBeNull();
+    click('Walls');
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'castle' },
+    });
     click('Arrange');
+    expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
+      '1.75'
+    );
+    click('Options (N)');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(
       screen.queryByRole('form', { name: 'Arrange selected noun' })
@@ -735,6 +829,11 @@ describe('shared Arrange context lifecycle', () => {
     expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
     expect(observed.viewportUnmounts).toBe(0);
     expect(observed.ownerMounts).toBe(1);
+    click('Options (N)');
+    click('Walls');
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
+      'castle'
+    );
     click('Arrange');
     expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
       '1.75'
@@ -742,7 +841,7 @@ describe('shared Arrange context lifecycle', () => {
     expect((screen.getByLabelText('World Y') as HTMLInputElement).value).toBe(
       '0.5'
     );
-    click('Arrange');
+    click('Options (N)');
     observed.session!.document.draft.scene.mapLabels = [
       { id: 'label', text: 'New label', location: { x: 0, z: 1 } },
     ];
@@ -755,7 +854,8 @@ describe('shared Arrange context lifecycle', () => {
       }),
     };
     mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    click('Options (N)');
     expect(screen.getByLabelText('Rename label')).toBeTruthy();
     expect(observed.session!.commitArrange).not.toHaveBeenCalled();
     expect(observed.session!.intentEpoch).toBe(epoch);

@@ -95,8 +95,6 @@ function SelectedArrange({
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
-  const linkedRegionId =
-    selection.kind === 'label' ? selection.region?.id : undefined;
   const preview =
     (selection.kind === 'scene' ||
       selection.kind === 'wall' ||
@@ -110,14 +108,6 @@ function SelectedArrange({
     setDraft({});
     setError(null);
   }, [session.document, session.intentEpoch]);
-  useEffect(() => {
-    // Linked-label lighting is staged with the whole noun, never retained behind
-    // a collapsed panel. Other precision forms keep their existing tuck-away law.
-    if (!expanded && linkedRegionId) {
-      setDraft({});
-      setError(null);
-    }
-  }, [expanded, linkedRegionId]);
   useEffect(() => {
     onAppearanceDemandChange(
       expanded && appearanceVisible && selection.kind === 'wall'

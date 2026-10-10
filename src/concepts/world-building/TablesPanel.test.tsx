@@ -30,6 +30,59 @@ const site: SiteScope = {
 };
 
 describe('TablesPanel — the site’s shared tables, declared at the root', () => {
+  it('adds another row on an authored trigger and keeps the new-trigger chooser truthful', () => {
+    const onChange = vi.fn();
+    const mounted = render(
+      <TablesPanel scope={{ tables: { drill: {} } }} onChange={onChange} />
+    );
+    fireEvent.click(screen.getByLabelText('Table drill'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add entry on time to drill' })
+    );
+    const next = onChange.mock.calls.at(-1)![0] as SiteScope;
+    mounted.rerender(<TablesPanel scope={next} onChange={onChange} />);
+    const picker = screen.getByLabelText(
+      'Add trigger to drill'
+    ) as HTMLSelectElement;
+    expect(picker.value).not.toBe('time');
+    expect(
+      screen.getByRole('button', {
+        name: `Add entry on ${picker.value} to drill`,
+      })
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add entry on time to drill' })
+    );
+    expect(
+      (onChange.mock.calls.at(-1)![0] as SiteScope).tables?.drill.time
+    ).toHaveLength(2);
+  });
+
+  it('explicit table names never commit on blur and cancel without a document edit', () => {
+    const onChange = vi.fn();
+    render(
+      <TablesPanel
+        scope={{ tables: { drill: {} } }}
+        onChange={onChange}
+        explicitRename
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Table drill'));
+    const name = screen.getByLabelText(
+      'Table id for drill'
+    ) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'patrol' } });
+    fireEvent.blur(name);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel table name' }));
+    expect(name.value).toBe('drill');
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(name, { target: { value: 'patrol' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply table name' }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({
+      tables: { patrol: {} },
+    });
+  });
   it('states the empty site rather than showing an empty list', () => {
     render(<TablesPanel scope={{}} onChange={() => {}} />);
     expect(screen.getByTestId('site-tables-none')).toBeTruthy();

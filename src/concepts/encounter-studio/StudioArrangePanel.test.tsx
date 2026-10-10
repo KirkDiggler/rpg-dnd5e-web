@@ -808,7 +808,7 @@ describe('linked label staged background joined to owner', () => {
       expect(joined.writes()).toBe(writes);
     }
   );
-  it('reset is staged null, cancel/escape/collapse/target/epoch/document retire the whole form', () => {
+  it('collapse retains the form; cancel/escape/target/epoch/document retire staged lighting', () => {
     const joined = linked(true);
     const before = joined.session.document;
     const writes = joined.writes();
@@ -829,8 +829,8 @@ describe('linked label staged background joined to owner', () => {
     change('Rename label', 'Never');
     joined.collapse(true);
     joined.collapse(false);
-    expect(token('Background light (%)')).toBe('15');
-    expect(token('Rename label')).toBe('left');
+    expect(token('Background light (%)')).toBe('');
+    expect(token('Rename label')).toBe('Never');
     reset();
     act(() => joined.session.cancelTransients());
     expect(token('Background light (%)')).toBe('15');
