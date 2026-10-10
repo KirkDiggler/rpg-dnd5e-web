@@ -16,6 +16,7 @@ import {
 import { moveSelection } from '../world-building/sceneState';
 import type { KeyValueStorage } from '../world-building/types';
 import { StudioArrangePanel } from './StudioArrangePanel';
+import { createRegionLightingDocument } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import type {
   EncounterStudioSession,
@@ -647,5 +648,226 @@ describe('linked room label Arrange affordances', () => {
     expect(joined.session.document.scope).toEqual(before.scope);
     act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
+  });
+});
+
+describe('linked label staged background joined to owner', () => {
+  it('dirty equal label tokens keep strict policy refusal; lighting alone retains unfinished policy without invented facts', () => {
+    const document = createRegionLightingDocument();
+    const bytes = new Map([
+      [
+        ROOM_DRAFT_STORAGE_KEY,
+        stringifyRoomDraft(document.draft, document.scope),
+      ],
+    ]);
+    const storage: KeyValueStorage = {
+      getItem: (key) => bytes.get(key) ?? null,
+      setItem: (key, value) => {
+        bytes.set(key, value);
+      },
+    };
+    const mounted = render(<WorldBuildingConcept roomMode storage={storage} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    let session: EncounterStudioSession;
+    mounted.rerender(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        studioPresentation={{
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return (
+              <StudioArrangePanel
+                session={next}
+                expanded
+                onAppearanceDemandChange={() => {}}
+              />
+            );
+          },
+        }}
+      />
+    );
+    act(() => session.mapLabelSelection.select('lighting-left-label'));
+    const unfinished = session!.document;
+    const savedBytes = bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    expect(unfinished.scope.intel!.at(-1)).toMatchObject({
+      reveals: { fact: '' },
+    });
+    change('Rename label', 'other');
+    change('Rename label', 'left');
+    change('Background light (%)', '15');
+    apply();
+    expect(session!.document).toBe(unfinished);
+    expect(screen.getByRole('alert').textContent).toMatch(/refused/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Arrange' }));
+    change('Background light (%)', '15');
+    apply();
+    expect(session!.document.draft.scene.authoringRegions![0].lighting).toEqual(
+      { background: 0.15 }
+    );
+    expect(session!.document.scope).toEqual(unfinished.scope);
+    expect(bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(savedBytes);
+    expect(() =>
+      stringifyRoomDraft(session!.document.draft, session!.document.scope)
+    ).toThrow();
+    act(() => session!.undo());
+    expect(session!.document).toEqual(unfinished);
+  });
+  function linked(configured = false) {
+    const joined = owner(createRegionLightingDocument(configured));
+    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
+    return joined;
+  }
+  it('distinguishes absent baseline from deliberate 100 and equal authored noops', () => {
+    const joined = linked();
+    const before = joined.session.document;
+    const writes = joined.writes();
+    expect(token('Background light (%)')).toBe('');
+    expect(
+      screen.getByText('Baseline · no region light authored')
+    ).toBeTruthy();
+    apply();
+    change('Rename label', 'Left renamed');
+    apply();
+    expect(joined.session.document.draft.scene.version).toBe(3);
+    expect(
+      joined.session.document.draft.scene.authoringRegions![0]
+    ).not.toHaveProperty('lighting');
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    change('Background light (%)', '100');
+    apply();
+    expect(joined.calls.at(-1)).toEqual({
+      kind: 'label-edit',
+      target: { kind: 'label', id: 'lighting-left-label' },
+      regionLighting: { regionId: 'lighting-left', value: { background: 1 } },
+    });
+    expect(joined.session.document.draft.scene.version).toBe(4);
+    const authored = joined.session.document;
+    const bytes = joined.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const equalWrites = joined.writes();
+    change('Background light (%)', '100');
+    apply();
+    expect(joined.session.document).toBe(authored);
+    expect(joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(joined.writes()).toBe(equalWrites);
+    expect(equalWrites).toBeGreaterThan(writes);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+  });
+  it('composes dirty rename/move/background as one history step preserving the full payload', () => {
+    const joined = linked();
+    const before = joined.session.document;
+    const writes = joined.writes();
+    change('Rename label', 'Kitchen');
+    change('Label world X', '-2.25');
+    change('Background light (%)', '15');
+    expect(joined.session.document).toBe(before);
+    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+      key: 'Enter',
+    });
+    expect(joined.calls).toHaveLength(1);
+    expect(joined.calls[0]).toMatchObject({
+      text: 'Kitchen',
+      location: { x: -2.25 },
+      regionLighting: {
+        regionId: 'lighting-left',
+        value: { background: 0.15 },
+      },
+    });
+    expect(joined.writes()).toBe(writes + 1);
+    const expected = structuredClone(before);
+    expected.draft.scene.version = 4;
+    expected.draft.scene.mapLabels!.find(
+      (l) => l.id === 'lighting-left-label'
+    )!.text = 'Kitchen';
+    expected.draft.scene.mapLabels!.find(
+      (l) => l.id === 'lighting-left-label'
+    )!.location.x = -2.25;
+    expected.draft.scene.authoringRegions![0].lighting = { background: 0.15 };
+    expect(joined.session.document).toEqual(expected);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    expect(joined.session.canUndo).toBe(false);
+  });
+  it.each(['101', '-1', '', 'text', 'Infinity'])(
+    'invalid background %j refuses the entire form',
+    (value) => {
+      const joined = linked();
+      const before = joined.session.document;
+      const writes = joined.writes();
+      change('Rename label', 'Never');
+      change('Background light (%)', '15');
+      change('Background light (%)', value);
+      apply();
+      expect(screen.getByRole('alert')).toBeTruthy();
+      expect(token('Background light (%)')).toBe(value);
+      expect(joined.calls).toHaveLength(0);
+      expect(joined.session.document).toBe(before);
+      expect(joined.writes()).toBe(writes);
+    }
+  );
+  it('reset is staged null, cancel/escape/collapse/target/epoch/document retire the whole form', () => {
+    const joined = linked(true);
+    const before = joined.session.document;
+    const writes = joined.writes();
+    const reset = () =>
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Use baseline appearance' })
+      );
+    reset();
+    expect(joined.session.document).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Arrange' }));
+    expect(token('Background light (%)')).toBe('15');
+    reset();
+    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+      key: 'Escape',
+    });
+    expect(token('Background light (%)')).toBe('15');
+    reset();
+    change('Rename label', 'Never');
+    joined.collapse(true);
+    joined.collapse(false);
+    expect(token('Background light (%)')).toBe('15');
+    expect(token('Rename label')).toBe('left');
+    reset();
+    act(() => joined.session.cancelTransients());
+    expect(token('Background light (%)')).toBe('15');
+    reset();
+    act(() => joined.session.mapLabelSelection.select('lighting-right-label'));
+    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
+    expect(token('Background light (%)')).toBe('15');
+    reset();
+    act(() => joined.session.renameDocument('Replaced'));
+    expect(token('Background light (%)')).toBe('15');
+    expect(joined.calls).toHaveLength(0);
+    expect(joined.writes()).toBe(writes + 1);
+    reset();
+    apply();
+    expect(joined.calls.at(-1)).toMatchObject({
+      regionLighting: { regionId: 'lighting-left', value: null },
+    });
+    expect(joined.session.document.draft.scene.version).toBe(4);
+    expect(
+      joined.session.document.draft.scene.authoringRegions![0]
+    ).not.toHaveProperty('lighting');
+  });
+  it('notes exclude lighting, unresolved saved intent explains not applied', () => {
+    const doc = createRegionLightingDocument(true);
+    doc.draft.room.walls!.find((w) => w.id === 'lighting-divider')!.line.end.z =
+      2.75;
+    const joined = owner(doc);
+    act(() => joined.session.mapLabelSelection.select('lighting-note'));
+    expect(screen.queryByLabelText('Background light (%)')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Use baseline appearance' })
+    ).toBeNull();
+    act(() => joined.session.mapLabelSelection.select('lighting-left-label'));
+    expect(token('Background light (%)')).toBe('15');
+    expect(
+      screen.getByText('Lighting saved · not applied until boundary resolves')
+    ).toBeTruthy();
+    expect(screen.getByText(/Automatic · Unresolved/)).toBeTruthy();
   });
 });

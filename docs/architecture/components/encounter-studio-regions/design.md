@@ -17,6 +17,8 @@ flowchart LR
     V --> I[Transient indexed world-XZ background field]
     I --> M[Owned real-surface material treatment]
     PTS[Existing selected point lights] --> M
+    L --> A[StudioArrangePanel staged dirty noun]
+    A -->|One label-edit with optional regionLighting| O
   end
 ```
 
@@ -118,6 +120,16 @@ components consume the definition contract; the source map in
   stale geometry. Play, thumbnails, actors, guides and loading/error markers do
   not receive the Studio surface binding.
 
+- **R15 — Linked-label controls stage author intent.** Background light (%) is
+  numeric0..100. Absence displays blank with a100 placeholder and baseline status,
+  not a prefilled value; deliberately entering100 authors1. Use baseline appearance
+  stages null until Apply. Only dirty fields compose one label-edit. Apply/Enter
+  accepts the whole noun or refuses it without partial writes; Cancel/Escape,
+  collapse and view/target/epoch/document retirement discard linked-label staging.
+  Blur never submits. Notes expose no region fields. Saved unresolved settings
+  clearly say they are not applied until the boundary resolves. Point controls
+  remain independent and no persistent toolbar band is introduced.
+
 ## Rulings
 
 | ID         | status  | scope                                                                                                                                    | ruled by                                                                                                                                                                                                                                        | date                                              |
@@ -125,7 +137,7 @@ components consume the definition contract; the source map in
 | R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                                                                     | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                                                                                       | Agreement record in linked issue                  |
 | R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                                                                 | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details                                                                                      | Checked-plan record in linked issue               |
 | R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance                                                     | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel                                                                        | 2026-10-10                                        |
-| R12–R14    | settled | Optional visual lighting, scene4 opt-in, single transaction, honest projection and owned real-surface treatment; gameplay/sound excluded | KirkDiggler [product agreement](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093673500) and parent-derived [checked technical plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093792827) | Agreement and checked-plan record in linked issue |
+| R12–R15    | settled | Optional visual lighting, scene4 opt-in, single transaction, honest projection and owned real-surface treatment; gameplay/sound excluded | KirkDiggler [product agreement](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093673500) and parent-derived [checked technical plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093792827) | Agreement and checked-plan record in linked issue |
 
 ## Open
 

@@ -285,10 +285,10 @@ Use the populated context and exact full-document comparisons above:
 ## Room boundaries and explicit repair
 
 These are **authoring definitions**, not gameplay regions, floor membership,
-concealment, lighting or visibility. The label owns text and anchor; the linked
-region owns boundary intent. Definitions share the existing full-document owner,
-history, validation and persistence. No region-specific publication capability
-or runtime lighting control is supplied.
+concealment or visibility. The label owns text and anchor; the linked
+region owns boundary and optional visual background intent. Definitions share
+the existing full-document owner, history, validation and persistence. There is
+no region-specific publication capability or gameplay illumination control.
 
 Use a disposable populated fixture with a closed outer rectangle and an
 axis-aligned divider that meets the outer wall interiors exactly. Keep its
@@ -375,16 +375,84 @@ boundaries show cell outlines including interior seams, not a simplified contour
 See the [region contract](../../src/concepts/world-building/CONTRACT.md) and
 [geometry design](../architecture/components/encounter-studio-regions/design.md).
 
+## Region background lighting procedure
+
+Use `createRegionLightingDocument()` in
+`src/concepts/encounter-studio/fixtures/regionLighting.ts` for the complete synthetic
+two-room/native-prop/torch/attached-door/all-scope seed. The configured variant
+uses15%/80%; `createUnresolvedRegionLightingDocument()` retains configured gap,
+unbound and empty-explicit intent. `createSparseRegionLightingDocument()` provides
+128×128 bounds with240 separated configured areas. These helpers are test authority,
+not operator documents or default starter content.
+
+1. Enter **Home → Encounter Studio**, select a linked label through Layout, and
+   inspect **Background light (%)**. Absence is blank with a100 placeholder and
+   **Baseline · no region light authored**, not prefilled100. Plain notes expose
+   neither lighting field nor reset. Apply without typing and unrelated rename
+   must preserve absence/version; deliberately entering100 authors1. Repeating
+   an equal authored value or resetting absence must preserve bytes/history.
+2. Type15 without Apply: document/viewport must stay committed. Join rename,
+   move and15 with Enter: one Undo restores the entire payload. Try101, blank or
+   nonnumeric late tokens: refuse the whole candidate and keep visible error/input.
+   **Use baseline appearance** stages null until Apply. Cancel/Escape/collapse,
+   view/target/epoch/document retirement discard linked-label staging; blur does
+   not submit. Lighting-only retains unfinished policy staging, but an explicitly
+   supplied equal label token still invokes strict validation. Save/export stay
+   strict; never seed invalid storage to test this distinction.
+3. Switch to3D, collapse Arrange, fix camera and wait for native texture/model
+   settle. Compare neighboring automatic15%/80% rooms: actual textured floor,
+   props, divider faces, attached-door surfaces and caps, not a floor overlay or
+   prop-centre classification. Change15→50 without changing source declaration,
+   selected point input or emission. Inspect a long crossing prop, move/rotate
+   and elevate it with real controls, and compare both divider sides. Seeded
+   initial open/closed door variations use canonical bindings, not a live RPC.
+4. Inspect explicit Forest/Meadow unions with sparse gaps, no enclosing walls
+   and no requirement to paint floor. Actual asset parts and floor follow the
+   unions, not rectangular bounds. Gaps/outside and an unconfigured neighbor
+   retain the legacy floor appearance. Placed point lights on lit assets can
+   cross boundaries; Basic floor local response is configured-only, not occlusion.
+5. Toggle the existing native torch **Light enabled** control off/on at15/50/80.
+   Ray-certify each sampled pixel against the first real visible floor surface
+   (underlay aroundY0.194, not hidden ground aroundY0.008). Keep historical
+   occluded/wrong-height samples as failed evidence, not torch proof. Compare
+   identical linear local input/term, not equal encoded screenshot deltas.
+6. Shorten/remove the divider, cross a bound seed, overlap explicit cells and
+   restore/Undo. Persisted lighting must survive with **Lighting saved · not
+   applied until boundary resolves** and the reason. No stale or guessed field
+   may remain. Initially unbound/empty definitions never silently acquire extent.
+7. Interleave accepted lighting, floor and prop edits; navigate, Cancel, no-op,
+   Undo/Redo and same-context reload. Compare full document/optional bytes, not
+   counts alone. Actual new encoder JSON/YAML must preserve scene4, complete
+   scope, walls/start/declarations/bindings; old2/3 no-field reloads never promote.
+8. In explicitly headed hardware Chrome, record unmasked renderer, viewport/DPR,
+   finite browser/outer deadlines and paired warm baseline/lighting frame times.
+   Observe120 camera frames,20 source/level changes,10 view round trips, repair and
+   asset/cap changes. Track real material/field/program identities and live
+   resources: no camera field rebuild/upload/clone, warmed variants and resource
+   plateaus, unchanged cache-shared materials. Include sparse-max/many-area cost.
+   Required surfaces with shader/material diagnostics cannot pass. Record measured
+   delta and unverified rows; no invented FPS pass or broad profiling campaign.
+9. Keep licensed render screenshots/receipts private. Operator screenshots prove
+   only their exercised scenario; focused DOM tests and synthetic viewport probes
+   do not substitute for the actual route matrix or provider carriage.
+
 ### Provider carriage is a separate prerequisite
 
-Web JSON/YAML round trips do not prove provider compilation. Use the isolated API
-snapshot and its **actual pinned** encounter module with the real registry
-validate-only, Put, Get and fresh-registry paths. Feed actual Web-emitted scene3
-bound, unbound and empty-explicit definitions; compare exact source bytes and
-compiled gameplay/implicit lighting against the same document without metadata.
-Retain temporary fixtures, probe diff and exact refusal/output outside tracked
-source, then restore only the temporary addition/fixture and verify original bytes
-and clean status. Never change production or pins to make this probe green.
+Web JSON/YAML round trips do not prove provider compilation. Use the authorized
+clean API snapshot and its **actual pinned** encounter module with the real
+registry validate-only, Put, Get, disk and fresh-registry paths. Emit actual new
+Web encoder sources: metadata-free baseline, scene4 configured resolved intent,
+and scene4 unresolved/unbound/empty intent. Preserve structural walls, required
+partyStart, all scope and gameplay keys; vary only presentation metadata for the
+compiled-equality comparison. Validate the baseline too: a synthetic scenario
+name or occupied start is a fixture refusal, not a scene4 result.
+
+Use a temporary Go overlay of the existing registry test file, appending a suite
+method that reads absolute temporary encoder fixtures. Registry writes use
+`t.TempDir()`. Compare exact source bytes and entire compiled Spec/Atlas/region
+membership and gameplay lighting against baseline. Record actual API head/Go/pins,
+original test/go.mod/go.sum hashes and clean status before/after. Never edit source,
+pins or services to make this probe green. There is no Save & Play/liveRPC claim.
 
 If even the metadata-free structural-wall base is refused, record that format/pin
 blocker separately from local authoring results. Do not remove walls from exports,
@@ -400,6 +468,7 @@ npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.tes
 npm run test:run -- src/concepts/encounter-studio/StudioArrangePanel.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
 npm run test:run -- src/concepts/world-building/sceneState.test.ts src/concepts/world-building/serialization.test.ts src/concepts/world-building/roomDraft.test.ts src/concepts/world-building/singleRoomDungeon.test.ts src/compositions/roomDocument.test.ts
 npm run test:run -- src/concepts/world-building/WorldBuilderWorkspace.test.tsx src/concepts/world-building/WorldBuildingViewport.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.ts
+npm run test:run -- src/concepts/encounter-studio/StudioArrangePanel.test.tsx src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/fixtures/regionLighting.test.ts
 npm run typecheck
 ```
 
@@ -418,5 +487,9 @@ interaction or visual 3D correctness. The disposable browser walk supplies that
 separate evidence.
 
 At the PR boundary, run the repository's single full `npm run ci-check` gate and
-record actual output. Independent review and operator interaction evidence remain
+record actual output. If a live preview's ignored asset link must remain stable,
+use an explicitly authorized detached verification worktree at the exact final
+commit, with only a matching dependency symlink and no asset link; record cwd,
+head and clean status. Never interrupt the operator's preview for a gate.
+Independent review and operator interaction evidence remain
 separate readiness requirements; focused DOM passes do not stand in for them.

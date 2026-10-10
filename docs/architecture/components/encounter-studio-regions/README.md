@@ -88,6 +88,15 @@ has no witness. Closing walls later does not bind it; the author pays one
 explicit **Use enclosing walls** action (R3). This is the difference between
 repairing accepted intent and adopting a new area silently.
 
+Selecting that linked label opens `StudioArrangePanel`. `arrangeFields` presents
+an unset background as a blank token with a100 placeholder, not an authored default.
+Typing15 stages only `background`; `arrangeIntent` converts it to0.15 and omits
+untouched rounded label fields. **Use baseline appearance stages null**, and
+Cancel/Escape/collapse or owner retirement discards the whole linked-label form.
+A note has no region controls. Saved unresolved settings explain not-applied status
+beside the existing geometric reason (R15). Point light controls use their existing
+owner independently, never this form's background value.
+
 A label-edit with `regionLighting: {regionId: 'kitchen-region', value:
 {background: 0.15}}` updates that pair through `setRegionLighting` and opts the
 scene in to scene4. `null` deletes lighting without demotion; omission leaves it
@@ -234,7 +243,10 @@ owner facade; none persists a resolution or mutates floor for region edits.
 
 `useStudioLabels` carries an explicit Note/Room placement choice.
 `StudioArrangePanel` consumes the existing label selection with optional linked
-region/resolution, displays mode/reason and submits bind/pair-delete intents.
+region/resolution, displays mode/reason and saved/applied lighting status, and
+submits bind/pair-delete intents. `arrangeFields` / `arrangeIntent` compose staged
+background/reset with dirty rename/location into the existing atomic label-edit;
+they never commit a default on unrelated Apply.
 `EncounterStudioWorkspace` stages Paint/Erase/Rectangle region mode;
 `LayoutViewport` stages cell membership locally and calls
 `StudioRegionEditing.setExplicitRegionArea` once on release. Escape, capture loss,

@@ -136,13 +136,14 @@ relations or arrangement members. No 3D label renderer is promised. Label-only
 edits leave workspace and gameplay policy unchanged. Linked Room labels and their
 separate authoring boundary intent are described below.
 
-`WorldScene.version` supports 1/2/3. Scene3 region metadata is described below. Version 2 optionally carries
+`WorldScene.version` supports 1/2/3/4. Scene3 boundary metadata and optional
+scene4 lighting intent are described below. Version 2 optionally carries
 `mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
 labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
 continuous world points inside the workspace, and at most 256 labels are accepted.
 Absent labels means none; deleting the last removes `mapLabels` without demoting
 the scene. First Note or explicit rectangular resize on scene1 promotes the scene to 2,
-even if the rectangle has no labels; scene3 is preserved. Version-1 scenes carrying label metadata
+even if the rectangle has no labels; scene3/4 are preserved. Version-1 scenes carrying label metadata
 are refused. Older scene-1-only web readers refuse scene 2 rather than silently
 strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
 data, not YAML comments/formatting. Envelope versions, storage namespaces and
@@ -201,8 +202,39 @@ adopted. **Clear explicit area** retains the pair with unresolved empty intent.
 No hidden cell transfers, floor/prop deletion, binding or scope changes occur.
 Escape, capture loss, view/document/epoch/mode/target retirement cancel previews
 without writes. 3D round trips preserve definitions/selection but retire region
-painting. No 3D boundary renderer, regional lighting/audio controls or gameplay
-visibility authority is supplied.
+painting. There is no 3D boundary overlay, audio control or gameplay visibility
+authority.
+
+Linked-label Arrange stages **Background light (%)** (0..100) and **Use baseline
+appearance** in the same dirty-only label-edit as rename/move. An unset input is
+blank with a100 placeholder and **Baseline · no region light authored**; untouched
+fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
+absence: it opts the configured floor into the placed-light receiver. Reset stages
+null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
+one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
+view/target/epoch/document retirement discard linked-label staging without writes;
+blur never submits. Ordinary notes expose no region fields. Configured unresolved
+labels show **Lighting saved · not applied until boundary resolves**, alongside the
+boundary reason.
+
+Only an actual lighting set opts into scene4. Its optional exact
+`lighting:{background:number}` is finite0..1; no defaults, derived polygons or
+source settings are persisted. Load never promotes and reset never demotes.
+Lighting alone with text/location absent uses the ordinary document gate;
+explicit label tokens, including equal values, retain strict complete-policy
+validation. Save/export remain strict.
+
+Studio3D consumes only configured, currently resolved projection. Actual floor,
+prop, wall, attached-door and cap fragments sample world-XZ rather than object
+centres. Background scales directional/indirect illumination, not placed point
+lights or emissive terms. The textured Basic workspace floor adds local response
+only inside configured resolved regions; outside/unconfigured floor stays legacy.
+Unresolved/conflicting definitions retain settings with no stale applied extent.
+There is one per-instance material-treatment owner; cached geometry/maps and
+Play/thumbnail/actor/guide materials stay unchanged. Unsupported materials or
+field/shader failures visibly explain unapplied lighting; fallback is not proof
+of required native-surface support. This is editor appearance, not occlusion,
+physical transport, gameplay lighting, sight or darkvision.
 
 The one document/history owner enforces strict pair-creation and ordinary
 boundary-definition gates. Unresolved alone is valid metadata; it does not relax
@@ -724,12 +756,12 @@ SceneEnvelope {
   kind: "rpg-world-building-scene"
   version: 1
   scene: WorldScene {
-    version: 1 | 2 | 3
+    version: 1 | 2 | 3 | 4
     id, name
     items: WorldProp[]
     groups: WorldGroup[]
-    mapLabels?: [{ id, text, location: { x, z } }] // scene 2/3
-    authoringRegions?: AuthoringRegion[] // scene 3 only; see authoring region boundary
+    mapLabels?: [{ id, text, location: { x, z } }] // scene 2/3/4
+    authoringRegions?: AuthoringRegion[] // scene 3/4; optional lighting only in4
   }
 }
 
@@ -789,7 +821,8 @@ composition placement applies once. Rendering selects at most the established
 12 point lights: dungeon selection uses its current view focus, while composer
 and standalone/thumbnail selection currently use the composition origin rather
 than camera position. Authored sources illuminate meshes but do not add crypt
-floor pools. This is visual rendering only: intensity is not a physical
+floor pools. Studio's configured-only Basic floor receiver is the independent
+visual authoring path described above, not a gameplay pool. This is visual rendering only: intensity is not a physical
 measurement, range is not D&D bright/dim distance, and no visibility or
 lit-cell facts are computed.
 

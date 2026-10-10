@@ -23,7 +23,9 @@ export type ArrangeFieldKey =
   | 'assetRef'
   | 'anchor'
   | 'position'
-  | 'width';
+  | 'width'
+  | 'background'
+  | 'baseline';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
 export interface ArrangeField {
   key: ArrangeFieldKey;
@@ -119,6 +121,19 @@ export function arrangeFields(
         { key: 'text', label: 'Rename label', value: selection.label.text },
         numeric('x', 'Label world X', selection.label.location.x),
         numeric('z', 'Label world Z', selection.label.location.z),
+        ...(selection.region
+          ? [
+              {
+                key: 'background' as const,
+                label: 'Background light (%)',
+                numeric: true,
+                value: selection.region.lighting
+                  ? display(selection.region.lighting.background * 100)
+                  : '',
+                placeholder: '100',
+              },
+            ]
+          : []),
       ];
     case 'actor':
       return [
@@ -235,7 +250,28 @@ export function arrangeIntent(
         ...(Object.keys(appearance).length ? { appearance } : {}),
       };
     }
-    case 'label':
+    case 'label': {
+      let regionLighting: Extract<
+        StudioArrangeIntent,
+        { kind: 'label-edit' }
+      >['regionLighting'];
+      if (draft.background !== undefined || draft.baseline !== undefined) {
+        if (!selection.region)
+          throw new Error('Select a linked region label to edit lighting.');
+        if (draft.baseline === 'reset') {
+          regionLighting = { regionId: selection.region.id, value: null };
+        } else {
+          const background = number('background');
+          if (background < 0 || background > 100)
+            throw new Error(
+              'Background light must be between 0 and 100 percent.'
+            );
+          regionLighting = {
+            regionId: selection.region.id,
+            value: { background: background / 100 },
+          };
+        }
+      }
       if (
         draft.text !== undefined &&
         (!draft.text.trim() || draft.text.length > 120)
@@ -250,7 +286,9 @@ export function arrangeIntent(
         ...(draft.x !== undefined || draft.z !== undefined
           ? { location: axes(['x', 'z']) }
           : {}),
+        ...(regionLighting ? { regionLighting } : {}),
       };
+    }
     case 'actor':
       return {
         kind: 'actor-start',

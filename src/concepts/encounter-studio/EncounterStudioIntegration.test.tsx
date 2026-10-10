@@ -74,6 +74,7 @@ import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
 } from './fixtures/castleWorkspace';
+import { createRegionLightingDocument } from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
   clientToWorld,
@@ -3568,5 +3569,91 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.click(button('Use enclosing walls'));
     expect(storage.document()).toEqual(bound);
     expect(storage.roomWrites()).toBe(writes);
+  });
+});
+
+describe('Studio staged region lighting integrated presentation', () => {
+  it('real Layout selection/form stages, cancels and joins one history step; 3D gets only committed resolution and reload/export retain full payload', async () => {
+    const original = createRegionLightingDocument();
+    const storage = new MemoryStorage(original);
+    const mounted = mount(storage);
+    await settled();
+    const select = () =>
+      fireEvent.keyDown(button('Select map label left'), { key: 'Enter' });
+    const field = (name: string, value: string) =>
+      fireEvent.change(screen.getByLabelText(name), { target: { value } });
+    select();
+    const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
+    const writes = storage.roomWrites();
+    field('Background light (%)', '15');
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Arrange'));
+    expect(
+      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+    ).toBe('');
+    field('Background light (%)', '15');
+    switchTo('3D');
+    expect(viewport().roomAuthoring!.regionLighting!.areas).toEqual([]);
+    switchTo('Layout');
+    select();
+    expect(
+      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+    ).toBe('');
+    field('Rename label', 'Kitchen');
+    field('Label world X', '-2.25');
+    field('Background light (%)', '15');
+    fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {
+      key: 'Enter',
+    });
+    expect(storage.roomWrites()).toBe(writes + 1);
+    const after = storage.document();
+    const expected = structuredClone(original);
+    expected.draft.scene.version = 4;
+    expected.draft.scene.authoringRegions![0].lighting = { background: 0.15 };
+    expected.draft.scene.mapLabels!.find(
+      (l) => l.id === 'lighting-left-label'
+    )!.text = 'Kitchen';
+    expected.draft.scene.mapLabels!.find(
+      (l) => l.id === 'lighting-left-label'
+    )!.location.x = -2.25;
+    expect(after).toEqual(expected);
+    switchTo('3D');
+    expect(viewport().roomAuthoring!.regionLighting!.areas).toHaveLength(1);
+    expect(viewport().roomAuthoring!.regionLighting!.areas[0]).toMatchObject({
+      regionId: 'lighting-left',
+      background: 0.15,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    expect((button('Undo') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(after);
+    const exported = encodeSingleRoomDungeon({
+      key: 'studio-lighting-joined',
+      draft: after.draft,
+      ...after.scope,
+    });
+    const decoded = decodeSingleRoomDungeon(exported);
+    expect(
+      parseRoomDocumentJson(
+        stringifyRoomDraft(decoded.draft, scopeFrom(decoded))
+      )
+    ).toEqual(after);
+    mounted.unmount();
+    mount(storage);
+    await settled();
+    expect(storage.document()).toEqual(after);
+    fireEvent.keyDown(button('Select map label Kitchen'), { key: 'Enter' });
+    expect(
+      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+    ).toBe('15');
+    fireEvent.click(button('Use baseline appearance'));
+    expect(storage.document()).toEqual(after);
+    fireEvent.click(button('Apply Arrange'));
+    expect(
+      storage.document().draft.scene.authoringRegions![0]
+    ).not.toHaveProperty('lighting');
+    expect(storage.document().draft.scene.version).toBe(4);
   });
 });
