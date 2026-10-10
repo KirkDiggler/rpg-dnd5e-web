@@ -196,6 +196,7 @@ import {
   type WorldBuildingDragPayload,
 } from './worldBuildingDrag';
 import type { WorldBuildingTool } from './WorldBuildingInteraction';
+import { WorldBuildingPaletteCard } from './WorldBuildingPaletteCard';
 import type { WorldBuildingDropTarget } from './worldBuildingPointer';
 import {
   WorldBuildingViewport,
@@ -2715,6 +2716,29 @@ export function WorldBuildingConcept({
     // navigation, and jumping must never change the site's right-hand nouns.
   };
 
+  // These actions only set transient palette state. Document mutation remains
+  // owned by the existing guarded viewport/drop/repeat commit paths. No owner
+  // snapshot or latest-ref indirection is captured by a card callback.
+  const startPaletteDrag = useCallback(
+    (ref: string, transfer: DataTransfer): void => {
+      const payload: WorldBuildingDragPayload = { kind: 'prop', id: ref };
+      writeWorldBuildingDragPayload(transfer, payload);
+      setActiveDrag(payload);
+      if (roomMode) {
+        setRepeatAssetRef(null);
+        setRoomTool((current) => (current === 'repeat' ? 'select' : current));
+      }
+    },
+    [roomMode]
+  );
+  const finishPaletteDrag = useCallback((): void => setActiveDrag(null), []);
+  const repeatPaletteAsset = useCallback((ref: string): void => {
+    setPreviewScene(null);
+    setRepeatAssetRef(ref);
+    setRoomTool('repeat');
+    setNotice('');
+  }, []);
+
   // Keep queue keys alive when demand pauses: the existing serial queue owns
   // one cache, and this is its only renderer in both Studio and legacy views.
   const thumbnailHost =
@@ -2775,89 +2799,24 @@ export function WorldBuildingConcept({
         Clicking a card never arms placement.
       </p>
       <div className="wb-palette-list">
-        {filteredCatalog.map((entry) => {
-          const payload: WorldBuildingDragPayload = {
-            kind: 'prop',
-            id: entry.ref,
-          };
-          const generatedThumbnail =
-            entry.source === 'generated'
-              ? generatedThumbnails.results[worldAssetThumbnailKey(entry.asset)]
-              : undefined;
-          const thumbnail =
-            entry.thumbnail ??
-            (generatedThumbnail?.status === 'ready'
-              ? generatedThumbnail.image
-              : undefined);
-          const thumbnailState =
-            entry.source === 'legacy'
-              ? 'legacy'
-              : (generatedThumbnail?.status ?? 'loading');
-          return (
-            <article
-              key={entry.ref}
-              className="wb-palette-entry"
-              draggable
-              aria-label={`Drag ${entry.label} into scene`}
-              data-thumbnail-state={thumbnailState}
-              data-asset-ref={entry.ref}
-              onDragStart={(event) => {
-                writeWorldBuildingDragPayload(event.dataTransfer, payload);
-                setActiveDrag(payload);
-                if (roomMode) {
-                  setRepeatAssetRef(null);
-                  setRoomTool((current) =>
-                    current === 'repeat' ? 'select' : current
-                  );
-                }
-              }}
-              onDragEnd={() => setActiveDrag(null)}
-            >
-              {thumbnail ? (
-                <img src={thumbnail} alt="" draggable={false} />
-              ) : (
-                <span className="wb-swatch">
-                  {entry.label.slice(0, 2)}
-                  {generatedThumbnail?.status === 'error' ? ' !' : ''}
-                </span>
-              )}
-              <span>
-                <strong>{entry.label}</strong>
-                <small>
-                  Drag to add ·{' '}
-                  {entry.source === 'legacy' ? entry.role : entry.category}
-                  {entry.supportsDecoration ? ' · surface' : ''}
-                </small>
-                {roomMode && entry.source === 'generated' && (
-                  <button
-                    type="button"
-                    className="wb-repeat-action"
-                    aria-label={`Repeat ${entry.label}`}
-                    disabled={MAX_ITEMS - scene.items.length < 1}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPreviewScene(null);
-                      setRepeatAssetRef(entry.ref);
-                      setRoomTool('repeat');
-                      setNotice('');
-                    }}
-                  >
-                    Repeat
-                  </button>
-                )}
-                {entry.source === 'generated' && (
-                  <span className="sr-only">
-                    {generatedThumbnail?.status === 'error'
-                      ? `Thumbnail unavailable${generatedThumbnail.message ? `: ${generatedThumbnail.message}` : ''}`
-                      : generatedThumbnail?.status === 'ready'
-                        ? 'Thumbnail ready'
-                        : 'Thumbnail loading'}
-                  </span>
-                )}
-              </span>
-            </article>
-          );
-        })}
+        {filteredCatalog.map((entry) => (
+          <WorldBuildingPaletteCard
+            key={entry.ref}
+            entry={entry}
+            generatedThumbnail={
+              entry.source === 'generated'
+                ? generatedThumbnails.results[
+                    worldAssetThumbnailKey(entry.asset)
+                  ]
+                : undefined
+            }
+            roomMode={roomMode}
+            repeatDisabled={MAX_ITEMS - scene.items.length < 1}
+            onDragStart={startPaletteDrag}
+            onDragEnd={finishPaletteDrag}
+            onRepeat={repeatPaletteAsset}
+          />
+        ))}
       </div>
     </>
   );
@@ -3478,7 +3437,7 @@ export function WorldBuildingConcept({
    * an in-progress scope cannot be represented. The editor holds what the
    * author typed, so this must never crash the render: it renders the
    * encoder's sentence instead. */
-  const roomDraftJson = (() => {
+  const roomDraftJson = useMemo(() => {
     if (!roomMode) return '';
     try {
       return stringifyRoomDraft(roomDraft, siteScope);
@@ -3487,7 +3446,7 @@ export function WorldBuildingConcept({
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  })();
+  }, [roomMode, roomDraft, siteScope]);
 
   const commitFloor = (
     cells: readonly RoomHexCell[],

@@ -12,7 +12,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import type {
@@ -23,6 +23,7 @@ import {
   decodeWorldBuilderV4Site,
   WORLD_BUILDER_V4_SITE_YAML,
 } from './fixtures/worldBuilderV4Site';
+import * as roomDraftCodec from './roomDraft';
 import {
   createRoomDraft,
   LEGACY_ROOM_DRAFT_STORAGE_KEY,
@@ -49,6 +50,10 @@ import type { StructuralWall } from './structuralWalls';
 import type { KeyValueStorage, WorldScene, WorldTransform } from './types';
 import { workspaceCells } from './workspaceGeometry';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
+import {
+  WorldBuildingPaletteCard,
+  type WorldBuildingPaletteCardProps,
+} from './WorldBuildingPaletteCard';
 
 let capturedRoomViewport:
   | {
@@ -115,8 +120,21 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
   };
 });
 
+const thumbnailCapture = vi.hoisted(() => ({
+  current: undefined as
+    | {
+        requestKey: string;
+        onComplete: (key: string, image: string) => void;
+        onError: (key: string, message: string) => void;
+      }
+    | undefined,
+}));
+
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
-  ThumbnailRenderer: () => null,
+  ThumbnailRenderer: (props: NonNullable<typeof thumbnailCapture.current>) => {
+    thumbnailCapture.current = props;
+    return null;
+  },
 }));
 
 /** Deferred authoring/lobby seams for the publishing busy-boundary tests:
@@ -6069,5 +6087,120 @@ describe('Studio owner facade', () => {
     expect(storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(owner.session.notice).toMatch(/quota blocked/);
     expect(owner.session.saveStatus).toMatch(/failed.*memory/);
+  });
+});
+
+describe('Orbit thumbnail update isolation', () => {
+  const completeThumbnail = (image = 'data:image/png;base64,orbit') => {
+    const request = thumbnailCapture.current!;
+    act(() => request.onComplete(request.requestKey, image));
+    return JSON.parse(request.requestKey)[0] as string;
+  };
+
+  it('does not serialize on thumbnail-only updates; serializes real draft, scope, refusal and repair changes', () => {
+    const serialize = vi.spyOn(roomDraftCodec, 'stringifyRoomDraft');
+    let roomMode = true;
+    const storage = new MemoryStorage();
+    const idFactory = deterministicIds();
+    const element = () => (
+      <WorldBuildingConcept
+        roomMode={roomMode}
+        storage={storage}
+        idFactory={idFactory}
+      />
+    );
+    const mounted = render(element());
+    const json = () => screen.getByTestId('room-draft-json').textContent!;
+    const initial = json();
+    serialize.mockClear();
+    completeThumbnail();
+    expect(serialize).not.toHaveBeenCalled();
+    expect(json()).toBe(initial);
+
+    act(() =>
+      capturedRoomViewport!.roomAuthoring!.onWalkableGesture(
+        [{ q: 0, r: 0 }],
+        'paint'
+      )
+    );
+    expect(serialize).toHaveBeenCalled();
+    const painted = JSON.parse(json());
+    expect(painted.draft.room.walkableHexes).toEqual([{ q: 0, r: 0 }]);
+    serialize.mockClear();
+    completeThumbnail();
+    expect(serialize).not.toHaveBeenCalled();
+    expect(JSON.parse(json())).toEqual(painted);
+
+    // A scope-only change must recompute and retain the encoder's real refusal.
+    fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+    expect(serialize).toHaveBeenCalled();
+    const invalid = json();
+    expect(JSON.parse(invalid).error).toMatch(/must name a fact/);
+    expect(serialize.mock.calls.at(-1)![0].room.walkableHexes).toEqual([
+      { q: 0, r: 0 },
+    ]);
+    serialize.mockClear();
+    completeThumbnail();
+    expect(serialize).not.toHaveBeenCalled();
+    expect(json()).toBe(invalid);
+
+    fireEvent.change(screen.getByLabelText('Intel reveals fact for intel-1'), {
+      target: { value: 'repaired-fact' },
+    });
+    expect(serialize).toHaveBeenCalled();
+    const repaired = JSON.parse(json());
+    expect(repaired.scope.intel).toEqual([
+      { id: 'intel-1', reveals: { fact: 'repaired-fact' } },
+    ]);
+    expect(repaired.draft).toEqual(painted.draft);
+    serialize.mockClear();
+    completeThumbnail();
+    expect(serialize).not.toHaveBeenCalled();
+    expect(JSON.parse(json())).toEqual(repaired);
+
+    // Mode is also a dependency even when the held document has not changed.
+    serialize.mockClear();
+    roomMode = false;
+    mounted.rerender(element());
+    expect(screen.queryByTestId('room-draft-json')).toBeNull();
+    expect(serialize).not.toHaveBeenCalled();
+    roomMode = true;
+    mounted.rerender(element());
+    expect(serialize).toHaveBeenCalled();
+    expect(JSON.parse(json())).toEqual(repaired);
+  });
+
+  it('executes only the changed card body with stable owner actions and fresh own images', () => {
+    // Spy on React.memo's actual wrapped function; counting DOM nodes would
+    // not show whether React had executed the expensive JSX body again.
+    const body = vi.spyOn(
+      WorldBuildingPaletteCard as unknown as {
+        type: (props: WorldBuildingPaletteCardProps) => ReactNode;
+      },
+      'type'
+    );
+    render(<WorldBuildingConcept roomMode storage={new MemoryStorage()} />);
+    const initialActions = body.mock.calls[0][0];
+    body.mockClear();
+    const changedRef = completeThumbnail('data:image/png;base64,first');
+    expect(body).toHaveBeenCalledOnce();
+    const changed = body.mock.calls[0][0];
+    expect(changed.entry.ref).toBe(changedRef);
+    expect(changed.onDragStart).toBe(initialActions.onDragStart);
+    expect(changed.onDragEnd).toBe(initialActions.onDragEnd);
+    expect(changed.onRepeat).toBe(initialActions.onRepeat);
+    expect(
+      screen
+        .getByLabelText(`Drag ${changed.entry.label} into scene`)
+        .querySelector('img')
+        ?.getAttribute('src')
+    ).toBe('data:image/png;base64,first');
+    body.mockClear();
+    const nextRef = completeThumbnail('data:image/png;base64,second');
+    expect(body).toHaveBeenCalledOnce();
+    expect(body.mock.calls[0][0].entry.ref).toBe(nextRef);
+    expect(body.mock.calls[0][0].generatedThumbnail?.image).toBe(
+      'data:image/png;base64,second'
+    );
   });
 });
