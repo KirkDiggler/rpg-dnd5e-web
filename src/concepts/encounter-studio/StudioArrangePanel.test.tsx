@@ -676,13 +676,7 @@ describe('linked label staged background joined to owner', () => {
           view: 'layout',
           render: (next) => {
             session = next;
-            return (
-              <StudioArrangePanel
-                session={next}
-                expanded
-                onAppearanceDemandChange={() => {}}
-              />
-            );
+            return <StudioArrangePanel session={next} expanded />;
           },
         }}
       />
