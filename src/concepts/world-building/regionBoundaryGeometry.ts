@@ -421,8 +421,6 @@ function lookup(graph: Graph, point: WorldPoint): EnclosureResult {
     if (orientation(a, b, p) === 0 && inBounds([wall], point))
       return { status: 'unresolved', reason: 'seed-on-boundary' };
   }
-  const failure = graph.failures.find((f) => inBounds(f.walls, point));
-  if (failure) return { status: 'unresolved', reason: failure.reason };
   for (const nodes of graph.unsupportedFaces) {
     const result = pointInRing(
       nodes.map((n) => n.p),
@@ -449,7 +447,13 @@ function lookup(graph: Graph, point: WorldPoint): EnclosureResult {
   }
   if (containing.length > 1)
     return { status: 'unresolved', reason: 'unsupported-geometry' };
-  if (!containing.length) return { status: 'unresolved', reason: 'open' };
+  if (!containing.length) {
+    // Failed-component bounds are only a fallback diagnosis, not evidence
+    // against a certified face. Connected failures have no surviving faces;
+    // disconnected interior walls are still refused below as holes/slits.
+    const failure = graph.failures.find((f) => inBounds(f.walls, point));
+    return { status: 'unresolved', reason: failure?.reason ?? 'open' };
+  }
   const face = containing[0];
   // A disconnected interior component makes a hole/slit, not a one-ring face.
   const sources = new Set(face.witness.walk.map((r) => r.wallId));

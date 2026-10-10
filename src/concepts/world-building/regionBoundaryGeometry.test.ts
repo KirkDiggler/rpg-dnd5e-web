@@ -9,7 +9,9 @@ import {
 import {
   useEnclosingWalls as bindEnclosingWalls,
   createRoomLabel,
+  setRegionLighting,
 } from './regionEdits';
+import { projectRegionLighting } from './regionLighting';
 import {
   createRoomDraft,
   parseRoomDocumentJson,
@@ -411,6 +413,159 @@ describe('exact collinear coverage provenance', () => {
       );
       expect(JSON.stringify(draft)).toBe(before);
     }
+  });
+});
+
+describe('failed-component isolation at certified faces', () => {
+  function externalPair(): StructuralWall[] {
+    // Shared-endpoint orientation is uncertain, but both segments miss the
+    // rectangle: at x=8 they are above z=4. Their bbox still contains (2,2).
+    return [
+      wall('P', 10, 2, -2, 41),
+      wall('Q', 10, 2, -2, 41 - 7.105427357601002e-15),
+    ];
+  }
+  it('resolves a certified face despite an external uncertain component bbox covering its seed', () => {
+    const expected = findEnclosureAtPoint(room(rectangle()), p(2, 2));
+    expect(expected.status).toBe('resolved');
+    const walls = [...rectangle(), ...externalPair()];
+    for (const order of [walls, [...walls].reverse()]) {
+      const draft = room(order);
+      const before = JSON.stringify(draft);
+      expect(findEnclosureAtPoint(draft, p(2, 2))).toEqual(expected);
+      expect(JSON.stringify(draft)).toBe(before);
+    }
+  });
+  it('preserves a bound witness and configured lighting without a rebind or source writes', () => {
+    const bound = setRegionLighting(
+      createRoomLabel(room(rectangle()), 'region', 'label', 'Room', p(2, 2)),
+      'region',
+      { background: 0.15 }
+    );
+    const draft = {
+      ...bound,
+      room: { ...bound.room, walls: [...bound.room.walls!, ...externalPair()] },
+    };
+    const before = JSON.stringify(draft);
+    const expected = resolveAuthoringRegions(bound);
+    expect(expected[0].status).toBe('resolved');
+    if (expected[0].status !== 'resolved') throw new Error('fixture');
+    expect(resolveAuthoringRegions(draft)).toEqual(expected);
+    expect(
+      projectRegionLighting(
+        draft.scene.authoringRegions!,
+        resolveAuthoringRegions(draft)
+      )
+    ).toEqual({
+      areas: [{ regionId: 'region', background: 0.15, area: expected[0].area }],
+    });
+    expect(bindEnclosingWalls(draft, 'region')).toBe(draft);
+    expect(draft.scene.authoringRegions).toBe(bound.scene.authoringRegions);
+    expect(JSON.stringify(draft)).toBe(before);
+  });
+  it('still reports real uncertainty when no certified face contains the seed', () => {
+    expect(findEnclosureAtPoint(room(externalPair()), p(0, 20))).toEqual({
+      status: 'unresolved',
+      reason: 'uncertain-geometry',
+    });
+    const gap = rectangle();
+    gap[3].line.end = p(0, Number.EPSILON);
+    expect(findEnclosureAtPoint(room(gap), p(2, 2)).status).toBe('unresolved');
+    expect(
+      findEnclosureAtPoint(room([...gap, ...externalPair()]), p(2, 2))
+    ).toEqual({ status: 'unresolved', reason: 'uncertain-geometry' });
+  });
+  it.each([
+    ['disconnected wall', [wall('I', 5, 1, 6, 3)], 'unsupported-geometry'],
+    [
+      'disconnected uncertain pair',
+      [wall('I', 5, 1, 6, 3), wall('J', 5, 1, 6, 3 - Number.EPSILON * 2)],
+      'unsupported-geometry',
+    ],
+    ['connected slit', [wall('I', 0, 1, 1, 1)], 'uncertain-geometry'],
+    [
+      'nested hole',
+      [
+        wall('I', 5, 1, 6, 1),
+        wall('J', 6, 1, 6, 3),
+        wall('K', 6, 3, 5, 3),
+        wall('L', 5, 3, 5, 1),
+      ],
+      'unsupported-geometry',
+    ],
+    [
+      'overlapping full-span owners',
+      [wall('I', 0, 0, 8, 0)],
+      'unsupported-geometry',
+    ],
+  ] as const)(
+    'does not resolve or apply lighting over a %s',
+    (_, extras, reason) => {
+      const bound = setRegionLighting(
+        createRoomLabel(room(rectangle()), 'region', 'label', 'Room', p(2, 2)),
+        'region',
+        { background: 0.15 }
+      );
+      const draft = {
+        ...bound,
+        room: {
+          ...bound.room,
+          walls: [...rectangle(), ...externalPair(), ...extras],
+        },
+      };
+      const before = JSON.stringify(draft);
+      expect(
+        findEnclosureAtPoint(room([...rectangle(), ...extras]), p(2, 2))
+      ).toEqual({
+        status: 'unresolved',
+        reason: 'unsupported-geometry',
+      });
+      // A connected slit removes the outer face; absent a certified candidate,
+      // the existing bbox fallback can diagnose the external uncertainty first.
+      expect(findEnclosureAtPoint(draft, p(2, 2))).toEqual({
+        status: 'unresolved',
+        reason,
+      });
+      const resolutions = resolveAuthoringRegions(draft);
+      expect(resolutions[0].status).toBe('unresolved');
+      expect(
+        projectRegionLighting(draft.scene.authoringRegions!, resolutions)
+      ).toEqual({ areas: [] });
+      expect(JSON.stringify(draft)).toBe(before);
+    }
+  );
+  it('retains seed-on-wall and connected uncertain-contact refusals', () => {
+    expect(
+      findEnclosureAtPoint(room([...rectangle(), ...externalPair()]), p(0, 2))
+    ).toEqual({ status: 'unresolved', reason: 'seed-on-boundary' });
+    const connected = externalPair().map((w) => ({
+      ...w,
+      line: { ...w.line, start: p(8, 4) },
+    }));
+    expect(
+      findEnclosureAtPoint(room([...rectangle(), ...connected]), p(2, 2))
+    ).toEqual({ status: 'unresolved', reason: 'uncertain-geometry' });
+  });
+  it('does not pick a winner for multiple containing rings or duplicate room labels', () => {
+    const nested = room([
+      ...rectangle(),
+      ...externalPair(),
+      wall('I', 1, 1, 3, 1),
+      wall('J', 3, 1, 3, 3),
+      wall('K', 3, 3, 1, 3),
+      wall('L', 1, 3, 1, 1),
+    ]);
+    expect(findEnclosureAtPoint(nested, p(2, 2))).toEqual({
+      status: 'unresolved',
+      reason: 'unsupported-geometry',
+    });
+    const draft = room([...rectangle(), ...externalPair()]);
+    const one = createRoomLabel(draft, 'one', 'one-label', 'One', p(2, 2));
+    const two = createRoomLabel(one, 'two', 'two-label', 'Two', p(6, 2));
+    expect(resolveAuthoringRegions(two)).toEqual([
+      { id: 'one', status: 'unresolved', reason: 'duplicate-room-label' },
+      { id: 'two', status: 'unresolved', reason: 'duplicate-room-label' },
+    ]);
   });
 });
 
