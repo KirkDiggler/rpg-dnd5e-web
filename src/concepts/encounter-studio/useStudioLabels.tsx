@@ -21,20 +21,20 @@ export function useStudioLabels(
   controls: ReactNode;
 } {
   const [visible, setVisible] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = session.mapLabelSelection.selectedId;
+  const setSelectedId = session.mapLabelSelection.select;
+  const [kind, setKind] = useState<'note' | 'room'>('note');
+  const [placementKind, setPlacementKind] = useState<'note' | 'room'>('note');
   const [newText, setNewText] = useState('');
   const [placementText, setPlacementText] = useState<string | null>(null);
-  const [rename, setRename] = useState('');
   const [x, setX] = useState('0');
   const [z, setZ] = useState('0');
   const [error, setError] = useState<string | null>(null);
   const labels = session.document.draft.scene.mapLabels ?? [];
-  const selected = labels.find((label) => label.id === selectedId);
   const cancel = (): void => {
     setPlacementText(null);
-    setRename(selected?.text ?? '');
-    setX(String(selected?.location.x ?? 0));
-    setZ(String(selected?.location.z ?? 0));
+    setX('0');
+    setZ('0');
     setError(null);
   };
   useEffect(() => {
@@ -43,24 +43,12 @@ export function useStudioLabels(
     setPlacementText(null);
   }, [session.document]);
   useEffect(() => {
-    // Selection/document changes reset selected-label drafts independently of
-    // placement, which can have been armed in the same selection-clearing event.
-    setRename(selected?.text ?? '');
-    setX(String(selected?.location.x ?? 0));
-    setZ(String(selected?.location.z ?? 0));
-    setError(null);
-    if (!selected) setSelectedId(null);
-  }, [session.document, selected]);
-  useEffect(() => {
     setPlacementText(null);
     setVisible(false);
-    setSelectedId(null);
   }, [view, session.document.draft.id]);
   const select = (id: string | null): void => {
     // Selection alone must not retire an in-flight label drag's owner intent.
     setSelectedId(id);
-    if (id !== null) setVisible(true);
-    else if (!active) setVisible(false);
     setPlacementText(null);
   };
   const result = (accepted: boolean): boolean => {
@@ -74,7 +62,11 @@ export function useStudioLabels(
     return accepted;
   };
   const create = (text: string, location: WorldPoint): boolean =>
-    result(session.createMapLabel(text, location));
+    result(
+      placementKind === 'room'
+        ? session.regionEditing.createRoomLabel(text, location)
+        : session.createMapLabel(text, location)
+    );
   const move = (id: string, location: WorldPoint): boolean =>
     result(session.moveMapLabel(id, location));
   const coordinates = (): WorldPoint | null => {
@@ -104,6 +96,7 @@ export function useStudioLabels(
     editing: {
       active,
       placementText,
+      placementKind,
       selectedId,
       onSelect: select,
       onCreate: create,
@@ -154,10 +147,25 @@ export function useStudioLabels(
                 onActivate();
               }
               setSelectedId(null);
+              setPlacementKind(kind);
               setPlacementText(newText);
               setError(null);
             }}
           >
+            <label>
+              Label kind
+              <select
+                aria-label="Label kind"
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value as 'note' | 'room');
+                  setPlacementText(null);
+                }}
+              >
+                <option value="room">Room · linked boundary</option>
+                <option value="note">Note · text only</option>
+              </select>
+            </label>
             <label>
               Label name
               <input
@@ -187,36 +195,6 @@ export function useStudioLabels(
               ))}
             </select>
           </label>
-          {selected && (
-            <form
-              className="es-buttons"
-              aria-label="Rename map label"
-              onSubmit={(event): void => {
-                event.preventDefault();
-                result(session.renameMapLabel(selected.id, rename));
-              }}
-            >
-              <label>
-                Rename label
-                <input
-                  aria-label="Rename label"
-                  value={rename}
-                  maxLength={120}
-                  onChange={(event) => setRename(event.target.value)}
-                />
-              </label>
-              <button type="submit">Apply label name</button>
-              <button type="button" onClick={cancel}>
-                Cancel label edit
-              </button>
-              <button
-                type="button"
-                onClick={() => result(session.deleteMapLabel(selected.id))}
-              >
-                Delete label
-              </button>
-            </form>
-          )}
           <form
             className="es-buttons"
             aria-label="Map label coordinates"
@@ -224,15 +202,14 @@ export function useStudioLabels(
               event.preventDefault();
               const location = coordinates();
               if (!location) return;
-              if (selected) move(selected.id, location);
-              else if (placementText) create(placementText, location);
+              if (placementText) create(placementText, location);
               else setError('Type a name and choose Place label on map first.');
             }}
           >
             <label>
               World X
               <input
-                aria-label="Label world X"
+                aria-label="New label world X"
                 inputMode="decimal"
                 value={x}
                 onChange={(event) => setX(event.target.value)}
@@ -241,21 +218,21 @@ export function useStudioLabels(
             <label>
               World Z
               <input
-                aria-label="Label world Z"
+                aria-label="New label world Z"
                 inputMode="decimal"
                 value={z}
                 onChange={(event) => setZ(event.target.value)}
               />
             </label>
-            <button type="submit">
-              {selected ? 'Apply label position' : 'Place label at coordinates'}
-            </button>
+            <button type="submit">Place label at coordinates</button>
           </form>
           {placementText && (
             <>
               <p className="es-help">
-                Placing “{placementText}”: click inside the map, or focus the
-                map and press Enter to place at the view center. Escape cancels.
+                Placing “{placementText}” (
+                {placementKind === 'room' ? 'Room' : 'Note'}): click inside the
+                map, or focus the map and press Enter to place at the view
+                center. Escape cancels.
               </p>
               <button type="button" onClick={cancel}>
                 Cancel placement

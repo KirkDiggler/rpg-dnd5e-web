@@ -1,8 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { createMapLabel, deleteMapLabel } from './mapLabelEdits';
+import {
+  createRoomLabel,
+  setExplicitRegionArea,
+  setRegionLighting,
+} from './regionEdits';
 import {
   createRoomDraft,
   parseRoomDocumentJson,
@@ -1053,4 +1059,101 @@ describe('promoted canonical room JSON/YAML seam', () => {
       horizontalLimit: 12,
     });
   });
+});
+
+describe('scene3 source forwarding only (not provider acceptance)', () => {
+  it('forwards bound, unbound and empty explicit definitions without changing root/play/gameplay/scope contracts', () => {
+    const draft = goldenDraft();
+    const legacy = parse(encodeSingleRoomDungeon({ key: 'crypt-room', draft }));
+    draft.scene.version = 3;
+    draft.scene.mapLabels = ['bound', 'unbound', 'explicit'].map((id) => ({
+      id,
+      text: id,
+      location: { x: 0, z: 0 },
+    }));
+    draft.scene.authoringRegions = [
+      {
+        id: 'bound-region',
+        labelId: 'bound',
+        boundary: {
+          kind: 'automatic',
+          witness: {
+            walk: [
+              { wallId: 'A-missing', direction: 'start-to-end' },
+              { wallId: 'B-missing', direction: 'start-to-end' },
+              { wallId: 'C-missing', direction: 'start-to-end' },
+            ],
+          },
+        },
+      },
+      {
+        id: 'unbound-region',
+        labelId: 'unbound',
+        boundary: { kind: 'automatic' },
+      },
+      {
+        id: 'explicit-region',
+        labelId: 'explicit',
+        boundary: { kind: 'explicit', cells: [] },
+      },
+    ];
+    const yaml = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    const source = parse(yaml);
+    expect(source.version).toBe(legacy.version);
+    expect(source.play).toEqual(legacy.play);
+    expect(source.room.room).toEqual(legacy.room.room);
+    expect(source.room.workspace).toEqual(legacy.room.workspace);
+    expect(source.room.scene.version).toBe(3);
+    expect(source.room.scene.authoringRegions).toEqual(
+      draft.scene.authoringRegions
+    );
+    expect(decodeSingleRoomDungeon(yaml).draft).toEqual(draft);
+    expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(yaml))).toBe(yaml);
+  });
+});
+
+it('scene4 JSON → YAML → JSON preserves full populated payload and scope (Web codecs, not provider proof)', () => {
+  const document = createPopulatedStudioDocument();
+  const base = parse(
+    encodeSingleRoomDungeon({
+      key: 'lighting-codec',
+      draft: document.draft,
+      ...document.scope,
+    })
+  );
+  document.draft = setRegionLighting(
+    createRoomLabel(
+      document.draft,
+      'lighting-region',
+      'lighting-label',
+      'Room',
+      { x: 0, z: 0 }
+    ),
+    'lighting-region',
+    { background: 0.153728 }
+  );
+  for (const draft of [
+    document.draft,
+    setExplicitRegionArea(document.draft, 'lighting-region', []),
+    setExplicitRegionArea(document.draft, 'lighting-region', [{ q: 0, r: 0 }]),
+  ]) {
+    const bytes = stringifyRoomDraft(draft, document.scope);
+    const loaded = parseRoomDocumentJson(bytes);
+    const yaml = encodeSingleRoomDungeon({
+      key: 'lighting-codec',
+      draft: loaded.draft,
+      ...loaded.scope,
+    });
+    const source = parse(yaml);
+    expect(source.version).toBe(base.version);
+    expect(source.room.version).toBe(3);
+    expect(source.room.scene.version).toBe(4);
+    source.room.scene = base.room.scene;
+    expect(source).toEqual(base);
+    const decoded = decodeSingleRoomDungeon(yaml);
+    expect(decoded.draft).toEqual(draft);
+    expect(scopeFrom(decoded)).toEqual(document.scope);
+    expect(stringifyRoomDraft(decoded.draft, scopeFrom(decoded))).toBe(bytes);
+    expect(encodeSingleRoomDungeon(decoded)).toBe(yaml);
+  }
 });

@@ -168,10 +168,18 @@ export function setSelectionHeight(
   if (!Number.isFinite(heightScale)) return scene;
   const bounded = Math.min(4, Math.max(0.25, heightScale));
   const included = selectionPropIds(scene, selectedIds);
+  if (
+    !scene.items.some(
+      (item) => included.has(item.id) && (item.heightScale ?? 1) !== bounded
+    )
+  )
+    return scene;
   return {
     ...scene,
     items: scene.items.map((item) =>
-      included.has(item.id) ? { ...item, heightScale: bounded } : item
+      included.has(item.id) && (item.heightScale ?? 1) !== bounded
+        ? { ...item, heightScale: bounded }
+        : item
     ),
   };
 }
@@ -208,7 +216,7 @@ function rotatedAround(
   };
 }
 
-function topLevelSelectedIds(
+export function topLevelSelectedIds(
   scene: WorldScene,
   selectedIds: readonly string[]
 ): string[] {

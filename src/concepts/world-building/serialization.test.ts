@@ -347,8 +347,141 @@ describe('scene version 2 annotation preservation', () => {
     expect(() =>
       validateScene({ ...validScene(), version: 2, mapLabels: null })
     ).toThrow(/mapLabels/);
-    expect(() => validateScene({ ...validScene(), version: 3 })).toThrow(
-      /version must be 1 or 2/
+    // Scene3/4 are opt-in and supported; an unknown successor still fails closed.
+    expect(() => validateScene({ ...validScene(), version: 5 })).toThrow(
+      /version must be 1, 2, 3 or 4/
     );
   });
+});
+
+describe('opt-in scene3 authoring definitions', () => {
+  const scene3 = () => ({
+    ...validScene(),
+    version: 3 as const,
+    mapLabels: [{ id: 'label', text: 'Kitchen', location: { x: 0, z: 0 } }],
+    authoringRegions: [
+      {
+        id: 'region',
+        labelId: 'label',
+        boundary: { kind: 'automatic' as const },
+      },
+    ],
+  });
+  it('round trips unresolved intent while keeping the storage envelope and absent fields unchanged', () => {
+    const scene = scene3();
+    const bytes = stringifyScene(scene);
+    expect(JSON.parse(bytes).version).toBe(1);
+    expect(parseSceneJson(bytes)).toEqual(validateScene(scene));
+    expect(stringifyScene(parseSceneJson(bytes))).toBe(bytes);
+    const noRegions = { ...validScene(), version: 3 as const };
+    expect(parseSceneJson(stringifyScene(noRegions))).not.toHaveProperty(
+      'authoringRegions'
+    );
+    expect(
+      validateScene({ ...noRegions, authoringRegions: [] })
+    ).not.toHaveProperty('authoringRegions');
+    for (const version of [1, 2] as const) {
+      const old = { ...validScene(), version };
+      const oldBytes = stringifyScene(old);
+      expect(stringifyScene(parseSceneJson(oldBytes))).toBe(oldBytes);
+      expect(parseSceneJson(oldBytes).version).toBe(version);
+      expect(parseSceneJson(oldBytes)).not.toHaveProperty('authoringRegions');
+      expect(() => validateScene({ ...old, authoringRegions: [] })).toThrow(
+        /version 3/
+      );
+    }
+    expect(() => validateScene({ ...scene, version: 5 })).toThrow(/version/);
+  });
+  it('protects stored unknown scene3 fields and invalid links instead of pruning them', () => {
+    const fallback = validScene();
+    const storage = new MemoryStorage();
+    for (const invalid of [
+      { ...scene3(), futureIntent: { area: 1 } },
+      {
+        ...scene3(),
+        authoringRegions: [
+          { ...scene3().authoringRegions[0], labelId: 'missing' },
+        ],
+      },
+      {
+        ...scene3(),
+        authoringRegions: [{ ...scene3().authoringRegions[0], id: 'table' }],
+      },
+    ]) {
+      const bytes = JSON.stringify({
+        kind: 'rpg-world-building-scene',
+        version: 1,
+        scene: invalid,
+      });
+      storage.values.set(SCENE_STORAGE_KEY, bytes);
+      const result = loadScene(storage, fallback);
+      expect(result.value).toBe(fallback);
+      expect(result.error).not.toBeNull();
+      expect(storage.getItem(SCENE_STORAGE_KEY)).toBe(bytes);
+    }
+  });
+});
+
+it('scene3 rejects lighting and scene4 preserves exact optional shape without load promotion', () => {
+  const scene = {
+    ...validScene(),
+    version: 4 as const,
+    mapLabels: [{ id: 'label', text: 'Room', location: { x: 0, z: 0 } }],
+    authoringRegions: [
+      {
+        id: 'region',
+        labelId: 'label',
+        boundary: { kind: 'automatic' as const },
+        lighting: { background: 0.153728 },
+      },
+    ],
+  };
+  expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);
+  expect(() => validateScene({ ...scene, version: 3 })).toThrow();
+  for (const version of [1, 2])
+    expect(() => validateScene({ ...scene, version })).toThrow();
+  for (const version of [1, 2, 3, 4] as const) {
+    const absent = { ...validScene(), version };
+    expect(parseSceneJson(stringifyScene(absent))).toEqual(absent);
+    expect(parseSceneJson(stringifyScene(absent))).not.toHaveProperty(
+      'authoringRegions'
+    );
+  }
+});
+
+it('scene4 invalid optional intent protects unreadable stored bytes, without stripping or upgrading', () => {
+  const fallback = validScene();
+  const storage = new MemoryStorage();
+  for (const lighting of [
+    null,
+    {},
+    { background: '0.15' },
+    { background: -1 },
+    { background: 2 },
+    { background: 0.15, tint: 'red' },
+  ]) {
+    const scene = {
+      ...validScene(),
+      version: 4,
+      mapLabels: [{ id: 'label', text: 'Room', location: { x: 0, z: 0 } }],
+      authoringRegions: [
+        {
+          id: 'region',
+          labelId: 'label',
+          boundary: { kind: 'automatic' },
+          lighting,
+        },
+      ],
+    };
+    const bytes = JSON.stringify({
+      kind: 'rpg-world-building-scene',
+      version: 1,
+      scene,
+    });
+    storage.values.set(SCENE_STORAGE_KEY, bytes);
+    const result = loadScene(storage, fallback);
+    expect(result.value).toBe(fallback);
+    expect(result.error).not.toBeNull();
+    expect(storage.getItem(SCENE_STORAGE_KEY)).toBe(bytes);
+  }
 });

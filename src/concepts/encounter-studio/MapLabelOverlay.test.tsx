@@ -73,3 +73,46 @@ describe('MapLabelOverlay', () => {
     expect(labels[0].location).toEqual({ x: 0, z: 0 });
   });
 });
+
+it('keeps unresolved labels selectable with a visible warning and actionable title; notes have no region badge', () => {
+  const transform = createLayoutTransform(
+    { left: 0, top: 0, width: 800, height: 600 },
+    { center: { x: 0, z: 0 }, zoom: 1 },
+    12
+  )!;
+  const { container } = render(
+    <svg>
+      <MapLabelOverlay
+        labels={[
+          { id: 'room-label', text: 'Kitchen', location: { x: 0, z: 0 } },
+          { id: 'note', text: 'Note', location: { x: 2, z: 0 } },
+        ]}
+        transform={transform}
+        selectedId="room-label"
+        preview={null}
+        onSelect={vi.fn()}
+        regions={[
+          {
+            id: 'region',
+            labelId: 'room-label',
+            boundary: { kind: 'automatic' },
+          },
+        ]}
+        resolutions={[
+          { id: 'region', status: 'unresolved', reason: 'unbound' },
+        ]}
+      />
+    </svg>
+  );
+  expect(
+    container.querySelector('[data-label-id="room-label"]')?.textContent
+  ).toMatch(/No enclosure accepted.*Kitchen ⚠/);
+  expect(container.querySelector('[data-label-id="note"]')?.textContent).toBe(
+    'Note'
+  );
+  expect(
+    screen
+      .getByRole('button', { name: 'Select map label Kitchen' })
+      .getAttribute('aria-pressed')
+  ).toBe('true');
+});

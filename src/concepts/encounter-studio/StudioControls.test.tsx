@@ -248,8 +248,8 @@ describe('Task 5 controls through the real owner', () => {
     click('Redo');
     expect(storage.document().draft.scene.mapLabels![0].id).toBe(first.id);
     submit('New map label');
-    change('Label world X', '0');
-    change('Label world Z', '0');
+    change('New label world X', '0');
+    change('New label world Z', '0');
     submit('Map label coordinates');
     const second = storage.document().draft.scene.mapLabels![1];
     expect(second.text).toBe('Kitchen');
@@ -257,14 +257,14 @@ describe('Task 5 controls through the real owner', () => {
     change('Existing label', second.id);
     change('Rename label', 'Courtyard');
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Kitchen');
-    submit('Rename map label');
+    submit('Arrange selected noun');
     expect(storage.document().draft.scene.mapLabels![1]).toMatchObject({
       id: second.id,
       text: 'Courtyard',
     });
     change('Label world X', '-1');
     change('Label world Z', '1');
-    submit('Map label coordinates');
+    submit('Arrange selected noun');
     expect(storage.document().draft.scene.mapLabels![1].location).toEqual({
       x: -1,
       z: 1,
@@ -300,7 +300,9 @@ describe('Task 5 controls through the real owner', () => {
     click('3D');
     expect(screen.getByTestId('webgl-boundary')).toBeTruthy();
     click('Layout');
-    expect(screen.queryByLabelText('Rename label')).toBeNull();
+    expect(
+      (screen.getByLabelText('Rename label') as HTMLInputElement).value
+    ).toBe('Courtyard');
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Courtyard');
     click('Label');
     change('Existing label', second.id);
@@ -590,6 +592,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     });
     expect(screen.getByLabelText('Wall length')).toBeTruthy(); // selection/demand rerender while drag is captured
     change('Wall length', '2.25');
+    click('Change wall appearance');
     act(() =>
       worker.latest!.onComplete(
         worker.latest!.requestKey,
@@ -615,21 +618,22 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     change('Wall length', '3');
     fireEvent.keyDown(screen.getByLabelText('Wall length'), { key: 'Delete' });
     expect(storage.document().draft.room.walls).toHaveLength(1);
-    submit('Wall exact length');
+    submit('Arrange selected noun');
     expect(storage.document().draft.room.walls![0].line.end.x).toBe(1);
-    change('Wall move X', '1');
-    submit('Wall movement');
+    change('Wall midpoint X', '0.5');
+    submit('Arrange selected noun');
     expect(storage.document().draft.room.walls![0].line.start.x).toBe(-1);
     const beforeRefusal = storage.document();
-    change('Wall move X', '9999');
-    submit('Wall movement');
+    change('Wall midpoint X', '9999');
+    submit('Arrange selected noun');
     expect(storage.document()).toEqual(beforeRefusal);
     expect(
-      (screen.getByLabelText('Wall move X') as HTMLInputElement).value
+      (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
     ).toBe('9999');
-    expect(screen.getByText(/Wall edit refused/)).toBeTruthy();
-    change('Wall rotate degrees', '90');
-    submit('Wall rotation');
+    expect(screen.getByText(/Arrange edit refused/)).toBeTruthy();
+    change('Wall midpoint X', '0.5');
+    change('Y facing (degrees)', '-90');
+    submit('Arrange selected noun');
     const rotated = storage.document().draft.room.walls![0];
     expect(rotated.line.start.z).toBeCloseTo(-2.5);
     expect(rotated.line.end.z).toBeCloseTo(0.5);
@@ -643,6 +647,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
         '[data-wall-appearance-ref="dnd5e:env:fantasy-kingdom:castle_wall_02"]'
       )!
     );
+    submit('Arrange selected noun');
     const appearanceChanged = storage.document().draft.room.walls![0];
     expect(appearanceChanged).toEqual({
       ...rotated,
@@ -652,8 +657,9 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       },
     });
     const committed = storage.document();
-    click('Dismiss wall controls');
+    click('Arrange');
     expect(storage.document()).toEqual(committed);
+    click('Arrange');
     click('Select');
     click('Remove wall');
     expect(storage.document().draft.room.walls ?? []).toEqual([]);
@@ -833,8 +839,8 @@ describe('M1 exact precision no-ops through the real owner', () => {
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.writes();
     for (const endpoint of ['end', 'start']) {
-      change('Length endpoint', endpoint);
-      submit('Wall exact length');
+      change('Fixed endpoint', endpoint === 'end' ? 'start' : 'end');
+      submit('Arrange selected noun');
       expect(storage.document()).toEqual(drawn);
       expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
       expect(storage.writes()).toBe(writes);
@@ -864,7 +870,7 @@ describe('M1 exact precision no-ops through the real owner', () => {
     // An explicit edit to the displayed precision is a real intent, not an epsilon no-op.
     change('Wall length', '');
     change('Wall length', '3.605551');
-    submit('Wall exact length');
+    submit('Arrange selected noun');
     const edited = storage.document();
     expect(edited).not.toEqual(drawn);
     expect(storage.writes()).toBe(beforeEdit + 1);
@@ -873,9 +879,9 @@ describe('M1 exact precision no-ops through the real owner', () => {
     click('Redo');
     expect(storage.document()).toEqual(edited);
   });
-  it.each(['Wall movement', 'Wall rotation'])(
-    'default %s preserves fractional pose, bytes and history exactly',
-    async (form) => {
+  it.each(['Wall midpoint X', 'Y facing (degrees)'])(
+    'untouched %s preserves fractional pose, bytes and history exactly',
+    async (field) => {
       const storage = new MemoryStorage();
       mount(storage);
       await ready();
@@ -888,7 +894,8 @@ describe('M1 exact precision no-ops through the real owner', () => {
       const drawn = storage.document();
       const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
       const writes = storage.writes();
-      submit(form);
+      expect(screen.getByLabelText(field)).toBeTruthy();
+      submit('Arrange selected noun');
       expect(storage.document()).toEqual(drawn);
       expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
       expect(storage.writes()).toBe(writes);

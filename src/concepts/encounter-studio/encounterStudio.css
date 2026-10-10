@@ -113,6 +113,8 @@
 
 .es-canvas {
   position: relative;
+  /* Keep scene Html annotations beneath Studio's contextual chrome. */
+  isolation: isolate;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 300px;
@@ -313,4 +315,77 @@
 }
 .es-wall-options small {
   color: var(--wb-muted);
+}
+
+/* Arrange is compact independently of the wider creation palettes. The
+ * context layer stays pointer-transparent outside its right-aligned panels. */
+.es-arrange {
+  align-self: flex-end;
+  box-sizing: border-box;
+  width: min(24rem, 100%);
+}
+.es-arrange .wb-light-grid label {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.es-arrange .wb-light-grid input {
+  min-width: 0;
+}
+
+/* Stacked precision rows; units are canonical scene units, never meters/feet. */
+.es-arrange[hidden] {
+  display: none;
+}
+.es-arrange h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.es-arrange form,
+.es-arrange-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.es-arrange .es-arrange-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 10rem);
+  gap: 0.6rem;
+  padding: 0.2rem 0.4rem;
+  background: var(--wb-raised);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.es-arrange .es-arrange-row input,
+.es-arrange .es-arrange-row select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.25rem 0.4rem;
+}
+.es-arrange-row input[inputmode='decimal'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.es-arrange [role='alert'] {
+  color: #ffe2a6;
+}
+
+/* Region intent stays in the existing compact context band, not a new dock. */
+.es-region-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 24rem;
+}
+.es-region-controls h2,
+.es-region-controls p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.es-region-controls [role='status'] {
+  padding: 0.35rem;
+  border-left: 2px solid var(--wb-accent);
+  background: var(--wb-raised);
 }

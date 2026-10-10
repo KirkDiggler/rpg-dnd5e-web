@@ -13,6 +13,7 @@ import type {
   RoomMonsterBinding,
   RoomMonsterPlacement,
 } from './roomDraft';
+import type { StudioArrangeTarget } from './studioArrange';
 
 /** Authoring colors are unmistakable against the walkable green fill, the
  * cyan rectangle preview, and the amber footprint outlines: the live board's
@@ -292,12 +293,21 @@ export function RoomActorMarkers({
   partyStart,
   selectedActorId,
   onSelectActor,
+  selectedActorTarget,
+  onSelectActorTarget,
 }: {
   monsters: readonly RoomMonsterPlacement[];
   monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
   partyStart: RoomHexCell | null;
   selectedActorId: string | null;
   onSelectActor: (actorId: string | null) => void;
+  selectedActorTarget?: Extract<
+    StudioArrangeTarget,
+    { kind: 'actor' | 'start' }
+  > | null;
+  onSelectActorTarget?: (
+    target: Extract<StudioArrangeTarget, { kind: 'actor' | 'start' }> | null
+  ) => void;
 }) {
   return (
     <group name="room-actor-markers">
@@ -306,15 +316,32 @@ export function RoomActorMarkers({
           key={placement.id}
           placement={placement}
           mainHandRef={monsterBindings?.[placement.id]?.actions?.[0]}
-          selected={selectedActorId === placement.id}
-          onSelectActor={onSelectActor}
+          selected={
+            selectedActorTarget !== undefined
+              ? selectedActorTarget?.kind === 'actor' &&
+                selectedActorTarget.id === placement.id
+              : selectedActorId === placement.id
+          }
+          onSelectActor={() =>
+            onSelectActorTarget
+              ? onSelectActorTarget({ kind: 'actor', id: placement.id })
+              : onSelectActor(placement.id)
+          }
         />
       ))}
       {partyStart && (
         <StartMarker
           cell={partyStart}
-          selected={selectedActorId === 'start'}
-          onSelectActor={onSelectActor}
+          selected={
+            selectedActorTarget !== undefined
+              ? selectedActorTarget?.kind === 'start'
+              : selectedActorId === 'start'
+          }
+          onSelectActor={() =>
+            onSelectActorTarget
+              ? onSelectActorTarget({ kind: 'start' })
+              : onSelectActor('start')
+          }
         />
       )}
     </group>

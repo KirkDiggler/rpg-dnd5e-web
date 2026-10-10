@@ -5,10 +5,16 @@ import {
   hexCorners,
 } from '@/components/hex-grid/hexMath';
 import type { PropModelBounds } from '@/components/hex-grid/PropModel';
+import { useRememberedModelTint } from '@/components/hex-grid/useRememberedModelTint';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import type {
+  RegionLightingDiagnostic,
+  RegionLightingMaterialBinding,
+} from '@/rendering/regionLightingMaterials';
+import { RegionLightingSurfaceProvider } from '@/rendering/RegionLightingSurfaceProvider';
 import { VisualPointLights } from '@/rendering/visualPointLights';
 import { selectBoundedVisualPointLights } from '@/rendering/visualPointLightSelection';
 import { OrbitControls } from '@react-three/drei';
@@ -32,6 +38,7 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import type { RegionLightingProjection } from './regionLighting';
 import { layoutRepeatedProps } from './repeatPlacement';
 import { RepeatPlacementPreview } from './RepeatPlacementPreview';
 import {
@@ -55,6 +62,8 @@ import { StructuralConcealmentGuides } from './StructuralConcealmentGuides';
 import { snapWallPoint } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import { StructuralWallVisual } from './StructuralWallVisual';
+import type { StudioArrangeTarget } from './studioArrange';
+import type { StudioDoorEditing } from './studioDoorEditing';
 import type { WorldPoint, WorldScene, WorldTransform } from './types';
 import { usePresentationWorkspace } from './usePresentationWorkspace';
 import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
@@ -106,6 +115,8 @@ export interface WorldBuildingViewportProps {
    * world units by both model loaders. */
   onMeasuredBounds?: (id: string, measurement: MeasuredWorldPropBounds) => void;
   roomAuthoring?: {
+    /** Committed Studio-only configured/resolved areas; no preview acquisition. */
+    regionLighting?: RegionLightingProjection;
     tool:
       | 'select'
       | 'move'
@@ -116,7 +127,10 @@ export interface WorldBuildingViewportProps {
       | 'repeat'
       | 'monster'
       | 'start'
-      | 'wall';
+      | 'wall'
+      | 'door';
+    doorEditing?: StudioDoorEditing;
+    intentEpoch?: number;
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
     activeConcealmentId?: string | null;
@@ -145,6 +159,15 @@ export interface WorldBuildingViewportProps {
     monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
     partyStart?: RoomHexCell | null;
     armedMonsterRef?: string | null;
+    /** Typed Studio identity. Explicit null masks legacy remembered IDs; only
+     * an absent contract uses the old string consumer boundary. */
+    selectedActorTarget?: Extract<
+      StudioArrangeTarget,
+      { kind: 'actor' | 'start' }
+    > | null;
+    onSelectActorTarget?: (
+      target: Extract<StudioArrangeTarget, { kind: 'actor' | 'start' }> | null
+    ) => void;
     selectedActorId?: string | null;
     onSelectActor?: (actorId: string | null) => void;
     onPlaceMonster?: (cell: RoomHexCell) => void;
@@ -208,6 +231,7 @@ interface WorldPropVisualProps {
   onBoundsMeasured?: (id: string, measurement: MeasuredWorldPropBounds) => void;
   onMemberPick?: (id: string) => void;
   memberColor?: string;
+  visualLighting?: RegionLightingMaterialBinding;
 }
 
 export function WorldPropVisual({
@@ -221,6 +245,7 @@ export function WorldPropVisual({
   onBoundsMeasured,
   onMemberPick,
   memberColor,
+  visualLighting,
 }: WorldPropVisualProps) {
   const entry = WORLD_BUILDING_CATALOG_BY_REF.get(item.assetRef);
   const [measurement, setMeasurement] =
@@ -288,6 +313,7 @@ export function WorldPropVisual({
           >
             <WorldPropModel
               entry={entry}
+              visualLighting={visualLighting}
               position={position}
               rotationY={item.transform.rotationY}
               heightScale={item.heightScale}
@@ -607,8 +633,33 @@ function RoomAuthoringDeclarations({
   );
 }
 
+function GroundLightingTreatment({
+  mesh,
+  visualLighting,
+}: {
+  mesh: React.RefObject<THREE.Mesh | null>;
+  visualLighting?: RegionLightingMaterialBinding;
+}): null {
+  useRememberedModelTint(
+    mesh,
+    false,
+    undefined,
+    visualLighting,
+    'workspace-ground'
+  );
+  return null;
+}
+const EMPTY_REGION_LIGHTING: RegionLightingProjection = { areas: [] };
+const IGNORE_LIGHTING_DIAGNOSTIC = (): void => {};
+
 export function WorldSceneContents(
-  props: WorldBuildingViewportProps & { showCompositionBounds: boolean }
+  props: WorldBuildingViewportProps & {
+    showCompositionBounds: boolean;
+    onLightingDiagnostic?: (diagnostic: RegionLightingDiagnostic) => void;
+    onLightingDiagnosticsChange?: (
+      diagnostics: readonly RegionLightingDiagnostic[]
+    ) => void;
+  }
 ) {
   const {
     scene,
@@ -620,6 +671,7 @@ export function WorldSceneContents(
     onMeasuredBounds,
   } = props;
   const { gl } = useThree();
+  const groundRef = useRef<THREE.Mesh>(null);
   // Ground and actor overlays pick the same authored cell. Markers intercept
   // pointer events, so their occupied floor must use this path too.
   const pickConcealmentCell = (cell: RoomHexCell | null | undefined): void => {
@@ -836,8 +888,14 @@ export function WorldSceneContents(
   }, [props.roomAuthoring?.tool]);
   useEffect(() => cancelFloorGesture, [cancelFloorGesture]);
 
-  return (
+  const renderSurfaces = (
+    visualLighting: RegionLightingMaterialBinding | undefined
+  ): React.JSX.Element => (
     <>
+      <GroundLightingTreatment
+        mesh={groundRef}
+        visualLighting={visualLighting}
+      />
       <color attach="background" args={['#071113']} />
       <WorldBuildingFog roomAuthoring={Boolean(props.roomAuthoring)} />
       <ambientLight intensity={1.2} />
@@ -893,10 +951,14 @@ export function WorldSceneContents(
               : wall
           )}
           selectedWallId={props.roomAuthoring.selectedWallId ?? null}
+          visualLighting={visualLighting}
           doorBindings={props.roomAuthoring.doorBindings}
+          doorEditing={props.roomAuthoring.doorEditing}
+          intentEpoch={props.roomAuthoring.intentEpoch}
           selectable={
-            ['select', 'move', 'rotate'].includes(props.roomAuthoring.tool) &&
-            !props.roomAuthoring.activeConcealmentId
+            ['select', 'move', 'rotate', 'door'].includes(
+              props.roomAuthoring.tool
+            ) && !props.roomAuthoring.activeConcealmentId
           }
           onSelectWall={(id) => {
             if (!isGizmoPointer()) props.roomAuthoring?.onSelectWall?.(id);
@@ -912,6 +974,7 @@ export function WorldSceneContents(
         />
       )}
       <mesh
+        ref={groundRef}
         name="world-building-finite-ground"
         userData={{ worldBuildingGround: true }}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -925,7 +988,22 @@ export function WorldSceneContents(
           if (rectangular && !cell) return;
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
-          const actor = props.roomAuthoring?.selectedActorId;
+          if (roomTool === 'door') {
+            props.roomAuthoring?.doorEditing?.cancelPreview();
+            return;
+          }
+          const authoring = props.roomAuthoring;
+          const actor =
+            authoring?.selectedActorTarget !== undefined
+              ? authoring.selectedActorTarget
+              : authoring?.selectedActorId
+                ? authoring.selectedActorId === 'start'
+                  ? { kind: 'start' as const }
+                  : {
+                      kind: 'actor' as const,
+                      id: authoring.selectedActorId,
+                    }
+                : null;
           if (props.roomAuthoring?.activeConcealmentId) {
             // Pick authored floor, not empty workspace; never game legality.
             pickConcealmentCell(cell);
@@ -956,7 +1034,12 @@ export function WorldSceneContents(
               return;
             }
             if (actor) {
-              props.roomAuthoring?.onMoveMonster?.(actor, cell);
+              // Preserve the old string consumer's routing when the typed
+              // contract is absent; Studio never takes that ambiguous path.
+              if (authoring?.selectedActorTarget === undefined)
+                authoring?.onMoveMonster?.(authoring.selectedActorId!, cell);
+              else if (actor.kind === 'start') authoring.onStartGesture?.(cell);
+              else authoring.onMoveMonster?.(actor.id, cell);
               return;
             }
           }
@@ -965,7 +1048,9 @@ export function WorldSceneContents(
           // clears the actor and selects whatever is under the cursor — which,
           // on bare ground, is nothing.
           if (roomTool === 'select' && actor) {
-            props.roomAuthoring?.onSelectActor?.(null);
+            if (authoring?.onSelectActorTarget)
+              authoring.onSelectActorTarget(null);
+            else authoring?.onSelectActor?.(null);
           }
           if (roomTool === 'repeat') {
             const descriptor = props.roomAuthoring?.repeat;
@@ -1179,7 +1264,12 @@ export function WorldSceneContents(
           metalness={0.02}
         />
       </mesh>
-      {props.roomAuthoring && <WorkspaceFloorUnderlay workspace={workspace!} />}
+      {props.roomAuthoring && (
+        <WorkspaceFloorUnderlay
+          workspace={workspace!}
+          visualLighting={visualLighting}
+        />
+      )}
       <lineSegments
         name="world-building-real-hex-basis"
         geometry={hexGeometry}
@@ -1205,8 +1295,8 @@ export function WorldSceneContents(
         </lineLoop>
       )}
       {/* The composition origin and its bounds are prop-composition
-          vocabulary (design §UI surfaces, violation 3). While a room is being
-          built they mean nothing, so they are not drawn at all. */}
+      vocabulary (design §UI surfaces, violation 3). While a room is being
+      built they mean nothing, so they are not drawn at all. */}
       {!isRoomAuthoring && (
         <WorldPlacementGuides
           bounds={guideBounds}
@@ -1226,6 +1316,27 @@ export function WorldSceneContents(
           monsterBindings={props.roomAuthoring.monsterBindings}
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
+          selectedActorTarget={props.roomAuthoring.selectedActorTarget}
+          onSelectActorTarget={
+            props.roomAuthoring.onSelectActorTarget
+              ? (target) => {
+                  const authoring = props.roomAuthoring;
+                  if (authoring?.activeConcealmentId) {
+                    pickConcealmentCell(
+                      target?.kind === 'start'
+                        ? authoring.partyStart
+                        : target?.kind === 'actor'
+                          ? authoring.monsters?.find(
+                              (monster) => monster.id === target.id
+                            )?.startingCell.location
+                          : null
+                    );
+                    return;
+                  }
+                  authoring?.onSelectActorTarget?.(target);
+                }
+              : undefined
+          }
           onSelectActor={(actor) => {
             const authoring = props.roomAuthoring;
             if (authoring?.activeConcealmentId) {
@@ -1263,6 +1374,7 @@ export function WorldSceneContents(
         <WorldPropVisual
           key={item.id}
           item={item}
+          visualLighting={visualLighting}
           selected={selectedClosure.has(item.id)}
           selectedIds={selectedIds}
           onSelect={onSelect}
@@ -1345,6 +1457,16 @@ export function WorldSceneContents(
       />
     </>
   );
+  return (
+    <RegionLightingSurfaceProvider
+      projection={props.roomAuthoring?.regionLighting ?? EMPTY_REGION_LIGHTING}
+      pointLights={pointLights}
+      onDiagnostic={props.onLightingDiagnostic ?? IGNORE_LIGHTING_DIAGNOSTIC}
+      onDiagnosticsChange={props.onLightingDiagnosticsChange}
+    >
+      {renderSurfaces}
+    </RegionLightingSurfaceProvider>
+  );
 }
 
 /** Expanded room authoring stays legible; the prop composer keeps its atmosphere. */
@@ -1358,6 +1480,9 @@ export function WorldBuildingFog({
 
 export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
   const [showCompositionBounds, setShowCompositionBounds] = useState(true);
+  const [lightingDiagnostics, setLightingDiagnostics] = useState<
+    readonly RegionLightingDiagnostic[]
+  >([]);
   /** The placement anchor and the composition-bounds guide are the prop
    * composer's vocabulary. In room authoring they are a leak, so the legend,
    * the toggle and the meshes are all absent (rpg-dnd5e-web#1152). */
@@ -1379,8 +1504,20 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
         <WorldSceneContents
           {...props}
           showCompositionBounds={showCompositionBounds}
+          onLightingDiagnosticsChange={setLightingDiagnostics}
         />
       </Canvas>
+      {lightingDiagnostics.length > 0 && (
+        <div role="status" aria-label="Region lighting diagnostics">
+          {lightingDiagnostics.map((diagnostic, index) => (
+            <p key={index}>
+              Region lighting not applied
+              {diagnostic.assetRef ? ` · ${diagnostic.assetRef}` : ''}:{' '}
+              {diagnostic.message}
+            </p>
+          ))}
+        </div>
+      )}
       {compositionGuides && (
         <>
           <div className="wb-placement-guide-legend" aria-hidden="true">

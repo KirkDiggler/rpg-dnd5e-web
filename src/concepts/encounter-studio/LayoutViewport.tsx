@@ -7,6 +7,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { doorAlongWall } from '../world-building/studioDoorEditing';
 import {
   clientToWorld,
   createLayoutTransform,
@@ -23,6 +24,8 @@ import type {
   LayoutViewportProps,
   RoomHexCell,
   StructuralWall,
+  StudioDoorEditing,
+  StudioDoorTarget,
   StudioWallEditing,
   WorldPoint,
 } from './studioSession';
@@ -40,6 +43,7 @@ import {
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
+import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 // World-space polygons stay stable through pan/zoom and preview-only renders.
 const LayoutGrid = memo(function LayoutGrid({
@@ -74,10 +78,18 @@ const polygonPoints = (cell: RoomHexCell): string =>
 type Gesture = {
   pointerId: number;
   surface: SVGSVGElement;
-  tool: LayoutFloorTool | 'pan' | 'label' | 'wall';
+  tool: LayoutFloorTool | 'pan' | 'label' | 'wall' | 'door';
   client: ClientPoint;
   moved: boolean;
   commitFloor: LayoutViewportProps['onCommit'];
+  region?: {
+    id: string;
+    initial: readonly RoomHexCell[];
+    mode: LayoutFloorTool;
+    commit: NonNullable<
+      LayoutViewportProps['regionEditing']
+    >['setExplicitRegionArea'];
+  };
   wall?: {
     source?: StructuralWall;
     endpoint?: 'start' | 'end';
@@ -85,6 +97,15 @@ type Gesture = {
     preview: LayoutWallPreview | null;
     valid: boolean;
     editing: StudioWallEditing;
+  };
+  door?: {
+    target: StudioDoorTarget;
+    wall: StructuralWall;
+    origin: number;
+    anchor: number;
+    position: number;
+    valid: boolean;
+    editing: StudioDoorEditing;
   };
   anchor: WorldPoint;
   cells: Map<string, RoomHexCell>;
@@ -115,6 +136,12 @@ export function LayoutViewport({
   labelEditing,
   documentContext,
   wallEditing,
+  doorEditing,
+  regionEditing,
+  selectedRegion,
+  regionTool = 'paint',
+  onExitRegionTool,
+  onExitDoorTool,
   intentEpoch,
   onExitWallTool,
 }: LayoutViewportProps): React.JSX.Element {
@@ -131,6 +158,12 @@ export function LayoutViewport({
   );
   const wallModeRef = useRef({ tool, onExitWallTool });
   wallModeRef.current = { tool, onExitWallTool };
+  const doorEditingRef = useRef(doorEditing);
+  doorEditingRef.current = doorEditing;
+  const doorModeRef = useRef({ tool, onExitDoorTool });
+  doorModeRef.current = { tool, onExitDoorTool };
+  const regionModeRef = useRef({ tool, onExitRegionTool });
+  regionModeRef.current = { tool, onExitRegionTool };
   const labelEditingRef = useRef(labelEditing);
   labelEditingRef.current = labelEditing;
 
@@ -151,6 +184,7 @@ export function LayoutViewport({
       setPreview([]);
       setLabelPreview(null);
       setWallPreview(null);
+      doorEditingRef.current?.cancelPreview();
     }
   }, []);
 
@@ -175,8 +209,13 @@ export function LayoutViewport({
     window.addEventListener('resize', measure);
     const escape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        if (gestureRef.current?.door) doorEditingRef.current?.setActive(false);
         abandon();
         labelEditingRef.current?.onCancel();
+        if (doorModeRef.current.tool === 'door')
+          doorModeRef.current.onExitDoorTool?.();
+        if (regionModeRef.current.tool === 'region')
+          regionModeRef.current.onExitRegionTool?.();
         if (wallModeRef.current.tool === 'wall')
           wallModeRef.current.onExitWallTool?.();
       }
@@ -201,16 +240,36 @@ export function LayoutViewport({
     wallEditing?.assetRef,
     wallEditing?.snapEnabled,
     hasWallEditing,
+    regionTool,
     labelEditing?.active,
     abandon,
   ]);
 
   useLayoutEffect(() => {
+    // Linked projection changes caused by selecting a label must not cancel
+    // that initiating label drag. Only a region gesture owns this target fence.
+    const region = gestureRef.current?.region;
+    if (region && region.id !== selectedRegion?.id) abandon();
+  }, [selectedRegion?.id, abandon]);
+
+  useLayoutEffect(() => {
     // Choosing an existing label cancels arming, not the grab that selected it.
     // Changing/canceling an armed placement still retires its live gesture.
     if (gestureRef.current?.label?.id === null) abandon();
-  }, [labelEditing?.placementText, abandon]);
+  }, [labelEditing?.placementText, labelEditing?.placementKind, abandon]);
 
+  useLayoutEffect(() => {
+    const gesture = gestureRef.current?.door;
+    const selected = doorEditing?.selectedTarget;
+    if (
+      gesture &&
+      (!selected ||
+        selected.wallId !== gesture.target.wallId ||
+        selected.openingId !== gesture.target.openingId ||
+        selected.doorId !== gesture.target.doorId)
+    )
+      abandon();
+  }, [doorEditing?.selectedTarget, abandon]);
   const presentationWorkspace = usePresentationWorkspace(draft.workspace)!;
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(presentationWorkspace),
@@ -289,6 +348,19 @@ export function LayoutViewport({
       point.x !== gesture.client.x || point.y !== gesture.client.y;
     if (changed) gesture.moved = true;
     gesture.client = point;
+    if (gesture.door) {
+      if (!changed) return;
+      const world = clientToWorld(point, currentTransform);
+      if (!world) {
+        gesture.door.valid = false;
+        return;
+      }
+      const edit = gesture.door;
+      edit.position =
+        edit.origin + (doorAlongWall(edit.wall, world) - edit.anchor);
+      edit.valid = edit.editing.previewMove(edit.target, edit.position);
+      return;
+    }
     if (gesture.wall) {
       // Selection reflow/frame roundtrips at an unchanged client pointer are
       // never authoring movement. Reuse the last applied preview on release.
@@ -425,6 +497,8 @@ export function LayoutViewport({
       abandon();
       labelEditing?.onCancel();
       if (tool === 'wall') onExitWallTool?.();
+      if (tool === 'door') onExitDoorTool?.();
+      if (tool === 'region') onExitRegionTool?.();
       return;
     }
     if (
@@ -442,6 +516,62 @@ export function LayoutViewport({
     const wallId = target
       ?.closest('[data-wall-id]')
       ?.getAttribute('data-wall-id');
+    const doorHit = target?.closest('[data-door-id]');
+    if (event.button === 0 && tool === 'door' && doorEditing) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      if (wallId && doorEditing.create(wallId, anchor)) onExitDoorTool?.();
+      return;
+    }
+    if (
+      event.button === 0 &&
+      tool === 'select' &&
+      doorEditing &&
+      wallId &&
+      doorHit
+    ) {
+      const wall = draft.room.walls?.find((wall) => wall.id === wallId);
+      const opening = wall?.openings.find(
+        (opening) =>
+          opening.id === doorHit.getAttribute('data-opening-id') &&
+          opening.door?.id === doorHit.getAttribute('data-door-id')
+      );
+      if (!wall || !opening?.door) return;
+      const intended: StudioDoorTarget = {
+        kind: 'door',
+        wallId,
+        openingId: opening.id,
+        doorId: opening.door.id,
+      };
+      if (!doorEditing.select(intended)) return;
+      event.preventDefault();
+      event.currentTarget.focus();
+      gestureRef.current = {
+        pointerId: event.pointerId,
+        surface: event.currentTarget,
+        tool: 'door',
+        client: pointerPoint(event),
+        moved: false,
+        commitFloor: onCommit,
+        anchor,
+        cells: new Map(),
+        door: {
+          target: intended,
+          wall,
+          origin: opening.position,
+          anchor: doorAlongWall(wall, anchor),
+          position: opening.position,
+          valid: true,
+          editing: doorEditing,
+        },
+      };
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        abandon();
+      }
+      return;
+    }
     const endpoint = target
       ?.closest('[data-wall-endpoint]')
       ?.getAttribute('data-wall-endpoint');
@@ -452,7 +582,7 @@ export function LayoutViewport({
         ? endpoint
         : undefined;
     const labelId =
-      tool !== 'wall' && !endpointHit
+      tool !== 'wall' && tool !== 'region' && !endpointHit
         ? target?.closest('[data-label-id]')?.getAttribute('data-label-id')
         : null;
     const label =
@@ -461,7 +591,10 @@ export function LayoutViewport({
         : undefined;
     const labelMode =
       tool === 'label' ||
-      (tool !== 'select' && tool !== 'wall' && labelEditing?.active);
+      (tool !== 'select' &&
+        tool !== 'wall' &&
+        tool !== 'region' &&
+        labelEditing?.active);
     const placing =
       event.button === 0 && labelMode && !label && labelEditing?.placementText;
     const source =
@@ -469,6 +602,7 @@ export function LayoutViewport({
         ? draft.room.walls?.find((wall) => wall.id === wallId)
         : undefined;
     if (event.button === 0) {
+      if (tool === 'region' && (!regionEditing || !selectedRegion)) return;
       if (tool === 'wall' && (!wallEditing || !wallEditing.assetRef)) {
         wallEditing?.reportRefusal('Choose a wall appearance before drawing.');
         return;
@@ -476,6 +610,7 @@ export function LayoutViewport({
       if (tool === 'select' && !label && !source) {
         wallEditing?.select(null);
         labelEditing?.onSelect(null);
+        doorEditing?.select(null);
         return;
       }
       if (labelMode && !label && !placing) return;
@@ -494,13 +629,31 @@ export function LayoutViewport({
             ? 'wall'
             : label || placing
               ? 'label'
-              : (tool as LayoutFloorTool),
+              : tool === 'region'
+                ? regionTool
+                : (tool as LayoutFloorTool),
       anchor,
       client: pointerPoint(event),
       moved: false,
       commitFloor: onCommit,
       cells: new Map(),
     };
+    if (
+      event.button === 0 &&
+      tool === 'region' &&
+      regionEditing &&
+      selectedRegion
+    ) {
+      gesture.region = {
+        id: selectedRegion.id,
+        initial:
+          selectedRegion.boundary.kind === 'explicit'
+            ? selectedRegion.boundary.cells
+            : [],
+        mode: regionTool,
+        commit: regionEditing.setExplicitRegionArea,
+      };
+    }
     if (event.button === 0 && wallEditing && (tool === 'wall' || source)) {
       const editing = wallEditing;
       if (source) {
@@ -555,6 +708,19 @@ export function LayoutViewport({
   };
   const pointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const gesture = gestureRef.current;
+    if (!gesture && tool === 'door' && doorEditing) {
+      const wallId =
+        event.target instanceof Element
+          ? event.target.closest('[data-wall-id]')?.getAttribute('data-wall-id')
+          : null;
+      const world = clientToWorld(
+        pointerPoint(event),
+        eventTransform(event.currentTarget)
+      );
+      if (wallId && world) doorEditing.previewPlacement(wallId, world);
+      else doorEditing.cancelPreview();
+      return;
+    }
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (gesture.tool === 'pan') {
       const next = panLayoutFrame(
@@ -573,7 +739,10 @@ export function LayoutViewport({
     if (gesture.tool !== 'pan') sample(event, gesture);
     const cells = [...gesture.cells.values()];
     abandon();
-    if (gesture.wall) {
+    if (gesture.door) {
+      if (gesture.moved && gesture.door.valid)
+        gesture.door.editing.move(gesture.door.target, gesture.door.position);
+    } else if (gesture.wall) {
       const { source, preview, valid, editing } = gesture.wall;
       if (!gesture.moved || !valid || !preview) return;
       if (source && preview.wall) {
@@ -593,12 +762,23 @@ export function LayoutViewport({
       ) {
         gesture.label.commit(location);
       }
+    } else if (gesture.region && cells.length > 0) {
+      const edit = gesture.region;
+      const next = new Map(edit.initial.map((cell) => [cellKey(cell), cell]));
+      for (const cell of cells) {
+        if (edit.mode === 'erase') next.delete(cellKey(cell));
+        else next.set(cellKey(cell), cell);
+      }
+      edit.commit(edit.id, [...next.values()]);
     } else if (gesture.tool !== 'pan' && cells.length > 0) {
       gesture.commitFloor(cells, gesture.tool === 'erase' ? 'erase' : 'paint');
     }
   };
   const cancelPointer = (event: ReactPointerEvent<SVGSVGElement>): void => {
-    if (gestureRef.current?.pointerId === event.pointerId) abandon();
+    if (gestureRef.current?.pointerId === event.pointerId) {
+      if (gestureRef.current.door) doorEditing?.setActive(false);
+      abandon();
+    }
   };
   const worldTransform =
     transform && bounds
@@ -626,13 +806,19 @@ export function LayoutViewport({
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
+      onPointerLeave={() => {
+        if (!gestureRef.current) doorEditing?.cancelPreview();
+      }}
       onPointerCancel={cancelPointer}
       onLostPointerCapture={cancelPointer}
       onContextMenu={(event): void => {
         event.preventDefault();
+        if (gestureRef.current?.door) doorEditing?.setActive(false);
         abandon();
         labelEditing?.onCancel();
         if (tool === 'wall') onExitWallTool?.();
+        if (tool === 'door') onExitDoorTool?.();
+        if (tool === 'region') onExitRegionTool?.();
       }}
       onKeyDown={(event): void => {
         if (event.target !== event.currentTarget) return;
@@ -649,6 +835,7 @@ export function LayoutViewport({
           event.key === 'Enter' &&
           tool !== 'wall' &&
           tool !== 'select' &&
+          tool !== 'region' &&
           labelEditing?.placementText
         ) {
           event.preventDefault();
@@ -660,13 +847,15 @@ export function LayoutViewport({
     >
       <title>Layout floor surface</title>
       <desc>
-        {tool === 'wall'
-          ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
-          : tool === 'select'
-            ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
-            : tool === 'label' || labelEditing?.active
-              ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
-              : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
+        {tool === 'region'
+          ? `Drag to ${regionTool} region membership only; floor is unchanged.`
+          : tool === 'wall'
+            ? 'Drag to draw walls. Choose an appearance first. Escape or right-click exits Wall.'
+            : tool === 'select'
+              ? 'Select walls or labels. Drag walls or selected endpoints; Delete removes the selected wall.'
+              : tool === 'label' || labelEditing?.active
+                ? 'Select and drag map labels. When placement is armed, click inside the workspace or press Enter to place at the view center.'
+                : `Drag to ${tool === 'rectangle' ? 'paint a rectangle' : tool} floor.`}
         Middle drag to pan, wheel to zoom. Escape cancels.
       </desc>
       {transform && (
@@ -677,6 +866,13 @@ export function LayoutViewport({
         >
           <LayoutGrid cells={workspace} committed={committed} />
         </g>
+      )}
+      {transform && regionEditing && (
+        <RegionBoundaryOverlay
+          resolutions={regionEditing.resolutions}
+          selectedId={selectedRegion?.id}
+          transform={worldTransform}
+        />
       )}
       {transform && (
         <g
@@ -690,9 +886,17 @@ export function LayoutViewport({
               key={cellKey(cell)}
               data-preview-cell={cellKey(cell)}
               points={polygonPoints(cell)}
-              fill={tool === 'erase' ? '#d47867' : '#67d8c2'}
+              fill={
+                (tool === 'region' ? regionTool : tool) === 'erase'
+                  ? '#d47867'
+                  : '#67d8c2'
+              }
               fillOpacity={0.6}
-              stroke={tool === 'erase' ? '#ffb29f' : '#a7ffeb'}
+              stroke={
+                (tool === 'region' ? regionTool : tool) === 'erase'
+                  ? '#ffb29f'
+                  : '#a7ffeb'
+              }
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
               strokeDasharray="5 3"
@@ -702,10 +906,25 @@ export function LayoutViewport({
       )}
       {transform && (
         <LayoutWallOverlay
-          walls={draft.room.walls ?? []}
+          walls={(draft.room.walls ?? []).map((wall) =>
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.wall.id === wall.id
+              ? doorEditing.preview.wall
+              : wall
+          )}
+          doorBindings={
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.purpose === 'placement'
+              ? {
+                  ...draft.room.doorBindings,
+                  [doorEditing.preview.target.doorId]: { closed: true },
+                }
+              : draft.room.doorBindings
+          }
+          selectedDoor={doorEditing?.selectedTarget}
           transform={transform}
           selectedId={wallEditing?.selectedId ?? null}
-          interactive={tool === 'select' && !!wallEditing}
+          interactive={(tool === 'select' || tool === 'door') && !!wallEditing}
           preview={wallPreview}
           layer="body"
         />
@@ -716,6 +935,8 @@ export function LayoutViewport({
           transform={transform}
           selectedId={labelEditing.selectedId}
           preview={labelPreview}
+          regions={draft.scene.authoringRegions}
+          resolutions={regionEditing?.resolutions}
           onSelect={(id): void => {
             labelEditing.onSelect(id);
             wallEditing?.select(null);
@@ -724,7 +945,22 @@ export function LayoutViewport({
       )}
       {transform && (
         <LayoutWallOverlay
-          walls={draft.room.walls ?? []}
+          walls={(draft.room.walls ?? []).map((wall) =>
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.wall.id === wall.id
+              ? doorEditing.preview.wall
+              : wall
+          )}
+          doorBindings={
+            doorEditing?.preview?.valid &&
+            doorEditing.preview.purpose === 'placement'
+              ? {
+                  ...draft.room.doorBindings,
+                  [doorEditing.preview.target.doorId]: { closed: true },
+                }
+              : draft.room.doorBindings
+          }
+          selectedDoor={doorEditing?.selectedTarget}
           transform={transform}
           selectedId={wallEditing?.selectedId ?? null}
           interactive={tool === 'select' && !!wallEditing}

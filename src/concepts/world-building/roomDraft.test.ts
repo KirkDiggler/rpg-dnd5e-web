@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import { createMapLabel } from './mapLabelEdits';
+import {
+  createRoomLabel,
+  setExplicitRegionArea,
+  setRegionLighting,
+} from './regionEdits';
 import {
   assertRoomDocumentSize,
   clearRoomPartyStart,
@@ -21,6 +27,7 @@ import {
   ROOM_DRAFT_STORAGE_KEY,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
+  setRoomMonsterFacing,
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
@@ -40,6 +47,42 @@ import type { KeyValueStorage } from './types';
 import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
 
 describe('room authoring draft', () => {
+  it('sets all compass facings and deletes default without altering location or bindings', () => {
+    const draft = placeRoomMonster(
+      createRoomDraft(createEmptyScene('scene'), 'room'),
+      {
+        id: 'actor',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 1, r: 0 } },
+      }
+    );
+    draft.room.monsterBindings = { actor: { faction: 'guards' } };
+    expect(setRoomMonsterFacing(draft, 'actor', undefined)).toBe(draft);
+    expect(draft.room.monsterDeclarations[0]!.startingCell).not.toHaveProperty(
+      'facing'
+    );
+    for (const facing of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+      const next = setRoomMonsterFacing(draft, 'actor', facing);
+      expect(next.room.monsterDeclarations[0]!.startingCell).toEqual({
+        location: { q: 1, r: 0 },
+        facing,
+      });
+      expect(next.room.monsterBindings).toBe(draft.room.monsterBindings);
+      expect(setRoomMonsterFacing(next, 'actor', facing)).toBe(next);
+      const defaulted = setRoomMonsterFacing(next, 'actor', undefined);
+      expect(defaulted).toEqual(draft);
+      expect(
+        defaulted.room.monsterDeclarations[0]!.startingCell
+      ).not.toHaveProperty('facing');
+    }
+    expect(() => setRoomMonsterFacing(draft, 'gone', 'n')).toThrow(
+      /does not exist/
+    );
+    for (const invalid of ['', 'default', 'north', 'N'])
+      expect(() => setRoomMonsterFacing(draft, 'actor', invalid)).toThrow(
+        /facing/
+      );
+  });
   it('round trips a versioned room envelope separately from composer data', () => {
     const draft = createRoomDraft(createEmptyScene('scene-1'), 'room-1');
     const painted = updateWalkableHexes(draft, [{ q: 1, r: -2 }], 'paint');
@@ -1519,4 +1562,210 @@ describe('complete centered document gate', () => {
       resizeRoomWorkspace({ draft, scope: hugeScope }, 73, 48)
     ).toThrow(/too large/);
   });
+});
+
+describe('scene3 authoring intent codec and identity boundary', () => {
+  function regionDraft(): RoomDraft {
+    const draft = createRoomDraft(createEmptyScene('scene'), 'room');
+    draft.scene.version = 3;
+    draft.scene.mapLabels = [
+      { id: 'label', text: 'Kitchen', location: { x: 0, z: 0 } },
+    ];
+    draft.scene.authoringRegions = [
+      {
+        id: 'region',
+        labelId: 'label',
+        boundary: {
+          kind: 'automatic',
+          witness: {
+            walk: [
+              { wallId: 'C-missing', direction: 'start-to-end' },
+              { wallId: 'A-missing', direction: 'start-to-end' },
+              { wallId: 'B-missing', direction: 'start-to-end' },
+              { wallId: 'C-missing', direction: 'start-to-end' },
+            ],
+          },
+        },
+      },
+    ];
+    return draft;
+  }
+  it('retains stale oriented walk bytes and unbound/empty intent across reload and resize without upgrade or demotion', () => {
+    const draft = regionDraft();
+    const before = structuredClone(draft);
+    const bytes = stringifyRoomDraft(draft);
+    expect(JSON.parse(bytes).version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
+    const reopened = parseRoomDocumentJson(bytes);
+    expect(reopened.draft).toEqual(before);
+    expect(stringifyRoomDraft(reopened.draft)).toBe(bytes);
+    const resized = resizeRoomWorkspace(reopened, 7, 7);
+    expect(resized.draft.scene.version).toBe(3);
+    expect(resized.draft.scene.authoringRegions).toEqual(
+      before.scene.authoringRegions
+    );
+    expect(resizeRoomWorkspace(resized, 7, 7)).toBe(resized);
+    for (const boundary of [
+      { kind: 'automatic' as const },
+      { kind: 'explicit' as const, cells: [] },
+    ]) {
+      draft.scene.authoringRegions![0].boundary = boundary;
+      expect(
+        parseRoomDraftJson(stringifyRoomDraft(draft)).scene.authoringRegions![0]
+          .boundary
+      ).toEqual(boundary);
+    }
+    delete draft.scene.authoringRegions;
+    expect(
+      parseRoomDraftJson(stringifyRoomDraft(draft)).scene
+    ).not.toHaveProperty('authoringRegions');
+    expect(parseRoomDraftJson(stringifyRoomDraft(draft)).scene.version).toBe(3);
+  });
+  it('protects current stored bytes for unknown scene3 metadata and dangling links; unresolved intent remains valid', () => {
+    const draft = regionDraft();
+    const valid = JSON.parse(stringifyRoomDraft(draft));
+    const storage = new RecordingStorage();
+    for (const mutate of [
+      (scene: Record<string, unknown>) => {
+        scene.futureIntent = true;
+      },
+      (scene: Record<string, unknown>) => {
+        scene.authoringRegions = [
+          { id: 'region', labelId: 'missing', boundary: { kind: 'automatic' } },
+        ];
+      },
+      (scene: Record<string, unknown>) => {
+        scene.version = 2;
+      },
+    ]) {
+      const invalid = structuredClone(valid);
+      mutate(invalid.draft.scene);
+      const bytes = JSON.stringify(invalid);
+      storage.values.set(ROOM_DRAFT_STORAGE_KEY, bytes);
+      const result = loadRoomDraft(storage, draft);
+      expect(result.value).toBe(draft);
+      expect(result.error).toMatch(/load failed/);
+      expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+      expect(storage.writes).toEqual([]);
+    }
+    expect(() => validateRoomDocument({ draft, scope: {} })).not.toThrow();
+    expect(() =>
+      validateRoomDocument({
+        draft,
+        scope: { intel: [{ id: 'unfinished', reveals: { fact: '' } }] },
+      })
+    ).toThrow(/must name a fact/);
+  });
+  it('rejects new region IDs colliding with actual document owners while keeping missing wall references unresolved', () => {
+    for (const collision of [
+      'room',
+      'scene',
+      'room-region',
+      'label',
+      'actor',
+      'wall',
+      'opening',
+      'door',
+    ]) {
+      const draft = regionDraft();
+      draft.room.walls = [
+        {
+          id: 'wall',
+          label: 'Wall',
+          line: { start: { x: -3, z: 0 }, end: { x: 3, z: 0 } },
+          appearance: {
+            assetRef: 'dnd5e:env:dark-fortress:45_wall_01',
+            height: 3,
+            thickness: 0.3,
+            elevation: 0,
+          },
+          blocker: {
+            footprint: { width: 6, depth: 0.3, offsetX: 0, offsetZ: 0 },
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          },
+          openings: [
+            {
+              id: 'opening',
+              position: 3,
+              width: 2,
+              door: {
+                id: 'door',
+                assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01',
+              },
+            },
+          ],
+        },
+      ];
+      draft.room.doorBindings = { door: { closed: true } };
+      draft.room.monsterDeclarations = [
+        {
+          id: 'actor',
+          ref: 'dnd5e:monsters:skeleton',
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+      ];
+      draft.scene.authoringRegions![0].id = collision;
+      expect(() => stringifyRoomDraft(draft)).toThrow(
+        /duplicate region identity/
+      );
+    }
+  });
+  it('charges source walks to the existing 500000-character document budget without inventing a wall cap', () => {
+    const draft = regionDraft();
+    draft.scene.authoringRegions![0].boundary = {
+      kind: 'automatic',
+      witness: {
+        walk: Array.from({ length: 8000 }, (_, i) => ({
+          wallId: `missing-${i}`,
+          direction: 'start-to-end' as const,
+        })),
+      },
+    };
+    const storage = new RecordingStorage();
+    const prior = stringifyRoomDraft(regionDraft());
+    storage.values.set(ROOM_DRAFT_STORAGE_KEY, prior);
+    expect(() => validateRoomDocument({ draft, scope: {} })).toThrow(
+      /too large.*500000/
+    );
+    expect(saveRoomDraft(storage, draft)).toMatch(/too large/);
+    expect(storage.values.get(ROOM_DRAFT_STORAGE_KEY)).toBe(prior);
+    expect(storage.writes).toEqual([]);
+  });
+});
+
+it('scene4 full document JSON/reload/resize retains settings, scope and independent version axes', () => {
+  const document = createPopulatedStudioDocument();
+  document.draft = setRegionLighting(
+    createRoomLabel(
+      document.draft,
+      'lighting-region',
+      'lighting-label',
+      'Room',
+      { x: 0, z: 0 }
+    ),
+    'lighting-region',
+    { background: 0.153728 }
+  );
+  const bytes = stringifyRoomDraft(document.draft, document.scope);
+  expect(JSON.parse(bytes).version).toBe(ROOM_DRAFT_ENVELOPE_VERSION);
+  const loaded = parseRoomDocumentJson(bytes);
+  expect(loaded).toEqual(document);
+  expect(stringifyRoomDraft(loaded.draft, loaded.scope)).toBe(bytes);
+  const resized = resizeRoomWorkspace(loaded, 73, 48);
+  const expected = structuredClone(document);
+  expected.draft.workspace = resized.draft.workspace;
+  expect(resized).toEqual(expected);
+  expect(resizeRoomWorkspace(resized, 73, 48)).toBe(resized);
+  for (const draft of [
+    document.draft,
+    setExplicitRegionArea(document.draft, 'lighting-region', []),
+    setRegionLighting(document.draft, 'lighting-region', null),
+  ]) {
+    expect(parseRoomDraftJson(stringifyRoomDraft(draft))).toEqual(draft);
+    expect(draft.scene.version).toBe(4);
+  }
+  delete document.draft.scene.authoringRegions;
+  expect(
+    parseRoomDraftJson(stringifyRoomDraft(document.draft)).scene.version
+  ).toBe(4);
 });

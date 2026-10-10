@@ -16,7 +16,8 @@ without deleting committed content.
 
 Layout offers **Paint**, **Erase** and **Rectangle** over canonical walkable hex
 cells, **Select** and **Wall** over existing canonical structural walls, Size, and
-**Label** placement/selection/drag/rename/move/delete. Brush strokes sample visited
+**Label** placement/selection/drag, with selected rename/move/delete in **Arrange**.
+Brush strokes sample visited
 cells (no interpolation); rectangles include cell centers within the world-XZ
 box. Middle-drag pans, wheel zooms, and Escape cancels. Framing operations and
 view switching do not create document history.
@@ -26,10 +27,13 @@ columns/rows span `-floor(count/2)` through `ceil(count/2)-1`; even counts take
 the extra negative side. Negative odd rows also stagger +½ column. Existing
 coordinates never translate. Untagged legacy radius workspaces are identified as
 nonrectangular and remain unchanged until explicit Apply. Labels are 2D plain-text
-annotations, not gameplay regions, floor/policy membership or arrangement content.
+annotations, not gameplay regions, floor/policy membership or 3D scenery.
 Their IDs/text are at most 120 characters, with at most 256 labels. A rectangular
-resize or first label promotes the scene to version 2; older scene-1-only web
-readers refuse it rather than strip metadata. See the
+resize or first ordinary note promotes an older scene to version 2. Explicit
+Room-label creation promotes to scene 3 and links one label to one authoring
+region. Existing scene 1/2 notes remain notes; reading does not promote or add
+empty collections. Older readers refuse unsupported versions rather than strip
+metadata. See the
 [owning contract](../../src/concepts/world-building/CONTRACT.md#centered-workspaces-and-map-annotations-1239)
 for membership and conservative protected-extent refusal rules.
 
@@ -224,22 +228,257 @@ do not replace it with a new doorless wall or hand-write an unchecked second sch
    document becomes persistable without dropping policy. Do not seed invalid
    storage to bypass the strict load gate.
 
+## Shared Arrange procedure
+
+Arrange is a collapsible precision companion, not a second document owner.
+Creation palettes remain separate. A single active noun drives selected fields,
+3D gizmos and supported shortcuts; remembered scenery must not receive actor or
+Layout keyboard edits. Units are canonical world units, displayed degrees and
+height percentages, or actor/start hex q/r—not physical metres or a universal
+XYZ/scale interface. This increment does not implement asset-backed doorways or
+observer privacy.
+
+Use the populated context and exact full-document comparisons above:
+
+1. Select a rotated wall in Layout. **Arrange** shows midpoint X/Z, Y facing,
+   length/fixed endpoint and appearance height/thickness/elevation. Apply without
+   typing: exact line/openings, stored bytes/write count and Undo availability
+   must remain unchanged despite rounded displays. Stage several fields and
+   Apply/Enter once; one Undo restores the whole original, not a partial form.
+   Invalid late input refuses the entire form. Deliberate appearance replacement
+   stages in Arrange; drawing appearance remains independent.
+2. Use the actual wall body/endpoint drag, then the loaded wall Y-ring in 3D.
+   Positive Three.js Y yaw follows `previewWallTransform`, not `rotateWall`'s
+   mathematical XZ sign. Preserve openings, attached-door state and bindings.
+   Layout gesture previews are local SVG; 3D owner previews additionally update
+   clean Arrange fields, show **Preview**, and disable Apply until completion.
+3. With real loaded props, select one prop/group: inspect actual world XYZ and
+   absolute Y facing. Select two independent roots: inspect **Selection pivot**
+   and relative **Rotate by**, never fabricated absolute facing. Numeric XYZ,
+   yaw and height followed by existing arrows/plane/gizmo movement share the
+   same document/history. Group descendants and supported decorations transform
+   once; height affects selected pieces, not support-only decorations. Applying
+   100% to already-default pieces must not materialize absent `heightScale`.
+4. Collapse during a real 3D gesture, then expand during preview. Check canvas
+   element identity, unchanged tool/selection, no writes before release, and no
+   phantom Undo entry. Same-target preview/pose renders must not reopen a
+   collapsed panel; a new explicit selection may. Cancel live gestures with
+   Escape, capture loss and view change. Numeric Escape/Cancel, blur, collapse
+   and view/target retirement must never commit staging.
+5. Pick a fresh monster and party start on the real 3D surface. Monsters expose
+   q/r plus the eight supported compass names/default; start exposes q/r only.
+   Actor location/facing Apply is atomic; **Asset default** deletes optional
+   facing. R/Duplicate must not operate on remembered scenery. Select a label
+   through the Layout picker or canvas, then rename/move with Arrange Enter;
+   one Undo restores both text and position. Retired callbacks must not mutate
+   the previously active noun.
+6. Capture expanded/collapsed desktop and narrow contexts. Check two permanent
+   bands, horizontal toolbar overflow, scroll-to-Apply, visible keyboard focus
+   and errors, independent creation palettes and usable canvas. Record actual
+   render observations, not HTTP success or thumbnails alone.
+7. Traverse numeric/gizmo edits with Undo/Redo, then reload in the same disposable
+   context. Compare complete normalized JSON/YAML and local bytes, retaining
+   source identity, policy/scope, optional-field presence, bindings, groups,
+   support and lights. Reload restores content, not history. Record unavailable
+   backend/provider capabilities and unexercised interactions explicitly.
+
+## Room boundaries and explicit repair
+
+These are **authoring definitions**, not gameplay regions, floor membership,
+concealment or visibility. The label owns text and anchor; the linked
+region owns boundary and optional visual background intent. Definitions share
+the existing full-document owner, history, validation and persistence. There is
+no region-specific publication capability or gameplay illumination control.
+
+Use a disposable populated fixture with a closed outer rectangle and an
+axis-aligned divider that meets the outer wall interiors exactly. Keep its
+openings, attached-door bindings, props/supports/lights, actors/start and every
+scope key. Seed an ordinary saved note before entry. Use canonical helpers and
+`stringifyRoomDraft`, not handwritten authoring callbacks or unchecked storage.
+
+1. Enter through **Home → Encounter Studio**. Open **Label**, choose
+   **Room · linked boundary** in **Label kind**, enter a name, then
+   **Place label on map**. Use a pointer or the **New label world X/Z** form
+   and **Place label at coordinates** to place one room inside each side.
+   Dismiss Label controls. Select each label by pointer or keyboard Enter on
+   **Select map label NAME**. Verify distinct boundaries and **Automatic ·
+   Resolved** in Arrange. The saved ordinary note has neither a linked region
+   nor repair controls; new **Note** creation retains that behavior.
+2. Select the divider and change **Wall midpoint X** with **Apply Arrange**.
+   Compare current boundary rings, identical persisted region IDs/witnesses,
+   door bindings and complete unrelated payload. Apply unchanged fields or
+   **Use enclosing walls** on the already bound room: exact stored bytes and
+   write count must not change. Undo/Redo should traverse only accepted intents.
+3. Shorten the divider enough to leave a true representable gap, even a small
+   one. Boundaries must disappear, while labels/definitions survive with
+   **Unresolved** and a reason. Reload via Home → Studio and compare the full
+   document, JSON and YAML. Restore the exact original endpoint/source walk:
+   the bound rooms resolve without acquiring another witness. Removing a
+   divider or crossing a label into another enclosure must not adopt that area.
+4. In a separate fresh fixture with a missing outer wall, place a Room label.
+   Its automatic definition has no witness. Close the room with **Wall**,
+   choosing an actual appearance and drawing with a real pointer. If native
+   screen round trips leave nonidentical endpoints, use the existing Arrange
+   precision fields to author exact coordinates/length, or use supported hex
+   snap geometry; never expect distance-based welding. Even after closure,
+   the initial definition stays unbound. Select the label and explicitly press
+   **Use enclosing walls** to bind once. Repeating it is a no-op.
+5. Place Forest and Meadow Room labels in an open area, away from existing
+   rooms. Select Forest → **Define explicit area**. **Paint region**, **Erase
+   region** and **Rectangle region** stage a complete cell replacement and
+   commit on release. Paint distinct cells for each label and compare the entire
+   floor, walls, props, bindings and scope before/after: none change. **Clear
+   explicit area** keeps `{ kind: 'explicit', cells: [] }` with an unresolved
+   empty-area explanation; it does not revert to automatic or delete intent.
+   JSON/YAML and reload retain that empty definition.
+6. Paint an overlapping cell, or create a second Room label in the same
+   enclosure. All affected conflicts must be visible without priority or
+   membership transfer. Undo restores the previous definitions. **Delete region
+   and label** removes only the linked pair; Undo restores both identities.
+   Ordinary notes retain **Delete label**. Raw linked-label deletion is refused.
+7. Start a region stroke and cancel with Escape, change selection or switch
+   views before release. A late release must not commit to a retired target.
+   Paint identical membership twice: only the first change writes. Interleave
+   a floor edit and a real 3D prop edit, then return to Layout and traverse
+   Undo/Redo. Navigation is not history; unresolved metadata is persistable,
+   but invalid existing policy still fails its operation's normal strict gate.
+8. In fresh contexts compare otherwise identical attached-door initial open and
+   closed states. All wall spans, including openings, remain logical boundaries.
+   Studio introduces no new doorway-state control; canonical disposable
+   seeding is the state variation, not a fake control or gameplay sight test.
+9. Inspect desktop and narrow screenshots, label/status legibility, keyboard
+   focus, scroll-to-Apply and actual canvas area. Expanded Arrange may cover
+   the scene tree or canvas; collapse it to pick behind it. Explicit-area
+   controls can also cover cells: pan the view or collapse Arrange before
+   painting underneath. On narrow screens use the horizontally scrolling
+   toolbar and collapse Arrange to regain canvas space. Do not count covered
+   cells as exercised by clicks intercepted by a panel or label.
+10. Reload and compare complete scene3 JSON → YAML → JSON payloads and room
+    snapshots (draft only). Preserve old notes, all optional-field presence,
+    groups/supports/visual lights and scope. Inspect the native loaded 3D scene
+    separately; authoring boundaries are Layout-only, not a new 3D overlay.
+
+### Conservative geometry boundary
+
+Exact shared endpoints, certified axis-aligned T contacts and certified proper
+crossings may resolve simple, bounded single-ring faces. Moving the same oriented
+source walk follows without rewriting it. Source direction/order matter:
+reversing endpoints can require explicit rebind even when the undirected line
+looks unchanged. There is no epsilon welding, inferred gap closure, render-time
+witness acquisition or cached valid-looking stale ring.
+
+Holes, dangling interior slits, positive-length source overlaps/coincident walls,
+uncertified angled T/collinear contacts, uncertain multiway intersections or
+intersection ordering remain visibly unresolved. Conflicts never select a winner.
+Explicit cells use canonical membership; adjacent cells are not overlap. Explicit
+boundaries show cell outlines including interior seams, not a simplified contour.
+See the [region contract](../../src/concepts/world-building/CONTRACT.md) and
+[geometry design](../architecture/components/encounter-studio-regions/design.md).
+
+## Region background lighting procedure
+
+Use `createRegionLightingDocument()` in
+`src/concepts/encounter-studio/fixtures/regionLighting.ts` for the complete synthetic
+two-room/native-prop/torch/attached-door/all-scope seed. The configured variant
+uses15%/80%; `createUnresolvedRegionLightingDocument()` retains configured gap,
+unbound and empty-explicit intent. `createSparseRegionLightingDocument()` provides
+128×128 bounds with240 separated configured areas. These helpers are test authority,
+not operator documents or default starter content.
+
+1. Enter **Home → Encounter Studio**, select a linked label through Layout, and
+   inspect **Background light (%)**. Absence is blank with a100 placeholder and
+   **Baseline · no region light authored**, not prefilled100. Plain notes expose
+   neither lighting field nor reset. Apply without typing and unrelated rename
+   must preserve absence/version; deliberately entering100 authors1. Repeating
+   an equal authored value or resetting absence must preserve bytes/history.
+2. Type15 without Apply: document/viewport must stay committed. Join rename,
+   move and15 with Enter: one Undo restores the entire payload. Try101, blank or
+   nonnumeric late tokens: refuse the whole candidate and keep visible error/input.
+   **Use baseline appearance** stages null until Apply. Cancel/Escape/collapse,
+   view/target/epoch/document retirement discard linked-label staging; blur does
+   not submit. Lighting-only retains unfinished policy staging, but an explicitly
+   supplied equal label token still invokes strict validation. Save/export stay
+   strict; never seed invalid storage to test this distinction.
+3. Switch to3D, collapse Arrange, fix camera and wait for native texture/model
+   settle. Compare neighboring automatic15%/80% rooms: actual textured floor,
+   props, divider faces, attached-door surfaces and caps, not a floor overlay or
+   prop-centre classification. Change15→50 without changing source declaration,
+   selected point input or emission. Inspect a long crossing prop, move/rotate
+   and elevate it with real controls, and compare both divider sides. Seeded
+   initial open/closed door variations use canonical bindings, not a live RPC.
+4. Inspect explicit Forest/Meadow unions with sparse gaps, no enclosing walls
+   and no requirement to paint floor. Actual asset parts and floor follow the
+   unions, not rectangular bounds. Gaps/outside and an unconfigured neighbor
+   retain the legacy floor appearance. Placed point lights on lit assets can
+   cross boundaries; Basic floor local response is configured-only, not occlusion.
+5. Toggle the existing native torch **Light enabled** control off/on at15/50/80.
+   Ray-certify each sampled pixel against the first real visible floor surface
+   (underlay aroundY0.194, not hidden ground aroundY0.008). Keep historical
+   occluded/wrong-height samples as failed evidence, not torch proof. Compare
+   identical linear local input/term, not equal encoded screenshot deltas.
+6. Shorten/remove the divider, cross a bound seed, overlap explicit cells and
+   restore/Undo. Persisted lighting must survive with **Lighting saved · not
+   applied until boundary resolves** and the reason. No stale or guessed field
+   may remain. Initially unbound/empty definitions never silently acquire extent.
+7. Interleave accepted lighting, floor and prop edits; navigate, Cancel, no-op,
+   Undo/Redo and same-context reload. Compare full document/optional bytes, not
+   counts alone. Actual new encoder JSON/YAML must preserve scene4, complete
+   scope, walls/start/declarations/bindings; old2/3 no-field reloads never promote.
+8. In explicitly headed hardware Chrome, record unmasked renderer, viewport/DPR,
+   finite browser/outer deadlines and paired warm baseline/lighting frame times.
+   Observe120 camera frames,20 source/level changes,10 view round trips, repair and
+   asset/cap changes. Track real material/field/program identities and live
+   resources: no camera field rebuild/upload/clone, warmed variants and resource
+   plateaus, unchanged cache-shared materials. Include sparse-max/many-area cost.
+   Required surfaces with shader/material diagnostics cannot pass. Record measured
+   delta and unverified rows; no invented FPS pass or broad profiling campaign.
+9. Keep licensed render screenshots/receipts private. Operator screenshots prove
+   only their exercised scenario; focused DOM tests and synthetic viewport probes
+   do not substitute for the actual route matrix or provider carriage.
+
+### Provider carriage is a separate prerequisite
+
+Web JSON/YAML round trips do not prove provider compilation. Use the authorized
+clean API snapshot and its **actual pinned** encounter module with the real
+registry validate-only, Put, Get, disk and fresh-registry paths. Emit actual new
+Web encoder sources: metadata-free baseline, scene4 configured resolved intent,
+and scene4 unresolved/unbound/empty intent. Preserve structural walls, required
+partyStart, all scope and gameplay keys; vary only presentation metadata for the
+compiled-equality comparison. Validate the baseline too: a synthetic scenario
+name or occupied start is a fixture refusal, not a scene4 result.
+
+Use a temporary Go overlay of the existing registry test file, appending a suite
+method that reads absolute temporary encoder fixtures. Registry writes use
+`t.TempDir()`. Compare exact source bytes and entire compiled Spec/Atlas/region
+membership and gameplay lighting against baseline. Record actual API head/Go/pins,
+original test/go.mod/go.sum hashes and clean status before/after. Never edit source,
+pins or services to make this probe green. There is no Save & Play/liveRPC claim.
+
+If even the metadata-free structural-wall base is refused, record that format/pin
+blocker separately from local authoring results. Do not remove walls from exports,
+substitute a newer provider, claim an API launch/save, or treat a metadata-only
+diagnostic as full-document acceptance.
+
 ## Automated checks
 
 Run individually from the web worktree with matching local dependencies:
 
 ```bash
-npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
+npm run test:run -- src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/mapLabelEdits.test.ts
+npm run test:run -- src/concepts/encounter-studio/StudioArrangePanel.test.tsx src/concepts/encounter-studio/StudioControls.test.tsx src/concepts/world-building/WorldBuildingConcept.test.tsx src/concepts/world-building/StructuralWallVisual.test.tsx src/concepts/world-building/structuralWallEditing.test.ts src/concepts/world-building/structuralWallGeometry.test.ts
 npm run test:run -- src/concepts/world-building/sceneState.test.ts src/concepts/world-building/serialization.test.ts src/concepts/world-building/roomDraft.test.ts src/concepts/world-building/singleRoomDungeon.test.ts src/compositions/roomDocument.test.ts
 npm run test:run -- src/concepts/world-building/WorldBuilderWorkspace.test.tsx src/concepts/world-building/WorldBuildingViewport.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.tsx src/concepts/world-building/WorldBuildingInteraction.test.ts
+npm run test:run -- src/concepts/encounter-studio/StudioArrangePanel.test.tsx src/concepts/encounter-studio/EncounterStudioIntegration.test.tsx src/concepts/encounter-studio/fixtures/regionLighting.test.ts
 npm run typecheck
 ```
 
 The joined DOM tests use the real Studio shell, WorldBuildingConcept owner,
 LayoutViewport, dimension/label/wall forms and gestures, floor/label/wall mutations,
-pure snap/reshape/resize/rotation helpers,
-validators and real JSON/YAML/snapshot/composition parsers with injected memory
-storage. They retain the real WorldBuildingViewport but replace its **Canvas
+pure snap/reshape/resize/rotation and region boundary helpers,
+validators and real scene3 JSON/YAML/snapshot/composition parsers with injected
+memory storage. Region checks include persisted true-gap repair, selection/history
+retirement, authored empty definitions, no-op byte/write exactness and full payload
+preservation. They retain the real WorldBuildingViewport but replace its **Canvas
 WebGL boundary**, observing the controlled scene inputs and calling the owner
 callbacks supplied to WorldSceneContents. Thumbnail rendering and external
 services are faked; Layout browser geometry/pointer capture are shimmed. These
@@ -248,5 +487,9 @@ interaction or visual 3D correctness. The disposable browser walk supplies that
 separate evidence.
 
 At the PR boundary, run the repository's single full `npm run ci-check` gate and
-record actual output. Independent review and operator interaction evidence remain
+record actual output. If a live preview's ignored asset link must remain stable,
+use an explicitly authorized detached verification worktree at the exact final
+commit, with only a matching dependency symlink and no asset link; record cwd,
+head and clean status. Never interrupt the operator's preview for a gate.
+Independent review and operator interaction evidence remain
 separate readiness requirements; focused DOM passes do not stand in for them.

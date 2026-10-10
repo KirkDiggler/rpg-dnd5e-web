@@ -6,6 +6,7 @@ import {
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { propVisualScale } from '@/rendering/propVisualScale';
+import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -49,6 +50,7 @@ export interface WorldAssetModelProps {
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   heightScale?: number;
   remembered?: boolean;
+  visualLighting?: RegionLightingMaterialBinding;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -278,6 +280,7 @@ function LoadedWorldAssetModel({
   onDoorClick,
   heightScale,
   remembered,
+  visualLighting,
 }: {
   assetRef: string;
   url: string;
@@ -293,10 +296,17 @@ function LoadedWorldAssetModel({
   onDoorClick?: () => void;
   heightScale: number;
   remembered: boolean;
+  visualLighting?: RegionLightingMaterialBinding;
 }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
-  useRememberedModelTint(cloned, remembered, heightScale);
+  useRememberedModelTint(
+    cloned,
+    remembered,
+    heightScale,
+    visualLighting,
+    assetRef
+  );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
     [cloned, roles]
@@ -431,6 +441,10 @@ function LoadedWorldAssetModel({
       tile.scale.y = aboveRestScaleY * residual;
       tile.position.y = aboveRestY + index * aboveLocalRowHeight * residual;
     }
+    return () => {
+      for (const tile of aboveTiles)
+        if (tile !== above) tile.removeFromParent();
+    };
   }, [aboveTiles, boundsMeters, heightScale, resolved]);
 
   const measuredBounds = useMemo<PropModelBounds>(() => {
@@ -513,6 +527,7 @@ export function WorldAssetModel({
   onDiagnostic,
   heightScale = 1,
   remembered = false,
+  visualLighting,
   openDoors = [],
   open,
   onDoorClick,
@@ -539,6 +554,7 @@ export function WorldAssetModel({
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
       remembered={remembered}
+      visualLighting={visualLighting}
     />
   );
 }

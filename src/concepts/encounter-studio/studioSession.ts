@@ -1,14 +1,36 @@
 import type { ReactNode } from 'react';
 import type {
+  AuthoringRegion,
+  RegionResolution,
+} from '../world-building/authoringRegions';
+import type {
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
 } from '../world-building/roomDraft';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
+import type {
+  StudioArrangeIntent,
+  StudioArrangeSelection,
+} from '../world-building/studioArrange';
+import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
 import type { WorldPoint } from '../world-building/types';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+export type {
+  AuthoringRegion,
+  BoundaryRun,
+  EnclosureWitness,
+  RegionLighting,
+  RegionResolution,
+} from '../world-building/authoringRegions';
+export type {
+  StudioDoorAppearanceOption,
+  StudioDoorEditing,
+  StudioDoorPreview,
+  StudioDoorTarget,
+} from '../world-building/studioDoorEditing';
 
 // Layout consumers can use the canonical geometry/document types through this
 // seam; these are re-exports, never parallel Studio model definitions.
@@ -19,11 +41,30 @@ export type {
 } from '../world-building/roomDraft';
 export type { WallLine } from '../world-building/structuralWallGeometry';
 export type { StructuralWall } from '../world-building/structuralWalls';
+export type {
+  StudioActorArrangeEdit,
+  StudioArrangeHeight,
+  StudioArrangeIntent,
+  StudioArrangeProjectionInput,
+  StudioArrangeSelection,
+  StudioArrangeTarget,
+  StudioSceneArrangeEdit,
+  StudioSceneArrangeValues,
+  StudioStartArrangeEdit,
+  StudioWallArrangeEdit,
+  StudioWallArrangeValues,
+} from '../world-building/studioArrange';
 export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
-export type LayoutTool = LayoutFloorTool | 'select' | 'wall' | 'label';
+export type LayoutTool =
+  | LayoutFloorTool
+  | 'select'
+  | 'wall'
+  | 'label'
+  | 'door'
+  | 'region';
 
 export type StudioWallThumbnail =
   | { status: 'loading' }
@@ -66,6 +107,8 @@ export interface LayoutFrame {
 export interface LayoutLabelEditing {
   active: boolean;
   placementText: string | null;
+  /** Explicit creation choice; absent preserves legacy Note consumers. */
+  placementKind?: 'note' | 'room';
   selectedId: string | null;
   onSelect(id: string | null): void;
   onCreate(text: string, location: WorldPoint): boolean;
@@ -82,6 +125,13 @@ export interface LayoutViewportProps {
   onCommit(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
   labelEditing?: LayoutLabelEditing;
   wallEditing?: StudioWallEditing;
+  doorEditing?: StudioDoorEditing;
+  regionEditing?: StudioRegionEditing;
+  /** Derived from the existing linked-label selection, never a second store. */
+  selectedRegion?: Readonly<AuthoringRegion>;
+  regionTool?: LayoutFloorTool;
+  onExitRegionTool?(): void;
+  onExitDoorTool?(): void;
   /** Owner generation: option/tool/view cancellation fences late releases. */
   intentEpoch?: number;
   /** Presentation-only exit; preserve the owner’s armed appearance and snap. */
@@ -91,13 +141,39 @@ export interface LayoutViewportProps {
   documentContext?: Readonly<RoomDraftDocument>;
 }
 
+/** Definitions belong to the one document owner. Area commits replace region
+ * cells, never floor; bound intents require the current linked-label selection.
+ * Captured callbacks retire on document/epoch/selection changes. */
+export interface StudioRegionEditing {
+  readonly resolutions: readonly RegionResolution[];
+  /** Atomic pair creation uses the existing strict label codec gate. Unbound
+   * geometry alone is valid metadata, not a publication/creation refusal. */
+  createRoomLabel(text: string, location: WorldPoint): boolean;
+  /** Definition operations use ordinary shape/bounds/size gates and retain
+   * editable unfinished policies. Equal accepted intents add no history. */
+  useEnclosingWalls(regionId: string): boolean;
+  setExplicitRegionArea(
+    regionId: string,
+    cells: readonly RoomHexCell[]
+  ): boolean;
+  removeRegionAndLabel(regionId: string): boolean;
+}
+
 /** Render-time projection of the existing owner, never a second store.
  * Consumers must not mutate or serialize document. No publishing/play seam. */
 export interface EncounterStudioSession {
   document: Readonly<RoomDraftDocument>;
   viewportProps: WorldBuildingViewportProps;
   readonly intentEpoch: number;
+  readonly arrange: StudioArrangeSelection | null;
+  commitArrange(intent: StudioArrangeIntent): boolean;
+  mapLabelSelection: {
+    readonly selectedId: string | null;
+    select(id: string | null): boolean;
+  };
+  doorEditing: StudioDoorEditing;
   wallEditing: StudioWallEditing;
+  regionEditing: StudioRegionEditing;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
   canUndo: boolean;
@@ -118,7 +194,12 @@ export interface EncounterStudioSession {
   cancelTransients(): void;
   propTool: WorldBuildingTool;
   setPropTool(tool: WorldBuildingTool): void;
-  propControls: { palette: ReactNode; tree: ReactNode; selection: ReactNode };
+  propControls: {
+    palette: ReactNode;
+    tree: ReactNode;
+    selection: ReactNode;
+    arrangeExtras: ReactNode;
+  };
   saveStatus: string;
   notice: string | null;
   autosaveBlocked: boolean;

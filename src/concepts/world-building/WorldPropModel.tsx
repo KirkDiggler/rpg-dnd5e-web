@@ -6,6 +6,7 @@ import {
   WorldAssetModel,
   type WorldAssetModelDiagnostic,
 } from '@/components/hex-grid/WorldAssetModel';
+import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import type { WorldBuildingCatalogEntry } from './catalog';
 
 export interface WorldPropModelProps {
@@ -14,6 +15,7 @@ export interface WorldPropModelProps {
   rotationY: number;
   heightScale?: number;
   remembered?: boolean;
+  visualLighting?: RegionLightingMaterialBinding;
   /** A door item's live state: TRUE swings every declared group open. Absent
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
@@ -36,6 +38,7 @@ export function WorldPropModel({
   rotationY,
   heightScale = 1,
   remembered = false,
+  visualLighting,
   open,
   onDoorClick,
   onBoundsMeasured,
@@ -48,6 +51,7 @@ export function WorldPropModel({
     <WorldAssetModel
       assetRef={entry.ref}
       remembered={remembered}
+      visualLighting={visualLighting}
       position={position}
       rotationY={rotationY}
       heightScale={heightScale}
@@ -60,6 +64,7 @@ export function WorldPropModel({
     <PropModel
       variant={entry.variant}
       remembered={remembered}
+      visualLighting={visualLighting}
       position={position}
       rotationY={rotationY}
       anchor="bounds-floor-center"

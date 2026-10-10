@@ -1,5 +1,7 @@
 import type { MapLabel, WorldPoint } from '../world-building/types';
 import { worldToClient, type LayoutTransform } from './layoutGeometry';
+import { regionStatus } from './StudioArrangeFields';
+import type { AuthoringRegion, RegionResolution } from './studioSession';
 
 interface MapLabelOverlayProps {
   labels: readonly MapLabel[];
@@ -7,6 +9,8 @@ interface MapLabelOverlayProps {
   selectedId: string | null;
   preview: { id: string; location: WorldPoint } | null;
   onSelect(id: string): void;
+  regions?: readonly AuthoringRegion[];
+  resolutions?: readonly RegionResolution[];
 }
 
 /** Root-SVG pixel overlay: text stays screen-sized while its world anchor pans
@@ -17,6 +21,8 @@ export function MapLabelOverlay({
   selectedId,
   preview,
   onSelect,
+  regions,
+  resolutions,
 }: MapLabelOverlayProps): React.JSX.Element {
   return (
     <g className="es-map-labels">
@@ -26,6 +32,10 @@ export function MapLabelOverlay({
           transform
         );
         if (!point) return null;
+        const region = regions?.find((region) => region.labelId === label.id);
+        const resolution = resolutions?.find(
+          (resolution) => resolution.id === region?.id
+        );
         return (
           <text
             key={label.id}
@@ -54,7 +64,9 @@ export function MapLabelOverlay({
               }
             }}
           >
+            {region && <title>{regionStatus(region, resolution)}</title>}
             {label.text}
+            {region ? (resolution?.status === 'resolved' ? ' ◇' : ' ⚠') : ''}
           </text>
         );
       })}

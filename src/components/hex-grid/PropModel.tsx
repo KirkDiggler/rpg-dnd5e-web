@@ -1,3 +1,4 @@
+import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 /**
  * PropModel — renders a resolved static prop GLB (rpg-dnd5e-web#528,
  * charter #523) in place of HexEntity's primitive obstacle capsule, when
@@ -104,6 +105,7 @@ export interface PropModelProps {
   remembered?: boolean;
   /** Visual Y scale, grounded at the authored mesh base. */
   heightScale?: number;
+  visualLighting?: RegionLightingMaterialBinding;
 }
 
 /** One companion mesh, loaded/cloned independently of its parent (its own
@@ -114,13 +116,21 @@ export interface PropModelProps {
 function PropCompanionModel({
   companion,
   remembered,
+  visualLighting,
 }: {
   companion: PropCompanion;
+  visualLighting?: RegionLightingMaterialBinding;
   remembered: boolean;
 }) {
   const { scene } = useGLTF(PROPS_MODEL_BASE + companion.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
-  useRememberedTint(cloned, remembered);
+  useRememberedTint(
+    cloned,
+    remembered,
+    undefined,
+    visualLighting,
+    PROPS_MODEL_BASE + companion.file
+  );
   return <primitive object={cloned} />;
 }
 
@@ -132,6 +142,7 @@ export function PropModel({
   onBoundsMeasured,
   remembered = false,
   heightScale = 1,
+  visualLighting,
 }: PropModelProps) {
   const safeHeightScale = propVisualScale(heightScale);
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
@@ -164,7 +175,13 @@ export function PropModel({
     () => onBoundsMeasured?.(measuredBounds),
     [measuredBounds, onBoundsMeasured]
   );
-  useRememberedTint(cloned, remembered);
+  useRememberedTint(
+    cloned,
+    remembered,
+    undefined,
+    visualLighting,
+    PROPS_MODEL_BASE + variant.file
+  );
 
   const modelContents = (
     <>
@@ -173,6 +190,7 @@ export function PropModel({
         <PropCompanionModel
           key={companion.file}
           companion={companion}
+          visualLighting={visualLighting}
           remembered={remembered}
         />
       ))}

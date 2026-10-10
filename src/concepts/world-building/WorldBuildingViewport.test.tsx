@@ -5,9 +5,19 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { cleanup, act as ownerAct, render } from '@testing-library/react';
 import * as THREE from 'three';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EncounterStudioSession } from '../encounter-studio/studioSession';
+import {
+  createRoomDraft,
+  ROOM_DRAFT_STORAGE_KEY,
+  setRoomPartyStart,
+  stringifyRoomDraft,
+} from './roomDraft';
+import { createEmptyScene } from './sceneState';
 import type { WorldProp } from './types';
+import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const modelState = vi.hoisted(() => ({
   value: 'loaded' as 'loaded' | 'pending' | 'error',
@@ -21,6 +31,10 @@ const loadedScene = new THREE.Group();
 loadedScene.add(
   new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())
 );
+
+vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
+  ThumbnailRenderer: () => null,
+}));
 
 vi.mock('@react-three/drei', () => ({
   Html: () => null,
@@ -1578,6 +1592,194 @@ describe('room actor markers and snapped setup gestures', () => {
     expect(onSelectActor).toHaveBeenCalledWith(null);
   });
 
+  it('joins typed party-start ground Move to its owner: one click spends Move, unarmed click is inert, explicit rearm works', async () => {
+    const draft = setRoomPartyStart(
+      createRoomDraft(createEmptyScene('one-shot-scene'), 'one-shot-room'),
+      { q: 0, r: 0 }
+    );
+    const bytes = new Map([
+      [ROOM_DRAFT_STORAGE_KEY, stringifyRoomDraft(draft)],
+    ]);
+    const setItem = vi.fn((key: string, value: string) => {
+      bytes.set(key, value);
+    });
+    let session: EncounterStudioSession;
+    const mounted = render(
+      <WorldBuildingConcept
+        roomMode
+        storage={{ getItem: (key) => bytes.get(key) ?? null, setItem }}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const writes = () =>
+      setItem.mock.calls.filter(([key]) => key === ROOM_DRAFT_STORAGE_KEY)
+        .length;
+    ownerAct(() =>
+      session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+        kind: 'start',
+      })
+    );
+    ownerAct(() => session.setPropTool('move'));
+    const before = session!.document;
+    const count = writes();
+    const draw = () => (
+      <WorldSceneContents
+        {...session!.viewportProps}
+        showCompositionBounds={false}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(draw());
+    const ground = () =>
+      renderer.scene.findByProps({ name: 'world-building-finite-ground' });
+    const click = async (q: number, r: number) => {
+      await ownerAct(async () => {
+        await renderer.fireEvent(
+          ground(),
+          'pointerDown',
+          groundEvent(worldPoint(q, r))
+        );
+      });
+      await renderer.update(draw());
+    };
+    try {
+      await click(1, 0);
+      expect(session!.document.draft.room.partyStart).toEqual({ q: 1, r: 0 });
+      expect(session!.propTool).toBe('select');
+      expect(session!.viewportProps.roomAuthoring!.tool).toBe('select');
+      expect(writes()).toBe(count + 1);
+      const first = session!.document;
+      const firstBytes = bytes.get(ROOM_DRAFT_STORAGE_KEY);
+      await click(0, 1);
+      expect(session!.document).toBe(first);
+      expect(bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(firstBytes);
+      expect(writes()).toBe(count + 1);
+      ownerAct(() =>
+        session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+          kind: 'start',
+        })
+      );
+      ownerAct(() => session.setPropTool('move'));
+      await renderer.update(draw());
+      await click(0, 1);
+      expect(session!.document.draft.room.partyStart).toEqual({ q: 0, r: 1 });
+      expect(session!.propTool).toBe('select');
+      expect(writes()).toBe(count + 2);
+      ownerAct(() => session.undo());
+      expect(session!.document).toEqual(first);
+      ownerAct(() => session.undo());
+      expect(session!.document).toEqual(before);
+      expect(session!.canUndo).toBe(false);
+    } finally {
+      await renderer.unmount();
+      mounted.unmount();
+      cleanup();
+    }
+  });
+
+  it('typed ground routing distinguishes actor start, party start and null despite a stale legacy start id', async () => {
+    const onMoveMonster = vi.fn();
+    const onStartGesture = vi.fn();
+    const onSelectActorTarget = vi.fn();
+    const onSelectActor = vi.fn();
+    const draw = (
+      target:
+        | { kind: 'actor'; id: string }
+        | { kind: 'start' }
+        | null
+        | undefined,
+      tool: 'move' | 'select' = 'move'
+    ) => (
+      <WorldSceneContents
+        scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
+        previewScene={null}
+        selectedIds={[]}
+        tool="select"
+        activeDrag={null}
+        onSelect={vi.fn()}
+        onDrop={vi.fn()}
+        onDragFinished={vi.fn()}
+        onTransformPreview={vi.fn()}
+        onTransformCommit={vi.fn()}
+        onTransformReject={vi.fn()}
+        onAssetState={vi.fn()}
+        showCompositionBounds={false}
+        roomAuthoring={{
+          tool,
+          workspace: { hexRadius: 6, horizontalLimit: 12 },
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          monsters: [{ ...ACTOR, id: 'start' }],
+          partyStart: { q: -1, r: 0 },
+          selectedActorId: 'start',
+          selectedActorTarget: target,
+          onSelectActorTarget,
+          onSelectActor,
+          onMoveMonster,
+          onStartGesture,
+        }}
+      />
+    );
+    const renderer = await ReactThreeTestRenderer.create(
+      draw({ kind: 'actor', id: 'start' })
+    );
+    const ground = () =>
+      renderer.scene.findByProps({ name: 'world-building-finite-ground' });
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).toHaveBeenCalledExactlyOnceWith('start', {
+      q: 0,
+      r: 1,
+    });
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.update(draw({ kind: 'start' }));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onStartGesture).toHaveBeenCalledExactlyOnceWith({ q: 0, r: 1 });
+    onMoveMonster.mockClear();
+    onStartGesture.mockClear();
+    await renderer.update(draw(null));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).not.toHaveBeenCalled();
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.update(draw({ kind: 'actor', id: 'start' }, 'select'));
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onSelectActorTarget).toHaveBeenCalledWith(null);
+    expect(onSelectActor).not.toHaveBeenCalled();
+    await renderer.update(draw(undefined)); // old consumer has no typed contract
+    await renderer.fireEvent(
+      ground(),
+      'pointerDown',
+      groundEvent(worldPoint(0, 1))
+    );
+    expect(onMoveMonster).toHaveBeenCalledExactlyOnceWith('start', {
+      q: 0,
+      r: 1,
+    });
+    expect(onStartGesture).not.toHaveBeenCalled();
+    await renderer.unmount();
+  });
+
   it('places or moves the party start from one gesture and keeps it unmistakable', async () => {
     const onStartGesture = vi.fn();
     const onSelectActor = vi.fn();
@@ -2087,4 +2289,131 @@ describe('structural wall visual hit ownership', () => {
       select.scene.findByProps({ name: 'structural-wall-blocker-wall-1' })
     ).toBeTruthy();
   });
+});
+
+// The test renderer's GL mock exposes no hardware limits/uploads. Native probe
+// exercises the real capabilities separately; this fixture supplies only that seam.
+function LightingGPUFixture(): null {
+  const { gl } = useThree();
+  gl.capabilities.maxTextureSize = 4096;
+  gl.initTexture = () => {};
+  gl.getContext().getError = () => 0;
+  gl.getContext().isContextLost = () => false;
+  return null;
+}
+
+it('applies the committed field to real surfaces while preserving guides, actor markers, selected point list and retired baseline', async () => {
+  floorTextureState.base = new THREE.Texture();
+  modelState.value = 'loaded';
+  const diagnostic = vi.fn();
+  const scene = {
+    ...createEmptyScene('lighting-test'),
+    items: [
+      {
+        ...TABLE,
+        pointLight: {
+          enabled: true,
+          offset: { x: 0, y: 2, z: 0 },
+          color: '#ffa050',
+          intensity: 3,
+          range: 6,
+        },
+      },
+    ],
+  };
+  const base = {
+    scene,
+    previewScene: null,
+    selectedIds: [TABLE.id],
+    tool: 'select' as const,
+    activeDrag: null,
+    onSelect: vi.fn(),
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+    onLightingDiagnostic: diagnostic,
+  };
+  const authoring = {
+    tool: 'select' as const,
+    workspace: centeredRoomWorkspace(12, 12),
+    walkableHexes: [{ q: 0, r: 0 }],
+    propDeclarations: {},
+    onWalkableGesture: vi.fn(),
+    partyStart: { q: 0, r: 0 },
+  };
+  const projection = {
+    areas: [
+      {
+        regionId: 'room',
+        background: 0.15,
+        area: {
+          kind: 'polygon' as const,
+          ring: [
+            { x: -4, z: -4 },
+            { x: 4, z: -4 },
+            { x: 4, z: 4 },
+            { x: -4, z: 4 },
+          ],
+        },
+      },
+    ],
+  };
+  const view = await ReactThreeTestRenderer.create(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents {...base} roomAuthoring={authoring} />
+    </>
+  );
+  const floor = view.scene.findByProps({ name: 'workspace-floor-underlay' })
+      .instance as THREE.Mesh,
+    original = floor.material;
+  const point = view.scene.findAllByType('PointLight')[0]!
+    .instance as THREE.PointLight;
+  await view.update(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents
+        {...base}
+        roomAuthoring={{ ...authoring, regionLighting: projection }}
+      />
+    </>
+  );
+  expect(diagnostic.mock.calls).toEqual([]);
+  expect((floor.material as THREE.Material).customProgramCacheKey()).toContain(
+    'workspace-basic'
+  );
+  expect(view.scene.findAllByType('PointLight')[0]!.instance).toBe(point);
+  expect(point.intensity).toBe(3);
+  expect(point.distance).toBe(6);
+  const surfaces = view.scene.findByProps({
+    name: `world-building-loaded-surface-${TABLE.id}`,
+  }).instance as THREE.Group;
+  surfaces.traverse((o) => {
+    if (o instanceof THREE.Mesh)
+      expect((o.material as THREE.Material).customProgramCacheKey()).toContain(
+        'STUDIO_REGION_LIGHTING'
+      );
+  });
+  const selection = view.scene.findByProps({
+    name: `world-building-selection-${TABLE.id}`,
+  }).instance as THREE.Mesh;
+  expect(
+    (selection.material as THREE.Material).customProgramCacheKey()
+  ).not.toContain('STUDIO_REGION_LIGHTING');
+  await view.update(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents
+        {...base}
+        roomAuthoring={{ ...authoring, regionLighting: { areas: [] } }}
+      />
+    </>
+  );
+  expect(floor.material).toBe(original);
+  expect(diagnostic).not.toHaveBeenCalled();
+  await view.unmount();
 });

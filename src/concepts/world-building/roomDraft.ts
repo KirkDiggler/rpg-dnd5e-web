@@ -529,6 +529,41 @@ export function moveRoomMonster(
   return { ...draft, room: { ...draft.room, monsterDeclarations: monsters } };
 }
 
+/** Set an explicit compass facing, or delete it to use the asset default.
+ * Unknown identities and invalid words refuse; exact no-ops keep absence. */
+export function setRoomMonsterFacing(
+  draft: RoomDraft,
+  id: string,
+  facing: string | undefined
+): RoomDraft {
+  const target = draft.room.monsterDeclarations.find(
+    (monster) => monster.id === id
+  );
+  if (!target) throw new Error(`Monster does not exist: ${id}.`);
+  if (facing !== undefined && !isValidFacing(facing))
+    throw new Error(
+      `Monster facing must be one of ${FACING_NAMES.join(', ')}.`
+    );
+  if (
+    facing === undefined
+      ? !Object.hasOwn(target.startingCell, 'facing')
+      : target.startingCell.facing === facing
+  )
+    return draft;
+  const startingCell = { ...target.startingCell };
+  if (facing === undefined) delete startingCell.facing;
+  else startingCell.facing = facing;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((monster) =>
+        monster.id === id ? { ...monster, startingCell } : monster
+      ),
+    },
+  };
+}
+
 /** Removing the creature removes its orders. A binding can never outlive the
  * creature it names (rpg-project#477, "a declaration can never outlive the
  * creature it names") — the decoder refuses an orphan, and this helper must
@@ -1076,8 +1111,15 @@ function validateDraft(value: unknown): RoomDraft {
     'Room coordinate frame'
   );
   const workspace = validateWorkspace(input.workspace);
-  if (workspace.kind === 'centered-odd-r' && input.scene?.version !== 2)
-    throw new Error('Centered room workspace requires scene version 2.');
+  if (
+    workspace.kind === 'centered-odd-r' &&
+    input.scene?.version !== 2 &&
+    input.scene?.version !== 3 &&
+    input.scene?.version !== 4
+  )
+    throw new Error(
+      'Centered room workspace requires scene version 2, 3 or 4.'
+    );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
     throw new Error(
@@ -1243,6 +1285,31 @@ function validateDraft(value: unknown): RoomDraft {
         : {}),
     },
   } as RoomDraft;
+  // Only the new region identities are globally reserved. Legacy labels retain
+  // their existing local identity semantics; references are not new owners.
+  const ownedIds = new Set([
+    draft.id,
+    draft.scene.id,
+    draft.room.implicitRegionId,
+    ...draft.scene.items.map((item) => item.id),
+    ...draft.scene.groups.map((group) => group.id),
+    ...(draft.scene.mapLabels ?? []).map((label) => label.id),
+    ...draft.room.monsterDeclarations.map((monster) => monster.id),
+    ...(draft.room.walls ?? []).flatMap((wall) => [
+      wall.id,
+      ...wall.openings.flatMap((opening) => [
+        opening.id,
+        ...(opening.door ? [opening.door.id] : []),
+      ]),
+    ]),
+  ]);
+  for (const region of draft.scene.authoringRegions ?? []) {
+    if (ownedIds.has(region.id))
+      throw new Error(
+        `scene.authoringRegions: duplicate region identity ${region.id}.`
+      );
+    ownedIds.add(region.id);
+  }
   return draft;
 }
 
@@ -1320,7 +1387,15 @@ export function resizeRoomWorkspace(
     draft: {
       ...document.draft,
       workspace,
-      scene: { ...document.draft.scene, version: 2 as const },
+      scene: {
+        ...document.draft.scene,
+        version:
+          document.draft.scene.version === 4
+            ? (4 as const)
+            : document.draft.scene.version === 3
+              ? (3 as const)
+              : (2 as const),
+      },
     },
     scope: document.scope,
   };

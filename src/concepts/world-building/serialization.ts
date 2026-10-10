@@ -1,3 +1,4 @@
+import { validateAuthoringRegions } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { rejectUnknownKeys } from './strictShape';
 import type {
@@ -298,8 +299,33 @@ export function validateScene(
   options: SceneValidationOptions = {}
 ): WorldScene {
   const input = object(value);
-  if (input.version !== 1 && input.version !== 2)
-    throw new Error('Scene version must be 1 or 2.');
+  if (
+    input.version !== 1 &&
+    input.version !== 2 &&
+    input.version !== 3 &&
+    input.version !== 4
+  )
+    throw new Error('Scene version must be 1, 2, 3 or 4.');
+  if (
+    input.version !== 3 &&
+    input.version !== 4 &&
+    Object.hasOwn(input, 'authoringRegions')
+  )
+    throw new Error('authoringRegions requires scene version 3 or 4.');
+  if (input.version === 3 || input.version === 4)
+    rejectUnknownKeys(
+      input,
+      [
+        'version',
+        'id',
+        'name',
+        'items',
+        'groups',
+        'mapLabels',
+        'authoringRegions',
+      ],
+      'scene'
+    );
   if (input.version === 1 && Object.hasOwn(input, 'mapLabels'))
     throw new Error(
       'Scene version 1 cannot carry mapLabels; promote to version 2.'
@@ -315,12 +341,25 @@ export function validateScene(
     throw new Error(`Scene horizontal limit must be at least ${WORLD_LIMIT}.`);
   }
   const entities = entityArrays(input, 'scene', horizontalLimit);
+  const sceneId = string(input.id, 'scene.id', 120);
+  const authoringRegions = Object.hasOwn(input, 'authoringRegions')
+    ? validateAuthoringRegions(input.authoringRegions, mapLabels, {
+        allowLighting: input.version === 4,
+        workspace: options.workspace,
+        reservedIds: new Set([
+          sceneId,
+          ...entities.items.map((item) => item.id),
+          ...entities.groups.map((group) => group.id),
+        ]),
+      })
+    : [];
   return {
     version: input.version,
-    id: string(input.id, 'scene.id', 120),
+    id: sceneId,
     name: string(input.name, 'scene.name', 120),
     ...entities,
     ...(mapLabels.length > 0 ? { mapLabels } : {}),
+    ...(authoringRegions.length > 0 ? { authoringRegions } : {}),
   };
 }
 
@@ -382,7 +421,7 @@ function parseJson(json: string): unknown {
 
 export function stringifyScene(scene: WorldScene): string {
   const valid = validateScene(scene);
-  return JSON.stringify(
+  const json = JSON.stringify(
     {
       kind: 'rpg-world-building-scene',
       version: 1,
@@ -391,6 +430,11 @@ export function stringifyScene(scene: WorldScene): string {
     null,
     2
   );
+  if (json.length > MAX_JSON_LENGTH)
+    throw new Error(
+      `JSON is too large (maximum ${MAX_JSON_LENGTH} characters).`
+    );
+  return json;
 }
 
 export function parseSceneJson(json: string): WorldScene {

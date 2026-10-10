@@ -19,6 +19,7 @@ import {
   setPropPointLight,
   setSelectionHeight,
   stampArrangement,
+  topLevelSelectedIds,
   undoHistory,
   updateHistory,
 } from './sceneState';
@@ -29,6 +30,46 @@ const ids = (...values: string[]) => {
 };
 
 describe('world-building continuous scene math', () => {
+  it('keeps equal effective heights and absent defaults untouched', () => {
+    let scene = addProp(
+      createEmptyScene('height-noop'),
+      'dnd5e:props:books',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'default'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 1, y: 0, z: 0, rotationY: 0 },
+      'scaled'
+    );
+    scene.items[1]!.heightScale = 2;
+    expect(setSelectionHeight(scene, ['default'], 1)).toBe(scene);
+    const next = setSelectionHeight(scene, ['default', 'scaled'], 1);
+    expect(next.items[0]).toBe(scene.items[0]);
+    expect(next.items[0]).not.toHaveProperty('heightScale');
+    expect(next.items[1]!.heightScale).toBe(1);
+    expect(setSelectionHeight(next, ['default', 'scaled'], 1)).toBe(next);
+  });
+  it('exports deterministic roots excluding selected ancestors and supports', () => {
+    let scene = addProp(
+      createEmptyScene('roots'),
+      'dnd5e:props:books',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'support'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candle',
+      { x: 1, y: 1, z: 0, rotationY: 0 },
+      'child',
+      { supportId: 'support' }
+    );
+    expect(
+      topLevelSelectedIds(scene, ['child', 'support', 'support', 'gone'])
+    ).toEqual(['support']);
+    expect(topLevelSelectedIds(scene, ['gone'])).toEqual([]);
+  });
   it('changes only visual height for selected props and excludes support decorations', () => {
     let scene = createEmptyScene('height');
     scene = addProp(

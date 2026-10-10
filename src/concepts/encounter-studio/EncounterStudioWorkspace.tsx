@@ -11,10 +11,13 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
+import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioDimensions } from './StudioDimensions';
+import { StudioDoorControls } from './StudioDoorControls';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
+  LayoutFloorTool,
   LayoutFrame,
   LayoutTool,
 } from './studioSession';
@@ -53,6 +56,9 @@ function StudioSurface({
   onThumbnailDemandChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
+  const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
+  const selectedRegion =
+    session.arrange?.kind === 'label' ? session.arrange.region : undefined;
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [sizeVisible, setSizeVisible] = useState(false);
   const [wallVisible, setWallVisible] = useState(false);
@@ -67,21 +73,34 @@ function StudioSurface({
     () => changeTool('label'),
     () => changeTool('select')
   );
-  const seenWallSelection = useRef(session.wallEditing.selectedId);
+  const [arrangeVisible, setArrangeVisible] = useState(
+    session.arrange !== null
+  );
+  const [appearanceDemand, setAppearanceDemand] = useState(false);
+  const seenSelection = useRef(session.arrange?.selectionRevision);
   useEffect(() => {
-    // A new selection opens controls but NEVER changes tool/epoch: C captured
-    // a drag. A tool exit alone must not reopen a context just dismissed.
-    if (
-      seenWallSelection.current !== session.wallEditing.selectedId &&
-      layoutTool === 'select'
-    )
-      setWallVisible(session.wallEditing.selectedId !== null);
-    seenWallSelection.current = session.wallEditing.selectedId;
-  }, [session.wallEditing.selectedId, layoutTool]);
+    const revision = session.arrange?.selectionRevision;
+    if (revision !== undefined && revision !== seenSelection.current)
+      setArrangeVisible(true);
+    seenSelection.current = revision;
+  }, [session.arrange?.selectionRevision]);
   useEffect(() => {
-    onThumbnailDemandChange(view === 'layout' && wallVisible);
+    onThumbnailDemandChange(
+      (view === 'layout' && wallVisible && layoutTool === 'wall') ||
+        appearanceDemand
+    );
     return () => onThumbnailDemandChange(false);
-  }, [view, wallVisible, onThumbnailDemandChange]);
+  }, [
+    view,
+    wallVisible,
+    layoutTool,
+    appearanceDemand,
+    onThumbnailDemandChange,
+  ]);
+  const exitDoor = (): void => {
+    session.doorEditing.setActive(false);
+    onLayoutToolChange('select');
+  };
   const exitWall = (): void => {
     changeTool('select');
     setWallVisible(false);
@@ -96,6 +115,9 @@ function StudioSurface({
 
   const switchView = (next: EncounterStudioView): void => {
     if (next === view) return;
+    if (session.doorEditing.active) session.doorEditing.setActive(false);
+    if (layoutTool === 'door' || layoutTool === 'region')
+      onLayoutToolChange('select');
     session.cancelTransients();
     setSizeVisible(false);
     setWallVisible(false);
@@ -245,6 +267,7 @@ function StudioSurface({
                   'erase',
                   'rectangle',
                   'wall',
+                  'door',
                   'label',
                 ] as const
               ).map((tool) => (
@@ -253,15 +276,21 @@ function StudioSurface({
                   type="button"
                   aria-pressed={layoutTool === tool}
                   onClick={() => {
+                    if (tool === 'door') {
+                      if (session.doorEditing.setActive(true))
+                        onLayoutToolChange('door');
+                      setWallVisible(false);
+                      labels.deactivate();
+                      setSizeVisible(false);
+                      return;
+                    }
+                    if (session.doorEditing.active)
+                      session.doorEditing.setActive(false);
                     changeTool(tool);
                     setSizeVisible(false);
                     if (tool === 'label') labels.activate();
                     else labels.deactivate();
-                    setWallVisible(
-                      tool === 'wall' ||
-                        (tool === 'select' &&
-                          session.wallEditing.selectedId !== null)
-                    );
+                    setWallVisible(tool === 'wall');
                   }}
                 >
                   {tool[0].toUpperCase() + tool.slice(1)}
@@ -284,6 +313,15 @@ function StudioSurface({
               ))}
             </div>
           )}
+          {view === '3d' && (
+            <button
+              type="button"
+              aria-pressed={session.doorEditing.active}
+              onClick={() => session.doorEditing.setActive(true)}
+            >
+              Door
+            </button>
+          )}
           <button
             type="button"
             aria-expanded={sizeVisible}
@@ -293,6 +331,14 @@ function StudioSurface({
             }}
           >
             Size
+          </button>
+          <button
+            type="button"
+            aria-expanded={arrangeVisible}
+            aria-controls="studio-arrange-panel"
+            onClick={() => setArrangeVisible(!arrangeVisible)}
+          >
+            Arrange
           </button>
           <div
             className="es-buttons"
@@ -333,8 +379,73 @@ function StudioSurface({
               />
             </div>
           )}
+          <StudioArrangePanel
+            session={session}
+            expanded={arrangeVisible && !session.doorEditing.active}
+            onAppearanceDemandChange={setAppearanceDemand}
+            onDefineRegion={
+              view === 'layout'
+                ? () => {
+                    labels.editing.onCancel();
+                    changeTool('region');
+                    setRegionTool('paint');
+                  }
+                : undefined
+            }
+          />
+          <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
           {labels.controls}
-          {view === 'layout' && wallVisible && (
+          {view === 'layout' && layoutTool === 'region' && selectedRegion && (
+            <div
+              className="es-context-panel es-region-controls"
+              aria-label="Explicit region area controls"
+            >
+              <h2>
+                Explicit area ·{' '}
+                {session.arrange?.kind === 'label'
+                  ? session.arrange.label.text
+                  : ''}
+              </h2>
+              <p className="es-help">
+                Only region membership changes. Floor, walls and props stay
+                untouched. Drag, then release to apply once. Escape cancels.
+              </p>
+              <div className="es-buttons">
+                {(['paint', 'erase', 'rectangle'] as const).map((mode) => (
+                  <button
+                    type="button"
+                    key={mode}
+                    aria-pressed={regionTool === mode}
+                    onClick={() => {
+                      session.cancelTransients();
+                      setRegionTool(mode);
+                    }}
+                  >
+                    {mode === 'paint'
+                      ? 'Paint region'
+                      : mode === 'erase'
+                        ? 'Erase region'
+                        : 'Rectangle region'}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    session.regionEditing.setExplicitRegionArea(
+                      selectedRegion.id,
+                      []
+                    );
+                  }}
+                >
+                  Clear explicit area
+                </button>
+                <button type="button" onClick={() => changeTool('select')}>
+                  Done area editing
+                </button>
+              </div>
+            </div>
+          )}
+          {view === 'layout' && wallVisible && layoutTool === 'wall' && (
             <StudioWallControls
               session={session}
               drawing={layoutTool === 'wall'}
@@ -355,6 +466,12 @@ function StudioSurface({
             labelEditing={labels.editing}
             documentContext={session.document}
             wallEditing={session.wallEditing}
+            doorEditing={session.doorEditing}
+            regionEditing={session.regionEditing}
+            selectedRegion={selectedRegion}
+            regionTool={regionTool}
+            onExitRegionTool={() => changeTool('select')}
+            onExitDoorTool={exitDoor}
             intentEpoch={session.intentEpoch}
             onExitWallTool={exitWall}
           />
@@ -375,7 +492,6 @@ function StudioSurface({
             aria-label="Scene and selected props"
           >
             {session.propControls.tree}
-            {session.propControls.selection}
           </aside>
         </div>
       )}

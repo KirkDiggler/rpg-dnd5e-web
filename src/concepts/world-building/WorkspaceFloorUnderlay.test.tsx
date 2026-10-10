@@ -189,3 +189,54 @@ describe('workspace floor underlay', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
+
+it('owns only a cloned Basic receiver, retaining native map/tint flags across uniform updates and restoring baseline', async () => {
+  const { createTestLightingBinding } =
+    await import('@/rendering/regionLightingTestFixtures');
+  const binding = createTestLightingBinding();
+  textureState.mode = 'ready';
+  textureState.base = new THREE.Texture();
+  const view = await ReactThreeTestRenderer.create(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+    />
+  );
+  const mesh = view.scene.findByProps({ name: 'workspace-floor-underlay' })
+      .instance as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>,
+    source = mesh.material,
+    map = source.map;
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+      visualLighting={binding}
+    />
+  );
+  const owned = mesh.material;
+  expect(owned).not.toBe(source);
+  expect(owned.map).toBe(map);
+  expect(owned.color.equals(source.color)).toBe(true);
+  expect(owned.toneMapped).toBe(false);
+  expect(owned.customProgramCacheKey()).toContain('workspace-basic');
+  const dispose = vi.spyOn(owned, 'dispose');
+  binding.uniforms.rlPointCount.value = 1;
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+      visualLighting={binding}
+    />
+  );
+  expect(mesh.material).toBe(owned);
+  await view.update(
+    <WorkspaceFloorSurface
+      workspace={centeredRoomWorkspace(12, 12)}
+      profile={PROFILE}
+    />
+  );
+  expect(mesh.material).toBe(source);
+  expect(dispose).toHaveBeenCalledOnce();
+  await view.unmount();
+  binding.dispose();
+});
