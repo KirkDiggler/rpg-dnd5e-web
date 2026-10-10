@@ -120,20 +120,9 @@ vi.mock('@/generated/worldAssetCatalog', async (importOriginal) => {
   };
 });
 
-const thumbnailCapture = vi.hoisted(() => ({
-  current: undefined as
-    | {
-        requestKey: string;
-        onComplete: (key: string, image: string) => void;
-        onError: (key: string, message: string) => void;
-      }
-    | undefined,
-}));
-
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
-  ThumbnailRenderer: (props: NonNullable<typeof thumbnailCapture.current>) => {
-    thumbnailCapture.current = props;
-    return null;
+  ThumbnailRenderer: () => {
+    throw new Error('World catalog must use provider images');
   },
 }));
 
@@ -6413,10 +6402,12 @@ describe('Studio owner facade', () => {
 });
 
 describe('Orbit thumbnail update isolation', () => {
-  const completeThumbnail = (image = 'data:image/png;base64,orbit') => {
-    const request = thumbnailCapture.current!;
-    act(() => request.onComplete(request.requestKey, image));
-    return JSON.parse(request.requestKey)[0] as string;
+  const completeThumbnail = () => {
+    const image = document.querySelector(
+      '[data-thumbnail-source="provider"] img'
+    )!;
+    expect(image).not.toBeNull();
+    fireEvent.load(image);
   };
 
   it('does not serialize on thumbnail-only updates; serializes real draft, scope, refusal and repair changes', () => {
@@ -6492,9 +6483,7 @@ describe('Orbit thumbnail update isolation', () => {
     expect(JSON.parse(json())).toEqual(repaired);
   });
 
-  it('executes only the changed card body with stable owner actions and fresh own images', () => {
-    // Spy on React.memo's actual wrapped function; counting DOM nodes would
-    // not show whether React had executed the expensive JSX body again.
+  it('executes no card bodies when static images load or fail', () => {
     const body = vi.spyOn(
       WorldBuildingPaletteCard as unknown as {
         type: (props: WorldBuildingPaletteCardProps) => ReactNode;
@@ -6502,27 +6491,23 @@ describe('Orbit thumbnail update isolation', () => {
       'type'
     );
     render(<WorldBuildingConcept roomMode storage={new MemoryStorage()} />);
-    const initialActions = body.mock.calls[0][0];
-    body.mockClear();
-    const changedRef = completeThumbnail('data:image/png;base64,first');
-    expect(body).toHaveBeenCalledOnce();
-    const changed = body.mock.calls[0][0];
-    expect(changed.entry.ref).toBe(changedRef);
-    expect(changed.onDragStart).toBe(initialActions.onDragStart);
-    expect(changed.onDragEnd).toBe(initialActions.onDragEnd);
-    expect(changed.onRepeat).toBe(initialActions.onRepeat);
-    expect(
-      screen
-        .getByLabelText(`Drag ${changed.entry.label} into scene`)
-        .querySelector('img')
-        ?.getAttribute('src')
-    ).toBe('data:image/png;base64,first');
-    body.mockClear();
-    const nextRef = completeThumbnail('data:image/png;base64,second');
-    expect(body).toHaveBeenCalledOnce();
-    expect(body.mock.calls[0][0].entry.ref).toBe(nextRef);
-    expect(body.mock.calls[0][0].generatedThumbnail?.image).toBe(
-      'data:image/png;base64,second'
+    const images = document.querySelectorAll(
+      '[data-thumbnail-source="provider"] img'
     );
+    expect(images.length).toBeGreaterThan(1);
+    body.mockClear();
+    fireEvent.load(images[0]);
+    fireEvent.error(images[1]);
+    expect(body).not.toHaveBeenCalled();
+    expect(
+      document.querySelector(
+        '[data-thumbnail-source="provider"] [data-thumbnail-state="ready"]'
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        '[data-thumbnail-source="provider"] [data-thumbnail-state="error"]'
+      )
+    ).not.toBeNull();
   });
 });

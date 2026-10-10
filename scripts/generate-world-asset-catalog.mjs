@@ -202,7 +202,7 @@ function parseThumbnail(value, providerRoot, runtimeRoot, label) {
   check(resolve(providerRoot, PROVIDER_MODEL_ROOT), `${at} provider image`);
   if (runtimeRoot) check(runtimeRoot, `${at} synchronized image`);
   return {
-    url: RUNTIME_URL_ROOT + row.file,
+    url: `${RUNTIME_URL_ROOT}${row.file}?v=${expectedHash}`,
     sha256: expectedHash,
     sizeBytes: row.sizeBytes,
     width: row.width,

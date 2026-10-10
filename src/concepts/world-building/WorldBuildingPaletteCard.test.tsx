@@ -6,7 +6,6 @@ import { WorldBuildingPaletteCard } from './WorldBuildingPaletteCard';
 const generated = WORLD_BUILDING_CATALOG.find(
   (entry) => entry.source === 'generated'
 )!;
-
 const actions = () => ({
   onDragStart: vi.fn(),
   onDragEnd: vi.fn(),
@@ -14,12 +13,11 @@ const actions = () => ({
 });
 
 describe('WorldBuildingPaletteCard', () => {
-  it('skips an unchanged pending card body and renders its own result changes', () => {
-    // A label getter observes actual body execution, not just DOM identity.
-    // React's shallow prop comparison sees only the immutable entry reference.
+  it('keeps image load/error state inside the image without rerendering the card', () => {
     const readLabel = vi.fn(() => generated.label);
     const entry = Object.freeze({
       ...generated,
+      thumbnail: '/provider.png?v=one',
       get label() {
         return readLabel();
       },
@@ -31,46 +29,55 @@ describe('WorldBuildingPaletteCard', () => {
       ...actions(),
     };
     const mounted = render(<WorldBuildingPaletteCard {...props} />);
-    expect(readLabel).toHaveBeenCalled();
+    const card = screen.getByLabelText(`Drag ${generated.label} into scene`);
+    const image = card.querySelector('img')!;
+    expect(image.getAttribute('src')).toBe(entry.thumbnail);
     readLabel.mockClear();
     mounted.rerender(<WorldBuildingPaletteCard {...props} />);
+    fireEvent.load(image);
     expect(readLabel).not.toHaveBeenCalled();
-    expect(screen.getByText('Thumbnail loading')).not.toBeNull();
-
-    const ready = {
-      status: 'ready' as const,
-      image: 'data:image/png;base64,own',
-    };
-    mounted.rerender(
-      <WorldBuildingPaletteCard {...props} generatedThumbnail={ready} />
-    );
-    expect(readLabel).toHaveBeenCalled();
+    expect(image.getAttribute('data-thumbnail-state')).toBe('ready');
+    fireEvent.error(image);
+    expect(readLabel).not.toHaveBeenCalled();
+    expect(card.querySelector('img')).toBeNull();
     expect(
-      screen
-        .getByLabelText(`Drag ${entry.label} into scene`)
-        .querySelector('img')
-        ?.getAttribute('src')
-    ).toBe(ready.image);
-    readLabel.mockClear();
-    mounted.rerender(
-      <WorldBuildingPaletteCard {...props} generatedThumbnail={ready} />
+      screen.getByLabelText(`Preview unavailable for ${generated.label}`)
+    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: `Repeat ${generated.label}` })
     );
-    expect(readLabel).not.toHaveBeenCalled();
+    expect(props.onRepeat).toHaveBeenCalledWith(generated.ref);
+    const replacement = { ...entry, thumbnail: '/provider.png?v=two' };
     mounted.rerender(
+      <WorldBuildingPaletteCard {...props} entry={replacement} />
+    );
+    expect(card.querySelector('img')?.getAttribute('src')).toBe(
+      replacement.thumbnail
+    );
+  });
+
+  it('names an absent provider preview without hiding or disabling the asset', () => {
+    const callbacks = actions();
+    render(
       <WorldBuildingPaletteCard
-        {...props}
-        generatedThumbnail={{ status: 'error', message: 'Unavailable' }}
+        entry={{ ...generated, thumbnail: undefined }}
+        roomMode
+        repeatDisabled={false}
+        {...callbacks}
       />
     );
-    expect(readLabel).toHaveBeenCalled();
+    expect(
+      screen.getByLabelText(`Preview unavailable for ${generated.label}`)
+    ).not.toBeNull();
     expect(
       screen
-        .getByLabelText(`Drag ${entry.label} into scene`)
-        .querySelector('img')
+        .getByLabelText(`Drag ${generated.label} into scene`)
+        .querySelector('canvas')
     ).toBeNull();
-    expect(
-      screen.getByText('Thumbnail unavailable: Unavailable')
-    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: `Repeat ${generated.label}` })
+    );
+    expect(callbacks.onRepeat).toHaveBeenCalledWith(generated.ref);
   });
 
   it('uses current actions/mode/capacity and preserves exact drag and repeat events', () => {

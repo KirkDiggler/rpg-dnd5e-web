@@ -185,9 +185,13 @@ do not replace it with a new doorless wall or hand-write an unchecked second sch
 2. Open **Wall** with no default appearance. Search a wall (for example
    `castle_wall_01`), then a supported non-wall appearance (`alchemy_tools_01`).
    Verify ranked native image buttons, named loading/error fallback and search
-   recovery. Generated thumbnails use one existing serial capture queue/cache;
-   a missing preview is not an unavailable appearance. Confirm an actual loaded
-   image/model rather than treating a fallback or mocked capture as evidence.
+   recovery. Generated thumbnails use published provider images; a missing
+   preview is not an unavailable appearance. Verify image HTTP 200 and decoded
+   dimensions, then search/scroll/close/reopen: no additional GLB request or
+   thumbnail WebGL context may be caused by the picker. Record any existing
+   application preloads before opening it separately. In another disposable
+   context refuse one image request; confirm named selectable fallback and no
+   model-capture fallback. Actual prop placement must still load its GLB.
 3. Confirm **Snap to hex centres, corners and side midpoints** starts off. Choose
    an appearance and draw two successive walls, one free and one snapped. Compare
    exact lines with `snapWallPoint` and creation defaults; preview sampling writes

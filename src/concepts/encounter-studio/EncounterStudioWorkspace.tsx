@@ -39,7 +39,6 @@ interface StudioSurfaceProps {
   onViewChange(next: EncounterStudioView): void;
   onLayoutToolChange(next: LayoutTool): void;
   onFrameChange(next: LayoutFrame): void;
-  onThumbnailDemandChange(visible: boolean): void;
   onBack?: () => void;
 }
 
@@ -53,7 +52,6 @@ function StudioSurface({
   onViewChange,
   onLayoutToolChange,
   onFrameChange,
-  onThumbnailDemandChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
@@ -76,7 +74,6 @@ function StudioSurface({
   const [arrangeVisible, setArrangeVisible] = useState(
     session.arrange !== null
   );
-  const [appearanceDemand, setAppearanceDemand] = useState(false);
   const seenSelection = useRef(session.arrange?.selectionRevision);
   useEffect(() => {
     const revision = session.arrange?.selectionRevision;
@@ -84,19 +81,6 @@ function StudioSurface({
       setArrangeVisible(true);
     seenSelection.current = revision;
   }, [session.arrange?.selectionRevision]);
-  useEffect(() => {
-    onThumbnailDemandChange(
-      (view === 'layout' && wallVisible && layoutTool === 'wall') ||
-        appearanceDemand
-    );
-    return () => onThumbnailDemandChange(false);
-  }, [
-    view,
-    wallVisible,
-    layoutTool,
-    appearanceDemand,
-    onThumbnailDemandChange,
-  ]);
   const exitDoor = (): void => {
     session.doorEditing.setActive(false);
     onLayoutToolChange('select');
@@ -382,7 +366,6 @@ function StudioSurface({
           <StudioArrangePanel
             session={session}
             expanded={arrangeVisible && !session.doorEditing.active}
-            onAppearanceDemandChange={setAppearanceDemand}
             onDefineRegion={
               view === 'layout'
                 ? () => {
@@ -509,7 +492,6 @@ export function EncounterStudioWorkspace({
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [view, setView] = useState<EncounterStudioView>('layout');
   const [layoutTool, setLayoutTool] = useState<LayoutTool>('paint');
-  const [thumbnailDemand, setThumbnailDemand] = useState(false);
   const [frame, setFrame] = useState<LayoutFrame>({
     center: { x: 0, z: 0 },
     zoom: 1,
@@ -524,7 +506,6 @@ export function EncounterStudioWorkspace({
         onViewChange={setView}
         onLayoutToolChange={setLayoutTool}
         onFrameChange={setFrame}
-        onThumbnailDemandChange={setThumbnailDemand}
         onBack={onBack}
       />
     ),
@@ -537,7 +518,7 @@ export function EncounterStudioWorkspace({
       compositionSource={compositionSource}
       storage={storage}
       idFactory={idFactory}
-      studioPresentation={{ view, thumbnailDemand, render: renderPresentation }}
+      studioPresentation={{ view, render: renderPresentation }}
     />
   );
 }

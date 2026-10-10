@@ -1,5 +1,4 @@
 import { PALETTE_MONSTERS, paletteNameForRef } from '@/author/paletteData';
-import { useSerialThumbnailQueue } from '@/author/useSerialThumbnailQueue';
 import { compositionMetadata } from '@/compositions/compositionMetadata';
 import {
   compositionErrorMessage,
@@ -25,7 +24,6 @@ import type {
 import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
-  type GeneratedWorldBuildingCatalogEntry,
 } from './catalog';
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
@@ -189,8 +187,6 @@ import type {
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
 import { validateWorkspaceContent } from './workspaceContentBounds';
-import { worldAssetThumbnailKey } from './worldAssetThumbnailKey';
-import { WorldAssetThumbnailRenderer } from './WorldAssetThumbnailRenderer';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
 import {
@@ -282,14 +278,6 @@ const DEFAULT_POINT_LIGHT: WorldPointLight = {
   intensity: 1.1,
   range: 2.6,
 };
-
-const GENERATED_THUMBNAIL_QUEUE = WORLD_BUILDING_CATALOG.filter(
-  (entry): entry is GeneratedWorldBuildingCatalogEntry =>
-    entry.source === 'generated'
-).map((entry) => ({
-  entry,
-  key: worldAssetThumbnailKey(entry.asset),
-}));
 
 const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -682,9 +670,6 @@ export function WorldBuildingConcept({
         roomMode ? isRoomDocument(composition) : !isRoomDocument(composition)
       ),
     [compositionList.compositions, roomMode]
-  );
-  const generatedThumbnails = useSerialThumbnailQueue(
-    GENERATED_THUMBNAIL_QUEUE
   );
 
   useEffect(() => {
@@ -2741,40 +2726,18 @@ export function WorldBuildingConcept({
     setNotice('');
   }, []);
 
-  // Keep queue keys alive when demand pauses: the existing serial queue owns
-  // one cache, and this is its only renderer in both Studio and legacy views.
-  const thumbnailHost =
-    (studioView !== 'layout' || studioPresentation?.thumbnailDemand === true) &&
-    generatedThumbnails.active ? (
-      <WorldAssetThumbnailRenderer
-        entry={generatedThumbnails.active.entry}
-        requestKey={generatedThumbnails.active.key}
-        onComplete={generatedThumbnails.recordComplete}
-        onError={generatedThumbnails.recordError}
-        onRootError={generatedThumbnails.recordRootError}
-      />
-    ) : null;
   const studioWallOptions: readonly StudioWallAppearanceOption[] =
     wallAssetOptions
       .map(({ ref, label }): StudioWallAppearanceOption => {
         const entry = WORLD_BUILDING_CATALOG_BY_REF.get(ref);
-        const result =
-          entry?.source === 'generated'
-            ? generatedThumbnails.results[worldAssetThumbnailKey(entry.asset)]
-            : undefined;
+        const image = entry?.thumbnail;
         return {
           ref,
           label,
           wallMatch: /wall/i.test(`${label} ${ref}`),
-          thumbnail:
-            result?.status === 'ready' && result.image
-              ? { status: 'ready', image: result.image }
-              : result?.status === 'error'
-                ? {
-                    status: 'error',
-                    message: result.message ?? 'Thumbnail unavailable',
-                  }
-                : { status: 'loading' },
+          thumbnail: image
+            ? { status: 'ready', image }
+            : { status: 'error', message: 'Provider preview unavailable' },
         };
       })
       .sort((a, b) => Number(b.wallMatch) - Number(a.wallMatch));
@@ -2805,13 +2768,6 @@ export function WorldBuildingConcept({
           <WorldBuildingPaletteCard
             key={entry.ref}
             entry={entry}
-            generatedThumbnail={
-              entry.source === 'generated'
-                ? generatedThumbnails.results[
-                    worldAssetThumbnailKey(entry.asset)
-                  ]
-                : undefined
-            }
             roomMode={roomMode}
             repeatDisabled={MAX_ITEMS - scene.items.length < 1}
             onDragStart={startPaletteDrag}
@@ -4336,7 +4292,6 @@ export function WorldBuildingConcept({
   if (roomMode && studioPresentation) {
     return (
       <>
-        {thumbnailHost}
         {studioPresentation.render({
           document: roomHistory.present,
           viewportProps,
@@ -4556,7 +4511,6 @@ export function WorldBuildingConcept({
       data-transform-preview={previewScene || previewWall ? 'active' : 'idle'}
       data-workspace-origin={workspaceOrigin}
     >
-      {thumbnailHost}
       {roomMode ? (
         <header className="wb-header wb-header--site">
           <div className="wb-site-heading">

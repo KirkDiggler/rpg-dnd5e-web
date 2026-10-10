@@ -83,13 +83,11 @@ function SelectedArrange({
   session,
   selection,
   expanded,
-  onAppearanceDemandChange,
   onDefineRegion,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
   expanded: boolean;
-  onAppearanceDemandChange(visible: boolean): void;
   onDefineRegion?(): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
@@ -118,12 +116,6 @@ function SelectedArrange({
       setError(null);
     }
   }, [expanded, linkedRegionId]);
-  useEffect(() => {
-    onAppearanceDemandChange(
-      expanded && appearanceVisible && selection.kind === 'wall'
-    );
-    return () => onAppearanceDemandChange(false);
-  }, [expanded, appearanceVisible, selection.kind, onAppearanceDemandChange]);
   return (
     <section
       hidden={!expanded}
@@ -360,12 +352,10 @@ function SelectedArrange({
 export function StudioArrangePanel({
   session,
   expanded,
-  onAppearanceDemandChange,
   onDefineRegion,
 }: {
   session: EncounterStudioSession;
   expanded: boolean;
-  onAppearanceDemandChange(visible: boolean): void;
   onDefineRegion?(): void;
 }): React.JSX.Element {
   return session.arrange ? (
@@ -374,7 +364,6 @@ export function StudioArrangePanel({
       session={session}
       selection={session.arrange}
       expanded={expanded}
-      onAppearanceDemandChange={onAppearanceDemandChange}
       onDefineRegion={onDefineRegion}
     />
   ) : (
