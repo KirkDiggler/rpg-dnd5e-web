@@ -623,3 +623,49 @@ it('purpose-aware Studio move previews keep existing open state; placement alone
     await renderer.unmount();
   }
 });
+
+it('threads lighting only into fitted wall/door surfaces, never hits, blocker guides or markers', async () => {
+  const { createTestLightingBinding } =
+    await import('@/rendering/regionLightingTestFixtures');
+  const binding = createTestLightingBinding();
+  modelState.mode = 'loaded';
+  const value = wall({
+    openings: [
+      {
+        id: 'opening-1',
+        position: 7,
+        width: 2,
+        door: { id: 'door-1', assetRef: DOOR_ASSET },
+      },
+    ],
+  });
+  const view = await ReactThreeTestRenderer.create(
+    <StructuralWallVisual
+      walls={[value]}
+      selectedWallId={value.id}
+      selectable
+      onSelectWall={vi.fn()}
+      doorBindings={{ 'door-1': { closed: false } }}
+      visualLighting={binding}
+    />
+  );
+  const pieces = view.scene.findByProps({ name: 'structural-wall-pieces' })
+    .instance as THREE.Group;
+  const lit: THREE.Mesh[] = [];
+  pieces.traverse((o) => {
+    if (o instanceof THREE.Mesh) lit.push(o);
+  });
+  expect(lit.length).toBeGreaterThan(0);
+  for (const mesh of lit)
+    expect((mesh.material as THREE.Material).customProgramCacheKey()).toContain(
+      'STUDIO_REGION_LIGHTING'
+    );
+  const guide = view.scene.findByProps({ name: 'structural-wall-hit-wall-1' })
+    .instance as THREE.Mesh;
+  expect(
+    (guide.material as THREE.Material).customProgramCacheKey()
+  ).not.toContain('STUDIO_REGION_LIGHTING');
+  expect(binding.reportDiagnostic).not.toHaveBeenCalled();
+  await view.unmount();
+  binding.dispose();
+});

@@ -1,3 +1,4 @@
+import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import type { ThreeEvent } from '@react-three/fiber';
 import {
   doorAlongWall,
@@ -66,16 +67,19 @@ export interface StructuralWallVisualProps {
   maxPieces?: number;
   doorEditing?: StudioDoorEditing;
   intentEpoch?: number;
+  visualLighting?: RegionLightingMaterialBinding;
 }
 
 function AttachedDoors({
   wall,
   doorBindings,
   onMeasured,
+  visualLighting,
 }: {
   wall: StructuralWall;
   doorBindings?: DoorBindings;
   onMeasured: () => void;
+  visualLighting?: RegionLightingMaterialBinding;
 }) {
   const doors = wall.openings.filter((opening) => opening.door);
   if (doors.length === 0) return null;
@@ -114,6 +118,7 @@ function AttachedDoors({
                 : 'closed'
             }
             onMeasured={onMeasured}
+            visualLighting={visualLighting}
           />
         );
       })}
@@ -391,11 +396,13 @@ function WallVisual({
   doorBindings,
   maxPieces,
   onMeasured,
+  visualLighting,
 }: {
   wall: StructuralWall;
   doorBindings?: DoorBindings;
   maxPieces?: number;
   onMeasured: () => void;
+  visualLighting?: RegionLightingMaterialBinding;
 }) {
   return (
     <ErrorBoundary
@@ -409,11 +416,13 @@ function WallVisual({
           wall={wall}
           maxPieces={maxPieces}
           onMeasured={onMeasured}
+          visualLighting={visualLighting}
         />
         <AttachedDoors
           wall={wall}
           doorBindings={doorBindings}
           onMeasured={onMeasured}
+          visualLighting={visualLighting}
         />
       </Suspense>
     </ErrorBoundary>
@@ -429,6 +438,7 @@ export function StructuralWallVisual({
   maxPieces,
   doorEditing,
   intentEpoch,
+  visualLighting,
 }: StructuralWallVisualProps) {
   const doorEditingRef = useRef(doorEditing);
   doorEditingRef.current = doorEditing;
@@ -479,6 +489,7 @@ export function StructuralWallVisual({
             doorBindings={displayedBindings}
             maxPieces={maxPieces}
             onMeasured={bumpGeometry}
+            visualLighting={visualLighting}
           />
         ))}
       </group>

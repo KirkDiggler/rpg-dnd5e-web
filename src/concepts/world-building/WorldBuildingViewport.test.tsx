@@ -2290,3 +2290,130 @@ describe('structural wall visual hit ownership', () => {
     ).toBeTruthy();
   });
 });
+
+// The test renderer's GL mock exposes no hardware limits/uploads. Native probe
+// exercises the real capabilities separately; this fixture supplies only that seam.
+function LightingGPUFixture(): null {
+  const { gl } = useThree();
+  gl.capabilities.maxTextureSize = 4096;
+  gl.initTexture = () => {};
+  gl.getContext().getError = () => 0;
+  gl.getContext().isContextLost = () => false;
+  return null;
+}
+
+it('applies the committed field to real surfaces while preserving guides, actor markers, selected point list and retired baseline', async () => {
+  floorTextureState.base = new THREE.Texture();
+  modelState.value = 'loaded';
+  const diagnostic = vi.fn();
+  const scene = {
+    ...createEmptyScene('lighting-test'),
+    items: [
+      {
+        ...TABLE,
+        pointLight: {
+          enabled: true,
+          offset: { x: 0, y: 2, z: 0 },
+          color: '#ffa050',
+          intensity: 3,
+          range: 6,
+        },
+      },
+    ],
+  };
+  const base = {
+    scene,
+    previewScene: null,
+    selectedIds: [TABLE.id],
+    tool: 'select' as const,
+    activeDrag: null,
+    onSelect: vi.fn(),
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+    onLightingDiagnostic: diagnostic,
+  };
+  const authoring = {
+    tool: 'select' as const,
+    workspace: centeredRoomWorkspace(12, 12),
+    walkableHexes: [{ q: 0, r: 0 }],
+    propDeclarations: {},
+    onWalkableGesture: vi.fn(),
+    partyStart: { q: 0, r: 0 },
+  };
+  const projection = {
+    areas: [
+      {
+        regionId: 'room',
+        background: 0.15,
+        area: {
+          kind: 'polygon' as const,
+          ring: [
+            { x: -4, z: -4 },
+            { x: 4, z: -4 },
+            { x: 4, z: 4 },
+            { x: -4, z: 4 },
+          ],
+        },
+      },
+    ],
+  };
+  const view = await ReactThreeTestRenderer.create(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents {...base} roomAuthoring={authoring} />
+    </>
+  );
+  const floor = view.scene.findByProps({ name: 'workspace-floor-underlay' })
+      .instance as THREE.Mesh,
+    original = floor.material;
+  const point = view.scene.findAllByType('PointLight')[0]!
+    .instance as THREE.PointLight;
+  await view.update(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents
+        {...base}
+        roomAuthoring={{ ...authoring, regionLighting: projection }}
+      />
+    </>
+  );
+  expect(diagnostic.mock.calls).toEqual([]);
+  expect((floor.material as THREE.Material).customProgramCacheKey()).toContain(
+    'workspace-basic'
+  );
+  expect(view.scene.findAllByType('PointLight')[0]!.instance).toBe(point);
+  expect(point.intensity).toBe(3);
+  expect(point.distance).toBe(6);
+  const surfaces = view.scene.findByProps({
+    name: `world-building-loaded-surface-${TABLE.id}`,
+  }).instance as THREE.Group;
+  surfaces.traverse((o) => {
+    if (o instanceof THREE.Mesh)
+      expect((o.material as THREE.Material).customProgramCacheKey()).toContain(
+        'STUDIO_REGION_LIGHTING'
+      );
+  });
+  const selection = view.scene.findByProps({
+    name: `world-building-selection-${TABLE.id}`,
+  }).instance as THREE.Mesh;
+  expect(
+    (selection.material as THREE.Material).customProgramCacheKey()
+  ).not.toContain('STUDIO_REGION_LIGHTING');
+  await view.update(
+    <>
+      <LightingGPUFixture />
+      <WorldSceneContents
+        {...base}
+        roomAuthoring={{ ...authoring, regionLighting: { areas: [] } }}
+      />
+    </>
+  );
+  expect(floor.material).toBe(original);
+  expect(diagnostic).not.toHaveBeenCalled();
+  await view.unmount();
+});

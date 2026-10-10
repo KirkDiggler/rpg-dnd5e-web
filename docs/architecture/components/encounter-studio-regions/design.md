@@ -14,6 +14,9 @@ flowchart LR
     D --> F[regionLighting configured resolved projection]
     G --> F
     F --> V[Studio viewport presentation seam]
+    V --> I[Transient indexed world-XZ background field]
+    I --> M[Owned real-surface material treatment]
+    PTS[Existing selected point lights] --> M
   end
 ```
 
@@ -98,14 +101,31 @@ components consume the definition contract; the source map in
   unresolved/conflicting intent persists without any applied or cached extent.
   Projection does not acquire a boundary or infer ownership from floor/props.
 
+- **R14 — Lighting treats real surfaces, not scene output.** A transient indexed
+  triangle field classifies rendered fragment X/Z with normal GPU precision;
+  outside configured resolved extents is baseline. Closed shared edges take
+  the minimum configured level, without source epsilon changes or raster
+  dilation. Standard/Physical directional and indirect terms scale by background;
+  point and emissive terms retain the existing Three path. The textured Basic
+  workspace floor adds the same selected point list only where configured,
+  independently of background. No overlay, whole-object membership, gameplay
+  flood, light blocking or second source selection crosses this seam. One
+  per-instance material owner composes memory and optional lighting on owned
+  clones, includes companions/cap courses, restores originals and never disposes
+  cached maps/geometry. Uniform/camera changes do not recreate materials or shader
+  variants. Capacity, shader and unsupported-material failures visibly diagnose
+  unapplied lighting; field-wide failure clears the binding rather than retaining
+  stale geometry. Play, thumbnails, actors, guides and loading/error markers do
+  not receive the Studio surface binding.
+
 ## Rulings
 
-| ID         | status  | scope                                                                                                      | ruled by                                                                                                                                                                                                                                        | date                                              |
-| ---------- | ------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                                       | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                                                                                       | Agreement record in linked issue                  |
-| R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                                   | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details                                                                                      | Checked-plan record in linked issue               |
-| R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance                       | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel                                                                        | 2026-10-10                                        |
-| R12–R13    | settled | Optional visual lighting, scene4 opt-in, single transaction and honest projection; gameplay/sound excluded | KirkDiggler [product agreement](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093673500) and parent-derived [checked technical plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093792827) | Agreement and checked-plan record in linked issue |
+| ID         | status  | scope                                                                                                                                    | ruled by                                                                                                                                                                                                                                        | date                                              |
+| ---------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| R1–R2      | settled | Room-label entry point, distinct notes, full-wall authoring boundary                                                                     | KirkDiggler product agreement, [brief in #1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245)                                                                                                                                       | Agreement record in linked issue                  |
+| R3–R9, R11 | settled | First boundary increment's technical contracts, lifecycle and validation                                                                 | Parent-derived [checked plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6082203160), not operator signoff of algorithm details                                                                                      | Checked-plan record in linked issue               |
+| R10        | settled | Conservative geometry with exact axis coverage and unique full-run source provenance                                                     | Parent-checked bounded geometry repair, owning scope [#1245](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245); not operator signoff of a general polygon kernel                                                                        | 2026-10-10                                        |
+| R12–R14    | settled | Optional visual lighting, scene4 opt-in, single transaction, honest projection and owned real-surface treatment; gameplay/sound excluded | KirkDiggler [product agreement](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093673500) and parent-derived [checked technical plan](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1245#issuecomment-6093792827) | Agreement and checked-plan record in linked issue |
 
 ## Open
 

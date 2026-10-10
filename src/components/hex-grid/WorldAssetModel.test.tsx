@@ -559,3 +559,58 @@ describe('authored node names stay data, not code', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+it('treats named swinging leaves and post-layout cap courses once, retiring removed course references on height changes', async () => {
+  const { createTestLightingBinding } =
+    await import('@/rendering/regionLightingTestFixtures');
+  const binding = createTestLightingBinding();
+  const view = await ReactThreeTestRenderer.create(
+    <WorldAssetModel
+      assetRef={roleFixtures.ref}
+      position={[2, 1, 3]}
+      rotationY={0.7}
+      heightScale={2}
+      open
+      visualLighting={binding}
+    />
+  );
+  const model = view.scene.findByProps({ name: 'world-asset-model' })
+    .instance as THREE.Group;
+  const meshes: THREE.Mesh[] = [];
+  model.traverse((o) => {
+    if (o instanceof THREE.Mesh) meshes.push(o);
+  });
+  const caps = meshes.filter((m) => m.name === 'Masonry_Above');
+  expect(caps.length).toBeGreaterThan(1);
+  const material = caps[0]!.material as THREE.Material;
+  for (const mesh of meshes)
+    expect((mesh.material as THREE.Material).customProgramCacheKey()).toContain(
+      'STUDIO_REGION_LIGHTING'
+    );
+  expect(new Set(caps.map((m) => m.material)).size).toBe(1);
+  const oldExtra = caps[1]!,
+    dispose = vi.spyOn(material, 'dispose');
+  await view.update(
+    <WorldAssetModel
+      assetRef={roleFixtures.ref}
+      position={[2, 1, 3]}
+      rotationY={0.7}
+      heightScale={1}
+      open
+      visualLighting={binding}
+    />
+  );
+  expect(oldExtra.parent).toBeNull();
+  expect(dispose).toHaveBeenCalledOnce();
+  const now: THREE.Mesh[] = [];
+  model.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.name === 'Masonry_Above') now.push(o);
+  });
+  expect(now).toHaveLength(1);
+  expect(
+    (now[0]!.material as THREE.Material).customProgramCacheKey()
+  ).toContain('STUDIO_REGION_LIGHTING');
+  expect(binding.reportDiagnostic).not.toHaveBeenCalled();
+  await view.unmount();
+  binding.dispose();
+});

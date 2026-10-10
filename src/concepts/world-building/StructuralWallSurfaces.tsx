@@ -1,3 +1,4 @@
+import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 /**
  * Shared real-asset surfaces for authored structural walls.
  *
@@ -134,9 +135,11 @@ export function StructuralWallSurfacePieces({
   wall,
   maxPieces,
   onMeasured,
+  visualLighting,
 }: {
   wall: StructuralWallSurface;
   maxPieces?: number;
+  visualLighting?: RegionLightingMaterialBinding;
   onMeasured?: () => void;
 }) {
   const piecesRef = useRef<THREE.Group>(null);
@@ -213,6 +216,7 @@ export function StructuralWallSurfacePieces({
             >
               <WorldPropModel
                 entry={entry}
+                visualLighting={visualLighting}
                 position={[0, 0, 0]}
                 rotationY={0}
                 heightScale={1}
@@ -295,10 +299,12 @@ export function FittedDoorSurface({
   state,
   onMeasured,
   onClick,
+  visualLighting,
 }: {
   /** The door's canonical identity — the runtime joins observed state by it
    * and the editor carries the authored opening's door id. */
   doorId: string;
+  visualLighting?: RegionLightingMaterialBinding;
   /** The door's opaque appearance content ref (`AtlasStructuralDoor.ref`, or
    * an opening's authored `assetRef`). */
   assetRef: string;
@@ -395,6 +401,7 @@ export function FittedDoorSurface({
     >
       <WorldPropModel
         entry={entry}
+        visualLighting={visualLighting}
         position={[0, 0, 0]}
         rotationY={0}
         heightScale={1}

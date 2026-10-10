@@ -329,3 +329,40 @@ describe('PropModel remembered tinting (rpg-dnd5e-web#605/#609)', () => {
     }
   });
 });
+
+it('threads optional lighting to parent and companion leaves under their current transformed world coordinates', async () => {
+  const { createTestLightingBinding } =
+    await import('@/rendering/regionLightingTestFixtures');
+  const binding = createTestLightingBinding();
+  const variant = {
+    ...BASE_VARIANT,
+    companions: [{ name: 'flame', file: 'props/flame.glb' }],
+  };
+  const view = await ReactThreeTestRenderer.create(
+    <PropModel
+      variant={variant}
+      position={[2, 3, 4]}
+      rotationY={Math.PI / 2}
+      heightScale={2}
+      visualLighting={binding}
+    />
+  );
+  const meshes = view.scene
+    .findAllByType('Mesh')
+    .map((n) => n.instance as THREE.Mesh);
+  expect(meshes).toHaveLength(2);
+  for (const mesh of meshes) {
+    expect((mesh.material as THREE.Material).customProgramCacheKey()).toContain(
+      'STUDIO_REGION_LIGHTING'
+    );
+    mesh.updateWorldMatrix(true, false);
+    expect(mesh.getWorldPosition(new THREE.Vector3()).toArray()).toEqual([
+      2,
+      3 + DUNGEON_SURFACE_Y,
+      4,
+    ]);
+  }
+  expect(binding.reportDiagnostic).not.toHaveBeenCalled();
+  await view.unmount();
+  binding.dispose();
+});
