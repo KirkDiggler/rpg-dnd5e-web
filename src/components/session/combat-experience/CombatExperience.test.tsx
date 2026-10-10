@@ -819,6 +819,10 @@ describe('CombatExperience responsive and accessibility contract', () => {
     expect(rule).toMatch(/grid-row:\s*2;/);
     expect(rule).toMatch(/grid-column:\s*1\s*\/\s*-1;/);
     expect(rule).toMatch(/bottom:\s*auto;/);
+    // Equal-specificity legacy rules must not override the desktop grid row.
+    const legacyRow = css.indexOf('grid-row: 2 / 4;');
+    expect(legacyRow).toBeGreaterThan(-1);
+    expect(css.indexOf(rule!)).toBeGreaterThan(legacyRow);
   });
 
   it('retains focus, reduced-motion, 768px floor, and horizontal action overflow CSS', () => {

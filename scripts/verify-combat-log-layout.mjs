@@ -95,6 +95,10 @@ try {
             logBox.y + logBox.height <= height + 1,
           'Log outside viewport'
         );
+        assert.ok(
+          Math.abs(logBox.x + logBox.width - barBox.x - barBox.width) < 1,
+          'Log must stay aligned with the right edge of the bar'
+        );
         for (const part of ['header', 'footer']) {
           const box = await panel.locator(`:scope > ${part}`).boundingBox();
           assert.ok(
@@ -150,15 +154,19 @@ try {
         cycle.every(
           (entry) => Math.abs(entry.barBox.width - cycle[0].barBox.width) < 1
         ),
-        'Log must not squeeze bar width'
+        'Bar width must stay constant as rows change'
       );
       const before = await dock.boundingBox();
       await page.getByRole('button', { name: 'Collapse combat log' }).click();
       await settle();
-      assert.deepEqual(
-        await dock.boundingBox(),
-        before,
-        'Collapsing log moves the bar'
+      const collapsed = await dock.boundingBox();
+      assert.ok(
+        before &&
+          collapsed &&
+          ['x', 'y', 'width', 'height'].every(
+            (key) => Math.abs(collapsed[key] - before[key]) < 1
+          ),
+        'Collapsing log moved the bar'
       );
       await expand();
     }
@@ -172,19 +180,34 @@ try {
   await settle();
   const logBox = await panel.boundingBox(),
     barBox = await dock.boundingBox();
-  assert.ok(
-    logBox.y + logBox.height <= barBox.y + 1,
-    'Returning to desktop loses clearance'
+  const responsiveReturn = logBox.y + logBox.height <= barBox.y + 1;
+  const canvasPreserved = await canvas.evaluate(
+    (el) => el === document.querySelector('canvas')
   );
-  assert.ok(
-    await canvas.evaluate((el) => el === document.querySelector('canvas')),
-    'Canvas was remounted'
+  assert.ok(responsiveReturn, 'Returning to desktop loses clearance');
+  assert.ok(canvasPreserved, 'Canvas was remounted');
+  const scrollableModes = [
+    ...new Set(
+      results.filter((entry) => entry.scrollable).map((entry) => entry.mode)
+    ),
+  ];
+  assert.deepEqual(
+    new Set(scrollableModes),
+    new Set(['Story', 'Debug', 'Wide debug']),
+    'Each log mode must exercise real wheel scrolling'
   );
   assert.deepEqual(errors, []);
   await writeFile(
     `${output}/results.json`,
     JSON.stringify(
-      { url, results, responsiveReturn: true, canvasPreserved: true, errors },
+      {
+        url,
+        results,
+        responsiveReturn,
+        canvasPreserved,
+        scrollableModes,
+        errors,
+      },
       null,
       2
     )
