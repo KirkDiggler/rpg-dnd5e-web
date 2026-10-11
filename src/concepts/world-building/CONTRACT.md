@@ -320,6 +320,28 @@ The source map and conservative geometric refusals live in the
 Provider carriage/export acceptance requires a separate actual-pin probe; this
 contract makes no provider readiness claim.
 
+### Certified wall-side projection
+
+`projectRegionWallBoundaries` derives wall-side provenance from the same certified
+graph and conflict checks as region resolution. Source runs stay aligned with
+compressed/rotated face nodes; the independently rotated witness and ring are
+never zipped. Oriented spans keep the room on their left, exposing the source
+wall's positive-Z or negative-Z side and clipped low/high source distances in
+scene units. These are centerline facts, not fitted-face UV distances or material
+bindings. Partial exterior coverage is not a second owner of a certified run.
+
+Only resolved wall-enclosed regions yield wall-side spans. A painted region can
+remain a resolved area while its wall-side projection reports `not-wall-bound`;
+there is no nearest-label/cell ownership inference. Returned points/runs are
+copies and projection does not rebind regions or change documents.
+
+Transient pattern-corner references name incoming/outgoing oriented source runs,
+not label text, world position or array indices. Initial default selection chooses
+a certified geometric turn; flat source transitions are not corners. Resolving an
+existing reference never chooses a replacement after missing/ambiguous provenance.
+These internal projection types do not introduce persisted finish/anchor fields or
+settle material resource, mapping or Play-delivery contracts.
+
 ## Structural-wall authoring (#527 in rpg-project)
 
 The room document optionally carries `room.walls`. Each wall owns a stable id,
