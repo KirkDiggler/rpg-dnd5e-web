@@ -146,8 +146,11 @@ piece groups use unit scale for this path; the leaf applies the marker-based fit
 Only participating end positions change in cloned instance buffers. Remote-end
 positions, cap materials/UVs and cached geometry/textures stay untouched. Side UVs
 use their original chart gradients at physical fitted distances, with derived
-per-wall Start-relative offsets continuous across pieces/openings. Normals and
-tangents are recomputed for paired color/normal maps. No room-loop texture phase or material-selection
+per-wall Start-relative offsets continuous across pieces/openings. The fitter
+uses each primitive material's declared texture channels, not an assumed UV0;
+unused channels and cap UVs remain unchanged. Normals are recomputed and stale
+tangent attributes are removed so Three derives the normal basis from the actual
+normal-map UV channel (including the released masonry's UV2). No room-loop texture phase or material-selection
 behavior is inferred. Owned buffers are disposed on replacement/unmount; unchanged
 fit values preserve instance resources. Other props/actors/thumbnails use the
 unchanged ordinary model path. Studio derives joins only from its supplied walls;

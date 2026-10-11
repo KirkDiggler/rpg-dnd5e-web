@@ -49,6 +49,81 @@ const meshes = (root: THREE.Object3D): THREE.Mesh[] => {
 };
 
 describe('enrolled plain-wall instance fit', () => {
+  it('uses declared texture channels per material group, preserving palette UV0 and retiring stale tangents', () => {
+    const root = new THREE.Group();
+    const geometry = new THREE.BoxGeometry(4, 3, 0.4).translate(0, 1.5, 0);
+    const uv = geometry.getAttribute('uv');
+    const uv2 = uv.clone();
+    for (let i = 0; i < uv.count; i++) {
+      uv2.setY(i, 1 - uv2.getY(i));
+      uv.setXY(i, 0.25, 0.25);
+    }
+    geometry.setAttribute('uv2', uv2);
+    geometry.setAttribute(
+      'tangent',
+      new THREE.Float32BufferAttribute(
+        new Float32Array(geometry.getAttribute('position').count * 4).fill(1),
+        4
+      )
+    );
+    geometry.groups.forEach((group, i) => {
+      group.materialIndex = i >= 4 ? 1 : 0;
+    });
+    const palette = new THREE.MeshStandardMaterial({
+      map: new THREE.Texture(),
+      normalMap: new THREE.Texture(),
+    });
+    const color = new THREE.Texture(),
+      normal = new THREE.Texture();
+    color.channel = 2;
+    normal.channel = 2;
+    const masonry = new THREE.MeshStandardMaterial({
+      map: color,
+      normalMap: normal,
+    });
+    const body = new THREE.Mesh(geometry, [palette, masonry]);
+    body.name = 'WallBody_v1';
+    root.add(body);
+    const donor = fixture();
+    for (const name of ['Start', 'End', 'Front', 'Back', 'Top'])
+      root.add(donor.getObjectByName(`WallFit_v1_${name}`)!.clone());
+    const before0 = Array.from(uv.array),
+      before2 = Array.from(uv2.array);
+    const instance = root.clone(true);
+    const result = fitPlainWallInstance(instance, {
+      width: 2,
+      height: 2.25,
+      depth: 0.3,
+      end: -1,
+      offset: 1,
+    });
+    const fitted = (instance.getObjectByName('WallBody_v1') as THREE.Mesh)
+      .geometry;
+    expect(Array.from(fitted.getAttribute('uv').array)).toEqual(before0);
+    expect(Array.from(fitted.getAttribute('uv2').array)).not.toEqual(before2);
+    expect(fitted.hasAttribute('tangent')).toBe(false);
+    expect(geometry.hasAttribute('tangent')).toBe(true);
+    expect(Array.from(geometry.getAttribute('uv2').array)).toEqual(before2);
+    expect(masonry.map).toBe(color);
+    expect(masonry.normalMap).toBe(normal);
+    expect(normal.channel).toBe(2);
+    result.owned.forEach((value) => value.dispose());
+  });
+  it('refuses a declared texture channel that the primitive does not supply', () => {
+    const root = fixture(),
+      material = meshes(root)[2].material as THREE.MeshStandardMaterial;
+    const map = new THREE.Texture();
+    map.channel = 2;
+    material.map = map;
+    expect(() =>
+      fitPlainWallInstance(root.clone(true), {
+        width: 2,
+        height: 2.25,
+        depth: 0.3,
+      })
+    ).toThrow(/missing uv2/);
+  });
+
   it('keeps physical side-map density and continues its chart across repeated pieces', () => {
     const source = fixture(),
       a = source.clone(true),
@@ -137,11 +212,7 @@ describe('enrolled plain-wall instance fit', () => {
             Number.isFinite
           )
         ).toBe(true);
-        expect(
-          Array.from(mesh.geometry.getAttribute('tangent').array).every(
-            Number.isFinite
-          )
-        ).toBe(true);
+        expect(mesh.geometry.hasAttribute('tangent')).toBe(false);
         expect(mesh.material).toBe(saved[mi].material);
         expect(originals[mi].geometry).toBe(saved[mi].geometry);
         expect(
