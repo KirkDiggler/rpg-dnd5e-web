@@ -21,6 +21,26 @@ export interface PlainWallProfile {
   depth: number;
   body: THREE.Object3D;
 }
+function materialUvNames(material: THREE.Material): string[] {
+  const m = material as THREE.MeshStandardMaterial;
+  const maps = [
+    m.map,
+    m.normalMap,
+    m.roughnessMap,
+    m.metalnessMap,
+    m.aoMap,
+    m.emissiveMap,
+    m.alphaMap,
+  ].filter((map): map is THREE.Texture => !!map);
+  const channels = maps.length
+    ? [...new Set(maps.map((map) => map.channel))]
+    : [0];
+  return channels.map((channel) => {
+    if (!Number.isInteger(channel) || channel < 0 || channel > 3)
+      throw new Error('Unsupported wall material UV channel.');
+    return channel === 0 ? 'uv' : `uv${channel}`;
+  });
+}
 function named(root: THREE.Object3D, name: string): THREE.Object3D {
   const found: THREE.Object3D[] = [];
   root.traverse((node) => {
@@ -122,10 +142,22 @@ export function fitPlainWallInstance(
         throw new Error('Plain wall fit does not deform moving geometry.');
       const geometry = mesh.geometry.clone();
       owned.push(geometry);
-      const pos = geometry.getAttribute('position'),
-        uv = geometry.getAttribute('uv');
-      if (!pos || !uv)
-        throw new Error('Plain wall fit requires position and UV attributes.');
+      const pos = geometry.getAttribute('position');
+      if (!pos) throw new Error('Plain wall fit requires position attributes.');
+      const materials = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      const channels = materials.map(materialUvNames);
+      const uvs = new Map(
+        [...new Set(channels.flat())].map((name) => {
+          const uv = geometry.getAttribute(name);
+          if (!uv)
+            throw new Error(
+              `Wall material requires missing ${name} coordinates.`
+            );
+          return [name, uv] as const;
+        })
+      );
       if (!geometry.index)
         geometry.setIndex(Array.from({ length: pos.count }, (_, i) => i));
       const points = Array.from({ length: pos.count }, (_, i) =>
@@ -133,10 +165,18 @@ export function fitPlainWallInstance(
           .fromBufferAttribute(pos, i)
           .applyMatrix4(mesh.matrixWorld)
       );
-      const gradients = new Map<
-        number,
-        { ux: number; vx: number; uy: number; vy: number }
-      >();
+      const gradients = new Map(
+        [...uvs.keys()].map(
+          (name) =>
+            [
+              name,
+              new Map<
+                number,
+                { ux: number; vx: number; uy: number; vy: number }
+              >(),
+            ] as const
+        )
+      );
       const index = geometry.index!;
       for (let t = 0; t < index.count; t += 3) {
         const ids = [
@@ -160,17 +200,28 @@ export function fitPlainWallInstance(
           continue;
         const det = ab.x * ac.y - ac.x * ab.y;
         if (det === 0) continue;
-        const du1 = uv.getX(ids[1]) - uv.getX(ids[0]),
-          du2 = uv.getX(ids[2]) - uv.getX(ids[0]);
-        const dv1 = uv.getY(ids[1]) - uv.getY(ids[0]),
-          dv2 = uv.getY(ids[2]) - uv.getY(ids[0]);
-        const gradient = {
-          ux: (du1 * ac.y - du2 * ab.y) / det,
-          vx: (dv1 * ac.y - dv2 * ab.y) / det,
-          uy: (du2 * ab.x - du1 * ac.x) / det,
-          vy: (dv2 * ab.x - dv1 * ac.x) / det,
-        };
-        for (const i of ids) gradients.set(i, gradient);
+        const group = geometry.groups.find(
+          (entry) => t >= entry.start && t < entry.start + entry.count
+        );
+        const materialIndex = Array.isArray(mesh.material)
+          ? (group?.materialIndex ?? (materials.length === 1 ? 0 : undefined))
+          : 0;
+        if (materialIndex === undefined || !channels[materialIndex])
+          throw new Error('Wall primitive has no declared material group.');
+        for (const name of channels[materialIndex]) {
+          const uv = uvs.get(name)!;
+          const du1 = uv.getX(ids[1]) - uv.getX(ids[0]),
+            du2 = uv.getX(ids[2]) - uv.getX(ids[0]);
+          const dv1 = uv.getY(ids[1]) - uv.getY(ids[0]),
+            dv2 = uv.getY(ids[2]) - uv.getY(ids[0]);
+          const gradient = {
+            ux: (du1 * ac.y - du2 * ab.y) / det,
+            vx: (dv1 * ac.y - dv2 * ab.y) / det,
+            uy: (du2 * ab.x - du1 * ac.x) / det,
+            vy: (dv2 * ab.x - dv1 * ac.x) / det,
+          };
+          for (const i of ids) gradients.get(name)!.set(i, gradient);
+        }
       }
       const inverse = mesh.matrixWorld.clone().invert();
       for (let i = 0; i < pos.count; i++) {
@@ -200,18 +251,24 @@ export function fitPlainWallInstance(
         const dy =
           (original.y - profile.baseY) *
           (fit.height / (profile.height * SYNTY_SCALE) - 1);
-        const gradient = gradients.get(i);
-        if (gradient)
-          uv.setXY(
-            i,
-            uv.getX(i) + gradient.ux * dx + gradient.uy * dy,
-            uv.getY(i) + gradient.vx * dx + gradient.vy * dy
-          );
+        for (const [name, uv] of uvs) {
+          const gradient = gradients.get(name)!.get(i);
+          if (gradient)
+            uv.setXY(
+              i,
+              uv.getX(i) + gradient.ux * dx + gradient.uy * dy,
+              uv.getY(i) + gradient.vx * dx + gradient.vy * dy
+            );
+        }
       }
       pos.needsUpdate = true;
-      uv.needsUpdate = true;
+      for (const uv of uvs.values()) uv.needsUpdate = true;
       geometry.computeVertexNormals();
-      geometry.computeTangents();
+      // Three's stock derivative path uses vNormalMapUv (the material's actual
+      // channel). computeTangents() is hardwired to UV0 and would install an
+      // incorrect basis for the released masonry's TEXCOORD_2, especially with
+      // mixed-channel material groups. Do not carry stale source tangents.
+      geometry.deleteAttribute('tangent');
       geometry.computeBoundingBox();
       geometry.computeBoundingSphere();
       mesh.geometry = geometry;
