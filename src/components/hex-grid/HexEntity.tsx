@@ -18,6 +18,8 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
+import { NpcAppearanceUnavailable } from '@/npc-appearances/NpcAppearanceUnavailable';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -102,6 +104,8 @@ export interface HexEntityProps {
    * (monsterModels.ts's resolveMonsterModelUrl). Unmapped/undefined falls
    * back to MediumHumanoid, unchanged (the #479 boundary lineage). */
   monsterRefId?: string;
+  /** Observer-captured visual override, independent of the monster rules ref. */
+  appearanceRef?: string;
   /** Override hair style (proto doesn't have this field yet) */
   hairStyle?: HairStyle;
   /** Override hair color as hex string (proto doesn't have this field yet) */
@@ -369,6 +373,7 @@ export function HexEntity({
   character,
   monster,
   monsterRefId,
+  appearanceRef,
   hairStyle,
   hairColor,
   facialHairStyle,
@@ -560,9 +565,18 @@ export function HexEntity({
     // is this entity's own stable id — keys the deterministic style pick
     // for a multi-candidate ref (today, only `zombie`); every render of the
     // same entity passes the same id, so the picked style never flickers.
+    const appearance = resolveNpcAppearanceModel({
+      appearanceRef: type === 'monster' ? appearanceRef : undefined,
+      downed: isDead,
+    });
+    const hasExplicitAppearance = appearance.kind !== 'legacy';
     const monsterModelUrl =
       type === 'monster'
-        ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
+        ? appearance.kind === 'legacy'
+          ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
+          : appearance.kind === 'resolved'
+            ? appearance.url
+            : undefined
         : undefined;
     // A standing-only monster (today: animated armor) draws NO body once it
     // drops — see MONSTER_REFS_HIDDEN_WHEN_DOWNED. This must be an explicit
@@ -572,6 +586,7 @@ export function HexEntity({
     // proxy below still mounts, so the cell stays clickable and selectable.
     const hidesBodyWhenDowned =
       type === 'monster' &&
+      !hasExplicitAppearance &&
       isDead &&
       monsterHidesWhenDowned(monsterRefId, monsterType);
     // Explicit temporary proof, not NPC template/appearance inference. No
@@ -632,9 +647,11 @@ export function HexEntity({
     // for MEDIUM_HUMANOID_FORWARD_OFFSET once an entity renders a real
     // Synty GLB instead of the MediumHumanoid placeholder).
     const modelForwardOffset =
-      type === 'monster'
-        ? POLYGON_DUNGEON_FORWARD_OFFSET
-        : SYNTY_GLB_FORWARD_OFFSET;
+      appearance.kind === 'resolved'
+        ? appearance.forwardOffset
+        : type === 'monster'
+          ? POLYGON_DUNGEON_FORWARD_OFFSET
+          : SYNTY_GLB_FORWARD_OFFSET;
     // Shared fallback element — used both as the "no class model" branch
     // and as the ErrorBoundary fallback when a mapped class model exists
     // but its GLB fails to load (missing/unsynced asset, bad file, etc.).
@@ -666,6 +683,12 @@ export function HexEntity({
         showOutline={!isDead && !remembered}
         ghostAmount={isGhost ? 1.0 : 0.0}
       />
+    );
+
+    const modelFallback = hasExplicitAppearance ? (
+      <NpcAppearanceUnavailable appearanceRef={appearanceRef!} />
+    ) : (
+      mediumHumanoidElement
     );
 
     // rpg-dnd5e-web#542: this group's position is owned entirely by
@@ -725,7 +748,11 @@ export function HexEntity({
             shader/opacity either way. */}
         <group
           rotation={
-            shouldTiltDeadOrDowned(isDead, isDowned, !!effectiveModelUrl)
+            shouldTiltDeadOrDowned(
+              isDead,
+              isDowned,
+              !!effectiveModelUrl || hasExplicitAppearance
+            )
               ? [0, 0, Math.PI / 3]
               : [0, 0, 0]
           }
@@ -736,7 +763,7 @@ export function HexEntity({
             {hidesBodyWhenDowned ? null : effectiveModelUrl ? (
               <ErrorBoundary
                 key={effectiveModelUrl}
-                fallback={mediumHumanoidElement}
+                fallback={modelFallback}
                 onError={() =>
                   setFailedEntityModelUrls((failed) => {
                     const next = new Set(failed);
@@ -770,7 +797,7 @@ export function HexEntity({
                 />
               </ErrorBoundary>
             ) : (
-              mediumHumanoidElement
+              modelFallback
             )}
           </Suspense>
         </group>

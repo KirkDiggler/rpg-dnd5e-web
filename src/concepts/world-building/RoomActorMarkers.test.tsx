@@ -109,6 +109,39 @@ it('reads authored order from existing bindings and uses the shared exact-body f
   await renderer.unmount();
 });
 
+it('previews explicit appearances without changing the rules ref or substituting for an unknown choice', async () => {
+  const draw = (appearanceRef: string) => (
+    <RoomActorMarkers
+      monsters={[
+        {
+          id: 'merchant',
+          ref: 'dnd5e:monsters:skeleton',
+          appearanceRef,
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+      ]}
+      partyStart={null}
+      selectedActorId="merchant"
+      onSelectActor={vi.fn()}
+    />
+  );
+  const renderer = await ReactThreeTestRenderer.create(
+    draw('dnd5e:npcs:kingdom:merchant-01')
+  );
+  expect(
+    renderer.scene.findByProps({ name: 'shared-room-monster-model' }).instance
+      .userData.url
+  ).toBe('/models/synty/npcs/castle-merchant-01.glb');
+  await renderer.update(draw('dnd5e:npcs:kingdom:missing'));
+  expect(
+    renderer.scene.findAllByProps({ name: 'shared-room-monster-model' })
+  ).toHaveLength(0);
+  expect(
+    renderer.scene.findAllByProps({ name: 'room-actor-pick-merchant' })
+  ).toHaveLength(1);
+  await renderer.unmount();
+});
+
 it('uses the shared skeleton-safe model renderer inside each snapped actor transform', async () => {
   const monsters = [
     {

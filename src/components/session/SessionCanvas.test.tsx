@@ -25,6 +25,7 @@ import {
   FootprintOrigin,
   FootprintShape,
   MemberKind,
+  PublicMemberInfoSchema,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useThree } from '@react-three/fiber';
@@ -2303,6 +2304,64 @@ describe('SessionScene', () => {
       expect(classMeshes).toHaveLength(0);
       expect(exactMeshes).toHaveLength(0);
       expect(mediumHumanoidMarkers(renderer)).toHaveLength(2);
+    });
+
+    it('renders the observed appearance ref for current and remembered NPCs without changing their rules ref', async () => {
+      for (const remembered of [false, true]) {
+        const identity = create(PublicMemberInfoSchema, {
+          id: 'merchant',
+          kind: MemberKind.MONSTER,
+          name: 'Merchant',
+          monsterRef: 'dnd5e:monsters:skeleton',
+          appearanceRef: 'dnd5e:npcs:kingdom:merchant-01',
+          faction: 'townsfolk',
+        });
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Fighter"
+            classRefId={undefined}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            otherMembers={[
+              {
+                subject: 'merchant',
+                name: 'Merchant',
+                kind: MemberKind.MONSTER,
+                position: { x: 1, y: -1, z: 0 },
+                remembered,
+                standing: Standing.UP,
+                stance: '',
+                equipment: undefined,
+                monsterRefId: 'skeleton',
+              },
+            ]}
+            roster={new Map([['merchant', identity]])}
+          />
+        );
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' &&
+              (node.instance as THREE.Mesh).name.includes(
+                'castle-merchant-01.glb'
+              )
+          ).length
+        ).toBeGreaterThan(0);
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' &&
+              (node.instance as THREE.Mesh).name.includes(
+                'skeleton-soldier-01.glb'
+              )
+          )
+        ).toHaveLength(0);
+        expect(identity.monsterRef).toBe('dnd5e:monsters:skeleton');
+        expect(identity.faction).toBe('townsfolk');
+        await renderer.unmount();
+      }
     });
 
     it("a MONSTER-kind member's model resolves from the roster's authored ref — no subject-derived monsterRefId needed", async () => {

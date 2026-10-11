@@ -74,4 +74,17 @@ function ActiveNpcThumbnail({
 
 The completion value is a PNG data URL, matching existing palette thumbnail behavior. Keep at most one producer mounted for a serial batch; unmount it after completion or failure.
 
-World Builder (or another future consumer) owns placement and any association between an appearance asset ref and a monster/rules ref. This producer slice does **not** implement either concern.
+## Assign a placed actor's appearance
+
+In Encounter Studio, select a placed creature, open **Arrange**, choose **NPC
+appearance**, and Apply. This edits only the actor's optional `appearanceRef`;
+its rules/template ref and faction stay independent. **Use rules default
+appearance** removes the override. The choice follows the existing undo/redo,
+local save/reload and authored YAML paths. A valid imported ref not present in the
+catalog is retained and labeled unavailable.
+
+Play renders the observer-captured `PublicMemberInfo.appearance_ref`. An absent
+choice keeps legacy model resolution; an explicit unknown ref or a failed model
+load displays a diagnostic rather than a substitute creature. Model URLs,
+standing/downed variants and forward orientation come from the pinned catalog.
+The catalog never supplies a stat block, faction or default equipment loadout.
