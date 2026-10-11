@@ -1,5 +1,6 @@
 import type { EncounterStudioSession } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
+import { StudioWallConstraints } from './StudioWallConstraints';
 
 /** Drawing palette only. Selected precision belongs exclusively to Arrange. */
 export function StudioWallControls({
@@ -44,15 +45,7 @@ export function StudioWallControls({
           Draw walls
         </button>
       )}
-      <label className="es-snap">
-        <input
-          type="checkbox"
-          aria-label="Snap to wall endpoints"
-          checked={editing.endpointSnapEnabled}
-          onChange={(event) => editing.setEndpointSnap(event.target.checked)}
-        />
-        Snap to wall endpoints
-      </label>
+      <StudioWallConstraints editing={editing} />
       <label className="es-snap">
         <input
           type="checkbox"

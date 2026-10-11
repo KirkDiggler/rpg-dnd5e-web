@@ -38,6 +38,12 @@ import {
 } from '../world-building/structuralWallEditing';
 import { usePresentationWorkspace } from '../world-building/usePresentationWorkspace';
 import {
+  constrainWallPoint,
+  pointOnWallAxis,
+  wallAngleReference,
+  type WallAngleReference,
+} from '../world-building/wallAngleConstraint';
+import {
   containsWorkspacePoint,
   workspaceBounds,
 } from '../world-building/workspaceGeometry';
@@ -45,6 +51,8 @@ import { createWorkspaceRectangleSelection } from '../world-building/workspaceRe
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
+
+type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
 
 // World-space polygons stay stable through pan/zoom and preview-only renders.
 const LayoutGrid = memo(function LayoutGrid({
@@ -98,6 +106,7 @@ type Gesture = {
     preview: LayoutWallPreview | null;
     valid: boolean;
     editing: StudioWallEditing;
+    constraint?: WallConstraint;
   };
   door?: {
     target: StudioDoorTarget;
@@ -133,19 +142,46 @@ function snapEndpoint(
   editing: StudioWallEditing,
   walls: readonly StructuralWall[],
   scale: number,
-  excludedWallId?: string
-): { point: WorldPoint; snapped: boolean; joined: boolean } {
+  excludedWallId?: string,
+  constraint?: WallConstraint
+): { point: WorldPoint; snapped: boolean; joined: boolean; feedback?: string } {
+  const constrained = constraint
+    ? constrainWallPoint({ ...constraint, point })
+    : undefined;
+  const desired = constrained?.point ?? point;
+  const accept =
+    constraint && constrained
+      ? (candidate: WorldPoint): boolean =>
+          pointOnWallAxis({
+            anchor: constraint.anchor,
+            point: candidate,
+            direction: constrained.direction,
+          })
+      : undefined;
   const endpoint = snapWallEndpoint({
-    point,
+    point: desired,
     enabled: editing.endpointSnapEnabled,
     walls,
     excludedWallId,
     radius: 12 / scale,
+    accept,
   });
-  if (endpoint.snapped) return { ...endpoint, joined: true };
+  if (endpoint.snapped)
+    return {
+      ...endpoint,
+      joined: true,
+      feedback: constrained
+        ? `Joined endpoint · ${constrained.feedback}`
+        : undefined,
+    };
+  const grid = snapWallPoint({ point: desired, enabled: editing.snapEnabled });
+  const allowed = !accept || accept(grid.point);
   return {
-    ...snapWallPoint({ point, enabled: editing.snapEnabled }),
+    ...(allowed ? grid : { point: desired, snapped: false }),
     joined: false,
+    feedback: constrained
+      ? `${constrained.feedback}${grid.snapped && allowed ? ' · hex snapped' : ''}`
+      : undefined,
   };
 }
 
@@ -406,16 +442,20 @@ export function LayoutViewport({
             world,
             edit.editing,
             draft.room.walls ?? [],
-            currentTransform.scale
+            currentTransform.scale,
+            undefined,
+            edit.constraint
           );
           candidate = {
             line: { start: edit.start, end: target.point },
             point: target.point,
-            feedback: target.joined
-              ? 'Joined endpoint'
-              : target.snapped
-                ? 'Snapped'
-                : 'Free point',
+            feedback:
+              target.feedback ??
+              (target.joined
+                ? 'Joined endpoint'
+                : target.snapped
+                  ? 'Snapped'
+                  : 'Free point'),
           };
         } else if (edit.endpoint) {
           const requested =
@@ -429,7 +469,8 @@ export function LayoutViewport({
             edit.editing,
             draft.room.walls ?? [],
             currentTransform.scale,
-            edit.source.id
+            edit.source.id,
+            edit.constraint
           );
           const result = reshapeWallEndpoint({
             wall: edit.source,
@@ -442,11 +483,12 @@ export function LayoutViewport({
             point: result.wall.line[edit.endpoint],
             feedback: result.clamped
               ? 'Clamped to preserve openings'
-              : target.joined
-                ? 'Joined endpoint'
-                : target.snapped
-                  ? 'Snapped'
-                  : 'Free point',
+              : (target.feedback ??
+                (target.joined
+                  ? 'Joined endpoint'
+                  : target.snapped
+                    ? 'Snapped'
+                    : 'Free point')),
           };
         } else {
           const target = snapWallPoint({
@@ -705,6 +747,28 @@ export function LayoutViewport({
         source?.id
       );
       const start = target.point;
+      let constraint: WallConstraint | undefined;
+      if (editing.rightAngleEnabled && (!source || endpointHit)) {
+        const fixed =
+          source && endpointHit
+            ? source.line[endpointHit === 'start' ? 'end' : 'start']
+            : start;
+        try {
+          const reference = wallAngleReference({
+            anchor: fixed,
+            walls: draft.room.walls ?? [],
+            excludedWallId: source?.id,
+          });
+          // Validate ambiguity before capturing the gesture, not after commit.
+          constrainWallPoint({ anchor: fixed, point: fixed, reference });
+          constraint = { anchor: { ...fixed }, reference };
+        } catch (error) {
+          editing.reportRefusal(
+            error instanceof Error ? error.message : String(error)
+          );
+          return;
+        }
+      }
       gesture.wall = {
         source,
         endpoint: endpointHit,
@@ -712,6 +776,7 @@ export function LayoutViewport({
         preview: null,
         valid: true,
         editing,
+        constraint,
       };
       if (!source) {
         gesture.wall.preview = {

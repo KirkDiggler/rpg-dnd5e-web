@@ -1096,6 +1096,8 @@ describe('controlled Layout wall gestures', () => {
         assetRef: input.draft.room.walls![0].appearance.assetRef,
         snapEnabled: false,
         endpointSnapEnabled: false,
+        rightAngleEnabled: false,
+        setRightAngle: vi.fn(() => true),
         setEndpointSnap: vi.fn(() => true),
         options: [],
         select: vi.fn(() => true),
@@ -1159,6 +1161,172 @@ describe('controlled Layout wall gestures', () => {
     };
     return wall;
   }
+
+  it.each([false, true])(
+    'right-angle drawing follows a rotated joined wall and only snaps compatible endpoints: %s',
+    (hasCompatible) => {
+      const input = walls();
+      const template = structuredClone(input.draft.room.walls![0]);
+      const guide: StructuralWall = {
+        ...template,
+        id: 'guide',
+        label: 'Guide',
+        line: { start: { x: -3, z: -4 }, end: { x: 0, z: 0 } },
+        openings: [],
+      };
+      const bad = { x: -4.176, z: 3.137 };
+      const good = { x: -4, z: 3 };
+      input.draft.room.walls = [
+        guide,
+        {
+          ...template,
+          id: 'off-axis',
+          line: { start: bad, end: { x: -7, z: 8 } },
+          openings: [],
+        },
+        ...(hasCompatible
+          ? [
+              {
+                ...template,
+                id: 'compatible',
+                line: { start: good, end: { x: -8, z: 8 } },
+                openings: [],
+              },
+            ]
+          : []),
+      ];
+      input.wallEditing = {
+        ...input.wallEditing,
+        endpointSnapEnabled: true,
+        rightAngleEnabled: true,
+      };
+      const before = structuredClone(input.draft);
+      render(<LayoutViewport {...input} />);
+      down(surface(), { x: 0, z: 0 });
+      move({ x: -4.2, z: 3.1 });
+      const preview = surface().querySelector('[data-wall-preview="create"]')!;
+      const previewX = Number(preview.getAttribute('x2'));
+      expect(
+        surface()
+          .querySelector('[data-wall-feedback]')
+          ?.getAttribute('data-wall-feedback')
+      ).toContain('Right angles');
+      up({ x: -4.2, z: 3.1 });
+      const line = vi.mocked(input.wallEditing.create).mock.calls[0][0];
+      expect(line.start).toEqual({ x: 0, z: 0 });
+      expect(line.end.x * 3 + line.end.z * 4).toBeCloseTo(0, 12);
+      expect(line.end).not.toEqual(bad);
+      if (hasCompatible) expect(line.end).toEqual(good);
+      expect(previewX).toBeCloseTo(
+        position(line.end).clientX - bounds.left,
+        12
+      );
+      expect(input.wallEditing.create).toHaveBeenCalledTimes(1);
+      expect(input.draft).toEqual(before);
+    }
+  );
+
+  it('ignores an incompatible hex target instead of bending a rotated constraint', () => {
+    const input = walls();
+    const source = input.draft.room.walls![0];
+    input.draft.room.walls = [
+      {
+        ...source,
+        id: 'guide',
+        line: { start: { x: -3, z: -4 }, end: { x: 0, z: 0 } },
+        openings: [],
+      },
+    ];
+    input.wallEditing = {
+      ...input.wallEditing,
+      rightAngleEnabled: true,
+      endpointSnapEnabled: true,
+      snapEnabled: true,
+    };
+    const grid = snapWallPoint({ point: { x: 4, z: -3 }, enabled: true }).point;
+    expect(Math.abs(grid.x * 3 + grid.z * 4)).toBeGreaterThan(0.01);
+    render(<LayoutViewport {...input} />);
+    down(surface(), { x: 0, z: 0 });
+    move({ x: 4, z: -3 });
+    up({ x: 4, z: -3 });
+    const line = vi.mocked(input.wallEditing.create).mock.calls[0][0];
+    expect(line.end.x).toBeCloseTo(4, 12);
+    expect(line.end.z).toBeCloseTo(-3, 12);
+    expect(line.end).not.toEqual(grid);
+  });
+
+  it('right-angle endpoint reshape holds the opposite end and reports protection instead of a false joined target', () => {
+    const input = walls({ tool: 'select' });
+    const source = endpointWall(input);
+    input.draft.room.walls = [
+      source,
+      {
+        ...structuredClone(source),
+        id: 'guide',
+        line: { start: { x: -3, z: -4 }, end: { x: 0, z: 0 } },
+        openings: [],
+      },
+      {
+        ...structuredClone(source),
+        id: 'target',
+        line: { start: { x: 4, z: -3 }, end: { x: 7, z: -3 } },
+        openings: [],
+      },
+    ];
+    input.wallEditing = {
+      ...input.wallEditing,
+      selectedId: source.id,
+      endpointSnapEnabled: true,
+      rightAngleEnabled: true,
+      snapEnabled: true,
+    };
+    render(<LayoutViewport {...input} />);
+    down(handle('end'), source.line.end);
+    move({ x: 4.01, z: -3.01 });
+    expect(
+      surface().querySelector(
+        '[data-wall-feedback="Clamped to preserve openings"]'
+      )
+    ).not.toBeNull();
+    up({ x: 4.01, z: -3.01 });
+    const result = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+    expect(result.line.start).toEqual(source.line.start);
+    expect(result.line.end.x * 3 + result.line.end.z * 4).toBeCloseTo(0, 12);
+    expect(Math.hypot(result.line.end.x, result.line.end.z)).toBeCloseTo(8, 12);
+    expect(result.openings).toEqual(source.openings);
+  });
+
+  it('refuses a conflicting joined-wall basis instead of guessing or creating a wall', () => {
+    const input = walls();
+    const source = input.draft.room.walls![0];
+    input.draft.room.walls = [
+      {
+        ...source,
+        id: 'guide',
+        line: { start: { x: -3, z: -4 }, end: { x: 0, z: 0 } },
+        openings: [],
+      },
+      {
+        ...source,
+        id: 'fork',
+        line: { start: { x: -1, z: -1 }, end: { x: 0, z: 0 } },
+        openings: [],
+      },
+    ];
+    input.wallEditing = {
+      ...input.wallEditing,
+      rightAngleEnabled: true,
+      endpointSnapEnabled: true,
+    };
+    render(<LayoutViewport {...input} />);
+    down(surface(), { x: 0, z: 0 });
+    move({ x: 5, z: 2 });
+    up({ x: 5, z: 2 });
+    expect(input.wallEditing.reportRefusal).toHaveBeenCalledWith(
+      expect.stringMatching(/conflicting/)
+    );
+    expect(input.wallEditing.create).not.toHaveBeenCalled();
+  });
 
   it.each([0.75, 2])(
     'joins a dragged endpoint exactly within the same screen radius at zoom %s',

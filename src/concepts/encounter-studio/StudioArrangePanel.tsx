@@ -13,6 +13,7 @@ import type {
   StudioArrangeSelection,
 } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
+import { StudioWallConstraints } from './StudioWallConstraints';
 
 function StudioArrangeField({
   field,
@@ -131,17 +132,7 @@ function SelectedArrange({
     >
       <h2>Arrange · {selectionName(selection, session)}</h2>
       {selection.kind === 'wall' && (
-        <label>
-          <input
-            type="checkbox"
-            aria-label="Snap to wall endpoints"
-            checked={session.wallEditing.endpointSnapEnabled}
-            onChange={(event) =>
-              session.wallEditing.setEndpointSnap(event.target.checked)
-            }
-          />
-          Snap to wall endpoints
-        </label>
+        <StudioWallConstraints editing={session.wallEditing} />
       )}
       <p className="es-help">
         {selection.kind === 'scene'

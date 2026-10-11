@@ -76,6 +76,24 @@ Whole-wall translation retains its existing free/hex-snap behavior. Both preview
 helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
 Wall and cancels the unfinished gesture without clearing appearance or snap.
 
+**Right angles** is an independent editor-only setting, initially off, shared by
+Walls and selected-wall Arrange controls. It constrains drawing and endpoint
+handles, not numeric fields or whole-wall translation. At gesture start, the
+accepted drawing start or the fixed opposite endpoint chooses a reference from
+other walls meeting that exact point. The gesture retains that reference. Free
+starts use world X/Z; a joined wall supplies parallel/perpendicular axes. Compatible
+incident directions share a deterministic basis; conflicting directions refuse
+with a visible explanation rather than guessing or repairing existing walls.
+
+Projection precedes snapping. Endpoint candidates and optional hex targets must
+remain on the chosen axis; otherwise they cannot replace the constrained point.
+Cardinal coordinates compare exactly; rotated-axis compatibility accounts only
+for floating-point arithmetic roundoff, not a fixed geometric/angle tolerance.
+Accepted endpoint snaps still copy the target coordinate exactly. Preview names
+the basis/direction; opening clamp feedback takes precedence over any join claim.
+Changing the setting retires pending gestures without a document/history write.
+This editing aid does not enroll an asset for visual miter fitting.
+
 Select picks a wall body for rigid translation or a selected Start/End handle for
 direct reshape. Endpoint reshape reuses protected collinear resize; the opposite
 endpoint stays exact, and unclamped edits retain the requested endpoint verbatim

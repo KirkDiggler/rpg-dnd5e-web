@@ -155,6 +155,8 @@ export function snapWallEndpoint(input: {
   walls: readonly StructuralWall[];
   excludedWallId?: string;
   radius: number;
+  /** Optional editor constraint; filter BEFORE choosing the nearest target. */
+  accept?: (point: WorldPoint) => boolean;
 }): {
   point: WorldPoint;
   snapped: boolean;
@@ -178,6 +180,7 @@ export function snapWallEndpoint(input: {
     if (wall.id === input.excludedWallId) continue;
     for (const endpoint of ['start', 'end'] as const) {
       const point = wall.line[endpoint];
+      if (input.accept && !input.accept(point)) continue;
       const distance = Math.hypot(
         point.x - input.point.x,
         point.z - input.point.z

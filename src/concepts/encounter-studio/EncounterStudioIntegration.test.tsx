@@ -335,6 +335,52 @@ function moved(scene: WorldScene): WorldScene {
   return next;
 }
 
+describe('right-angle wall editing through the real owner', () => {
+  it('joins a rotated guide, previews then commits once, and preserves the document through Undo/Redo', () => {
+    const doc = seed();
+    doc.draft.room.walls![0].line = {
+      start: { x: -6, z: -8 },
+      end: { x: 0, z: 0 },
+    };
+    doc.draft.room.walls![0].blocker.footprint.width = 10;
+    const storage = new MemoryStorage(doc);
+    mount(storage);
+    const before = storage.document();
+    fireEvent.click(button('Wall'));
+    chooseAppearance(castleWallRef, 'castle_wall_01');
+    const writes = storage.roomWrites();
+    fireEvent.click(screen.getByLabelText('Right angles'));
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerDown(surface(), pointer(storage, { x: 0, z: 0 }));
+    fireEvent.pointerMove(surface(), pointer(storage, { x: -4.2, z: 3.1 }));
+    expect(
+      surface()
+        .querySelector('[data-wall-feedback]')
+        ?.getAttribute('data-wall-feedback')
+    ).toContain('perpendicular');
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerUp(surface(), pointer(storage, { x: -4.2, z: 3.1 }));
+    const after = storage.document();
+    expect(after.draft.room.walls).toHaveLength(
+      before.draft.room.walls!.length + 1
+    );
+    const added = after.draft.room.walls!.at(-1)!;
+    expect(added.line.start).toEqual({ x: 0, z: 0 });
+    expect(added.line.end.x * 6 + added.line.end.z * 8).toBeCloseTo(0, 12);
+    expect(after.draft.room.walls![0]).toEqual(before.draft.room.walls![0]);
+    expect(after.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(after.scope).toEqual(before.scope);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(after);
+  });
+});
+
 describe('Studio authoring homes through the real owner', () => {
   it('fences hidden 3D mutations and old callbacks across homes while table commits still use shared history', () => {
     const storage = new MemoryStorage(seed());

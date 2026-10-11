@@ -87,12 +87,14 @@ export interface StudioWallEditing {
   readonly assetRef: string | null;
   readonly snapEnabled: boolean;
   readonly endpointSnapEnabled: boolean;
+  readonly rightAngleEnabled: boolean;
   readonly options: readonly StudioWallAppearanceOption[];
   /** Selection alone never retires a gesture or changes the private prop tool. */
   select(id: string | null): boolean;
   setAsset(ref: string | null): boolean;
   setSnap(enabled: boolean): boolean;
   setEndpointSnap(enabled: boolean): boolean;
+  setRightAngle(enabled: boolean): boolean;
   /** Accepted no-ops do not add history. Create stays in caller drawing mode. */
   create(line: WallLine): boolean;
   edit(next: StructuralWall): boolean;

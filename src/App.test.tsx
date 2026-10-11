@@ -317,6 +317,8 @@ function createAppStudioSession(): EncounterStudioSession {
       assetRef: null,
       snapEnabled: false,
       endpointSnapEnabled: true,
+      rightAngleEnabled: false,
+      setRightAngle: vi.fn(() => true),
       setEndpointSnap: vi.fn(() => true),
       options: [],
       select: vi.fn(() => true),

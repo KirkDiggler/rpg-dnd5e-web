@@ -87,6 +87,8 @@ function fixture(): EncounterStudioSession {
       assetRef: null,
       snapEnabled: false,
       endpointSnapEnabled: true,
+      rightAngleEnabled: false,
+      setRightAngle: vi.fn(() => true),
       setEndpointSnap: vi.fn(() => true),
       options: [
         {

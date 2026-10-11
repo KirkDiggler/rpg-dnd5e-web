@@ -412,6 +412,7 @@ export function WorldBuildingConcept({
   const [wallAssetRef, setWallAssetRef] = useState<string | null>(null);
   const [wallSnapEnabled, setWallSnapEnabled] = useState(false);
   const [wallEndpointSnapEnabled, setWallEndpointSnapEnabled] = useState(true);
+  const [wallRightAngleEnabled, setWallRightAngleEnabled] = useState(false);
   /** The selected authored wall — its own selection, never a scene prop id. */
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
@@ -547,6 +548,7 @@ export function WorldBuildingConcept({
     doorAssetRef,
     wallSnapEnabled,
     wallEndpointSnapEnabled,
+    wallRightAngleEnabled,
     paintingConcealmentId,
   });
   if (
@@ -560,6 +562,7 @@ export function WorldBuildingConcept({
     intentContextRef.current.wallSnapEnabled !== wallSnapEnabled ||
     intentContextRef.current.wallEndpointSnapEnabled !==
       wallEndpointSnapEnabled ||
+    intentContextRef.current.wallRightAngleEnabled !== wallRightAngleEnabled ||
     intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
   ) {
     intentContextRef.current = {
@@ -572,6 +575,7 @@ export function WorldBuildingConcept({
       doorAssetRef,
       wallSnapEnabled,
       wallEndpointSnapEnabled,
+      wallRightAngleEnabled,
       paintingConcealmentId,
     };
     viewportGenerationRef.current += 1;
@@ -4409,6 +4413,15 @@ export function WorldBuildingConcept({
             assetRef: wallAssetRef,
             snapEnabled: wallSnapEnabled,
             endpointSnapEnabled: wallEndpointSnapEnabled,
+            rightAngleEnabled: wallRightAngleEnabled,
+            setRightAngle: guardSnapshotIntent((enabled: boolean): boolean => {
+              if (refuseWhilePublishing()) return false;
+              if (enabled !== wallRightAngleEnabled) {
+                cancelTransients();
+                setWallRightAngleEnabled(enabled);
+              }
+              return true;
+            }),
             setEndpointSnap: guardSnapshotIntent(
               (enabled: boolean): boolean => {
                 if (refuseWhilePublishing()) return false;

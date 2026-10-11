@@ -123,6 +123,36 @@ function diagonalDocument(): RoomDraftDocument {
 }
 
 describe('Arrange staged fields joined to the actual document owner', () => {
+  it('right-angle mode is shared editor state, retires gestures and never rewrites literal Arrange coordinates', () => {
+    const joined = owner();
+    joined.selectWall();
+    const before = joined.session.document;
+    const writes = joined.writes();
+    const stale = joined.session.wallEditing.edit;
+    expect(
+      (screen.getByLabelText('Right angles') as HTMLInputElement).checked
+    ).toBe(false);
+    fireEvent.click(screen.getByLabelText('Right angles'));
+    expect(joined.session.wallEditing.rightAngleEnabled).toBe(true);
+    expect(joined.session.document).toBe(before);
+    expect(joined.writes()).toBe(writes);
+    act(() =>
+      expect(stale({ ...before.draft.room.walls![0], label: 'Stale' })).toBe(
+        false
+      )
+    );
+    joined.collapse(true);
+    joined.collapse(false);
+    expect(
+      (screen.getByLabelText('Right angles') as HTMLInputElement).checked
+    ).toBe(true);
+    change('End Z', '1.6');
+    apply();
+    expect(joined.session.document.draft.room.walls![0].line.end.z).toBe(1.6);
+    expect(joined.writes()).toBe(writes + 1);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+  });
   it('leads with exact endpoints, keeps midpoint secondary and commits both endpoints atomically with shared history', () => {
     const document = diagonalDocument();
     const attached =
