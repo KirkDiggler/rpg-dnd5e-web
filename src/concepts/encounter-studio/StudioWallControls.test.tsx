@@ -86,6 +86,8 @@ function fixture(): EncounterStudioSession {
       selectedId: null,
       assetRef: null,
       snapEnabled: false,
+      endpointSnapEnabled: true,
+      setEndpointSnap: vi.fn(() => true),
       options: [
         {
           ref: 'creative',

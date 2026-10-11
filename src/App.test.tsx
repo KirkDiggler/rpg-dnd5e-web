@@ -316,6 +316,8 @@ function createAppStudioSession(): EncounterStudioSession {
       selectedId: null,
       assetRef: null,
       snapEnabled: false,
+      endpointSnapEnabled: true,
+      setEndpointSnap: vi.fn(() => true),
       options: [],
       select: vi.fn(() => true),
       setAsset: vi.fn(() => true),

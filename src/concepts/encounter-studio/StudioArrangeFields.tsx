@@ -25,13 +25,18 @@ export type ArrangeFieldKey =
   | 'position'
   | 'width'
   | 'background'
-  | 'baseline';
+  | 'baseline'
+  | 'startX'
+  | 'startZ'
+  | 'endX'
+  | 'endZ';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
 export interface ArrangeField {
   key: ArrangeFieldKey;
   label: string;
   value: string;
   numeric?: boolean;
+  secondary?: boolean;
   placeholder?: string;
   choices?: readonly { value: string; label: string }[];
 }
@@ -81,8 +86,38 @@ export function arrangeFields(
     case 'wall': {
       const values = selection.preview ?? selection;
       return [
-        numeric('x', 'Wall midpoint X', values.midpoint.x),
-        numeric('z', 'Wall midpoint Z', values.midpoint.z),
+        {
+          key: 'startX',
+          label: 'Start X',
+          value: String(values.line.start.x),
+          numeric: true,
+        },
+        {
+          key: 'startZ',
+          label: 'Start Z',
+          value: String(values.line.start.z),
+          numeric: true,
+        },
+        {
+          key: 'endX',
+          label: 'End X',
+          value: String(values.line.end.x),
+          numeric: true,
+        },
+        {
+          key: 'endZ',
+          label: 'End Z',
+          value: String(values.line.end.z),
+          numeric: true,
+        },
+        {
+          ...numeric('x', 'Wall midpoint X', values.midpoint.x),
+          secondary: true,
+        },
+        {
+          ...numeric('z', 'Wall midpoint Z', values.midpoint.z),
+          secondary: true,
+        },
         numeric('yaw', 'Y facing (degrees)', degrees(values.yaw)),
         numeric('length', 'Wall length', values.length),
         {
@@ -233,6 +268,22 @@ export function arrangeIntent(
       return {
         kind: 'wall-edit',
         target: selection.target,
+        ...(draft.startX !== undefined || draft.startZ !== undefined
+          ? {
+              start: {
+                ...(draft.startX !== undefined ? { x: number('startX') } : {}),
+                ...(draft.startZ !== undefined ? { z: number('startZ') } : {}),
+              },
+            }
+          : {}),
+        ...(draft.endX !== undefined || draft.endZ !== undefined
+          ? {
+              end: {
+                ...(draft.endX !== undefined ? { x: number('endX') } : {}),
+                ...(draft.endZ !== undefined ? { z: number('endZ') } : {}),
+              },
+            }
+          : {}),
         ...(draft.x !== undefined || draft.z !== undefined
           ? { midpoint: axes(['x', 'z']) }
           : {}),

@@ -106,6 +106,22 @@ function SelectedArrange({
     setDraft({});
     setError(null);
   }, [session.document, session.intentEpoch]);
+  const fields = arrangeFields(selection, FACING_NAMES);
+  const renderField = (field: ArrangeField): React.JSX.Element => (
+    <StudioArrangeField
+      key={field.key}
+      field={field}
+      draft={draft}
+      onChange={(key, value) => {
+        setDraft((previous) => {
+          const next = { ...previous, [key]: value };
+          if (key === 'background') delete next.baseline;
+          return next;
+        });
+        setError(null);
+      }}
+    />
+  );
   return (
     <section
       hidden={!expanded}
@@ -114,13 +130,26 @@ function SelectedArrange({
       aria-label="Arrange selection"
     >
       <h2>Arrange · {selectionName(selection, session)}</h2>
+      {selection.kind === 'wall' && (
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Snap to wall endpoints"
+            checked={session.wallEditing.endpointSnapEnabled}
+            onChange={(event) =>
+              session.wallEditing.setEndpointSnap(event.target.checked)
+            }
+          />
+          Snap to wall endpoints
+        </label>
+      )}
       <p className="es-help">
         {selection.kind === 'scene'
           ? selection.rootCount === 1
             ? 'World position · world units'
             : 'Selection pivot · world units'
           : selection.kind === 'wall'
-            ? 'Wall midpoint and dimensions · world units'
+            ? 'Wall line endpoints · world X/Z units'
             : selection.kind === 'door'
               ? 'Along owning wall · world units'
               : selection.kind === 'label'
@@ -201,21 +230,13 @@ function SelectedArrange({
         }}
       >
         <div className="es-arrange-fields">
-          {arrangeFields(selection, FACING_NAMES).map((field) => (
-            <StudioArrangeField
-              key={field.key}
-              field={field}
-              draft={draft}
-              onChange={(key, value) => {
-                setDraft((previous) => {
-                  const next = { ...previous, [key]: value };
-                  if (key === 'background') delete next.baseline;
-                  return next;
-                });
-                setError(null);
-              }}
-            />
-          ))}
+          {fields.filter((field) => !field.secondary).map(renderField)}
+          {fields.some((field) => field.secondary) && (
+            <details>
+              <summary>Position · whole wall</summary>
+              {fields.filter((field) => field.secondary).map(renderField)}
+            </details>
+          )}
         </div>
         {selection.kind === 'label' && selection.region && (
           <div className="es-region-controls" aria-label="Region lighting">

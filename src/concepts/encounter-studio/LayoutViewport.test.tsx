@@ -1095,6 +1095,8 @@ describe('controlled Layout wall gestures', () => {
         selectedId: null,
         assetRef: input.draft.room.walls![0].appearance.assetRef,
         snapEnabled: false,
+        endpointSnapEnabled: false,
+        setEndpointSnap: vi.fn(() => true),
         options: [],
         select: vi.fn(() => true),
         setAsset: vi.fn(() => true),
@@ -1157,6 +1159,97 @@ describe('controlled Layout wall gestures', () => {
     };
     return wall;
   }
+
+  it.each([0.75, 2])(
+    'joins a dragged endpoint exactly within the same screen radius at zoom %s',
+    (zoom) => {
+      const input = walls({ tool: 'select', frame: { ...initialFrame, zoom } });
+      const source = endpointWall(input);
+      const target = { x: 10.135791357913579, z: 2.3456789012345 };
+      input.draft.room.walls = [
+        source,
+        {
+          ...structuredClone(source),
+          id: 'join-target',
+          line: { start: target, end: { x: target.x, z: 8.7 } },
+          openings: [],
+        },
+      ];
+      input.wallEditing = {
+        ...input.wallEditing,
+        selectedId: source.id,
+        endpointSnapEnabled: true,
+      };
+      render(<LayoutViewport {...input} />);
+      const from = position(source.line.end, input.frame);
+      const to = position(target, input.frame);
+      const near = { clientX: to.clientX + 6, clientY: to.clientY };
+      fireEvent.pointerDown(handle('end'), {
+        ...from,
+        pointerId: 7,
+        button: 0,
+      });
+      fireEvent.pointerMove(surface(), { ...near, pointerId: 7 });
+      const feedback = surface().querySelector(
+        '[data-wall-feedback="Joined endpoint"]'
+      )!;
+      expect(feedback).not.toBeNull();
+      expect(Number(feedback.getAttribute('cx'))).toBeCloseTo(
+        to.clientX - bounds.left
+      );
+      expect(input.wallEditing.edit).not.toHaveBeenCalled();
+      fireEvent.pointerUp(surface(), { ...near, pointerId: 7, button: 0 });
+      const result = vi.mocked(input.wallEditing.edit).mock.calls[0][0];
+      expect(result.line.end).toEqual(target);
+      expect(result.line.start).toEqual(source.line.start);
+      expect(result.openings).toEqual(source.openings);
+      expect(input.wallEditing.edit).toHaveBeenCalledTimes(1);
+      expect(input.onCommit).not.toHaveBeenCalled();
+    }
+  );
+
+  it('copies an existing endpoint on both ends of a newly drawn wall', () => {
+    const input = walls();
+    const source = endpointWall(input);
+    const target = { x: 6.135791357913579, z: 5.3456789012345 };
+    input.draft.room.walls = [
+      source,
+      {
+        ...structuredClone(source),
+        id: 'join-target',
+        line: { start: target, end: { x: target.x, z: 9 } },
+        openings: [],
+      },
+    ];
+    input.wallEditing = { ...input.wallEditing, endpointSnapEnabled: true };
+    render(<LayoutViewport {...input} />);
+    const from = position(source.line.start),
+      to = position(target);
+    fireEvent.pointerDown(surface(), {
+      clientX: from.clientX + 5,
+      clientY: from.clientY,
+      pointerId: 7,
+      button: 0,
+    });
+    fireEvent.pointerMove(surface(), {
+      clientX: to.clientX + 5,
+      clientY: to.clientY,
+      pointerId: 7,
+    });
+    expect(
+      surface().querySelector('[data-wall-feedback="Joined endpoint"]')
+    ).not.toBeNull();
+    fireEvent.pointerUp(surface(), {
+      clientX: to.clientX + 5,
+      clientY: to.clientY,
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.wallEditing.create).toHaveBeenCalledExactlyOnceWith({
+      start: source.line.start,
+      end: target,
+    });
+  });
 
   it.each([false, true])(
     'creates consecutive strokes with snapped/free feedback and preview/commit parity: %s',

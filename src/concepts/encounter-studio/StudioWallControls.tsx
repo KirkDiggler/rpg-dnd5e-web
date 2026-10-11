@@ -47,6 +47,15 @@ export function StudioWallControls({
       <label className="es-snap">
         <input
           type="checkbox"
+          aria-label="Snap to wall endpoints"
+          checked={editing.endpointSnapEnabled}
+          onChange={(event) => editing.setEndpointSnap(event.target.checked)}
+        />
+        Snap to wall endpoints
+      </label>
+      <label className="es-snap">
+        <input
+          type="checkbox"
           aria-label="Snap to hex centres, corners and side midpoints"
           checked={editing.snapEnabled}
           onChange={(event) => editing.setSnap(event.target.checked)}

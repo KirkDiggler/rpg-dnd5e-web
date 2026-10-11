@@ -32,6 +32,7 @@ import type {
 
 import {
   reshapeWallEndpoint,
+  snapWallEndpoint,
   snapWallPoint,
   translateWall,
 } from '../world-building/structuralWallEditing';
@@ -127,6 +128,27 @@ const pointerPoint = (
 
 /** Controlled schematic only: the owner decides whether a completed floor or
  * wall or label gesture is accepted. Previews and pointer capture are transient. */
+function snapEndpoint(
+  point: WorldPoint,
+  editing: StudioWallEditing,
+  walls: readonly StructuralWall[],
+  scale: number,
+  excludedWallId?: string
+): { point: WorldPoint; snapped: boolean; joined: boolean } {
+  const endpoint = snapWallEndpoint({
+    point,
+    enabled: editing.endpointSnapEnabled,
+    walls,
+    excludedWallId,
+    radius: 12 / scale,
+  });
+  if (endpoint.snapped) return { ...endpoint, joined: true };
+  return {
+    ...snapWallPoint({ point, enabled: editing.snapEnabled }),
+    joined: false,
+  };
+}
+
 export function LayoutViewport({
   draft,
   tool,
@@ -380,11 +402,20 @@ export function LayoutViewport({
         let candidate: LayoutWallPreview;
         const enabled = edit.editing.snapEnabled;
         if (!edit.source) {
-          const target = snapWallPoint({ point: world, enabled });
+          const target = snapEndpoint(
+            world,
+            edit.editing,
+            draft.room.walls ?? [],
+            currentTransform.scale
+          );
           candidate = {
             line: { start: edit.start, end: target.point },
             point: target.point,
-            feedback: target.snapped ? 'Snapped' : 'Free point',
+            feedback: target.joined
+              ? 'Joined endpoint'
+              : target.snapped
+                ? 'Snapped'
+                : 'Free point',
           };
         } else if (edit.endpoint) {
           const requested =
@@ -393,7 +424,13 @@ export function LayoutViewport({
             world.z === gesture.anchor.z
               ? edit.source.line[edit.endpoint]
               : world;
-          const target = snapWallPoint({ point: requested, enabled });
+          const target = snapEndpoint(
+            requested,
+            edit.editing,
+            draft.room.walls ?? [],
+            currentTransform.scale,
+            edit.source.id
+          );
           const result = reshapeWallEndpoint({
             wall: edit.source,
             endpoint: edit.endpoint,
@@ -405,9 +442,11 @@ export function LayoutViewport({
             point: result.wall.line[edit.endpoint],
             feedback: result.clamped
               ? 'Clamped to preserve openings'
-              : target.snapped
-                ? 'Snapped'
-                : 'Free point',
+              : target.joined
+                ? 'Joined endpoint'
+                : target.snapped
+                  ? 'Snapped'
+                  : 'Free point',
           };
         } else {
           const target = snapWallPoint({
@@ -507,11 +546,9 @@ export function LayoutViewport({
       event.isPrimary === false
     )
       return;
-    const anchor = clientToWorld(
-      pointerPoint(event),
-      eventTransform(event.currentTarget)
-    );
-    if (!anchor) return;
+    const startingTransform = eventTransform(event.currentTarget);
+    const anchor = clientToWorld(pointerPoint(event), startingTransform);
+    if (!anchor || !startingTransform) return;
     const target = event.target instanceof Element ? event.target : null;
     const wallId = target
       ?.closest('[data-wall-id]')
@@ -660,10 +697,14 @@ export function LayoutViewport({
         if (!editing.select(source.id)) return;
         labelEditing?.onSelect(null);
       }
-      const start = snapWallPoint({
-        point: anchor,
-        enabled: editing.snapEnabled,
-      }).point;
+      const target = snapEndpoint(
+        anchor,
+        editing,
+        draft.room.walls ?? [],
+        startingTransform.scale,
+        source?.id
+      );
+      const start = target.point;
       gesture.wall = {
         source,
         endpoint: endpointHit,
@@ -676,7 +717,11 @@ export function LayoutViewport({
         gesture.wall.preview = {
           line: { start, end: start },
           point: start,
-          feedback: editing.snapEnabled ? 'Snapped' : 'Free point',
+          feedback: target.joined
+            ? 'Joined endpoint'
+            : target.snapped
+              ? 'Snapped'
+              : 'Free point',
         };
         setWallPreview(gesture.wall.preview);
       }

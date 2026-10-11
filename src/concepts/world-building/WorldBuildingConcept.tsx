@@ -411,6 +411,7 @@ export function WorldBuildingConcept({
    * and drawing is refused until one is chosen. Snap is optional. */
   const [wallAssetRef, setWallAssetRef] = useState<string | null>(null);
   const [wallSnapEnabled, setWallSnapEnabled] = useState(false);
+  const [wallEndpointSnapEnabled, setWallEndpointSnapEnabled] = useState(true);
   /** The selected authored wall — its own selection, never a scene prop id. */
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
@@ -545,6 +546,7 @@ export function WorldBuildingConcept({
     wallAssetRef,
     doorAssetRef,
     wallSnapEnabled,
+    wallEndpointSnapEnabled,
     paintingConcealmentId,
   });
   if (
@@ -556,6 +558,8 @@ export function WorldBuildingConcept({
     intentContextRef.current.wallAssetRef !== wallAssetRef ||
     intentContextRef.current.doorAssetRef !== doorAssetRef ||
     intentContextRef.current.wallSnapEnabled !== wallSnapEnabled ||
+    intentContextRef.current.wallEndpointSnapEnabled !==
+      wallEndpointSnapEnabled ||
     intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
   ) {
     intentContextRef.current = {
@@ -567,6 +571,7 @@ export function WorldBuildingConcept({
       wallAssetRef,
       doorAssetRef,
       wallSnapEnabled,
+      wallEndpointSnapEnabled,
       paintingConcealmentId,
     };
     viewportGenerationRef.current += 1;
@@ -4403,6 +4408,17 @@ export function WorldBuildingConcept({
               activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
             assetRef: wallAssetRef,
             snapEnabled: wallSnapEnabled,
+            endpointSnapEnabled: wallEndpointSnapEnabled,
+            setEndpointSnap: guardSnapshotIntent(
+              (enabled: boolean): boolean => {
+                if (refuseWhilePublishing()) return false;
+                if (enabled !== wallEndpointSnapEnabled) {
+                  cancelTransients();
+                  setWallEndpointSnapEnabled(enabled);
+                }
+                return true;
+              }
+            ),
             options: studioWallOptions,
             select: guardSnapshotIntent(selectStudioWall),
             setAsset: guardSnapshotIntent((ref: string | null): boolean => {

@@ -65,18 +65,36 @@ missing/error images retain named selectable fallbacks without loading a GLB,
 substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
 assets without a door leaf role. No appearance is armed by default.
 
-Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
-centres/corners/side midpoints, and retains its presentation-only choice across
-context dismissal and view changes. Both preview and release use the same pure
+Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
+centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
+targets other walls' endpoints within12 CSS pixels, and takes priority over hex
+snapping during drawing and endpoint reshaping. It copies the target coordinates
+exactly and marks an accepted preview as **Joined endpoint**. Equal-distance ties
+use wall id/endpoint order, not input array order. Both settings remain editor-only
+and survive context dismissal/view changes; changing either retires the gesture.
+Whole-wall translation retains its existing free/hex-snap behavior. Both preview and release use the same pure
 helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
 Wall and cancels the unfinished gesture without clearing appearance or snap.
 
-Select picks a wall body for rigid translation or a selected endpoint for direct
-reshape. Endpoint reshape composes protected collinear resize then rotation about
-the opposite endpoint: opening distances/identities and attached doors travel with
-the changed bearing. Opening edges clamp length; the preview displays the actual
-applied endpoint on the requested ray, not the unreachable raw pointer. Numeric
-length remains collinear, and move/rotation/appearance controls are secondary.
+Select picks a wall body for rigid translation or a selected Start/End handle for
+direct reshape. Endpoint reshape reuses protected collinear resize; the opposite
+endpoint stays exact, and unclamped edits retain the requested endpoint verbatim
+rather than reconstructing it through trigonometry. Opening edges clamp drags;
+the preview displays the applied endpoint on the requested ray, never a false
+join to an unreachable target. Opening identities and attached doors are retained.
+
+Arrange leads with full-precision Start X/Z and End X/Z fields. Midpoint lives in
+collapsed **Position · whole wall** controls. Both endpoints can change in one
+atomic transaction without an intermediate zero-length wall. Start-only changes
+use the existing End-anchored opening offsets; otherwise local opening distances
+remain Start-anchored. An explicitly unchanged end counts as fixed. Blocker end
+margins follow the signed length delta; flags/depth/offsets stay authored. Numeric
+endpoint edits that would clamp through an opening refuse instead of writing a
+different endpoint. Endpoint coordinates cannot be combined with midpoint, length
+or rotation in the same Apply; appearance changes may accompany them. Exact no-ops
+retain geometry, optional absence, storage and history. This is an authoring snap,
+not a region-detector tolerance: no loaded gaps are welded or walls straightened.
+Numeric length remains collinear; existing whole-wall dragging remains available.
 Appearance changes do not change the independent blocker. Neither renderer stores
 derived spans or a second door pose; the existing 3D consumes the same canonical
 walls and door bindings.

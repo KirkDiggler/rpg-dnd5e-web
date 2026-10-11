@@ -123,6 +123,82 @@ function diagonalDocument(): RoomDraftDocument {
 }
 
 describe('Arrange staged fields joined to the actual document owner', () => {
+  it('leads with exact endpoints, keeps midpoint secondary and commits both endpoints atomically with shared history', () => {
+    const document = diagonalDocument();
+    const attached =
+      createPopulatedStudioDocument().draft.room.walls![0].openings.find(
+        (opening) => opening.door
+      )!;
+    document.draft.room.walls![0].openings = [
+      { ...attached, position: 1, width: 0.5 },
+    ];
+    const joined = owner(document);
+    joined.selectWall();
+    const before = joined.session.document;
+    expect(token('Start X')).toBe('0');
+    expect(token('End Z')).toBe('2');
+    expect(
+      screen.getByLabelText('Wall midpoint X').closest('details')?.open
+    ).toBe(false);
+    const writes = joined.writes();
+    change('Start X', '3'); // matches the OLD end X, evaluated with the new end
+    change('Start Z', '2');
+    change('End X', '6.135791357913579');
+    change('End Z', '4.2');
+    expect(joined.session.document).toBe(before);
+    apply();
+    const after = joined.session.document;
+    expect(after.draft.room.walls![0].line).toEqual({
+      start: { x: 3, z: 2 },
+      end: { x: 6.135791357913579, z: 4.2 },
+    });
+    expect(after.scope).toEqual(before.scope);
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(after.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    expect(after.draft.room.walls![0].openings).toEqual(
+      before.draft.room.walls![0].openings
+    );
+    expect(joined.writes()).toBe(writes + 1);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    expect(joined.session.document).toEqual(after);
+    const equal = joined.session.document;
+    const equalWrites = joined.writes();
+    change('End X', '6.135791357913579');
+    apply();
+    expect(joined.session.document).toBe(equal);
+    expect(joined.writes()).toBe(equalWrites);
+    change('End Z', '5');
+    change('Wall length', '12');
+    apply();
+    expect(screen.getByRole('alert').textContent).toMatch(/refused/);
+    expect(joined.session.notice).toMatch(/separately/);
+    expect(joined.session.document).toBe(equal);
+    expect(joined.writes()).toBe(equalWrites);
+  });
+  it('wall-endpoint snap toggles only editor state and retires captured edits', () => {
+    const joined = owner(diagonalDocument());
+    joined.selectWall();
+    expect(
+      (screen.getByLabelText('Snap to wall endpoints') as HTMLInputElement)
+        .checked
+    ).toBe(true);
+    const before = joined.session.document;
+    const writes = joined.writes();
+    const stale = joined.session.wallEditing.edit;
+    fireEvent.click(screen.getByLabelText('Snap to wall endpoints'));
+    expect(joined.session.wallEditing.endpointSnapEnabled).toBe(false);
+    act(() =>
+      expect(stale({ ...before.draft.room.walls![0], label: 'Stale' })).toBe(
+        false
+      )
+    );
+    expect(joined.session.document).toBe(before);
+    expect(joined.writes()).toBe(writes);
+  });
   it('shows canonical single-root values; one Enter submits every dirty section once and undo restores the whole noun', () => {
     const joined = owner();
     joined.selectScene(['studio-decoration']);
