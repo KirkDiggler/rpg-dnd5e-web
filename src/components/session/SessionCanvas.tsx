@@ -882,6 +882,11 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
+          appearanceRef={
+            member.kind === MemberKind.MONSTER
+              ? roster?.get(member.subject)?.appearanceRef || undefined
+              : undefined
+          }
           // THE RING IS WHAT THIS PLAYER BELIEVES, falling back to what the
           // roster knows (rpg-project#458). The sighting's own stance is
           // per-observer testimony and wins when it has a word; an empty one

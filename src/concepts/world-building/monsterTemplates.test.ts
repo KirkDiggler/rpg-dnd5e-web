@@ -26,38 +26,45 @@ const guard = {
   experience: 0,
 };
 describe('authored stat blocks through the shared scope and codecs', () => {
-  it('round-trips complete populated source without losing templates, actors or other scope', () => {
-    const document = createPopulatedStudioDocument();
-    document.scope.templates = {
-      Guard_Elite: guard,
-      cook: {
-        base: 'dnd5e:monsters:human',
-        name: 'Castle Cook',
-        actions: ['dnd5e:weapons:dagger'],
-      },
-    };
-    document.draft.room.monsterDeclarations[0].ref =
-      'dnd5e:monsters:Guard_Elite';
-    const before = structuredClone(document);
-    const yaml = encodeSingleRoomDungeon({
-      key: 'complete-kitchen',
-      draft: document.draft,
-      ...document.scope,
-    });
-    const decoded = decodeSingleRoomDungeon(yaml);
-    const stored = parseRoomDocumentJson(
-      stringifyRoomDraft(decoded.draft, scopeFrom(decoded))
-    );
-    expect(stored).toEqual(before);
-    const again = encodeSingleRoomDungeon({
-      key: decoded.key,
-      draft: stored.draft,
-      ...stored.scope,
-    });
-    expect(parse(again)).toEqual(parse(yaml));
-    expect(parse(again).templates.Guard_Elite).toEqual(guard);
-    expect(document).toEqual(before);
-  });
+  it.each([
+    'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
+    'dnd5e:npcs:unavailable:future-look',
+  ])(
+    'round-trips complete scope and templates with independent appearance %s',
+    (appearanceRef) => {
+      const document = createPopulatedStudioDocument();
+      document.scope.templates = {
+        Guard_Elite: guard,
+        cook: {
+          base: 'dnd5e:monsters:human',
+          name: 'Castle Cook',
+          actions: ['dnd5e:weapons:dagger'],
+        },
+      };
+      document.draft.room.monsterDeclarations[0].ref =
+        'dnd5e:monsters:Guard_Elite';
+      document.draft.room.monsterDeclarations[0].appearanceRef = appearanceRef;
+      const before = structuredClone(document);
+      const yaml = encodeSingleRoomDungeon({
+        key: 'complete-kitchen',
+        draft: document.draft,
+        ...document.scope,
+      });
+      const decoded = decodeSingleRoomDungeon(yaml);
+      const stored = parseRoomDocumentJson(
+        stringifyRoomDraft(decoded.draft, scopeFrom(decoded))
+      );
+      expect(stored).toEqual(before);
+      const again = encodeSingleRoomDungeon({
+        key: decoded.key,
+        draft: stored.draft,
+        ...stored.scope,
+      });
+      expect(parse(again)).toEqual(parse(yaml));
+      expect(parse(again).templates.Guard_Elite).toEqual(guard);
+      expect(document).toEqual(before);
+    }
+  );
   it('preserves the Kitchen’s neutral-until alarm rule instead of dropping or refusing it', () => {
     const scope = {
       templates: { guard },

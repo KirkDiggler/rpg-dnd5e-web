@@ -1,4 +1,5 @@
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
+import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useMemo, useState } from 'react';
 import {
   deriveWallCornerFits,
@@ -34,6 +35,7 @@ function StudioArrangeField({
       {field.choices ? (
         <select
           aria-label={field.label}
+          disabled={field.disabled}
           value={draft[field.key] ?? field.value}
           onChange={(event) => onChange(field.key, event.target.value)}
         >
@@ -115,13 +117,38 @@ function SelectedArrange({
     () => deriveWallCornerFits(session.document.draft.room.walls ?? []),
     [session.document.draft.room.walls]
   );
-  const fields = arrangeFields(selection, FACING_NAMES);
+  const fields = arrangeFields(selection, FACING_NAMES, draft);
   const renderField = (field: ArrangeField): React.JSX.Element => (
     <StudioArrangeField
       key={field.key}
       field={field}
       draft={draft}
       onChange={(key, value) => {
+        if (
+          selection.kind === 'actor' &&
+          (key === 'appearanceFamily' ||
+            key === 'appearanceStyle' ||
+            key === 'appearanceSkinPalette')
+        ) {
+          try {
+            const appearanceRef = chooseNpcAppearance({
+              currentRef:
+                draft.appearanceRef ?? selection.monster.appearanceRef,
+              control:
+                key === 'appearanceFamily'
+                  ? 'family'
+                  : key === 'appearanceStyle'
+                    ? 'style'
+                    : 'skinPalette',
+              value,
+            });
+            setDraft((previous) => ({ ...previous, appearanceRef }));
+            setError(null);
+          } catch (error) {
+            setError(error instanceof Error ? error.message : String(error));
+          }
+          return;
+        }
         setDraft((previous) => {
           const next = { ...previous, [key]: value };
           if (key === 'background') delete next.baseline;
