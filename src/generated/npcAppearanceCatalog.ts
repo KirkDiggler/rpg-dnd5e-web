@@ -3,7 +3,7 @@
 import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: 'a7d26110847fea5a685f8a8bc778d2d0ac911335',
+  commit: '455f19a0d30e4cb940128f5fb16d447b89a5bbac',
   manifestSha256:
     'bd57b084aea1cfd0e5da8ef44179d38cd01cbb741a113afe663ad1794472a7d5',
   selectionSha256:

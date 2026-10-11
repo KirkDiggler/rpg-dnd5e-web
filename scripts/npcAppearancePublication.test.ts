@@ -136,7 +136,7 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 describe('approved NPC appearance publication', () => {
   it('exports exactly 13 Goblin and 204 Kingdom look identities and no provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: 'a7d26110847fea5a685f8a8bc778d2d0ac911335',
+      commit: '455f19a0d30e4cb940128f5fb16d447b89a5bbac',
       releases: [
         'goblin-war-camp-v1',
         'kingdom-npcs-v1',
