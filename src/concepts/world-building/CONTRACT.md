@@ -211,9 +211,9 @@ blank with a100 placeholder and **Baseline · no region light authored**; untouc
 fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
 absence: it opts the configured floor into the placed-light receiver. Reset stages
 null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
-one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
-view/target/epoch/document retirement discard linked-label staging without writes;
-blur never submits. Ordinary notes expose no region fields. Configured unresolved
+one transaction; invalid tokens refuse the whole form. Cancel/Escape and
+view/target/epoch/document retirement discard linked-label staging without writes.
+Sidebar collapse and section navigation preserve staging; blur never submits. Ordinary notes expose no region fields. Configured unresolved
 labels show **Lighting saved · not applied until boundary resolves**, alongside the
 boundary reason.
 
@@ -457,6 +457,46 @@ also applies to current local drafts: old bytes are preserved on refusal.
 There is no v5 document or schema alias, and no automatic rewrite of saved
 compositions. Server error paths are displayed verbatim by the publish panel.
 The engine example is pinned to toolkit merge `6cbee563`.
+
+## Studio authoring homes and options (#1256)
+
+Build, Regions and Encounter are authoring homes, independent of the Layout/3D
+map view. Document identity, saving and history remain shared. Build starts in
+Select and offers Paint, Erase, Rectangle and Size in Layout. Its right-hand
+options contain Arrange, Walls, Doors and Notes. Regions owns the region list,
+room-label creation and the existing linked-label boundary/background-light form.
+Encounter gives Tables a full configuration workspace, not a map options tab.
+Future configuration sections are not represented by enabled placeholder controls.
+
+There is one spatial options slot. Only one section is visible. The Options
+button and unmodified N toggle it without remounting the canvas or changing the
+active section, tool, selection, document or history. N does not intercept
+editable controls, composition, repeated keys or modified shortcuts; it does not
+open map options in Encounter. The inactive map stays mounted but hidden and
+inert while Encounter is shown. Home changes retire map gestures through the
+owner epoch and return Build to Select; hidden map mutation shortcuts and 3D
+callbacks are fenced. Undo/Redo remain document actions. Regions3D is inspection,
+with existing lighting edits available; placement and boundary painting use Layout.
+
+Sections stay mounted when hidden. Local form drafts survive section changes and
+collapse; a canonical document/selection/intent replacement still retires Arrange
+staging. Selection changes update Arrange without forcing a different section or
+reopening the sidebar. Wall drawing remains a Layout tool; showing its options
+alone does not arm drawing. Pickers retain published static PNGs; no model-capture
+queue or thumbnail-demand mechanism is introduced.
+
+Tables edit the encounter's root declarations independently of map selection.
+The existing TablesPanel, entry grammar and vocabulary are shared, not copied.
+Studio table names commit only on explicit Apply/Enter; Cancel/Escape discards the
+name token. Entry fields keep their existing document-edit semantics. Multiple
+entries may be authored on each trigger. Section or home navigation never submits
+a name; table-name drafts remain mounted across homes.
+
+`EncounterStudioSession.commitTables` accepts only `SiteScope.tables`, preserving
+all other scope, geometry and bindings through the existing guarded document
+transaction. Absence omits the key; equal writes add no history. Retired callbacks
+refuse. Undo/Redo, draft storage and strict completed save/export share the one
+owner. Renaming/removing tables does not rewrite references or compute behavior.
 
 ## Shared answer tables at the root (#1201)
 

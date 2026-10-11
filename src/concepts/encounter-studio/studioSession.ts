@@ -8,6 +8,7 @@ import type {
   RoomDraftDocument,
   RoomHexCell,
 } from '../world-building/roomDraft';
+import type { SiteScope } from '../world-building/siteScope';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
 import type {
@@ -166,6 +167,9 @@ export interface EncounterStudioSession {
   readonly intentEpoch: number;
   readonly arrange: StudioArrangeSelection | null;
   commitArrange(intent: StudioArrangeIntent): boolean;
+  /** Root behavior declarations only; absence removes tables. Ordinary draft
+   * gate, one shared history transaction, retired snapshots refuse changes. */
+  commitTables(tables: SiteScope['tables']): boolean;
   mapLabelSelection: {
     readonly selectedId: string | null;
     select(id: string | null): boolean;
@@ -208,7 +212,11 @@ export interface EncounterStudioSession {
   dismissNotice(): void;
 }
 
+export type StudioHome = 'build' | 'regions' | 'encounter';
+
 export interface EncounterStudioPresentation {
+  /** Presentation context fences hidden map input; old callers default to Build. */
+  home?: StudioHome;
   view: EncounterStudioView;
   render(session: EncounterStudioSession): ReactNode;
 }

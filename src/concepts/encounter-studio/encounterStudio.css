@@ -389,3 +389,134 @@
   border-left: 2px solid var(--wb-accent);
   background: var(--wb-raised);
 }
+
+/* One options slot. Hiding a section never removes its form from the tree. */
+.es-sidebar {
+  pointer-events: auto;
+  align-self: flex-end;
+  width: 100%;
+  max-height: calc(100dvh - 10rem);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px #0008;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.es-sidebar-compact {
+  width: min(24rem, 100%);
+}
+.es-sidebar [hidden],
+.es-sidebar[hidden] {
+  display: none;
+}
+.es-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--wb-border);
+}
+.es-sidebar-header .es-buttons {
+  flex-wrap: nowrap;
+}
+.es-sidebar-header button {
+  padding: 0.35rem 0.5rem;
+}
+.es-sidebar-body {
+  overflow: auto;
+  min-height: 0;
+}
+.es-sidebar .es-context-panel {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+.es-tables {
+  padding: 0.85rem;
+}
+.es-tables .wb-policy-form {
+  min-width: 0;
+}
+.es-tables input,
+.es-tables select {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.es-tables .wb-policy-list {
+  margin-bottom: 0;
+}
+.es-tables summary {
+  overflow-wrap: anywhere;
+}
+
+.encounter-studio [hidden] {
+  display: none;
+}
+.es-work-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 300px;
+}
+.es-map-workspace {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-height: 0;
+}
+.es-encounter-home {
+  position: absolute;
+  inset: 0;
+  padding: 1.25rem;
+  overflow: auto;
+  background: var(--wb-bg);
+}
+.es-encounter-home > * {
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.es-encounter-home .wb-policy-form {
+  min-width: 0;
+}
+.es-encounter-home input,
+.es-encounter-home select {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.es-region-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.es-region-list button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.es-3d-inspection {
+  grid-template-columns: minmax(0, 1fr);
+}
+.es-3d-inspection > .es-canvas {
+  grid-row: 1;
+  grid-column: 1;
+}
+.es-sidebar h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+@media (max-width: 800px) {
+  .es-3d-inspection {
+    grid-template-rows: minmax(300px, 1fr);
+  }
+}

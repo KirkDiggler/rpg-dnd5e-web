@@ -84,6 +84,7 @@ import {
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
+import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 
 const boundary = vi.hoisted(() => ({
@@ -262,7 +263,7 @@ function mount(
   );
 }
 function button(name: string): HTMLElement {
-  return screen.getByRole('button', { name });
+  return studioButton(name);
 }
 function switchTo(name: 'Layout' | '3D'): void {
   fireEvent.click(button(name));
@@ -283,6 +284,14 @@ const zero = { q: 0, r: 0 };
 const one = { q: 1, r: 0 };
 const two = { q: 2, r: 0 };
 function gesture(first: RoomHexCell, last = first): void {
+  // Floor fixtures explicitly arm Paint now that Build starts in Select.
+  if (
+    screen.queryByRole('button', { name: 'Paint' }) &&
+    screen
+      .getByRole('button', { name: 'Select' })
+      .getAttribute('aria-pressed') === 'true'
+  )
+    fireEvent.click(button('Paint'));
   fireEvent.pointerDown(surface(), { ...at(first), pointerId: 7, button: 0 });
   fireEvent.pointerMove(surface(), { ...at(last), pointerId: 7 });
   fireEvent.pointerUp(surface(), { ...at(last), pointerId: 7, button: 0 });
@@ -325,6 +334,164 @@ function moved(scene: WorldScene): WorldScene {
     0.5;
   return next;
 }
+
+describe('Studio authoring homes through the real owner', () => {
+  it('fences hidden 3D mutations and old callbacks across homes while table commits still use shared history', () => {
+    const storage = new MemoryStorage(seed());
+    let session!: EncounterStudioSession;
+    const owner = (home: 'build' | 'regions' | 'encounter') => (
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          home,
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const mounted = render(owner('build'));
+    act(() =>
+      session.viewportProps.onSelect([session.document.draft.scene.items[0].id])
+    );
+    const oldViewport = session.viewportProps;
+    const before = session.document;
+    const writes = storage.roomWrites();
+    const nextScene = moved(before.draft.scene);
+    mounted.rerender(owner('encounter'));
+    for (const event of [
+      { key: 'Delete' },
+      { key: 'r' },
+      { key: 'd', ctrlKey: true },
+    ])
+      fireEvent.keyDown(window, event);
+    act(() => {
+      oldViewport.onTransformCommit(nextScene);
+      session.viewportProps.onTransformCommit(nextScene);
+      expect(session.commitFloor([one], 'paint')).toBe(false);
+    });
+    expect(session.document).toBe(before);
+    expect(storage.roomWrites()).toBe(writes);
+    mounted.rerender(owner('build'));
+    act(() => oldViewport.onTransformCommit(nextScene));
+    expect(session.document).toBe(before);
+    mounted.rerender(owner('encounter'));
+    act(() => expect(session.commitTables({ patrol: {} })).toBe(true));
+    expect(session.document.scope.tables).toEqual({ patrol: {} });
+    expect(session.document.draft).toEqual(before.draft);
+    act(() => session.undo());
+    expect(session.document).toEqual(before);
+  });
+
+  it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {
+    const storage = new MemoryStorage(createRegionLightingDocument(false));
+    mount(storage);
+    const before = storage.document();
+    expect(button('Select').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region left'));
+    fireEvent.change(screen.getByLabelText('Background light (%)'), {
+      target: { value: '25' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    expect(
+      storage.document().draft.scene.authoringRegions![0].lighting
+    ).toEqual({ background: 0.25 });
+    expect(storage.document().draft.room).toEqual(before.draft.room);
+    expect(storage.document().scope).toEqual(before.scope);
+    fireEvent.click(button('Build'));
+    expect(
+      screen.queryByRole('button', { name: 'Use baseline appearance' })
+    ).toBeNull();
+    expect(button('Edit region settings')).toBeTruthy();
+    fireEvent.click(button('Edit region settings'));
+    expect(
+      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+    ).toBe('25');
+  });
+});
+
+describe('Studio configuration tables through the real owner', () => {
+  it('authors multiple rows, preserves unrelated data, shares Undo/Redo and reloads in either view', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    const mounted = mount(storage);
+    const baseline = storage.document();
+    fireEvent.click(button('Tables'));
+    fireEvent.click(button('Add table'));
+    expect(storage.document().scope.tables).toEqual({ 'table-1': {} });
+    fireEvent.click(screen.getByLabelText('Table table-1'));
+    fireEvent.change(screen.getByLabelText('Table id for table-1'), {
+      target: { value: 'patrol' },
+    });
+    fireEvent.click(button('Apply table name'));
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(2);
+    const declared = storage.document();
+    expect(declared.draft).toEqual(baseline.draft);
+    expect({ ...declared.scope, tables: undefined }).toEqual({
+      ...baseline.scope,
+      tables: undefined,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(1);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(declared);
+    fireEvent.click(button('Build'));
+    switchTo('3D');
+    fireEvent.click(button('Encounter'));
+    expect(
+      screen.getByRole('region', { name: 'Encounter configuration' })
+    ).toBeTruthy();
+    expect(storage.document()).toEqual(declared);
+    mounted.unmount();
+    mount(storage);
+    fireEvent.click(button('Tables'));
+    expect(screen.getByLabelText('Table patrol')).toBeTruthy();
+    expect(storage.document()).toEqual(declared);
+  });
+
+  it('table intents preserve absence on no-op and reject a captured stale snapshot', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const initial = session.document;
+    const writes = storage.roomWrites();
+    act(() => expect(session.commitTables(undefined)).toBe(true));
+    expect(session.document).toBe(initial);
+    expect(storage.roomWrites()).toBe(writes);
+    const stale = session.commitTables;
+    act(() => expect(session.commitTables({ patrol: {} })).toBe(true));
+    const changed = session.document;
+    act(() => expect(stale({ obsolete: {} })).toBe(false));
+    expect(session.document).toBe(changed);
+    expect(session.document.scope.tables).toEqual({ patrol: {} });
+    act(() => session.undo());
+    expect(session.document.scope).not.toHaveProperty('tables');
+  });
+});
 
 describe('Encounter Studio joined document boundary', () => {
   it('draw switch return undo redo reload uses one document and preserves the populated payload', async () => {
@@ -667,7 +834,7 @@ function submitForm(name: string): void {
   fireEvent.submit(screen.getByRole('form', { name }));
 }
 function resize(width: number, height: number): void {
-  if (!screen.queryByLabelText('Width (hexes)'))
+  if (!screen.queryByRole('textbox', { name: 'Width (hexes)' }))
     fireEvent.click(button('Size'));
   changeField('Width (hexes)', String(width));
   changeField('Height (hexes)', String(height));
@@ -836,7 +1003,9 @@ describe('Task 6 populated workspace/label integration', () => {
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
     resize(73, 48); // no-op dimensions
+    fireEvent.click(button('Label'));
     changeField('Existing label', kitchenId);
+    fireEvent.click(button('Arrange'));
     changeField('Rename label', 'Staged only');
     changeField('Rename label', 'Kitchen');
     submitForm('Arrange selected noun'); // explicit same text
@@ -851,6 +1020,7 @@ describe('Task 6 populated workspace/label integration', () => {
     fireEvent.click(button('Size'));
     changeField('Width (hexes)', '74');
     fireEvent.click(button('Cancel dimensions'));
+    fireEvent.click(button('Label'));
     changeField('Label name', 'Never placed');
     submitForm('New map label');
     // Arming from a selected label must really succeed before cancellation:
@@ -1053,7 +1223,10 @@ const castleWallRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
 const snapLabel = 'Snap to hex centres, corners and side midpoints';
 function chooseAppearance(ref: string, search: string): void {
   const creation = screen.queryByRole('region', { name: 'New wall palette' });
-  if (!creation && !screen.queryByLabelText('Search wall appearances'))
+  if (
+    !creation &&
+    !screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+  )
     fireEvent.click(button('Change wall appearance'));
   const region =
     creation ?? screen.getByRole('region', { name: 'Arrange selection' });
@@ -1138,6 +1311,9 @@ function wallHit(id: string): Element {
   return surface().querySelector(`line[data-wall-id="${id}"]`)!;
 }
 function selectWall(storage: MemoryStorage, wall: StructuralWall): void {
+  fireEvent.click(button('Build'));
+  if (button('Select').getAttribute('aria-pressed') !== 'true')
+    fireEvent.click(button('Select'));
   const event = pointer(storage, wallMidpoint(wall));
   fireEvent.pointerDown(wallHit(wall.id), event);
   fireEvent.pointerUp(surface(), event);
@@ -1322,7 +1498,9 @@ describe('joined structural walls in the populated Studio document', () => {
       states.push(next);
     }
     fireEvent.click(button('Dismiss wall controls'));
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     expect(storage.document()).toEqual(states.at(-1));
     fireEvent.click(button('Wall'));
     expect((screen.getByLabelText(snapLabel) as HTMLInputElement).checked).toBe(
@@ -1492,12 +1670,12 @@ describe('joined structural walls in the populated Studio document', () => {
     fireEvent.click(button('Select'));
     const wall = original.draft.room.walls![0];
     selectWall(storage, wall);
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
     selectWall(storage, wall); // unchanged selection does not force controls to reappear
     expect(
       screen.queryByRole('form', { name: 'Arrange selected noun' })
     ).toBeNull();
-    fireEvent.click(button('Arrange')); // explicit reopen
+    fireEvent.click(button('Options (N)')); // explicit reopen
     changeField('Wall midpoint X', String(wallMidpoint(wall).x));
     changeField('Wall midpoint Z', String(wallMidpoint(wall).z));
     submitForm('Arrange selected noun');
@@ -3189,10 +3367,11 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     return document;
   }
   function place(name: string, x: number, z: number, kind = 'room'): void {
-    fireEvent.click(button('Label'));
-    fireEvent.change(screen.getByLabelText('Label kind'), {
-      target: { value: kind },
-    });
+    if (kind === 'room') {
+      fireEvent.click(button('Regions'));
+      fireEvent.click(button('Arrange')); // region list/settings in this home
+      fireEvent.click(button('New region'));
+    } else fireEvent.click(button('Label'));
     fireEvent.change(screen.getByLabelText('Label name'), {
       target: { value: name },
     });
@@ -3206,10 +3385,16 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.click(button('Place label at coordinates'));
   }
   function selectLabel(name: string): void {
+    fireEvent.click(
+      button(
+        screen.queryByLabelText(`Edit region ${name}`) ? 'Regions' : 'Build'
+      )
+    );
     fireEvent.keyDown(
       screen.getByRole('button', { name: `Select map label ${name}` }),
       { key: 'Enter' }
     );
+    fireEvent.click(button('Arrange'));
   }
   function areaCount(): number {
     return surface().querySelectorAll('[data-region-id]').length;
@@ -3232,6 +3417,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(areaCount()).toBe(2);
     expect(storage.document().draft.room).toEqual(original.draft.room);
     const writes = storage.roomWrites();
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const divider = surface().querySelector('[data-wall-id="divider"]')!;
     fireEvent.pointerDown(divider, {
@@ -3424,6 +3610,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     const intent = structuredClone(
       storage.document().draft.scene.authoringRegions
     );
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const north = surface().querySelector('[data-wall-id="studio-wall"]')!;
     fireEvent.pointerDown(north, { ...at(zero), button: 0, pointerId: 7 });
@@ -3449,6 +3636,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.click(button('Use enclosing walls'));
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const reloadedNorth = surface().querySelector(
       '[data-wall-id="studio-wall"]'
@@ -3578,8 +3766,10 @@ describe('Studio staged region lighting integrated presentation', () => {
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
-    const select = () =>
+    const select = () => {
+      fireEvent.click(button('Regions'));
       fireEvent.keyDown(button('Select map label left'), { key: 'Enter' });
+    };
     const field = (name: string, value: string) =>
       fireEvent.change(screen.getByLabelText(name), { target: { value } });
     select();
@@ -3587,11 +3777,11 @@ describe('Studio staged region lighting integrated presentation', () => {
     const writes = storage.roomWrites();
     field('Background light (%)', '15');
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    fireEvent.click(button('Arrange'));
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
+    fireEvent.click(button('Options (N)'));
     expect(
       (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
-    ).toBe('');
+    ).toBe('15');
     field('Background light (%)', '15');
     switchTo('3D');
     expect(viewport().roomAuthoring!.regionLighting!.areas).toEqual([]);
@@ -3644,6 +3834,7 @@ describe('Studio staged region lighting integrated presentation', () => {
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(after);
+    fireEvent.click(button('Regions'));
     fireEvent.keyDown(button('Select map label Kitchen'), { key: 'Enter' });
     expect(
       (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
