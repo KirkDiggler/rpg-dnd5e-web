@@ -7,15 +7,18 @@ export function StudioWallConstraints({
   editing: StudioWallEditing;
 }): React.JSX.Element {
   return (
-    <div className="es-wall-constraints">
+    <div
+      className="es-wall-constraints"
+      title="Endpoint snaps join exact points. Nearby perpendicular corners can trim or extend both ends in one Undo."
+    >
       <label>
         <input
           type="checkbox"
-          aria-label="Snap to wall endpoints"
+          aria-label="Snap corners"
           checked={editing.endpointSnapEnabled}
           onChange={(event) => editing.setEndpointSnap(event.target.checked)}
         />
-        Snap to wall endpoints
+        Snap corners
       </label>
       <label>
         <input

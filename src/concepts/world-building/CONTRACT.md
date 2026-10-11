@@ -68,7 +68,14 @@ assets without a door leaf role. No appearance is armed by default.
 Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
 centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
 targets other walls' endpoints within12 CSS pixels, and takes priority over hex
-snapping during drawing and endpoint reshaping. It copies the target coordinates
+snapping during drawing and endpoint reshaping. The control is labeled **Snap
+corners**: a nearby perpendicular pair also previews both ends at their line
+intersection, trimming/extending them together while preserving directions. Both
+the pointer and the target end must be within the snap radius. A moved target end
+already joined to a third wall, or protected by an opening, refuses the pair.
+The guarded owner re-derives the second endpoint from its current snapshot and
+commits both walls in one history/storage transaction. No sequential partial
+commit or automatic region-witness rebinding occurs. It copies the target coordinates
 exactly and marks an accepted preview as **Joined endpoint**. Equal-distance ties
 use wall id/endpoint order, not input array order. Both settings remain editor-only
 and survive context dismissal/view changes; changing either retires the gesture.
@@ -113,9 +120,42 @@ or rotation in the same Apply; appearance changes may accompany them. Exact no-o
 retain geometry, optional absence, storage and history. This is an authoring snap,
 not a region-detector tolerance: no loaded gaps are welded or walls straightened.
 Numeric length remains collinear; existing whole-wall dragging remains available.
+Selected endpoints have Start/End labels and hover X/Z values; Layout also shows
+a Start→End direction arrow. Opposite headings such as0 and−180 can be parallel;
+heading display never reverses authored wall identity or opening distances.
 Appearance changes do not change the independent blocker. Neither renderer stores
 derived spans or a second door pose; the existing 3D consumes the same canonical
 walls and door bindings.
+
+### Supported automatic visual corners
+
+Only catalog appearances declaring `wall-miter-90` opt into the plain-wall fit.
+The enrolled appearance is an explicit choice, not a silent replacement of older
+Castle walls. Two shared authored endpoints, perpendicular directions, matching
+authored height/thickness/elevation and solid terminal pieces longer than their
+depth allow a common miter. Junctions, opening conflicts, unequal dimensions and
+unsupported appearances retain unfitted art with a selected-wall explanation.
+Snapping and rendering are separate: disabling snapping does not undo an existing
+visual fit, and rendering never moves endpoints, blockers or region witnesses.
+
+The shared asset leaf resolves `WallBody_v1` and all material primitives, plus
+transformed Start/End/Front/Back/Top markers. Body planes determine the instance
+fit and datum; the existing repeat count remains a distribution heuristic, not an
+alternative body-plane authority. Shared0.75 conversion applies once. Parent
+piece groups use unit scale for this path; the leaf applies the marker-based fit.
+Only participating end positions change in cloned instance buffers. Remote-end
+positions, cap materials/UVs and cached geometry/textures stay untouched. Side UVs
+use their original chart gradients at physical fitted distances, with derived
+per-wall Start-relative offsets continuous across pieces/openings. Normals and
+tangents are recomputed for paired color/normal maps. No room-loop texture phase or material-selection
+behavior is inferred. Owned buffers are disposed on replacement/unmount; unchanged
+fit values preserve instance resources. Other props/actors/thumbnails use the
+unchanged ordinary model path. Studio derives joins only from its supplied walls;
+no gameplay visibility authority is introduced.
+
+A provider update may carry aperture-fit doorway assets. The legacy complete-door
+tool refuses `wall-opening` candidates until its separate anchor-aware consumer
+is implemented; assembly bounds must not be offered as aperture dimensions.
 
 Selected endpoint handles precede labels, then wall bodies, then empty-space
 deselection; middle-button pan wins. Paint/Erase/Rectangle remain floor-owned.

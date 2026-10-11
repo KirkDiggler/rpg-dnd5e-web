@@ -186,6 +186,7 @@ import type {
   WorldScene,
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
+import { applyWallCornerJoin, type WallCornerJoin } from './wallCornerJoins';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -1559,7 +1560,7 @@ export function WorldBuildingConcept({
     return commit(scene, selectedIds, room);
   };
   const createStudioWall = useCallback(
-    (line: WallLine): boolean => {
+    (line: WallLine, join?: WallCornerJoin): boolean => {
       if (refuseWhilePublishing()) return false;
       const entry = wallAssetRef
         ? WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)
@@ -1598,7 +1599,15 @@ export function WorldBuildingConcept({
           thickness: entry.asset.boundsMeters[2],
           elevation: 0,
         });
-        if (!commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] }))
+        const joinedWalls = join
+          ? applyWallCornerJoin(walls, line, join)
+          : walls;
+        if (
+          !commit(scene, [], {
+            ...roomDraft.room,
+            walls: [...joinedWalls, wall],
+          })
+        )
           return false;
         setSelectedIds([]);
         setSelectedActorId(null);
@@ -1669,16 +1678,25 @@ export function WorldBuildingConcept({
     [roomTool, selectStudioWall]
   );
   const editWall = useCallback(
-    (next: StructuralWall): boolean => {
+    (next: StructuralWall, join?: WallCornerJoin): boolean => {
       if (!walls.some((wall) => wall.id === next.id)) {
         setNotice(`Wall edit refused; unknown wall ${next.id}.`);
         return false;
       }
-      return commitWalls(
-        walls.map((entry) => (entry.id === next.id ? next : entry))
-      );
+      try {
+        const updated = walls.map((entry) =>
+          entry.id === next.id ? next : entry
+        );
+        return commitWalls(
+          join
+            ? applyWallCornerJoin(updated, next.line, join, next.id)
+            : updated
+        );
+      } catch (error) {
+        return rejectEdit(error);
+      }
     },
-    [commitWalls, walls]
+    [commitWalls, walls, rejectEdit]
   );
   const rotateSelectedWall = useCallback(
     (angle: number) => {
@@ -4458,10 +4476,10 @@ export function WorldBuildingConcept({
               return true;
             }),
             create: guardSnapshotIntent(createStudioWall),
-            edit: guardSnapshotIntent((next) =>
+            edit: guardSnapshotIntent((next, join) =>
               !walls.some((wall) => wall.id === next.id) ||
               wallGestureActive(next.id)
-                ? editWall(next)
+                ? editWall(next, join)
                 : false
             ),
             remove: guardSnapshotIntent((id) =>

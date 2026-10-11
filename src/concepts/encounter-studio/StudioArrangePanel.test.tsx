@@ -213,13 +213,12 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const joined = owner(diagonalDocument());
     joined.selectWall();
     expect(
-      (screen.getByLabelText('Snap to wall endpoints') as HTMLInputElement)
-        .checked
+      (screen.getByLabelText('Snap corners') as HTMLInputElement).checked
     ).toBe(true);
     const before = joined.session.document;
     const writes = joined.writes();
     const stale = joined.session.wallEditing.edit;
-    fireEvent.click(screen.getByLabelText('Snap to wall endpoints'));
+    fireEvent.click(screen.getByLabelText('Snap corners'));
     expect(joined.session.wallEditing.endpointSnapEnabled).toBe(false);
     act(() =>
       expect(stale({ ...before.draft.room.walls![0], label: 'Stale' })).toBe(

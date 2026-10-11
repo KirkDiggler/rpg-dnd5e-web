@@ -43,6 +43,7 @@ import {
   wallAngleReference,
   type WallAngleReference,
 } from '../world-building/wallAngleConstraint';
+import { snapPerpendicularCorner } from '../world-building/wallCornerJoins';
 import {
   containsWorkspacePoint,
   workspaceBounds,
@@ -446,16 +447,33 @@ export function LayoutViewport({
             undefined,
             edit.constraint
           );
+          const desired = edit.constraint
+            ? constrainWallPoint({ ...edit.constraint, point: world }).point
+            : world;
+          const corner = edit.editing.endpointSnapEnabled
+            ? snapPerpendicularCorner({
+                line: { start: edit.start, end: desired },
+                endpoint: 'end',
+                point: desired,
+                walls: draft.room.walls ?? [],
+                radius: 12 / currentTransform.scale,
+              })
+            : undefined;
           candidate = {
-            line: { start: edit.start, end: target.point },
-            point: target.point,
-            feedback:
-              target.feedback ??
-              (target.joined
-                ? 'Joined endpoint'
-                : target.snapped
-                  ? 'Snapped'
-                  : 'Free point'),
+            corner,
+            line: {
+              start: edit.start,
+              end: corner?.join.point ?? target.point,
+            },
+            point: corner?.join.point ?? target.point,
+            feedback: corner
+              ? 'Joined corner · both ends'
+              : (target.feedback ??
+                (target.joined
+                  ? 'Joined endpoint'
+                  : target.snapped
+                    ? 'Snapped'
+                    : 'Free point')),
           };
         } else if (edit.endpoint) {
           const requested =
@@ -472,23 +490,42 @@ export function LayoutViewport({
             edit.source.id,
             edit.constraint
           );
+          const desired = edit.constraint
+            ? constrainWallPoint({ ...edit.constraint, point: requested }).point
+            : requested;
+          const line = edit.constraint
+            ? { ...edit.source.line, [edit.endpoint]: desired }
+            : edit.source.line;
+          const corner = edit.editing.endpointSnapEnabled
+            ? snapPerpendicularCorner({
+                line,
+                endpoint: edit.endpoint,
+                point: desired,
+                walls: draft.room.walls ?? [],
+                excludedWallId: edit.source.id,
+                radius: 12 / currentTransform.scale,
+              })
+            : undefined;
           const result = reshapeWallEndpoint({
             wall: edit.source,
             endpoint: edit.endpoint,
-            point: target.point,
+            point: corner?.join.point ?? target.point,
           });
           candidate = {
+            corner: result.clamped ? undefined : corner,
             wall: result.wall,
             line: result.wall.line,
             point: result.wall.line[edit.endpoint],
             feedback: result.clamped
               ? 'Clamped to preserve openings'
-              : (target.feedback ??
-                (target.joined
-                  ? 'Joined endpoint'
-                  : target.snapped
-                    ? 'Snapped'
-                    : 'Free point')),
+              : corner
+                ? 'Joined corner · both ends'
+                : (target.feedback ??
+                  (target.joined
+                    ? 'Joined endpoint'
+                    : target.snapped
+                      ? 'Snapped'
+                      : 'Free point')),
           };
         } else {
           const target = snapWallPoint({
@@ -856,13 +893,19 @@ export function LayoutViewport({
       const { source, preview, valid, editing } = gesture.wall;
       if (!gesture.moved || !valid || !preview) return;
       if (source && preview.wall) {
-        if (JSON.stringify(source) !== JSON.stringify(preview.wall))
-          editing.edit(preview.wall);
+        if (
+          preview.corner ||
+          JSON.stringify(source) !== JSON.stringify(preview.wall)
+        ) {
+          if (preview.corner) editing.edit(preview.wall, preview.corner.join);
+          else editing.edit(preview.wall);
+        }
       } else if (
         preview.line.start.x !== preview.line.end.x ||
         preview.line.start.z !== preview.line.end.z
       ) {
-        editing.create(preview.line);
+        if (preview.corner) editing.create(preview.line, preview.corner.join);
+        else editing.create(preview.line);
       }
     } else if (gesture.label) {
       const { id, location, origin, valid } = gesture.label;

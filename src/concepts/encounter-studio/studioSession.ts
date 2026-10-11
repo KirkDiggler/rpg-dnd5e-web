@@ -17,6 +17,7 @@ import type {
 } from '../world-building/studioArrange';
 import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
 import type { WorldPoint } from '../world-building/types';
+import type { WallCornerJoin } from '../world-building/wallCornerJoins';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 export type {
@@ -96,8 +97,8 @@ export interface StudioWallEditing {
   setEndpointSnap(enabled: boolean): boolean;
   setRightAngle(enabled: boolean): boolean;
   /** Accepted no-ops do not add history. Create stays in caller drawing mode. */
-  create(line: WallLine): boolean;
-  edit(next: StructuralWall): boolean;
+  create(line: WallLine, join?: WallCornerJoin): boolean;
+  edit(next: StructuralWall, join?: WallCornerJoin): boolean;
   remove(id: string): boolean;
   reportRefusal(message: string): void;
 }

@@ -335,6 +335,62 @@ function moved(scene: WorldScene): WorldScene {
   return next;
 }
 
+describe('two-wall corner snaps through the real owner', () => {
+  it('previews both perpendicular ends and commits one preserved document/Undo step', () => {
+    const doc = seed();
+    const first = doc.draft.room.walls![0];
+    first.line = { start: { x: 0.1, z: 8 }, end: { x: 0.1, z: 0.12 } };
+    first.blocker.footprint.width = 7.88;
+    doc.draft.room.walls!.push({
+      ...structuredClone(first),
+      id: 'near-corner',
+      openings: [],
+      line: { start: { x: 0.18, z: 0.05 }, end: { x: 8, z: 0.05 } },
+      blocker: {
+        ...first.blocker,
+        footprint: { ...first.blocker.footprint, width: 7.82 },
+      },
+    });
+    const storage = new MemoryStorage(doc);
+    mount(storage);
+    const before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const writes = storage.roomWrites();
+    const handle = surface().querySelector('[data-wall-endpoint="end"]')!;
+    expect(handle.querySelector('title')?.textContent).toContain('End · X');
+    expect(surface().querySelector('[data-wall-direction]')).not.toBeNull();
+    fireEvent.pointerDown(handle, pointer(storage, first.line.end));
+    fireEvent.pointerMove(surface(), pointer(storage, { x: 0.12, z: 0.07 }));
+    expect(
+      surface().querySelector(
+        '[data-wall-feedback="Joined corner · both ends"]'
+      )
+    ).not.toBeNull();
+    const other = surface().querySelector(
+      '[data-rendered-wall-id="near-corner"] [data-wall-span]'
+    )!;
+    const end = surface().querySelector('[data-wall-endpoint="end"]')!;
+    expect(other.getAttribute('x1')).toBe(end.getAttribute('cx'));
+    expect(other.getAttribute('y1')).toBe(end.getAttribute('cy'));
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerUp(surface(), pointer(storage, { x: 0.12, z: 0.07 }));
+    const after = storage.document();
+    expect(after.draft.room.walls![0].line.end).toEqual({ x: 0.1, z: 0.05 });
+    expect(after.draft.room.walls![1].line.start).toEqual({ x: 0.1, z: 0.05 });
+    expect(after.draft.room.walls![0].line.start).toEqual(first.line.start);
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(after.scope).toEqual(before.scope);
+    expect(after.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(after);
+  });
+});
+
 describe('right-angle wall editing through the real owner', () => {
   it('joins a rotated guide, previews then commits once, and preserves the document through Undo/Redo', () => {
     const doc = seed();

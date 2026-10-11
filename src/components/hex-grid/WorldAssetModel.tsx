@@ -5,6 +5,10 @@ import {
 } from '@/generated/worldAssetCatalog';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import {
+  fitPlainWallInstance,
+  type PlainWallFit,
+} from '@/rendering/plainWallFit';
 import { propVisualScale } from '@/rendering/propVisualScale';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import { useGLTF } from '@react-three/drei';
@@ -51,6 +55,8 @@ export interface WorldAssetModelProps {
   heightScale?: number;
   remembered?: boolean;
   visualLighting?: RegionLightingMaterialBinding;
+  /** Visual-only fitting for an explicitly enrolled plain wall body. */
+  plainWallFit?: PlainWallFit;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -281,6 +287,7 @@ function LoadedWorldAssetModel({
   heightScale,
   remembered,
   visualLighting,
+  plainWallFit,
 }: {
   assetRef: string;
   url: string;
@@ -297,9 +304,29 @@ function LoadedWorldAssetModel({
   heightScale: number;
   remembered: boolean;
   visualLighting?: RegionLightingMaterialBinding;
+  plainWallFit?: PlainWallFit;
 }) {
   const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
+  const instance = useMemo(() => {
+    const object = scene.clone(true);
+    const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
+    return {
+      object,
+      fit,
+      ...(fit
+        ? fitPlainWallInstance(object, fit)
+        : { profile: undefined, owned: [] as THREE.BufferGeometry[] }),
+    };
+  }, [scene, fitKey]);
+  const cloned = instance.object;
+  const fit = instance.fit;
+  useEffect(
+    () => () => {
+      for (const geometry of instance.owned) geometry.dispose();
+    },
+    [instance]
+  );
   useRememberedModelTint(
     cloned,
     remembered,
@@ -448,6 +475,19 @@ function LoadedWorldAssetModel({
   }, [aboveTiles, boundsMeters, heightScale, resolved]);
 
   const measuredBounds = useMemo<PropModelBounds>(() => {
+    if (fit)
+      return {
+        minY: 0,
+        maxY: fit.height,
+        height: fit.height,
+        depth: fit.depth,
+        width:
+          fit.width +
+          (((fit.start === undefined ? 0 : 1) +
+            (fit.end === undefined ? 0 : 1)) *
+            fit.depth) /
+            2,
+      };
     if (resolved?.above) {
       // The assembly's own height scales, and the opening is the floor: a
       // door cannot report less than the doorway it is a door for.
@@ -479,24 +519,47 @@ function LoadedWorldAssetModel({
       height: boundsMeters[1] * heightScale,
       depth: boundsMeters[2],
     };
-  }, [boundsMeters, heightScale, resolved]);
+  }, [boundsMeters, heightScale, resolved, fit]);
   useEffect(
     () => onBoundsMeasured?.(measuredBounds),
     [measuredBounds, onBoundsMeasured]
   );
 
   if (missing) return null;
+  const profile = instance.profile;
+  const fittedScale: [number, number, number] | undefined =
+    fit && profile
+      ? [
+          SYNTY_SCALE * (fit.width / (profile.width * SYNTY_SCALE)),
+          SYNTY_SCALE * (fit.height / (profile.height * SYNTY_SCALE)),
+          SYNTY_SCALE * (fit.depth / (profile.depth * SYNTY_SCALE)),
+        ]
+      : undefined;
+  const offset =
+    fittedScale && profile
+      ? new THREE.Vector3(
+          -profile.centerX * fittedScale[0],
+          -profile.baseY * fittedScale[1],
+          -profile.centerZ * fittedScale[2]
+        ).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationY)
+      : new THREE.Vector3();
 
   return (
     <group
       name="world-asset-model"
-      position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
-      rotation={[0, rotationY, 0]}
-      scale={[
-        SYNTY_SCALE,
-        SYNTY_SCALE * (resolved ? 1 : heightScale),
-        SYNTY_SCALE,
+      position={[
+        position[0] + offset.x,
+        position[1] + DUNGEON_SURFACE_Y + offset.y,
+        position[2] + offset.z,
       ]}
+      rotation={[0, rotationY, 0]}
+      scale={
+        fittedScale ?? [
+          SYNTY_SCALE,
+          SYNTY_SCALE * (resolved ? 1 : heightScale),
+          SYNTY_SCALE,
+        ]
+      }
       onClick={
         onDoorClick
           ? (event) => {
@@ -516,7 +579,9 @@ function LoadedWorldAssetModel({
 /**
  * Generic renderer for provider-normalized world assets. The provider has
  * already baked scale correction, yaw, centering, and grounding into the GLB;
- * the consumer adds only authored position/yaw and the shared Synty scale.
+ * ordinary consumers add authored position/yaw and the shared Synty scale.
+ * The optional enrolled plain-wall path uses declared body planes for fitting
+ * and owns only its changed instance geometry, never cached source buffers.
  * Declared role names are bound per instance; no door node name appears here.
  */
 export function WorldAssetModel({
@@ -532,12 +597,15 @@ export function WorldAssetModel({
   open,
   onDoorClick,
   onDoorsResolved,
+  plainWallFit,
 }: WorldAssetModelProps) {
   const safeHeightScale = propVisualScale(heightScale);
   const asset = resolveWorldAsset(assetRef, (diagnostic) =>
     onDiagnostic?.(diagnostic)
   );
   if (!asset) return null;
+  if (plainWallFit && !asset.tags.includes('wall-miter-90'))
+    throw new Error('This asset is not enrolled for plain wall fitting.');
   return (
     <LoadedWorldAssetModel
       assetRef={assetRef}
@@ -555,6 +623,7 @@ export function WorldAssetModel({
       heightScale={safeHeightScale}
       remembered={remembered}
       visualLighting={visualLighting}
+      plainWallFit={plainWallFit}
     />
   );
 }

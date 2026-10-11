@@ -10,12 +10,16 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * These leaves render NO guides and NO hit targets: wall hit boxes and the
  * selected-blocker wireframe are editor-only and stay in `StructuralWallVisual`.
  *
- * THE PARENT TRANSFORM OWNS THE FULL EXACT FIT. A piece's parent group carries
+ * Ordinary surfaces: THE PARENT TRANSFORM OWNS THE FULL EXACT FIT. A piece's parent group carries
  * the span pose AND the exact fit scale, including heights the shared model's
  * own `[0.25, 4]` heightScale clamp would otherwise silently shorten: the model
  * is passed its normal `heightScale` and the parent compensates its single
  * `DUNGEON_SURFACE_Y` lift so the floor lift is applied exactly once and is
  * never multiplied by the fit.
+ *
+ * Enrolled plain-wall surfaces instead pass effective world dimensions/end
+ * slopes to the shared leaf, which fits the declared body planes. Their parent
+ * scale is identity; the normal shared scale/floor lift still applies once.
  *
  * Every derived wall mesh never raycasts. A door leaf raycasts ONLY when the
  * caller supplies a click. The editor supplies none, so its preview cannot
@@ -35,9 +39,11 @@ import {
   isRepeatableWallAsset,
   layoutWallPieces,
   wallDirectionYaw,
+  wallLength,
   wallMidpoint,
 } from './structuralWallEditing';
 import type { StructuralWallSurface } from './structuralWalls';
+import type { WallEndFits } from './wallCornerFits';
 import { WorldPropModel } from './WorldPropModel';
 
 /** Where a wall's named marker belongs: at the wall itself, not the origin. A
@@ -133,11 +139,13 @@ export function StructuralWallFallbackMarker({
  */
 export function StructuralWallSurfacePieces({
   wall,
+  endFits,
   maxPieces,
   onMeasured,
   visualLighting,
 }: {
   wall: StructuralWallSurface;
+  endFits?: WallEndFits;
   maxPieces?: number;
   visualLighting?: RegionLightingMaterialBinding;
   onMeasured?: () => void;
@@ -170,6 +178,7 @@ export function StructuralWallSurfacePieces({
     );
   }
   const [widthMeters, heightMeters, depthMeters] = entry.asset.boundsMeters;
+  const capable = entry.asset.tags.includes('wall-miter-90');
   let layouts;
   try {
     layouts = layoutWallPieces({
@@ -199,7 +208,9 @@ export function StructuralWallSurfacePieces({
           // parent's own Y is lowered by the scaled amount: the net floor lift
           // is exactly `DUNGEON_SURFACE_Y`, unscaled, at the authored
           // elevation.
-          const baseY = piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
+          const baseY = capable
+            ? piece.y
+            : piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
           return (
             <group
               key={`${spanIndex}-${pieceIndex}`}
@@ -212,10 +223,38 @@ export function StructuralWallSurfacePieces({
               }}
               position={[piece.point.x, baseY, piece.point.z]}
               rotation={[0, piece.rotationY, 0]}
-              scale={[piece.widthScale, piece.heightScale, piece.depthScale]}
+              scale={
+                capable
+                  ? [1, 1, 1]
+                  : [piece.widthScale, piece.heightScale, piece.depthScale]
+              }
             >
               <WorldPropModel
                 entry={entry}
+                plainWallFit={
+                  capable
+                    ? {
+                        width:
+                          (layout.span.end - layout.span.start) /
+                          layout.pieces.length,
+                        offset:
+                          layout.span.start +
+                          (pieceIndex * (layout.span.end - layout.span.start)) /
+                            layout.pieces.length,
+                        height: wall.appearance.height,
+                        depth: wall.appearance.thickness,
+                        start:
+                          layout.span.start === 0 && pieceIndex === 0
+                            ? endFits?.start
+                            : undefined,
+                        end:
+                          layout.span.end === wallLength(wall) &&
+                          pieceIndex === layout.pieces.length - 1
+                            ? endFits?.end
+                            : undefined,
+                      }
+                    : undefined
+                }
                 visualLighting={visualLighting}
                 position={[0, 0, 0]}
                 rotationY={0}

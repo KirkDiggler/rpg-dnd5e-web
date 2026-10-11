@@ -4,6 +4,7 @@ import {
 } from '../world-building/doorBindingEdits';
 import { wallLength } from '../world-building/structuralWallEditing';
 import { wallSolidIntervals } from '../world-building/structuralWallGeometry';
+import type { WallCornerJoin } from '../world-building/wallCornerJoins';
 import { worldToClient, type LayoutTransform } from './layoutGeometry';
 import type {
   StructuralWall,
@@ -15,6 +16,7 @@ import type {
 export interface LayoutWallPreview {
   line: WallLine;
   wall?: StructuralWall;
+  corner?: { join: WallCornerJoin; wall: StructuralWall };
   point: WorldPoint;
   feedback: string;
 }
@@ -62,11 +64,39 @@ export function LayoutWallOverlay({
       pointerEvents={interactive ? undefined : 'none'}
     >
       {walls.map((source) => {
-        const wall = preview?.wall?.id === source.id ? preview.wall : source;
+        const wall =
+          preview?.wall?.id === source.id
+            ? preview.wall
+            : preview?.corner?.wall.id === source.id
+              ? preview.corner.wall
+              : source;
         if (layer === 'handles') {
           if (wall.id !== selectedId || !interactive) return null;
           return (
             <g key={wall.id}>
+              <path
+                data-wall-direction={wall.id}
+                d={(() => {
+                  const a = project(wall.line.start),
+                    b = project(wall.line.end);
+                  const length = Math.hypot(b.x - a.x, b.y - a.y);
+                  if (length === 0) return '';
+                  const dx = (b.x - a.x) / length,
+                    dy = (b.y - a.y) / length;
+                  const x = (a.x + b.x) / 2,
+                    y = (a.y + b.y) / 2;
+                  return `M ${x - 8 * dx - 5 * dy} ${y - 8 * dy + 5 * dx} L ${x + 5 * dx} ${y + 5 * dy} L ${x - 8 * dx + 5 * dy} ${y - 8 * dy - 5 * dx}`;
+                })()}
+                fill="none"
+                stroke="#a7ffeb"
+                strokeWidth={2}
+                pointerEvents="none"
+              >
+                <title>
+                  Wall direction: Start → End. Opposite headings can be
+                  parallel.
+                </title>
+              </path>
               {(['start', 'end'] as const).map((endpoint) => {
                 const point = project(wall.line[endpoint]);
                 return (
@@ -82,7 +112,9 @@ export function LayoutWallOverlay({
                       strokeWidth={2}
                       pointerEvents="all"
                       aria-label={`${endpoint} endpoint of ${wall.label}`}
-                    />
+                    >
+                      <title>{`${endpoint === 'start' ? 'Start' : 'End'} · X ${wall.line[endpoint].x} · Z ${wall.line[endpoint].z}\nDrag to reshape; Snap corners can trim/extend the other wall too.`}</title>
+                    </circle>
                     <text
                       x={point.x + 10}
                       y={point.y - 10}

@@ -1,5 +1,9 @@
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  deriveWallCornerFits,
+  wallFitAsset,
+} from '../world-building/wallCornerFits';
 import {
   arrangeFields,
   arrangeIntent,
@@ -107,6 +111,10 @@ function SelectedArrange({
     setDraft({});
     setError(null);
   }, [session.document, session.intentEpoch]);
+  const cornerInfo = useMemo(
+    () => deriveWallCornerFits(session.document.draft.room.walls ?? []),
+    [session.document.draft.room.walls]
+  );
   const fields = arrangeFields(selection, FACING_NAMES);
   const renderField = (field: ArrangeField): React.JSX.Element => (
     <StudioArrangeField
@@ -133,6 +141,16 @@ function SelectedArrange({
       <h2>Arrange · {selectionName(selection, session)}</h2>
       {selection.kind === 'wall' && (
         <StudioWallConstraints editing={session.wallEditing} />
+      )}
+      {selection.kind === 'wall' && (
+        <p className="es-help">
+          Heading is Start → End: 0° and −180° can be parallel. Hover an
+          endpoint in Layout for X/Z.{' '}
+          {!wallFitAsset(selection.wall.appearance.assetRef)
+            ? 'This appearance has no verified miter fit. Choose Castle Wall Fit 01 on both walls for automatic flush corners.'
+            : (cornerInfo.reasons.get(selection.wall.id) ??
+              'Supported joined corners fit automatically.')}
+        </p>
       )}
       <p className="es-help">
         {selection.kind === 'scene'

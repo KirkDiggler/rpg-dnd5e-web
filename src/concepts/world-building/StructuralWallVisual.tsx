@@ -1,4 +1,5 @@
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import {
   doorAlongWall,
@@ -33,6 +34,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -50,6 +52,7 @@ import {
   StructuralWallFallbackMarker,
   StructuralWallSurfacePieces,
 } from './StructuralWallSurfaces';
+import { deriveWallCornerFits, type WallEndFits } from './wallCornerFits';
 
 export interface StructuralWallVisualProps {
   walls: readonly StructuralWall[];
@@ -195,6 +198,36 @@ function WallGuides({
           />
         </mesh>
       )}
+      {selected &&
+        (['start', 'end'] as const).map((end) => (
+          <Html
+            key={end}
+            position={[
+              wall.line[end].x,
+              DUNGEON_SURFACE_Y +
+                wall.appearance.elevation +
+                wall.appearance.height +
+                0.15,
+              wall.line[end].z,
+            ]}
+            center
+            zIndexRange={[2, 0]}
+          >
+            <span
+              tabIndex={0}
+              title={`${end === 'start' ? 'Start' : 'End'} · X ${wall.line[end].x} · Z ${wall.line[end].z}. Use Layout to drag endpoint handles.`}
+              style={{
+                whiteSpace: 'nowrap',
+                background: '#15222c',
+                color: '#a7ffeb',
+                padding: '2px 4px',
+                borderRadius: 3,
+              }}
+            >
+              {end === 'start' ? 'Start' : 'End'}
+            </span>
+          </Html>
+        ))}
       {selected && (
         <group
           name={`structural-wall-blocker-${wall.id}`}
@@ -393,12 +426,14 @@ function DoorHit({
 
 function WallVisual({
   wall,
+  endFits,
   doorBindings,
   maxPieces,
   onMeasured,
   visualLighting,
 }: {
   wall: StructuralWall;
+  endFits?: WallEndFits;
   doorBindings?: DoorBindings;
   maxPieces?: number;
   onMeasured: () => void;
@@ -414,6 +449,7 @@ function WallVisual({
       >
         <StructuralWallSurfacePieces
           wall={wall}
+          endFits={endFits}
           maxPieces={maxPieces}
           onMeasured={onMeasured}
           visualLighting={visualLighting}
@@ -472,8 +508,16 @@ export function StructuralWallVisual({
     });
   });
   const preview = doorEditing?.preview;
-  const displayedWalls = walls.map((wall) =>
-    preview?.valid && preview.wall.id === wall.id ? preview.wall : wall
+  const displayedWalls = useMemo(
+    () =>
+      walls.map((wall) =>
+        preview?.valid && preview.wall.id === wall.id ? preview.wall : wall
+      ),
+    [walls, preview]
+  );
+  const cornerFits = useMemo(
+    () => deriveWallCornerFits(displayedWalls, undefined, maxPieces),
+    [displayedWalls, maxPieces]
   );
   const displayedBindings =
     preview?.valid && preview.purpose === 'placement'
@@ -486,6 +530,7 @@ export function StructuralWallVisual({
           <WallVisual
             key={wall.id}
             wall={wall}
+            endFits={cornerFits.fits.get(wall.id)}
             doorBindings={displayedBindings}
             maxPieces={maxPieces}
             onMeasured={bumpGeometry}
