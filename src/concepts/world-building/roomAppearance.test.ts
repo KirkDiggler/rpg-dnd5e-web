@@ -97,7 +97,7 @@ describe('authored actor appearance', () => {
     })!;
     expect(
       arrangeFields(selection, ['n', 'ne'])
-        .find((field) => field.key === 'appearanceRef')
+        .find((field) => field.key === 'appearanceFamily')
         ?.choices?.some((choice) => choice.value === LOOK)
     ).toBe(true);
     const intent = arrangeIntent(selection, {

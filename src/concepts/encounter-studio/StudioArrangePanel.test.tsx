@@ -509,8 +509,12 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       (actor) => actor.id === 'goblin-1'
     )!;
     const writes = joined.writes();
-    const look = 'dnd5e:npcs:kingdom:merchant-01';
-    change('NPC appearance', look);
+    const family = 'dnd5e:npcs:kingdom:merchant-01';
+    const look = 'dnd5e:npcs:kingdom:merchant-01-style-03-b';
+    change('NPC appearance', family);
+    change('Style', '03');
+    change('Skin palette', 'B');
+    expect(joined.writes()).toBe(writes);
     apply();
     expect(joined.calls).toEqual([
       {
@@ -538,8 +542,13 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
     act(() => joined.session.redo());
-    expect(token('NPC appearance')).toBe(look);
+    expect(token('NPC appearance')).toBe(family);
+    expect(token('Style')).toBe('03');
+    expect(token('Skin palette')).toBe('B');
     change('NPC appearance', '');
+    expect((screen.getByLabelText('Style') as HTMLSelectElement).disabled).toBe(
+      true
+    );
     apply();
     expect(
       joined.session.document.draft.room.monsterDeclarations.find(

@@ -391,8 +391,13 @@ A placed monster may carry optional `appearanceRef` beside its existing rules
 `ref` and starting cell. Studio Arrange stages this choice with the actor's other
 dirty fields and commits one owner transaction. Clearing it deletes only the
 optional key; identity, rules/template, faction and position are unchanged unless
-explicitly edited in that same transaction. Valid unknown imported refs remain
-editable and round-trip through local JSON and authored YAML.
+explicitly edited in that same transaction. Appearance, Style and Skin palette
+controls resolve one complete look ref through provider-declared family metadata;
+no filename/ref suffix is parsed to infer a choice and no additional palette
+fields persist on the actor. Family changes retain a combination only when the
+new family explicitly supplies it, otherwise they use its declared default.
+Single-look/unknown families have no editable style/skin controls. Valid unknown
+imported refs remain editable and round-trip through local JSON and authored YAML.
 
 Authoring preview resolves explicit appearances through the pinned NPC catalog.
 Play resolves `PublicMemberInfo.appearance_ref`, as captured for that observer,
@@ -401,7 +406,8 @@ override retains existing rules-based model resolution. A nonempty unknown or
 failed asset displays an unavailable-appearance diagnostic instead of silently
 substituting another body. Both paths reuse ClassCharacterModel and the existing
 standing/downed/animation lifecycle. Appearance selection does not define stats,
-faction, weapon fits or palette variants.
+faction or weapon fits. Palette variants are provider-published full looks, not
+runtime material mutations.
 
 ## Concealment authoring
 

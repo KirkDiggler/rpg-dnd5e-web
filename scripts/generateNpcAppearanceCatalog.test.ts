@@ -382,6 +382,66 @@ describe('exact-body fitted weapon catalog generation', () => {
 });
 
 describe('NPC appearance catalog generator', () => {
+  it('projects explicit look metadata and refuses missing family defaults or invalid descriptors', () => {
+    const fixture = makeFixture();
+    const row = fixture.manifest.npcs.selectedWarrior01!;
+    row.look = { familyRef: row.assetRef, style: '03', skinPalette: 'B' };
+    rewriteProvider(fixture);
+    const generate = () =>
+      generateNpcAppearanceCatalog({
+        providerRoot: fixture.provider,
+        selectionPath: fixture.selectionPath,
+        outputPath: fixture.output,
+      });
+    generate();
+    expect(readFileSync(fixture.output, 'utf8')).toContain(
+      "familyRef: 'dnd5e:npcs:warrior:01'"
+    );
+    row.look = {
+      familyRef: 'dnd5e:npcs:missing:01',
+      style: '03',
+      skinPalette: 'B',
+    };
+    rewriteProvider(fixture);
+    expect(generate).toThrow(/default look/);
+    row.look = null;
+    rewriteProvider(fixture);
+    expect(generate).toThrow(/look must be an object/);
+  });
+
+  it('refuses duplicate style and skin tuples instead of choosing one by iteration order', () => {
+    const fixture = makeFixture();
+    const base = fixture.manifest.npcs.selectedWarrior01!;
+    base.look = { familyRef: base.assetRef, style: '01', skinPalette: 'A' };
+    fixture.manifest.npcs.duplicate = {
+      ...base,
+      assetRef: 'dnd5e:npcs:warrior:02',
+      file: 'npcs/second.glb',
+      downed: 'npcs/second-downed.glb',
+    };
+    put(
+      join(fixture.provider, 'harness/models/synty/npcs/second.glb'),
+      readFileSync(fixture.standingPath)
+    );
+    put(
+      join(fixture.provider, 'harness/models/synty/npcs/second-downed.glb'),
+      readFileSync(fixture.downedPath)
+    );
+    fixture.selection.releases[0]!.appearances.push({
+      ...fixture.selection.releases[0]!.appearances[0]!,
+      manifestId: 'duplicate',
+      assetRef: 'dnd5e:npcs:warrior:02',
+    });
+    rewriteSelection(fixture);
+    rewriteProvider(fixture);
+    expect(() =>
+      generateNpcAppearanceCatalog({
+        providerRoot: fixture.provider,
+        selectionPath: fixture.selectionPath,
+        outputPath: fixture.output,
+      })
+    ).toThrow(/duplicate style\/skin/);
+  });
   it('deterministically emits only data-selected exact appearances and verifies both model bytes', () => {
     const fixture = makeFixture();
     const receipt = generateNpcAppearanceCatalog({

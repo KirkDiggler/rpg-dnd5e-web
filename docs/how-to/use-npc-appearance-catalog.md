@@ -77,7 +77,13 @@ The completion value is a PNG data URL, matching existing palette thumbnail beha
 ## Assign a placed actor's appearance
 
 In Encounter Studio, select a placed creature, open **Arrange**, choose **NPC
-appearance**, and Apply. This edits only the actor's optional `appearanceRef`;
+appearance**, **Style**, and **Skin palette**, then Apply. Style and skin controls
+are available only when the provider publishes choices for that family. Kingdom
+NPCs offer 01–04 × A/B/C. The controls select one complete look ref from catalog
+metadata; they do not construct filenames or store separate palette fields.
+Changing family retains the current combination when the new family offers it,
+otherwise it selects that family's declared default. This edits only the actor's
+optional `appearanceRef`;
 its rules/template ref and faction stay independent. **Use rules default
 appearance** removes the override. The choice follows the existing undo/redo,
 local save/reload and authored YAML paths. A valid imported ref not present in the

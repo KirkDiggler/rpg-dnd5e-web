@@ -134,24 +134,29 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 };
 
 describe('approved NPC appearance publication', () => {
-  it('exports exactly the 13 Goblin and 17 Kingdom identities and no provider extras', () => {
+  it('exports exactly 13 Goblin and 204 Kingdom look identities and no provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: '9a2c348aabbcaf317072539681a866132dbacd3c',
-      releases: ['goblin-war-camp-v1', 'kingdom-npcs-v1'],
+      commit: 'a7d26110847fea5a685f8a8bc778d2d0ac911335',
+      releases: [
+        'goblin-war-camp-v1',
+        'kingdom-npcs-v1',
+        'kingdom-palettes-v1',
+      ],
     });
-    expect(NPC_APPEARANCE_CATALOG).toHaveLength(30);
+    expect(NPC_APPEARANCE_CATALOG).toHaveLength(217);
     expect(new Set(NPC_APPEARANCE_CATALOG)).toEqual(
       new Set(Object.values(GENERATED_NPC_APPEARANCES))
     );
     expect(
       new Set(NPC_APPEARANCE_CATALOG.map(({ assetRef }) => assetRef))
     ).toEqual(
-      new Set([
-        ...APPROVED_REFS,
-        ...KINGDOM_MODELS.map((name) => `dnd5e:npcs:kingdom:${name}`),
-      ])
+      new Set(
+        selection.releases.flatMap((release) =>
+          release.appearances.map((appearance) => appearance.assetRef)
+        )
+      )
     );
-    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(30);
+    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(217);
   });
 
   it('retains exact standing/downed hashes, URLs, null rules, and provider-declared rig/pose metadata', () => {
