@@ -6,6 +6,7 @@ import {
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { parseRef } from '@/utils/refs';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
@@ -801,7 +802,6 @@ function validateDeclarationMap(
   return mapped;
 }
 
-const MONSTER_REF_RE = /^[-a-z0-9]+:monsters:[-a-z0-9]+$/;
 /** A faction id has the same grammar as the room key: lower-case, digits,
  * dashes. Membership itself is the engine's to confirm against the declared
  * factions — the room draft is decoded before the site root's `factions` are
@@ -860,7 +860,10 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       throw new Error(
         `Invalid monster placement at index ${index}: stable nonempty unique ids are required.`
       );
-    if (typeof source.ref !== 'string' || !MONSTER_REF_RE.test(source.ref))
+    if (
+      typeof source.ref !== 'string' ||
+      parseRef(source.ref)?.type !== 'monsters'
+    )
       throw new Error(
         `Monster ${source.id ?? ''} ref must be a monster reference such as dnd5e:monsters:skeleton.`
       );

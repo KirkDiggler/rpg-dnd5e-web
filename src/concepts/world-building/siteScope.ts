@@ -38,6 +38,10 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
+import {
+  validateMonsterTemplates,
+  type SiteTemplates,
+} from './monsterTemplates';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 
 /** A faction id has the same grammar as the room key: lower-case, digits,
@@ -81,8 +85,8 @@ export interface SiteFaction {
  * instead of six times. */
 export type SiteTables = Record<string, AnswerTableShape>;
 
-/** How two factions stand to each other, and the predicate that ends the
- * hostility. `until` is legal only with `stance: hostile`. */
+/** How two factions stand, and the predicate that flips hostile/neutral.
+ * The published encounter grammar refuses `until` only for allied. */
 export interface SiteDisposition {
   between: [string, string];
   stance: Stance;
@@ -92,6 +96,8 @@ export interface SiteDisposition {
 /** The authored site scope. Each key is absent when nothing was authored, so a
  * document with none of it writes v3 exactly as it always did. */
 export interface SiteScope {
+  /** Authored stat blocks; the engine derives their live numbers. */
+  templates?: SiteTemplates;
   /** The answer tables this site declared, keyed by id — the shared thing a
    * faction or a binding NAMES rather than copies (rpg-toolkit#1897). */
   tables?: SiteTables;
@@ -336,12 +342,12 @@ export function validateSiteDispositions(value: unknown): SiteDisposition[] {
       );
     const disposition: SiteDisposition = { between, stance: raw.stance };
     if (Object.hasOwn(raw, 'until')) {
-      // `until` says when the hostility ENDS, so a pair that is not hostile
-      // has nothing for it to stop (`validate.go`).
-      if (raw.stance !== 'hostile')
+      // Match the published both-ways grammar: hostile and neutral may flip;
+      // allied has no authored opposite stance in this slice.
+      if (raw.stance === 'allied')
         fail(
           `${path} until`,
-          `is legal only with stance hostile, and this one is ${raw.stance}`
+          'is not supported for allied; use hostile or neutral'
         );
       disposition.until = validatePredicate(raw.until, `${path} until`);
     }
@@ -366,6 +372,7 @@ function isStance(word: string): word is Stance {
  * and `siteScopeCarry.test.ts` still guards it, because a key added to
  * `SiteScope` and NOT to this list is invisible to every one of them. */
 export const SCOPE_KEYS = [
+  'templates',
   'tables',
   'factions',
   'dispositions',
@@ -688,6 +695,10 @@ export function validateSiteScope(value: unknown): SiteScope {
   const raw = objectShape(value, 'Site scope');
   rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
   const scope: SiteScope = {};
+  if (Object.hasOwn(raw, 'templates')) {
+    const templates = validateMonsterTemplates(raw.templates);
+    if (Object.keys(templates).length) scope.templates = templates;
+  }
   // THE TABLES FIRST, because both a faction and a monster binding may NAME
   // one, and a name cannot be judged before the universe it names exists — the
   // same ordering reason `intel` comes before a `holds` that names a record.

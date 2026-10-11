@@ -521,6 +521,30 @@ unchanged. No future action constraints are invented. Creature faction is a sele
 “Kind’s default”; an undeclared imported reference remains visible as
 “(not declared)” until the author changes it. The server still judges references.
 
+## Authored stat-block carriage
+
+The site scope carries root `templates` through the same SCOPE_KEYS, history,
+JSON and YAML boundaries as tables and policies. Nonempty templates require the
+existing root dialect4; embedded room/scene/envelope versions do not change.
+Template ids are single reference segments, placed as `dnd5e:monsters:<id>`.
+Monster declarations and templates use the shared reference parser rather than
+separate naming grammars. Unknown but well-formed content refs remain intact.
+
+The authored shape mirrors encounter TemplateSpec: required base, optional name,
+partial ability scores, hitDice, armor, proficiency, skills, actions and experience.
+Explicit empty overrides/zeros remain as written where the shape allows them;
+absent fields are not filled from a client copy of the rulebook. HP, AC, attack bonuses
+and passives are not authored totals; the internal rulebook speed field is not
+part of this authored dialect. Base resolution,
+rulebook shadowing and derivation remain engine-owned. Local template inheritance
+is refused by the declared grammar. Whole-source import never strips a template
+to bypass a refusal; unsupported play contracts and unavailable scene appearances
+remain named failures rather than rewritten source.
+
+The active site disposition reader accepts `until` for hostile or neutral, as in
+the released both-ways grammar. Allied still refuses it. A neutral alarm condition
+must not be dropped to make a stat-block encounter editable.
+
 ## Monster declarations and bindings (#1202)
 
 The current single-room authoring shape uses `room.room.monsterDeclarations`
