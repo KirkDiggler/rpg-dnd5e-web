@@ -242,10 +242,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('authors a stat block, places its creature, and reaches independent appearance controls from Encounter', () => {
+it('saves a reusable creature without a position, then places independent looks by map intent', () => {
   const storage = new MemoryStorage(seed());
   const original = storage.document();
-  const mounted = mount(storage, () => 'new-creature');
+  let nextId = 0;
+  const mounted = mount(storage, () => `created-${++nextId}`);
   fireEvent.click(button('Encounter'));
   fireEvent.click(screen.getByRole('button', { name: 'Stat blocks' }));
   fireEvent.change(screen.getByLabelText('Stat block id'), {
@@ -277,47 +278,96 @@ it('authors a stat block, places its creature, and reaches independent appearanc
     experience: 0,
   });
   fireEvent.click(screen.getByRole('button', { name: 'Creatures' }));
-  fireEvent.change(
-    screen.getByLabelText('Creature definition', { exact: true }),
-    { target: { value: 'dnd5e:monsters:town_guard' } }
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Add creature' }));
-  expect(
-    storage
-      .document()
-      .draft.room.monsterDeclarations.find(
-        (actor) => actor.id === 'new-creature'
-      )?.ref
-  ).toBe('dnd5e:monsters:town_guard');
-  fireEvent.change(screen.getByLabelText('NPC appearance', { exact: true }), {
+  expect(screen.queryByLabelText('Starting hex q')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Creature name'), {
+    target: { value: 'Castle Guard' },
+  });
+  fireEvent.change(screen.getByLabelText('Creature stat block'), {
+    target: { value: 'dnd5e:monsters:town_guard' },
+  });
+  fireEvent.change(screen.getByLabelText('NPC model'), {
     target: { value: 'dnd5e:npcs:kingdom:soldier-male-01' },
   });
-  fireEvent.change(screen.getByLabelText('Style', { exact: true }), {
-    target: { value: '02' },
-  });
-  fireEvent.change(screen.getByLabelText('Skin palette', { exact: true }), {
-    target: { value: 'B' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply Arrange' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add to creature list' }));
+  const palette = storage.document().draft.scene.creaturePalette;
+  expect(palette).toHaveLength(1);
+  expect(storage.document().draft.room.monsterDeclarations).toEqual(
+    original.draft.room.monsterDeclarations
+  );
+  expect(
+    (screen.getByLabelText('Placement look') as HTMLSelectElement).disabled
+  ).toBe(false);
+  expect(
+    [...screen.getByLabelText('Placement look').querySelectorAll('option')].map(
+      (option) => option.value
+    )
+  ).toEqual(['01', '02', '03', '04']);
+  expect(
+    [
+      ...screen
+        .getByLabelText('Placement skin tone')
+        .querySelectorAll('option'),
+    ].map((option) => option.value)
+  ).toEqual(['A', 'B', 'C']);
+  for (const [index, [style, skin]] of [
+    ['02', 'B'],
+    ['04', 'C'],
+  ].entries()) {
+    fireEvent.change(screen.getByLabelText('Placement look'), {
+      target: { value: style },
+    });
+    fireEvent.change(screen.getByLabelText('Placement skin tone'), {
+      target: { value: skin },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+    expect(viewport().roomAuthoring?.tool).toBe('monster');
+    const before = storage.document();
+    const click = viewport().roomAuthoring!.onPlaceMonster!;
+    act(() => click({ q: index, r: 0 }));
+    expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+      before.draft.room.monsterDeclarations.length + 1
+    );
+    expect(viewport().roomAuthoring?.tool).toBe('select');
+    act(() => click({ q: index, r: 0 })); // spent callback cannot place a second actor
+    expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+      before.draft.room.monsterDeclarations.length + 1
+    );
+    fireEvent.click(button('Encounter'));
+  }
   const final = storage.document();
   expect(
-    final.draft.room.monsterDeclarations.find(
-      (actor) => actor.id === 'new-creature'
-    )
-  ).toMatchObject({
-    ref: 'dnd5e:monsters:town_guard',
-    appearanceRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
-  });
+    final.draft.room.monsterDeclarations
+      .slice(-2)
+      .map((actor) => [actor.ref, actor.appearanceRef])
+  ).toEqual([
+    [
+      'dnd5e:monsters:town_guard',
+      'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
+    ],
+    [
+      'dnd5e:monsters:town_guard',
+      'dnd5e:npcs:kingdom:soldier-male-01-style-04-c',
+    ],
+  ]);
+  expect(final.draft.scene.creaturePalette).toEqual(palette);
+  fireEvent.click(button('Undo'));
+  expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+    original.draft.room.monsterDeclarations.length + 1
+  );
+  expect(storage.document().draft.scene.creaturePalette).toEqual(palette);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(final);
   expect(final.scope.templates!.town_guard).toEqual(template);
   expect(final.scope.factions).toEqual(original.scope.factions);
   expect(final.draft.room.monsterBindings).toEqual(
     original.draft.room.monsterBindings
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Show creature on map' }));
-  expect(viewport().roomAuthoring?.selectedActorTarget).toEqual({
-    kind: 'actor',
-    id: 'new-creature',
-  });
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const canceled = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Cancel creature placement' })
+  );
+  act(() => canceled({ q: 0, r: 0 }));
   expect(storage.document()).toEqual(final);
   mounted.unmount();
   mount(storage);
@@ -2156,6 +2206,15 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
 
   it('owns creature definitions and templates atomically and retires stale callbacks', () => {
     const original = seed();
+    original.draft.scene.version = 5;
+    original.draft.scene.creaturePalette = [
+      {
+        id: 'guard-look',
+        name: 'Guard',
+        ref: 'dnd5e:monsters:human',
+        modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+      },
+    ];
     original.draft.room.monsterDeclarations[0].appearanceRef =
       'dnd5e:npcs:kingdom:soldier-male-01-style-02-b';
     const owner = arrangeOwner(original);
@@ -2193,12 +2252,18 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     expect(changed.scope.tables).toEqual(original.scope.tables);
     act(() => {
       expect(
-        owner.session.creatures.place('dnd5e:monsters:human', {
-          q: 99999,
-          r: 0,
-        })
-      ).toBe(false);
+        owner.session.creatures.armPlacement(
+          'guard-look',
+          'dnd5e:npcs:kingdom:soldier-male-01'
+        )
+      ).toBe(true);
     });
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onPlaceMonster!({
+        q: 99999,
+        r: 0,
+      })
+    );
     expect(owner.session.document).toEqual(changed);
     act(() => owner.session.undo());
     expect(owner.session.document.draft.room.monsterDeclarations).toEqual(

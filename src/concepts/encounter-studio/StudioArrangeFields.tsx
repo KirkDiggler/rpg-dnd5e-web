@@ -1,5 +1,7 @@
-import { resolveNpcAppearance } from '@/generated/npcAppearanceCatalog';
-import { NPC_APPEARANCE_FAMILIES } from '@/npc-appearances/npcAppearanceChoices';
+import {
+  NPC_APPEARANCE_FAMILIES,
+  npcAppearanceOptions,
+} from '@/npc-appearances/npcAppearanceChoices';
 import type {
   AuthoringRegion,
   RegionResolution,
@@ -180,24 +182,26 @@ export function arrangeFields(
       ];
     case 'actor': {
       const ref = draft.appearanceRef ?? selection.monster.appearanceRef ?? '';
-      const current = resolveNpcAppearance(ref);
-      const family = NPC_APPEARANCE_FAMILIES.find(
-        (entry) => entry.ref === (current?.look?.familyRef ?? current?.assetRef)
-      );
+      const { current, family, styles, skinPalettes } =
+        npcAppearanceOptions(ref);
       const choices = (
         key: 'style' | 'skinPalette'
       ): { value: string; label: string }[] =>
         current?.look
-          ? [
-              ...new Set(
-                family?.looks.flatMap((look) =>
-                  look.look ? [look.look[key]] : []
-                )
-              ),
-            ]
-              .sort()
-              .map((value) => ({ value, label: value }))
-          : [{ value: '', label: 'Not available' }];
+          ? (key === 'style' ? styles : skinPalettes).map((value) => ({
+              value,
+              label: value,
+            }))
+          : [
+              {
+                value: '',
+                label: !ref
+                  ? 'Choose an NPC model first'
+                  : current
+                    ? 'Single-look model'
+                    : 'Model unavailable',
+              },
+            ];
       return [
         {
           key: 'appearanceFamily',

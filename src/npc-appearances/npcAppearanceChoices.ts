@@ -32,6 +32,39 @@ export const NPC_APPEARANCE_FAMILIES = buildNpcAppearanceFamilies(
   NPC_APPEARANCE_CATALOG
 );
 
+/** Shared projection for the editor and Arrange. No ref-name conventions. */
+export function npcAppearanceOptions(ref: string | undefined): {
+  current: GeneratedNpcAppearance | undefined;
+  family: NpcAppearanceFamily | undefined;
+  styles: string[];
+  skinPalettes: string[];
+} {
+  const current = NPC_APPEARANCE_CATALOG.find(
+    (entry) => entry.assetRef === ref
+  );
+  const family = NPC_APPEARANCE_FAMILIES.find(
+    (entry) => entry.ref === (current?.look?.familyRef ?? current?.assetRef)
+  );
+  return {
+    current,
+    family,
+    styles: [
+      ...new Set(
+        family?.looks.flatMap((entry) =>
+          entry.look ? [entry.look.style] : []
+        ) ?? []
+      ),
+    ].sort(),
+    skinPalettes: [
+      ...new Set(
+        family?.looks.flatMap((entry) =>
+          entry.look ? [entry.look.skinPalette] : []
+        ) ?? []
+      ),
+    ].sort(),
+  };
+}
+
 /** Resolve one deliberate control change to one complete, published look ref. */
 export function chooseNpcAppearance(
   input: {

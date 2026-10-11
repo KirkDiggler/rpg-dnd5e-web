@@ -3,6 +3,7 @@ import type {
   AuthoringRegion,
   RegionResolution,
 } from '../world-building/authoringRegions';
+import type { CreaturePaletteEntry } from '../world-building/creaturePalette';
 import type {
   RoomDraft,
   RoomDraftDocument,
@@ -178,7 +179,12 @@ export interface EncounterStudioSession {
   commitTemplates(templates: NonNullable<SiteScope['templates']>): boolean;
   creatures: {
     select(id: string): boolean;
-    place(ref: string, cell: RoomHexCell): boolean;
+    savePaletteEntry(
+      entry: Omit<CreaturePaletteEntry, 'id'>,
+      id?: string
+    ): boolean;
+    armPlacement(id: string, appearanceRef: string): boolean;
+    readonly placement: { name: string; appearanceRef: string } | null;
     setDefinition(id: string, ref: string): boolean;
   };
   mapLabelSelection: {

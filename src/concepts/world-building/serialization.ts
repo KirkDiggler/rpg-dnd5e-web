@@ -1,5 +1,6 @@
 import { validateAuthoringRegions } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { validateCreaturePalette } from './creaturePalette';
 import { rejectUnknownKeys } from './strictShape';
 import type {
   Arrangement,
@@ -303,16 +304,23 @@ export function validateScene(
     input.version !== 1 &&
     input.version !== 2 &&
     input.version !== 3 &&
-    input.version !== 4
+    input.version !== 4 &&
+    input.version !== 5
   )
-    throw new Error('Scene version must be 1, 2, 3 or 4.');
+    throw new Error('Scene version must be 1, 2, 3, 4 or 5.');
+  if (input.version !== 5 && Object.hasOwn(input, 'creaturePalette'))
+    throw new Error('creaturePalette requires scene version 5.');
+  const creaturePalette = Object.hasOwn(input, 'creaturePalette')
+    ? validateCreaturePalette(input.creaturePalette)
+    : [];
   if (
     input.version !== 3 &&
     input.version !== 4 &&
+    input.version !== 5 &&
     Object.hasOwn(input, 'authoringRegions')
   )
-    throw new Error('authoringRegions requires scene version 3 or 4.');
-  if (input.version === 3 || input.version === 4)
+    throw new Error('authoringRegions requires scene version 3, 4 or 5.');
+  if (input.version >= 3)
     rejectUnknownKeys(
       input,
       [
@@ -323,6 +331,7 @@ export function validateScene(
         'groups',
         'mapLabels',
         'authoringRegions',
+        'creaturePalette',
       ],
       'scene'
     );
@@ -344,7 +353,7 @@ export function validateScene(
   const sceneId = string(input.id, 'scene.id', 120);
   const authoringRegions = Object.hasOwn(input, 'authoringRegions')
     ? validateAuthoringRegions(input.authoringRegions, mapLabels, {
-        allowLighting: input.version === 4,
+        allowLighting: input.version >= 4,
         workspace: options.workspace,
         reservedIds: new Set([
           sceneId,
@@ -360,6 +369,7 @@ export function validateScene(
     ...entities,
     ...(mapLabels.length > 0 ? { mapLabels } : {}),
     ...(authoringRegions.length > 0 ? { authoringRegions } : {}),
+    ...(creaturePalette.length > 0 ? { creaturePalette } : {}),
   };
 }
 

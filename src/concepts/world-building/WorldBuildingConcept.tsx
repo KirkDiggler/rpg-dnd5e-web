@@ -10,6 +10,10 @@ import {
   isRoomDocument,
 } from '@/compositions/roomDocument';
 import {
+  NPC_APPEARANCE_FAMILIES,
+  npcAppearanceOptions,
+} from '@/npc-appearances/npcAppearanceChoices';
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -27,6 +31,10 @@ import {
 } from './catalog';
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
+import {
+  setCreaturePalette,
+  type CreaturePaletteEntry,
+} from './creaturePalette';
 import {
   declarationMapForSelection,
   seedDeclarations,
@@ -422,6 +430,10 @@ export function WorldBuildingConcept({
    * a selected actor is a monster id or 'start', never a WorldProp id, and
    * actor operations never touch scenery selections. */
   const [armedMonsterRef, setArmedMonsterRef] = useState<string | null>(null);
+  const [armedCreature, setArmedCreature] = useState<{
+    id: string;
+    appearanceRef: string;
+  } | null>(null);
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
     null
@@ -546,6 +558,7 @@ export function WorldBuildingConcept({
     tool,
     roomTool,
     armedMonsterRef,
+    armedCreature,
     repeatAssetRef,
     wallAssetRef,
     doorAssetRef,
@@ -559,6 +572,7 @@ export function WorldBuildingConcept({
     intentContextRef.current.tool !== tool ||
     intentContextRef.current.roomTool !== roomTool ||
     intentContextRef.current.armedMonsterRef !== armedMonsterRef ||
+    intentContextRef.current.armedCreature !== armedCreature ||
     intentContextRef.current.repeatAssetRef !== repeatAssetRef ||
     intentContextRef.current.wallAssetRef !== wallAssetRef ||
     intentContextRef.current.doorAssetRef !== doorAssetRef ||
@@ -573,6 +587,7 @@ export function WorldBuildingConcept({
       tool,
       roomTool,
       armedMonsterRef,
+      armedCreature,
       repeatAssetRef,
       wallAssetRef,
       doorAssetRef,
@@ -584,6 +599,8 @@ export function WorldBuildingConcept({
     viewportGenerationRef.current += 1;
   }
   const cancelTransients = useCallback(() => {
+    setArmedCreature(null);
+    setRoomTool((current) => (current === 'monster' ? 'select' : current));
     viewportGenerationRef.current += 1;
     refreshViewportGeneration((current) => current + 1);
     setPreviewScene(null);
@@ -608,6 +625,7 @@ export function WorldBuildingConcept({
     tool,
     roomTool,
     armedMonsterRef,
+    armedCreature,
     repeatAssetRef,
     wallAssetRef,
     doorAssetRef,
@@ -1037,13 +1055,32 @@ export function WorldBuildingConcept({
       return;
     }
     try {
+      const recipe = armedCreature
+        ? roomDraft.scene.creaturePalette?.find(
+            (entry) => entry.id === armedCreature.id
+          )
+        : undefined;
+      if (
+        armedCreature &&
+        (!recipe ||
+          npcAppearanceOptions(armedCreature.appearanceRef).family?.ref !==
+            recipe.modelRef)
+      )
+        throw new Error('This creature recipe or look is no longer available.');
       const id = idFactory();
       const next = placeRoomMonster(roomDraft, {
         id,
-        ref: armedMonsterRef,
+        ref: recipe?.ref ?? armedMonsterRef,
+        ...(armedCreature
+          ? { appearanceRef: armedCreature.appearanceRef }
+          : {}),
         startingCell: { location: { ...cell } },
       });
       if (!commit(scene, selectedIds, next.room)) return;
+      if (armedCreature) {
+        setArmedCreature(null);
+        setRoomTool('select');
+      }
       setSelectedActorId(id);
       activateStudioTarget({ kind: 'actor', id });
       setNotice('');
@@ -1273,6 +1310,7 @@ export function WorldBuildingConcept({
   );
 
   const armMonsterPlacement = (ref: string) => {
+    setArmedCreature(null);
     setPreviewScene(null);
     setArmedMonsterRef(ref);
     setSelectedActorId(null);
@@ -4374,23 +4412,74 @@ export function WorldBuildingConcept({
               selectStudioActor({ kind: 'actor', id });
               return true;
             }),
-            place: guardSnapshotIntent(
-              (ref: string, cell: RoomHexCell): boolean => {
+            placement:
+              roomTool === 'monster' && armedCreature
+                ? {
+                    name:
+                      roomDraft.scene.creaturePalette?.find(
+                        (entry) => entry.id === armedCreature.id
+                      )?.name ?? 'Creature',
+                    appearanceRef: armedCreature.appearanceRef,
+                  }
+                : null,
+            savePaletteEntry: guardSnapshotIntent(
+              (
+                entry: Omit<CreaturePaletteEntry, 'id'>,
+                id?: string
+              ): boolean => {
                 try {
                   const current = roomHistoryRef.current.present;
-                  const id = idFactory();
-                  const draft = placeRoomMonster(current.draft, {
-                    id,
-                    ref,
-                    startingCell: { location: cell },
+                  const entries = current.draft.scene.creaturePalette ?? [];
+                  if (id && !entries.some((item) => item.id === id))
+                    throw new Error('Creature recipe no longer exists.');
+                  if (
+                    !NPC_APPEARANCE_FAMILIES.some(
+                      (family) => family.ref === entry.modelRef
+                    )
+                  )
+                    throw new Error('Choose a published NPC model.');
+                  const next = { ...entry, id: id ?? idFactory() };
+                  const palette = id
+                    ? entries.map((item) => (item.id === id ? next : item))
+                    : [...entries, next];
+                  return commitRoomDocument({
+                    ...current,
+                    draft: {
+                      ...current.draft,
+                      scene: setCreaturePalette(current.draft.scene, palette),
+                    },
                   });
-                  if (!commitRoomDocument({ ...current, draft })) return false;
-                  setSelectedActorId(id);
-                  activateStudioTarget({ kind: 'actor', id });
-                  return true;
                 } catch (error) {
                   return rejectEdit(error);
                 }
+              }
+            ),
+            armPlacement: guardSnapshotIntent(
+              (id: string, appearanceRef: string): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const entry =
+                  roomHistoryRef.current.present.draft.scene.creaturePalette?.find(
+                    (item) => item.id === id
+                  );
+                if (
+                  !entry ||
+                  npcAppearanceOptions(appearanceRef).family?.ref !==
+                    entry.modelRef
+                )
+                  return rejectEdit(
+                    new Error(
+                      'Choose an available model/look for this creature.'
+                    )
+                  );
+                cancelTransients();
+                setArmedMonsterRef(entry.ref);
+                setArmedCreature({ id, appearanceRef });
+                setRoomTool('monster');
+                setTool('select');
+                setSelectedActorId(null);
+                activateStudioTarget(null);
+                setNotice('');
+                return true;
               }
             ),
             setDefinition: guardSnapshotIntent(

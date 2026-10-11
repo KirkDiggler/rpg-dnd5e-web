@@ -59,6 +59,24 @@ function StudioSurface({
   const [encounterSection, setEncounterSection] = useState<
     'tables' | 'creatures' | 'stat-blocks'
   >('tables');
+  const [pendingPlacement, setPendingPlacement] = useState<{
+    id: string;
+    appearanceRef: string;
+  } | null>(null);
+  const [placementError, setPlacementError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingPlacement || home !== 'build' || view !== '3d') return;
+    setPendingPlacement(null);
+    if (
+      !session.creatures.armPlacement(
+        pendingPlacement.id,
+        pendingPlacement.appearanceRef
+      )
+    )
+      setPlacementError(
+        'Placement could not start. Choose the creature and look again.'
+      );
+  }, [pendingPlacement, home, view, session.creatures]);
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
     session.arrange?.kind === 'label' ? session.arrange.region : undefined;
@@ -116,6 +134,8 @@ function StudioSurface({
     showSection('regions');
   };
   const changeHome = (next: StudioHome): void => {
+    setPendingPlacement(null);
+    setPlacementError(null);
     if (next === home) return;
     // Explicit navigation retires map gestures, not document or selection.
     session.setPropTool('select');
@@ -134,6 +154,7 @@ function StudioSurface({
     setRenameError(null);
   }, [session.document]);
   const switchView = (next: EncounterStudioView): void => {
+    setPendingPlacement(null);
     if (next === view) return;
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     if (layoutTool === 'door' || layoutTool === 'region')
@@ -296,6 +317,17 @@ function StudioSurface({
           role="toolbar"
           aria-label="Studio editing tools"
         >
+          {session.creatures.placement && (
+            <div className="es-buttons" role="status">
+              <strong>
+                Placing {session.creatures.placement.name} · click the map
+              </strong>
+              <button type="button" onClick={() => session.cancelTransients()}>
+                Cancel creature placement
+              </button>
+            </div>
+          )}
+          {placementError && <p role="alert">{placementError}</p>}
           {home === 'build' &&
             (view === 'layout' ? (
               <div
@@ -665,6 +697,12 @@ function StudioSurface({
           {home === 'encounter' && encounterSection === 'creatures' && (
             <StudioCreatures
               session={session}
+              onPlace={(id, appearanceRef) => {
+                changeHome('build');
+                onViewChange('3d');
+                setSections((current) => ({ ...current, build: 'arrange' }));
+                setPendingPlacement({ id, appearanceRef });
+              }}
               onShowMap={() => {
                 changeHome('build');
                 onViewChange('3d');

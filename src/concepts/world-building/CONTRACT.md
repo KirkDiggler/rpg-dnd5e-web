@@ -215,14 +215,14 @@ relations or arrangement members. No 3D label renderer is promised. Label-only
 edits leave workspace and gameplay policy unchanged. Linked Room labels and their
 separate authoring boundary intent are described below.
 
-`WorldScene.version` supports 1/2/3/4. Scene3 boundary metadata and optional
-scene4 lighting intent are described below. Version 2 optionally carries
+`WorldScene.version` supports 1/2/3/4/5. Scene3 boundaries, scene4 lighting and
+scene5 reusable creature palettes are described below. Version 2 optionally carries
 `mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
 labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
 continuous world points inside the workspace, and at most 256 labels are accepted.
 Absent labels means none; deleting the last removes `mapLabels` without demoting
 the scene. First Note or explicit rectangular resize on scene1 promotes the scene to 2,
-even if the rectangle has no labels; scene3/4 are preserved. Version-1 scenes carrying label metadata
+even if the rectangle has no labels; scene3/4/5 are preserved. Version-1 scenes carrying label metadata
 are refused. Older scene-1-only web readers refuse scene 2 rather than silently
 strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
 data, not YAML comments/formatting. Envelope versions, storage namespaces and
@@ -547,16 +547,29 @@ unchanged. No future action constraints are invented. Creature faction is a sele
 
 ## Authored stat-block carriage
 
-Encounter exposes Creatures, Stat blocks and Tables. Creature creation uses an
-explicit definition reference and starting hex through the existing room placement
-operation. Roster selection alone never moves an actor. Show on map opens the 3D
-actor surface and retains selection. Model/style/skin edits reuse Arrange's staged
-single appearanceRef transaction; changing a definition retains appearance,
-identity, location and bindings. A named stat block is shared by its referencing
-placements, not copied into each placement. Its form applies only edited fields,
-keeps an existing id stable and preserves untouched optional values. Cancellation
-and document/intent retirement discard staged inputs. All commits use the same
-WorldBuildingConcept document, ordinary policy-preserving gate and history.
+Encounter exposes Creatures, Stat blocks and Tables. Scene5 optionally carries
+`creaturePalette`: editor recipes with exact id, name, ref and modelRef fields.
+The name labels the reusable editor recipe; ref names an existing rulebook monster
+or root template, and modelRef names a declared appearance family. Recipes carry
+no scores, coordinates, factions or skin overrides and never instantiate actors.
+They round-trip with the editor's scene metadata without adding gameplay grammar;
+runtime knowledge never resolves actor appearance or names from this palette.
+
+Creating a recipe does not place it. Place chooses one published look/skin ref,
+switches to the 3D map and arms the existing monster placement tool with a fresh
+snapshot. One map click creates a fresh actor with copied ref and appearanceRef;
+the recipe remains reusable. Cancellation creates nothing. Every placement has
+its own complete appearanceRef; recipe edits affect future placements only.
+Unknown imported model refs remain literal and placement refuses until resolved.
+Label, region, lighting and resize edits retain scene5 and its palette.
+
+Roster selection alone never moves an actor. Existing instances reuse Arrange's
+staged single appearanceRef transaction; definition edits retain appearance,
+identity, location and bindings. Named stat blocks are shared by reference, never
+copied into instances. Their form applies only edited fields, keeps ids stable
+and preserves untouched optional values. Cancellation and document/intent retirement
+discard staged inputs. All commits use the same WorldBuildingConcept document,
+ordinary policy-preserving gate and history.
 
 The site scope carries root `templates` through the same SCOPE_KEYS, history,
 JSON and YAML boundaries as tables and policies. Nonempty templates require the
