@@ -547,6 +547,17 @@ unchanged. No future action constraints are invented. Creature faction is a sele
 
 ## Authored stat-block carriage
 
+Encounter exposes Creatures, Stat blocks and Tables. Creature creation uses an
+explicit definition reference and starting hex through the existing room placement
+operation. Roster selection alone never moves an actor. Show on map opens the 3D
+actor surface and retains selection. Model/style/skin edits reuse Arrange's staged
+single appearanceRef transaction; changing a definition retains appearance,
+identity, location and bindings. A named stat block is shared by its referencing
+placements, not copied into each placement. Its form applies only edited fields,
+keeps an existing id stable and preserves untouched optional values. Cancellation
+and document/intent retirement discard staged inputs. All commits use the same
+WorldBuildingConcept document, ordinary policy-preserving gate and history.
+
 The site scope carries root `templates` through the same SCOPE_KEYS, history,
 JSON and YAML boundaries as tables and policies. Nonempty templates require the
 existing root dialect4; embedded room/scene/envelope versions do not change.

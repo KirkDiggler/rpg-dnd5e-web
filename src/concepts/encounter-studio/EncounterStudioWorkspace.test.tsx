@@ -156,6 +156,12 @@ function createSession(): EncounterStudioSession {
     arrange: null,
     commitArrange: vi.fn(() => true),
     commitTables: vi.fn(() => true),
+    commitTemplates: vi.fn(() => true),
+    creatures: {
+      select: vi.fn(() => true),
+      place: vi.fn(() => true),
+      setDefinition: vi.fn(() => true),
+    },
     mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     wallEditing: {

@@ -483,6 +483,35 @@
   margin-left: auto;
   margin-right: auto;
 }
+.es-creature-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+.es-creature-panel form,
+.es-creature-panel label {
+  display: grid;
+  gap: 0.4rem;
+}
+.es-creature-panel form {
+  margin-block: 0.5rem;
+}
+.es-creature-panel input,
+.es-creature-panel select {
+  width: 100%;
+  min-width: 0;
+}
+.es-stat-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.75rem;
+}
+.es-creature-panel ul {
+  padding-left: 1rem;
+}
+.es-creature-panel li {
+  margin-block: 0.4rem;
+  overflow-wrap: anywhere;
+}
 .es-encounter-home .wb-policy-form {
   min-width: 0;
 }

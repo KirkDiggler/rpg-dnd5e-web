@@ -175,6 +175,12 @@ export interface EncounterStudioSession {
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
+  commitTemplates(templates: NonNullable<SiteScope['templates']>): boolean;
+  creatures: {
+    select(id: string): boolean;
+    place(ref: string, cell: RoomHexCell): boolean;
+    setDefinition(id: string, ref: string): boolean;
+  };
   mapLabelSelection: {
     readonly selectedId: string | null;
     select(id: string | null): boolean;

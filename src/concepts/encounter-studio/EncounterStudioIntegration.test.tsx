@@ -242,6 +242,88 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('authors a stat block, places its creature, and reaches independent appearance controls from Encounter', () => {
+  const storage = new MemoryStorage(seed());
+  const original = storage.document();
+  const mounted = mount(storage, () => 'new-creature');
+  fireEvent.click(button('Encounter'));
+  fireEvent.click(screen.getByRole('button', { name: 'Stat blocks' }));
+  fireEvent.change(screen.getByLabelText('Stat block id'), {
+    target: { value: 'town_guard' },
+  });
+  fireEvent.change(screen.getByLabelText('Name', { exact: true }), {
+    target: { value: 'Town Guard' },
+  });
+  fireEvent.change(screen.getByLabelText('CON', { exact: true }), {
+    target: { value: '12' },
+  });
+  fireEvent.change(screen.getByLabelText('Hit dice'), {
+    target: { value: '2d8' },
+  });
+  fireEvent.change(screen.getByLabelText('Armor reference'), {
+    target: { value: 'dnd5e:armor:chain-shirt' },
+  });
+  fireEvent.change(screen.getByLabelText('Experience award'), {
+    target: { value: '0' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply stat block' }));
+  const template = storage.document().scope.templates!.town_guard;
+  expect(template).toEqual({
+    base: 'dnd5e:monsters:human',
+    name: 'Town Guard',
+    abilities: { con: 12 },
+    hitDice: '2d8',
+    armor: 'dnd5e:armor:chain-shirt',
+    experience: 0,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Creatures' }));
+  fireEvent.change(
+    screen.getByLabelText('Creature definition', { exact: true }),
+    { target: { value: 'dnd5e:monsters:town_guard' } }
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add creature' }));
+  expect(
+    storage
+      .document()
+      .draft.room.monsterDeclarations.find(
+        (actor) => actor.id === 'new-creature'
+      )?.ref
+  ).toBe('dnd5e:monsters:town_guard');
+  fireEvent.change(screen.getByLabelText('NPC appearance', { exact: true }), {
+    target: { value: 'dnd5e:npcs:kingdom:soldier-male-01' },
+  });
+  fireEvent.change(screen.getByLabelText('Style', { exact: true }), {
+    target: { value: '02' },
+  });
+  fireEvent.change(screen.getByLabelText('Skin palette', { exact: true }), {
+    target: { value: 'B' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply Arrange' }));
+  const final = storage.document();
+  expect(
+    final.draft.room.monsterDeclarations.find(
+      (actor) => actor.id === 'new-creature'
+    )
+  ).toMatchObject({
+    ref: 'dnd5e:monsters:town_guard',
+    appearanceRef: 'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
+  });
+  expect(final.scope.templates!.town_guard).toEqual(template);
+  expect(final.scope.factions).toEqual(original.scope.factions);
+  expect(final.draft.room.monsterBindings).toEqual(
+    original.draft.room.monsterBindings
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Show creature on map' }));
+  expect(viewport().roomAuthoring?.selectedActorTarget).toEqual({
+    kind: 'actor',
+    id: 'new-creature',
+  });
+  expect(storage.document()).toEqual(final);
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(final);
+});
+
 function seed(emptyFloor = false): RoomDraftDocument {
   const document = createPopulatedStudioDocument();
   if (emptyFloor) document.draft.room.walkableHexes = [];
@@ -2071,6 +2153,61 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
       unmount: mounted.unmount,
     };
   }
+
+  it('owns creature definitions and templates atomically and retires stale callbacks', () => {
+    const original = seed();
+    original.draft.room.monsterDeclarations[0].appearanceRef =
+      'dnd5e:npcs:kingdom:soldier-male-01-style-02-b';
+    const owner = arrangeOwner(original);
+    const id = original.draft.room.monsterDeclarations[0].id;
+    const stale = owner.session;
+    act(() => {
+      expect(
+        owner.session.commitTemplates({
+          town_guard: {
+            base: 'dnd5e:monsters:human',
+            hitDice: '2d8',
+            armor: 'dnd5e:armor:chain-shirt',
+          },
+        })
+      ).toBe(true);
+    });
+    act(() => {
+      expect(stale.creatures.setDefinition(id, 'dnd5e:monsters:human')).toBe(
+        false
+      );
+    });
+    act(() => {
+      expect(
+        owner.session.creatures.setDefinition(id, 'dnd5e:monsters:town_guard')
+      ).toBe(true);
+    });
+    const changed = owner.session.document;
+    expect(changed.draft.room.monsterDeclarations[0]).toEqual({
+      ...original.draft.room.monsterDeclarations[0],
+      ref: 'dnd5e:monsters:town_guard',
+    });
+    expect(changed.draft.room.monsterBindings).toEqual(
+      original.draft.room.monsterBindings
+    );
+    expect(changed.scope.tables).toEqual(original.scope.tables);
+    act(() => {
+      expect(
+        owner.session.creatures.place('dnd5e:monsters:human', {
+          q: 99999,
+          r: 0,
+        })
+      ).toBe(false);
+    });
+    expect(owner.session.document).toEqual(changed);
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.room.monsterDeclarations).toEqual(
+      original.draft.room.monsterDeclarations
+    );
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(changed);
+    expect(owner.storage.document()).toEqual(changed);
+  });
 
   it('keeps exact overlapped exterior coverage as a no-op bind through the real owner without rewriting the accepted document', () => {
     // Sanitized six-line geometry only; no operator document/policy enters tests.

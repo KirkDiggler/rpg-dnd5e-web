@@ -7,6 +7,7 @@ import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
+import { StudioCreatures } from './StudioCreatures';
 import { StudioDimensions } from './StudioDimensions';
 import { StudioDoorControls } from './StudioDoorControls';
 import { StudioRegions } from './StudioRegions';
@@ -19,6 +20,7 @@ import type {
   StudioHome,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
+import { StudioStatBlocks } from './StudioStatBlocks';
 import { StudioWallControls } from './StudioWallControls';
 import { useStudioLabels } from './useStudioLabels';
 
@@ -54,6 +56,9 @@ function StudioSurface({
   onFrameChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
+  const [encounterSection, setEncounterSection] = useState<
+    'tables' | 'creatures' | 'stat-blocks'
+  >('tables');
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
     session.arrange?.kind === 'label' ? session.arrange.region : undefined;
@@ -360,7 +365,14 @@ function StudioSurface({
             </>
           )}
           {home === 'encounter' && (
-            <strong>Encounter configuration · Tables</strong>
+            <strong>
+              Encounter configuration ·{' '}
+              {encounterSection === 'stat-blocks'
+                ? 'Stat blocks'
+                : encounterSection === 'creatures'
+                  ? 'Creatures'
+                  : 'Tables'}
+            </strong>
           )}
           {spatial && (
             <button
@@ -437,20 +449,22 @@ function StudioSurface({
                 </div>
               )}
             </div>
-            <StudioArrangePanel
-              session={session}
-              expanded={arrangeVisible}
-              onDefineRegion={
-                home === 'regions' && view === 'layout'
-                  ? () => {
-                      labels.editing.onCancel();
-                      changeTool('region');
-                      setRegionTool('paint');
-                      showSection('region');
-                    }
-                  : undefined
-              }
-            />
+            {spatial && (
+              <StudioArrangePanel
+                session={session}
+                expanded={arrangeVisible}
+                onDefineRegion={
+                  home === 'regions' && view === 'layout'
+                    ? () => {
+                        labels.editing.onCancel();
+                        changeTool('region');
+                        setRegionTool('paint');
+                        showSection('region');
+                      }
+                    : undefined
+                }
+              />
+            )}
             {home === 'build' && section === 'arrange' && selectedRegion && (
               <div className="es-context-panel">
                 <p>
@@ -630,17 +644,50 @@ function StudioSurface({
           aria-label="Encounter configuration"
           hidden={home !== 'encounter'}
         >
-          <h2>Tables</h2>
-          <p className="es-help">
-            Shared monster behavior. Define a table once; creatures and factions
-            can reference it by name.
-          </p>
-          <TablesPanel
-            key={session.document.draft.id}
-            scope={session.document.scope}
-            explicitRename
-            onChange={(scope) => session.commitTables(scope.tables)}
-          />
+          <nav className="es-buttons" aria-label="Encounter tools">
+            {(['creatures', 'stat-blocks', 'tables'] as const).map(
+              (section) => (
+                <button
+                  key={section}
+                  type="button"
+                  aria-pressed={encounterSection === section}
+                  onClick={() => setEncounterSection(section)}
+                >
+                  {section === 'stat-blocks'
+                    ? 'Stat blocks'
+                    : section === 'creatures'
+                      ? 'Creatures'
+                      : 'Tables'}
+                </button>
+              )
+            )}
+          </nav>
+          {home === 'encounter' && encounterSection === 'creatures' && (
+            <StudioCreatures
+              session={session}
+              onShowMap={() => {
+                changeHome('build');
+                onViewChange('3d');
+                setSections((current) => ({ ...current, build: 'arrange' }));
+              }}
+            />
+          )}
+          {home === 'encounter' && encounterSection === 'stat-blocks' && (
+            <StudioStatBlocks session={session} />
+          )}
+          <div hidden={encounterSection !== 'tables'}>
+            <h2>Tables</h2>
+            <p className="es-help">
+              Shared monster behavior. Define a table once; creatures and
+              factions can reference it by name.
+            </p>
+            <TablesPanel
+              key={session.document.draft.id}
+              scope={session.document.scope}
+              explicitRename
+              onChange={(scope) => session.commitTables(scope.tables)}
+            />
+          </div>
         </section>
       </div>
     </section>

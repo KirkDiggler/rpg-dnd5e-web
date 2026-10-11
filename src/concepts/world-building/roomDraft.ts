@@ -505,6 +505,28 @@ export function placeRoomMonster(
   };
 }
 
+/** Definition changes never rewrite identity, appearance, location or bindings. */
+export function setRoomMonsterDefinition(
+  draft: RoomDraft,
+  id: string,
+  ref: string
+): RoomDraft {
+  if (parseRef(ref)?.type !== 'monsters')
+    throw new Error('Choose a monster reference.');
+  const actor = draft.room.monsterDeclarations.find((entry) => entry.id === id);
+  if (!actor) throw new Error('Creature no longer exists.');
+  if (actor.ref === ref) return draft;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((entry) =>
+        entry.id === id ? { ...entry, ref } : entry
+      ),
+    },
+  };
+}
+
 export function moveRoomMonster(
   draft: RoomDraft,
   id: string,

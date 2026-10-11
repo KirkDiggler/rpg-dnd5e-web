@@ -44,6 +44,7 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
+import { validateMonsterTemplates } from './monsterTemplates';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
 import {
@@ -79,6 +80,7 @@ import {
   resizeRoomWorkspace,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
+  setRoomMonsterDefinition,
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
@@ -4348,6 +4350,65 @@ export function WorldBuildingConcept({
           arrange,
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
+          commitTemplates: guardSnapshotIntent((templates): boolean => {
+            try {
+              const valid = validateMonsterTemplates(templates);
+              const current = roomHistoryRef.current.present;
+              const scope = { ...current.scope };
+              if (Object.keys(valid).length) scope.templates = valid;
+              else delete scope.templates;
+              return commitRoomDocument({ ...current, scope });
+            } catch (error) {
+              return rejectEdit(error);
+            }
+          }),
+          creatures: {
+            select: guardSnapshotIntent((id: string): boolean => {
+              if (
+                refuseWhilePublishing() ||
+                !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
+                  (actor) => actor.id === id
+                )
+              )
+                return false;
+              selectStudioActor({ kind: 'actor', id });
+              return true;
+            }),
+            place: guardSnapshotIntent(
+              (ref: string, cell: RoomHexCell): boolean => {
+                try {
+                  const current = roomHistoryRef.current.present;
+                  const id = idFactory();
+                  const draft = placeRoomMonster(current.draft, {
+                    id,
+                    ref,
+                    startingCell: { location: cell },
+                  });
+                  if (!commitRoomDocument({ ...current, draft })) return false;
+                  setSelectedActorId(id);
+                  activateStudioTarget({ kind: 'actor', id });
+                  return true;
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            setDefinition: guardSnapshotIntent(
+              (id: string, ref: string): boolean => {
+                if (selectionRevisionRef.current !== selectionRevision)
+                  return false;
+                try {
+                  const current = roomHistoryRef.current.present;
+                  return commitRoomDocument({
+                    ...current,
+                    draft: setRoomMonsterDefinition(current.draft, id, ref),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+          },
           commitTables: guardSnapshotIntent(
             (tables: SiteScope['tables']): boolean => {
               const current = roomHistoryRef.current.present;
