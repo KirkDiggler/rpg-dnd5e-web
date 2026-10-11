@@ -70,19 +70,29 @@ export function LayoutWallOverlay({
               {(['start', 'end'] as const).map((endpoint) => {
                 const point = project(wall.line[endpoint]);
                 return (
-                  <circle
-                    key={endpoint}
-                    data-wall-id={wall.id}
-                    data-wall-endpoint={endpoint}
-                    cx={point.x}
-                    cy={point.y}
-                    r={7}
-                    fill="#a7ffeb"
-                    stroke="#101923"
-                    strokeWidth={2}
-                    pointerEvents="all"
-                    aria-label={`${endpoint} endpoint of ${wall.label}`}
-                  />
+                  <g key={endpoint}>
+                    <circle
+                      data-wall-id={wall.id}
+                      data-wall-endpoint={endpoint}
+                      cx={point.x}
+                      cy={point.y}
+                      r={7}
+                      fill="#a7ffeb"
+                      stroke="#101923"
+                      strokeWidth={2}
+                      pointerEvents="all"
+                      aria-label={`${endpoint} endpoint of ${wall.label}`}
+                    />
+                    <text
+                      x={point.x + 10}
+                      y={point.y - 10}
+                      fontSize={11}
+                      fill="#a7ffeb"
+                      pointerEvents="none"
+                    >
+                      {endpoint === 'start' ? 'Start' : 'End'}
+                    </text>
+                  </g>
                 );
               })}
             </g>

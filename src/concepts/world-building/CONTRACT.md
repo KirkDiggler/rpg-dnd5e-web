@@ -65,18 +65,54 @@ missing/error images retain named selectable fallbacks without loading a GLB,
 substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
 assets without a door leaf role. No appearance is armed by default.
 
-Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
-centres/corners/side midpoints, and retains its presentation-only choice across
-context dismissal and view changes. Both preview and release use the same pure
+Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
+centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
+targets other walls' endpoints within12 CSS pixels, and takes priority over hex
+snapping during drawing and endpoint reshaping. It copies the target coordinates
+exactly and marks an accepted preview as **Joined endpoint**. Equal-distance ties
+use wall id/endpoint order, not input array order. Both settings remain editor-only
+and survive context dismissal/view changes; changing either retires the gesture.
+Whole-wall translation retains its existing free/hex-snap behavior. Both preview and release use the same pure
 helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
 Wall and cancels the unfinished gesture without clearing appearance or snap.
 
-Select picks a wall body for rigid translation or a selected endpoint for direct
-reshape. Endpoint reshape composes protected collinear resize then rotation about
-the opposite endpoint: opening distances/identities and attached doors travel with
-the changed bearing. Opening edges clamp length; the preview displays the actual
-applied endpoint on the requested ray, not the unreachable raw pointer. Numeric
-length remains collinear, and move/rotation/appearance controls are secondary.
+**Right angles** is an independent editor-only setting, initially off, shared by
+Walls and selected-wall Arrange controls. It constrains drawing and endpoint
+handles, not numeric fields or whole-wall translation. At gesture start, the
+accepted drawing start or the fixed opposite endpoint chooses a reference from
+other walls meeting that exact point. The gesture retains that reference. Free
+starts use world X/Z; a joined wall supplies parallel/perpendicular axes. Compatible
+incident directions share a deterministic basis; conflicting directions refuse
+with a visible explanation rather than guessing or repairing existing walls.
+
+Projection precedes snapping. Endpoint candidates and optional hex targets must
+remain on the chosen axis; otherwise they cannot replace the constrained point.
+Cardinal coordinates compare exactly; rotated-axis compatibility accounts only
+for floating-point arithmetic roundoff, not a fixed geometric/angle tolerance.
+Accepted endpoint snaps still copy the target coordinate exactly. Preview names
+the basis/direction; opening clamp feedback takes precedence over any join claim.
+Changing the setting retires pending gestures without a document/history write.
+This editing aid does not enroll an asset for visual miter fitting.
+
+Select picks a wall body for rigid translation or a selected Start/End handle for
+direct reshape. Endpoint reshape reuses protected collinear resize; the opposite
+endpoint stays exact, and unclamped edits retain the requested endpoint verbatim
+rather than reconstructing it through trigonometry. Opening edges clamp drags;
+the preview displays the applied endpoint on the requested ray, never a false
+join to an unreachable target. Opening identities and attached doors are retained.
+
+Arrange leads with full-precision Start X/Z and End X/Z fields. Midpoint lives in
+collapsed **Position · whole wall** controls. Both endpoints can change in one
+atomic transaction without an intermediate zero-length wall. Start-only changes
+use the existing End-anchored opening offsets; otherwise local opening distances
+remain Start-anchored. An explicitly unchanged end counts as fixed. Blocker end
+margins follow the signed length delta; flags/depth/offsets stay authored. Numeric
+endpoint edits that would clamp through an opening refuse instead of writing a
+different endpoint. Endpoint coordinates cannot be combined with midpoint, length
+or rotation in the same Apply; appearance changes may accompany them. Exact no-ops
+retain geometry, optional absence, storage and history. This is an authoring snap,
+not a region-detector tolerance: no loaded gaps are welded or walls straightened.
+Numeric length remains collinear; existing whole-wall dragging remains available.
 Appearance changes do not change the independent blocker. Neither renderer stores
 derived spans or a second door pose; the existing 3D consumes the same canonical
 walls and door bindings.
@@ -211,9 +247,9 @@ blank with a100 placeholder and **Baseline · no region light authored**; untouc
 fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
 absence: it opts the configured floor into the placed-light receiver. Reset stages
 null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
-one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
-view/target/epoch/document retirement discard linked-label staging without writes;
-blur never submits. Ordinary notes expose no region fields. Configured unresolved
+one transaction; invalid tokens refuse the whole form. Cancel/Escape and
+view/target/epoch/document retirement discard linked-label staging without writes.
+Sidebar collapse and section navigation preserve staging; blur never submits. Ordinary notes expose no region fields. Configured unresolved
 labels show **Lighting saved · not applied until boundary resolves**, alongside the
 boundary reason.
 
@@ -457,6 +493,46 @@ also applies to current local drafts: old bytes are preserved on refusal.
 There is no v5 document or schema alias, and no automatic rewrite of saved
 compositions. Server error paths are displayed verbatim by the publish panel.
 The engine example is pinned to toolkit merge `6cbee563`.
+
+## Studio authoring homes and options (#1256)
+
+Build, Regions and Encounter are authoring homes, independent of the Layout/3D
+map view. Document identity, saving and history remain shared. Build starts in
+Select and offers Paint, Erase, Rectangle and Size in Layout. Its right-hand
+options contain Arrange, Walls, Doors and Notes. Regions owns the region list,
+room-label creation and the existing linked-label boundary/background-light form.
+Encounter gives Tables a full configuration workspace, not a map options tab.
+Future configuration sections are not represented by enabled placeholder controls.
+
+There is one spatial options slot. Only one section is visible. The Options
+button and unmodified N toggle it without remounting the canvas or changing the
+active section, tool, selection, document or history. N does not intercept
+editable controls, composition, repeated keys or modified shortcuts; it does not
+open map options in Encounter. The inactive map stays mounted but hidden and
+inert while Encounter is shown. Home changes retire map gestures through the
+owner epoch and return Build to Select; hidden map mutation shortcuts and 3D
+callbacks are fenced. Undo/Redo remain document actions. Regions3D is inspection,
+with existing lighting edits available; placement and boundary painting use Layout.
+
+Sections stay mounted when hidden. Local form drafts survive section changes and
+collapse; a canonical document/selection/intent replacement still retires Arrange
+staging. Selection changes update Arrange without forcing a different section or
+reopening the sidebar. Wall drawing remains a Layout tool; showing its options
+alone does not arm drawing. Pickers retain published static PNGs; no model-capture
+queue or thumbnail-demand mechanism is introduced.
+
+Tables edit the encounter's root declarations independently of map selection.
+The existing TablesPanel, entry grammar and vocabulary are shared, not copied.
+Studio table names commit only on explicit Apply/Enter; Cancel/Escape discards the
+name token. Entry fields keep their existing document-edit semantics. Multiple
+entries may be authored on each trigger. Section or home navigation never submits
+a name; table-name drafts remain mounted across homes.
+
+`EncounterStudioSession.commitTables` accepts only `SiteScope.tables`, preserving
+all other scope, geometry and bindings through the existing guarded document
+transaction. Absence omits the key; equal writes add no history. Retired callbacks
+refuse. Undo/Redo, draft storage and strict completed save/export share the one
+owner. Renaming/removing tables does not rewrite references or compute behavior.
 
 ## Shared answer tables at the root (#1201)
 

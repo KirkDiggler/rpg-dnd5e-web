@@ -411,6 +411,8 @@ export function WorldBuildingConcept({
    * and drawing is refused until one is chosen. Snap is optional. */
   const [wallAssetRef, setWallAssetRef] = useState<string | null>(null);
   const [wallSnapEnabled, setWallSnapEnabled] = useState(false);
+  const [wallEndpointSnapEnabled, setWallEndpointSnapEnabled] = useState(true);
+  const [wallRightAngleEnabled, setWallRightAngleEnabled] = useState(false);
   /** The selected authored wall — its own selection, never a scene prop id. */
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
@@ -519,12 +521,21 @@ export function WorldBuildingConcept({
   const isStudio = Boolean(studioPresentation);
   const studioView = roomMode ? studioPresentation?.view : undefined;
   const studioViewRef = useRef(studioView);
+  const studioHome =
+    roomMode && studioPresentation
+      ? (studioPresentation.home ?? 'build')
+      : undefined;
+  const studioHomeRef = useRef(studioHome);
   const viewportGenerationRef = useRef(0);
   const [, refreshViewportGeneration] = useState(0);
   // Retire callbacks synchronously before renderer cleanup/effects. Returning
   // to 3D must not resurrect callbacks from the previous renderer mount.
-  if (studioViewRef.current !== studioView) {
+  if (
+    studioViewRef.current !== studioView ||
+    studioHomeRef.current !== studioHome
+  ) {
     studioViewRef.current = studioView;
+    studioHomeRef.current = studioHome;
     viewportGenerationRef.current += 1;
   }
   const intentContextRef = useRef({
@@ -536,6 +547,8 @@ export function WorldBuildingConcept({
     wallAssetRef,
     doorAssetRef,
     wallSnapEnabled,
+    wallEndpointSnapEnabled,
+    wallRightAngleEnabled,
     paintingConcealmentId,
   });
   if (
@@ -547,6 +560,9 @@ export function WorldBuildingConcept({
     intentContextRef.current.wallAssetRef !== wallAssetRef ||
     intentContextRef.current.doorAssetRef !== doorAssetRef ||
     intentContextRef.current.wallSnapEnabled !== wallSnapEnabled ||
+    intentContextRef.current.wallEndpointSnapEnabled !==
+      wallEndpointSnapEnabled ||
+    intentContextRef.current.wallRightAngleEnabled !== wallRightAngleEnabled ||
     intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
   ) {
     intentContextRef.current = {
@@ -558,6 +574,8 @@ export function WorldBuildingConcept({
       wallAssetRef,
       doorAssetRef,
       wallSnapEnabled,
+      wallEndpointSnapEnabled,
+      wallRightAngleEnabled,
       paintingConcealmentId,
     };
     viewportGenerationRef.current += 1;
@@ -581,6 +599,7 @@ export function WorldBuildingConcept({
     setActiveDrag(null);
   }, [
     studioView,
+    studioHome,
     roomMode,
     roomHistory.present,
     tool,
@@ -1391,6 +1410,12 @@ export function WorldBuildingConcept({
       if (
         studioViewRef.current !== undefined &&
         roomTool === 'door' &&
+        ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
+      )
+        return;
+      if (
+        studioHomeRef.current !== undefined &&
+        studioHomeRef.current !== 'build' &&
         ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
       )
         return;
@@ -4094,6 +4119,8 @@ export function WorldBuildingConcept({
         : false
     );
   const viewportIsActive = (): boolean =>
+    (studioHomeRef.current === undefined ||
+      studioHomeRef.current === 'build') &&
     mountedRef.current &&
     studioViewRef.current !== 'layout' &&
     (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4112,6 +4139,8 @@ export function WorldBuildingConcept({
   const guardedScenePreview = useCallback(
     (next: WorldScene | null): void => {
       if (
+        (studioHomeRef.current === undefined ||
+          studioHomeRef.current === 'build') &&
         mountedRef.current &&
         studioViewRef.current !== 'layout' &&
         (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4136,6 +4165,8 @@ export function WorldBuildingConcept({
   const guardedWallPreview = useCallback(
     (next: StructuralWall | null): void => {
       if (
+        (studioHomeRef.current === undefined ||
+          studioHomeRef.current === 'build') &&
         mountedRef.current &&
         studioViewRef.current !== 'layout' &&
         (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4299,6 +4330,15 @@ export function WorldBuildingConcept({
           arrange,
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
+          commitTables: guardSnapshotIntent(
+            (tables: SiteScope['tables']): boolean => {
+              const current = roomHistoryRef.current.present;
+              const scope = { ...current.scope };
+              if (tables === undefined) delete scope.tables;
+              else scope.tables = tables;
+              return commitRoomDocument({ ...current, scope });
+            }
+          ),
           mapLabelSelection: {
             selectedId:
               activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
@@ -4372,6 +4412,26 @@ export function WorldBuildingConcept({
               activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
             assetRef: wallAssetRef,
             snapEnabled: wallSnapEnabled,
+            endpointSnapEnabled: wallEndpointSnapEnabled,
+            rightAngleEnabled: wallRightAngleEnabled,
+            setRightAngle: guardSnapshotIntent((enabled: boolean): boolean => {
+              if (refuseWhilePublishing()) return false;
+              if (enabled !== wallRightAngleEnabled) {
+                cancelTransients();
+                setWallRightAngleEnabled(enabled);
+              }
+              return true;
+            }),
+            setEndpointSnap: guardSnapshotIntent(
+              (enabled: boolean): boolean => {
+                if (refuseWhilePublishing()) return false;
+                if (enabled !== wallEndpointSnapEnabled) {
+                  cancelTransients();
+                  setWallEndpointSnapEnabled(enabled);
+                }
+                return true;
+              }
+            ),
             options: studioWallOptions,
             select: guardSnapshotIntent(selectStudioWall),
             setAsset: guardSnapshotIntent((ref: string | null): boolean => {
@@ -4435,7 +4495,10 @@ export function WorldBuildingConcept({
             )
               redo();
           },
-          commitFloor: guardIntent(commitFloor),
+          commitFloor: guardIntent(
+            (cells, mode) =>
+              studioHomeRef.current === 'build' && commitFloor(cells, mode)
+          ),
           resizeWorkspace: guardIntent((width: number, height: number) =>
             applyRoomIntent((current) =>
               resizeRoomWorkspace(current, width, height)

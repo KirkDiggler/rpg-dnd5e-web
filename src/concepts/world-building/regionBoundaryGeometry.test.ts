@@ -19,6 +19,7 @@ import {
   type RoomDraft,
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
+import { setWallEndpoints } from './structuralWallEditing';
 import type { StructuralWall } from './structuralWalls';
 import type { WorldPoint } from './types';
 import { centeredRoomWorkspace, workspaceCells } from './workspaceGeometry';
@@ -93,6 +94,34 @@ function exteriorCoverageRoom(): RoomDraft {
   return draft;
 }
 const coverageSeed = p(-19.609612065022446, 11.406561842131094);
+
+describe('exact authored endpoint joins', () => {
+  it('closes a skewed quadrilateral by copying endpoints, without detector welding or automatic binding', () => {
+    const draft = createRoomLabel(
+      room([
+        wall('A', 0.123456789012345, 0.27, 8.13, 0.271),
+        wall('B', 8.145, 0.273, 8.13, 4.27),
+        wall('C', 8.13, 4.27, 0.13, 4.27),
+        wall('D', 0.13, 4.27, 0.13, 0.27 + Number.EPSILON),
+      ]),
+      'region',
+      'label',
+      'Room',
+      p(2, 2)
+    );
+    expect(findEnclosureAtPoint(draft, p(2, 2)).status).not.toBe('resolved');
+    const repaired = structuredClone(draft);
+    const walls = repaired.room.walls!;
+    walls[1] = setWallEndpoints({ wall: walls[1], start: walls[0].line.end });
+    walls[3] = setWallEndpoints({ wall: walls[3], end: walls[0].line.start });
+    expect(findEnclosureAtPoint(repaired, p(2, 2)).status).toBe('resolved');
+    expect(repaired.scene).toEqual(draft.scene);
+    expect(
+      resolveAuthoringRegions(bindEnclosingWalls(repaired, 'region'))[0].status
+    ).toBe('resolved');
+    expect(findEnclosureAtPoint(draft, p(2, 2)).status).not.toBe('resolved');
+  });
+});
 
 describe('exact collinear coverage provenance', () => {
   it('handles vertical coverage and retains distinct non-overlapping end-to-end source transitions', () => {

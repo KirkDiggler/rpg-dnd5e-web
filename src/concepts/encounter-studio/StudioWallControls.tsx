@@ -1,16 +1,20 @@
 import type { EncounterStudioSession } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
+import { StudioWallConstraints } from './StudioWallConstraints';
 
 /** Drawing palette only. Selected precision belongs exclusively to Arrange. */
 export function StudioWallControls({
   session,
   onDismiss,
   onExitWallTool,
+  onStartDrawing,
+  drawing,
 }: {
   session: Pick<EncounterStudioSession, 'document' | 'wallEditing'>;
   drawing: boolean;
   onDismiss(): void;
   onExitWallTool(): void;
+  onStartDrawing?(): void;
 }): React.JSX.Element {
   const editing = session.wallEditing;
   return (
@@ -32,9 +36,16 @@ export function StudioWallControls({
         </button>
       </div>
       <p className="es-help">
-        Choose an appearance, then drag on the map. Keep drawing successive
-        walls · Escape exits Wall.
+        {drawing
+          ? 'Choose an appearance, then drag on the map. Keep drawing successive walls · Escape exits Wall.'
+          : 'Choose an appearance here. Draw walls in Layout; edit a selected wall in Arrange.'}
       </p>
+      {onStartDrawing && (
+        <button type="button" aria-pressed={drawing} onClick={onStartDrawing}>
+          Draw walls
+        </button>
+      )}
+      <StudioWallConstraints editing={editing} />
       <label className="es-snap">
         <input
           type="checkbox"

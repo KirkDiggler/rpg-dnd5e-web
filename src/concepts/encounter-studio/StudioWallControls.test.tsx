@@ -55,6 +55,7 @@ function fixture(): EncounterStudioSession {
       cancelPreview: vi.fn(),
     },
     commitArrange: vi.fn(() => true),
+    commitTables: vi.fn(() => true),
     mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     canUndo: false,
@@ -85,6 +86,10 @@ function fixture(): EncounterStudioSession {
       selectedId: null,
       assetRef: null,
       snapEnabled: false,
+      endpointSnapEnabled: true,
+      rightAngleEnabled: false,
+      setRightAngle: vi.fn(() => true),
+      setEndpointSnap: vi.fn(() => true),
       options: [
         {
           ref: 'creative',
