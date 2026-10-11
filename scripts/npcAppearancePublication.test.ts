@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   GENERATED_NPC_APPEARANCES,
@@ -23,6 +24,43 @@ const APPROVED_REFS = [
   'dnd5e:npcs:goblin:ranger-01',
   'dnd5e:npcs:goblin:wizard-01',
 ] as const;
+
+const KINGDOM_MODELS = [
+  'blacksmith-female-01',
+  'blacksmith-male-01',
+  'hermit-01',
+  'jester-01',
+  'king-01',
+  'mage-cape-01',
+  'merchant-01',
+  'monk-01',
+  'nun-01',
+  'peasant-female-01',
+  'peasant-male-01',
+  'priest-01',
+  'prince-01',
+  'princess-01',
+  'rider-01',
+  'soldier-female-01',
+  'soldier-male-01',
+] as const;
+
+const selection = JSON.parse(
+  readFileSync(
+    new URL('./configs/npc-appearance-releases.json', import.meta.url),
+    'utf8'
+  )
+) as {
+  releases: {
+    releaseId: string;
+    appearances: {
+      assetRef: string;
+      displayName: string;
+      standingSha256: string;
+      downedSha256: string;
+    }[];
+  }[];
+};
 
 const EXPECTED_LABELS: Readonly<Record<string, string>> = {
   'dnd5e:npcs:goblin:warrior-male-01': 'Warrior Male 01',
@@ -96,19 +134,24 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
 };
 
 describe('approved NPC appearance publication', () => {
-  it('exports exactly the 13 approved unique identities and no provider extras', () => {
+  it('exports exactly the 13 Goblin and 17 Kingdom identities and no provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: 'abb2eaaee861f71ea0ce0da1947293197b1615fd',
-      releases: ['goblin-war-camp-v1'],
+      commit: '9a2c348aabbcaf317072539681a866132dbacd3c',
+      releases: ['goblin-war-camp-v1', 'kingdom-npcs-v1'],
     });
-    expect(NPC_APPEARANCE_CATALOG).toHaveLength(13);
+    expect(NPC_APPEARANCE_CATALOG).toHaveLength(30);
     expect(new Set(NPC_APPEARANCE_CATALOG)).toEqual(
       new Set(Object.values(GENERATED_NPC_APPEARANCES))
     );
     expect(
       new Set(NPC_APPEARANCE_CATALOG.map(({ assetRef }) => assetRef))
-    ).toEqual(new Set(APPROVED_REFS));
-    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(13);
+    ).toEqual(
+      new Set([
+        ...APPROVED_REFS,
+        ...KINGDOM_MODELS.map((name) => `dnd5e:npcs:kingdom:${name}`),
+      ])
+    );
+    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(30);
   });
 
   it('retains exact standing/downed hashes, URLs, null rules, and provider-declared rig/pose metadata', () => {
@@ -143,6 +186,37 @@ describe('approved NPC appearance publication', () => {
       modelUrls.add(appearance!.downedUrl);
     }
     expect(modelUrls.size).toBe(26);
+  });
+
+  it('adopts Kingdom refs without deriving filenames, rules, weapons or Castle aliases', () => {
+    const declared = selection.releases.find(
+      (release) => release.releaseId === 'kingdom-npcs-v1'
+    )!.appearances;
+    expect(declared).toHaveLength(17);
+    for (const name of KINGDOM_MODELS) {
+      const ref = `dnd5e:npcs:kingdom:${name}`;
+      const appearance = resolveNpcAppearance(ref)!;
+      const expected = declared.find((entry) => entry.assetRef === ref)!;
+      expect(appearance).toMatchObject({
+        releaseId: 'kingdom-npcs-v1',
+        assetRef: ref,
+        displayName: expected.displayName,
+        rulesRef: null,
+        sourcePack: 'polygon-fantasy-kingdom',
+        jointCount: 55,
+        forwardAxis: '+Z',
+        animationClips: ['Idle_Relaxed', 'Walk_Forward'],
+        standingUrl: `/models/synty/npcs/castle-${name}.glb`,
+        downedUrl: `/models/synty/npcs/castle-${name}-downed.glb`,
+        standingSha256: expected.standingSha256,
+        downedSha256: expected.downedSha256,
+      });
+      expect(appearance.sourceName).toMatch(/^SK_Chr_/);
+      expect(resolveNpcAppearance(`dnd5e:npcs:castle:${name}`)).toBeUndefined();
+      expect(NPC_WEAPON_SETS.some((set) => set.appearanceRef === ref)).toBe(
+        false
+      );
+    }
   });
 
   it('publishes only approved exact-body weapon sets without adding rules-bound bodies to the appearance palette', () => {

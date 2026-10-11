@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import {
   ROOM_DRAFT_STORAGE_KEY,
+  parseRoomDocumentJson,
   stringifyRoomDraft,
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
@@ -463,7 +464,9 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(screen.queryByLabelText('World X')).toBeNull();
     expect(screen.queryByLabelText('Height scale (%)')).toBeNull();
     expect(screen.getByRole('option', { name: 'Asset default' })).toBeTruthy();
-    expect(screen.getAllByRole('option')).toHaveLength(9);
+    expect(
+      within(screen.getByLabelText('Starting facing')).getAllByRole('option')
+    ).toHaveLength(9);
     change('Starting hex q', '0.5');
     apply();
     expect(joined.calls).toHaveLength(0);
@@ -496,6 +499,71 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     apply();
     expect(joined.calls.at(-1)?.kind).toBe('start-position');
     expect(joined.session.document.draft.room.partyStart?.q).toBe(1);
+  });
+
+  it('saves appearance through the real owner once, with undo/redo and no rules or faction changes', () => {
+    const joined = owner();
+    joined.selectActor();
+    const before = joined.session.document;
+    const original = before.draft.room.monsterDeclarations.find(
+      (actor) => actor.id === 'goblin-1'
+    )!;
+    const writes = joined.writes();
+    const look = 'dnd5e:npcs:kingdom:merchant-01';
+    change('NPC appearance', look);
+    apply();
+    expect(joined.calls).toEqual([
+      {
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'goblin-1' },
+        appearanceRef: look,
+      },
+    ]);
+    expect(joined.writes()).toBe(writes + 1);
+    const chosen = joined.session.document.draft.room.monsterDeclarations.find(
+      (actor) => actor.id === 'goblin-1'
+    )!;
+    expect(chosen).toEqual({ ...original, appearanceRef: look });
+    expect(joined.session.document.draft.room.monsterBindings).toEqual(
+      before.draft.room.monsterBindings
+    );
+    const persisted = parseRoomDocumentJson(
+      joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)!
+    );
+    expect(
+      persisted.draft.room.monsterDeclarations.find(
+        (actor) => actor.id === 'goblin-1'
+      )?.appearanceRef
+    ).toBe(look);
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    expect(token('NPC appearance')).toBe(look);
+    change('NPC appearance', '');
+    apply();
+    expect(
+      joined.session.document.draft.room.monsterDeclarations.find(
+        (actor) => actor.id === 'goblin-1'
+      )
+    ).not.toHaveProperty('appearanceRef');
+  });
+
+  it('keeps a valid unavailable appearance visible and unchanged until explicitly replaced', () => {
+    const document = createPopulatedStudioDocument();
+    document.draft.room.monsterDeclarations.find(
+      (actor) => actor.id === 'goblin-1'
+    )!.appearanceRef = 'dnd5e:npcs:kingdom:future';
+    const joined = owner(document);
+    joined.selectActor();
+    expect(
+      screen.getByRole('option', {
+        name: 'Unavailable: dnd5e:npcs:kingdom:future',
+      })
+    ).toBeTruthy();
+    const writes = joined.writes();
+    apply();
+    expect(joined.calls).toHaveLength(0);
+    expect(joined.writes()).toBe(writes);
   });
 
   it('clean preview fields follow owner values; dirty fields survive cosmetic preview and commit stays blocked', () => {

@@ -6,6 +6,7 @@ import {
   HEX_SIZE,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { parseRef } from '@/utils/refs';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
@@ -76,6 +77,8 @@ export interface RoomPropDeclaration {
 export interface RoomMonsterPlacement {
   id: string;
   ref: string;
+  /** Optional visual identity; never a rules/template ref or faction choice. */
+  appearanceRef?: string;
   /** WHERE IT STARTS, and which way it is looking (rpg-project#501 §6.1).
    *
    * `startingCell` NAMES WHEN. The engine reads this once, at compile, into
@@ -529,6 +532,46 @@ export function moveRoomMonster(
   return { ...draft, room: { ...draft.room, monsterDeclarations: monsters } };
 }
 
+/** Shape validation only; an unknown catalog member stays editable. */
+function requireAppearanceRef(value: unknown, path: string): string {
+  if (typeof value !== 'string' || !parseRef(value)) {
+    throw new Error(
+      `${path} must be a nonempty, structurally valid appearance reference.`
+    );
+  }
+  return value;
+}
+
+/** Set or clear one actor's look without changing its rules, bindings or start. */
+export function setRoomMonsterAppearance(
+  draft: RoomDraft,
+  id: string,
+  appearanceRef: string | undefined
+): RoomDraft {
+  const monster = draft.room.monsterDeclarations.find((item) => item.id === id);
+  if (!monster) throw new Error('Appearance target no longer exists.');
+  if (appearanceRef !== undefined)
+    requireAppearanceRef(appearanceRef, `Monster ${id} appearanceRef`);
+  if (
+    appearanceRef === undefined
+      ? !Object.hasOwn(monster, 'appearanceRef')
+      : monster.appearanceRef === appearanceRef
+  )
+    return draft;
+  const next = { ...monster };
+  if (appearanceRef === undefined) delete next.appearanceRef;
+  else next.appearanceRef = appearanceRef;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((item) =>
+        item.id === id ? next : item
+      ),
+    },
+  };
+}
+
 /** Set an explicit compass facing, or delete it to use the asset default.
  * Unknown identities and invalid words refuse; exact no-ops keep absence. */
 export function setRoomMonsterFacing(
@@ -818,7 +861,7 @@ const FACTION_ID_RE = /^[-a-z0-9]+$/;
  * shape check is the whole of what the builder may say about a weapon, and it
  * must not live in two places. */
 export const WEAPON_REF_RE = /^dnd5e:weapons:[-a-z0-9]+$/;
-const MONSTER_KEYS = ['id', 'ref', 'startingCell'] as const;
+const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'appearanceRef'] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
 const STARTING_CELL_KEYS = ['location', 'facing'] as const;
@@ -873,6 +916,12 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
         `Monster ${source.id} startingCell`
       ),
     };
+    if (Object.hasOwn(source, 'appearanceRef')) {
+      monster.appearanceRef = requireAppearanceRef(
+        source.appearanceRef,
+        `Monster ${source.id} appearanceRef`
+      );
+    }
     monsters.push(monster);
   }
   return monsters;

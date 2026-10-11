@@ -1,3 +1,7 @@
+import {
+  NPC_APPEARANCE_CATALOG,
+  resolveNpcAppearance,
+} from '@/generated/npcAppearanceCatalog';
 import type {
   AuthoringRegion,
   RegionResolution,
@@ -20,6 +24,7 @@ export type ArrangeFieldKey =
   | 'r'
   | 'text'
   | 'facing'
+  | 'appearanceRef'
   | 'assetRef'
   | 'anchor'
   | 'position'
@@ -137,6 +142,27 @@ export function arrangeFields(
       ];
     case 'actor':
       return [
+        {
+          key: 'appearanceRef',
+          label: 'NPC appearance',
+          value: selection.monster.appearanceRef ?? '',
+          choices: [
+            { value: '', label: 'Use rules default appearance' },
+            ...(selection.monster.appearanceRef &&
+            !resolveNpcAppearance(selection.monster.appearanceRef)
+              ? [
+                  {
+                    value: selection.monster.appearanceRef,
+                    label: `Unavailable: ${selection.monster.appearanceRef}`,
+                  },
+                ]
+              : []),
+            ...NPC_APPEARANCE_CATALOG.map((appearance) => ({
+              value: appearance.assetRef,
+              label: `${appearance.displayName} — ${appearance.sourcePack}`,
+            })),
+          ],
+        },
         numeric('q', 'Starting hex q', selection.startingCell.location.q),
         numeric('r', 'Starting hex r', selection.startingCell.location.r),
         {
@@ -293,6 +319,9 @@ export function arrangeIntent(
       return {
         kind: 'actor-start',
         target: selection.target,
+        ...(draft.appearanceRef !== undefined
+          ? { appearanceRef: draft.appearanceRef || null }
+          : {}),
         ...(draft.q !== undefined || draft.r !== undefined
           ? { location: cell(selection.startingCell.location) }
           : {}),
