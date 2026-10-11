@@ -1,3 +1,5 @@
+import { resolveNpcAppearance } from '@/generated/npcAppearanceCatalog';
+import { NPC_APPEARANCE_FAMILIES } from '@/npc-appearances/npcAppearanceChoices';
 import type {
   AuthoringRegion,
   RegionResolution,
@@ -20,6 +22,10 @@ export type ArrangeFieldKey =
   | 'r'
   | 'text'
   | 'facing'
+  | 'appearanceRef'
+  | 'appearanceFamily'
+  | 'appearanceStyle'
+  | 'appearanceSkinPalette'
   | 'assetRef'
   | 'anchor'
   | 'position'
@@ -34,6 +40,7 @@ export interface ArrangeField {
   numeric?: boolean;
   placeholder?: string;
   choices?: readonly { value: string; label: string }[];
+  disabled?: boolean;
 }
 const display = (value: number): string => String(Number(value.toFixed(6)));
 const degrees = (radians: number): number => (radians * 180) / Math.PI;
@@ -41,7 +48,8 @@ const degrees = (radians: number): number => (radians * 180) / Math.PI;
 /** Form tokens are display only. Only keys explicitly changed enter the patch. */
 export function arrangeFields(
   selection: StudioArrangeSelection,
-  facingNames: readonly string[]
+  facingNames: readonly string[],
+  draft: ArrangeDraft = {}
 ): ArrangeField[] {
   const numeric = (
     key: ArrangeFieldKey,
@@ -135,8 +143,56 @@ export function arrangeFields(
             ]
           : []),
       ];
-    case 'actor':
+    case 'actor': {
+      const ref = draft.appearanceRef ?? selection.monster.appearanceRef ?? '';
+      const current = resolveNpcAppearance(ref);
+      const family = NPC_APPEARANCE_FAMILIES.find(
+        (entry) => entry.ref === (current?.look?.familyRef ?? current?.assetRef)
+      );
+      const choices = (
+        key: 'style' | 'skinPalette'
+      ): { value: string; label: string }[] =>
+        current?.look
+          ? [
+              ...new Set(
+                family?.looks.flatMap((look) =>
+                  look.look ? [look.look[key]] : []
+                )
+              ),
+            ]
+              .sort()
+              .map((value) => ({ value, label: value }))
+          : [{ value: '', label: 'Not available' }];
       return [
+        {
+          key: 'appearanceFamily',
+          label: 'NPC appearance',
+          value: family?.ref ?? ref,
+          choices: [
+            { value: '', label: 'Use rules default appearance' },
+            ...(ref && !current
+              ? [{ value: ref, label: `Unavailable: ${ref}` }]
+              : []),
+            ...NPC_APPEARANCE_FAMILIES.map((entry) => ({
+              value: entry.ref,
+              label: `${entry.defaultLook.displayName} — ${entry.defaultLook.sourcePack}`,
+            })),
+          ],
+        },
+        {
+          key: 'appearanceStyle',
+          label: 'Style',
+          value: current?.look?.style ?? '',
+          choices: choices('style'),
+          disabled: !current?.look,
+        },
+        {
+          key: 'appearanceSkinPalette',
+          label: 'Skin palette',
+          value: current?.look?.skinPalette ?? '',
+          choices: choices('skinPalette'),
+          disabled: !current?.look,
+        },
         numeric('q', 'Starting hex q', selection.startingCell.location.q),
         numeric('r', 'Starting hex r', selection.startingCell.location.r),
         {
@@ -149,6 +205,7 @@ export function arrangeFields(
           ],
         },
       ];
+    }
     case 'start':
       return [
         numeric('q', 'Starting hex q', selection.cell.q),
@@ -293,6 +350,9 @@ export function arrangeIntent(
       return {
         kind: 'actor-start',
         target: selection.target,
+        ...(draft.appearanceRef !== undefined
+          ? { appearanceRef: draft.appearanceRef || null }
+          : {}),
         ...(draft.q !== undefined || draft.r !== undefined
           ? { location: cell(selection.startingCell.location) }
           : {}),

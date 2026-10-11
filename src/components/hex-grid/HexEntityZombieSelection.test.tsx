@@ -64,6 +64,7 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
 });
 
 vi.mock('@react-three/drei', () => ({
+  Html: () => <group name="appearance-diagnostic" />,
   useGLTF: hoisted.useGLTFSpy,
   useTexture: () => new THREE.Texture(),
   useAnimations: () => ({
@@ -202,6 +203,74 @@ describe('HexEntity zombie rendering (one look, real render path)', () => {
       />
     );
     expect(uniqueCalledUrls()).toEqual([ZOMBIE_GAUNT_DOWNED_URL]);
+  });
+
+  it('uses an observed appearance instead of the rules-derived body, including downed', async () => {
+    const appearanceRef = 'dnd5e:npcs:kingdom:merchant-01';
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        entityId="appearance"
+        appearanceRef={appearanceRef}
+      />
+    );
+    expect(uniqueCalledUrls()).toEqual([
+      '/models/synty/npcs/castle-merchant-01.glb',
+    ]);
+    hoisted.useGLTFSpy.mockClear();
+    await renderer.update(
+      <HexEntity
+        {...base}
+        entityId="appearance"
+        monsterRefId="animated-armor"
+        appearanceRef={appearanceRef}
+        isDead
+      />
+    );
+    expect(uniqueCalledUrls()).toEqual([
+      '/models/synty/npcs/castle-merchant-01-downed.glb',
+    ]);
+    await renderer.unmount();
+  });
+
+  it('renders a diagnostic, never a rules-derived substitute, for an explicit unavailable appearance', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        entityId="appearance-unknown"
+        appearanceRef="dnd5e:npcs:kingdom:missing"
+      />
+    );
+    expect(uniqueCalledUrls()).toEqual([]);
+    expect(
+      renderer.scene.findAllByProps({ name: 'appearance-diagnostic' })
+    ).toHaveLength(1);
+    await renderer.unmount();
+  });
+
+  it('keeps a failed explicit model on the diagnostic path instead of silently drawing another body', async () => {
+    const original = hoisted.useGLTFSpy.getMockImplementation()!;
+    hoisted.useGLTFSpy.mockImplementation(() => {
+      throw new Error('missing appearance fixture');
+    });
+    try {
+      const renderer = await ReactThreeTestRenderer.create(
+        <HexEntity
+          {...base}
+          entityId="appearance-failed"
+          appearanceRef="dnd5e:npcs:kingdom:merchant-01"
+        />
+      );
+      expect(new Set(uniqueCalledUrls())).toEqual(
+        new Set(['/models/synty/npcs/castle-merchant-01.glb'])
+      );
+      expect(
+        renderer.scene.findAllByProps({ name: 'appearance-diagnostic' })
+      ).toHaveLength(1);
+      await renderer.unmount();
+    } finally {
+      hoisted.useGLTFSpy.mockImplementation(original);
+    }
   });
 
   it('leaves a non-zombie monster (skeleton) on its single deterministic GLB, unaffected by entityId', async () => {

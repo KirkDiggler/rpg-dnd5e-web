@@ -4,6 +4,7 @@ import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { resolveNpcMainHandPresentation } from '@/components/hex-grid/npcMainHandPresentation';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import { resolveNpcAppearanceModel } from '@/npc-appearances/npcAppearanceModel';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -125,12 +126,15 @@ function MonsterMarker({
   const refId = placement.ref.startsWith('dnd5e:monsters:')
     ? placement.ref.slice('dnd5e:monsters:'.length)
     : placement.ref;
-  const modelUrl = resolveMonsterModelUrl(
-    refId,
-    undefined,
-    false,
-    placement.id
-  );
+  const appearance = resolveNpcAppearanceModel({
+    appearanceRef: placement.appearanceRef,
+  });
+  const modelUrl =
+    appearance.kind === 'legacy'
+      ? resolveMonsterModelUrl(refId, undefined, false, placement.id)
+      : appearance.kind === 'resolved'
+        ? appearance.url
+        : undefined;
   // Authored overrides are weapon-only ordered refs at the room-draft ingress.
   // With no override, no client reconstruction of the rulebook default occurs.
   const mainHand = resolveNpcMainHandPresentation({
@@ -152,20 +156,40 @@ function MonsterMarker({
       {modelUrl ? (
         <Suspense fallback={<ActorChip tone="loading" text={`${label}…`} />}>
           <ErrorBoundary
+            key={modelUrl}
             fallback={
-              <ActorChip tone="error" text={`${label} — model failed`} />
+              <ActorChip
+                tone="error"
+                text={
+                  placement.appearanceRef
+                    ? `Appearance unavailable: ${placement.appearanceRef}`
+                    : `${label} — model failed`
+                }
+              />
             }
           >
             {/* Reuse the game's skeleton-safe cloning, scale and idle pose.
                 A plain scene.clone leaves skinned bodies at the source origin. */}
             <ClassCharacterModel
               url={modelUrl}
+              facingRotation={
+                appearance.kind === 'resolved'
+                  ? appearance.forwardOffset
+                  : undefined
+              }
               mainHandPresentation={mainHand.presentation}
             />
           </ErrorBoundary>
         </Suspense>
       ) : (
-        <ActorChip tone="unavailable" text={`${label} — model unavailable`} />
+        <ActorChip
+          tone="unavailable"
+          text={
+            appearance.kind === 'unavailable'
+              ? `Appearance unavailable: ${appearance.appearanceRef}`
+              : `${label} — model unavailable`
+          }
+        />
       )}
       <Html center style={{ pointerEvents: 'none' }}>
         <output

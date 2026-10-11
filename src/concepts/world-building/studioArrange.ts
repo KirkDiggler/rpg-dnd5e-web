@@ -7,6 +7,7 @@ import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
   moveRoomMonster,
+  setRoomMonsterAppearance,
   setRoomMonsterFacing,
   setRoomPartyStart,
   type RoomDraft,
@@ -149,6 +150,8 @@ export interface StudioWallArrangeEdit {
 
 export interface StudioActorArrangeEdit {
   readonly kind: 'actor-start';
+  /** Omitted is unchanged; null clears only the authored visual override. */
+  readonly appearanceRef?: string | null;
   readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
   readonly location?: RoomHexCell;
   /** Omitted means unchanged; default deletes only the facing key. */
@@ -548,5 +551,12 @@ export function applyStudioActorArrange(
       monster.id,
       intent.facing.kind === 'default' ? undefined : intent.facing.value
     );
+  if (intent.appearanceRef !== undefined) {
+    next = setRoomMonsterAppearance(
+      next,
+      monster.id,
+      intent.appearanceRef ?? undefined
+    );
+  }
   return next;
 }
