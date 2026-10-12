@@ -3,14 +3,26 @@ import type { MainHandPresentation } from '@/components/hex-grid/mainHandPresent
 import { resolveNpcMainHandPresentation } from '@/components/hex-grid/npcMainHandPresentation';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { isValidElement, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { beforeAll, expect, it, vi } from 'vitest';
 
 vi.mock('@react-three/drei', () => ({
-  Html: ({ style }: { style?: { pointerEvents?: string } }) => (
+  Html: ({
+    style,
+    children,
+  }: {
+    style?: { pointerEvents?: string };
+    children?: ReactNode;
+  }) => (
     <group
       name="actor-html-label"
-      userData={{ pointerEvents: style?.pointerEvents }}
+      userData={{
+        pointerEvents: style?.pointerEvents,
+        label: isValidElement<{ 'aria-label'?: string }>(children)
+          ? children.props['aria-label']
+          : undefined,
+      }}
     />
   ),
   useGLTF: () => ({ scene: new THREE.Group() }),
@@ -36,6 +48,33 @@ beforeAll(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
+});
+
+it('uses the saved authoring name instead of the base monster type', async () => {
+  const renderer = await ReactThreeTestRenderer.create(
+    <RoomActorMarkers
+      monsters={[
+        {
+          id: 'guard-1',
+          ref: 'dnd5e:monsters:human',
+          startingCell: { location: { q: 0, r: 0 } },
+        },
+      ]}
+      actorNames={{ 'guard-1': 'Standard Guard' }}
+      partyStart={null}
+      selectedActorId={null}
+      onSelectActor={vi.fn()}
+    />
+  );
+  expect(
+    renderer.scene
+      .findAllByProps({ name: 'actor-html-label' })
+      .some(
+        (label) =>
+          label.instance.userData.label === 'Monster Standard Guard guard-1'
+      )
+  ).toBe(true);
+  await renderer.unmount();
 });
 
 it('makes every display-only label wrapper transparent to canvas clicks', async () => {

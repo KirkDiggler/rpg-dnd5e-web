@@ -590,6 +590,15 @@ its own complete appearanceRef; recipe edits affect future placements only.
 Unknown imported model refs remain literal and placement refuses until resolved.
 Label, region, lighting and resize edits retain scene5 and its palette.
 
+Scene5 optionally carries `actorNames`, a placement-id to authoring-label map.
+New recipe placements snapshot their name in the same transaction. Marker labels,
+hover previews and Arrange use that name without changing the rules ref or enriching
+runtime knowledge. Older instances keep their rules-based label until explicitly
+named with Map name; the editor does not guess their recipe. Removing a creature
+removes its label. Move creature arms the existing one-shot destination-hex action,
+with snapped hover feedback and explicit cancellation; names and other bindings
+remain unchanged.
+
 Roster selection alone never moves an actor. Existing instances reuse Arrange's
 staged single appearanceRef transaction; definition edits retain appearance,
 identity, location and bindings. Named stat blocks are shared by reference, never

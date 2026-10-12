@@ -32,6 +32,7 @@ import {
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
 import {
+  setActorName,
   setCreaturePalette,
   type CreaturePaletteEntry,
 } from './creaturePalette';
@@ -1076,7 +1077,14 @@ export function WorldBuildingConcept({
           : {}),
         startingCell: { location: { ...cell } },
       });
-      if (!commit(scene, selectedIds, next.room)) return;
+      if (
+        !commit(
+          recipe ? setActorName(scene, id, recipe.name) : scene,
+          selectedIds,
+          next.room
+        )
+      )
+        return;
       if (armedCreature) {
         setArmedCreature(null);
         setRoomTool('select');
@@ -1128,11 +1136,11 @@ export function WorldBuildingConcept({
           ? clearRoomPartyStart(roomDraft)
           : removeRoomMonster(roomDraft, actor);
       if (next === roomDraft) return;
-      if (!commit(scene, selectedIds, next.room)) return;
+      if (!commit(next.scene, selectedIds, next.room)) return;
       setSelectedActorId((current) => (current === actor ? null : current));
       setNotice('');
     },
-    [commit, roomDraft, scene, selectedIds]
+    [commit, roomDraft, selectedIds]
   );
 
   const removeSelectedStudioActor = useCallback((): void => {
@@ -1142,10 +1150,11 @@ export function WorldBuildingConcept({
       target.kind === 'actor'
         ? removeRoomMonster(roomDraft, target.id)
         : clearRoomPartyStart(roomDraft);
-    if (next === roomDraft || !commit(scene, selectedIds, next.room)) return;
+    if (next === roomDraft || !commit(next.scene, selectedIds, next.room))
+      return;
     setSelectedActorId(null);
     activateStudioTarget(null);
-  }, [activateStudioTarget, commit, roomDraft, scene, selectedIds]);
+  }, [activateStudioTarget, commit, roomDraft, selectedIds]);
 
   const removeSelectedStudioDoor = useCallback((): void => {
     const target = activeStudioTargetRef.current;
@@ -4096,6 +4105,11 @@ export function WorldBuildingConcept({
           monsterBindings: roomDraft.room.monsterBindings,
           partyStart: roomDraft.room.partyStart ?? null,
           armedMonsterRef: armedMonsterRef,
+          armedMonsterName: armedCreature
+            ? roomDraft.scene.creaturePalette?.find(
+                (entry) => entry.id === armedCreature.id
+              )?.name
+            : undefined,
           selectedActorId: selectedActorId,
           ...(studioPresentation
             ? {

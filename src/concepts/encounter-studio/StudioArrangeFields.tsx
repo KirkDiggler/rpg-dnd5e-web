@@ -25,6 +25,7 @@ export type ArrangeFieldKey =
   | 'text'
   | 'facing'
   | 'appearanceRef'
+  | 'mapName'
   | 'appearanceFamily'
   | 'appearanceStyle'
   | 'appearanceSkinPalette'
@@ -203,6 +204,12 @@ export function arrangeFields(
               },
             ];
       return [
+        {
+          key: 'mapName',
+          label: 'Map name',
+          value: selection.mapName ?? '',
+          placeholder: 'Rules name when unset',
+        },
         {
           key: 'appearanceFamily',
           label: 'NPC appearance',
@@ -405,6 +412,9 @@ export function arrangeIntent(
       return {
         kind: 'actor-start',
         target: selection.target,
+        ...(draft.mapName !== undefined
+          ? { mapName: draft.mapName.trim() || null }
+          : {}),
         ...(draft.appearanceRef !== undefined
           ? { appearanceRef: draft.appearanceRef || null }
           : {}),

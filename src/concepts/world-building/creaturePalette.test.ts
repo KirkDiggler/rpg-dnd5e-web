@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
-import { setCreaturePalette, validateCreaturePalette } from './creaturePalette';
+import {
+  setActorName,
+  setCreaturePalette,
+  validateCreaturePalette,
+} from './creaturePalette';
 import { createMapLabel, renameMapLabel } from './mapLabelEdits';
 import { createRoomLabel, setRegionLighting } from './regionEdits';
 import {
   parseRoomDocumentJson,
+  removeRoomMonster,
   resizeRoomWorkspace,
   stringifyRoomDraft,
 } from './roomDraft';
@@ -22,6 +27,39 @@ const recipe = {
   modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
 };
 describe('editor creature palette', () => {
+  it('carries actor map names in JSON/YAML and removes only the deleted actor’s label', () => {
+    const document = createPopulatedStudioDocument();
+    const id = document.draft.room.monsterDeclarations[0].id;
+    document.draft.scene = setActorName(
+      document.draft.scene,
+      id,
+      'Standard Guard'
+    );
+    expect(setActorName(document.draft.scene, id, 'Standard Guard')).toBe(
+      document.draft.scene
+    );
+    const stored = parseRoomDocumentJson(
+      stringifyRoomDraft(document.draft, document.scope)
+    );
+    expect(stored).toEqual(document);
+    const decoded = decodeSingleRoomDungeon(
+      encodeSingleRoomDungeon({
+        key: 'names',
+        draft: stored.draft,
+        ...stored.scope,
+      })
+    );
+    expect(decoded.draft.scene.actorNames).toEqual({ [id]: 'Standard Guard' });
+    const removed = removeRoomMonster(stored.draft, id);
+    expect(removed.scene).not.toHaveProperty('actorNames');
+    expect(removed.scene.version).toBe(5);
+    expect(() => setActorName(document.draft.scene, id, '')).toThrow(
+      /nonblank/
+    );
+    expect(() =>
+      validateScene({ ...document.draft.scene, version: 4 })
+    ).toThrow(/actorNames/);
+  });
   it('persists without creating actors and survives existing label/region/lighting/resize operations', () => {
     const original = createPopulatedStudioDocument();
     let draft = {

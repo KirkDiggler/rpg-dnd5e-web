@@ -368,6 +368,8 @@ it('saves a reusable creature without a position, then places independent looks 
     ],
   ]);
   expect(final.draft.scene.creaturePalette).toEqual(palette);
+  for (const actor of final.draft.room.monsterDeclarations.slice(-2))
+    expect(final.draft.scene.actorNames?.[actor.id]).toBe('Castle Guard');
   fireEvent.click(button('Undo'));
   expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
     original.draft.room.monsterDeclarations.length + 1
@@ -587,6 +589,60 @@ it('requires explicit prop declaration before attaching intel and scopes control
     screen.queryByLabelText('Give studio-decoration an intel record')
   ).toBeNull();
   expect(screen.queryByLabelText('Give table an intel record')).toBeNull();
+});
+
+it('names an older creature and moves it once without changing its rules, looks or bindings', () => {
+  const storage = new MemoryStorage(seed());
+  const before = storage.document();
+  const id = before.draft.room.monsterDeclarations[0].id;
+  const mounted = mount(storage);
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'actor', id })
+  );
+  fireEvent.change(screen.getByLabelText('Map name'), {
+    target: { value: 'Standard Guard' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply Arrange' }));
+  expect(storage.document().draft.scene.actorNames?.[id]).toBe(
+    'Standard Guard'
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Arrange · Standard Guard' })
+  ).toBeTruthy();
+  const named = storage.document();
+  fireEvent.click(screen.getByRole('button', { name: 'Move creature' }));
+  expect(viewport().roomAuthoring?.tool).toBe('move');
+  const move = viewport().roomAuthoring!.onMoveMonster!;
+  act(() => move(id, { q: 2, r: 1 }));
+  const moved = storage.document();
+  expect(moved.draft.room.monsterDeclarations[0]).toEqual({
+    ...before.draft.room.monsterDeclarations[0],
+    startingCell: {
+      ...before.draft.room.monsterDeclarations[0].startingCell,
+      location: { q: 2, r: 1 },
+    },
+  });
+  expect(moved.draft.room.monsterBindings).toEqual(
+    before.draft.room.monsterBindings
+  );
+  expect(moved.draft.scene).toEqual(named.draft.scene);
+  expect(moved.scope).toEqual(before.scope);
+  expect(viewport().roomAuthoring?.tool).toBe('select');
+  act(() => move(id, { q: -1, r: 0 }));
+  expect(storage.document()).toEqual(moved);
+  fireEvent.click(screen.getByRole('button', { name: 'Move creature' }));
+  const canceled = viewport().roomAuthoring!.onMoveMonster!;
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel creature move' }));
+  act(() => canceled(id, { q: -1, r: 0 }));
+  expect(storage.document()).toEqual(moved);
+  fireEvent.click(button('Undo'));
+  expect(storage.document()).toEqual(named);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(moved);
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(moved);
 });
 
 function seed(emptyFloor = false): RoomDraftDocument {

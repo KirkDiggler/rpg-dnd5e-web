@@ -3,6 +3,7 @@ import type {
   RegionLighting,
   RegionResolution,
 } from './authoringRegions';
+import { authoredActorName, setActorName } from './creaturePalette';
 import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
@@ -116,6 +117,7 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'actor';
         readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
         readonly monster: Readonly<RoomMonsterPlacement>;
+        readonly mapName?: string;
         readonly startingCell: Readonly<RoomMonsterPlacement['startingCell']>;
       }
     | {
@@ -154,6 +156,7 @@ export interface StudioWallArrangeEdit {
 
 export interface StudioActorArrangeEdit {
   readonly kind: 'actor-start';
+  readonly mapName?: string | null;
   /** Omitted is unchanged; null clears only the authored visual override. */
   readonly appearanceRef?: string | null;
   readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
@@ -386,6 +389,7 @@ export function projectStudioArrange(
             kind: 'actor',
             target,
             monster,
+            mapName: authoredActorName(draft.scene.actorNames, monster.id),
             startingCell: monster.startingCell,
           }
         : null;
@@ -555,6 +559,10 @@ export function applyStudioActorArrange(
   );
   if (!monster) throw new Error('Arrange actor target no longer exists.');
   let next = draft;
+  if (intent.mapName !== undefined) {
+    const scene = setActorName(next.scene, monster.id, intent.mapName);
+    if (scene !== next.scene) next = { ...next, scene };
+  }
   if (intent.location) {
     requireCell(draft, intent.location);
     if (

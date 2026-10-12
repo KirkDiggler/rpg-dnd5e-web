@@ -137,6 +137,16 @@ function StudioSurface({
     onHomeChange(next);
     setSidebarOpen(true);
   };
+  const moveSelectedCreature = (): void => {
+    if (session.arrange?.kind !== 'actor') return;
+    changeHome('build');
+    if (session.doorEditing.active) session.doorEditing.setActive(false);
+    onLayoutToolChange('select');
+    onViewChange('3d');
+    session.setPropTool('move');
+    setSections((current) => ({ ...current, build: 'arrange' }));
+    setSidebarOpen(true);
+  };
   const openDefinitions = (section: StudioSocialSection): void => {
     changeHome('encounter');
     setEncounterSection(section);
@@ -311,6 +321,20 @@ function StudioSurface({
           role="toolbar"
           aria-label="Studio editing tools"
         >
+          {session.propTool === 'move' && session.arrange?.kind === 'actor' && (
+            <div className="es-buttons" role="status">
+              <strong>
+                Moving {session.arrange.mapName ?? session.arrange.monster.id} ·
+                click the destination hex
+              </strong>
+              <button
+                type="button"
+                onClick={() => session.setPropTool('select')}
+              >
+                Cancel creature move
+              </button>
+            </div>
+          )}
           {session.creatures.placement && (
             <div className="es-buttons" role="status">
               <strong>
@@ -474,6 +498,7 @@ function StudioSurface({
                 session={session}
                 expanded={arrangeVisible}
                 onConfigure={openDefinitions}
+                onMoveCreature={moveSelectedCreature}
                 onDefineRegion={
                   home === 'regions' && view === 'layout'
                     ? () => {
@@ -732,6 +757,7 @@ function StudioSurface({
             <StudioCreatures
               session={session}
               onConfigure={openDefinitions}
+              onMoveCreature={moveSelectedCreature}
               onOpenPalette={() => {
                 changeHome('build');
                 onViewChange('3d');

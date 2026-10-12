@@ -1,6 +1,6 @@
 import { validateAuthoringRegions } from './authoringRegions';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
-import { validateCreaturePalette } from './creaturePalette';
+import { validateActorNames, validateCreaturePalette } from './creaturePalette';
 import { rejectUnknownKeys } from './strictShape';
 import type {
   Arrangement,
@@ -308,6 +308,11 @@ export function validateScene(
     input.version !== 5
   )
     throw new Error('Scene version must be 1, 2, 3, 4 or 5.');
+  if (input.version !== 5 && Object.hasOwn(input, 'actorNames'))
+    throw new Error('actorNames requires scene version 5.');
+  const actorNames = Object.hasOwn(input, 'actorNames')
+    ? validateActorNames(input.actorNames)
+    : {};
   if (input.version !== 5 && Object.hasOwn(input, 'creaturePalette'))
     throw new Error('creaturePalette requires scene version 5.');
   const creaturePalette = Object.hasOwn(input, 'creaturePalette')
@@ -332,6 +337,7 @@ export function validateScene(
         'mapLabels',
         'authoringRegions',
         'creaturePalette',
+        'actorNames',
       ],
       'scene'
     );
@@ -370,6 +376,7 @@ export function validateScene(
     ...(mapLabels.length > 0 ? { mapLabels } : {}),
     ...(authoringRegions.length > 0 ? { authoringRegions } : {}),
     ...(creaturePalette.length > 0 ? { creaturePalette } : {}),
+    ...(Object.keys(actorNames).length ? { actorNames } : {}),
   };
 }
 

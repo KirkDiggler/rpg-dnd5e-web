@@ -8,6 +8,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { parseRef } from '@/utils/refs';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
+import { setActorName } from './creaturePalette';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
   validatePredicate,
@@ -648,7 +649,7 @@ export function removeRoomMonster(draft: RoomDraft, id: string): RoomDraft {
     if (Object.keys(bindings).length === 0) delete room.monsterBindings;
     else room.monsterBindings = bindings;
   }
-  return { ...draft, room };
+  return { ...draft, room, scene: setActorName(draft.scene, id, null) };
 }
 
 export function setRoomPartyStart(

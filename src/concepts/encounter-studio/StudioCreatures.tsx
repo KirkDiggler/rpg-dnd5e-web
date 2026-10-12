@@ -1,6 +1,7 @@
 import { PALETTE_MONSTERS, paletteNameForRef } from '@/author/paletteData';
 import { NPC_APPEARANCE_FAMILIES } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useState } from 'react';
+import { authoredActorName } from '../world-building/creaturePalette';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import type {
   EncounterStudioSession,
@@ -15,9 +16,11 @@ export function StudioCreatures({
   onShowMap,
   onOpenPalette,
   onConfigure,
+  onMoveCreature,
 }: {
   session: EncounterStudioSession;
   onShowMap(): void;
+  onMoveCreature?(): void;
   onConfigure?(section: StudioSocialSection): void;
   onOpenPalette(): void;
 }): React.JSX.Element {
@@ -202,7 +205,13 @@ export function StudioCreatures({
                 else setShowPlacedEditor(true);
               }}
             >
-              {options.get(actor.ref) ?? actor.ref} · {actor.id}
+              {authoredActorName(
+                session.document.draft.scene.actorNames,
+                actor.id
+              ) ??
+                options.get(actor.ref) ??
+                actor.ref}{' '}
+              · {actor.id}
             </button>
           </li>
         ))}
@@ -241,6 +250,7 @@ export function StudioCreatures({
             session={session}
             expanded
             onConfigure={onConfigure}
+            onMoveCreature={onMoveCreature}
           />
         </>
       )}

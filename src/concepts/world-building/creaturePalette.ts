@@ -47,6 +47,49 @@ export function validateCreaturePalette(
     };
   });
 }
+/** Per-instance authoring labels. Never used as runtime/rulebook names. */
+export function validateActorNames(value: unknown): Record<string, string> {
+  const names = objectShape(value, 'scene.actorNames');
+  return Object.fromEntries(
+    Object.entries(names).map(([id, name]) => {
+      if (
+        !id.trim() ||
+        id.length > 120 ||
+        typeof name !== 'string' ||
+        !name.trim() ||
+        name.length > 120
+      )
+        throw new Error(
+          'Actor map names and ids must be nonblank text up to 120 characters.'
+        );
+      return [id, name];
+    })
+  );
+}
+export function authoredActorName(
+  names: Readonly<Record<string, string>> | undefined,
+  id: string
+): string | undefined {
+  return names && Object.hasOwn(names, id) ? names[id] : undefined;
+}
+export function setActorName(
+  scene: WorldScene,
+  id: string,
+  name: string | null
+): WorldScene {
+  const current = authoredActorName(scene.actorNames, id);
+  if ((name === null && current === undefined) || name === current)
+    return scene;
+  if (name !== null) validateActorNames({ [id]: name });
+  const names = { ...scene.actorNames };
+  if (name === null) delete names[id];
+  else names[id] = name;
+  const next: WorldScene = { ...scene, version: 5 };
+  if (Object.keys(names).length) next.actorNames = names;
+  else delete next.actorNames;
+  return next;
+}
+
 export function setCreaturePalette(
   scene: WorldScene,
   entries: readonly CreaturePaletteEntry[]

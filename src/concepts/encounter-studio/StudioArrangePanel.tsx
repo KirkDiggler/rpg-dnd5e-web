@@ -80,7 +80,7 @@ function selectionName(
     case 'label':
       return selection.label.text;
     case 'actor':
-      return selection.monster.id;
+      return selection.mapName ?? selection.monster.id;
     case 'start':
       return 'Party start';
   }
@@ -93,9 +93,11 @@ function SelectedArrange({
   expanded,
   onDefineRegion,
   onConfigure,
+  onMoveCreature,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
+  onMoveCreature?(): void;
   expanded: boolean;
   onDefineRegion?(): void;
   onConfigure?(section: StudioSocialSection): void;
@@ -201,7 +203,17 @@ function SelectedArrange({
         </p>
       )}
       {selection.kind === 'actor' && (
-        <p className="es-help">{selection.monster.ref}</p>
+        <>
+          <p className="es-help">
+            Rules: {selection.monster.ref}. Map name is an authoring label, not
+            a stat-block change.
+          </p>
+          {onMoveCreature && (
+            <button type="button" onClick={onMoveCreature}>
+              Move creature
+            </button>
+          )}
+        </>
       )}
       {selection.kind === 'label' && selection.region && (
         <div className="es-region-controls" aria-label="Room boundary">
@@ -436,8 +448,10 @@ export function StudioArrangePanel({
   expanded,
   onDefineRegion,
   onConfigure,
+  onMoveCreature,
 }: {
   session: EncounterStudioSession;
+  onMoveCreature?(): void;
   expanded: boolean;
   onDefineRegion?(): void;
   onConfigure?(section: StudioSocialSection): void;
@@ -450,6 +464,7 @@ export function StudioArrangePanel({
       expanded={expanded}
       onDefineRegion={onDefineRegion}
       onConfigure={onConfigure}
+      onMoveCreature={onMoveCreature}
     />
   ) : (
     <section
