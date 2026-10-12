@@ -45,7 +45,7 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   AnswerEntryShape,
   AnswerTableShape,
@@ -899,21 +899,31 @@ function FactionTemperEditor({
 
 function FactionRow({
   scope,
+  room,
   faction,
   onChange,
   onNotice,
 }: {
   scope: SiteScope;
+  room?: RoomGameplayData;
   faction: SiteFaction;
   onChange: (nextScope: SiteScope) => void;
   onNotice?: (message: string) => void;
 }) {
   const [typedId, setTypedId] = useState(faction.id);
+  useEffect(() => setTypedId(faction.id), [faction.id, scope]);
   const commitId = () => {
     if (typedId === faction.id) return;
     if (typedId.trim() === '') {
       setTypedId(faction.id);
       onNotice?.('Faction id cannot be empty; the declaration was kept.');
+      return;
+    }
+    if (scope.factions?.some((entry) => entry.id === typedId)) {
+      setTypedId(faction.id);
+      onNotice?.(
+        'That faction id already exists; both declarations were kept.'
+      );
       return;
     }
     onChange(renameSiteFaction(scope, faction.id, typedId));
@@ -951,8 +961,9 @@ function FactionRow({
             <span>Mind</span>
             <input
               aria-label={`Mind for ${faction.id}`}
+              list={room ? `faction-mind-${faction.id}` : undefined}
               value={faction.mind ?? ''}
-              placeholder="a placement id"
+              placeholder="Choose a placed creature or enter its id"
               onChange={(event) =>
                 onChange(
                   patchSiteFaction(scope, faction.id, {
@@ -965,6 +976,15 @@ function FactionRow({
               }
             />
           </label>
+          {room && (
+            <datalist id={`faction-mind-${faction.id}`}>
+              {room.monsterDeclarations.map((monster) => (
+                <option key={monster.id} value={monster.id}>
+                  {paletteNameForRef(monster.ref)} · {monster.id}
+                </option>
+              ))}
+            </datalist>
+          )}
           <p className="wb-help">
             The faction knows what its mind knows. Whether this names a
             placement in the faction is the server’s to check.
@@ -1111,7 +1131,7 @@ function UntilEditor({
               });
           }}
         >
-          <option value="none">Never — the hostility does not end</option>
+          <option value="none">No authored condition</option>
           {PREDICATE_FORMS.map((candidate) => (
             <option key={candidate} value={candidate}>
               {candidate}
@@ -1346,9 +1366,10 @@ export interface SitePoliciesProps {
  * already name (rpg-dnd5e-web#1178 follow-up). */
 export function FactionsPanel({
   scope,
+  room,
   onChange,
   onNotice,
-}: Omit<SitePoliciesProps, 'room'>) {
+}: Omit<SitePoliciesProps, 'room'> & { room?: RoomGameplayData }) {
   const factions = scope.factions ?? [];
   return (
     <div data-testid="site-factions">
@@ -1360,9 +1381,8 @@ export function FactionsPanel({
       </div>
       {factions.length === 0 ? (
         <p className="wb-help" data-testid="policies-none">
-          No factions are authored on this site. Every monster is on the
-          reserved `monsters` side, and no disposition can be declared until a
-          faction exists.
+          No factions are authored on this site. Unassigned creatures keep their
+          kind’s default. Dispositions can still name the reserved sides.
         </p>
       ) : (
         <ul className="wb-policy-list">
@@ -1370,6 +1390,7 @@ export function FactionsPanel({
             <FactionRow
               key={faction.id}
               scope={scope}
+              room={room}
               faction={faction}
               onChange={onChange}
               onNotice={onNotice}
@@ -1382,7 +1403,7 @@ export function FactionsPanel({
 }
 
 /** The site's DISPOSITIONS: how two sides stand to each other, and the
- * predicate that ends the hostility. Its own top-level node, beside
+ * condition that changes their relationship. Its own top-level node, beside
  * Factions — the pair a disposition is *about* is what it reads, and it is
  * a different noun from a faction. */
 export function DispositionsPanel({
@@ -1390,7 +1411,6 @@ export function DispositionsPanel({
   room,
   onChange,
 }: Omit<SitePoliciesProps, 'onNotice'>) {
-  const factions = scope.factions ?? [];
   const dispositions = scope.dispositions ?? [];
   return (
     <div data-testid="site-dispositions">
@@ -1398,8 +1418,6 @@ export function DispositionsPanel({
       <div className="wb-actions">
         <button
           type="button"
-          disabled={factions.length === 0}
-          title={factions.length === 0 ? 'Declare a faction first' : undefined}
           onClick={() => onChange(addSiteDisposition(scope))}
         >
           Add disposition
@@ -1414,7 +1432,7 @@ export function DispositionsPanel({
         <ul className="wb-policy-list">
           {dispositions.map((disposition, index) => (
             <DispositionRow
-              key={`${disposition.between[0]}:${disposition.between[1]}:${index}`}
+              key={index}
               scope={scope}
               room={room}
               index={index}

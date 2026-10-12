@@ -6,7 +6,10 @@ import {
 } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useState } from 'react';
 import { StudioArrangePanel } from './StudioArrangePanel';
-import type { EncounterStudioSession } from './studioSession';
+import type {
+  EncounterStudioSession,
+  StudioSocialSection,
+} from './studioSession';
 
 const MODELS = NPC_APPEARANCE_FAMILIES.filter(
   (family) => family.defaultLook.look
@@ -15,9 +18,11 @@ export function StudioCreatures({
   session,
   onShowMap,
   onPlace,
+  onConfigure,
 }: {
   session: EncounterStudioSession;
   onShowMap(): void;
+  onConfigure?(section: StudioSocialSection): void;
   onPlace(id: string, appearanceRef: string): void;
 }): React.JSX.Element {
   const [name, setName] = useState('');
@@ -316,7 +321,11 @@ export function StudioCreatures({
           <button type="button" onClick={onShowMap}>
             Show creature on map
           </button>
-          <StudioArrangePanel session={session} expanded />
+          <StudioArrangePanel
+            session={session}
+            expanded
+            onConfigure={onConfigure}
+          />
         </>
       )}
       {error && <p role="alert">{error}</p>}

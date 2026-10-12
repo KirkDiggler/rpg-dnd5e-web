@@ -23,7 +23,7 @@ import {
   answerWordsForTrigger,
   type AnswerWordSpec,
 } from '@/author/answerVocabulary';
-import { PARTY } from '@/author/factionVocabulary';
+import { MONSTERS, PARTY } from '@/author/factionVocabulary';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
 import type { SiteDisposition, SiteFaction, SiteScope } from './siteScope';
 
@@ -95,18 +95,15 @@ export function patchSiteFaction(
   };
 }
 
-/** Declare a new disposition: the first declared faction against the party,
- * hostile, no `until`. There is nothing to declare one about until a faction
- * exists, so with none the scope is returned unchanged and the verb is
- * disabled. */
+/** Declare a new pair against the party. Without a custom faction, use the
+ * reserved monsters side; both reserved sides exist in the authoring grammar. */
 export function addSiteDisposition(scope: SiteScope): SiteScope {
   const first = (scope.factions ?? [])[0];
-  if (!first) return scope;
   return {
     ...scope,
     dispositions: [
       ...(scope.dispositions ?? []),
-      { between: [first.id, PARTY], stance: 'hostile' },
+      { between: [first?.id ?? MONSTERS, PARTY], stance: 'hostile' },
     ],
   };
 }

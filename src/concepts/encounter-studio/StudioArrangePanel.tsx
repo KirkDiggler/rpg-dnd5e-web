@@ -16,6 +16,7 @@ import {
 import type {
   EncounterStudioSession,
   StudioArrangeSelection,
+  StudioSocialSection,
 } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
 import { StudioWallConstraints } from './StudioWallConstraints';
@@ -91,11 +92,13 @@ function SelectedArrange({
   selection,
   expanded,
   onDefineRegion,
+  onConfigure,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
   expanded: boolean;
   onDefineRegion?(): void;
+  onConfigure?(section: StudioSocialSection): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
@@ -392,6 +395,38 @@ function SelectedArrange({
         )}
       </form>
       {selection.kind === 'scene' && session.propControls.arrangeExtras}
+      {(selection.kind === 'actor' || selection.kind === 'scene') && (
+        <section
+          aria-label="Selection configuration"
+          className="es-selection-configuration"
+        >
+          <h3>Configuration</h3>
+          {session.socialControls.selection}
+          {onConfigure && (
+            <nav className="es-buttons" aria-label="Open encounter definitions">
+              <button type="button" onClick={() => onConfigure('intel')}>
+                Edit intel definitions
+              </button>
+              {selection.kind === 'actor' && (
+                <>
+                  <button type="button" onClick={() => onConfigure('factions')}>
+                    Edit factions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onConfigure('dispositions')}
+                  >
+                    Edit dispositions
+                  </button>
+                  <button type="button" onClick={() => onConfigure('tables')}>
+                    Edit behavior tables
+                  </button>
+                </>
+              )}
+            </nav>
+          )}
+        </section>
+      )}
     </section>
   );
 }
@@ -400,10 +435,12 @@ export function StudioArrangePanel({
   session,
   expanded,
   onDefineRegion,
+  onConfigure,
 }: {
   session: EncounterStudioSession;
   expanded: boolean;
   onDefineRegion?(): void;
+  onConfigure?(section: StudioSocialSection): void;
 }): React.JSX.Element {
   return session.arrange ? (
     <SelectedArrange
@@ -412,6 +449,7 @@ export function StudioArrangePanel({
       selection={session.arrange}
       expanded={expanded}
       onDefineRegion={onDefineRegion}
+      onConfigure={onConfigure}
     />
   ) : (
     <section

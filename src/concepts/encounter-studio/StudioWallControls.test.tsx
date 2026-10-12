@@ -79,6 +79,12 @@ function fixture(): EncounterStudioSession {
     cancelTransients: vi.fn(),
     propTool: 'select',
     setPropTool: vi.fn(),
+    socialControls: {
+      intel: null,
+      factions: null,
+      dispositions: null,
+      selection: null,
+    },
     propControls: {
       palette: null,
       tree: null,

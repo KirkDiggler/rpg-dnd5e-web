@@ -18,6 +18,7 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import { nextIntelId } from '../world-building/intelEdits';
 import { createRoomLabel } from '../world-building/regionEdits';
 import {
   assertRoomDocumentSize,
@@ -43,6 +44,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from '../world-building/singleRoomDungeon';
+import { nextFactionId } from '../world-building/sitePolicyEdits';
 import { scopeFrom } from '../world-building/siteScope';
 import {
   createWall,
@@ -372,6 +374,169 @@ it('saves a reusable creature without a position, then places independent looks 
   mounted.unmount();
   mount(storage);
   expect(storage.document()).toEqual(final);
+});
+
+it('authors social definitions in Encounter and attaches records to selected creatures and props in Arrange', () => {
+  const storage = new MemoryStorage(seed());
+  const original = storage.document();
+  const recordId = nextIntelId(original.scope);
+  const factionId = nextFactionId(original.scope);
+  const mounted = mount(storage);
+  fireEvent.click(button('Encounter'));
+  fireEvent.click(screen.getByRole('button', { name: 'Intel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+  fireEvent.click(screen.getByLabelText(`Intel ${recordId}`));
+  fireEvent.change(
+    screen.getByLabelText(`Intel reveals fact for ${recordId}`),
+    { target: { value: 'orders-authentic' } }
+  );
+  const idInput = screen.getByLabelText(`Intel id for ${recordId}`);
+  fireEvent.change(idInput, { target: { value: 'orders' } });
+  fireEvent.change(idInput, { target: { value: 'orders-letter' } });
+  expect(
+    storage.document().scope.intel?.some((record) => record.id === recordId)
+  ).toBe(true);
+  fireEvent.click(
+    within(screen.getByTestId(`intel-row-${recordId}`)).getByRole('button', {
+      name: 'Apply intel name',
+    })
+  );
+  expect(storage.document().scope.intel).toContainEqual({
+    id: 'orders-letter',
+    reveals: { fact: 'orders-authentic' },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Factions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+  fireEvent.click(screen.getByLabelText(`Faction ${factionId}`));
+  const factionInput = screen.getByLabelText(`Faction id for ${factionId}`);
+  fireEvent.change(factionInput, { target: { value: 'castle-watch' } });
+  fireEvent.blur(factionInput);
+  fireEvent.click(screen.getByLabelText('Faction castle-watch'));
+  const mind = screen.getByLabelText('Mind for castle-watch');
+  expect(
+    document
+      .getElementById(mind.getAttribute('list')!)
+      ?.querySelector('option[value="goblin-1"]')
+  ).not.toBeNull();
+  fireEvent.change(mind, { target: { value: 'goblin-1' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Dispositions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
+  const newPair = screen
+    .getAllByTestId('disposition-goblins-party')
+    .at(-1)! as HTMLDetailsElement;
+  newPair.open = true;
+  fireEvent.change(within(newPair).getByLabelText('Between first faction'), {
+    target: { value: 'castle-watch' },
+  });
+  expect(newPair.isConnected).toBe(true);
+  expect(newPair.open).toBe(true);
+  const relation = within(screen.getByTestId('disposition-castle-watch-party'));
+  fireEvent.change(relation.getByLabelText('Stance'), {
+    target: { value: 'neutral' },
+  });
+  fireEvent.change(relation.getByLabelText('Until form'), {
+    target: { value: 'fact' },
+  });
+  fireEvent.change(relation.getByLabelText('Until fact'), {
+    target: { value: 'orders-authentic' },
+  });
+
+  fireEvent.click(button('Build'));
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({
+      kind: 'actor',
+      id: 'goblin-1',
+    })
+  );
+  fireEvent.change(screen.getByLabelText('Creature faction'), {
+    target: { value: 'castle-watch' },
+  });
+  fireEvent.change(screen.getByLabelText('Give intel record'), {
+    target: { value: 'orders-letter' },
+  });
+  expect(
+    storage.document().draft.room.monsterBindings?.['goblin-1']
+  ).toMatchObject({ faction: 'castle-watch', holds: ['orders-letter'] });
+  expect(storage.document().draft.room.monsterDeclarations).toEqual(
+    original.draft.room.monsterDeclarations
+  );
+  expect(
+    screen.getByRole('region', { name: 'Authored disposition context' })
+      .textContent
+  ).toContain('orders-authentic');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit intel definitions' })
+  );
+  expect(
+    screen.getByRole('region', { name: 'Intel definitions' })
+  ).toBeTruthy();
+  expect(
+    screen.getByTestId('intel-held-by-orders-letter').textContent
+  ).toContain('goblin-1');
+
+  fireEvent.click(button('Build'));
+  act(() => viewport().onSelect(['table']));
+  fireEvent.change(screen.getByLabelText('Give table an intel record'), {
+    target: { value: 'orders-letter' },
+  });
+  const attached = storage.document();
+  expect(attached.draft.room.propBindings?.table.holds).toEqual([
+    'studio-map',
+    'orders-letter',
+  ]);
+  expect(attached.draft.scene).toEqual(original.draft.scene);
+  fireEvent.click(button('Undo'));
+  expect(storage.document().draft.room.propBindings?.table.holds).toEqual([
+    'studio-map',
+  ]);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(attached);
+  act(() => viewport().onSelect(['table']));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit intel definitions' })
+  );
+  expect(
+    screen.getByTestId('intel-held-by-orders-letter').textContent
+  ).toContain('table');
+  expect(storage.document().scope.dispositions).toContainEqual({
+    between: ['castle-watch', 'party'],
+    stance: 'neutral',
+    until: { fact: 'orders-authentic' },
+  });
+  expect(storage.document().scope.concealments).toEqual(
+    original.scope.concealments
+  );
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(attached);
+});
+
+it('requires explicit prop declaration before attaching intel and scopes controls to one selection', () => {
+  const storage = new MemoryStorage(seed());
+  mount(storage);
+  switchTo('3D');
+  act(() => viewport().onSelect(['studio-decoration']));
+  expect(
+    screen.queryByLabelText('Give studio-decoration an intel record')
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Add authored footprint' })
+  );
+  fireEvent.change(
+    screen.getByLabelText('Give studio-decoration an intel record'),
+    { target: { value: 'studio-map' } }
+  );
+  expect(
+    storage.document().draft.room.propBindings?.['studio-decoration']?.holds
+  ).toEqual(['studio-map']);
+  act(() => viewport().onSelect(['studio-decoration', 'table']));
+  expect(
+    screen.queryByLabelText('Give studio-decoration an intel record')
+  ).toBeNull();
+  expect(screen.queryByLabelText('Give table an intel record')).toBeNull();
 });
 
 function seed(emptyFloor = false): RoomDraftDocument {
@@ -2203,6 +2368,60 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
       unmount: mounted.unmount,
     };
   }
+
+  it('preserves incomplete policy drafts and rejects retired definition or selection callbacks', () => {
+    const owner = arrangeOwner();
+    const original = owner.session.document;
+    const policy = (): ((scope: RoomDraftDocument['scope']) => void) =>
+      (
+        owner.session.socialControls.intel as ReactElement<{
+          onChange(scope: RoomDraftDocument['scope']): void;
+        }>
+      ).props.onChange;
+    const old = policy();
+    act(() =>
+      old({
+        ...original.scope,
+        intel: [{ id: 'draft-record', reveals: { fact: '' } }],
+      })
+    );
+    expect(owner.session.document.scope.intel).toEqual([
+      { id: 'draft-record', reveals: { fact: '' } },
+    ]);
+    expect(owner.storage.document()).toEqual(original);
+    act(() =>
+      policy()({ ...owner.session.document.scope, intel: original.scope.intel })
+    );
+    const healed = owner.session.document;
+    act(() => old({ ...original.scope, intel: [] }));
+    expect(owner.session.document).toEqual(healed);
+
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: 'goblin-1',
+      })
+    );
+    const actorPanel = render(<>{owner.session.socialControls.selection}</>);
+    const faction = within(actorPanel.container).getByLabelText(
+      'Creature faction'
+    );
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    const before = owner.session.document;
+    fireEvent.change(faction, { target: { value: '' } });
+    expect(owner.session.document).toEqual(before);
+    actorPanel.unmount();
+
+    act(() => owner.session.viewportProps.onSelect(['studio-decoration']));
+    const propPanel = render(<>{owner.session.socialControls.selection}</>);
+    const declare = within(propPanel.container).getByRole('button', {
+      name: 'Add authored footprint',
+    });
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    fireEvent.click(declare);
+    expect(owner.session.document).toEqual(before);
+    propPanel.unmount();
+  });
 
   it('owns creature definitions and templates atomically and retires stale callbacks', () => {
     const original = seed();

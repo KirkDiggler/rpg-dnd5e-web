@@ -18,11 +18,21 @@ import type {
   LayoutFrame,
   LayoutTool,
   StudioHome,
+  StudioSocialSection,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioStatBlocks } from './StudioStatBlocks';
 import { StudioWallControls } from './StudioWallControls';
 import { useStudioLabels } from './useStudioLabels';
+
+const ENCOUNTER_SECTIONS = {
+  creatures: 'Creatures',
+  'stat-blocks': 'Stat blocks',
+  tables: 'Tables',
+  factions: 'Factions',
+  dispositions: 'Dispositions',
+  intel: 'Intel',
+} as const;
 
 interface EncounterStudioWorkspaceProps {
   compositionSource: CompositionSource;
@@ -56,9 +66,8 @@ function StudioSurface({
   onFrameChange,
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
-  const [encounterSection, setEncounterSection] = useState<
-    'tables' | 'creatures' | 'stat-blocks'
-  >('tables');
+  const [encounterSection, setEncounterSection] =
+    useState<keyof typeof ENCOUNTER_SECTIONS>('tables');
   const [pendingPlacement, setPendingPlacement] = useState<{
     id: string;
     appearanceRef: string;
@@ -145,6 +154,10 @@ function StudioSurface({
     onLayoutToolChange('select');
     onHomeChange(next);
     setSidebarOpen(true);
+  };
+  const openDefinitions = (section: StudioSocialSection): void => {
+    changeHome('encounter');
+    setEncounterSection(section);
   };
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
@@ -398,12 +411,7 @@ function StudioSurface({
           )}
           {home === 'encounter' && (
             <strong>
-              Encounter configuration ·{' '}
-              {encounterSection === 'stat-blocks'
-                ? 'Stat blocks'
-                : encounterSection === 'creatures'
-                  ? 'Creatures'
-                  : 'Tables'}
+              Encounter configuration · {ENCOUNTER_SECTIONS[encounterSection]}
             </strong>
           )}
           {spatial && (
@@ -485,6 +493,7 @@ function StudioSurface({
               <StudioArrangePanel
                 session={session}
                 expanded={arrangeVisible}
+                onConfigure={openDefinitions}
                 onDefineRegion={
                   home === 'regions' && view === 'layout'
                     ? () => {
@@ -677,26 +686,30 @@ function StudioSurface({
           hidden={home !== 'encounter'}
         >
           <nav className="es-buttons" aria-label="Encounter tools">
-            {(['creatures', 'stat-blocks', 'tables'] as const).map(
-              (section) => (
-                <button
-                  key={section}
-                  type="button"
-                  aria-pressed={encounterSection === section}
-                  onClick={() => setEncounterSection(section)}
-                >
-                  {section === 'stat-blocks'
-                    ? 'Stat blocks'
-                    : section === 'creatures'
-                      ? 'Creatures'
-                      : 'Tables'}
-                </button>
-              )
-            )}
+            {(
+              [
+                'creatures',
+                'stat-blocks',
+                'tables',
+                'factions',
+                'dispositions',
+                'intel',
+              ] as const
+            ).map((section) => (
+              <button
+                key={section}
+                type="button"
+                aria-pressed={encounterSection === section}
+                onClick={() => setEncounterSection(section)}
+              >
+                {ENCOUNTER_SECTIONS[section]}
+              </button>
+            ))}
           </nav>
           {home === 'encounter' && encounterSection === 'creatures' && (
             <StudioCreatures
               session={session}
+              onConfigure={openDefinitions}
               onPlace={(id, appearanceRef) => {
                 changeHome('build');
                 onViewChange('3d');
@@ -710,6 +723,25 @@ function StudioSurface({
               }}
             />
           )}
+          {home === 'encounter' &&
+            (encounterSection === 'intel' ||
+              encounterSection === 'factions' ||
+              encounterSection === 'dispositions') && (
+              <section
+                aria-label={`${ENCOUNTER_SECTIONS[encounterSection]} definitions`}
+                className="es-social-panel"
+              >
+                <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
+                <p>
+                  {encounterSection === 'intel'
+                    ? 'Define records and what they reveal here. Select a creature or declared prop in Arrange to assign the records it holds. Record ids and revealed fact ids are different references.'
+                    : encounterSection === 'factions'
+                      ? 'Define factions and shared policy here. Assign individual placed creatures in Arrange. A mind names a placed individual, not a reusable creature recipe.'
+                      : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
+                </p>
+                {session.socialControls[encounterSection]}
+              </section>
+            )}
           {home === 'encounter' && encounterSection === 'stat-blocks' && (
             <StudioStatBlocks session={session} />
           )}

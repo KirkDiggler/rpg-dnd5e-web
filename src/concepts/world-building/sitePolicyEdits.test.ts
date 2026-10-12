@@ -91,8 +91,10 @@ describe('site policy edits — mechanics', () => {
     expect(added.dispositions).toEqual([
       { between: ['goblins', 'party'], stance: 'hostile' },
     ]);
-    // No faction, nothing to declare a stance about.
-    expect(addSiteDisposition({ factions: [] }).dispositions).toBeUndefined();
+    // Reserved sides are authorable even without a custom faction.
+    expect(addSiteDisposition({ factions: [] }).dispositions).toEqual([
+      { between: ['monsters', 'party'], stance: 'hostile' },
+    ]);
 
     const changed = updateSiteDisposition(added, 0, { stance: 'neutral' });
     expect(changed.dispositions?.[0]?.stance).toBe('neutral');

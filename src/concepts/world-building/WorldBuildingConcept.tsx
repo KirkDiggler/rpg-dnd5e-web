@@ -1185,9 +1185,9 @@ export function WorldBuildingConcept({
    * they come back through the publish panel's server validation. The form
    * does not pre-judge any of them. */
   const commitPolicies = useCallback(
-    (nextScope: SiteScope, nextRoom?: RoomGameplayData) => {
-      if (refuseWhilePublishing()) return;
-      commit(
+    (nextScope: SiteScope, nextRoom?: RoomGameplayData): boolean => {
+      if (refuseWhilePublishing()) return false;
+      return commit(
         scene,
         selectedIds,
         nextRoom ?? roomDraft.room,
@@ -1224,7 +1224,7 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.propBindings;
       else room.propBindings = bindings;
-      commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room, roomDraft.workspace);
     },
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
@@ -1241,7 +1241,7 @@ export function WorldBuildingConcept({
       const room = { ...roomDraft.room };
       if (bindings === undefined) delete room.monsterBindings;
       else room.monsterBindings = bindings;
-      commit(scene, selectedIds, room);
+      return commit(scene, selectedIds, room);
     },
     [commit, roomDraft.room, scene, selectedIds]
   );
@@ -1258,7 +1258,7 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.monsterBindings;
       else room.monsterBindings = bindings;
-      commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room, roomDraft.workspace);
     },
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
@@ -2412,8 +2412,18 @@ export function WorldBuildingConcept({
   /** Seed a declaration for EVERY undeclared selected prop, each from its own
    * measured mesh. A single shared box would hand a long wall a short wall's
    * blocker — the 1×1 default's bug in a new costume. */
+  const socialSelectionActive = (): boolean =>
+    !studioPresentation ||
+    (viewportGenerationRef.current === editGeneration &&
+      roomHistoryRef.current.present === roomHistory.present &&
+      selectionRevisionRef.current === selectionRevision);
   const addDeclarationsToSelection = () => {
-    if (undeclaredIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      undeclaredIds.length === 0
+    )
+      return;
     commit(scene, selectedIds, {
       ...roomDraft.room,
       propDeclarations: {
@@ -2432,7 +2442,12 @@ export function WorldBuildingConcept({
    * selection is a legitimate thing to want, and it is the only way the
    * blocking checkboxes do anything for more than one prop. */
   const commitSelectedDeclaration = (declaration: RoomPropDeclaration) => {
-    if (declarationIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      declarationIds.length === 0
+    )
+      return;
     commit(scene, selectedIds, {
       ...roomDraft.room,
       propDeclarations: declarationMapForSelection(
@@ -2501,7 +2516,12 @@ export function WorldBuildingConcept({
       Pick<RoomPropDeclaration, 'blocksMovement' | 'blocksLineOfSight'>
     >
   ) => {
-    if (declarationIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      declarationIds.length === 0
+    )
+      return;
     const propDeclarations = { ...roomDraft.room.propDeclarations };
     for (const id of declarationIds) {
       const existing = propDeclarations[id];
@@ -3219,15 +3239,17 @@ export function WorldBuildingConcept({
                       }
                       step={0.05}
                       value={preview.footprint[field]}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        if (!socialSelectionActive() || !sceneryActionsActive())
+                          return;
                         setFootprintPreview({
                           ...preview,
                           footprint: {
                             ...preview.footprint,
                             [field]: Number(event.target.value),
                           },
-                        })
-                      }
+                        });
+                      }}
                       onPointerUp={() => commitSelectedDeclaration(preview)}
                       onKeyUp={() => commitSelectedDeclaration(preview)}
                     />
@@ -4378,6 +4400,13 @@ export function WorldBuildingConcept({
       </>
     ) : null;
 
+  const guardBindingIntent = <Args extends unknown[]>(
+    callback: (...args: Args) => boolean
+  ): ((...args: Args) => boolean) =>
+    guardSnapshotIntent((...args) =>
+      socialSelectionActive() ? callback(...args) : false
+    );
+
   if (roomMode && studioPresentation) {
     return (
       <>
@@ -4708,6 +4737,130 @@ export function WorldBuildingConcept({
             cancelTransients();
             setTool(next);
             setRoomTool(next);
+          },
+          socialControls: {
+            factions: (
+              <FactionsPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+                onNotice={guardSnapshotIntent((message: string) => {
+                  setNotice(message);
+                  return true;
+                })}
+              />
+            ),
+            dispositions: (
+              <DispositionsPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+              />
+            ),
+            intel: (
+              <IntelPanel
+                explicitRename
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+              />
+            ),
+            selection:
+              arrange?.kind === 'actor' ? (
+                <>
+                  <CreatureOrders
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    monster={arrange.monster}
+                    binding={
+                      roomDraft.room.monsterBindings?.[arrange.monster.id]
+                    }
+                    onFactionChange={guardBindingIntent(
+                      (faction: string | undefined) =>
+                        setMonsterFaction(arrange.monster.id, faction)
+                    )}
+                    onOrdersChange={guardBindingIntent(
+                      (next: RoomMonsterBinding | undefined) =>
+                        setMonsterOrders(arrange.monster.id, next)
+                    )}
+                  />
+                  <section aria-label="Authored disposition context">
+                    <h4>Authored dispositions</h4>
+                    <p>
+                      These are authored relationships, not a live stance
+                      calculation. Conditions and knowledge are evaluated by the
+                      engine.
+                    </p>
+                    <ul>
+                      {(siteScope.dispositions ?? [])
+                        .filter((entry) => {
+                          const faction =
+                            roomDraft.room.monsterBindings?.[arrange.monster.id]
+                              ?.faction;
+                          return (
+                            faction !== undefined &&
+                            entry.between.includes(faction)
+                          );
+                        })
+                        .map((entry, index) => (
+                          <li key={index}>
+                            {entry.between.join(' ↔ ')}: {entry.stance}
+                            {entry.until ? (
+                              <>
+                                {' '}
+                                · until{' '}
+                                <code>{JSON.stringify(entry.until)}</code>
+                              </>
+                            ) : (
+                              ' · no authored condition'
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  </section>
+                </>
+              ) : arrange?.kind === 'scene' ? (
+                selectedProp && optionSections.single ? (
+                  <>
+                    {declarationEditor}
+                    {optionSections.orders ? (
+                      <PropOrders
+                        items={[selectedProp]}
+                        bindings={roomDraft.room.propBindings}
+                        declaredIds={
+                          new Set(Object.keys(roomDraft.room.propDeclarations))
+                        }
+                        doorIds={
+                          new Set(
+                            Object.keys(roomDraft.room.doorBindings ?? {})
+                          )
+                        }
+                        recordIds={(siteScope.intel ?? []).map(
+                          (record) => record.id
+                        )}
+                        scope={siteScope}
+                        room={roomDraft.room}
+                        onChange={guardBindingIntent(
+                          (id: string, next: RoomPropBinding | undefined) =>
+                            id === selectedProp.id
+                              ? setPropBinding(id, next)
+                              : false
+                        )}
+                      />
+                    ) : (
+                      <p>
+                        {optionSections.door
+                          ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
+                          : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p>
+                    Select one placed prop to edit its held intel and orders.
+                  </p>
+                )
+              ) : null,
           },
           propControls: {
             palette: assetPalette,
@@ -5196,6 +5349,7 @@ export function WorldBuildingConcept({
               <summary aria-label="Factions">Factions</summary>
               <FactionsPanel
                 scope={siteScope}
+                room={roomDraft.room}
                 onChange={commitPolicies}
                 onNotice={setNotice}
               />

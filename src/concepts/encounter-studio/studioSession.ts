@@ -60,6 +60,11 @@ export type {
 export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
+export type StudioSocialSection =
+  | 'intel'
+  | 'factions'
+  | 'dispositions'
+  | 'tables';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
 export type LayoutTool =
   | LayoutFloorTool
@@ -214,6 +219,13 @@ export interface EncounterStudioSession {
   cancelTransients(): void;
   propTool: WorldBuildingTool;
   setPropTool(tool: WorldBuildingTool): void;
+  /** Existing owner-controlled forms, not additional policy stores. */
+  socialControls: {
+    intel: ReactNode;
+    factions: ReactNode;
+    dispositions: ReactNode;
+    selection: ReactNode;
+  };
   propControls: {
     palette: ReactNode;
     tree: ReactNode;

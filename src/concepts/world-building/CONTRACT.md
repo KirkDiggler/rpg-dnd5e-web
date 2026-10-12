@@ -545,6 +545,31 @@ unchanged. No future action constraints are invented. Creature faction is a sele
 “Kind’s default”; an undeclared imported reference remains visible as
 “(not declared)” until the author changes it. The server still judges references.
 
+## Social definitions and selected bindings
+
+Encounter exposes Intel, Factions and Dispositions alongside Tables. The existing
+site forms write the canonical scope through guarded ordinary owner transactions;
+they do not add a policy store or evaluate runtime graph state. Intel names and
+faction names are applied deliberately without rewriting references. Fact ids in
+reveal targets and predicates are distinct from the record ids in holds. Faction
+minds reference placed individuals, not creature-palette recipes. Reserved sides
+remain available to disposition authoring without requiring a custom faction.
+
+Arrange exposes CreatureOrders for one selected actor and PropOrders for one
+eligible selected prop, with navigation back to Encounter definitions. Authored
+disposition context is labelled as authored, not as the current effective stance.
+Unassigned creatures keep their kind default; the editor never writes a default
+faction binding merely to display one. Held-record readouts include both creature
+and prop holders. Prop orders require the existing explicit footprint declaration
+and non-door eligibility; attaching intel does not invent a footprint. Multi/group
+selection never picks one prop on the author's behalf.
+
+Scope callbacks retire with their document/intent context; selected binding and
+footprint callbacks additionally retire with selection. Normalization, optional
+absence, one shared Undo/Redo history and strict complete-save validation remain
+owned by the existing helpers and codecs. Incomplete policy drafts remain editable;
+no client-side stance fold or knowledge propagation is introduced.
+
 ## Authored stat-block carriage
 
 Encounter exposes Creatures, Stat blocks and Tables. Scene5 optionally carries

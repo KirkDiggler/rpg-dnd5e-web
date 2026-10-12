@@ -15,6 +15,7 @@
  * engine's sentences at `PutDungeon`, and a rename here deliberately does not
  * rewrite a creature's `holds` — the server names the dangling reference.
  */
+import { useEffect, useState } from 'react';
 import {
   addIntelRecord,
   intelHolders,
@@ -55,9 +56,80 @@ export interface IntelPanelProps {
   /** The document mutator, shared with `Policies`: one undoable transaction per
    * edit, and the same "the form never pre-judges" boundary. */
   onChange: (nextScope: SiteScope) => void;
+  explicitRename?: boolean;
 }
 
-export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
+function IntelName({
+  id,
+  scope,
+  onChange,
+}: {
+  id: string;
+  scope: SiteScope;
+  onChange: (scope: SiteScope) => void;
+}): React.JSX.Element {
+  const [name, setName] = useState(id);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setName(id);
+    setError(null);
+  }, [id, scope]);
+  const applyName = (): void => {
+    if (!name.trim()) {
+      setError('Intel id cannot be empty.');
+      return;
+    }
+    if (name !== id && scope.intel?.some((record) => record.id === name)) {
+      setError('That intel id already exists; both records were kept.');
+      return;
+    }
+    setError(null);
+    onChange(renameIntelRecord(scope, id, name));
+  };
+  return (
+    <div className="wb-actions">
+      <label>
+        Id
+        <input
+          aria-label={`Intel id for ${id}`}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              applyName();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setName(id);
+              setError(null);
+            }
+          }}
+        />
+      </label>
+      <button type="button" onClick={applyName}>
+        Apply intel name
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setName(id);
+          setError(null);
+        }}
+      >
+        Cancel intel name
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </div>
+  );
+}
+
+export function IntelPanel({
+  scope,
+  room,
+  onChange,
+  explicitRename = false,
+}: IntelPanelProps) {
   const records = scope.intel ?? [];
   const monsterIds = room.monsterDeclarations.map((monster) => monster.id);
 
@@ -71,7 +143,12 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
       ) : (
         <ul className="wb-policy-factions" aria-label="Intel records">
           {records.map((record) => {
-            const holders = intelHolders(room.monsterBindings, record.id);
+            const holders = [
+              ...new Set([
+                ...intelHolders(room.monsterBindings, record.id),
+                ...intelHolders(room.propBindings, record.id),
+              ]),
+            ];
             return (
               <li
                 key={record.id}
@@ -100,22 +177,30 @@ export function IntelPanel({ scope, room, onChange }: IntelPanelProps) {
                     )}
                   </summary>
                   <div className="wb-policy-form">
-                    <label>
-                      <span>Id</span>
-                      <input
-                        aria-label={`Intel id for ${record.id}`}
-                        value={record.id}
-                        onChange={(event) =>
-                          onChange(
-                            renameIntelRecord(
-                              scope,
-                              record.id,
-                              event.target.value
-                            )
-                          )
-                        }
+                    {explicitRename ? (
+                      <IntelName
+                        id={record.id}
+                        scope={scope}
+                        onChange={onChange}
                       />
-                    </label>
+                    ) : (
+                      <label>
+                        <span>Id</span>
+                        <input
+                          aria-label={`Intel id for ${record.id}`}
+                          value={record.id}
+                          onChange={(event) =>
+                            onChange(
+                              renameIntelRecord(
+                                scope,
+                                record.id,
+                                event.target.value
+                              )
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                     {!revealsDoor(record.reveals) && (
                       <label>
                         <span>Reveals a</span>
