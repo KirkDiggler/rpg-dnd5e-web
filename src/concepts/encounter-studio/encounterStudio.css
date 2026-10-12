@@ -483,6 +483,31 @@
   margin-left: auto;
   margin-right: auto;
 }
+.es-creature-palette,
+.es-creature-palette section,
+.es-creature-palette label {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.es-creature-palette {
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.es-creature-palette ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.es-creature-palette li button {
+  width: 100%;
+  text-align: left;
+}
+.es-creature-palette select {
+  width: 100%;
+  min-width: 0;
+}
 .es-creature-panel {
   display: grid;
   gap: 0.75rem;

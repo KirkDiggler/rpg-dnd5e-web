@@ -296,6 +296,14 @@ it('saves a reusable creature without a position, then places independent looks 
   expect(storage.document().draft.room.monsterDeclarations).toEqual(
     original.draft.room.monsterDeclarations
   );
+  expect(screen.queryByLabelText('Placement look')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Place on map' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Open map creature list' })
+  );
+  expect(
+    screen.getByRole('region', { name: 'Monsters and NPCs palette' })
+  ).toBeTruthy();
   expect(
     (screen.getByLabelText('Placement look') as HTMLSelectElement).disabled
   ).toBe(false);
@@ -334,7 +342,15 @@ it('saves a reusable creature without a position, then places independent looks 
     expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
       before.draft.room.monsterDeclarations.length + 1
     );
-    fireEvent.click(button('Encounter'));
+    expect(
+      screen.getByRole('region', { name: 'Monsters and NPCs palette' })
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Placement look') as HTMLSelectElement).value
+    ).toBe(style);
+    expect(
+      (screen.getByLabelText('Placement skin tone') as HTMLSelectElement).value
+    ).toBe(skin);
   }
   const final = storage.document();
   expect(
@@ -371,9 +387,43 @@ it('saves a reusable creature without a position, then places independent looks 
   );
   act(() => canceled({ q: 0, r: 0 }));
   expect(storage.document()).toEqual(final);
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const oldLook = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.change(screen.getByLabelText('Placement look'), {
+    target: { value: '03' },
+  });
+  expect(viewport().roomAuthoring?.tool).toBe('select');
+  act(() => oldLook({ q: 0, r: 0 }));
+  expect(storage.document()).toEqual(final);
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const oldTab = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.click(
+    within(
+      screen.getByRole('navigation', { name: 'Placement palette' })
+    ).getByRole('button', { name: 'Props' })
+  );
+  act(() => oldTab({ q: 0, r: 0 }));
+  expect(storage.document()).toEqual(final);
   mounted.unmount();
   mount(storage);
   expect(storage.document()).toEqual(final);
+});
+
+it('opens configuration from the empty map creature palette without changing the document', () => {
+  const storage = new MemoryStorage(seed());
+  const before = storage.document();
+  mount(storage);
+  switchTo('3D');
+  fireEvent.click(screen.getByRole('button', { name: 'Monsters & NPCs' }));
+  expect(
+    screen.getByRole('region', { name: 'Monsters and NPCs palette' })
+      .textContent
+  ).toContain('No named creatures yet');
+  fireEvent.click(screen.getByRole('button', { name: 'Configure creatures' }));
+  expect(
+    screen.getByRole('form', { name: 'Create creature recipe' })
+  ).toBeTruthy();
+  expect(storage.document()).toEqual(before);
 });
 
 it('authors social definitions in Encounter and attaches records to selected creatures and props in Arrange', () => {

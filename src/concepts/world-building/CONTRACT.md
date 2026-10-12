@@ -580,10 +580,12 @@ no scores, coordinates, factions or skin overrides and never instantiate actors.
 They round-trip with the editor's scene metadata without adding gameplay grammar;
 runtime knowledge never resolves actor appearance or names from this palette.
 
-Creating a recipe does not place it. Place chooses one published look/skin ref,
-switches to the 3D map and arms the existing monster placement tool with a fresh
-snapshot. One map click creates a fresh actor with copied ref and appearanceRef;
-the recipe remains reusable. Cancellation creates nothing. Every placement has
+Encounter creates/configures recipes; it does not place them. Build/3D exposes
+Monsters & NPCs beside Props, reading the same saved palette. Choose one published
+look/skin ref there and arm the existing monster placement tool. One map click
+creates a fresh actor with copied ref and appearanceRef. The list remains visible
+and keeps the chosen variation for another placement. Changing the recipe, look,
+palette tab or view cancels the armed intent; cancellation creates nothing. Every placement has
 its own complete appearanceRef; recipe edits affect future placements only.
 Unknown imported model refs remain literal and placement refuses until resolved.
 Label, region, lighting and resize edits retain scene5 and its palette.

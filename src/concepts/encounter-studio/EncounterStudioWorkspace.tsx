@@ -7,6 +7,7 @@ import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
+import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioCreatures } from './StudioCreatures';
 import { StudioDimensions } from './StudioDimensions';
 import { StudioDoorControls } from './StudioDoorControls';
@@ -68,24 +69,7 @@ function StudioSurface({
 }: StudioSurfaceProps): React.JSX.Element {
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('tables');
-  const [pendingPlacement, setPendingPlacement] = useState<{
-    id: string;
-    appearanceRef: string;
-  } | null>(null);
-  const [placementError, setPlacementError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!pendingPlacement || home !== 'build' || view !== '3d') return;
-    setPendingPlacement(null);
-    if (
-      !session.creatures.armPlacement(
-        pendingPlacement.id,
-        pendingPlacement.appearanceRef
-      )
-    )
-      setPlacementError(
-        'Placement could not start. Choose the creature and look again.'
-      );
-  }, [pendingPlacement, home, view, session.creatures]);
+  const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
     session.arrange?.kind === 'label' ? session.arrange.region : undefined;
@@ -143,8 +127,6 @@ function StudioSurface({
     showSection('regions');
   };
   const changeHome = (next: StudioHome): void => {
-    setPendingPlacement(null);
-    setPlacementError(null);
     if (next === home) return;
     // Explicit navigation retires map gestures, not document or selection.
     session.setPropTool('select');
@@ -167,7 +149,6 @@ function StudioSurface({
     setRenameError(null);
   }, [session.document]);
   const switchView = (next: EncounterStudioView): void => {
-    setPendingPlacement(null);
     if (next === view) return;
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     if (layoutTool === 'door' || layoutTool === 'region')
@@ -340,7 +321,6 @@ function StudioSurface({
               </button>
             </div>
           )}
-          {placementError && <p role="alert">{placementError}</p>}
           {home === 'build' &&
             (view === 'layout' ? (
               <div
@@ -663,9 +643,51 @@ function StudioSurface({
               <aside
                 hidden={home !== 'build'}
                 className="es-props es-palette wb-panel"
-                aria-label="Prop palette"
+                aria-label="Placement palettes"
               >
-                {session.propControls.palette}
+                <nav className="es-buttons" aria-label="Placement palette">
+                  <button
+                    type="button"
+                    aria-pressed={mapPalette === 'props'}
+                    onClick={() => {
+                      if (mapPalette !== 'props') session.cancelTransients();
+                      setMapPalette('props');
+                    }}
+                  >
+                    Props
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={mapPalette === 'creatures'}
+                    onClick={() => {
+                      if (mapPalette !== 'creatures')
+                        session.cancelTransients();
+                      setMapPalette('creatures');
+                    }}
+                  >
+                    Monsters &amp; NPCs
+                  </button>
+                </nav>
+                <div hidden={mapPalette !== 'props'} aria-label="Prop palette">
+                  {session.propControls.palette}
+                </div>
+                {home === 'build' && mapPalette === 'creatures' && (
+                  <StudioCreaturePalette
+                    session={session}
+                    onConfigure={() => {
+                      changeHome('encounter');
+                      setEncounterSection('creatures');
+                    }}
+                    onPlace={(id, appearanceRef) => {
+                      const accepted = session.creatures.armPlacement(
+                        id,
+                        appearanceRef
+                      );
+                      if (accepted) showSection('arrange');
+                      return accepted;
+                    }}
+                  />
+                )}
               </aside>
               <div className="es-canvas">
                 <WorldBuildingViewport {...session.viewportProps} />
@@ -710,11 +732,10 @@ function StudioSurface({
             <StudioCreatures
               session={session}
               onConfigure={openDefinitions}
-              onPlace={(id, appearanceRef) => {
+              onOpenPalette={() => {
                 changeHome('build');
                 onViewChange('3d');
-                setSections((current) => ({ ...current, build: 'arrange' }));
-                setPendingPlacement({ id, appearanceRef });
+                setMapPalette('creatures');
               }}
               onShowMap={() => {
                 changeHome('build');
