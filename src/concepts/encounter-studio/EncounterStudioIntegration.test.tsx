@@ -250,6 +250,12 @@ it('saves a reusable creature without a position, then places independent looks 
   let nextId = 0;
   const mounted = mount(storage, () => `created-${++nextId}`);
   fireEvent.click(button('Encounter'));
+  // The inactive map retains the full asset palette. Scope this long journey's
+  // queries to the active editor instead of repeatedly walking that hidden DOM.
+  const page = within(mounted.container);
+  let screen = within(
+    page.getByRole('region', { name: 'Encounter configuration' })
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Stat blocks' }));
   fireEvent.change(screen.getByLabelText('Stat block id'), {
     target: { value: 'town_guard' },
@@ -301,9 +307,11 @@ it('saves a reusable creature without a position, then places independent looks 
   fireEvent.click(
     screen.getByRole('button', { name: 'Open map creature list' })
   );
-  expect(
-    screen.getByRole('region', { name: 'Monsters and NPCs palette' })
-  ).toBeTruthy();
+  const palettePanel = page.getByRole('region', {
+    name: 'Monsters and NPCs palette',
+  });
+  screen = within(palettePanel);
+  expect(palettePanel).toBeTruthy();
   expect(
     (screen.getByLabelText('Placement look') as HTMLSelectElement).disabled
   ).toBe(false);
@@ -342,9 +350,8 @@ it('saves a reusable creature without a position, then places independent looks 
     expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
       before.draft.room.monsterDeclarations.length + 1
     );
-    expect(
-      screen.getByRole('region', { name: 'Monsters and NPCs palette' })
-    ).toBeTruthy();
+    expect(palettePanel.isConnected).toBe(true);
+    expect(palettePanel.closest('[hidden], [aria-hidden="true"]')).toBeNull();
     expect(
       (screen.getByLabelText('Placement look') as HTMLSelectElement).value
     ).toBe(style);
@@ -385,7 +392,7 @@ it('saves a reusable creature without a position, then places independent looks 
   fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
   const canceled = viewport().roomAuthoring!.onPlaceMonster!;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Cancel creature placement' })
+    page.getByRole('button', { name: 'Cancel creature placement' })
   );
   act(() => canceled({ q: 0, r: 0 }));
   expect(storage.document()).toEqual(final);
@@ -401,7 +408,7 @@ it('saves a reusable creature without a position, then places independent looks 
   const oldTab = viewport().roomAuthoring!.onPlaceMonster!;
   fireEvent.click(
     within(
-      screen.getByRole('navigation', { name: 'Placement palette' })
+      page.getByRole('navigation', { name: 'Placement palette' })
     ).getByRole('button', { name: 'Props' })
   );
   act(() => oldTab({ q: 0, r: 0 }));
