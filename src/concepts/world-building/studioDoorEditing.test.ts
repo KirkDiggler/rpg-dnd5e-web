@@ -35,6 +35,16 @@ const target = {
   doorId: 'door',
 };
 describe('complete grouped Studio door candidates', () => {
+  it('does not confuse newly published aperture-fit frames with legacy whole-assembly openings', () => {
+    const entry = WORLD_BUILDING_CATALOG_BY_REF.get(
+      'dnd5e:env:fantasy-kingdom:castle_wall_doorway_single_01'
+    )!;
+    expect(entry).toBeTruthy();
+    expect(() => studioDoorAssetWidth(entry)).toThrow(/aperture-anchor/);
+    expect(studioDoorOptions().some((option) => option.ref === entry.ref)).toBe(
+      false
+    );
+  });
   it('uses the actual one-group/frame metadata and native runtime-scaled width without filename rules', () => {
     expect(studioDoorAssetWidth(asset)).toBe(asset.asset.boundsMeters[0]);
     expect(studioDoorOptions().some((option) => option.ref === ref)).toBe(true);

@@ -3,6 +3,7 @@ import type {
   RegionLighting,
   RegionResolution,
 } from './authoringRegions';
+import { authoredActorName, setActorName } from './creaturePalette';
 import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
@@ -27,6 +28,7 @@ import {
   previewWallTransform,
   resizeWallLength,
   setWallAppearance,
+  setWallEndpoints,
   wallDirectionYaw,
   wallLength,
   wallMidpoint,
@@ -60,6 +62,7 @@ export interface StudioSceneArrangeValues {
 }
 
 export interface StudioWallArrangeValues {
+  readonly line: Readonly<StructuralWall['line']>;
   readonly midpoint: Readonly<WorldPoint>;
   readonly yaw: number;
   readonly length: number;
@@ -114,6 +117,7 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'actor';
         readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
         readonly monster: Readonly<RoomMonsterPlacement>;
+        readonly mapName?: string;
         readonly startingCell: Readonly<RoomMonsterPlacement['startingCell']>;
       }
     | {
@@ -138,6 +142,8 @@ export interface StudioWallArrangeEdit {
   readonly kind: 'wall-edit';
   readonly target: Extract<StudioArrangeTarget, { kind: 'wall' }>;
   readonly midpoint?: Partial<WorldPoint>;
+  readonly start?: Partial<WorldPoint>;
+  readonly end?: Partial<WorldPoint>;
   readonly yaw?: number;
   /** Anchor is the endpoint held fixed; the opposite endpoint moves/clamps. */
   readonly length?: {
@@ -150,6 +156,7 @@ export interface StudioWallArrangeEdit {
 
 export interface StudioActorArrangeEdit {
   readonly kind: 'actor-start';
+  readonly mapName?: string | null;
   /** Omitted is unchanged; null clears only the authored visual override. */
   readonly appearanceRef?: string | null;
   readonly target: Extract<StudioArrangeTarget, { kind: 'actor' }>;
@@ -255,6 +262,7 @@ function sceneValues(
 
 function wallValues(wall: StructuralWall): StudioWallArrangeValues {
   return {
+    line: wall.line,
     midpoint: wallMidpoint(wall),
     yaw: wallDirectionYaw(wall),
     length: wallLength(wall),
@@ -381,6 +389,7 @@ export function projectStudioArrange(
             kind: 'actor',
             target,
             monster,
+            mapName: authoredActorName(draft.scene.actorNames, monster.id),
             startingCell: monster.startingCell,
           }
         : null;
@@ -444,9 +453,9 @@ export function applyStudioSceneArrange(
   return next;
 }
 
-/** Length → yaw at resulting midpoint → final requested midpoint → appearance.
- * Existing clamp/endpoint behavior is retained; invalid late fields throw
- * before any candidate can reach the document/history owner. */
+/** Exact endpoint coordinates OR length → yaw → midpoint, then appearance.
+ * Conflicting representations and invalid late fields throw before any
+ * candidate can reach the document/history owner. */
 export function applyStudioWallArrange(
   draft: Readonly<RoomDraft>,
   intent: StudioWallArrangeEdit
@@ -456,6 +465,19 @@ export function applyStudioWallArrange(
   );
   if (!wall) throw new Error('Arrange wall target no longer exists.');
   let next = wall;
+  if (intent.start || intent.end) {
+    if (intent.midpoint || intent.yaw !== undefined || intent.length)
+      throw new Error(
+        'Apply endpoint coordinates separately from position, length or rotation.'
+      );
+    next = setWallEndpoints({
+      wall,
+      ...(intent.start
+        ? { start: { ...wall.line.start, ...intent.start } }
+        : {}),
+      ...(intent.end ? { end: { ...wall.line.end, ...intent.end } } : {}),
+    });
+  }
   if (intent.length) {
     if (intent.length.anchor !== 'start' && intent.length.anchor !== 'end')
       throw new Error('Arrange wall anchor must be start or end.');
@@ -537,6 +559,10 @@ export function applyStudioActorArrange(
   );
   if (!monster) throw new Error('Arrange actor target no longer exists.');
   let next = draft;
+  if (intent.mapName !== undefined) {
+    const scene = setActorName(next.scene, monster.id, intent.mapName);
+    if (scene !== next.scene) next = { ...next, scene };
+  }
   if (intent.location) {
     requireCell(draft, intent.location);
     if (

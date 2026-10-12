@@ -65,21 +65,100 @@ missing/error images retain named selectable fallbacks without loading a GLB,
 substituting an asset or deleting an authored wall. Eligibility remains the catalog's measured generated
 assets without a door leaf role. No appearance is armed by default.
 
-Wall stays armed for consecutive draws. Snap starts off, can snap to existing hex
-centres/corners/side midpoints, and retains its presentation-only choice across
-context dismissal and view changes. Both preview and release use the same pure
+Wall stays armed for consecutive draws. Hex snapping starts off and targets hex
+centres/corners/side midpoints. Wall-endpoint snapping starts on independently,
+targets other walls' endpoints within12 CSS pixels, and takes priority over hex
+snapping during drawing and endpoint reshaping. The control is labeled **Snap
+corners**: a nearby perpendicular pair also previews both ends at their line
+intersection, trimming/extending them together while preserving directions. Both
+the pointer and the target end must be within the snap radius. A moved target end
+already joined to a third wall, or protected by an opening, refuses the pair.
+The guarded owner re-derives the second endpoint from its current snapshot and
+commits both walls in one history/storage transaction. No sequential partial
+commit or automatic region-witness rebinding occurs. It copies the target coordinates
+exactly and marks an accepted preview as **Joined endpoint**. Equal-distance ties
+use wall id/endpoint order, not input array order. Both settings remain editor-only
+and survive context dismissal/view changes; changing either retires the gesture.
+Whole-wall translation retains its existing free/hex-snap behavior. Both preview and release use the same pure
 helpers. Dismiss hides settings without exiting drawing; Escape/right-click exits
 Wall and cancels the unfinished gesture without clearing appearance or snap.
 
-Select picks a wall body for rigid translation or a selected endpoint for direct
-reshape. Endpoint reshape composes protected collinear resize then rotation about
-the opposite endpoint: opening distances/identities and attached doors travel with
-the changed bearing. Opening edges clamp length; the preview displays the actual
-applied endpoint on the requested ray, not the unreachable raw pointer. Numeric
-length remains collinear, and move/rotation/appearance controls are secondary.
+**Right angles** is an independent editor-only setting, initially off, shared by
+Walls and selected-wall Arrange controls. It constrains drawing and endpoint
+handles, not numeric fields or whole-wall translation. At gesture start, the
+accepted drawing start or the fixed opposite endpoint chooses a reference from
+other walls meeting that exact point. The gesture retains that reference. Free
+starts use world X/Z; a joined wall supplies parallel/perpendicular axes. Compatible
+incident directions share a deterministic basis; conflicting directions refuse
+with a visible explanation rather than guessing or repairing existing walls.
+
+Projection precedes snapping. Endpoint candidates and optional hex targets must
+remain on the chosen axis; otherwise they cannot replace the constrained point.
+Cardinal coordinates compare exactly; rotated-axis compatibility accounts only
+for floating-point arithmetic roundoff, not a fixed geometric/angle tolerance.
+Accepted endpoint snaps still copy the target coordinate exactly. Preview names
+the basis/direction; opening clamp feedback takes precedence over any join claim.
+Changing the setting retires pending gestures without a document/history write.
+This editing aid does not enroll an asset for visual miter fitting.
+
+Select picks a wall body for rigid translation or a selected Start/End handle for
+direct reshape. Endpoint reshape reuses protected collinear resize; the opposite
+endpoint stays exact, and unclamped edits retain the requested endpoint verbatim
+rather than reconstructing it through trigonometry. Opening edges clamp drags;
+the preview displays the applied endpoint on the requested ray, never a false
+join to an unreachable target. Opening identities and attached doors are retained.
+
+Arrange leads with full-precision Start X/Z and End X/Z fields. Midpoint lives in
+collapsed **Position · whole wall** controls. Both endpoints can change in one
+atomic transaction without an intermediate zero-length wall. Start-only changes
+use the existing End-anchored opening offsets; otherwise local opening distances
+remain Start-anchored. An explicitly unchanged end counts as fixed. Blocker end
+margins follow the signed length delta; flags/depth/offsets stay authored. Numeric
+endpoint edits that would clamp through an opening refuse instead of writing a
+different endpoint. Endpoint coordinates cannot be combined with midpoint, length
+or rotation in the same Apply; appearance changes may accompany them. Exact no-ops
+retain geometry, optional absence, storage and history. This is an authoring snap,
+not a region-detector tolerance: no loaded gaps are welded or walls straightened.
+Numeric length remains collinear; existing whole-wall dragging remains available.
+Selected endpoints have Start/End labels and hover X/Z values; Layout also shows
+a Start→End direction arrow. Opposite headings such as0 and−180 can be parallel;
+heading display never reverses authored wall identity or opening distances.
 Appearance changes do not change the independent blocker. Neither renderer stores
 derived spans or a second door pose; the existing 3D consumes the same canonical
 walls and door bindings.
+
+### Supported automatic visual corners
+
+Only catalog appearances declaring `wall-miter-90` opt into the plain-wall fit.
+The enrolled appearance is an explicit choice, not a silent replacement of older
+Castle walls. Two shared authored endpoints, perpendicular directions, matching
+authored height/thickness/elevation and solid terminal pieces longer than their
+depth allow a common miter. Junctions, opening conflicts, unequal dimensions and
+unsupported appearances retain unfitted art with a selected-wall explanation.
+Snapping and rendering are separate: disabling snapping does not undo an existing
+visual fit, and rendering never moves endpoints, blockers or region witnesses.
+
+The shared asset leaf resolves `WallBody_v1` and all material primitives, plus
+transformed Start/End/Front/Back/Top markers. Body planes determine the instance
+fit and datum; the existing repeat count remains a distribution heuristic, not an
+alternative body-plane authority. Shared0.75 conversion applies once. Parent
+piece groups use unit scale for this path; the leaf applies the marker-based fit.
+Only participating end positions change in cloned instance buffers. Remote-end
+positions, cap materials/UVs and cached geometry/textures stay untouched. Side UVs
+use their original chart gradients at physical fitted distances, with derived
+per-wall Start-relative offsets continuous across pieces/openings. The fitter
+uses each primitive material's declared texture channels, not an assumed UV0;
+unused channels and cap UVs remain unchanged. Normals are recomputed and stale
+tangent attributes are removed so Three derives the normal basis from the actual
+normal-map UV channel (including the released masonry's UV2). No room-loop texture phase or material-selection
+behavior is inferred. Owned buffers are disposed on replacement/unmount; unchanged
+fit values preserve instance resources. Other props/actors/thumbnails use the
+unchanged ordinary model path. Studio derives joins only from its supplied walls;
+no gameplay visibility authority is introduced.
+
+A provider update may carry aperture-fit doorway assets. The legacy complete-door
+tool refuses `wall-opening` candidates until its separate anchor-aware consumer
+is implemented; assembly bounds must not be offered as aperture dimensions.
 
 Selected endpoint handles precede labels, then wall bodies, then empty-space
 deselection; middle-button pan wins. Paint/Erase/Rectangle remain floor-owned.
@@ -136,14 +215,14 @@ relations or arrangement members. No 3D label renderer is promised. Label-only
 edits leave workspace and gameplay policy unchanged. Linked Room labels and their
 separate authoring boundary intent are described below.
 
-`WorldScene.version` supports 1/2/3/4. Scene3 boundary metadata and optional
-scene4 lighting intent are described below. Version 2 optionally carries
+`WorldScene.version` supports 1/2/3/4/5. Scene3 boundaries, scene4 lighting and
+scene5 reusable creature palettes are described below. Version 2 optionally carries
 `mapLabels:[{id,text,location:{x,z}}]`; label IDs are nonempty and unique within
 labels, IDs/text are at most 120 characters, text is nonblank, locations are finite
 continuous world points inside the workspace, and at most 256 labels are accepted.
 Absent labels means none; deleting the last removes `mapLabels` without demoting
 the scene. First Note or explicit rectangular resize on scene1 promotes the scene to 2,
-even if the rectangle has no labels; scene3/4 are preserved. Version-1 scenes carrying label metadata
+even if the rectangle has no labels; scene3/4/5 are preserved. Version-1 scenes carrying label metadata
 are refused. Older scene-1-only web readers refuse scene 2 rather than silently
 strip dimensions/labels. JSON, room snapshots and YAML preserve supported authored
 data, not YAML comments/formatting. Envelope versions, storage namespaces and
@@ -211,9 +290,9 @@ blank with a100 placeholder and **Baseline · no region light authored**; untouc
 fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
 absence: it opts the configured floor into the placed-light receiver. Reset stages
 null until Apply. Equal authored values and reset-absent are noops. Apply/Enter is
-one transaction; invalid tokens refuse the whole form. Cancel/Escape, collapse,
-view/target/epoch/document retirement discard linked-label staging without writes;
-blur never submits. Ordinary notes expose no region fields. Configured unresolved
+one transaction; invalid tokens refuse the whole form. Cancel/Escape and
+view/target/epoch/document retirement discard linked-label staging without writes.
+Sidebar collapse and section navigation preserve staging; blur never submits. Ordinary notes expose no region fields. Configured unresolved
 labels show **Lighting saved · not applied until boundary resolves**, alongside the
 boundary reason.
 
@@ -466,6 +545,90 @@ unchanged. No future action constraints are invented. Creature faction is a sele
 “Kind’s default”; an undeclared imported reference remains visible as
 “(not declared)” until the author changes it. The server still judges references.
 
+## Social definitions and selected bindings
+
+Encounter exposes Intel, Factions and Dispositions alongside Tables. The existing
+site forms write the canonical scope through guarded ordinary owner transactions;
+they do not add a policy store or evaluate runtime graph state. Intel names and
+faction names are applied deliberately without rewriting references. Fact ids in
+reveal targets and predicates are distinct from the record ids in holds. Faction
+minds reference placed individuals, not creature-palette recipes. Reserved sides
+remain available to disposition authoring without requiring a custom faction.
+
+Arrange exposes CreatureOrders for one selected actor and PropOrders for one
+eligible selected prop, with navigation back to Encounter definitions. Authored
+disposition context is labelled as authored, not as the current effective stance.
+Unassigned creatures keep their kind default; the editor never writes a default
+faction binding merely to display one. Held-record readouts include both creature
+and prop holders. Prop orders require the existing explicit footprint declaration
+and non-door eligibility; attaching intel does not invent a footprint. Multi/group
+selection never picks one prop on the author's behalf.
+
+Scope callbacks retire with their document/intent context; selected binding and
+footprint callbacks additionally retire with selection. Normalization, optional
+absence, one shared Undo/Redo history and strict complete-save validation remain
+owned by the existing helpers and codecs. Incomplete policy drafts remain editable;
+no client-side stance fold or knowledge propagation is introduced.
+
+## Authored stat-block carriage
+
+Encounter exposes Creatures, Stat blocks and Tables. Scene5 optionally carries
+`creaturePalette`: editor recipes with exact id, name, ref and modelRef fields.
+The name labels the reusable editor recipe; ref names an existing rulebook monster
+or root template, and modelRef names a declared appearance family. Recipes carry
+no scores, coordinates, factions or skin overrides and never instantiate actors.
+They round-trip with the editor's scene metadata without adding gameplay grammar;
+runtime knowledge never resolves actor appearance or names from this palette.
+
+Encounter creates/configures recipes; it does not place them. Build/3D exposes
+Monsters & NPCs beside Props, reading the same saved palette. Choose one published
+look/skin ref there and arm the existing monster placement tool. One map click
+creates a fresh actor with copied ref and appearanceRef. The list remains visible
+and keeps the chosen variation for another placement. Changing the recipe, look,
+palette tab or view cancels the armed intent; cancellation creates nothing. Every placement has
+its own complete appearanceRef; recipe edits affect future placements only.
+Unknown imported model refs remain literal and placement refuses until resolved.
+Label, region, lighting and resize edits retain scene5 and its palette.
+
+Scene5 optionally carries `actorNames`, a placement-id to authoring-label map.
+New recipe placements snapshot their name in the same transaction. Marker labels,
+hover previews and Arrange use that name without changing the rules ref or enriching
+runtime knowledge. Older instances keep their rules-based label until explicitly
+named with Map name; the editor does not guess their recipe. Removing a creature
+removes its label. Move creature arms the existing one-shot destination-hex action,
+with snapped hover feedback and explicit cancellation; names and other bindings
+remain unchanged.
+
+Roster selection alone never moves an actor. Existing instances reuse Arrange's
+staged single appearanceRef transaction; definition edits retain appearance,
+identity, location and bindings. Named stat blocks are shared by reference, never
+copied into instances. Their form applies only edited fields, keeps ids stable
+and preserves untouched optional values. Cancellation and document/intent retirement
+discard staged inputs. All commits use the same WorldBuildingConcept document,
+ordinary policy-preserving gate and history.
+
+The site scope carries root `templates` through the same SCOPE_KEYS, history,
+JSON and YAML boundaries as tables and policies. Nonempty templates require the
+existing root dialect4; embedded room/scene/envelope versions do not change.
+Template ids are single reference segments, placed as `dnd5e:monsters:<id>`.
+Monster declarations and templates use the shared reference parser rather than
+separate naming grammars. Unknown but well-formed content refs remain intact.
+
+The authored shape mirrors encounter TemplateSpec: required base, optional name,
+partial ability scores, hitDice, armor, proficiency, skills, actions and experience.
+Explicit empty overrides/zeros remain as written where the shape allows them;
+absent fields are not filled from a client copy of the rulebook. HP, AC, attack bonuses
+and passives are not authored totals; the internal rulebook speed field is not
+part of this authored dialect. Base resolution,
+rulebook shadowing and derivation remain engine-owned. Local template inheritance
+is refused by the declared grammar. Whole-source import never strips a template
+to bypass a refusal; unsupported play contracts and unavailable scene appearances
+remain named failures rather than rewritten source.
+
+The active site disposition reader accepts `until` for hostile or neutral, as in
+the released both-ways grammar. Allied still refuses it. A neutral alarm condition
+must not be dropped to make a stat-block encounter editable.
+
 ## Monster declarations and bindings (#1202)
 
 The current single-room authoring shape uses `room.room.monsterDeclarations`
@@ -481,6 +644,46 @@ also applies to current local drafts: old bytes are preserved on refusal.
 There is no v5 document or schema alias, and no automatic rewrite of saved
 compositions. Server error paths are displayed verbatim by the publish panel.
 The engine example is pinned to toolkit merge `6cbee563`.
+
+## Studio authoring homes and options (#1256)
+
+Build, Regions and Encounter are authoring homes, independent of the Layout/3D
+map view. Document identity, saving and history remain shared. Build starts in
+Select and offers Paint, Erase, Rectangle and Size in Layout. Its right-hand
+options contain Arrange, Walls, Doors and Notes. Regions owns the region list,
+room-label creation and the existing linked-label boundary/background-light form.
+Encounter gives Tables a full configuration workspace, not a map options tab.
+Future configuration sections are not represented by enabled placeholder controls.
+
+There is one spatial options slot. Only one section is visible. The Options
+button and unmodified N toggle it without remounting the canvas or changing the
+active section, tool, selection, document or history. N does not intercept
+editable controls, composition, repeated keys or modified shortcuts; it does not
+open map options in Encounter. The inactive map stays mounted but hidden and
+inert while Encounter is shown. Home changes retire map gestures through the
+owner epoch and return Build to Select; hidden map mutation shortcuts and 3D
+callbacks are fenced. Undo/Redo remain document actions. Regions3D is inspection,
+with existing lighting edits available; placement and boundary painting use Layout.
+
+Sections stay mounted when hidden. Local form drafts survive section changes and
+collapse; a canonical document/selection/intent replacement still retires Arrange
+staging. Selection changes update Arrange without forcing a different section or
+reopening the sidebar. Wall drawing remains a Layout tool; showing its options
+alone does not arm drawing. Pickers retain published static PNGs; no model-capture
+queue or thumbnail-demand mechanism is introduced.
+
+Tables edit the encounter's root declarations independently of map selection.
+The existing TablesPanel, entry grammar and vocabulary are shared, not copied.
+Studio table names commit only on explicit Apply/Enter; Cancel/Escape discards the
+name token. Entry fields keep their existing document-edit semantics. Multiple
+entries may be authored on each trigger. Section or home navigation never submits
+a name; table-name drafts remain mounted across homes.
+
+`EncounterStudioSession.commitTables` accepts only `SiteScope.tables`, preserving
+all other scope, geometry and bindings through the existing guarded document
+transaction. Absence omits the key; equal writes add no history. Retired callbacks
+refuse. Undo/Redo, draft storage and strict completed save/export share the one
+owner. Renaming/removing tables does not rewrite references or compute behavior.
 
 ## Shared answer tables at the root (#1201)
 

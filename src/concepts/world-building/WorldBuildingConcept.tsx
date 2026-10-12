@@ -10,6 +10,10 @@ import {
   isRoomDocument,
 } from '@/compositions/roomDocument';
 import {
+  NPC_APPEARANCE_FAMILIES,
+  npcAppearanceOptions,
+} from '@/npc-appearances/npcAppearanceChoices';
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -28,6 +32,11 @@ import {
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
 import {
+  setActorName,
+  setCreaturePalette,
+  type CreaturePaletteEntry,
+} from './creaturePalette';
+import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
@@ -44,6 +53,7 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
+import { validateMonsterTemplates } from './monsterTemplates';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
 import {
@@ -79,6 +89,7 @@ import {
   resizeRoomWorkspace,
   ROOM_WORKSPACE_STEPS,
   saveRoomDraft,
+  setRoomMonsterDefinition,
   setRoomPartyStart,
   stringifyRoomDraft,
   updateWalkableHexes,
@@ -186,6 +197,7 @@ import type {
   WorldScene,
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
+import { applyWallCornerJoin, type WallCornerJoin } from './wallCornerJoins';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -411,12 +423,18 @@ export function WorldBuildingConcept({
    * and drawing is refused until one is chosen. Snap is optional. */
   const [wallAssetRef, setWallAssetRef] = useState<string | null>(null);
   const [wallSnapEnabled, setWallSnapEnabled] = useState(false);
+  const [wallEndpointSnapEnabled, setWallEndpointSnapEnabled] = useState(true);
+  const [wallRightAngleEnabled, setWallRightAngleEnabled] = useState(false);
   /** The selected authored wall — its own selection, never a scene prop id. */
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   /** Room-only actor authoring state. Distinct from the scene's selectedIds:
    * a selected actor is a monster id or 'start', never a WorldProp id, and
    * actor operations never touch scenery selections. */
   const [armedMonsterRef, setArmedMonsterRef] = useState<string | null>(null);
+  const [armedCreature, setArmedCreature] = useState<{
+    id: string;
+    appearanceRef: string;
+  } | null>(null);
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
     null
@@ -519,12 +537,21 @@ export function WorldBuildingConcept({
   const isStudio = Boolean(studioPresentation);
   const studioView = roomMode ? studioPresentation?.view : undefined;
   const studioViewRef = useRef(studioView);
+  const studioHome =
+    roomMode && studioPresentation
+      ? (studioPresentation.home ?? 'build')
+      : undefined;
+  const studioHomeRef = useRef(studioHome);
   const viewportGenerationRef = useRef(0);
   const [, refreshViewportGeneration] = useState(0);
   // Retire callbacks synchronously before renderer cleanup/effects. Returning
   // to 3D must not resurrect callbacks from the previous renderer mount.
-  if (studioViewRef.current !== studioView) {
+  if (
+    studioViewRef.current !== studioView ||
+    studioHomeRef.current !== studioHome
+  ) {
     studioViewRef.current = studioView;
+    studioHomeRef.current = studioHome;
     viewportGenerationRef.current += 1;
   }
   const intentContextRef = useRef({
@@ -532,10 +559,13 @@ export function WorldBuildingConcept({
     tool,
     roomTool,
     armedMonsterRef,
+    armedCreature,
     repeatAssetRef,
     wallAssetRef,
     doorAssetRef,
     wallSnapEnabled,
+    wallEndpointSnapEnabled,
+    wallRightAngleEnabled,
     paintingConcealmentId,
   });
   if (
@@ -543,10 +573,14 @@ export function WorldBuildingConcept({
     intentContextRef.current.tool !== tool ||
     intentContextRef.current.roomTool !== roomTool ||
     intentContextRef.current.armedMonsterRef !== armedMonsterRef ||
+    intentContextRef.current.armedCreature !== armedCreature ||
     intentContextRef.current.repeatAssetRef !== repeatAssetRef ||
     intentContextRef.current.wallAssetRef !== wallAssetRef ||
     intentContextRef.current.doorAssetRef !== doorAssetRef ||
     intentContextRef.current.wallSnapEnabled !== wallSnapEnabled ||
+    intentContextRef.current.wallEndpointSnapEnabled !==
+      wallEndpointSnapEnabled ||
+    intentContextRef.current.wallRightAngleEnabled !== wallRightAngleEnabled ||
     intentContextRef.current.paintingConcealmentId !== paintingConcealmentId
   ) {
     intentContextRef.current = {
@@ -554,15 +588,20 @@ export function WorldBuildingConcept({
       tool,
       roomTool,
       armedMonsterRef,
+      armedCreature,
       repeatAssetRef,
       wallAssetRef,
       doorAssetRef,
       wallSnapEnabled,
+      wallEndpointSnapEnabled,
+      wallRightAngleEnabled,
       paintingConcealmentId,
     };
     viewportGenerationRef.current += 1;
   }
   const cancelTransients = useCallback(() => {
+    setArmedCreature(null);
+    setRoomTool((current) => (current === 'monster' ? 'select' : current));
     viewportGenerationRef.current += 1;
     refreshViewportGeneration((current) => current + 1);
     setPreviewScene(null);
@@ -581,11 +620,13 @@ export function WorldBuildingConcept({
     setActiveDrag(null);
   }, [
     studioView,
+    studioHome,
     roomMode,
     roomHistory.present,
     tool,
     roomTool,
     armedMonsterRef,
+    armedCreature,
     repeatAssetRef,
     wallAssetRef,
     doorAssetRef,
@@ -1015,13 +1056,39 @@ export function WorldBuildingConcept({
       return;
     }
     try {
+      const recipe = armedCreature
+        ? roomDraft.scene.creaturePalette?.find(
+            (entry) => entry.id === armedCreature.id
+          )
+        : undefined;
+      if (
+        armedCreature &&
+        (!recipe ||
+          npcAppearanceOptions(armedCreature.appearanceRef).family?.ref !==
+            recipe.modelRef)
+      )
+        throw new Error('This creature recipe or look is no longer available.');
       const id = idFactory();
       const next = placeRoomMonster(roomDraft, {
         id,
-        ref: armedMonsterRef,
+        ref: recipe?.ref ?? armedMonsterRef,
+        ...(armedCreature
+          ? { appearanceRef: armedCreature.appearanceRef }
+          : {}),
         startingCell: { location: { ...cell } },
       });
-      if (!commit(scene, selectedIds, next.room)) return;
+      if (
+        !commit(
+          recipe ? setActorName(scene, id, recipe.name) : scene,
+          selectedIds,
+          next.room
+        )
+      )
+        return;
+      if (armedCreature) {
+        setArmedCreature(null);
+        setRoomTool('select');
+      }
       setSelectedActorId(id);
       activateStudioTarget({ kind: 'actor', id });
       setNotice('');
@@ -1069,11 +1136,11 @@ export function WorldBuildingConcept({
           ? clearRoomPartyStart(roomDraft)
           : removeRoomMonster(roomDraft, actor);
       if (next === roomDraft) return;
-      if (!commit(scene, selectedIds, next.room)) return;
+      if (!commit(next.scene, selectedIds, next.room)) return;
       setSelectedActorId((current) => (current === actor ? null : current));
       setNotice('');
     },
-    [commit, roomDraft, scene, selectedIds]
+    [commit, roomDraft, selectedIds]
   );
 
   const removeSelectedStudioActor = useCallback((): void => {
@@ -1083,10 +1150,11 @@ export function WorldBuildingConcept({
       target.kind === 'actor'
         ? removeRoomMonster(roomDraft, target.id)
         : clearRoomPartyStart(roomDraft);
-    if (next === roomDraft || !commit(scene, selectedIds, next.room)) return;
+    if (next === roomDraft || !commit(next.scene, selectedIds, next.room))
+      return;
     setSelectedActorId(null);
     activateStudioTarget(null);
-  }, [activateStudioTarget, commit, roomDraft, scene, selectedIds]);
+  }, [activateStudioTarget, commit, roomDraft, selectedIds]);
 
   const removeSelectedStudioDoor = useCallback((): void => {
     const target = activeStudioTargetRef.current;
@@ -1126,9 +1194,9 @@ export function WorldBuildingConcept({
    * they come back through the publish panel's server validation. The form
    * does not pre-judge any of them. */
   const commitPolicies = useCallback(
-    (nextScope: SiteScope, nextRoom?: RoomGameplayData) => {
-      if (refuseWhilePublishing()) return;
-      commit(
+    (nextScope: SiteScope, nextRoom?: RoomGameplayData): boolean => {
+      if (refuseWhilePublishing()) return false;
+      return commit(
         scene,
         selectedIds,
         nextRoom ?? roomDraft.room,
@@ -1165,7 +1233,7 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.propBindings;
       else room.propBindings = bindings;
-      commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room, roomDraft.workspace);
     },
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
@@ -1182,7 +1250,7 @@ export function WorldBuildingConcept({
       const room = { ...roomDraft.room };
       if (bindings === undefined) delete room.monsterBindings;
       else room.monsterBindings = bindings;
-      commit(scene, selectedIds, room);
+      return commit(scene, selectedIds, room);
     },
     [commit, roomDraft.room, scene, selectedIds]
   );
@@ -1199,7 +1267,7 @@ export function WorldBuildingConcept({
       const room: RoomGameplayData = { ...roomDraft.room };
       if (bindings === undefined) delete room.monsterBindings;
       else room.monsterBindings = bindings;
-      commit(scene, selectedIds, room, roomDraft.workspace);
+      return commit(scene, selectedIds, room, roomDraft.workspace);
     },
     [commit, roomDraft.room, roomDraft.workspace, scene, selectedIds]
   );
@@ -1251,6 +1319,7 @@ export function WorldBuildingConcept({
   );
 
   const armMonsterPlacement = (ref: string) => {
+    setArmedCreature(null);
     setPreviewScene(null);
     setArmedMonsterRef(ref);
     setSelectedActorId(null);
@@ -1394,6 +1463,12 @@ export function WorldBuildingConcept({
         ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
       )
         return;
+      if (
+        studioHomeRef.current !== undefined &&
+        studioHomeRef.current !== 'build' &&
+        ['Delete', 'Backspace', 'r', 'R', 'd', 'D'].includes(event.key)
+      )
+        return;
       const modifier = event.ctrlKey || event.metaKey;
       if (
         studioViewRef.current !== undefined &&
@@ -1534,7 +1609,7 @@ export function WorldBuildingConcept({
     return commit(scene, selectedIds, room);
   };
   const createStudioWall = useCallback(
-    (line: WallLine): boolean => {
+    (line: WallLine, join?: WallCornerJoin): boolean => {
       if (refuseWhilePublishing()) return false;
       const entry = wallAssetRef
         ? WORLD_BUILDING_CATALOG_BY_REF.get(wallAssetRef)
@@ -1573,7 +1648,15 @@ export function WorldBuildingConcept({
           thickness: entry.asset.boundsMeters[2],
           elevation: 0,
         });
-        if (!commit(scene, [], { ...roomDraft.room, walls: [...walls, wall] }))
+        const joinedWalls = join
+          ? applyWallCornerJoin(walls, line, join)
+          : walls;
+        if (
+          !commit(scene, [], {
+            ...roomDraft.room,
+            walls: [...joinedWalls, wall],
+          })
+        )
           return false;
         setSelectedIds([]);
         setSelectedActorId(null);
@@ -1644,16 +1727,25 @@ export function WorldBuildingConcept({
     [roomTool, selectStudioWall]
   );
   const editWall = useCallback(
-    (next: StructuralWall): boolean => {
+    (next: StructuralWall, join?: WallCornerJoin): boolean => {
       if (!walls.some((wall) => wall.id === next.id)) {
         setNotice(`Wall edit refused; unknown wall ${next.id}.`);
         return false;
       }
-      return commitWalls(
-        walls.map((entry) => (entry.id === next.id ? next : entry))
-      );
+      try {
+        const updated = walls.map((entry) =>
+          entry.id === next.id ? next : entry
+        );
+        return commitWalls(
+          join
+            ? applyWallCornerJoin(updated, next.line, join, next.id)
+            : updated
+        );
+      } catch (error) {
+        return rejectEdit(error);
+      }
     },
-    [commitWalls, walls]
+    [commitWalls, walls, rejectEdit]
   );
   const rotateSelectedWall = useCallback(
     (angle: number) => {
@@ -2329,8 +2421,18 @@ export function WorldBuildingConcept({
   /** Seed a declaration for EVERY undeclared selected prop, each from its own
    * measured mesh. A single shared box would hand a long wall a short wall's
    * blocker — the 1×1 default's bug in a new costume. */
+  const socialSelectionActive = (): boolean =>
+    !studioPresentation ||
+    (viewportGenerationRef.current === editGeneration &&
+      roomHistoryRef.current.present === roomHistory.present &&
+      selectionRevisionRef.current === selectionRevision);
   const addDeclarationsToSelection = () => {
-    if (undeclaredIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      undeclaredIds.length === 0
+    )
+      return;
     commit(scene, selectedIds, {
       ...roomDraft.room,
       propDeclarations: {
@@ -2349,7 +2451,12 @@ export function WorldBuildingConcept({
    * selection is a legitimate thing to want, and it is the only way the
    * blocking checkboxes do anything for more than one prop. */
   const commitSelectedDeclaration = (declaration: RoomPropDeclaration) => {
-    if (declarationIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      declarationIds.length === 0
+    )
+      return;
     commit(scene, selectedIds, {
       ...roomDraft.room,
       propDeclarations: declarationMapForSelection(
@@ -2418,7 +2525,12 @@ export function WorldBuildingConcept({
       Pick<RoomPropDeclaration, 'blocksMovement' | 'blocksLineOfSight'>
     >
   ) => {
-    if (declarationIds.length === 0) return;
+    if (
+      !socialSelectionActive() ||
+      !sceneryActionsActive() ||
+      declarationIds.length === 0
+    )
+      return;
     const propDeclarations = { ...roomDraft.room.propDeclarations };
     for (const id of declarationIds) {
       const existing = propDeclarations[id];
@@ -3136,15 +3248,17 @@ export function WorldBuildingConcept({
                       }
                       step={0.05}
                       value={preview.footprint[field]}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        if (!socialSelectionActive() || !sceneryActionsActive())
+                          return;
                         setFootprintPreview({
                           ...preview,
                           footprint: {
                             ...preview.footprint,
                             [field]: Number(event.target.value),
                           },
-                        })
-                      }
+                        });
+                      }}
                       onPointerUp={() => commitSelectedDeclaration(preview)}
                       onKeyUp={() => commitSelectedDeclaration(preview)}
                     />
@@ -3991,6 +4105,11 @@ export function WorldBuildingConcept({
           monsterBindings: roomDraft.room.monsterBindings,
           partyStart: roomDraft.room.partyStart ?? null,
           armedMonsterRef: armedMonsterRef,
+          armedMonsterName: armedCreature
+            ? roomDraft.scene.creaturePalette?.find(
+                (entry) => entry.id === armedCreature.id
+              )?.name
+            : undefined,
           selectedActorId: selectedActorId,
           ...(studioPresentation
             ? {
@@ -4094,6 +4213,8 @@ export function WorldBuildingConcept({
         : false
     );
   const viewportIsActive = (): boolean =>
+    (studioHomeRef.current === undefined ||
+      studioHomeRef.current === 'build') &&
     mountedRef.current &&
     studioViewRef.current !== 'layout' &&
     (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4112,6 +4233,8 @@ export function WorldBuildingConcept({
   const guardedScenePreview = useCallback(
     (next: WorldScene | null): void => {
       if (
+        (studioHomeRef.current === undefined ||
+          studioHomeRef.current === 'build') &&
         mountedRef.current &&
         studioViewRef.current !== 'layout' &&
         (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4136,6 +4259,8 @@ export function WorldBuildingConcept({
   const guardedWallPreview = useCallback(
     (next: StructuralWall | null): void => {
       if (
+        (studioHomeRef.current === undefined ||
+          studioHomeRef.current === 'build') &&
         mountedRef.current &&
         studioViewRef.current !== 'layout' &&
         (!roomMode || roomHistoryRef.current.present === viewportDocument) &&
@@ -4289,6 +4414,13 @@ export function WorldBuildingConcept({
       </>
     ) : null;
 
+  const guardBindingIntent = <Args extends unknown[]>(
+    callback: (...args: Args) => boolean
+  ): ((...args: Args) => boolean) =>
+    guardSnapshotIntent((...args) =>
+      socialSelectionActive() ? callback(...args) : false
+    );
+
   if (roomMode && studioPresentation) {
     return (
       <>
@@ -4299,6 +4431,125 @@ export function WorldBuildingConcept({
           arrange,
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
+          commitTemplates: guardSnapshotIntent((templates): boolean => {
+            try {
+              const valid = validateMonsterTemplates(templates);
+              const current = roomHistoryRef.current.present;
+              const scope = { ...current.scope };
+              if (Object.keys(valid).length) scope.templates = valid;
+              else delete scope.templates;
+              return commitRoomDocument({ ...current, scope });
+            } catch (error) {
+              return rejectEdit(error);
+            }
+          }),
+          creatures: {
+            select: guardSnapshotIntent((id: string): boolean => {
+              if (
+                refuseWhilePublishing() ||
+                !roomHistoryRef.current.present.draft.room.monsterDeclarations.some(
+                  (actor) => actor.id === id
+                )
+              )
+                return false;
+              selectStudioActor({ kind: 'actor', id });
+              return true;
+            }),
+            placement:
+              roomTool === 'monster' && armedCreature
+                ? {
+                    name:
+                      roomDraft.scene.creaturePalette?.find(
+                        (entry) => entry.id === armedCreature.id
+                      )?.name ?? 'Creature',
+                    appearanceRef: armedCreature.appearanceRef,
+                  }
+                : null,
+            savePaletteEntry: guardSnapshotIntent(
+              (
+                entry: Omit<CreaturePaletteEntry, 'id'>,
+                id?: string
+              ): boolean => {
+                try {
+                  const current = roomHistoryRef.current.present;
+                  const entries = current.draft.scene.creaturePalette ?? [];
+                  if (id && !entries.some((item) => item.id === id))
+                    throw new Error('Creature recipe no longer exists.');
+                  if (
+                    !NPC_APPEARANCE_FAMILIES.some(
+                      (family) => family.ref === entry.modelRef
+                    )
+                  )
+                    throw new Error('Choose a published NPC model.');
+                  const next = { ...entry, id: id ?? idFactory() };
+                  const palette = id
+                    ? entries.map((item) => (item.id === id ? next : item))
+                    : [...entries, next];
+                  return commitRoomDocument({
+                    ...current,
+                    draft: {
+                      ...current.draft,
+                      scene: setCreaturePalette(current.draft.scene, palette),
+                    },
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            armPlacement: guardSnapshotIntent(
+              (id: string, appearanceRef: string): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const entry =
+                  roomHistoryRef.current.present.draft.scene.creaturePalette?.find(
+                    (item) => item.id === id
+                  );
+                if (
+                  !entry ||
+                  npcAppearanceOptions(appearanceRef).family?.ref !==
+                    entry.modelRef
+                )
+                  return rejectEdit(
+                    new Error(
+                      'Choose an available model/look for this creature.'
+                    )
+                  );
+                cancelTransients();
+                setArmedMonsterRef(entry.ref);
+                setArmedCreature({ id, appearanceRef });
+                setRoomTool('monster');
+                setTool('select');
+                setSelectedActorId(null);
+                activateStudioTarget(null);
+                setNotice('');
+                return true;
+              }
+            ),
+            setDefinition: guardSnapshotIntent(
+              (id: string, ref: string): boolean => {
+                if (selectionRevisionRef.current !== selectionRevision)
+                  return false;
+                try {
+                  const current = roomHistoryRef.current.present;
+                  return commitRoomDocument({
+                    ...current,
+                    draft: setRoomMonsterDefinition(current.draft, id, ref),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+          },
+          commitTables: guardSnapshotIntent(
+            (tables: SiteScope['tables']): boolean => {
+              const current = roomHistoryRef.current.present;
+              const scope = { ...current.scope };
+              if (tables === undefined) delete scope.tables;
+              else scope.tables = tables;
+              return commitRoomDocument({ ...current, scope });
+            }
+          ),
           mapLabelSelection: {
             selectedId:
               activeStudioTarget?.kind === 'label' ? selectedLabelId : null,
@@ -4372,6 +4623,26 @@ export function WorldBuildingConcept({
               activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
             assetRef: wallAssetRef,
             snapEnabled: wallSnapEnabled,
+            endpointSnapEnabled: wallEndpointSnapEnabled,
+            rightAngleEnabled: wallRightAngleEnabled,
+            setRightAngle: guardSnapshotIntent((enabled: boolean): boolean => {
+              if (refuseWhilePublishing()) return false;
+              if (enabled !== wallRightAngleEnabled) {
+                cancelTransients();
+                setWallRightAngleEnabled(enabled);
+              }
+              return true;
+            }),
+            setEndpointSnap: guardSnapshotIntent(
+              (enabled: boolean): boolean => {
+                if (refuseWhilePublishing()) return false;
+                if (enabled !== wallEndpointSnapEnabled) {
+                  cancelTransients();
+                  setWallEndpointSnapEnabled(enabled);
+                }
+                return true;
+              }
+            ),
             options: studioWallOptions,
             select: guardSnapshotIntent(selectStudioWall),
             setAsset: guardSnapshotIntent((ref: string | null): boolean => {
@@ -4398,10 +4669,10 @@ export function WorldBuildingConcept({
               return true;
             }),
             create: guardSnapshotIntent(createStudioWall),
-            edit: guardSnapshotIntent((next) =>
+            edit: guardSnapshotIntent((next, join) =>
               !walls.some((wall) => wall.id === next.id) ||
               wallGestureActive(next.id)
-                ? editWall(next)
+                ? editWall(next, join)
                 : false
             ),
             remove: guardSnapshotIntent((id) =>
@@ -4435,7 +4706,10 @@ export function WorldBuildingConcept({
             )
               redo();
           },
-          commitFloor: guardIntent(commitFloor),
+          commitFloor: guardIntent(
+            (cells, mode) =>
+              studioHomeRef.current === 'build' && commitFloor(cells, mode)
+          ),
           resizeWorkspace: guardIntent((width: number, height: number) =>
             applyRoomIntent((current) =>
               resizeRoomWorkspace(current, width, height)
@@ -4477,6 +4751,130 @@ export function WorldBuildingConcept({
             cancelTransients();
             setTool(next);
             setRoomTool(next);
+          },
+          socialControls: {
+            factions: (
+              <FactionsPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+                onNotice={guardSnapshotIntent((message: string) => {
+                  setNotice(message);
+                  return true;
+                })}
+              />
+            ),
+            dispositions: (
+              <DispositionsPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+              />
+            ),
+            intel: (
+              <IntelPanel
+                explicitRename
+                scope={siteScope}
+                room={roomDraft.room}
+                onChange={guardSnapshotIntent(commitPolicies)}
+              />
+            ),
+            selection:
+              arrange?.kind === 'actor' ? (
+                <>
+                  <CreatureOrders
+                    scope={siteScope}
+                    room={roomDraft.room}
+                    monster={arrange.monster}
+                    binding={
+                      roomDraft.room.monsterBindings?.[arrange.monster.id]
+                    }
+                    onFactionChange={guardBindingIntent(
+                      (faction: string | undefined) =>
+                        setMonsterFaction(arrange.monster.id, faction)
+                    )}
+                    onOrdersChange={guardBindingIntent(
+                      (next: RoomMonsterBinding | undefined) =>
+                        setMonsterOrders(arrange.monster.id, next)
+                    )}
+                  />
+                  <section aria-label="Authored disposition context">
+                    <h4>Authored dispositions</h4>
+                    <p>
+                      These are authored relationships, not a live stance
+                      calculation. Conditions and knowledge are evaluated by the
+                      engine.
+                    </p>
+                    <ul>
+                      {(siteScope.dispositions ?? [])
+                        .filter((entry) => {
+                          const faction =
+                            roomDraft.room.monsterBindings?.[arrange.monster.id]
+                              ?.faction;
+                          return (
+                            faction !== undefined &&
+                            entry.between.includes(faction)
+                          );
+                        })
+                        .map((entry, index) => (
+                          <li key={index}>
+                            {entry.between.join(' ↔ ')}: {entry.stance}
+                            {entry.until ? (
+                              <>
+                                {' '}
+                                · until{' '}
+                                <code>{JSON.stringify(entry.until)}</code>
+                              </>
+                            ) : (
+                              ' · no authored condition'
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  </section>
+                </>
+              ) : arrange?.kind === 'scene' ? (
+                selectedProp && optionSections.single ? (
+                  <>
+                    {declarationEditor}
+                    {optionSections.orders ? (
+                      <PropOrders
+                        items={[selectedProp]}
+                        bindings={roomDraft.room.propBindings}
+                        declaredIds={
+                          new Set(Object.keys(roomDraft.room.propDeclarations))
+                        }
+                        doorIds={
+                          new Set(
+                            Object.keys(roomDraft.room.doorBindings ?? {})
+                          )
+                        }
+                        recordIds={(siteScope.intel ?? []).map(
+                          (record) => record.id
+                        )}
+                        scope={siteScope}
+                        room={roomDraft.room}
+                        onChange={guardBindingIntent(
+                          (id: string, next: RoomPropBinding | undefined) =>
+                            id === selectedProp.id
+                              ? setPropBinding(id, next)
+                              : false
+                        )}
+                      />
+                    ) : (
+                      <p>
+                        {optionSections.door
+                          ? 'Doors use their own bindings; held intel is offered on declared non-door props.'
+                          : 'Add an authored footprint above to configure this prop’s held intel and orders.'}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p>
+                    Select one placed prop to edit its held intel and orders.
+                  </p>
+                )
+              ) : null,
           },
           propControls: {
             palette: assetPalette,
@@ -4965,6 +5363,7 @@ export function WorldBuildingConcept({
               <summary aria-label="Factions">Factions</summary>
               <FactionsPanel
                 scope={siteScope}
+                room={roomDraft.room}
                 onChange={commitPolicies}
                 onNotice={setNotice}
               />

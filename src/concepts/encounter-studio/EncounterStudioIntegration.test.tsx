@@ -18,6 +18,7 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import { nextIntelId } from '../world-building/intelEdits';
 import { createRoomLabel } from '../world-building/regionEdits';
 import {
   assertRoomDocumentSize,
@@ -43,6 +44,7 @@ import {
   decodeSingleRoomDungeon,
   encodeSingleRoomDungeon,
 } from '../world-building/singleRoomDungeon';
+import { nextFactionId } from '../world-building/sitePolicyEdits';
 import { scopeFrom } from '../world-building/siteScope';
 import {
   createWall,
@@ -84,6 +86,7 @@ import {
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
+import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 
 const boundary = vi.hoisted(() => ({
@@ -241,6 +244,414 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it('saves a reusable creature without a position, then places independent looks by map intent', () => {
+  const storage = new MemoryStorage(seed());
+  const original = storage.document();
+  let nextId = 0;
+  const mounted = mount(storage, () => `created-${++nextId}`);
+  fireEvent.click(button('Encounter'));
+  // The inactive map retains the full asset palette. Scope this long journey's
+  // queries to the active editor instead of repeatedly walking that hidden DOM.
+  const page = within(mounted.container);
+  let screen = within(
+    page.getByRole('region', { name: 'Encounter configuration' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Stat blocks' }));
+  fireEvent.change(screen.getByLabelText('Stat block id'), {
+    target: { value: 'town_guard' },
+  });
+  fireEvent.change(screen.getByLabelText('Name', { exact: true }), {
+    target: { value: 'Town Guard' },
+  });
+  fireEvent.change(screen.getByLabelText('CON', { exact: true }), {
+    target: { value: '12' },
+  });
+  fireEvent.change(screen.getByLabelText('Hit dice'), {
+    target: { value: '2d8' },
+  });
+  fireEvent.change(screen.getByLabelText('Armor reference'), {
+    target: { value: 'dnd5e:armor:chain-shirt' },
+  });
+  fireEvent.change(screen.getByLabelText('Experience award'), {
+    target: { value: '0' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply stat block' }));
+  const template = storage.document().scope.templates!.town_guard;
+  expect(template).toEqual({
+    base: 'dnd5e:monsters:human',
+    name: 'Town Guard',
+    abilities: { con: 12 },
+    hitDice: '2d8',
+    armor: 'dnd5e:armor:chain-shirt',
+    experience: 0,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Creatures' }));
+  expect(screen.queryByLabelText('Starting hex q')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Creature name'), {
+    target: { value: 'Castle Guard' },
+  });
+  fireEvent.change(screen.getByLabelText('Creature stat block'), {
+    target: { value: 'dnd5e:monsters:town_guard' },
+  });
+  fireEvent.change(screen.getByLabelText('NPC model'), {
+    target: { value: 'dnd5e:npcs:kingdom:soldier-male-01' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Add to creature list' }));
+  const palette = storage.document().draft.scene.creaturePalette;
+  expect(palette).toHaveLength(1);
+  expect(storage.document().draft.room.monsterDeclarations).toEqual(
+    original.draft.room.monsterDeclarations
+  );
+  expect(screen.queryByLabelText('Placement look')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Place on map' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Open map creature list' })
+  );
+  const palettePanel = page.getByRole('region', {
+    name: 'Monsters and NPCs palette',
+  });
+  screen = within(palettePanel);
+  expect(palettePanel).toBeTruthy();
+  expect(
+    (screen.getByLabelText('Placement look') as HTMLSelectElement).disabled
+  ).toBe(false);
+  expect(
+    [...screen.getByLabelText('Placement look').querySelectorAll('option')].map(
+      (option) => option.value
+    )
+  ).toEqual(['01', '02', '03', '04']);
+  expect(
+    [
+      ...screen
+        .getByLabelText('Placement skin tone')
+        .querySelectorAll('option'),
+    ].map((option) => option.value)
+  ).toEqual(['A', 'B', 'C']);
+  for (const [index, [style, skin]] of [
+    ['02', 'B'],
+    ['04', 'C'],
+  ].entries()) {
+    fireEvent.change(screen.getByLabelText('Placement look'), {
+      target: { value: style },
+    });
+    fireEvent.change(screen.getByLabelText('Placement skin tone'), {
+      target: { value: skin },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+    expect(viewport().roomAuthoring?.tool).toBe('monster');
+    const before = storage.document();
+    const click = viewport().roomAuthoring!.onPlaceMonster!;
+    act(() => click({ q: index, r: 0 }));
+    expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+      before.draft.room.monsterDeclarations.length + 1
+    );
+    expect(viewport().roomAuthoring?.tool).toBe('select');
+    act(() => click({ q: index, r: 0 })); // spent callback cannot place a second actor
+    expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+      before.draft.room.monsterDeclarations.length + 1
+    );
+    expect(palettePanel.isConnected).toBe(true);
+    expect(palettePanel.closest('[hidden], [aria-hidden="true"]')).toBeNull();
+    expect(
+      (screen.getByLabelText('Placement look') as HTMLSelectElement).value
+    ).toBe(style);
+    expect(
+      (screen.getByLabelText('Placement skin tone') as HTMLSelectElement).value
+    ).toBe(skin);
+  }
+  const final = storage.document();
+  expect(
+    final.draft.room.monsterDeclarations
+      .slice(-2)
+      .map((actor) => [actor.ref, actor.appearanceRef])
+  ).toEqual([
+    [
+      'dnd5e:monsters:town_guard',
+      'dnd5e:npcs:kingdom:soldier-male-01-style-02-b',
+    ],
+    [
+      'dnd5e:monsters:town_guard',
+      'dnd5e:npcs:kingdom:soldier-male-01-style-04-c',
+    ],
+  ]);
+  expect(final.draft.scene.creaturePalette).toEqual(palette);
+  for (const actor of final.draft.room.monsterDeclarations.slice(-2))
+    expect(final.draft.scene.actorNames?.[actor.id]).toBe('Castle Guard');
+  fireEvent.click(button('Undo'));
+  expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+    original.draft.room.monsterDeclarations.length + 1
+  );
+  expect(storage.document().draft.scene.creaturePalette).toEqual(palette);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(final);
+  expect(final.scope.templates!.town_guard).toEqual(template);
+  expect(final.scope.factions).toEqual(original.scope.factions);
+  expect(final.draft.room.monsterBindings).toEqual(
+    original.draft.room.monsterBindings
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const canceled = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.click(
+    page.getByRole('button', { name: 'Cancel creature placement' })
+  );
+  act(() => canceled({ q: 0, r: 0 }));
+  expect(storage.document()).toEqual(final);
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const oldLook = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.change(screen.getByLabelText('Placement look'), {
+    target: { value: '03' },
+  });
+  expect(viewport().roomAuthoring?.tool).toBe('select');
+  act(() => oldLook({ q: 0, r: 0 }));
+  expect(storage.document()).toEqual(final);
+  fireEvent.click(screen.getByRole('button', { name: 'Place on map' }));
+  const oldTab = viewport().roomAuthoring!.onPlaceMonster!;
+  fireEvent.click(
+    within(
+      page.getByRole('navigation', { name: 'Placement palette' })
+    ).getByRole('button', { name: 'Props' })
+  );
+  act(() => oldTab({ q: 0, r: 0 }));
+  expect(storage.document()).toEqual(final);
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(final);
+});
+
+it('opens configuration from the empty map creature palette without changing the document', () => {
+  const storage = new MemoryStorage(seed());
+  const before = storage.document();
+  mount(storage);
+  switchTo('3D');
+  fireEvent.click(screen.getByRole('button', { name: 'Monsters & NPCs' }));
+  expect(
+    screen.getByRole('region', { name: 'Monsters and NPCs palette' })
+      .textContent
+  ).toContain('No named creatures yet');
+  fireEvent.click(screen.getByRole('button', { name: 'Configure creatures' }));
+  expect(
+    screen.getByRole('form', { name: 'Create creature recipe' })
+  ).toBeTruthy();
+  expect(storage.document()).toEqual(before);
+});
+
+it('authors social definitions in Encounter and attaches records to selected creatures and props in Arrange', () => {
+  const storage = new MemoryStorage(seed());
+  const original = storage.document();
+  const recordId = nextIntelId(original.scope);
+  const factionId = nextFactionId(original.scope);
+  const mounted = mount(storage);
+  fireEvent.click(button('Encounter'));
+  fireEvent.click(screen.getByRole('button', { name: 'Intel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add intel record' }));
+  fireEvent.click(screen.getByLabelText(`Intel ${recordId}`));
+  fireEvent.change(
+    screen.getByLabelText(`Intel reveals fact for ${recordId}`),
+    { target: { value: 'orders-authentic' } }
+  );
+  const idInput = screen.getByLabelText(`Intel id for ${recordId}`);
+  fireEvent.change(idInput, { target: { value: 'orders' } });
+  fireEvent.change(idInput, { target: { value: 'orders-letter' } });
+  expect(
+    storage.document().scope.intel?.some((record) => record.id === recordId)
+  ).toBe(true);
+  fireEvent.click(
+    within(screen.getByTestId(`intel-row-${recordId}`)).getByRole('button', {
+      name: 'Apply intel name',
+    })
+  );
+  expect(storage.document().scope.intel).toContainEqual({
+    id: 'orders-letter',
+    reveals: { fact: 'orders-authentic' },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Factions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add faction' }));
+  fireEvent.click(screen.getByLabelText(`Faction ${factionId}`));
+  const factionInput = screen.getByLabelText(`Faction id for ${factionId}`);
+  fireEvent.change(factionInput, { target: { value: 'castle-watch' } });
+  fireEvent.blur(factionInput);
+  fireEvent.click(screen.getByLabelText('Faction castle-watch'));
+  const mind = screen.getByLabelText('Mind for castle-watch');
+  expect(
+    document
+      .getElementById(mind.getAttribute('list')!)
+      ?.querySelector('option[value="goblin-1"]')
+  ).not.toBeNull();
+  fireEvent.change(mind, { target: { value: 'goblin-1' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Dispositions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add disposition' }));
+  const newPair = screen
+    .getAllByTestId('disposition-goblins-party')
+    .at(-1)! as HTMLDetailsElement;
+  newPair.open = true;
+  fireEvent.change(within(newPair).getByLabelText('Between first faction'), {
+    target: { value: 'castle-watch' },
+  });
+  expect(newPair.isConnected).toBe(true);
+  expect(newPair.open).toBe(true);
+  const relation = within(screen.getByTestId('disposition-castle-watch-party'));
+  fireEvent.change(relation.getByLabelText('Stance'), {
+    target: { value: 'neutral' },
+  });
+  fireEvent.change(relation.getByLabelText('Until form'), {
+    target: { value: 'fact' },
+  });
+  fireEvent.change(relation.getByLabelText('Until fact'), {
+    target: { value: 'orders-authentic' },
+  });
+
+  fireEvent.click(button('Build'));
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({
+      kind: 'actor',
+      id: 'goblin-1',
+    })
+  );
+  fireEvent.change(screen.getByLabelText('Creature faction'), {
+    target: { value: 'castle-watch' },
+  });
+  fireEvent.change(screen.getByLabelText('Give intel record'), {
+    target: { value: 'orders-letter' },
+  });
+  expect(
+    storage.document().draft.room.monsterBindings?.['goblin-1']
+  ).toMatchObject({ faction: 'castle-watch', holds: ['orders-letter'] });
+  expect(storage.document().draft.room.monsterDeclarations).toEqual(
+    original.draft.room.monsterDeclarations
+  );
+  expect(
+    screen.getByRole('region', { name: 'Authored disposition context' })
+      .textContent
+  ).toContain('orders-authentic');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit intel definitions' })
+  );
+  expect(
+    screen.getByRole('region', { name: 'Intel definitions' })
+  ).toBeTruthy();
+  expect(
+    screen.getByTestId('intel-held-by-orders-letter').textContent
+  ).toContain('goblin-1');
+
+  fireEvent.click(button('Build'));
+  act(() => viewport().onSelect(['table']));
+  fireEvent.change(screen.getByLabelText('Give table an intel record'), {
+    target: { value: 'orders-letter' },
+  });
+  const attached = storage.document();
+  expect(attached.draft.room.propBindings?.table.holds).toEqual([
+    'studio-map',
+    'orders-letter',
+  ]);
+  expect(attached.draft.scene).toEqual(original.draft.scene);
+  fireEvent.click(button('Undo'));
+  expect(storage.document().draft.room.propBindings?.table.holds).toEqual([
+    'studio-map',
+  ]);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(attached);
+  act(() => viewport().onSelect(['table']));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit intel definitions' })
+  );
+  expect(
+    screen.getByTestId('intel-held-by-orders-letter').textContent
+  ).toContain('table');
+  expect(storage.document().scope.dispositions).toContainEqual({
+    between: ['castle-watch', 'party'],
+    stance: 'neutral',
+    until: { fact: 'orders-authentic' },
+  });
+  expect(storage.document().scope.concealments).toEqual(
+    original.scope.concealments
+  );
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(attached);
+});
+
+it('requires explicit prop declaration before attaching intel and scopes controls to one selection', () => {
+  const storage = new MemoryStorage(seed());
+  mount(storage);
+  switchTo('3D');
+  act(() => viewport().onSelect(['studio-decoration']));
+  expect(
+    screen.queryByLabelText('Give studio-decoration an intel record')
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Add authored footprint' })
+  );
+  fireEvent.change(
+    screen.getByLabelText('Give studio-decoration an intel record'),
+    { target: { value: 'studio-map' } }
+  );
+  expect(
+    storage.document().draft.room.propBindings?.['studio-decoration']?.holds
+  ).toEqual(['studio-map']);
+  act(() => viewport().onSelect(['studio-decoration', 'table']));
+  expect(
+    screen.queryByLabelText('Give studio-decoration an intel record')
+  ).toBeNull();
+  expect(screen.queryByLabelText('Give table an intel record')).toBeNull();
+});
+
+it('names an older creature and moves it once without changing its rules, looks or bindings', () => {
+  const storage = new MemoryStorage(seed());
+  const before = storage.document();
+  const id = before.draft.room.monsterDeclarations[0].id;
+  const mounted = mount(storage);
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'actor', id })
+  );
+  fireEvent.change(screen.getByLabelText('Map name'), {
+    target: { value: 'Standard Guard' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply Arrange' }));
+  expect(storage.document().draft.scene.actorNames?.[id]).toBe(
+    'Standard Guard'
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Arrange · Standard Guard' })
+  ).toBeTruthy();
+  const named = storage.document();
+  fireEvent.click(screen.getByRole('button', { name: 'Move creature' }));
+  expect(viewport().roomAuthoring?.tool).toBe('move');
+  const move = viewport().roomAuthoring!.onMoveMonster!;
+  act(() => move(id, { q: 2, r: 1 }));
+  const moved = storage.document();
+  expect(moved.draft.room.monsterDeclarations[0]).toEqual({
+    ...before.draft.room.monsterDeclarations[0],
+    startingCell: {
+      ...before.draft.room.monsterDeclarations[0].startingCell,
+      location: { q: 2, r: 1 },
+    },
+  });
+  expect(moved.draft.room.monsterBindings).toEqual(
+    before.draft.room.monsterBindings
+  );
+  expect(moved.draft.scene).toEqual(named.draft.scene);
+  expect(moved.scope).toEqual(before.scope);
+  expect(viewport().roomAuthoring?.tool).toBe('select');
+  act(() => move(id, { q: -1, r: 0 }));
+  expect(storage.document()).toEqual(moved);
+  fireEvent.click(screen.getByRole('button', { name: 'Move creature' }));
+  const canceled = viewport().roomAuthoring!.onMoveMonster!;
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel creature move' }));
+  act(() => canceled(id, { q: -1, r: 0 }));
+  expect(storage.document()).toEqual(moved);
+  fireEvent.click(button('Undo'));
+  expect(storage.document()).toEqual(named);
+  fireEvent.click(button('Redo'));
+  expect(storage.document()).toEqual(moved);
+  mounted.unmount();
+  mount(storage);
+  expect(storage.document()).toEqual(moved);
+});
+
 function seed(emptyFloor = false): RoomDraftDocument {
   const document = createPopulatedStudioDocument();
   if (emptyFloor) document.draft.room.walkableHexes = [];
@@ -262,7 +673,7 @@ function mount(
   );
 }
 function button(name: string): HTMLElement {
-  return screen.getByRole('button', { name });
+  return studioButton(name);
 }
 function switchTo(name: 'Layout' | '3D'): void {
   fireEvent.click(button(name));
@@ -283,6 +694,14 @@ const zero = { q: 0, r: 0 };
 const one = { q: 1, r: 0 };
 const two = { q: 2, r: 0 };
 function gesture(first: RoomHexCell, last = first): void {
+  // Floor fixtures explicitly arm Paint now that Build starts in Select.
+  if (
+    screen.queryByRole('button', { name: 'Paint' }) &&
+    screen
+      .getByRole('button', { name: 'Select' })
+      .getAttribute('aria-pressed') === 'true'
+  )
+    fireEvent.click(button('Paint'));
   fireEvent.pointerDown(surface(), { ...at(first), pointerId: 7, button: 0 });
   fireEvent.pointerMove(surface(), { ...at(last), pointerId: 7 });
   fireEvent.pointerUp(surface(), { ...at(last), pointerId: 7, button: 0 });
@@ -325,6 +744,266 @@ function moved(scene: WorldScene): WorldScene {
     0.5;
   return next;
 }
+
+describe('two-wall corner snaps through the real owner', () => {
+  it('previews both perpendicular ends and commits one preserved document/Undo step', () => {
+    const doc = seed();
+    const first = doc.draft.room.walls![0];
+    first.line = { start: { x: 0.1, z: 8 }, end: { x: 0.1, z: 0.12 } };
+    first.blocker.footprint.width = 7.88;
+    doc.draft.room.walls!.push({
+      ...structuredClone(first),
+      id: 'near-corner',
+      openings: [],
+      line: { start: { x: 0.18, z: 0.05 }, end: { x: 8, z: 0.05 } },
+      blocker: {
+        ...first.blocker,
+        footprint: { ...first.blocker.footprint, width: 7.82 },
+      },
+    });
+    const storage = new MemoryStorage(doc);
+    mount(storage);
+    const before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const writes = storage.roomWrites();
+    const handle = surface().querySelector('[data-wall-endpoint="end"]')!;
+    expect(handle.querySelector('title')?.textContent).toContain('End · X');
+    expect(surface().querySelector('[data-wall-direction]')).not.toBeNull();
+    fireEvent.pointerDown(handle, pointer(storage, first.line.end));
+    fireEvent.pointerMove(surface(), pointer(storage, { x: 0.12, z: 0.07 }));
+    expect(
+      surface().querySelector(
+        '[data-wall-feedback="Joined corner · both ends"]'
+      )
+    ).not.toBeNull();
+    const other = surface().querySelector(
+      '[data-rendered-wall-id="near-corner"] [data-wall-span]'
+    )!;
+    const end = surface().querySelector('[data-wall-endpoint="end"]')!;
+    expect(other.getAttribute('x1')).toBe(end.getAttribute('cx'));
+    expect(other.getAttribute('y1')).toBe(end.getAttribute('cy'));
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerUp(surface(), pointer(storage, { x: 0.12, z: 0.07 }));
+    const after = storage.document();
+    expect(after.draft.room.walls![0].line.end).toEqual({ x: 0.1, z: 0.05 });
+    expect(after.draft.room.walls![1].line.start).toEqual({ x: 0.1, z: 0.05 });
+    expect(after.draft.room.walls![0].line.start).toEqual(first.line.start);
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(after.scope).toEqual(before.scope);
+    expect(after.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(after);
+  });
+});
+
+describe('right-angle wall editing through the real owner', () => {
+  it('joins a rotated guide, previews then commits once, and preserves the document through Undo/Redo', () => {
+    const doc = seed();
+    doc.draft.room.walls![0].line = {
+      start: { x: -6, z: -8 },
+      end: { x: 0, z: 0 },
+    };
+    doc.draft.room.walls![0].blocker.footprint.width = 10;
+    const storage = new MemoryStorage(doc);
+    mount(storage);
+    const before = storage.document();
+    fireEvent.click(button('Wall'));
+    chooseAppearance(castleWallRef, 'castle_wall_01');
+    const writes = storage.roomWrites();
+    fireEvent.click(screen.getByLabelText('Right angles'));
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerDown(surface(), pointer(storage, { x: 0, z: 0 }));
+    fireEvent.pointerMove(surface(), pointer(storage, { x: -4.2, z: 3.1 }));
+    expect(
+      surface()
+        .querySelector('[data-wall-feedback]')
+        ?.getAttribute('data-wall-feedback')
+    ).toContain('perpendicular');
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.pointerUp(surface(), pointer(storage, { x: -4.2, z: 3.1 }));
+    const after = storage.document();
+    expect(after.draft.room.walls).toHaveLength(
+      before.draft.room.walls!.length + 1
+    );
+    const added = after.draft.room.walls!.at(-1)!;
+    expect(added.line.start).toEqual({ x: 0, z: 0 });
+    expect(added.line.end.x * 6 + added.line.end.z * 8).toBeCloseTo(0, 12);
+    expect(after.draft.room.walls![0]).toEqual(before.draft.room.walls![0]);
+    expect(after.draft.room.doorBindings).toEqual(
+      before.draft.room.doorBindings
+    );
+    expect(after.draft.scene).toEqual(before.draft.scene);
+    expect(after.scope).toEqual(before.scope);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(after);
+  });
+});
+
+describe('Studio authoring homes through the real owner', () => {
+  it('fences hidden 3D mutations and old callbacks across homes while table commits still use shared history', () => {
+    const storage = new MemoryStorage(seed());
+    let session!: EncounterStudioSession;
+    const owner = (home: 'build' | 'regions' | 'encounter') => (
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          home,
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const mounted = render(owner('build'));
+    act(() =>
+      session.viewportProps.onSelect([session.document.draft.scene.items[0].id])
+    );
+    const oldViewport = session.viewportProps;
+    const before = session.document;
+    const writes = storage.roomWrites();
+    const nextScene = moved(before.draft.scene);
+    mounted.rerender(owner('encounter'));
+    for (const event of [
+      { key: 'Delete' },
+      { key: 'r' },
+      { key: 'd', ctrlKey: true },
+    ])
+      fireEvent.keyDown(window, event);
+    act(() => {
+      oldViewport.onTransformCommit(nextScene);
+      session.viewportProps.onTransformCommit(nextScene);
+      expect(session.commitFloor([one], 'paint')).toBe(false);
+    });
+    expect(session.document).toBe(before);
+    expect(storage.roomWrites()).toBe(writes);
+    mounted.rerender(owner('build'));
+    act(() => oldViewport.onTransformCommit(nextScene));
+    expect(session.document).toBe(before);
+    mounted.rerender(owner('encounter'));
+    act(() => expect(session.commitTables({ patrol: {} })).toBe(true));
+    expect(session.document.scope.tables).toEqual({ patrol: {} });
+    expect(session.document.draft).toEqual(before.draft);
+    act(() => session.undo());
+    expect(session.document).toEqual(before);
+  });
+
+  it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {
+    const storage = new MemoryStorage(createRegionLightingDocument(false));
+    mount(storage);
+    const before = storage.document();
+    expect(button('Select').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region left'));
+    fireEvent.change(screen.getByLabelText('Background light (%)'), {
+      target: { value: '25' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    expect(
+      storage.document().draft.scene.authoringRegions![0].lighting
+    ).toEqual({ background: 0.25 });
+    expect(storage.document().draft.room).toEqual(before.draft.room);
+    expect(storage.document().scope).toEqual(before.scope);
+    fireEvent.click(button('Build'));
+    expect(
+      screen.queryByRole('button', { name: 'Use baseline appearance' })
+    ).toBeNull();
+    expect(button('Edit region settings')).toBeTruthy();
+    fireEvent.click(button('Edit region settings'));
+    expect(
+      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+    ).toBe('25');
+  });
+});
+
+describe('Studio configuration tables through the real owner', () => {
+  it('authors multiple rows, preserves unrelated data, shares Undo/Redo and reloads in either view', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    const mounted = mount(storage);
+    const baseline = storage.document();
+    fireEvent.click(button('Tables'));
+    fireEvent.click(button('Add table'));
+    expect(storage.document().scope.tables).toEqual({ 'table-1': {} });
+    fireEvent.click(screen.getByLabelText('Table table-1'));
+    fireEvent.change(screen.getByLabelText('Table id for table-1'), {
+      target: { value: 'patrol' },
+    });
+    fireEvent.click(button('Apply table name'));
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    fireEvent.click(button('Add entry on time to patrol'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(2);
+    const declared = storage.document();
+    expect(declared.draft).toEqual(baseline.draft);
+    expect({ ...declared.scope, tables: undefined }).toEqual({
+      ...baseline.scope,
+      tables: undefined,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document().scope.tables?.patrol.time).toHaveLength(1);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(declared);
+    fireEvent.click(button('Build'));
+    switchTo('3D');
+    fireEvent.click(button('Encounter'));
+    expect(
+      screen.getByRole('region', { name: 'Encounter configuration' })
+    ).toBeTruthy();
+    expect(storage.document()).toEqual(declared);
+    mounted.unmount();
+    mount(storage);
+    fireEvent.click(button('Tables'));
+    expect(screen.getByLabelText('Table patrol')).toBeTruthy();
+    expect(storage.document()).toEqual(declared);
+  });
+
+  it('table intents preserve absence on no-op and reject a captured stale snapshot', () => {
+    const doc = seed();
+    delete doc.scope.tables;
+    const storage = new MemoryStorage(doc);
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    const initial = session.document;
+    const writes = storage.roomWrites();
+    act(() => expect(session.commitTables(undefined)).toBe(true));
+    expect(session.document).toBe(initial);
+    expect(storage.roomWrites()).toBe(writes);
+    const stale = session.commitTables;
+    act(() => expect(session.commitTables({ patrol: {} })).toBe(true));
+    const changed = session.document;
+    act(() => expect(stale({ obsolete: {} })).toBe(false));
+    expect(session.document).toBe(changed);
+    expect(session.document.scope.tables).toEqual({ patrol: {} });
+    act(() => session.undo());
+    expect(session.document.scope).not.toHaveProperty('tables');
+  });
+});
 
 describe('Encounter Studio joined document boundary', () => {
   it('draw switch return undo redo reload uses one document and preserves the populated payload', async () => {
@@ -667,7 +1346,7 @@ function submitForm(name: string): void {
   fireEvent.submit(screen.getByRole('form', { name }));
 }
 function resize(width: number, height: number): void {
-  if (!screen.queryByLabelText('Width (hexes)'))
+  if (!screen.queryByRole('textbox', { name: 'Width (hexes)' }))
     fireEvent.click(button('Size'));
   changeField('Width (hexes)', String(width));
   changeField('Height (hexes)', String(height));
@@ -836,7 +1515,9 @@ describe('Task 6 populated workspace/label integration', () => {
     const bytes = storage.bytes.get(ROOM_DRAFT_STORAGE_KEY);
     const writes = storage.roomWrites();
     resize(73, 48); // no-op dimensions
+    fireEvent.click(button('Label'));
     changeField('Existing label', kitchenId);
+    fireEvent.click(button('Arrange'));
     changeField('Rename label', 'Staged only');
     changeField('Rename label', 'Kitchen');
     submitForm('Arrange selected noun'); // explicit same text
@@ -851,6 +1532,7 @@ describe('Task 6 populated workspace/label integration', () => {
     fireEvent.click(button('Size'));
     changeField('Width (hexes)', '74');
     fireEvent.click(button('Cancel dimensions'));
+    fireEvent.click(button('Label'));
     changeField('Label name', 'Never placed');
     submitForm('New map label');
     // Arming from a selected label must really succeed before cancellation:
@@ -1053,7 +1735,10 @@ const castleWallRef = 'dnd5e:env:fantasy-kingdom:castle_wall_01';
 const snapLabel = 'Snap to hex centres, corners and side midpoints';
 function chooseAppearance(ref: string, search: string): void {
   const creation = screen.queryByRole('region', { name: 'New wall palette' });
-  if (!creation && !screen.queryByLabelText('Search wall appearances'))
+  if (
+    !creation &&
+    !screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+  )
     fireEvent.click(button('Change wall appearance'));
   const region =
     creation ?? screen.getByRole('region', { name: 'Arrange selection' });
@@ -1138,6 +1823,9 @@ function wallHit(id: string): Element {
   return surface().querySelector(`line[data-wall-id="${id}"]`)!;
 }
 function selectWall(storage: MemoryStorage, wall: StructuralWall): void {
+  fireEvent.click(button('Build'));
+  if (button('Select').getAttribute('aria-pressed') !== 'true')
+    fireEvent.click(button('Select'));
   const event = pointer(storage, wallMidpoint(wall));
   fireEvent.pointerDown(wallHit(wall.id), event);
   fireEvent.pointerUp(surface(), event);
@@ -1322,7 +2010,9 @@ describe('joined structural walls in the populated Studio document', () => {
       states.push(next);
     }
     fireEvent.click(button('Dismiss wall controls'));
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     expect(storage.document()).toEqual(states.at(-1));
     fireEvent.click(button('Wall'));
     expect((screen.getByLabelText(snapLabel) as HTMLInputElement).checked).toBe(
@@ -1492,12 +2182,12 @@ describe('joined structural walls in the populated Studio document', () => {
     fireEvent.click(button('Select'));
     const wall = original.draft.room.walls![0];
     selectWall(storage, wall);
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
     selectWall(storage, wall); // unchanged selection does not force controls to reappear
     expect(
       screen.queryByRole('form', { name: 'Arrange selected noun' })
     ).toBeNull();
-    fireEvent.click(button('Arrange')); // explicit reopen
+    fireEvent.click(button('Options (N)')); // explicit reopen
     changeField('Wall midpoint X', String(wallMidpoint(wall).x));
     changeField('Wall midpoint Z', String(wallMidpoint(wall).z));
     submitForm('Arrange selected noun');
@@ -1791,6 +2481,130 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
       unmount: mounted.unmount,
     };
   }
+
+  it('preserves incomplete policy drafts and rejects retired definition or selection callbacks', () => {
+    const owner = arrangeOwner();
+    const original = owner.session.document;
+    const policy = (): ((scope: RoomDraftDocument['scope']) => void) =>
+      (
+        owner.session.socialControls.intel as ReactElement<{
+          onChange(scope: RoomDraftDocument['scope']): void;
+        }>
+      ).props.onChange;
+    const old = policy();
+    act(() =>
+      old({
+        ...original.scope,
+        intel: [{ id: 'draft-record', reveals: { fact: '' } }],
+      })
+    );
+    expect(owner.session.document.scope.intel).toEqual([
+      { id: 'draft-record', reveals: { fact: '' } },
+    ]);
+    expect(owner.storage.document()).toEqual(original);
+    act(() =>
+      policy()({ ...owner.session.document.scope, intel: original.scope.intel })
+    );
+    const healed = owner.session.document;
+    act(() => old({ ...original.scope, intel: [] }));
+    expect(owner.session.document).toEqual(healed);
+
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: 'goblin-1',
+      })
+    );
+    const actorPanel = render(<>{owner.session.socialControls.selection}</>);
+    const faction = within(actorPanel.container).getByLabelText(
+      'Creature faction'
+    );
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    const before = owner.session.document;
+    fireEvent.change(faction, { target: { value: '' } });
+    expect(owner.session.document).toEqual(before);
+    actorPanel.unmount();
+
+    act(() => owner.session.viewportProps.onSelect(['studio-decoration']));
+    const propPanel = render(<>{owner.session.socialControls.selection}</>);
+    const declare = within(propPanel.container).getByRole('button', {
+      name: 'Add authored footprint',
+    });
+    act(() => owner.session.viewportProps.onSelect(['table']));
+    fireEvent.click(declare);
+    expect(owner.session.document).toEqual(before);
+    propPanel.unmount();
+  });
+
+  it('owns creature definitions and templates atomically and retires stale callbacks', () => {
+    const original = seed();
+    original.draft.scene.version = 5;
+    original.draft.scene.creaturePalette = [
+      {
+        id: 'guard-look',
+        name: 'Guard',
+        ref: 'dnd5e:monsters:human',
+        modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+      },
+    ];
+    original.draft.room.monsterDeclarations[0].appearanceRef =
+      'dnd5e:npcs:kingdom:soldier-male-01-style-02-b';
+    const owner = arrangeOwner(original);
+    const id = original.draft.room.monsterDeclarations[0].id;
+    const stale = owner.session;
+    act(() => {
+      expect(
+        owner.session.commitTemplates({
+          town_guard: {
+            base: 'dnd5e:monsters:human',
+            hitDice: '2d8',
+            armor: 'dnd5e:armor:chain-shirt',
+          },
+        })
+      ).toBe(true);
+    });
+    act(() => {
+      expect(stale.creatures.setDefinition(id, 'dnd5e:monsters:human')).toBe(
+        false
+      );
+    });
+    act(() => {
+      expect(
+        owner.session.creatures.setDefinition(id, 'dnd5e:monsters:town_guard')
+      ).toBe(true);
+    });
+    const changed = owner.session.document;
+    expect(changed.draft.room.monsterDeclarations[0]).toEqual({
+      ...original.draft.room.monsterDeclarations[0],
+      ref: 'dnd5e:monsters:town_guard',
+    });
+    expect(changed.draft.room.monsterBindings).toEqual(
+      original.draft.room.monsterBindings
+    );
+    expect(changed.scope.tables).toEqual(original.scope.tables);
+    act(() => {
+      expect(
+        owner.session.creatures.armPlacement(
+          'guard-look',
+          'dnd5e:npcs:kingdom:soldier-male-01'
+        )
+      ).toBe(true);
+    });
+    act(() =>
+      owner.session.viewportProps.roomAuthoring!.onPlaceMonster!({
+        q: 99999,
+        r: 0,
+      })
+    );
+    expect(owner.session.document).toEqual(changed);
+    act(() => owner.session.undo());
+    expect(owner.session.document.draft.room.monsterDeclarations).toEqual(
+      original.draft.room.monsterDeclarations
+    );
+    act(() => owner.session.redo());
+    expect(owner.session.document).toEqual(changed);
+    expect(owner.storage.document()).toEqual(changed);
+  });
 
   it('keeps exact overlapped exterior coverage as a no-op bind through the real owner without rewriting the accepted document', () => {
     // Sanitized six-line geometry only; no operator document/policy enters tests.
@@ -3189,10 +4003,11 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     return document;
   }
   function place(name: string, x: number, z: number, kind = 'room'): void {
-    fireEvent.click(button('Label'));
-    fireEvent.change(screen.getByLabelText('Label kind'), {
-      target: { value: kind },
-    });
+    if (kind === 'room') {
+      fireEvent.click(button('Regions'));
+      fireEvent.click(button('Arrange')); // region list/settings in this home
+      fireEvent.click(button('New region'));
+    } else fireEvent.click(button('Label'));
     fireEvent.change(screen.getByLabelText('Label name'), {
       target: { value: name },
     });
@@ -3206,10 +4021,16 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.click(button('Place label at coordinates'));
   }
   function selectLabel(name: string): void {
+    fireEvent.click(
+      button(
+        screen.queryByLabelText(`Edit region ${name}`) ? 'Regions' : 'Build'
+      )
+    );
     fireEvent.keyDown(
       screen.getByRole('button', { name: `Select map label ${name}` }),
       { key: 'Enter' }
     );
+    fireEvent.click(button('Arrange'));
   }
   function areaCount(): number {
     return surface().querySelectorAll('[data-region-id]').length;
@@ -3232,6 +4053,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(areaCount()).toBe(2);
     expect(storage.document().draft.room).toEqual(original.draft.room);
     const writes = storage.roomWrites();
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const divider = surface().querySelector('[data-wall-id="divider"]')!;
     fireEvent.pointerDown(divider, {
@@ -3424,6 +4246,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     const intent = structuredClone(
       storage.document().draft.scene.authoringRegions
     );
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const north = surface().querySelector('[data-wall-id="studio-wall"]')!;
     fireEvent.pointerDown(north, { ...at(zero), button: 0, pointerId: 7 });
@@ -3449,6 +4272,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.click(button('Use enclosing walls'));
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
     expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Build'));
     fireEvent.click(button('Select'));
     const reloadedNorth = surface().querySelector(
       '[data-wall-id="studio-wall"]'
@@ -3578,8 +4402,10 @@ describe('Studio staged region lighting integrated presentation', () => {
     const storage = new MemoryStorage(original);
     const mounted = mount(storage);
     await settled();
-    const select = () =>
+    const select = () => {
+      fireEvent.click(button('Regions'));
       fireEvent.keyDown(button('Select map label left'), { key: 'Enter' });
+    };
     const field = (name: string, value: string) =>
       fireEvent.change(screen.getByLabelText(name), { target: { value } });
     select();
@@ -3587,11 +4413,11 @@ describe('Studio staged region lighting integrated presentation', () => {
     const writes = storage.roomWrites();
     field('Background light (%)', '15');
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    fireEvent.click(button('Arrange'));
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Options (N)'));
+    fireEvent.click(button('Options (N)'));
     expect(
       (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
-    ).toBe('');
+    ).toBe('15');
     field('Background light (%)', '15');
     switchTo('3D');
     expect(viewport().roomAuthoring!.regionLighting!.areas).toEqual([]);
@@ -3644,6 +4470,7 @@ describe('Studio staged region lighting integrated presentation', () => {
     mount(storage);
     await settled();
     expect(storage.document()).toEqual(after);
+    fireEvent.click(button('Regions'));
     fireEvent.keyDown(button('Select map label Kitchen'), { key: 'Enter' });
     expect(
       (screen.getByLabelText('Background light (%)') as HTMLInputElement).value

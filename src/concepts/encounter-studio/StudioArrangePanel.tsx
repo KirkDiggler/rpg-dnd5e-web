@@ -1,6 +1,10 @@
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  deriveWallCornerFits,
+  wallFitAsset,
+} from '../world-building/wallCornerFits';
 import {
   arrangeFields,
   arrangeIntent,
@@ -12,8 +16,10 @@ import {
 import type {
   EncounterStudioSession,
   StudioArrangeSelection,
+  StudioSocialSection,
 } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
+import { StudioWallConstraints } from './StudioWallConstraints';
 
 function StudioArrangeField({
   field,
@@ -74,7 +80,7 @@ function selectionName(
     case 'label':
       return selection.label.text;
     case 'actor':
-      return selection.monster.id;
+      return selection.mapName ?? selection.monster.id;
     case 'start':
       return 'Party start';
   }
@@ -86,17 +92,19 @@ function SelectedArrange({
   selection,
   expanded,
   onDefineRegion,
+  onConfigure,
+  onMoveCreature,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
+  onMoveCreature?(): void;
   expanded: boolean;
   onDefineRegion?(): void;
+  onConfigure?(section: StudioSocialSection): void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
-  const linkedRegionId =
-    selection.kind === 'label' ? selection.region?.id : undefined;
   const preview =
     (selection.kind === 'scene' ||
       selection.kind === 'wall' ||
@@ -110,14 +118,51 @@ function SelectedArrange({
     setDraft({});
     setError(null);
   }, [session.document, session.intentEpoch]);
-  useEffect(() => {
-    // Linked-label lighting is staged with the whole noun, never retained behind
-    // a collapsed panel. Other precision forms keep their existing tuck-away law.
-    if (!expanded && linkedRegionId) {
-      setDraft({});
-      setError(null);
-    }
-  }, [expanded, linkedRegionId]);
+  const cornerInfo = useMemo(
+    () => deriveWallCornerFits(session.document.draft.room.walls ?? []),
+    [session.document.draft.room.walls]
+  );
+  const fields = arrangeFields(selection, FACING_NAMES, draft);
+  const renderField = (field: ArrangeField): React.JSX.Element => (
+    <StudioArrangeField
+      key={field.key}
+      field={field}
+      draft={draft}
+      onChange={(key, value) => {
+        if (
+          selection.kind === 'actor' &&
+          (key === 'appearanceFamily' ||
+            key === 'appearanceStyle' ||
+            key === 'appearanceSkinPalette')
+        ) {
+          try {
+            const appearanceRef = chooseNpcAppearance({
+              currentRef:
+                draft.appearanceRef ?? selection.monster.appearanceRef,
+              control:
+                key === 'appearanceFamily'
+                  ? 'family'
+                  : key === 'appearanceStyle'
+                    ? 'style'
+                    : 'skinPalette',
+              value,
+            });
+            setDraft((previous) => ({ ...previous, appearanceRef }));
+            setError(null);
+          } catch (error) {
+            setError(error instanceof Error ? error.message : String(error));
+          }
+          return;
+        }
+        setDraft((previous) => {
+          const next = { ...previous, [key]: value };
+          if (key === 'background') delete next.baseline;
+          return next;
+        });
+        setError(null);
+      }}
+    />
+  );
   return (
     <section
       hidden={!expanded}
@@ -126,13 +171,26 @@ function SelectedArrange({
       aria-label="Arrange selection"
     >
       <h2>Arrange · {selectionName(selection, session)}</h2>
+      {selection.kind === 'wall' && (
+        <StudioWallConstraints editing={session.wallEditing} />
+      )}
+      {selection.kind === 'wall' && (
+        <p className="es-help">
+          Heading is Start → End: 0° and −180° can be parallel. Hover an
+          endpoint in Layout for X/Z.{' '}
+          {!wallFitAsset(selection.wall.appearance.assetRef)
+            ? 'This appearance has no verified miter fit. Choose Castle Wall Fit 01 on both walls for automatic flush corners.'
+            : (cornerInfo.reasons.get(selection.wall.id) ??
+              'Supported joined corners fit automatically.')}
+        </p>
+      )}
       <p className="es-help">
         {selection.kind === 'scene'
           ? selection.rootCount === 1
             ? 'World position · world units'
             : 'Selection pivot · world units'
           : selection.kind === 'wall'
-            ? 'Wall midpoint and dimensions · world units'
+            ? 'Wall line endpoints · world X/Z units'
             : selection.kind === 'door'
               ? 'Along owning wall · world units'
               : selection.kind === 'label'
@@ -145,7 +203,17 @@ function SelectedArrange({
         </p>
       )}
       {selection.kind === 'actor' && (
-        <p className="es-help">{selection.monster.ref}</p>
+        <>
+          <p className="es-help">
+            Rules: {selection.monster.ref}. Map name is an authoring label, not
+            a stat-block change.
+          </p>
+          {onMoveCreature && (
+            <button type="button" onClick={onMoveCreature}>
+              Move creature
+            </button>
+          )}
+        </>
       )}
       {selection.kind === 'label' && selection.region && (
         <div className="es-region-controls" aria-label="Room boundary">
@@ -213,48 +281,13 @@ function SelectedArrange({
         }}
       >
         <div className="es-arrange-fields">
-          {arrangeFields(selection, FACING_NAMES, draft).map((field) => (
-            <StudioArrangeField
-              key={field.key}
-              field={field}
-              draft={draft}
-              onChange={(key, value) => {
-                if (
-                  selection.kind === 'actor' &&
-                  (key === 'appearanceFamily' ||
-                    key === 'appearanceStyle' ||
-                    key === 'appearanceSkinPalette')
-                ) {
-                  try {
-                    const appearanceRef = chooseNpcAppearance({
-                      currentRef:
-                        draft.appearanceRef ?? selection.monster.appearanceRef,
-                      control:
-                        key === 'appearanceFamily'
-                          ? 'family'
-                          : key === 'appearanceStyle'
-                            ? 'style'
-                            : 'skinPalette',
-                      value,
-                    });
-                    setDraft((previous) => ({ ...previous, appearanceRef }));
-                    setError(null);
-                  } catch (error) {
-                    setError(
-                      error instanceof Error ? error.message : String(error)
-                    );
-                  }
-                  return;
-                }
-                setDraft((previous) => {
-                  const next = { ...previous, [key]: value };
-                  if (key === 'background') delete next.baseline;
-                  return next;
-                });
-                setError(null);
-              }}
-            />
-          ))}
+          {fields.filter((field) => !field.secondary).map(renderField)}
+          {fields.some((field) => field.secondary) && (
+            <details>
+              <summary>Position · whole wall</summary>
+              {fields.filter((field) => field.secondary).map(renderField)}
+            </details>
+          )}
         </div>
         {selection.kind === 'label' && selection.region && (
           <div className="es-region-controls" aria-label="Region lighting">
@@ -374,6 +407,38 @@ function SelectedArrange({
         )}
       </form>
       {selection.kind === 'scene' && session.propControls.arrangeExtras}
+      {(selection.kind === 'actor' || selection.kind === 'scene') && (
+        <section
+          aria-label="Selection configuration"
+          className="es-selection-configuration"
+        >
+          <h3>Configuration</h3>
+          {session.socialControls.selection}
+          {onConfigure && (
+            <nav className="es-buttons" aria-label="Open encounter definitions">
+              <button type="button" onClick={() => onConfigure('intel')}>
+                Edit intel definitions
+              </button>
+              {selection.kind === 'actor' && (
+                <>
+                  <button type="button" onClick={() => onConfigure('factions')}>
+                    Edit factions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onConfigure('dispositions')}
+                  >
+                    Edit dispositions
+                  </button>
+                  <button type="button" onClick={() => onConfigure('tables')}>
+                    Edit behavior tables
+                  </button>
+                </>
+              )}
+            </nav>
+          )}
+        </section>
+      )}
     </section>
   );
 }
@@ -382,10 +447,14 @@ export function StudioArrangePanel({
   session,
   expanded,
   onDefineRegion,
+  onConfigure,
+  onMoveCreature,
 }: {
   session: EncounterStudioSession;
+  onMoveCreature?(): void;
   expanded: boolean;
   onDefineRegion?(): void;
+  onConfigure?(section: StudioSocialSection): void;
 }): React.JSX.Element {
   return session.arrange ? (
     <SelectedArrange
@@ -394,6 +463,8 @@ export function StudioArrangePanel({
       selection={session.arrange}
       expanded={expanded}
       onDefineRegion={onDefineRegion}
+      onConfigure={onConfigure}
+      onMoveCreature={onMoveCreature}
     />
   ) : (
     <section

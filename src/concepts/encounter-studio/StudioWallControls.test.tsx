@@ -55,6 +55,15 @@ function fixture(): EncounterStudioSession {
       cancelPreview: vi.fn(),
     },
     commitArrange: vi.fn(() => true),
+    commitTables: vi.fn(() => true),
+    commitTemplates: vi.fn(() => true),
+    creatures: {
+      select: vi.fn(() => true),
+      savePaletteEntry: vi.fn(() => true),
+      armPlacement: vi.fn(() => true),
+      placement: null,
+      setDefinition: vi.fn(() => true),
+    },
     mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
     renameDocument: vi.fn(() => true),
     canUndo: false,
@@ -70,6 +79,12 @@ function fixture(): EncounterStudioSession {
     cancelTransients: vi.fn(),
     propTool: 'select',
     setPropTool: vi.fn(),
+    socialControls: {
+      intel: null,
+      factions: null,
+      dispositions: null,
+      selection: null,
+    },
     propControls: {
       palette: null,
       tree: null,
@@ -85,6 +100,10 @@ function fixture(): EncounterStudioSession {
       selectedId: null,
       assetRef: null,
       snapEnabled: false,
+      endpointSnapEnabled: true,
+      rightAngleEnabled: false,
+      setRightAngle: vi.fn(() => true),
+      setEndpointSnap: vi.fn(() => true),
       options: [
         {
           ref: 'creative',

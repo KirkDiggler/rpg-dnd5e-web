@@ -17,7 +17,9 @@ import {
   rotateWall,
   setWallAppearance,
   setWallBlocker,
+  setWallEndpoints,
   setWallLabel,
+  snapWallEndpoint,
   snapWallPoint,
   translateWall,
   updateWallOpening,
@@ -54,6 +56,119 @@ function wall(overrides: Partial<StructuralWall> = {}): StructuralWall {
 function openingPoint(target: StructuralWall, id: string) {
   return wallOpeningPoint({ wall: target, openingId: id });
 }
+
+describe('exact endpoint authoring', () => {
+  it('copies non-binary endpoint coordinates exactly for numeric and dragged edits', () => {
+    const source = wall({
+      line: { start: { x: 0.13, z: 0.27 }, end: { x: 10.43, z: 3.51 } },
+      openings: [],
+    });
+    const target = { x: -6.135791357913579, z: 18.5 };
+    const before = structuredClone(source);
+    const numeric = setWallEndpoints({ wall: source, end: target });
+    const dragged = reshapeWallEndpoint({
+      wall: source,
+      endpoint: 'end',
+      point: target,
+    });
+    expect(numeric.line).toEqual({ start: source.line.start, end: target });
+    expect(dragged.wall.line).toEqual(numeric.line);
+    expect(dragged.clamped).toBe(false);
+    expect(source).toEqual(before);
+    expect(
+      setWallEndpoints({
+        wall: source,
+        start: source.line.start,
+        end: source.line.end,
+      })
+    ).toEqual(source);
+  });
+  it('evaluates both ends together and preserves opening identities and blocker margins', () => {
+    const source = wall();
+    const moved = setWallEndpoints({
+      wall: source,
+      start: { x: 10, z: 0 },
+      end: { x: 20, z: 0 },
+    });
+    expect(moved.line).toEqual({
+      start: { x: 10, z: 0 },
+      end: { x: 20, z: 0 },
+    });
+    expect(moved.openings).toEqual(source.openings);
+    expect(moved.blocker).toEqual(source.blocker);
+    const trimmed = setWallEndpoints({ wall: source, start: { x: 3, z: 0 } });
+    expect(trimmed.openings[0]).toEqual({ ...source.openings[0], position: 4 });
+    expect(trimmed.blocker.footprint).toEqual({
+      ...source.blocker.footprint,
+      width: 9,
+    });
+    expect(openingPoint(trimmed, 'opening-1')).toEqual(
+      openingPoint(source, 'opening-1')
+    );
+    expect(
+      setWallEndpoints({
+        wall: source,
+        start: { x: 3, z: 0 },
+        end: source.line.end,
+      })
+    ).toEqual(trimmed);
+  });
+  it('refuses protected/zero/nonfinite numeric endpoints while drags still visibly clamp', () => {
+    const source = wall();
+    const before = structuredClone(source);
+    expect(() =>
+      setWallEndpoints({ wall: source, end: { x: 7, z: 0 } })
+    ).toThrow(/opening/);
+    expect(() =>
+      setWallEndpoints({ wall: source, end: source.line.start })
+    ).toThrow();
+    expect(() =>
+      setWallEndpoints({ wall: source, start: { x: NaN, z: 0 } })
+    ).toThrow();
+    expect(
+      reshapeWallEndpoint({
+        wall: source,
+        endpoint: 'end',
+        point: { x: 7, z: 0 },
+      }).clamped
+    ).toBe(true);
+    expect(source).toEqual(before);
+  });
+  it('snaps only to eligible nearby endpoints with stable ties and no geometry mutation', () => {
+    const a = wall({
+      id: 'a',
+      line: { start: { x: 0.123456789012345, z: 2.1 }, end: { x: 10, z: 2.1 } },
+    });
+    const b = wall({ ...a, id: 'b' });
+    const input = {
+      point: { x: 0.15, z: 2.11 },
+      enabled: true,
+      walls: [b, a],
+      radius: 0.1,
+    };
+    const before = structuredClone(input);
+    const result = snapWallEndpoint(input);
+    expect(result).toEqual({
+      point: a.line.start,
+      snapped: true,
+      target: { wallId: 'a', endpoint: 'start' },
+    });
+    expect(result.point).not.toBe(a.line.start);
+    expect(snapWallEndpoint({ ...input, walls: [a, b] })).toEqual(result);
+    expect(
+      snapWallEndpoint({ ...input, excludedWallId: 'a' }).target?.wallId
+    ).toBe('b');
+    expect(snapWallEndpoint({ ...input, enabled: false })).toEqual({
+      point: input.point,
+      snapped: false,
+    });
+    expect(snapWallEndpoint({ ...input, radius: 0.001 }).snapped).toBe(false);
+    expect(
+      snapWallEndpoint({ ...input, walls: [a], excludedWallId: 'a' }).snapped
+    ).toBe(false);
+    expect(input).toEqual(before);
+  });
+});
 
 describe('wall snapping', () => {
   it('returns free placement untouched when snapping is disabled', () => {

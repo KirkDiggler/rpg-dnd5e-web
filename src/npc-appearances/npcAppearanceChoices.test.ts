@@ -4,11 +4,27 @@ import {
   buildNpcAppearanceFamilies,
   chooseNpcAppearance,
   NPC_APPEARANCE_FAMILIES,
+  npcAppearanceOptions,
 } from './npcAppearanceChoices';
 
 const merchant = 'dnd5e:npcs:kingdom:merchant-01';
 
 describe('published NPC look choices', () => {
+  it('exposes all four looks and three skins immediately for every Kingdom base model', () => {
+    const models = NPC_APPEARANCE_FAMILIES.filter(
+      (family) => family.defaultLook.look
+    );
+    expect(models).toHaveLength(17);
+    for (const model of models) {
+      const selected = npcAppearanceOptions(model.ref);
+      expect(selected.current?.look).toMatchObject({
+        style: '01',
+        skinPalette: 'A',
+      });
+      expect(selected.styles).toEqual(['01', '02', '03', '04']);
+      expect(selected.skinPalettes).toEqual(['A', 'B', 'C']);
+    }
+  });
   it('offers families, not hundreds of variants in the appearance selector', () => {
     expect(NPC_APPEARANCE_FAMILIES).toHaveLength(30);
     const kingdom = NPC_APPEARANCE_FAMILIES.filter(

@@ -4,6 +4,7 @@
  * wire does not. See CONTRACT.md before treating this as a server contract.
  */
 import type { AuthoringRegion } from './authoringRegions';
+import type { CreaturePaletteEntry } from './creaturePalette';
 
 export interface WorldTransform {
   x: number;
@@ -59,7 +60,11 @@ export interface MapLabel {
 }
 
 export interface WorldScene {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
+  /** Saved editor recipes; never placed or used to enrich runtime actors. */
+  creaturePalette?: CreaturePaletteEntry[];
+  /** Per-placement labels for the authoring map, independent of rules names. */
+  actorNames?: Record<string, string>;
   /** Presentation-only annotations; version 1 refuses this metadata. */
   mapLabels?: MapLabel[];
   /** Scene3/4 author intent only, never gameplay regions or a saved derived polygon. */

@@ -1,5 +1,7 @@
-import { resolveNpcAppearance } from '@/generated/npcAppearanceCatalog';
-import { NPC_APPEARANCE_FAMILIES } from '@/npc-appearances/npcAppearanceChoices';
+import {
+  NPC_APPEARANCE_FAMILIES,
+  npcAppearanceOptions,
+} from '@/npc-appearances/npcAppearanceChoices';
 import type {
   AuthoringRegion,
   RegionResolution,
@@ -23,6 +25,7 @@ export type ArrangeFieldKey =
   | 'text'
   | 'facing'
   | 'appearanceRef'
+  | 'mapName'
   | 'appearanceFamily'
   | 'appearanceStyle'
   | 'appearanceSkinPalette'
@@ -31,13 +34,18 @@ export type ArrangeFieldKey =
   | 'position'
   | 'width'
   | 'background'
-  | 'baseline';
+  | 'baseline'
+  | 'startX'
+  | 'startZ'
+  | 'endX'
+  | 'endZ';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
 export interface ArrangeField {
   key: ArrangeFieldKey;
   label: string;
   value: string;
   numeric?: boolean;
+  secondary?: boolean;
   placeholder?: string;
   choices?: readonly { value: string; label: string }[];
   disabled?: boolean;
@@ -89,8 +97,38 @@ export function arrangeFields(
     case 'wall': {
       const values = selection.preview ?? selection;
       return [
-        numeric('x', 'Wall midpoint X', values.midpoint.x),
-        numeric('z', 'Wall midpoint Z', values.midpoint.z),
+        {
+          key: 'startX',
+          label: 'Start X',
+          value: String(values.line.start.x),
+          numeric: true,
+        },
+        {
+          key: 'startZ',
+          label: 'Start Z',
+          value: String(values.line.start.z),
+          numeric: true,
+        },
+        {
+          key: 'endX',
+          label: 'End X',
+          value: String(values.line.end.x),
+          numeric: true,
+        },
+        {
+          key: 'endZ',
+          label: 'End Z',
+          value: String(values.line.end.z),
+          numeric: true,
+        },
+        {
+          ...numeric('x', 'Wall midpoint X', values.midpoint.x),
+          secondary: true,
+        },
+        {
+          ...numeric('z', 'Wall midpoint Z', values.midpoint.z),
+          secondary: true,
+        },
         numeric('yaw', 'Y facing (degrees)', degrees(values.yaw)),
         numeric('length', 'Wall length', values.length),
         {
@@ -145,25 +183,33 @@ export function arrangeFields(
       ];
     case 'actor': {
       const ref = draft.appearanceRef ?? selection.monster.appearanceRef ?? '';
-      const current = resolveNpcAppearance(ref);
-      const family = NPC_APPEARANCE_FAMILIES.find(
-        (entry) => entry.ref === (current?.look?.familyRef ?? current?.assetRef)
-      );
+      const { current, family, styles, skinPalettes } =
+        npcAppearanceOptions(ref);
       const choices = (
         key: 'style' | 'skinPalette'
       ): { value: string; label: string }[] =>
         current?.look
-          ? [
-              ...new Set(
-                family?.looks.flatMap((look) =>
-                  look.look ? [look.look[key]] : []
-                )
-              ),
-            ]
-              .sort()
-              .map((value) => ({ value, label: value }))
-          : [{ value: '', label: 'Not available' }];
+          ? (key === 'style' ? styles : skinPalettes).map((value) => ({
+              value,
+              label: value,
+            }))
+          : [
+              {
+                value: '',
+                label: !ref
+                  ? 'Choose an NPC model first'
+                  : current
+                    ? 'Single-look model'
+                    : 'Model unavailable',
+              },
+            ];
       return [
+        {
+          key: 'mapName',
+          label: 'Map name',
+          value: selection.mapName ?? '',
+          placeholder: 'Rules name when unset',
+        },
         {
           key: 'appearanceFamily',
           label: 'NPC appearance',
@@ -290,6 +336,22 @@ export function arrangeIntent(
       return {
         kind: 'wall-edit',
         target: selection.target,
+        ...(draft.startX !== undefined || draft.startZ !== undefined
+          ? {
+              start: {
+                ...(draft.startX !== undefined ? { x: number('startX') } : {}),
+                ...(draft.startZ !== undefined ? { z: number('startZ') } : {}),
+              },
+            }
+          : {}),
+        ...(draft.endX !== undefined || draft.endZ !== undefined
+          ? {
+              end: {
+                ...(draft.endX !== undefined ? { x: number('endX') } : {}),
+                ...(draft.endZ !== undefined ? { z: number('endZ') } : {}),
+              },
+            }
+          : {}),
         ...(draft.x !== undefined || draft.z !== undefined
           ? { midpoint: axes(['x', 'z']) }
           : {}),
@@ -350,6 +412,9 @@ export function arrangeIntent(
       return {
         kind: 'actor-start',
         target: selection.target,
+        ...(draft.mapName !== undefined
+          ? { mapName: draft.mapName.trim() || null }
+          : {}),
         ...(draft.appearanceRef !== undefined
           ? { appearanceRef: draft.appearanceRef || null }
           : {}),

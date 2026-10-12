@@ -3,11 +3,13 @@ import type {
   AuthoringRegion,
   RegionResolution,
 } from '../world-building/authoringRegions';
+import type { CreaturePaletteEntry } from '../world-building/creaturePalette';
 import type {
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
 } from '../world-building/roomDraft';
+import type { SiteScope } from '../world-building/siteScope';
 import type { WallLine } from '../world-building/structuralWallGeometry';
 import type { StructuralWall } from '../world-building/structuralWalls';
 import type {
@@ -16,6 +18,7 @@ import type {
 } from '../world-building/studioArrange';
 import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
 import type { WorldPoint } from '../world-building/types';
+import type { WallCornerJoin } from '../world-building/wallCornerJoins';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 export type {
@@ -57,6 +60,11 @@ export type {
 export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
+export type StudioSocialSection =
+  | 'intel'
+  | 'factions'
+  | 'dispositions'
+  | 'tables';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
 export type LayoutTool =
   | LayoutFloorTool
@@ -85,14 +93,18 @@ export interface StudioWallEditing {
   readonly selectedId: string | null;
   readonly assetRef: string | null;
   readonly snapEnabled: boolean;
+  readonly endpointSnapEnabled: boolean;
+  readonly rightAngleEnabled: boolean;
   readonly options: readonly StudioWallAppearanceOption[];
   /** Selection alone never retires a gesture or changes the private prop tool. */
   select(id: string | null): boolean;
   setAsset(ref: string | null): boolean;
   setSnap(enabled: boolean): boolean;
+  setEndpointSnap(enabled: boolean): boolean;
+  setRightAngle(enabled: boolean): boolean;
   /** Accepted no-ops do not add history. Create stays in caller drawing mode. */
-  create(line: WallLine): boolean;
-  edit(next: StructuralWall): boolean;
+  create(line: WallLine, join?: WallCornerJoin): boolean;
+  edit(next: StructuralWall, join?: WallCornerJoin): boolean;
   remove(id: string): boolean;
   reportRefusal(message: string): void;
 }
@@ -166,6 +178,20 @@ export interface EncounterStudioSession {
   readonly intentEpoch: number;
   readonly arrange: StudioArrangeSelection | null;
   commitArrange(intent: StudioArrangeIntent): boolean;
+  /** Root behavior declarations only; absence removes tables. Ordinary draft
+   * gate, one shared history transaction, retired snapshots refuse changes. */
+  commitTables(tables: SiteScope['tables']): boolean;
+  commitTemplates(templates: NonNullable<SiteScope['templates']>): boolean;
+  creatures: {
+    select(id: string): boolean;
+    savePaletteEntry(
+      entry: Omit<CreaturePaletteEntry, 'id'>,
+      id?: string
+    ): boolean;
+    armPlacement(id: string, appearanceRef: string): boolean;
+    readonly placement: { name: string; appearanceRef: string } | null;
+    setDefinition(id: string, ref: string): boolean;
+  };
   mapLabelSelection: {
     readonly selectedId: string | null;
     select(id: string | null): boolean;
@@ -193,6 +219,13 @@ export interface EncounterStudioSession {
   cancelTransients(): void;
   propTool: WorldBuildingTool;
   setPropTool(tool: WorldBuildingTool): void;
+  /** Existing owner-controlled forms, not additional policy stores. */
+  socialControls: {
+    intel: ReactNode;
+    factions: ReactNode;
+    dispositions: ReactNode;
+    selection: ReactNode;
+  };
   propControls: {
     palette: ReactNode;
     tree: ReactNode;
@@ -208,7 +241,11 @@ export interface EncounterStudioSession {
   dismissNotice(): void;
 }
 
+export type StudioHome = 'build' | 'regions' | 'encounter';
+
 export interface EncounterStudioPresentation {
+  /** Presentation context fences hidden map input; old callers default to Build. */
+  home?: StudioHome;
   view: EncounterStudioView;
   render(session: EncounterStudioSession): ReactNode;
 }

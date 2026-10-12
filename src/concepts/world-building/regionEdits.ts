@@ -18,12 +18,12 @@ function requireRegion(draft: RoomDraft, id: string): AuthoringRegion {
 function withRegions(draft: RoomDraft, regions: AuthoringRegion[]): RoomDraft {
   const scene = {
     ...draft.scene,
-    version: draft.scene.version === 4 ? (4 as const) : (3 as const),
+    version: draft.scene.version >= 3 ? draft.scene.version : (3 as const),
   };
   // Whole-document cross-noun identities remain the owner validator's gate.
   const valid = validateAuthoringRegions(regions, scene.mapLabels ?? [], {
     workspace: draft.workspace,
-    allowLighting: scene.version === 4,
+    allowLighting: scene.version >= 4,
     reservedIds: new Set([
       draft.id,
       scene.id,
@@ -155,7 +155,13 @@ export function setRegionLighting(
   return withRegions(
     value === null
       ? draft
-      : { ...draft, scene: { ...draft.scene, version: 4 } },
+      : {
+          ...draft,
+          scene: {
+            ...draft.scene,
+            version: draft.scene.version >= 4 ? draft.scene.version : 4,
+          },
+        },
     regions
   );
 }

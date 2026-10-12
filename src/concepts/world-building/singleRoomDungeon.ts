@@ -1,5 +1,9 @@
 import { parse, stringify } from 'yaml';
 import {
+  validateMonsterTemplates,
+  type SiteTemplates,
+} from './monsterTemplates';
+import {
   ROOM_DRAFT_ENVELOPE_VERSION,
   parseRoomDocumentJson,
   validateRoomDocument,
@@ -28,6 +32,7 @@ import {
 } from './siteScope';
 
 export interface EncodeSingleRoomDungeonInput {
+  templates?: SiteTemplates;
   key: string;
   draft: RoomDraft;
   /** The site scope (rpg-dnd5e-web#1136, rpg-project#477): identity and policy
@@ -52,6 +57,7 @@ export interface EncodeSingleRoomDungeonInput {
   concealments?: SiteConcealments;
 }
 export interface DecodeSingleRoomDungeonResult {
+  templates?: SiteTemplates;
   key: string;
   draft: RoomDraft;
   /** Present only when the file carried at least one; absence is the authored
@@ -84,6 +90,7 @@ const ROOT_KEYS = [
   'key',
   'play',
   'room',
+  'templates',
   // The engine's own root order: `tables` sits before `factions` in
   // `SingleRoomSpec`, and this list mirrors it so a file the engine writes
   // reads here in the order it was authored (rpg-toolkit#1897).
@@ -138,6 +145,7 @@ function carriesV4Keys(draft: RoomDraft, scope: SiteScope): boolean {
   // A ROOT TABLE IS A v4 FACT TOO (rpg-toolkit#1897): a room whose only
   // authored orders are a named table must still claim v4, the same argument a
   // `factions`-only or `doorBindings`-only room makes below.
+  if (Object.keys(scope.templates ?? {}).length > 0) return true;
   if (Object.keys(scope.tables ?? {}).length > 0) return true;
   if ((scope.factions?.length ?? 0) > 0) return true;
   if ((scope.dispositions?.length ?? 0) > 0) return true;
@@ -307,6 +315,9 @@ function decodeSingleRoomRoot(
   // THE TABLES FIRST, because a faction and a monster binding may each NAME
   // one and a name cannot be judged before the universe it names exists — the
   // same ordering reason `intel` is read before a `holds` that names a record.
+  const templates = Object.hasOwn(root, 'templates')
+    ? validateMonsterTemplates(root.templates)
+    : {};
   const tables = Object.hasOwn(root, 'tables')
     ? validateSiteTables(root.tables)
     : {};
@@ -354,6 +365,7 @@ function decodeSingleRoomRoot(
     version: ROOM_DRAFT_ENVELOPE_VERSION,
     draft: root.room,
     scope: {
+      templates,
       tables,
       factions,
       dispositions,
@@ -365,6 +377,8 @@ function decodeSingleRoomRoot(
     },
   });
   const draft = parseRoomDocumentJson(draftJson).draft;
+  if (version === 3 && Object.keys(templates).length)
+    throw new Error('templates: authored stat blocks require root version 4.');
   if (version === 3 && (draft.room.walls?.length ?? 0) > 0)
     throw new Error(
       'room.room.walls: structural walls require root version 4.'
@@ -378,6 +392,7 @@ function decodeSingleRoomRoot(
   return {
     key: root.key,
     draft,
+    ...(Object.keys(templates).length > 0 ? { templates } : {}),
     ...(Object.keys(tables).length > 0 ? { tables } : {}),
     ...(factions.length > 0 ? { factions } : {}),
     ...(dispositions.length > 0 ? { dispositions } : {}),

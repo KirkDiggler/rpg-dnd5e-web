@@ -33,6 +33,7 @@ import type {
   TransformControls as TransformControlsImpl,
 } from 'three-stdlib';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import { authoredActorName } from './creaturePalette';
 import { createGroundBoundaryGeometry } from './groundBoundaryGeometry';
 import {
   compositionGuideBounds,
@@ -159,6 +160,7 @@ export interface WorldBuildingViewportProps {
     monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
     partyStart?: RoomHexCell | null;
     armedMonsterRef?: string | null;
+    armedMonsterName?: string;
     /** Typed Studio identity. Explicit null masks legacy remembered IDs; only
      * an absent contract uses the old string consumer boundary. */
     selectedActorTarget?: Extract<
@@ -759,6 +761,14 @@ export function WorldSceneContents(
   } | null>(null);
   /** Hover/placement preview cell for the armed monster and party-start
    * tools. Purely authoring: never authored, never a legality gate. */
+  const movingActorId =
+    props.roomAuthoring?.tool === 'move' &&
+    props.roomAuthoring.selectedActorTarget?.kind === 'actor'
+      ? props.roomAuthoring.selectedActorTarget.id
+      : null;
+  const movingActor = props.roomAuthoring?.monsters?.find(
+    (actor) => actor.id === movingActorId
+  );
   const [actorHoverCell, setActorHoverCell] = useState<RoomHexCell | null>(
     null
   );
@@ -882,10 +892,11 @@ export function WorldSceneContents(
     // The hover preview belongs to the armed actor tools alone.
     if (
       props.roomAuthoring?.tool !== 'monster' &&
-      props.roomAuthoring?.tool !== 'start'
+      props.roomAuthoring?.tool !== 'start' &&
+      !movingActorId
     )
       setActorHoverCell(null);
-  }, [props.roomAuthoring?.tool]);
+  }, [props.roomAuthoring?.tool, movingActorId]);
   useEffect(() => cancelFloorGesture, [cancelFloorGesture]);
 
   const renderSurfaces = (
@@ -1155,7 +1166,7 @@ export function WorldSceneContents(
           }
           // Snapped hover/placement preview for the armed actor tools. The
           // shared worldToCube already rounds to the nearest hex.
-          if (roomTool === 'monster' || roomTool === 'start') {
+          if (roomTool === 'monster' || roomTool === 'start' || movingActorId) {
             setActorHoverCell(cell);
           } else if (actorHoverCell) setActorHoverCell(null);
           if (event.buttons !== 1) return;
@@ -1312,6 +1323,7 @@ export function WorldSceneContents(
       )}
       {props.roomAuthoring && (
         <RoomActorMarkers
+          actorNames={scene.actorNames}
           monsters={props.roomAuthoring.monsters ?? []}
           monsterBindings={props.roomAuthoring.monsterBindings}
           partyStart={props.roomAuthoring.partyStart ?? null}
@@ -1355,13 +1367,19 @@ export function WorldSceneContents(
       {props.roomAuthoring &&
         actorHoverCell &&
         (props.roomAuthoring.tool === 'monster' ||
-          props.roomAuthoring.tool === 'start') && (
+          props.roomAuthoring.tool === 'start' ||
+          movingActorId) && (
           <RoomActorPreview
             hoverCell={actorHoverCell}
             label={
               props.roomAuthoring.tool === 'start'
                 ? 'Party start'
-                : paletteNameForRef(props.roomAuthoring.armedMonsterRef ?? '')
+                : movingActor
+                  ? `Move ${authoredActorName(scene.actorNames, movingActor.id) ?? paletteNameForRef(movingActor.ref)}`
+                  : (props.roomAuthoring.armedMonsterName ??
+                    paletteNameForRef(
+                      props.roomAuthoring.armedMonsterRef ?? ''
+                    ))
             }
             color={
               props.roomAuthoring.tool === 'start'

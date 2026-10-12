@@ -6,6 +6,7 @@ import {
   WorldAssetModel,
   type WorldAssetModelDiagnostic,
 } from '@/components/hex-grid/WorldAssetModel';
+import type { PlainWallFit } from '@/rendering/plainWallFit';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import type { WorldBuildingCatalogEntry } from './catalog';
 
@@ -16,6 +17,7 @@ export interface WorldPropModelProps {
   heightScale?: number;
   remembered?: boolean;
   visualLighting?: RegionLightingMaterialBinding;
+  plainWallFit?: PlainWallFit;
   /** A door item's live state: TRUE swings every declared group open. Absent
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
@@ -39,6 +41,7 @@ export function WorldPropModel({
   heightScale = 1,
   remembered = false,
   visualLighting,
+  plainWallFit,
   open,
   onDoorClick,
   onBoundsMeasured,
@@ -50,6 +53,7 @@ export function WorldPropModel({
   return entry.source === 'generated' ? (
     <WorldAssetModel
       assetRef={entry.ref}
+      plainWallFit={plainWallFit}
       remembered={remembered}
       visualLighting={visualLighting}
       position={position}

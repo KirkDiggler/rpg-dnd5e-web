@@ -147,6 +147,63 @@ export function snapWallPoint(input: { point: WorldPoint; enabled: boolean }): {
   return { point: copyPoint(best), snapped: true };
 }
 
+/** Copy an authored endpoint, never a reconstructed approximation. Radius is
+ * supplied by the viewport in world units so attraction stays screen-sized. */
+export function snapWallEndpoint(input: {
+  point: WorldPoint;
+  enabled: boolean;
+  walls: readonly StructuralWall[];
+  excludedWallId?: string;
+  radius: number;
+  /** Optional editor constraint; filter BEFORE choosing the nearest target. */
+  accept?: (point: WorldPoint) => boolean;
+}): {
+  point: WorldPoint;
+  snapped: boolean;
+  target?: { wallId: string; endpoint: 'start' | 'end' };
+} {
+  finite(input.point.x, 'point.x');
+  finite(input.point.z, 'point.z');
+  finite(input.radius, 'snap radius');
+  if (input.radius < 0) fail('snap radius must be nonnegative.');
+  if (!input.enabled) return { point: copyPoint(input.point), snapped: false };
+  let best:
+    | {
+        point: WorldPoint;
+        distance: number;
+        key: string;
+        wallId: string;
+        endpoint: 'start' | 'end';
+      }
+    | undefined;
+  for (const wall of input.walls) {
+    if (wall.id === input.excludedWallId) continue;
+    for (const endpoint of ['start', 'end'] as const) {
+      const point = wall.line[endpoint];
+      if (input.accept && !input.accept(point)) continue;
+      const distance = Math.hypot(
+        point.x - input.point.x,
+        point.z - input.point.z
+      );
+      const key = `${wall.id}:${endpoint}`;
+      if (
+        distance <= input.radius &&
+        (!best ||
+          distance < best.distance ||
+          (distance === best.distance && key < best.key))
+      )
+        best = { point, distance, key, wallId: wall.id, endpoint };
+    }
+  }
+  return best
+    ? {
+        point: copyPoint(best.point),
+        snapped: true,
+        target: { wallId: best.wallId, endpoint: best.endpoint },
+      }
+    : { point: copyPoint(input.point), snapped: false };
+}
+
 /**
  * Whether a catalog entry can stand in for a repeated wall surface today. Only
  * provider-generated exact assets with usable measured dimensions and no door
@@ -437,6 +494,50 @@ export function resizeWallLength(input: {
   return { wall: next, appliedLength, clamped: geometry.clamped };
 }
 
+/** Exact numeric line edit. Evaluate both ends together, and refuse a protected
+ * shrink instead of silently substituting a different requested coordinate.
+ * Start-only edits retain End-anchored opening offsets; otherwise Start anchors
+ * local opening distances. Blocker end margins follow the signed length delta. */
+export function setWallEndpoints(input: {
+  wall: StructuralWall;
+  start?: WorldPoint;
+  end?: WorldPoint;
+}): StructuralWall {
+  const start = input.start ?? input.wall.line.start;
+  const end = input.end ?? input.wall.line.end;
+  for (const [name, point] of [
+    ['start', start],
+    ['end', end],
+  ] as const) {
+    finite(point.x, `${name}.x`);
+    finite(point.z, `${name}.z`);
+  }
+  const startChanged =
+    start.x !== input.wall.line.start.x || start.z !== input.wall.line.start.z;
+  const endChanged =
+    end.x !== input.wall.line.end.x || end.z !== input.wall.line.end.z;
+  if (!startChanged && !endChanged) return cloneWall(input.wall);
+  const length = Math.hypot(end.x - start.x, end.z - start.z);
+  finitePositive(length, 'endpoint span');
+  const originalLength = wallLength(input.wall);
+  const resized = resizeWallLength({
+    wall: input.wall,
+    endpoint: startChanged && !endChanged ? 'start' : 'end',
+    length,
+  });
+  if (resized.clamped)
+    fail(
+      'requested endpoints would cut through an opening; move or resize the opening first.'
+    );
+  const next = resized.wall;
+  next.line = { start: copyPoint(start), end: copyPoint(end) };
+  const width = input.wall.blocker.footprint.width + (length - originalLength);
+  finitePositive(width, 'blocker width');
+  next.blocker.footprint.width = width;
+  assertOpenings(next, next.openings);
+  return next;
+}
+
 /** Reshape one endpoint toward a world point, keeping the opposite endpoint
  * fixed. Protected collinear resize preserves opening world positions first;
  * rotation then carries those openings (and their attached doors) with the
@@ -471,6 +572,22 @@ export function reshapeWallEndpoint(input: {
     endpoint: input.endpoint,
     length,
   });
+  if (!resized.clamped) {
+    // Protected resize can round even a requested exact lattice/endpoint. The
+    // author supplied the final coordinate: do not reconstruct it via trig.
+    const next = resized.wall;
+    next.line = {
+      ...next.line,
+      [fixedEndpoint]: copyPoint(pivot),
+      [input.endpoint]: copyPoint(input.point),
+    };
+    const width =
+      input.wall.blocker.footprint.width + (length - originalLength);
+    finitePositive(width, 'blocker width');
+    next.blocker.footprint.width = width;
+    assertOpenings(next, next.openings);
+    return { wall: next, appliedLength: length, clamped: false };
+  }
   const resizedPoint = resized.wall.line[input.endpoint];
   const angle =
     Math.atan2(dz, dx) -

@@ -62,6 +62,25 @@ function SiteFacts(props: {
 }
 
 describe('SitePolicies — the site’s own facts, editable', () => {
+  it('keeps two faction identities separate when a rename collides', () => {
+    const onChange = vi.fn();
+    const onNotice = vi.fn();
+    render(
+      <FactionsPanel
+        scope={{ factions: [{ id: 'watch' }, { id: 'staff' }] }}
+        onChange={onChange}
+        onNotice={onNotice}
+      />
+    );
+    const input = screen.getByLabelText('Faction id for watch');
+    fireEvent.change(input, { target: { value: 'staff' } });
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onNotice).toHaveBeenCalledWith(
+      expect.stringContaining('already exists')
+    );
+    expect((input as HTMLInputElement).value).toBe('watch');
+  });
   it('shows a faction’s id, mix and shared table, and the dispositions between sides', () => {
     render(<SiteFacts scope={siteScope} onChange={() => {}} />);
 
@@ -146,14 +165,14 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       /No factions are authored on this site\./
     );
     expect(screen.getByRole('button', { name: 'Add faction' })).toBeTruthy();
-    // No faction exists, so there is nothing to declare a stance about.
+    // The reserved party/monsters pair remains authorable.
     expect(
       (
         screen.getByRole('button', {
           name: 'Add disposition',
         }) as HTMLButtonElement
       ).disabled
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('adds a disposition once a faction exists', () => {

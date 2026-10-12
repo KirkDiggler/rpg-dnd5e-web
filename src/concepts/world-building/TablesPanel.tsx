@@ -50,6 +50,8 @@ export interface TablesPanelProps {
    * undoable transaction per edit, and the same "the form never pre-judges"
    * boundary. */
   onChange: (nextScope: SiteScope) => void;
+  /** Studio section navigation must not implicitly commit a typed name. */
+  explicitRename?: boolean;
 }
 
 /** One root table's triggers and entries. Its own component so the id's
@@ -60,11 +62,13 @@ function TableRow({
   id,
   table,
   onChange,
+  explicitRename,
 }: {
   scope: SiteScope;
   id: string;
   table: AnswerTableShape;
   onChange: (next: SiteScope) => void;
+  explicitRename: boolean;
 }) {
   const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
     (key) => table[key] !== undefined
@@ -76,9 +80,12 @@ function TableRow({
    * the trigger a behavior table is mostly about and the only one the `when`
    * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
    * lands an author on the social half, where no condition control can appear. */
-  const [newTrigger, setNewTrigger] = useState(
-    available.includes('time') ? 'time' : (available[0] ?? '')
-  );
+  const [triggerChoice, setNewTrigger] = useState('time');
+  const newTrigger = available.includes(triggerChoice)
+    ? triggerChoice
+    : available.includes('time')
+      ? 'time'
+      : (available[0] ?? '');
   /** The id is edited as a local draft and committed on blur/Enter, so a
    * half-typed name never becomes a table's id mid-keystroke — `FactionRow`
    * already keeps this rule for the same reason. */
@@ -90,9 +97,9 @@ function TableRow({
    * it worked and did nothing is worse than one that says no. */
   const idTaken = typedId !== id && Object.hasOwn(scope.tables ?? {}, typedId);
   const commitId = () => {
-    if (typedId === id) return;
+    if (typedId === id || (explicitRename && !typedId)) return;
     if (idTaken) {
-      setTypedId(id);
+      if (!explicitRename) setTypedId(id);
       return;
     }
     onChange(renameSiteTable(scope, id, typedId));
@@ -121,12 +128,37 @@ function TableRow({
               aria-label={`Table id for ${id}`}
               value={typedId}
               onChange={(event) => setTypedId(event.target.value)}
-              onBlur={commitId}
+              onBlur={explicitRename ? undefined : commitId}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') commitId();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  commitId();
+                }
+                if (explicitRename && event.key === 'Escape') {
+                  event.stopPropagation();
+                  setTypedId(id);
+                }
               }}
             />
           </label>
+          {explicitRename && (
+            <div className="wb-actions">
+              <button
+                type="button"
+                disabled={typedId === id || idTaken || !typedId}
+                onClick={commitId}
+              >
+                Apply table name
+              </button>
+              <button
+                type="button"
+                disabled={typedId === id}
+                onClick={() => setTypedId(id)}
+              >
+                Cancel table name
+              </button>
+            </div>
+          )}
           {idTaken && (
             <p className="wb-help wb-danger" data-testid="table-id-taken">
               This site already declares a table called “{typedId}”. References
@@ -176,6 +208,15 @@ function TableRow({
                     />
                   ))}
                 </ul>
+                <button
+                  type="button"
+                  aria-label={`Add entry on ${trigger} to ${id}`}
+                  onClick={() =>
+                    onChange(addSiteTableAnswerEntry(scope, id, trigger))
+                  }
+                >
+                  Add entry on {trigger}
+                </button>
               </div>
             ))
           )}
@@ -219,7 +260,11 @@ function TableRow({
   );
 }
 
-export function TablesPanel({ scope, onChange }: TablesPanelProps) {
+export function TablesPanel({
+  scope,
+  onChange,
+  explicitRename = false,
+}: TablesPanelProps) {
   const tables = scope.tables ?? {};
   const ids = Object.keys(tables);
   return (
@@ -245,6 +290,7 @@ export function TablesPanel({ scope, onChange }: TablesPanelProps) {
               id={id}
               table={tables[id] ?? {}}
               onChange={onChange}
+              explicitRename={explicitRename}
             />
           ))}
         </ul>

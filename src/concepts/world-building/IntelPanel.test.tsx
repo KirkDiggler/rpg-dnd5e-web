@@ -6,7 +6,7 @@
  * add/remove verbs hand the parent a next scope, and that the panel reports who
  * holds a record without resolving anything itself.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
@@ -41,6 +41,34 @@ function roomWithThug() {
 }
 
 describe('IntelPanel — the site’s knowledge records, editable', () => {
+  it('stages explicit names and refuses blank or colliding identities without merging records', () => {
+    const onChange = vi.fn();
+    render(
+      <IntelPanel
+        explicitRename
+        scope={{
+          intel: [
+            { id: 'a', reveals: { fact: 'alpha' } },
+            { id: 'b', reveals: { fact: 'beta' } },
+          ],
+        }}
+        room={roomWithThug()}
+        onChange={onChange}
+      />
+    );
+    const input = screen.getByLabelText('Intel id for a');
+    const row = within(screen.getByTestId('intel-row-a'));
+    fireEvent.change(input, { target: { value: 'b' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(row.getByRole('button', { name: 'Apply intel name' }));
+    expect(row.getByRole('alert').textContent).toContain('already exists');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(row.getByRole('button', { name: 'Apply intel name' }));
+    expect(row.getByRole('alert').textContent).toContain('empty');
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(row.getByRole('button', { name: 'Cancel intel name' }));
+    expect((input as HTMLInputElement).value).toBe('a');
+  });
   it('never replaces a carried undeclared concealment with an empty target', () => {
     function StatefulIntel() {
       const [scope, setScope] = useState<SiteScope>({

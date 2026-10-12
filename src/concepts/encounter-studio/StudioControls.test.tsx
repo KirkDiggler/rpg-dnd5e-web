@@ -18,6 +18,7 @@ import type { KeyValueStorage, WorldPoint } from '../world-building/types';
 import { workspaceBounds } from '../world-building/workspaceGeometry';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createLayoutTransform, worldToClient } from './layoutGeometry';
+import { studioButton } from './studioTestNavigation';
 
 // Real Studio shell, owner, codecs and Layout gestures. Only WebGL and private
 // thumbnail loading are stopped; no server/browser/provider proof is implied.
@@ -125,10 +126,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const click = (name: string): void => {
-  fireEvent.click(screen.getByRole('button', { name }));
+  fireEvent.click(studioButton(name));
 };
 const change = (name: string, value: string): void => {
-  fireEvent.change(screen.getByLabelText(name), { target: { value } });
+  fireEvent.change(
+    name === 'Search wall appearances'
+      ? screen.getByRole('searchbox', { name })
+      : screen.getByLabelText(name),
+    { target: { value } }
+  );
 };
 const submit = (name: string): void => {
   fireEvent.submit(screen.getByRole('form', { name }));
@@ -242,6 +248,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(second.text).toBe('Kitchen');
     expect(second.id).not.toBe(first.id);
     change('Existing label', second.id);
+    click('Arrange');
     change('Rename label', 'Courtyard');
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Kitchen');
     submit('Arrange selected noun');
@@ -293,6 +300,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Courtyard');
     click('Label');
     change('Existing label', second.id);
+    click('Arrange');
     click('Delete label');
     expect(storage.document().draft.scene.mapLabels).toEqual([first]);
     click('Undo');
@@ -445,20 +453,22 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     const original = storage.document();
     fireEvent.keyDown(surface(), { key: 'Escape' });
     expect(
-      screen.getByRole('button', { name: 'Paint' }).getAttribute('aria-pressed')
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
     ).toBe('true');
     expect(storage.document()).toEqual(original);
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(screen.queryByLabelText('Label name')).toBeNull();
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
     click('Size');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     click('Cancel dimensions');
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(storage.document()).toEqual(original);
     click('Size');
     expect(
@@ -469,13 +479,13 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
       key: 'Escape',
     });
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     expect(storage.document()).toEqual(original);
     click('Size');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     submit('Workspace dimensions');
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
     const committed = storage.document();
     const writes = storage.writes();
     click('Size');
@@ -507,8 +517,10 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     click('Dismiss wall controls');
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Wall' }).getAttribute('aria-pressed')
-    ).toBe('true');
+      screen
+        .getByRole('button', { name: 'Options (N)' })
+        .getAttribute('aria-expanded')
+    ).toBe('false');
     drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });
     drawWall(storage, { x: 1, z: 1 }, { x: 3, z: 1 });
     const walls = storage.document().draft.room.walls!;
@@ -517,7 +529,9 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       true
     );
     fireEvent.keyDown(surface(), { key: 'Escape' });
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     expect(
       screen
         .getByRole('button', { name: 'Select' })
@@ -539,7 +553,9 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
         .getByRole('button', { name: 'Select' })
         .getAttribute('aria-pressed')
     ).toBe('true');
-    expect(screen.queryByLabelText('Search wall appearances')).toBeNull();
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search wall appearances' })
+    ).toBeNull();
     click('3D');
     click('Layout');
     click('Wall');
@@ -642,9 +658,9 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
       },
     });
     const committed = storage.document();
-    click('Arrange');
+    click('Options (N)');
     expect(storage.document()).toEqual(committed);
-    click('Arrange');
+    click('Options (N)');
     click('Select');
     click('Remove wall');
     expect(storage.document().draft.room.walls ?? []).toEqual([]);

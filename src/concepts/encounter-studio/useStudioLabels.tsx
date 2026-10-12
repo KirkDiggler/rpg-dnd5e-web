@@ -12,10 +12,12 @@ export function useStudioLabels(
   view: EncounterStudioView,
   active: boolean,
   onActivate: () => void,
-  onDismiss: () => void
+  onDismiss: () => void,
+  onlyKind?: 'note' | 'room'
 ): {
   active: boolean;
   activate(): void;
+  show(): void;
   deactivate(): void;
   editing: LayoutLabelEditing;
   controls: ReactNode;
@@ -83,6 +85,7 @@ export function useStudioLabels(
   };
   return {
     active,
+    show: (): void => setVisible(true),
     activate: (): void => {
       setVisible(true);
       setSelectedId(null);
@@ -147,25 +150,33 @@ export function useStudioLabels(
                 onActivate();
               }
               setSelectedId(null);
-              setPlacementKind(kind);
+              setPlacementKind(onlyKind ?? kind);
               setPlacementText(newText);
               setError(null);
             }}
           >
-            <label>
-              Label kind
-              <select
-                aria-label="Label kind"
-                value={kind}
-                onChange={(event) => {
-                  setKind(event.target.value as 'note' | 'room');
-                  setPlacementText(null);
-                }}
-              >
-                <option value="room">Room · linked boundary</option>
-                <option value="note">Note · text only</option>
-              </select>
-            </label>
+            {onlyKind ? (
+              <p className="es-help">
+                {onlyKind === 'room'
+                  ? 'New region · named room or outdoor area'
+                  : 'Map note · text only'}
+              </p>
+            ) : (
+              <label>
+                Label kind
+                <select
+                  aria-label="Label kind"
+                  value={kind}
+                  onChange={(event) => {
+                    setKind(event.target.value as 'note' | 'room');
+                    setPlacementText(null);
+                  }}
+                >
+                  <option value="room">Room · linked boundary</option>
+                  <option value="note">Note · text only</option>
+                </select>
+              </label>
+            )}
             <label>
               Label name
               <input

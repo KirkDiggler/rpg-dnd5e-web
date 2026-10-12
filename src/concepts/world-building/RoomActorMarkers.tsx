@@ -9,6 +9,7 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Suspense } from 'react';
+import { authoredActorName } from './creaturePalette';
 import type {
   RoomHexCell,
   RoomMonsterBinding,
@@ -112,17 +113,19 @@ function ActorChip({ tone, text }: { tone: string; text: string }) {
  * substitute monster. */
 function MonsterMarker({
   placement,
+  displayName,
   mainHandRef,
   selected,
   onSelectActor,
 }: {
   placement: RoomMonsterPlacement;
+  displayName?: string;
   mainHandRef: string | undefined;
   selected: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
   const center = roomActorCenter(placement.startingCell.location);
-  const label = paletteNameForRef(placement.ref);
+  const label = displayName ?? paletteNameForRef(placement.ref);
   const refId = placement.ref.startsWith('dnd5e:monsters:')
     ? placement.ref.slice('dnd5e:monsters:'.length)
     : placement.ref;
@@ -313,6 +316,7 @@ export function RoomActorPreview({
  * props, never gameplay legality. */
 export function RoomActorMarkers({
   monsters,
+  actorNames,
   monsterBindings,
   partyStart,
   selectedActorId,
@@ -321,6 +325,7 @@ export function RoomActorMarkers({
   onSelectActorTarget,
 }: {
   monsters: readonly RoomMonsterPlacement[];
+  actorNames?: Readonly<Record<string, string>>;
   monsterBindings?: Readonly<Record<string, RoomMonsterBinding>>;
   partyStart: RoomHexCell | null;
   selectedActorId: string | null;
@@ -339,6 +344,7 @@ export function RoomActorMarkers({
         <MonsterMarker
           key={placement.id}
           placement={placement}
+          displayName={authoredActorName(actorNames, placement.id)}
           mainHandRef={monsterBindings?.[placement.id]?.actions?.[0]}
           selected={
             selectedActorTarget !== undefined

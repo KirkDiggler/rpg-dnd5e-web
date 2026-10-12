@@ -8,6 +8,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { parseRef } from '@/utils/refs';
 import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
+import { setActorName } from './creaturePalette';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
   validatePredicate,
@@ -505,6 +506,28 @@ export function placeRoomMonster(
   };
 }
 
+/** Definition changes never rewrite identity, appearance, location or bindings. */
+export function setRoomMonsterDefinition(
+  draft: RoomDraft,
+  id: string,
+  ref: string
+): RoomDraft {
+  if (parseRef(ref)?.type !== 'monsters')
+    throw new Error('Choose a monster reference.');
+  const actor = draft.room.monsterDeclarations.find((entry) => entry.id === id);
+  if (!actor) throw new Error('Creature no longer exists.');
+  if (actor.ref === ref) return draft;
+  return {
+    ...draft,
+    room: {
+      ...draft.room,
+      monsterDeclarations: draft.room.monsterDeclarations.map((entry) =>
+        entry.id === id ? { ...entry, ref } : entry
+      ),
+    },
+  };
+}
+
 export function moveRoomMonster(
   draft: RoomDraft,
   id: string,
@@ -626,7 +649,7 @@ export function removeRoomMonster(draft: RoomDraft, id: string): RoomDraft {
     if (Object.keys(bindings).length === 0) delete room.monsterBindings;
     else room.monsterBindings = bindings;
   }
-  return { ...draft, room };
+  return { ...draft, room, scene: setActorName(draft.scene, id, null) };
 }
 
 export function setRoomPartyStart(
@@ -844,7 +867,6 @@ function validateDeclarationMap(
   return mapped;
 }
 
-const MONSTER_REF_RE = /^[-a-z0-9]+:monsters:[-a-z0-9]+$/;
 /** A faction id has the same grammar as the room key: lower-case, digits,
  * dashes. Membership itself is the engine's to confirm against the declared
  * factions — the room draft is decoded before the site root's `factions` are
@@ -903,7 +925,10 @@ function validateMonsters(value: unknown): RoomMonsterPlacement[] {
       throw new Error(
         `Invalid monster placement at index ${index}: stable nonempty unique ids are required.`
       );
-    if (typeof source.ref !== 'string' || !MONSTER_REF_RE.test(source.ref))
+    if (
+      typeof source.ref !== 'string' ||
+      parseRef(source.ref)?.type !== 'monsters'
+    )
       throw new Error(
         `Monster ${source.id ?? ''} ref must be a monster reference such as dnd5e:monsters:skeleton.`
       );
@@ -1164,10 +1189,11 @@ function validateDraft(value: unknown): RoomDraft {
     workspace.kind === 'centered-odd-r' &&
     input.scene?.version !== 2 &&
     input.scene?.version !== 3 &&
-    input.scene?.version !== 4
+    input.scene?.version !== 4 &&
+    input.scene?.version !== 5
   )
     throw new Error(
-      'Centered room workspace requires scene version 2, 3 or 4.'
+      'Centered room workspace requires scene version 2, 3, 4 or 5.'
     );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))
@@ -1439,11 +1465,9 @@ export function resizeRoomWorkspace(
       scene: {
         ...document.draft.scene,
         version:
-          document.draft.scene.version === 4
-            ? (4 as const)
-            : document.draft.scene.version === 3
-              ? (3 as const)
-              : (2 as const),
+          document.draft.scene.version >= 2
+            ? document.draft.scene.version
+            : (2 as const),
       },
     },
     scope: document.scope,

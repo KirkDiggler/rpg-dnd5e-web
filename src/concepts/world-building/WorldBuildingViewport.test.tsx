@@ -1435,7 +1435,7 @@ describe('room actor markers and snapped setup gestures', () => {
   });
 
   it('shows the snapped hover preview only for the armed actor tools', async () => {
-    const build = (tool: 'monster' | 'paint') => (
+    const build = (tool: 'monster' | 'paint' | 'move') => (
       <WorldSceneContents
         scene={{ version: 1, id: 'scene', name: 'Room', items: [], groups: [] }}
         previewScene={null}
@@ -1455,7 +1455,20 @@ describe('room actor markers and snapped setup gestures', () => {
           walkableHexes: [] as RoomHexCell[],
           propDeclarations: {},
           onWalkableGesture: vi.fn(),
-          monsters: [],
+          monsters:
+            tool === 'move'
+              ? [
+                  {
+                    id: 'guard-1',
+                    ref: 'dnd5e:monsters:human',
+                    startingCell: { location: { q: 0, r: 0 } },
+                  },
+                ]
+              : [],
+          selectedActorTarget:
+            tool === 'move'
+              ? { kind: 'actor' as const, id: 'guard-1' }
+              : undefined,
           armedMonsterRef: 'dnd5e:monsters:skeleton',
         }}
         showCompositionBounds={false}
@@ -1482,7 +1495,18 @@ describe('room actor markers and snapped setup gestures', () => {
     expect(previewObject.position.y).toBe(DUNGEON_SURFACE_Y);
     expect(previewObject.position.z).toBe(expectedCenter.z);
 
-    // Any other room tool has no actor preview at all: the unmount follows
+    await renderer.update(build('move'));
+    await renderer.fireEvent(
+      renderer.scene.findByProps({ name: 'world-building-finite-ground' }),
+      'pointerMove',
+      groundEvent(worldPoint(-2, 0))
+    );
+    expect(
+      renderer.scene.findByProps({ name: 'room-actor-preview' }).instance
+        .userData
+    ).toEqual({ hoverCellQ: -2, hoverCellR: 0 });
+
+    // Non-actor room tools have no actor preview: the unmount follows
     // a real re-render with the brush tool armed.
     await renderer.update(build('paint'));
     expect(

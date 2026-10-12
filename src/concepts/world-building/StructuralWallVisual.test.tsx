@@ -46,6 +46,7 @@ for (const name of [
 }
 
 vi.mock('@react-three/drei', () => ({
+  Html: () => null,
   useGLTF: () => {
     if (modelState.mode === 'pending') throw modelState.pending;
     return { scene: loadedScene };
