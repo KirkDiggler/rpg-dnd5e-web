@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
@@ -83,7 +84,9 @@ const ENGINE_WORD_LEGALITY: Readonly<Record<string, readonly string[]>> = {
   // verdict rows under `success`/`failure` with the same two groups.
   success: ['fact', 'flee'],
   failure: ['fact', 'flee'],
-  time: ['hold', 'attack', 'toward', 'away'],
+  // rpg-project#569 R6: `fact` joined `time` — an alarm is a loud fact,
+  // audience the hearers (`grammar.go` `wordLegality`, B2).
+  time: ['fact', 'hold', 'attack', 'toward', 'away'],
 };
 /** The keys of the transcription that are TABLE triggers; the rest are an
  * option's verdicts. */
@@ -277,8 +280,9 @@ describe('a word is legal on some triggers and not others', () => {
         );
       }
     }
-    // 2 social words x 1 time trigger + 4 time words x 2 verdicts.
-    expect(checked).toBe(10);
+    // 1 social-only word (`flee`) x 1 time trigger + 4 time words x 2
+    // verdicts — `fact` is legal on both since rpg-project#569 R6.
+    expect(checked).toBe(9);
   });
 
   it('refuses a scalar or sequence body on a word that carries nothing', () => {
@@ -326,8 +330,10 @@ describe('the `when` shape', () => {
         '{ enemy: none, fled: { within: 1 } }'
       )
     );
+    // R8: the list is the `and`, so the sentence names the fix
+    // (`When.Validate`'s own words).
     expect(() => parseDungeon(text)).toThrow(
-      /a `when` is one condition, and this names 2/
+      /a `when` entry is one condition, and this names 2: give each its own entry in a list, `when: \[\{ … \}, \{ … \}\]`, and every entry must hold/
     );
   });
 
@@ -345,7 +351,7 @@ describe('the `when` shape', () => {
     expect(() =>
       parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('fled:', 'fleeing:')))
     ).toThrow(
-      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`\)/
+      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`, `heard`, `fact`, `not`\)/
     );
   });
 
@@ -487,7 +493,7 @@ describe('selectors', () => {
         mutated(TIME_FLED, TIME_FLED.replace('away: actor', 'away: nobody'))
       )
     ).toThrow(
-      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, or \{ at: \[col, row\] \}/
+      /"nobody" is not a selector this build resolves: they are enemy, attacker, actor, sound, or \{ at: \[col, row\] \}, or \{ path: \[\[col, row\], …\] \}/
     );
   });
 });
@@ -544,5 +550,124 @@ describe('temper', () => {
     expect(() => parseDungeon(mutated(GOBLIN_MIX, 'temper: 5'))).toThrow(
       /"5" is not a temperament this build ships: they are soldier, coward, aggressive/
     );
+  });
+});
+
+// THE HEARING ROWS (rpg-project#569 R6–R8, R10) through the v2 reader and
+// writer: a route, `toward`/`away: sound`, `fact` on `time`, `heard`, and a
+// list `when` with a `not` — each read and re-emitted in its own spelling.
+describe('the hearing rows', () => {
+  const HEARING_ROWS = [
+    '- { when: { enemy: none },             toward: { path: [[3, 3], [5, 3], [5, 5]] } }',
+    '        - { when: { heard: { kind: clang, within: 2 } }, toward: sound }',
+    '        - { when: { enemy: seen }, say: "To arms!", fact: alarm-raised }',
+    '        - { when: [{ fact: alarm-raised }, { not: { enemy: seen } }], toward: { at: [3, 3] } }',
+    '        - { when: { heard: { kind: boom, within: 3 } }, away: sound }',
+  ].join('\n');
+
+  it('reads every new row and re-emits it in the same spelling', () => {
+    const doc = parseDungeon(mutated(TIME_NONE, HEARING_ROWS));
+    const time = doc.place
+      .flatMap((p) => p.on ?? [])
+      .find((t) => t.entries.some((e) => e.word?.selector?.path))!.entries;
+    const start = time.findIndex((e) => e.word?.selector?.path);
+    const [route, heard, alarm, both, flee] = time.slice(start);
+    expect(route.word?.selector?.path).toHaveLength(3);
+    expect(heard.when).toEqual({ kind: 'heard', sound: 'clang', within: 2 });
+    expect(heard.word).toEqual({ word: 'toward', selector: { word: 'sound' } });
+    expect(alarm.word).toEqual({ word: 'fact', value: 'alarm-raised' });
+    expect(both.when).toEqual([
+      { kind: 'fact', fact: 'alarm-raised' },
+      { kind: 'not', inner: { kind: 'enemy', band: 'seen' } },
+    ]);
+    expect(flee.word).toEqual({ word: 'away', selector: { word: 'sound' } });
+
+    const once = emitDungeon(doc);
+    // Cells are written in the emitter's own `[col,row]` spelling.
+    expect(once).toContain('toward: { path: [[3,3], [5,3], [5,5]] }');
+    expect(once).toContain(
+      'when: { heard: { kind: clang, within: 2 } }, toward: sound'
+    );
+    expect(once).toContain(
+      'when: [{ fact: alarm-raised }, { not: { enemy: seen } }]'
+    );
+    expect(once).toContain('fact: alarm-raised');
+    expect(emitDungeon(parseDungeon(once))).toBe(once);
+  });
+
+  it('refuses what the engine refuses, in its words, at its paths (rpg-toolkit#2044 at 6081ad79)', () => {
+    const refused = (row: string) => () =>
+      parseDungeon(mutated(TIME_NONE, `- ${row}`));
+    // mind/behavior's refusals are reported at the ROW, `…time[i]`.
+    const row = 'on\\.time\\[\\d+\\]: ';
+    const at = (sentence: string) => new RegExp(row + sentence);
+    expect(refused('{ attack: sound }')).toThrow(
+      at(
+        '`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from'
+      )
+    );
+    expect(refused('{ away: { path: [[1, 1]] } }')).toThrow(
+      at(
+        '`away` cannot take a `path`: a route is walked, and only `toward` walks one'
+      )
+    );
+    expect(refused('{ toward: { at: [1, 1], path: [[1, 1]] } }')).toThrow(
+      at(
+        '`toward` names a cell \\(`at`\\) and a route \\(`path`\\); a target is exactly one of somebody, a cell or a route'
+      )
+    );
+    expect(refused('{ toward: { path: [] } }')).toThrow(
+      at('`toward` names no target; give it one of somebody, a cell')
+    );
+    expect(refused('{ toward: {} }')).toThrow(at('`toward` names no target'));
+    expect(
+      refused(
+        '{ when: { not: { heard: { kind: clang, within: 2 } } }, toward: sound }'
+      )
+    ).toThrow(
+      at(
+        '`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for'
+      )
+    );
+    expect(refused('{ when: { heard: { within: 2 } }, hold: {} }')).toThrow(
+      at('`heard` needs a `kind`, the sound it listens for$')
+    );
+    expect(refused('{ when: { heard: { kind: clang } }, hold: {} }')).toThrow(
+      at('`heard` within 0: a span is counted from 1')
+    );
+    expect(
+      refused(
+        '{ when: { not: { heard: { kind: clang, within: 0 } } }, hold: {} }'
+      )
+    ).toThrow(at('inside `not`: `heard` within 0: a span is counted from 1'));
+    // The decoder's own, in its words.
+    expect(refused('{ patrol: {} }')).toThrow(
+      /`patrol` is not a word: a patrol is a route, write toward: \{ path: \[\[col, row\], …\] \}/
+    );
+    expect(
+      refused('{ when: { heard: { kind: growl, within: 1 } }, hold: {} }')
+    ).toThrow(
+      /`heard: \{ kind: growl \}` is not a sound this build makes: they are boom, crash, clang, voice/
+    );
+    expect(refused('{ when: { fact: "" }, hold: {} }')).toThrow(
+      /`fact` in a `when` names the fact the creature must hold, and this names none/
+    );
+    expect(refused('{ when: [], hold: {} }')).toThrow(
+      /a `when` with no condition in it is on the table always — omit it/
+    );
+    expect(refused('{ when: { not: [{ enemy: seen }] }, hold: {} }')).toThrow(
+      /a `when` is one of \{ enemy: reach \| seen \| remembered \| none \}/
+    );
+  });
+
+  it('offers the four sealed sound kinds and nothing else', () => {
+    // The rulebook's vocabulary (R4), transcribed independently.
+    expect(ANSWER_WHEN.heardKey).toBe('heard');
+    expect([...ANSWER_SOUND_KINDS]).toEqual([
+      'boom',
+      'crash',
+      'clang',
+      'voice',
+    ]);
   });
 });

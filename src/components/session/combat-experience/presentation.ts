@@ -162,6 +162,9 @@ export interface CombatStreamFact {
   readonly type: 'stream-event';
   readonly event: Event;
   readonly metadata: SessionEventDeliveryMetadata;
+  /** Where this viewer stood as the beat arrived; kept on a `heard` story
+   * record only (`CombatStoryFact.listenerAt`). */
+  readonly listenerAt?: { readonly x: number; readonly y: number } | null;
 }
 
 export interface LocalDiceReleaseFact {
@@ -1289,6 +1292,11 @@ const EXPECTED_OTHER_KIND = {
   // the line it spoke, the fact it taught and whether it bolted all ride that
   // one body.
   spoke: EventKind.SPOKE,
+  // A SOUND REACHED THIS VIEWER (rpg-project#569 H5), here for
+  // `concentrationEnded`'s reason: a body with no row is discarded as a typed
+  // kind/body mismatch, and this beat is the listener's only account of the
+  // noise — recipient-scoped, nobody else has it.
+  heard: EventKind.HEARD,
   // RETIRED, NOT NARRATED (rpg-project#569). Speak replaced both; the bodies
   // stay on the wire, deprecated, so they are listed to be ACCEPTED and then
   // silenced in SILENT_OTHER_BODIES rather than accused as a mismatch.
@@ -1344,6 +1352,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.EQUIPMENT_CHANGED,
   EventKind.RESTED,
   EventKind.SPOKE,
+  EventKind.HEARD,
   EventKind.INTIMIDATED,
   EventKind.PERSUADED,
   EventKind.ANSWERED,
@@ -1641,6 +1650,21 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // target and option alone would hash two tries of the same line on the
     // same goblin the same, and the second would be recorded as a conflicting
     // duplicate of the first; the numbers are what differ.
+    // THE WHOLE REPORT IS THE IDENTITY (rpg-project#569). Two sounds of one
+    // kind in one round differ by where they were made and how far they came;
+    // there is no maker to tell them apart by, by design.
+    case 'heard': {
+      const heard = event.body.value;
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        listener: heard.listener,
+        soundKind: heard.kind,
+        x: heard.position?.x,
+        y: heard.position?.y,
+        hops: heard.hops,
+      });
+    }
     case 'spoke': {
       const spoke = event.body.value;
       return Object.freeze({
@@ -1932,12 +1956,20 @@ function acceptOtherEvent(
   }
 
   const event = snapshotEvent(fact.event);
+  // THE BEARING IS FIXED WHEN THE SOUND IS HEARD: the cell this viewer stood
+  // on as the beat arrived is kept with it, so walking afterwards never
+  // re-aims an old line (rpg-project#569).
+  const listenerAt =
+    event.body.case === 'heard' && fact.listenerAt
+      ? Object.freeze({ x: fact.listenerAt.x, y: fact.listenerAt.y })
+      : undefined;
   const record: OtherStoryRecord = Object.freeze({
     key,
     fact: Object.freeze({
       event,
       source: fact.metadata.source,
       visible: true,
+      ...(listenerAt ? { listenerAt } : {}),
     }),
     relevantFacts: factsIdentity,
     conflicted: false,

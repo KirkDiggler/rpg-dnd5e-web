@@ -18,6 +18,7 @@ import {
   EventSchema,
   FightEndedSchema,
   HealingAppliedSchema,
+  HeardSchema,
   IntimidatedSchema,
   MoveImposedSchema,
   RollCalculationSchema,
@@ -34,6 +35,7 @@ import {
   DamageType,
   DissolveKind,
   PlacementKind,
+  PositionSchema,
   ReactionRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
@@ -1359,5 +1361,114 @@ describe('the answer surviving the reducer (rpg-project#458)', () => {
     expect(story).toHaveLength(1);
     expect(story[0]?.headline).toBe('Skeleton Guard: “Boss! BOSS!”');
     expect(story[0]?.detail).toContain('bolts');
+  });
+});
+
+// A SOUND REACHED THIS PLAYER (rpg-project#569 H5). Kind, which way, how many
+// rooms — and never who made it (R4): the beat has no maker field and the
+// entry must not invent one.
+function heardEvent(
+  seq: bigint,
+  fields: { kind?: string; x?: number; y?: number; hops?: number } = {}
+) {
+  return create(EventSchema, {
+    session: 'front-room',
+    seq,
+    at: 30n,
+    recipient: 'aldric',
+    kind: EventKind.HEARD,
+    body: {
+      case: 'heard',
+      value: create(HeardSchema, {
+        listener: 'aldric',
+        kind: fields.kind ?? 'clang',
+        position: create(PositionSchema, {
+          x: fields.x ?? 1,
+          y: fields.y ?? -2,
+        }),
+        hops: fields.hops ?? 2,
+      }),
+    },
+  });
+}
+
+describe('the Story log on a heard sound (rpg-project#569)', () => {
+  it('says the kind, the bearing from where the listener stood, and the rooms', () => {
+    // (1, -2) is due north of (0, 0) on the pointy-top board.
+    const [entry] = buildCombatStory(
+      [{ ...visible(heardEvent(40n)), listenerAt: { x: 0, y: 0 } }],
+      context
+    );
+    expect(entry.eyebrow).toBe('Sound');
+    expect(entry.headline).toBe('You hear metal clanging, to the north');
+    expect(entry.detail).toBe('2 rooms away');
+    expect(entry.tone).toBe('neutral');
+  });
+
+  it('a sound on the listener’s own cell, in the same room, is right here', () => {
+    const [entry] = buildCombatStory(
+      [
+        {
+          ...visible(heardEvent(41n, { kind: 'voice', x: 3, y: 3, hops: 0 })),
+          listenerAt: { x: 3, y: 3 },
+        },
+      ],
+      context
+    );
+    expect(entry.headline).toBe('You hear a voice, right here');
+    expect(entry.detail).toBe('In this room');
+  });
+
+  it('never names a maker — only the listener appears, and only as “You”', () => {
+    const [entry] = buildCombatStory(
+      [{ ...visible(heardEvent(42n)), listenerAt: { x: 0, y: 0 } }],
+      context
+    );
+    const text = `${entry.headline} ${entry.detail}`;
+    expect(text).not.toContain('Skeleton Guard');
+    expect(text).not.toContain('Aldric');
+  });
+
+  it('an unknown kind is shown as its own word; no position known drops the bearing', () => {
+    const [entry] = buildCombatStory(
+      [visible(heardEvent(43n, { kind: 'growl', hops: 1 }))],
+      context
+    );
+    expect(entry.headline).toBe('You hear growl');
+    expect(entry.detail).toBe('1 room away');
+  });
+
+  it('keeps the bearing it was heard at after the viewer has moved', () => {
+    const configured = reduceCombatPresentation(emptyPresentation(), {
+      type: 'configure',
+      session: 'front-room',
+      viewerMember: 'aldric',
+      memberNames: { aldric: 'Aldric' },
+      rollerRoles: { aldric: 'player' },
+    });
+    // Heard at (0, 0): the crash at (2, 0) is due east.
+    const heard = reduceCombatPresentation(configured, {
+      type: 'stream-event',
+      event: heardEvent(44n, { kind: 'crash', x: 2, y: 0, hops: 1 }),
+      metadata: { source: 'live' },
+      listenerAt: { x: 0, y: 0 },
+    });
+    // THE VIEWER THEN STANDS ELSEWHERE: the next beat arrives with the viewer
+    // at (4, 0), east of the first sound. Read from the viewer's current cell,
+    // the first line would now say "west"; it must still say "east".
+    const moved = reduceCombatPresentation(heard, {
+      type: 'stream-event',
+      event: heardEvent(45n, { kind: 'voice', x: 5, y: -2, hops: 0 }),
+      metadata: { source: 'live' },
+      listenerAt: { x: 4, y: 0 },
+    });
+    const story = selectVisibleStory(moved);
+    expect(story).toHaveLength(2);
+    expect(story[0]?.headline).toBe('You hear a crash, to the east');
+    expect(story[0]?.detail).toBe('1 room away');
+    // The second line is measured from where the viewer stood for IT.
+    expect(story[1]?.headline).toBe('You hear a voice, to the north');
+    // Accepted as story, not diagnosed as a kind/body mismatch.
+    expect(moved.diagnostics).toEqual([]);
   });
 });

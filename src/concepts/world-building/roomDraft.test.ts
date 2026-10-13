@@ -883,7 +883,7 @@ describe('room draft v3 migration and structural exactness', () => {
         on: {
           time: [
             { when: { enemy: 'reach' }, attack: 'enemy' },
-            { toward: { at: [3, 4] } },
+            { toward: 'attacker' },
           ],
         },
         temper: 'coward',
@@ -906,6 +906,108 @@ describe('room draft v3 migration and structural exactness', () => {
     // One word, and it is the placement's own — it beats the faction's mix.
     expect(roundTrip.room.monsterBindings?.['goblin-1'].temper).toBe('coward');
     expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
+  });
+
+  it('round trips the hearing rows: a two-entry `when` with a `not`, `heard`, `fact` on time and `toward: sound` (rpg-project#569)', () => {
+    const base = createRoomDraft(createEmptyScene('scene-hear'), 'room-hear');
+    const withGuard = placeRoomMonster(base, {
+      id: 'gate-1',
+      ref: 'dnd5e:monsters:guard',
+      startingCell: { location: { q: 1, r: 0 } },
+    });
+    withGuard.room.monsterBindings = {
+      'gate-1': {
+        on: {
+          time: [
+            { when: { enemy: 'none' }, hold: {} },
+            { when: { heard: { kind: 'clang', within: 2 } }, toward: 'sound' },
+            {
+              when: { enemy: 'seen' },
+              say: 'To arms!',
+              fact: 'alarm-raised',
+            },
+            {
+              when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
+              toward: 'attacker',
+            },
+            { when: { enemy: 'reach' }, attack: 'enemy' },
+          ],
+        },
+      },
+    };
+
+    const json = stringifyRoomDraft(withGuard);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(withGuard);
+    const time = roundTrip.room.monsterBindings?.['gate-1'].on?.time ?? [];
+    // THE SPELLING SURVIVES: the list is still a list, and every single
+    // mapping is still a mapping.
+    expect(Array.isArray(time[3]?.when)).toBe(true);
+    expect(Array.isArray(time[0]?.when)).toBe(false);
+    expect(time[1]?.toward).toBe('sound');
+    expect(time[2]?.fact).toBe('alarm-raised');
+  });
+
+  it('refuses the hearing rows the engine refuses, in its words (rpg-project#569)', () => {
+    const base = createRoomDraft(createEmptyScene('scene-hear'), 'room-hear');
+    const withGuard = placeRoomMonster(base, {
+      id: 'gate-1',
+      ref: 'dnd5e:monsters:guard',
+      startingCell: { location: { q: 1, r: 0 } },
+    });
+    const refused = (time: unknown[]) => {
+      const draft = structuredClone(withGuard);
+      draft.room.monsterBindings = {
+        'gate-1': { on: { time } as never },
+      };
+      return () => parseRoomDraftJson(stringifyRoomDraft(draft));
+    };
+    // A selector-shape fault is the ROW's, reported at `…time[i]` as the
+    // engine reports it (rpg-toolkit#2044).
+    expect(refused([{ attack: 'sound' }])).toThrow(
+      /on\.time\[0\]: `attack` cannot take `sound`: a sound cannot be struck/
+    );
+    // THE SINGLE ROOM NAMES NO ROUTE (rpg-toolkit#2044): its cells have no
+    // frame, exactly as `at`'s have none.
+    expect(refused([{ toward: { path: [[1, 1]] } }])).toThrow(
+      /on\.time\[0\]\.toward\.path: path is not a route a single room can name yet: its cells are axial/
+    );
+    // NOR A CELL, for the same reason, whatever word it sits on.
+    expect(refused([{ toward: { at: [3, 4] } }])).toThrow(
+      /on\.time\[0\]\.toward\.at: at is not a place a single room can name yet: its cells are axial and the selector's cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer/
+    );
+    expect(
+      refused([
+        {
+          when: { not: { heard: { kind: 'clang', within: 2 } } },
+          toward: 'sound',
+        },
+      ])
+    ).toThrow(/`sound` needs a `heard` condition on the row/);
+    expect(refused([{ patrol: {} }])).toThrow(
+      /`patrol` is not a word: a patrol is a route/
+    );
+    // `heard` faults are mind/behavior's, reported at the ROW.
+    expect(refused([{ when: { heard: { within: 2 } }, hold: {} }])).toThrow(
+      /on\.time\[0\]: `heard` needs a `kind`, the sound it listens for$/
+    );
+    expect(refused([{ when: { heard: { kind: 'clang' } }, hold: {} }])).toThrow(
+      /on\.time\[0\]: `heard` within 0: a span is counted from 1/
+    );
+    expect(
+      refused([
+        { when: { not: { heard: { kind: 'clang', within: 0 } } }, hold: {} },
+      ])
+    ).toThrow(
+      /on\.time\[0\]: inside `not`: `heard` within 0: a span is counted from 1/
+    );
+    // A mapping naming no target, at the row.
+    expect(refused([{ toward: {} }])).toThrow(
+      /on\.time\[0\]: `toward` names no target/
+    );
+    expect(refused([{ when: { enemy: 'seen', fact: 'x' }, hold: {} }])).toThrow(
+      /a `when` entry is one condition, and this names 2/
+    );
   });
 
   it("a binding's temper is ONE word — the faction's mix is refused there", () => {

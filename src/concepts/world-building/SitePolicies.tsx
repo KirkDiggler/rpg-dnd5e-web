@@ -25,8 +25,8 @@
  * gives it. Nothing restates a word.
  */
 import {
-  ANSWER_AT_SELECTOR,
   ANSWER_SELECTOR_WORDS,
+  ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
   ANSWER_TRIGGERS,
   ANSWER_WHEN,
@@ -34,22 +34,29 @@ import {
   answerWhenLegalOn,
   answerWord,
   answerWordsForTrigger,
+  selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
   MONSTERS,
   PARTY,
   PREDICATE_FORMS,
-  STANCES,
   predicateForm,
+  STANCES,
   type PredicateDoc,
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
 import {
+  isNotCondition,
   OPTION_VERDICTS,
+  whenConditions,
+  whenFromConditions,
+  whenListensShape,
+  whenNamesDeedShape,
   type AnswerEntryShape,
   type AnswerTableShape,
+  type AnswerWhenCondition,
   type AnswerWhenShape,
   type OptionShape,
   type OptionVerdict,
@@ -123,18 +130,23 @@ function entryWordText(entry: AnswerEntryShape, word: string): string {
   if (shape === 'string') return ` ${String(value)}`;
   if (shape === 'selector') {
     if (typeof value === 'string') return ` ${value}`;
-    if (value && typeof value === 'object' && 'at' in value) {
-      const [col, row] = (value as { at: [number, number] }).at;
-      return ` at [${col}, ${row}]`;
-    }
   }
   return '';
 }
 
-/** A `when:` as written — one exclusive enemy band, or one deed with its span.
- * The shape carries exactly one key, so the key IS the condition. */
+/** A `when:` as written — its conditions joined by "and", since every one
+ * must hold (rpg-project#569 R8). */
 function whenText(when: AnswerWhenShape): string {
+  return whenConditions(when).map(whenConditionText).join(' and ');
+}
+
+/** One condition — one key, so the key IS the condition. */
+function whenConditionText(when: AnswerWhenCondition): string {
   if ('enemy' in when) return `enemy ${when.enemy}`;
+  if ('heard' in when)
+    return `heard ${when.heard.kind} within ${when.heard.within}`;
+  if ('fact' in when) return `fact ${when.fact}`;
+  if (isNotCondition(when)) return `not ${whenConditionText(when.not)}`;
   const [deed, span] = Object.entries(when)[0] as [
     string,
     { within: number; on?: string; as?: string },
@@ -219,16 +231,16 @@ const isMapping = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 // ---------------------------------------------------------------------------
-// The entry's `when:` — the condition that puts a row ON the table at all
-// (rpg-dnd5e-web#1192, rpg-project#465 §2, rpg-toolkit#1871)
+// The entry's `when:` — the conditions that put a row ON the table at all
+// (rpg-dnd5e-web#1192, rpg-project#465 §2, rpg-toolkit#1871; the list form,
+// `not`, `heard` and `fact` are rpg-project#569 R6/R8)
 // ---------------------------------------------------------------------------
 
-/** One `when:` as a form value: the enemy band, or the deed, or neither. The
- * two are EXCLUSIVE — the engine refuses a `when` naming both or neither
- * (`validateWhen`), so this models the choice as one picker rather than two
- * checkboxes that could express an illegal state. */
-type WhenForm =
-  | { kind: 'any' }
+/** One condition's BASE as a form value — what it reads, before any `not`.
+ * The four are EXCLUSIVE within a condition (the engine refuses a `when`
+ * entry naming two), so this is one picker rather than checkboxes that could
+ * express an illegal state. Two conditions are two entries of the list. */
+type WhenBaseForm =
   | { kind: 'enemy'; band: string }
   | {
       kind: 'deed';
@@ -238,14 +250,31 @@ type WhenForm =
        * itself. Absent is the third answer and has no spelling (see
        * `AnswerWhenShape`). */
       scope?: { key: string; value: string };
-    };
+    }
+  | { kind: 'heard'; sound: string; within: number }
+  | { kind: 'fact'; fact: string }
+  /** A `not` inside a `not`: legal to the engine, carried intact, and not
+   * something the one-level toggle can say — shown, never rewritten. */
+  | { kind: 'nested'; condition: AnswerWhenCondition };
 
-/** Read a written `when` into the form. Absent is `any` — the authored state
- * "this row is always eligible". */
-function whenFormOf(when: AnswerWhenShape | undefined): WhenForm {
-  if (when === undefined) return { kind: 'any' };
-  if ('enemy' in when) return { kind: 'enemy', band: when.enemy };
-  const [deed, span] = Object.entries(when)[0] as [
+/** One condition as the form shows it: its base, and whether a `not` wraps
+ * it. */
+interface WhenConditionForm {
+  negated: boolean;
+  base: WhenBaseForm;
+}
+
+function baseFormOf(condition: AnswerWhenCondition): WhenBaseForm {
+  if ('enemy' in condition) return { kind: 'enemy', band: condition.enemy };
+  if ('heard' in condition)
+    return {
+      kind: 'heard',
+      sound: condition.heard.kind,
+      within: condition.heard.within,
+    };
+  if ('fact' in condition) return { kind: 'fact', fact: condition.fact };
+  if ('not' in condition) return { kind: 'nested', condition };
+  const [deed, span] = Object.entries(condition)[0] as [
     string,
     { within: number; on?: 'ally'; as?: 'actor' },
   ];
@@ -261,6 +290,12 @@ function whenFormOf(when: AnswerWhenShape | undefined): WhenForm {
   return { kind: 'deed', deed, within: span.within, scope };
 }
 
+function conditionFormOf(condition: AnswerWhenCondition): WhenConditionForm {
+  if (isNotCondition(condition))
+    return { negated: true, base: baseFormOf(condition.not) };
+  return { negated: false, base: baseFormOf(condition) };
+}
+
 /** Write a deed body back: the span, plus the scope ONLY when one was chosen.
  * An omitted scope is "the creature itself", so the form must be able to say
  * that by writing no key at all rather than by writing a third word. */
@@ -274,12 +309,34 @@ function deedBody(
     : { within, as: scope.value as 'actor' };
 }
 
-/** Whether a written `when` names a DEED — the condition under which the
- * `actor` selector is legal ("`actor` names the actor of a deed and this entry
- * names none", `answer.go`). Used to keep the selector list honest when a
- * condition is cleared. */
+function conditionOfBase(base: WhenBaseForm): AnswerWhenCondition {
+  switch (base.kind) {
+    case 'enemy':
+      return { enemy: base.band };
+    case 'heard':
+      return { heard: { kind: base.sound, within: base.within } };
+    case 'fact':
+      return { fact: base.fact };
+    case 'nested':
+      return base.condition;
+    case 'deed':
+      return {
+        [base.deed]: deedBody(base.within, base.scope),
+      } as AnswerWhenCondition;
+  }
+}
+
+function conditionOf(form: WhenConditionForm): AnswerWhenCondition {
+  const base = conditionOfBase(form.base);
+  return form.negated ? { not: base } : base;
+}
+
+/** Whether a written `when` names a DEED positively — the condition under
+ * which the `actor` selector is legal ("`actor` names the actor of a deed and
+ * this entry names none", `answer.go`). Used to keep the selector list honest
+ * when a condition is cleared. */
 function whenNamesDeed(when: AnswerWhenShape | undefined): boolean {
-  return when !== undefined && !('enemy' in when);
+  return whenNamesDeedShape(when);
 }
 
 /** The `when` picker's value for the reading with NO scope word: "the creature
@@ -288,106 +345,152 @@ function whenNamesDeed(when: AnswerWhenShape | undefined): boolean {
  * engine does not read. */
 const SELF_SCOPE = '__self__';
 
-/** The `when:` control. LEGAL ON `time` ALONE — a social key IS already the
- * condition (`intimidated` means the threat landed), so the caller does not
- * render this at all on a social trigger rather than rendering a disabled one.
- *
- * THE FIRST CONTROL IN THE ROW, because it gates whether the row can fire
- * before it says what the row does. `(any time)` is the default and the honest
- * empty state: the builder does not invent a band the author did not choose.
- * Band and deed words come from `ANSWER_WHEN`, so a band or deed the engine
- * adds appears here with no change. */
-function AnswerWhenEditor({
+/** What the base picker shows for one condition: `any` (row one, and only
+ * when the list is empty), `enemy:<band>`, `deed:<word>`, `heard`, `fact`. */
+function pickerValue(base: WhenBaseForm | undefined): string {
+  if (base === undefined) return 'any';
+  if (base.kind === 'enemy') return `enemy:${base.band}`;
+  if (base.kind === 'deed') return `deed:${base.deed}`;
+  return base.kind;
+}
+
+/** A NEW base for a picker value, keeping what the author already typed where
+ * the two share it: a span carries between a deed and a sound (both are
+ * counted from 1), a scope carries between deeds. */
+function baseForPicker(
+  next: string,
+  previous: WhenBaseForm | undefined
+): WhenBaseForm {
+  const span =
+    previous?.kind === 'deed' || previous?.kind === 'heard'
+      ? previous.within
+      : ANSWER_WHEN.minimumWithin;
+  if (next.startsWith('enemy:'))
+    return { kind: 'enemy', band: next.slice('enemy:'.length) };
+  if (next === 'heard')
+    return {
+      kind: 'heard',
+      sound:
+        previous?.kind === 'heard'
+          ? previous.sound
+          : (ANSWER_SOUND_KINDS[0] ?? 'clang'),
+      within: span,
+    };
+  if (next === 'fact')
+    return {
+      kind: 'fact',
+      fact: previous?.kind === 'fact' ? previous.fact : '',
+    };
+  return {
+    kind: 'deed',
+    deed: next.slice('deed:'.length),
+    within: span,
+    scope: previous?.kind === 'deed' ? previous.scope : undefined,
+  };
+}
+
+/** One condition of the list. Row one's controls keep the names a single
+ * `when` always had (`When for time entry`, `Within for time entry`), so a
+ * table with one condition reads exactly as it did; later rows are numbered. */
+function WhenConditionRow({
   trigger,
-  when,
+  index,
+  form,
+  offerAny,
+  canRemove,
   onCommit,
+  onRemove,
 }: {
   trigger: string;
-  when: AnswerWhenShape | undefined;
-  onCommit: (when: AnswerWhenShape | undefined) => void;
+  index: number;
+  /** Undefined on the empty list's one row: "(any time)". */
+  form: WhenConditionForm | undefined;
+  /** Offer "(any time)" in the picker — on the ONLY row, where choosing it
+   * clears the condition exactly as the single picker always did. */
+  offerAny: boolean;
+  canRemove: boolean;
+  onCommit: (form: WhenConditionForm | undefined) => void;
+  onRemove: () => void;
 }) {
-  const form = whenFormOf(when);
-  /** The picker's own value: `any`, `enemy:<band>`, or `deed:<word>`. One
-   * select, so the exclusive choice is structural rather than validated. */
-  const picker =
-    form.kind === 'any'
-      ? 'any'
-      : form.kind === 'enemy'
-        ? `enemy:${form.band}`
-        : `deed:${form.deed}`;
-
+  const n = index === 0 ? '' : ` ${index + 1}`;
+  const base = form?.base;
+  const picker = pickerValue(base);
+  const negated = form?.negated ?? false;
+  const commitBase = (next: WhenBaseForm) => onCommit({ negated, base: next });
   return (
-    <div
-      className="wb-policy-when"
-      role="group"
-      aria-label={`Condition for ${trigger} entry`}
-    >
-      <span>When</span>
-      <select
-        aria-label={`When for ${trigger} entry`}
-        value={picker}
-        onChange={(event) => {
-          const next = event.target.value;
-          if (next === 'any') onCommit(undefined);
-          else if (next.startsWith('enemy:'))
-            onCommit({ enemy: next.slice('enemy:'.length) });
-          else {
-            const deed = next.slice('deed:'.length);
-            // A NEW DEED KEEPS THE AUTHOR'S SPAN IF ONE WAS TYPED, else starts
-            // at the engine's floor (a span is counted from 1). The scope is
-            // kept too: switching which deed fired does not change whose deed
-            // the author is asking about.
-            onCommit({
-              [deed]: deedBody(
-                form.kind === 'deed' ? form.within : ANSWER_WHEN.minimumWithin,
-                form.kind === 'deed' ? form.scope : undefined
-              ),
-            } as AnswerWhenShape);
-          }
-        }}
-      >
-        <option value="any">(any time) — always eligible</option>
-        {ANSWER_WHEN.enemyBands.map((band) => (
-          <option key={`enemy:${band}`} value={`enemy:${band}`}>
-            {band === 'none'
-              ? 'no enemy is seen or remembered'
-              : `an enemy is ${band === 'reach' ? 'in reach' : band}`}
-          </option>
-        ))}
-        {ANSWER_WHEN.deeds.map((deed) => (
-          <option key={`deed:${deed}`} value={`deed:${deed}`}>
-            {form.kind === 'deed' && form.scope?.value === 'ally'
-              ? 'an ally'
-              : 'I'}{' '}
-            {deed !== 'fled' &&
-            !(form.kind === 'deed' && form.scope?.value === 'actor')
-              ? 'was '
-              : ''}
-            {deed}
-          </option>
-        ))}
-      </select>
-      {form.kind === 'deed' && (
+    <li className="wb-policy-when-condition" data-condition-index={index}>
+      {/* THE NEGATIVE IS A TOGGLE ON ONE CONDITION (R8): `not: { … }` wraps
+          exactly one, never the list. Offered once a condition exists. */}
+      {form !== undefined && form.base.kind !== 'nested' && (
+        <label className="wb-policy-when-not">
+          <input
+            type="checkbox"
+            aria-label={`Not${n} for ${trigger} entry`}
+            checked={negated}
+            onChange={(event) =>
+              onCommit({ negated: event.target.checked, base: form.base })
+            }
+          />
+          <span>not</span>
+        </label>
+      )}
+      {base?.kind === 'nested' ? (
+        <span className="wb-help" data-testid="when-nested-not">
+          {whenConditionText(base.condition)} — a `not` inside a `not`, kept as
+          written
+        </span>
+      ) : (
+        <select
+          aria-label={`When${n} for ${trigger} entry`}
+          value={picker}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === 'any') onCommit(undefined);
+            else commitBase(baseForPicker(next, base));
+          }}
+        >
+          {offerAny && (
+            <option value="any">(any time) — always eligible</option>
+          )}
+          {ANSWER_WHEN.enemyBands.map((band) => (
+            <option key={`enemy:${band}`} value={`enemy:${band}`}>
+              {band === 'none'
+                ? 'no enemy is seen or remembered'
+                : `an enemy is ${band === 'reach' ? 'in reach' : band}`}
+            </option>
+          ))}
+          {ANSWER_WHEN.deeds.map((deed) => (
+            <option key={`deed:${deed}`} value={`deed:${deed}`}>
+              {base?.kind === 'deed' && base.scope?.value === 'ally'
+                ? 'an ally'
+                : 'I'}{' '}
+              {deed !== 'fled' &&
+              !(base?.kind === 'deed' && base.scope?.value === 'actor')
+                ? 'was '
+                : ''}
+              {deed}
+            </option>
+          ))}
+          <option value="heard">I heard a sound</option>
+          <option value="fact">I know a fact</option>
+        </select>
+      )}
+      {base?.kind === 'deed' && (
         <>
           <span>within</span>
           <input
             type="number"
             step={1}
             min={ANSWER_WHEN.minimumWithin}
-            aria-label={`Within for ${trigger} entry`}
-            value={String(form.within)}
+            aria-label={`Within${n} for ${trigger} entry`}
+            value={String(base.within)}
             onChange={(event) => {
-              // AN EMPTY FIELD COMMITS NOTHING. `Number('')` is 0 — a number the
-              // author never typed — and unlike a weight, where absence IS 1 to
-              // the engine, a span has no legal absence (`within: 0` is refused
-              // by name). Committing a fabricated 0 would be the form inventing
-              // a number, which is what this control avoids everywhere else;
-              // keeping the last real span leaves the author's own value in the
-              // field until they type a new one.
+              // AN EMPTY FIELD COMMITS NOTHING. `Number('')` is 0 — a number
+              // the author never typed — and a span has no legal absence
+              // (`within: 0` is refused by name), so committing a fabricated
+              // 0 would be the form inventing a number.
               if (event.target.value === '') return;
-              onCommit({
-                [form.deed]: deedBody(Number(event.target.value), form.scope),
-              } as AnswerWhenShape);
+              commitBase({ ...base, within: Number(event.target.value) });
             }}
           />
           <span>rounds</span>
@@ -395,17 +498,13 @@ function AnswerWhenEditor({
           {/*
             WHOSE DEED THIS IS (rpg-dnd5e-web#1199). A scope REFINES the deed
             rather than adding a second condition, so it sits with the span it
-            belongs to and is offered on a DEED alone — an enemy band has no
-            "whose", which is why this is inside the deed branch.
-
-            "(the creature itself)" is the third reading and the DEFAULT: it is
-            what omitting the key means, so it is rendered as the absence of a
-            choice rather than as a word the file would carry. Selecting it
+            belongs to and is offered on a DEED alone. "(the creature itself)"
+            is the default and is what omitting the key means; selecting it
             DELETES the key, which is the only way to write that reading.
           */}
           <select
-            aria-label={`Whose deed for ${trigger} entry`}
-            value={form.scope?.value ?? SELF_SCOPE}
+            aria-label={`Whose deed${n} for ${trigger} entry`}
+            value={base.scope?.value ?? SELF_SCOPE}
             onChange={(event) => {
               const next = event.target.value;
               const scope =
@@ -416,9 +515,7 @@ function AnswerWhenEditor({
                         ?.key as string,
                       value: next,
                     };
-              onCommit({
-                [form.deed]: deedBody(form.within, scope),
-              } as AnswerWhenShape);
+              commitBase({ ...base, scope });
             }}
           >
             <option value={SELF_SCOPE}>(the creature itself)</option>
@@ -429,6 +526,152 @@ function AnswerWhenEditor({
             ))}
           </select>
         </>
+      )}
+      {base?.kind === 'heard' && (
+        <>
+          {/* THE FOUR KINDS ARE THE RULEBOOK'S SEALED VOCABULARY (R4): a
+              kind and a span, never a maker — a sound names nobody. */}
+          <select
+            aria-label={`Sound${n} for ${trigger} entry`}
+            value={base.sound}
+            onChange={(event) =>
+              commitBase({ ...base, sound: event.target.value })
+            }
+          >
+            {(ANSWER_SOUND_KINDS.includes(base.sound)
+              ? ANSWER_SOUND_KINDS
+              : [base.sound, ...ANSWER_SOUND_KINDS]
+            ).map((kind) => (
+              <option key={kind} value={kind}>
+                {kind}
+              </option>
+            ))}
+          </select>
+          <span>within</span>
+          <input
+            type="number"
+            step={1}
+            min={ANSWER_WHEN.minimumWithin}
+            aria-label={`Heard within${n} for ${trigger} entry`}
+            value={String(base.within)}
+            onChange={(event) => {
+              if (event.target.value === '') return;
+              commitBase({ ...base, within: Number(event.target.value) });
+            }}
+          />
+          <span>rounds</span>
+        </>
+      )}
+      {base?.kind === 'fact' && (
+        <input
+          aria-label={`Fact${n} for ${trigger} entry`}
+          placeholder="fact id, e.g. alarm-raised"
+          value={base.fact}
+          onChange={(event) =>
+            commitBase({ ...base, fact: event.target.value })
+          }
+        />
+      )}
+      {canRemove && (
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Remove condition${n} for ${trigger} entry`}
+          onClick={onRemove}
+        >
+          Remove condition
+        </button>
+      )}
+    </li>
+  );
+}
+
+/** The `when:` control — a LIST of conditions, every one of which must hold
+ * (rpg-project#569 R8). LEGAL ON `time` ALONE — a social key IS already the
+ * condition, so the caller does not render this at all on a verdict.
+ *
+ * THE FIRST CONTROL IN THE ROW, because it gates whether the row can fire
+ * before it says what the row does. An empty list shows one row reading
+ * `(any time)` — the honest empty state; picking a condition there starts the
+ * list, and "Add condition" grows it.
+ *
+ * THE SPELLING IS `whenFromConditions`'s: one plain condition is written as
+ * the single mapping every older file used, anything else as a list. */
+function AnswerWhenEditor({
+  trigger,
+  when,
+  onCommit,
+}: {
+  trigger: string;
+  when: AnswerWhenShape | undefined;
+  onCommit: (when: AnswerWhenShape | undefined) => void;
+}) {
+  const conditions = whenConditions(when);
+  const forms = conditions.map(conditionFormOf);
+  const commitForms = (next: WhenConditionForm[]) =>
+    onCommit(whenFromConditions(next.map(conditionOf)));
+
+  return (
+    <div
+      className="wb-policy-when"
+      role="group"
+      aria-label={`Condition for ${trigger} entry`}
+    >
+      <span>When</span>
+      <ol className="wb-policy-when-list">
+        {forms.length === 0 ? (
+          <WhenConditionRow
+            trigger={trigger}
+            index={0}
+            form={undefined}
+            offerAny
+            canRemove={false}
+            onCommit={(form) => commitForms(form ? [form] : [])}
+            onRemove={() => commitForms([])}
+          />
+        ) : (
+          forms.map((form, index) => (
+            <WhenConditionRow
+              key={index}
+              trigger={trigger}
+              index={index}
+              form={form}
+              offerAny={forms.length === 1}
+              canRemove
+              onCommit={(next) =>
+                commitForms(
+                  next === undefined
+                    ? forms.filter((_, i) => i !== index)
+                    : forms.map((f, i) => (i === index ? next : f))
+                )
+              }
+              onRemove={() => commitForms(forms.filter((_, i) => i !== index))}
+            />
+          ))
+        )}
+      </ol>
+      {forms.length > 0 && (
+        <button
+          type="button"
+          aria-label={`Add condition for ${trigger} entry`}
+          onClick={() =>
+            commitForms([
+              ...forms,
+              {
+                negated: false,
+                base: {
+                  kind: 'enemy',
+                  band: ANSWER_WHEN.enemyBands[0] ?? 'reach',
+                },
+              },
+            ])
+          }
+        >
+          Add condition
+        </button>
+      )}
+      {forms.length > 1 && (
+        <span className="wb-help">Every condition must hold.</span>
       )}
     </div>
   );
@@ -455,7 +698,6 @@ export function AnswerEntryRow({
   entry,
   onCommit,
   onRemove,
-  allowCellSelector = true,
   label = trigger,
   excludeWords = [],
   allowNoWord = false,
@@ -475,17 +717,6 @@ export function AnswerEntryRow({
    * accepts on any key (`wordRequiredUnlessSaid`). An option's verdict rows
    * are mostly this: what the creature SAYS back. */
   allowNoWord?: boolean;
-  /** A PLACEMENT'S table may not name a cell: `{ at: [col, row] }` is refused
-   * by name on a binding, because this dialect's cells are axial and the same
-   * bytes would mean two things in the two dialects. A faction's table keeps
-   * it. Defaults to `true` so the faction editor is untouched — a control that
-   * can never save is not authoring, it is a trap.
-   *
-   * EXPORTED (rpg-dnd5e-web#1201): a ROOT table is authored by `TablesPanel`,
-   * and it keeps the cell selector for the reason a faction's does — a root
-   * table is what a faction NAMES, so the grammar inside it is the faction's,
-   * not a placement's. One entry editor, three callers. */
-  allowCellSelector?: boolean;
 }) {
   const words = answerWordsForTrigger(trigger).filter(
     (candidate) => !excludeWords.includes(candidate.key)
@@ -493,19 +724,25 @@ export function AnswerEntryRow({
   const word = entryWord(entry) ?? (allowNoWord ? '' : (words[0]?.key ?? ''));
   const spec = answerWord(word);
   const value = (entry as Record<string, unknown>)[word];
-  /** `at:` is offered only where the engine accepts it — the `toward` word on a
-   * FACTION's table. See the prop's own note. */
-  const cellSelectorAllowed =
-    allowCellSelector && word === ANSWER_AT_SELECTOR.onlyWord;
   /** `when` is legal on `time` alone; a social key IS the condition. */
   const whenLegal = answerWhenLegalOn(trigger);
   /** `actor` needs a deed to have been the actor of. Offered only when this
    * entry's `when` names one, so the list never offers an illegal choice —
    * and the engine's own sentence stays the backstop for a hand-written file. */
   const actorLegal = whenNamesDeed(entry.when);
+  /** `sound` needs a row that LISTENS — a top-level `heard` (R10; a `heard`
+   * inside a `not` is not listening) — so it is offered only then, exactly as
+   * `actor` waits for a deed. Never on `attack` (a sound cannot be struck),
+   * read from the declaration's own `refusedOn`. */
+  const soundLegal = whenListensShape(entry.when);
   const selectorWords = ANSWER_SELECTOR_WORDS.filter(
-    (selector) => selector.key !== 'actor' || actorLegal
+    (selector) =>
+      (selector.key !== 'actor' || actorLegal) &&
+      (selector.key !== 'sound' || soundLegal) &&
+      selectorWordLegalOn(selector.key, word)
   );
+  const selectorChoice =
+    typeof value === 'string' ? value : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
 
   const withWordValue = (next: unknown): AnswerEntryShape => {
     const draft = { ...(entry as Record<string, unknown>) } as AnswerEntryShape;
@@ -513,19 +750,23 @@ export function AnswerEntryRow({
     return draft;
   };
 
-  /** Set or clear the condition. CLEARING IT ALSO CLEARS AN `actor` SELECTOR,
-   * because `actor` without a deed is refused by name and leaving it behind
-   * would publish a document the engine rejects — the one place this form
-   * edits a second field, and it does so only to avoid writing a known-bad
-   * state. Any other selector is left exactly as the author set it. */
+  /** Set or clear the condition. CLEARING IT ALSO CLEARS AN `actor` SELECTOR
+   * — and a `sound` one once the row no longer listens — because each is
+   * refused by name without its condition and leaving it behind would publish
+   * a document the engine rejects. The one place this form edits a second
+   * field, and only to avoid writing a known-bad state. Any other selector is
+   * left exactly as the author set it. */
   const withWhen = (when: AnswerWhenShape | undefined): void => {
     const next: AnswerEntryShape = { ...entry };
     if (when === undefined) delete next.when;
     else next.when = when;
+    // AND `sound` WITHOUT A LISTENING ROW, for the same reason: the engine
+    // refuses it by name, so removing or negating the row's `heard` must not
+    // leave it behind.
     if (
       spec?.value === 'selector' &&
-      value === 'actor' &&
-      !whenNamesDeed(when)
+      ((value === 'actor' && !whenNamesDeed(when)) ||
+        (value === 'sound' && !whenListensShape(when)))
     ) {
       (next as Record<string, unknown>)[word] =
         ANSWER_SELECTOR_WORDS[0]?.key ?? 'enemy';
@@ -586,21 +827,9 @@ export function AnswerEntryRow({
               <span>{word === 'away' ? 'From' : 'To'}</span>
               <select
                 aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
-                value={
-                  typeof value === 'string'
-                    ? value
-                    : cellSelectorAllowed
-                      ? ANSWER_AT_SELECTOR.key
-                      : (ANSWER_SELECTOR_WORDS[0]?.key ?? '')
-                }
+                value={selectorChoice}
                 onChange={(event) =>
-                  onCommit(
-                    withWordValue(
-                      event.target.value === ANSWER_AT_SELECTOR.key
-                        ? { at: [0, 0] }
-                        : event.target.value
-                    )
-                  )
+                  onCommit(withWordValue(event.target.value))
                 }
               >
                 {selectorWords.map((selector) => (
@@ -608,41 +837,8 @@ export function AnswerEntryRow({
                     {selector.label} ({selector.key})
                   </option>
                 ))}
-                {cellSelectorAllowed && (
-                  <option value={ANSWER_AT_SELECTOR.key}>
-                    {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
-                  </option>
-                )}
               </select>
             </label>
-            {cellSelectorAllowed &&
-              isMapping(value) &&
-              Array.isArray(value.at) && (
-                <label>
-                  <span>Cell</span>
-                  <span className="wb-policy-cell">
-                    {([0, 1] as const).map((axis) => {
-                      const at = value.at as [number, number];
-                      return (
-                        <input
-                          key={axis}
-                          type="number"
-                          step={1}
-                          aria-label={`${
-                            axis === 0 ? 'Column' : 'Row'
-                          } for ${label} entry`}
-                          value={String(at[axis] ?? 0)}
-                          onChange={(event) => {
-                            const cell = [...at] as [number, number];
-                            cell[axis] = Number(event.target.value);
-                            onCommit(withWordValue({ at: cell }));
-                          }}
-                        />
-                      );
-                    })}
-                  </span>
-                </label>
-              )}
           </>
         )}
       </div>

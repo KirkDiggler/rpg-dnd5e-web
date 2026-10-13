@@ -655,6 +655,8 @@ function SessionEncounterScope({
     declarations: coherentDeclarations,
     invalidateAuthoritySnapshots,
     scheduleRefresh,
+    // A heard sound's bearing is measured from here (rpg-project#569).
+    viewerCell: wherePosition,
   });
   const {
     participants: visibleParticipants,

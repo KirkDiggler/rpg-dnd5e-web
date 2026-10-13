@@ -11,7 +11,7 @@ describe('answer table shape', () => {
       time: [
         { when: { enemy: 'reach' }, attack: 'enemy' },
         { when: { attacked: { within: 3 } }, attack: 'attacker', weight: 3 },
-        { when: { enemy: 'none' }, toward: { at: [3, 4] } },
+        { when: { enemy: 'none' }, toward: 'attacker' },
         { hold: {} },
         { when: { fled: { within: 3 } }, away: 'actor', weight: 5 },
         { when: { enemy: 'remembered' }, toward: 'enemy' },
@@ -79,8 +79,8 @@ describe('answer table shape', () => {
     expect(verdict([{ attack: 'enemy' }])).toThrow(
       /`attack` is what a creature does with time, and `success` is an outcome/
     );
-    expect(table({ time: [{ fact: 'x' }] })).toThrow(
-      /`fact` answers a social verdict, and `time` is not one/
+    expect(table({ time: [{ flee: {} }] })).toThrow(
+      /`flee` answers a social verdict, and `time` is not one/
     );
     expect(verdict([{ when: { enemy: 'reach' }, flee: {} }])).toThrow(
       /`success` is already the condition — a `when` under it asks when a thing that just happened happened/
@@ -105,7 +105,9 @@ describe('answer table shape', () => {
     );
     expect(
       table({ time: [{ when: { enemy: 'reach', seen: 'x' }, hold: {} }] })
-    ).toThrow(/a `when` is one condition, and this names 2/);
+    ).toThrow(
+      /a `when` entry is one condition, and this names 2: give each its own entry in a list/
+    );
     expect(table({ time: [{ when: { fled: {} }, hold: {} }] })).toThrow(
       /`fled` names no span/
     );
@@ -115,8 +117,13 @@ describe('answer table shape', () => {
     expect(table({ time: [{ toward: 'nobody' }] })).toThrow(
       /"nobody" is not a selector this build resolves/
     );
+    // The single room names no cell at all (rpg-toolkit#2044), whatever word
+    // it sits on — the engine's frame refusal, not the `toward`-only one.
     expect(table({ time: [{ attack: { at: [1, 2] } }] })).toThrow(
-      /a cell is somewhere to walk toward, and `attack` acts on a creature/
+      'on.time[0].attack.at: at is not a place a single room can name yet'
+    );
+    expect(table({ time: [{ toward: { at: [1, 2] } }] })).toThrow(
+      'on.time[0].toward.at: at is not a place a single room can name yet'
     );
     expect(table({ time: [{ attack: 'actor' }] })).toThrow(
       /`actor` is the actor of the deed this entry's `when` names/

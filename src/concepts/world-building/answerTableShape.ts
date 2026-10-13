@@ -23,36 +23,38 @@
  * and never resolves a selector. It refuses what the engine's strict decoder
  * would refuse, in the engine's own sentences, and carries the rest verbatim.
  *
- * THE `at:` CELL IS CARRIED AS WRITTEN — `[col, row]`, the file's spelling.
- * The engine resolves an offset pair under the document's `orientation`, which
- * the single-room dialect does not carry; converting here would invent a frame
- * the file does not state. Shape only: validate the pair, carry it, and let
- * the frame question be answered where the document is compiled.
+ * NO CELL AND NO ROUTE (rpg-toolkit#2044). The engine resolves an offset pair
+ * under a document `orientation`, which the single-room dialect does not
+ * carry, so it refuses `{ at }` and `{ path }` here by name; this reader
+ * refuses them in the same sentences rather than carrying bytes the server
+ * will not take. The v2 dialect (`dungeonYaml.ts`) keeps both.
  */
 
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
-  ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
+  ANSWER_PATH_SELECTOR,
   ANSWER_SELECTOR_WORDS,
+  ANSWER_SOUND_KINDS,
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
   ANSWER_WORD_KEYS,
   answerWhenRefusal,
   answerWord,
   answerWordRefusal,
-  atSelectorRefusal,
   bothScopesRefusal,
   EMPTY_ENTRY_REFUSAL,
   EMPTY_FACT_REFUSAL,
   EMPTY_TRIGGER_REFUSAL,
   entryDoesOneThingRefusal,
+  HEARING_SENTENCES,
   isSelectorWord,
-  MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  SELECTOR_MAPPING_KEYS,
+  selectorWordLegalOn,
   spanRefusal,
   suggestKey,
   unknownDeedRefusal,
@@ -66,8 +68,10 @@ import {
   whenShapeRefusal,
 } from '@/author/answerVocabulary';
 
-/** A selector as written: one of the sealed words, or `{ at: [col, row] }`. */
-export type AnswerSelectorShape = string | { at: [number, number] };
+/** A selector as written: one of the sealed words (`sound` among them). An
+ * authored cell (`{ at }`) or route (`{ path }`) is refused in this dialect —
+ * its cells are axial and it states no frame for them (rpg-toolkit#2044). */
+export type AnswerSelectorShape = string;
 
 /** A `when:` as written: EXACTLY ONE exclusive enemy band, or one deed with
  * its span and — optionally — WHOSE deed it is about. The key IS the shape,
@@ -87,12 +91,80 @@ export type AnswerWhenDeed = {
   as?: 'actor';
 };
 
-export type AnswerWhenShape =
+/** `heard: { kind, within }` — a sound of a sealed kind, no older than the
+ * span (rpg-project#569 H2). No maker: a sound names nobody (R4). */
+export interface AnswerWhenHeard {
+  kind: string;
+  within: number;
+}
+
+/** ONE condition — one key, so the key IS the condition. `not` wraps exactly
+ * one more condition (R8), never a list. */
+export type AnswerWhenCondition =
   | { enemy: string }
   | { attacked: AnswerWhenDeed }
   | { intimidated: AnswerWhenDeed }
   | { persuaded: AnswerWhenDeed }
-  | { fled: AnswerWhenDeed };
+  | { fled: AnswerWhenDeed }
+  | { heard: AnswerWhenHeard }
+  | { fact: string }
+  | { not: AnswerWhenCondition };
+
+/** A `when:` AS WRITTEN — one condition as a single mapping, or a LIST of
+ * them, every one of which must hold (rpg-project#569 R8). Both spellings are
+ * carried exactly as the file had them, so an unedited file re-emits its own
+ * bytes; the editor normalizes only what it writes ([whenFromConditions]). */
+export type AnswerWhenShape = AnswerWhenCondition | AnswerWhenCondition[];
+
+/** The conditions a written `when` holds, as a list — a single mapping is a
+ * one-entry list. Absent is the empty list: "always eligible". */
+export function whenConditions(
+  when: AnswerWhenShape | undefined
+): AnswerWhenCondition[] {
+  if (when === undefined) return [];
+  return Array.isArray(when) ? when : [when];
+}
+
+/** Whether a condition is a `not`. */
+export function isNotCondition(
+  condition: AnswerWhenCondition
+): condition is { not: AnswerWhenCondition } {
+  return 'not' in condition;
+}
+
+/**
+ * The `when` the EDITOR writes for a list of conditions — the one place the
+ * spelling is chosen:
+ *
+ *   - none → absent (the row is always eligible);
+ *   - one, and not a `not` → the single mapping, which is the spelling every
+ *     file before the list form used, so a row the author did not change in
+ *     kind keeps its bytes;
+ *   - otherwise → the list, so a negative always reads as an entry of one.
+ */
+export function whenFromConditions(
+  conditions: readonly AnswerWhenCondition[]
+): AnswerWhenShape | undefined {
+  if (conditions.length === 0) return undefined;
+  if (conditions.length === 1 && !isNotCondition(conditions[0]))
+    return conditions[0];
+  return [...conditions];
+}
+
+/** Whether the row LISTENS — a `heard` among its top-level conditions, never
+ * one inside a `not` (`Answer.listens`). What makes `sound` legal. */
+export function whenListensShape(when: AnswerWhenShape | undefined): boolean {
+  return whenConditions(when).some((condition) => 'heard' in condition);
+}
+
+/** Whether any condition the row stands on names a DEED — positively; a
+ * negated deed has no actor — which is what makes the `actor` selector
+ * legal. */
+export function whenNamesDeedShape(when: AnswerWhenShape | undefined): boolean {
+  return whenConditions(when).some((condition) =>
+    Object.keys(condition).some((key) => ANSWER_WHEN.deeds.includes(key))
+  );
+}
 
 /** One answer entry as written. `weight`/`say`/`when` + at most one word. */
 export interface AnswerEntryShape {
@@ -196,6 +268,9 @@ function validateAnswerEntry(
     );
   for (const key of Object.keys(value)) {
     if (ENTRY_KEYS.includes(key)) continue;
+    // THE RETIRED WORD POINTS AT ITS REPLACEMENT (rpg-project#569 R7): a
+    // patrol is `toward: { path }`, and an author who wrote `patrol` meant it.
+    if (key === 'patrol') fail(`${path}.patrol`, HEARING_SENTENCES.patrol());
     const meant = suggestKey(key, ENTRY_KEYS);
     fail(
       path,
@@ -228,7 +303,7 @@ function validateAnswerEntry(
   }
 
   if (value.when !== undefined && value.when !== null)
-    entry.when = validateAnswerWhen(value.when, `${path}.when`);
+    entry.when = validateAnswerWhen(value.when, `${path}.when`, path);
 
   // --- the engine's own rules, in `answerEntry`'s order ---
 
@@ -270,7 +345,7 @@ function validateAnswerEntry(
       if (typeof raw !== 'string') fail(`${path}.${word}`, 'expected a string');
       if (word === 'fact') entry.fact = raw;
     } else if (shape === 'selector') {
-      const selector = validateAnswerSelector(raw, `${path}.${word}`);
+      const selector = validateAnswerSelector(raw, `${path}.${word}`, word);
       if (word === 'attack') entry.attack = selector;
       else if (word === 'toward') entry.toward = selector;
       else if (word === 'away') entry.away = selector;
@@ -284,8 +359,9 @@ function validateAnswerEntry(
     }
   }
 
-  // `at:` is legal on one word; `actor` needs a deed to have been the actor
-  // of. The word is READ from the declaration rather than restated.
+  // `actor` needs a deed to have been the actor of; `sound` needs a row that
+  // listened. (A cell or a route never reaches here: this dialect refuses
+  // both at the selector.)
   for (const word of words) {
     const selector =
       word === 'attack'
@@ -296,42 +372,93 @@ function validateAnswerEntry(
             ? entry.away
             : undefined;
     if (selector === undefined) continue;
-    if (typeof selector !== 'string') {
-      if (word !== ANSWER_AT_SELECTOR.onlyWord)
-        fail(`${path}.${word}`, atSelectorRefusal(word));
-      continue;
-    }
-    const deedNamed =
-      entry.when !== undefined &&
-      Object.keys(entry.when).some((key) => ANSWER_WHEN.deeds.includes(key));
+    // A deed named POSITIVELY by any entry of the list: a negated deed has no
+    // actor to have been.
+    const deedNamed = whenNamesDeedShape(entry.when);
     if (selector === 'actor' && !deedNamed)
       fail(`${path}.${word}`, ACTOR_WITHOUT_DEED_REFUSAL);
+    // THE SOUND A ROW WALKS TO IS THE ONE IT LISTENED FOR (R10, as the
+    // behavior review refined it): `sound` needs a top-level `heard`, and a
+    // `heard` inside a `not` is not listening. Reported at the entry, as the
+    // engine reports mind/behavior's own refusals.
+    if (selector === 'sound' && !whenListensShape(entry.when))
+      fail(path, HEARING_SENTENCES.soundWithoutHeard());
   }
 
   return entry;
 }
 
-/** A `when:` — EXACTLY ONE of the four exclusive enemy bands, or one of the
- * four deeds with `{ within: N }` and an optional SCOPE
- * (`dungeonspec.WhenSpec`).
+/** A `when:` — ONE condition as a single mapping, or a LIST of them every
+ * one of which must hold (rpg-project#569 R8; `WhenListSpec`).
  *
  * THE REFUSALS RUN IN THE ENGINE'S OWN ORDER (`WhenSpec.UnmarshalYAML`), so an
  * author who made one mistake gets one sentence: the shape, then two
- * conditions, then the enemy band or the deed, then an unknown BODY key by
- * hand, then the span, then the scope.
+ * conditions, then the condition's own rules.
+ *
+ * A LIST IS CARRIED AS A LIST, never folded to a single mapping here, so the
+ * bytes the author wrote are the bytes that round-trip. */
+function validateAnswerWhen(
+  value: unknown,
+  path: string,
+  rowPath: string
+): AnswerWhenShape {
+  if (Array.isArray(value)) {
+    if (value.length === 0) fail(path, HEARING_SENTENCES.emptyWhenList());
+    return value.map((item, index) =>
+      validateWhenCondition(item, `${path}[${index}]`, rowPath, (s) => s)
+    );
+  }
+  return validateWhenCondition(value, path, rowPath, (s) => s);
+}
+
+/** ONE condition: an enemy band, a deed with its span and scope, `heard`,
+ * `fact`, or `not` around one more condition.
  *
  * UNKNOWN BODY KEYS ARE REFUSED BY HAND because `Decode`'s strictness does not
- * reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3). Before scopes
- * a dropped key in this body did nothing; now the dropped key decides WHOSE
- * deeds the row reads — `no: ally` would leave the condition on the self
- * reading, firing for the wrong wound and never for its own. So a body key
- * this build does not read is refused rather than dropped. */
-function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
+ * reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3): the dropped
+ * key would decide WHOSE deeds the row reads. */
+function validateWhenCondition(
+  value: unknown,
+  path: string,
+  /** Where a `mind/behavior` fault is reported — the row, `…time[i]`. */
+  rowPath: string,
+  /** "inside `not`: …" once per `not` this condition sits in. */
+  wrap: (sentence: string) => string
+): AnswerWhenCondition {
   if (!isMapping(value) || Object.keys(value).length === 0)
     fail(path, whenShapeRefusal());
   const keys = Object.keys(value);
   if (keys.length > 1) fail(path, whenIsOneConditionRefusal(keys.length));
   const key = keys[0];
+
+  if (key === ANSWER_WHEN.heardKey)
+    return {
+      heard: validateHeard(value.heard, `${path}.heard`, rowPath, wrap),
+    };
+
+  if (key === ANSWER_WHEN.factKey) {
+    const fact = value.fact;
+    // The engine reads a scalar here; anything else, or nothing, names none.
+    if (
+      typeof fact !== 'string' &&
+      typeof fact !== 'number' &&
+      typeof fact !== 'boolean'
+    )
+      fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
+    const id = scalarText(fact);
+    if (id === '') fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
+    return { fact: id };
+  }
+
+  if (key === ANSWER_WHEN.notKey) {
+    // ONE CONDITION, judged by this same function: a `not` inside a `not` is
+    // legal, and a list or a scalar is refused with the shape sentence.
+    return {
+      not: validateWhenCondition(value.not, `${path}.not`, rowPath, (s) =>
+        wrap(HEARING_SENTENCES.insideNot(s))
+      ),
+    };
+  }
 
   if (key === 'enemy') {
     const band = scalarText(value.enemy);
@@ -363,7 +490,42 @@ function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
   if (within < ANSWER_WHEN.minimumWithin) fail(path, spanRefusal(within));
 
   const scope = validateWhenScope(body, `${path}.${key}`, key);
-  return { [key]: { within, ...scope } } as AnswerWhenShape;
+  return { [key]: { within, ...scope } } as AnswerWhenCondition;
+}
+
+/** `heard: { kind, within }`. The DECODER refuses the shape, an unknown key
+ * and a kind no deed makes; a missing kind and a span below 1 (an absent span
+ * reads as 0) are `When.Validate`'s, reported at the ROW and prefixed
+ * "inside `not`:" once per `not` around them — the engine's own split. */
+function validateHeard(
+  value: unknown,
+  path: string,
+  rowPath: string,
+  wrap: (sentence: string) => string
+): AnswerWhenHeard {
+  if (!isMapping(value)) fail(path, HEARING_SENTENCES.heardShape());
+  for (const key of Object.keys(value)) {
+    if (ANSWER_WHEN.heardBodyKeys.includes(key)) continue;
+    fail(`${path}.${key}`, HEARING_SENTENCES.heardUnknownKey(key));
+  }
+  const kind =
+    value.kind === undefined || value.kind === null
+      ? ''
+      : scalarText(value.kind);
+  if (kind !== '' && !ANSWER_SOUND_KINDS.includes(kind))
+    fail(`${path}.kind`, HEARING_SENTENCES.unknownSoundKind(kind));
+  const raw = value.within;
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    (typeof raw !== 'number' || !Number.isInteger(raw))
+  )
+    fail(`${path}.within`, 'expected a whole number');
+  const within = typeof raw === 'number' ? raw : 0;
+  if (kind === '') fail(rowPath, wrap(HEARING_SENTENCES.heardNoKind()));
+  if (within < ANSWER_WHEN.minimumWithin)
+    fail(rowPath, wrap(HEARING_SENTENCES.heardSpan(within)));
+  return { kind, within };
 }
 
 /** WHOSE deed a condition is about — `on: ally`, `as: actor`, or `undefined`
@@ -421,41 +583,59 @@ function validateWhenScope(
   return {};
 }
 
-/** One selector: a sealed word, or `{ at: [col, row] }`. */
+/** One selector on a table word: a sealed word (`sound` among them) or
+ * `{ at: [col, row] }`. `word` is the table word it sits on, because `sound`
+ * on `attack` is refused for the pair.
+ *
+ * A ROUTE IS REFUSED IN THIS DIALECT (rpg-toolkit#2044): `{ path }` is a list
+ * of the same offset cells `at` is, and the v4 single room has no frame for
+ * either, so the engine names it once for the route. The decoder's own two
+ * refusals — both keys at once, an empty route — come first, as they do
+ * there. */
 function validateAnswerSelector(
   value: unknown,
-  path: string
+  path: string,
+  word: string
 ): AnswerSelectorShape {
   if (typeof value === 'string') {
     if (!isSelectorWord(value)) fail(path, unknownSelectorRefusal(value));
+    if (!selectorWordLegalOn(value, word))
+      // A SELECTOR-SHAPE FAULT IS THE ROW'S (rpg-toolkit#2044): the engine
+      // asks mind/behavior of the compiled row and reports at `…time[i]`.
+      fail(rowPathOf(path, word), HEARING_SENTENCES.attackSound());
     return value;
   }
   if (isMapping(value)) {
     for (const key of Object.keys(value)) {
-      if (key !== 'at') fail(path, unknownSelectorKeyRefusal(key));
+      if (!SELECTOR_MAPPING_KEYS.includes(key))
+        fail(path, unknownSelectorKeyRefusal(key));
     }
-    if (value.at === undefined || value.at === null)
-      fail(path, MISSING_AT_REFUSAL);
-    return { at: validateAtCell(value.at, `${path}.at`) };
+    const hasAt = value.at !== undefined && value.at !== null;
+    const hasPath =
+      Array.isArray(value[ANSWER_PATH_SELECTOR.key]) &&
+      (value[ANSWER_PATH_SELECTOR.key] as unknown[]).length > 0;
+    // THE ENGINE'S ORDER (rpg-toolkit#2044): the frame refusal first — a
+    // route, then a cell — then mind/behavior's shape at the row. With no
+    // frame here, every cell or route is refused by name, and a mapping that
+    // names neither (`{}`, `path: []`) names no target.
+    if (hasPath) fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
+    if (hasAt) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
+    fail(rowPathOf(path, word), HEARING_SENTENCES.namesNoTarget(word));
   }
   fail(
     path,
     `a selector is one of ${ANSWER_SELECTOR_WORDS.map((s) => s.key).join(
       ', '
-    )}, or { at: [col, row] }`
+    )}, or { at: [col, row] }, or { path: [[col, row], …] }`
   );
 }
 
-/** The authored cell of an `at:` selector — `[col, row]`, carried as written. */
-function validateAtCell(value: unknown, path: string): [number, number] {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    !Number.isInteger(value[0]) ||
-    !Number.isInteger(value[1])
-  )
-    fail(path, 'expected [col,row]');
-  return [value[0] as number, value[1] as number];
+/** The row's own path, from a selector's `…time[i].<word>`. */
+function rowPathOf(selectorPath: string, word: string): string {
+  const suffix = `.${word}`;
+  return selectorPath.endsWith(suffix)
+    ? selectorPath.slice(0, -suffix.length)
+    : selectorPath;
 }
 
 // ---------------------------------------------------------------------------

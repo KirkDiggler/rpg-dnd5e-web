@@ -21,6 +21,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
 import { dissolveSentence, formatFactionBeat } from '../factionBeat';
+import { formatHeardLine, type HeardCell } from '../heardBeat';
 import { formatHoldingBeat } from '../holdingBeat';
 import { formatWardBeat } from '../wardBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
@@ -36,6 +37,14 @@ export interface CombatStoryFact {
   readonly source: 'live' | 'catchup';
   /** Actor-live attack facts stay false until their local release is accepted. */
   readonly visible: boolean;
+  /**
+   * WHERE THIS VIEWER STOOD WHEN THE BEAT ARRIVED — carried by a `heard` fact
+   * alone, for which way the sound came from (rpg-project#569). Snapshotted at
+   * acceptance so the line keeps the bearing it was heard at: a log that
+   * re-aimed every old sound as the player walked would be rewriting what
+   * they heard. Absent when no position was known.
+   */
+  readonly listenerAt?: HeardCell;
 }
 
 export interface CombatStoryContext {
@@ -521,7 +530,8 @@ function buildAttackStory(
 
 function buildOtherStory(
   event: Event,
-  context: CombatStoryContext
+  context: CombatStoryContext,
+  listenerAt?: HeardCell
 ): CombatExperienceStoryExchange | undefined {
   const base = { id: storyId(event) };
   switch (event.body.case) {
@@ -714,6 +724,20 @@ function buildOtherStory(
             } · ${check.beaten ? 'Success' : 'Failure'}`
           : speakSkillName(spoke.skill),
         tone: check?.beaten ? 'success' : 'neutral',
+      });
+    }
+    case 'heard': {
+      // A SOUND REACHED THIS PLAYER (rpg-project#569 H5): which kind, which
+      // way, how many rooms. NEVER WHO MADE IT (R4) — the beat names nobody
+      // and this line does not guess. The sentence is `heardBeat.ts`'s, the
+      // one the beat line reads too.
+      const line = formatHeardLine(event.body.value, listenerAt);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Sound',
+        headline: line.headline,
+        detail: line.detail,
+        tone: 'neutral',
       });
     }
     case 'answered': {
@@ -1117,7 +1141,7 @@ export function buildCombatStory(
     if (fact.visible) {
       const entry =
         buildAttackStory(fact.event, withCasts) ??
-        buildOtherStory(fact.event, withCasts);
+        buildOtherStory(fact.event, withCasts, fact.listenerAt);
       if (entry) story.push({ ...entry, deliverySource: fact.source });
     }
     const body = fact.event.body;

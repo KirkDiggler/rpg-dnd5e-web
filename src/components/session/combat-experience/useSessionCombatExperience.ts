@@ -110,6 +110,10 @@ export interface UseSessionCombatExperienceArgs {
   declarations: readonly Declaration[];
   invalidateAuthoritySnapshots: () => void;
   scheduleRefresh: (keys: readonly SessionRefreshKey[]) => void;
+  /** The viewer's own cell, from their `where` read — the listener's cell a
+   * `heard` beat's bearing is measured from (rpg-project#569). Presentation
+   * only: it never reaches a command. Null or absent while unknown. */
+  viewerCell?: { readonly x: number; readonly y: number } | null;
 }
 
 export interface UseSessionCombatExperienceResult {
@@ -276,7 +280,10 @@ export function useSessionCombatExperience({
   invalidateAuthoritySnapshots,
   scheduleRefresh,
   memberTargetingMode = 'legacy',
+  viewerCell = null,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
+  const viewerCellRef = useRef(viewerCell);
+  viewerCellRef.current = viewerCell;
   const [interaction, setInteractionState] =
     useState<CombatExperiencePresentationState>(EMPTY_INTERACTION);
   const interactionRef = useRef(interaction);
@@ -2176,7 +2183,11 @@ export function useSessionCombatExperience({
   const acceptStreamEvent = useCallback(
     (event: Event, metadata: SessionEventDeliveryMetadata) => {
       if (!mountedRef.current) return;
-      presentation.acceptStreamEvent(event, metadata);
+      presentation.acceptStreamEvent(
+        event,
+        metadata,
+        event.body.case === 'heard' ? viewerCellRef.current : undefined
+      );
       pacing.acceptEvent(event, metadata);
       // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
       // window's audience is exactly one member, and a beat naming somebody

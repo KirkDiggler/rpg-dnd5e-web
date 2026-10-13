@@ -267,6 +267,12 @@ export function refreshKeysFor(
     // work for the one beat that guarantees the scene is unchanged.
     case 'stayed':
       return [];
+    // A SOUND REACHED THIS LISTENER (rpg-project#569 H5). Nothing the client
+    // reads moved: no position, no sheet, no action, and — because a sound
+    // names nobody (R4) — no sighting either. What the noise brings, if it
+    // brings anything, arrives as that creature's own beats.
+    case 'heard':
+      return [];
     case 'looted':
     case 'activated':
     case 'exited':

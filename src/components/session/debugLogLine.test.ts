@@ -852,6 +852,28 @@ describe('formatDebugLine', () => {
     expect(line.text).not.toContain('troupe for the feast');
   });
 
+  // A SOUND (rpg-project#569 H5): kind, cell and hops — and no maker, because
+  // the wire has none; the only id is the listener's own.
+  it('a heard beat prints the kind, the cell and the hops, and names only the listener', () => {
+    const event = baseEvent({
+      kind: EventKind.HEARD,
+      body: {
+        case: 'heard',
+        value: {
+          listener: 'char-1',
+          kind: 'clang',
+          position: { x: 4, y: -2 },
+          hops: 2,
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toContain(
+      'heard listener=Toolkit Sandbox Fighter kind="clang" at=(4,-2) hops=2'
+    );
+  });
+
   it('a spoke beat to a prop names the prop and hovers no member for it', () => {
     const event = baseEvent({
       kind: EventKind.SPOKE,

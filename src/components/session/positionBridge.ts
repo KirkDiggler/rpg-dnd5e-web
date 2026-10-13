@@ -10,13 +10,18 @@
 import { cubeToWorld, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
-export function positionToCube(position: Position): CubeCoord {
+/** Only the two coordinates are read, so any `{ x, y }` cell bridges — a
+ * wire `Position` or a cell kept beside a story record. */
+export function positionToCube(position: Pick<Position, 'x' | 'y'>): CubeCoord {
   const q = position.x;
   const r = position.y;
   return { x: q, y: -q - r, z: r };
 }
 
-export function worldPositionOf(position: Position, hexSize: number) {
+export function worldPositionOf(
+  position: Pick<Position, 'x' | 'y'>,
+  hexSize: number
+) {
   return cubeToWorld(positionToCube(position), hexSize);
 }
 
