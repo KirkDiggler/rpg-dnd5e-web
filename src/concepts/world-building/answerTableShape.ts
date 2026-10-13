@@ -51,6 +51,8 @@ import {
   MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
+  RETIRED_TRIGGER_KEYS,
+  retiredTriggerRefusal,
   spanRefusal,
   suggestKey,
   unknownDeedRefusal,
@@ -150,6 +152,8 @@ export function validateAnswerTable(
     );
   const table: AnswerTableShape = {};
   for (const [trigger, rawEntries] of Object.entries(value)) {
+    if (RETIRED_TRIGGER_KEYS.includes(trigger))
+      fail(`${path}.${trigger}`, retiredTriggerRefusal(trigger));
     if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
       const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
       fail(

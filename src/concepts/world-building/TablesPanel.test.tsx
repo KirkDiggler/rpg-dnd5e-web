@@ -41,15 +41,10 @@ describe('TablesPanel — the site’s shared tables, declared at the root', () 
     );
     const next = onChange.mock.calls.at(-1)![0] as SiteScope;
     mounted.rerender(<TablesPanel scope={next} onChange={onChange} />);
-    const picker = screen.getByLabelText(
-      'Add trigger to drill'
-    ) as HTMLSelectElement;
-    expect(picker.value).not.toBe('time');
-    expect(
-      screen.getByRole('button', {
-        name: `Add entry on ${picker.value} to drill`,
-      })
-    ).toBeTruthy();
+    // `time` is the only trigger (the social keys retired to options,
+    // rpg-project#569 R2), so once it is authored there is no new trigger to
+    // choose and the chooser is not offered.
+    expect(screen.queryByLabelText('Add trigger to drill')).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'Add entry on time to drill' })
     );

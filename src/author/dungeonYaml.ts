@@ -20,7 +20,11 @@
  * cannot represent (wrong version, unknown keys, non-numeric cells).
  */
 
-import { refSlug } from '@/utils/refs';
+import {
+  validateOptions,
+  type OptionShape,
+} from '@/concepts/world-building/answerTableShape';
+import { parseRef, refSlug } from '@/utils/refs';
 import {
   isMap as isYamlMap,
   isScalar as isYamlScalar,
@@ -52,6 +56,8 @@ import {
   MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
+  RETIRED_TRIGGER_KEYS,
+  retiredTriggerRefusal,
   spanRefusal,
   suggestKey,
   temperShareRefusal,
@@ -381,13 +387,14 @@ export interface PlacementDoc {
    * step behind the compiler. `at` still MUST be floor — it is where the
    * placement lands when the predicate holds. */
   arrives?: PredicateDoc;
-  /** Monsters only, REFUSED on props: the authored check that intimidates
-   * this creature — the accepted approaches and their DCs, the same shape a
-   * door's lock uses (`CheckDoc`). Success by any listed approach. Absent
-   * means the verb is not offered against it here. */
-  intimidate?: CheckDoc;
-  /** Persuade's twin, on the same machine (`front-room-goblin.md`). */
-  persuade?: CheckDoc;
+  /** Monsters and props: the lines a character can say to this placement
+   * (rpg-project#569), each with its check, an optional `requires`, and the
+   * rows answered on either verdict — `dungeonspec.OptionSpec`, judged by the
+   * same grammar the World Builder uses (`answerTableShape.validateOptions`),
+   * since its rows carry no cell and so nothing about it is v2's own. They
+   * replaced the placement's `intimidate:`/`persuade:` checks, which the
+   * engine now refuses by name. A prop's rows may not `flee`. */
+  options?: OptionShape[];
   /** Monsters only. The arms the author names for this placement, carried
    * verbatim — `dnd5e:weapons:scimitar` and friends. PARSED AND EMITTED
    * HERE, NOT YET AUTHORED, on `arrives`'s rule: this module carries the
@@ -1003,6 +1010,11 @@ function answerTable(
   const table: AnswerTableDoc = [];
   for (const [trigger, entriesRaw] of Object.entries(v)) {
     const triggerPath = `${path}.${trigger}`;
+    if (RETIRED_TRIGGER_KEYS.includes(trigger)) {
+      throw new DungeonParseError(
+        `${triggerPath}: ${retiredTriggerRefusal(trigger)}`
+      );
+    }
     if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
       const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
       throw new DungeonParseError(
@@ -1689,6 +1701,15 @@ export function parseDungeon(text: string): DungeonDoc {
   const place = list(raw.place, 'place').map((p, i): PlacementDoc => {
     const path = `place[${i}]`;
     if (!isRecord(p)) throw new DungeonParseError(`${path}: expected a map`);
+    // THE TWO RETIRED SOCIAL KEYS ARE REFUSED BY NAME (rpg-project#569 R2), in
+    // the engine's sentence: a priced check lives on the line that rolls it.
+    for (const key of ['intimidate', 'persuade']) {
+      if (Object.hasOwn(p, key)) {
+        throw new DungeonParseError(
+          `${path}.${key}: \`${key}\` is no longer a key: author an option whose check rolls it`
+        );
+      }
+    }
     expectKeys(
       p,
       [
@@ -1705,12 +1726,12 @@ export function parseDungeon(text: string): DungeonDoc {
         'holdable',
         'faction',
         'arrives',
-        // The social surface (rpg-dnd5e-web#1118). This list is the
-        // COMPILER'S vocabulary, not the panels' — a field the builder
-        // cannot yet edit still loads, so a file one step ahead of the
-        // builder is readable rather than refused (`arrives`'s rule).
-        'intimidate',
-        'persuade',
+        // The social surface (rpg-project#569): the lines a character can
+        // say. This list is the COMPILER'S vocabulary, not the panels' — a
+        // field the builder cannot yet edit still loads, so a file one step
+        // ahead of the builder is readable rather than refused (`arrives`'s
+        // rule).
+        'options',
         'actions',
         'on',
         // The creature's temperament (rpg-dnd5e-web#1137): one of the three
@@ -1775,14 +1796,14 @@ export function parseDungeon(text: string): DungeonDoc {
     if (p.arrives !== undefined && p.arrives !== null) {
       placement.arrives = predicate(p.arrives, `${path}.arrives`);
     }
-    // The social surface. `intimidate`/`persuade` are the same check shape a
-    // door's lock uses, so they share its parser; the "monsters only" rule
-    // is the compiler's refusal to make, as it is for `faction`.
-    if (p.intimidate !== undefined && p.intimidate !== null) {
-      placement.intimidate = checkList(p.intimidate, `${path}.intimidate`);
-    }
-    if (p.persuade !== undefined && p.persuade !== null) {
-      placement.persuade = checkList(p.persuade, `${path}.persuade`);
+    // The lines a character can say (rpg-project#569). A placement whose ref
+    // is not a monster is a prop, and a prop's rows may not `flee`.
+    if (p.options !== undefined && p.options !== null) {
+      placement.options = validateOptions(
+        p.options,
+        `${path}.options`,
+        parseRef(placement.ref)?.type !== 'monsters'
+      );
     }
     // Carried verbatim and NOT read: what a weapon ref means is the
     // compiler's and the catalogue's business (rpg-project#448).
@@ -2067,6 +2088,39 @@ function temperText(t: TemperDoc): string {
     .join(', ')} }`;
 }
 
+/** A placement's `options:` in BLOCK form (rpg-project#569): each line's id,
+ * words, check, gate, and verdict rows one flow map per row. Key order is the
+ * engine's `OptionSpec` field order. */
+function optionLines(options: OptionShape[], indent: string): string[] {
+  const lines = [`${indent}options:`];
+  for (const option of options) {
+    lines.push(`${indent}  - id: ${scalar(option.id)}`);
+    lines.push(`${indent}    say: ${JSON.stringify(option.say)}`);
+    lines.push(
+      `${indent}    check: [${option.check.map(fmtApproach).join(', ')}]`
+    );
+    if (option.requires !== undefined) {
+      const [form, id] = Object.entries(option.requires)[0] as [string, string];
+      lines.push(`${indent}    requires: { ${form}: ${scalar(id)} }`);
+    }
+    for (const verdict of ['success', 'failure'] as const) {
+      const rows = option[verdict];
+      if (rows === undefined) continue;
+      lines.push(`${indent}    ${verdict}:`);
+      for (const row of rows) {
+        const fields: string[] = [];
+        if (row.weight !== undefined) fields.push(`weight: ${row.weight}`);
+        if (row.say !== undefined)
+          fields.push(`say: ${JSON.stringify(row.say)}`);
+        if (row.fact !== undefined) fields.push(`fact: ${scalar(row.fact)}`);
+        if (row.flee !== undefined) fields.push('flee: {}');
+        lines.push(`${indent}      - { ${fields.join(', ')} }`);
+      }
+    }
+  }
+  return lines;
+}
+
 /** One answer table in BLOCK form, at the indentation of its `on:` key. A map
  * of lists of maps is legal YAML in flow style and unreadable, and the author
  * is the one who reads this file — so a placement or a faction carrying a
@@ -2321,16 +2375,8 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.arrives !== undefined) {
         fields.push(`arrives: ${predicateText(p.arrives)}`);
       }
-      // The social checks and the named arms are FLAT, so they ride the
-      // same flow map every other field uses.
-      if (p.intimidate !== undefined) {
-        fields.push(
-          `intimidate: [${p.intimidate.map(fmtApproach).join(', ')}]`
-        );
-      }
-      if (p.persuade !== undefined) {
-        fields.push(`persuade: [${p.persuade.map(fmtApproach).join(', ')}]`);
-      }
+      // The named arms are FLAT, so they ride the same flow map every other
+      // field uses.
       if (p.actions !== undefined) {
         fields.push(`actions: [${p.actions.map(scalar).join(', ')}]`);
       }
@@ -2340,14 +2386,21 @@ export function emitDungeon(doc: DungeonDoc): string {
       // BLOCK form. An entry WITHOUT one emits exactly what every entry
       // emitted before this field existed, so no existing dungeon's bytes
       // move (`arrives`'s law, and this module's).
-      if (p.on === undefined) {
+      // OPTIONS ARE NESTED TOO (a list of maps holding lists of maps), so they
+      // take block form for the table's reason.
+      if (p.on === undefined && p.options === undefined) {
         out.push(`  - { ${fields.join(', ')} }`);
         continue;
       }
       const [lead, ...rest] = fields;
       out.push(`  - ${lead}`);
       for (const field of rest) out.push(`    ${field}`);
-      for (const line of answerTableLines(p.on, '    ', o)) out.push(line);
+      if (p.on !== undefined) {
+        for (const line of answerTableLines(p.on, '    ', o)) out.push(line);
+      }
+      if (p.options !== undefined) {
+        for (const line of optionLines(p.options, '    ')) out.push(line);
+      }
     }
   }
 

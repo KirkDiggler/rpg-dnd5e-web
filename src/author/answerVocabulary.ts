@@ -145,38 +145,16 @@ export interface AnswerTriggerSpec {
   readonly applicability: AnswerApplicability;
 }
 
-/** Sealed to `encounter.TableKeys`: the four social keys, then `time` —
- * the engine's own order (`table.go`), which is also the order the reference
- * page lists and the order the panels offer.
+/** Sealed to `encounter.TableKeys`, which is `time` alone since
+ * rpg-toolkit#2039: the four social keys retired to OPTIONS (rpg-project#569
+ * R2), where a line carries its own check and what is answered on either
+ * verdict ([ANSWER_VERDICTS]). They are refused by name
+ * ([RETIRED_TRIGGER_KEYS]), not offered.
  *
  * `time` FIRES WITHOUT ANYBODY TALKING TO IT — the creature's turn in a
  * fight, or a round of the world clock — which is why it is the one trigger
  * the four action words are legal on. */
 export const ANSWER_TRIGGERS: readonly AnswerTriggerSpec[] = Object.freeze([
-  {
-    key: 'intimidated',
-    label: 'Intimidation landed',
-    help: 'The threat worked. What the creature does now.',
-    applicability: 'social',
-  },
-  {
-    key: 'intimidate_failed',
-    label: 'Intimidation failed',
-    help: 'The threat did not land. Failure may cost the party something — that is what gives the attempt teeth.',
-    applicability: 'social',
-  },
-  {
-    key: 'persuaded',
-    label: 'Persuasion landed',
-    help: 'The appeal worked. What the creature does now.',
-    applicability: 'social',
-  },
-  {
-    key: 'persuade_failed',
-    label: 'Persuasion failed',
-    help: 'The appeal did not land. A failed appeal is where a lie or bad directions live.',
-    applicability: 'social',
-  },
   {
     key: 'time',
     label: 'Has time',
@@ -184,6 +162,24 @@ export const ANSWER_TRIGGERS: readonly AnswerTriggerSpec[] = Object.freeze([
     applicability: 'time',
   },
 ]);
+
+/** The four social table keys that retired to options (rpg-project#569 R2) —
+ * `encounter.RetiredTableKeys`. A table carrying one is refused BY NAME with
+ * the engine's sentence ([retiredTriggerRefusal]) rather than as an unknown
+ * trigger: the author wrote something this build once understood. The deeds
+ * of the same names (`when: { intimidated }`) are NOT retired — a beaten
+ * Intimidation line still lands the deed. */
+export const RETIRED_TRIGGER_KEYS: readonly string[] = Object.freeze([
+  'intimidated',
+  'intimidate_failed',
+  'persuaded',
+  'persuade_failed',
+]);
+
+/** `dungeonspec`'s `retiredTableKey`: where a retired social key went. */
+export function retiredTriggerRefusal(key: string): string {
+  return `\`${key}\` is no longer a table key: author an option`;
+}
 
 /** The two VERDICTS an option answers on (rpg-project#569 R2) — `success`
  * when the speaker's check was beaten, `failure` when it was missed.

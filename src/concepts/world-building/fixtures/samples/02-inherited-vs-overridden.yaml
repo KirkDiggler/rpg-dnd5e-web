@@ -6,8 +6,8 @@
 # THE RULE THIS EXISTS TO MAKE VISIBLE: `on:` is LAYERED, NEAREST KEY WINS
 # WHOLESALE. `goblin-2` writes its own `time` key, so the faction's ENTIRE
 # `time` list is REPLACED — it is not merged, and the faction's entries do not
-# survive underneath. `intimidated` is untouched on that creature, so it still
-# inherits the faction's two entries there.
+# survive underneath. `goblin-1` writes nothing, so it inherits the faction's
+# table whole.
 #
 # The cost of that rule is the point: overriding one key is visible in the file,
 # and an author never has to reason about what was added to what.
@@ -31,13 +31,6 @@ factions:
     mind: goblin-1
     temper: { coward: 2, soldier: 1, aggressive: 1 }
     on:
-      intimidated:
-        - {
-            weight: 70,
-            say: 'Fine! The cellar door is behind the barrels.',
-            fact: goblin-cowed,
-          }
-        - { weight: 30, say: 'Boss! BOSS!', flee: {} }
       time:
         - { when: { enemy: reach }, attack: enemy }
         - { when: { enemy: seen }, toward: enemy }
@@ -94,13 +87,26 @@ room:
           startingCell: { location: { q: 1, r: -1 } },
         }
     monsterBindings:
-      # Inherits BOTH of the faction's triggers AND its mix: no overrides at all.
+      # Inherits the faction's table AND its mix: no overrides at all. Its one
+      # line is what teaches `goblin-cowed` (rpg-project#569 — a social
+      # outcome lives on the line that rolls it, not on a table).
+      #
       goblin-1:
         faction: goblins
         actions: ['dnd5e:weapons:scimitar']
+        options:
+          - id: lean-on-it
+            say: 'Where is the cellar?'
+            check: [{ ability: intimidation, dc: 12 }]
+            success:
+              - {
+                  weight: 70,
+                  say: 'Fine! The cellar door is behind the barrels.',
+                  fact: goblin-cowed,
+                }
+              - { weight: 30, say: 'Boss! BOSS!', flee: {} }
       # Overrides `time` WHOLESALE (the faction's two entries are gone) and names
       # its own one-word temper (the faction's mix is not dealt for it).
-      # `intimidated` is still inherited untouched.
       goblin-2:
         faction: goblins
         on:

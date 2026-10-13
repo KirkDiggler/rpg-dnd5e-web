@@ -881,10 +881,6 @@ describe('room draft v3 migration and structural exactness', () => {
       'goblin-1': {
         faction: 'goblins',
         on: {
-          intimidated: [
-            { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
-            { weight: 30, flee: {} },
-          ],
           time: [
             { when: { enemy: 'reach' }, attack: 'enemy' },
             { toward: { at: [3, 4] } },

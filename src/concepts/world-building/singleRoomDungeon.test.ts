@@ -363,9 +363,6 @@ ${ROOM_BLOCK}
       goblin-1:
         faction: goblins
         on:
-          intimidated:
-            - {weight: 70, say: 'Fine! The cellar door is behind the barrels.', fact: goblin-cowed}
-            - {weight: 30, say: 'Boss! BOSS!', flee: {}}
           time:
             - {when: {enemy: reach}, attack: enemy}
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow']
@@ -378,14 +375,6 @@ ${ROOM_BLOCK}
       'goblin-1': {
         faction: 'goblins',
         on: {
-          intimidated: [
-            {
-              weight: 70,
-              say: 'Fine! The cellar door is behind the barrels.',
-              fact: 'goblin-cowed',
-            },
-            { weight: 30, say: 'Boss! BOSS!', flee: {} },
-          ],
           time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
         },
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
@@ -420,8 +409,8 @@ ${PLAY_BLOCK}
 factions:
   - id: goblins
     on:
-      intimidated:
-        - {say: 'Fine!', fact: goblin-cowed}
+      time:
+        - {when: {enemy: reach}, attack: enemy}
     temper: {coward: 2, soldier: 1, aggressive: 1}
   - id: bandits
     mind: bandit-chief
@@ -434,7 +423,7 @@ ${ROOM_BLOCK}
     expect(decoded.factions).toEqual([
       {
         id: 'goblins',
-        on: { intimidated: [{ say: 'Fine!', fact: 'goblin-cowed' }] },
+        on: { time: [{ when: { enemy: 'reach' }, attack: 'enemy' }] },
         temper: { coward: 2, soldier: 1, aggressive: 1 },
       },
       { id: 'bandits', mind: 'bandit-chief' },
@@ -676,24 +665,20 @@ ${ROOM_BLOCK}
   it('refuses an answer table this build cannot roll, in the engine’s own words', () => {
     const withOn = (on: string) =>
       `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        on:\n${on}\n`;
-    // An unknown trigger, an action word on a social key, and a missing say on
-    // an entry with no word: all three are the vocabulary's sentences.
+    // An unknown trigger, a retired social key, a missing say on an entry with
+    // no word, and an empty trigger: all are the engine's sentences.
     expect(() =>
       decodeSingleRoomDungeon(withOn('          taunted: [{say: hi}]'))
     ).toThrow(/"taunted" is not a trigger this build rolls/);
     expect(() =>
-      decodeSingleRoomDungeon(
-        withOn('          intimidated: [{attack: enemy}]')
-      )
-    ).toThrow(
-      /`attack` is what a creature does with time, and `intimidated` is an outcome/
-    );
+      decodeSingleRoomDungeon(withOn('          intimidated: [{say: Fine.}]'))
+    ).toThrow('`intimidated` is no longer a table key: author an option');
     expect(() =>
-      decodeSingleRoomDungeon(withOn('          intimidated: [{}]'))
+      decodeSingleRoomDungeon(withOn('          time: [{}]'))
     ).toThrow(/this entry does nothing and says nothing/);
-    expect(() =>
-      decodeSingleRoomDungeon(withOn('          intimidated: []'))
-    ).toThrow(/this names a trigger and lists nothing that happens on it/);
+    expect(() => decodeSingleRoomDungeon(withOn('          time: []'))).toThrow(
+      /this names a trigger and lists nothing that happens on it/
+    );
   });
 
   it('round trips the four root keys — exits, endings, scenarios, concealments — verbatim (web#1184)', () => {

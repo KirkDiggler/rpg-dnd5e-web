@@ -773,9 +773,9 @@ function FactionTableEditor({
   );
   /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
    * trigger a behavior table is mostly about, and the only one the `when`
-   * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
-   * lands an author on the social half, where no condition control can ever
-   * appear — the same invisibility the walk found on a creature's table.
+   * editor is legal on. (The social keys that once came first retired to
+   * options, rpg-project#569, so `time` is now the only key; the default
+   * stays for the next trigger the engine adds.)
    * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
    * the faction's was not. */
   const [newTrigger, setNewTrigger] = useState(

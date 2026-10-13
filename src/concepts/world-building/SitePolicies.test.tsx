@@ -654,13 +654,36 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('offers no condition on a social trigger, because the verb IS the condition', () => {
-    // `intimidated` already means "the threat landed"; a second condition under
-    // it would be asking when a thing that just happened happened. The control
+  it('offers no condition on an option’s verdict, because the verdict IS the condition', () => {
+    // `success` already means "the line landed"; a second condition under it
+    // would be asking when a thing that just happened happened. The control
     // is ABSENT rather than disabled — the builder does not offer what the
-    // engine refuses.
-    editableTable({ intimidated: [{ say: 'Fine!' }] });
-    expect(screen.queryByLabelText('When for intimidated entry')).toBeNull();
+    // engine refuses. (The social table keys that carried this rule retired
+    // to options, rpg-project#569 R2.)
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          options: [
+            {
+              id: 'gossip',
+              say: 'Busy night?',
+              check: [{ ability: 'persuasion', dc: 10 }],
+              success: [{ say: 'Fine!' }],
+            },
+          ],
+        }}
+        onOrdersChange={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByLabelText(
+        'Say (optional) for line 1 of goblin-1 success entry'
+      )
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('When for success entry')).toBeNull();
   });
 
   it('offers `actor` only once the condition names a deed', () => {

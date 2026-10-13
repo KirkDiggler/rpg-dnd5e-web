@@ -25,17 +25,16 @@ describe('the front room is selectable in the Concepts Lab', () => {
     expect(sandboxDocForSearch('').key).toBe('reference-tomb');
   });
 
-  it('carries a real answer table, or the mount would show nothing', () => {
-    // THE GOBLINS' TABLE LIVES ON THEIR FACTION (rpg-project#466), inherited
-    // by all four placements — so this reads the faction, not the goblin.
+  it('carries the goblin’s lines, or the mount would show nothing to speak to', () => {
+    // THE GOBLINS' SOCIAL TABLE RETIRED (rpg-project#569 R2): what the goblin
+    // answers lives on the two lines it is spoken to by.
     const doc = sandboxDocForSearch('?authorFixture=front-room');
-    const goblins = doc.factions.find((f) => f.id === 'goblins');
-    expect(goblins?.on?.map((t) => t.trigger)).toEqual([
-      'intimidated',
-      'intimidate_failed',
-      'persuaded',
-      'persuade_failed',
+    const goblin = doc.place.find((p) => p.id === 'front-goblin');
+    expect(goblin?.options?.map((o) => o.id)).toEqual([
+      'lean-on-it',
+      'talk-it-round',
     ]);
+    const goblins = doc.factions.find((f) => f.id === 'goblins');
     // And the mix that gives four goblins four behaviours off one table.
     expect(goblins?.temper?.mix?.map((s) => s.word)).toEqual([
       'coward',

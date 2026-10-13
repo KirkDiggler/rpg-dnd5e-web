@@ -113,8 +113,11 @@ describe('site policy edits — mechanics', () => {
   });
 
   it('adds, patches and removes an answer entry on a trigger', () => {
-    const withEntry = addSiteAnswerEntry(baseScope, 'goblins', 'persuaded');
-    const entries = withEntry.factions?.[0]?.on?.persuaded;
+    // A faction that carries no table yet, so the trigger is the new entry's
+    // alone — `time`, the one key the engine reads (rpg-project#569 R2).
+    const bare = { factions: [{ id: 'goblins' }] };
+    const withEntry = addSiteAnswerEntry(bare, 'goblins', 'time');
+    const entries = withEntry.factions?.[0]?.on?.time;
     expect(entries).toHaveLength(1);
     // A new entry is a document the decoder reads: the default word carries
     // nothing, so it needs no id.
@@ -122,19 +125,19 @@ describe('site policy edits — mechanics', () => {
       validateAnswerTable(withEntry.factions?.[0]?.on, 'Site faction on')
     ).not.toThrow();
 
-    const patched = patchSiteAnswerEntry(withEntry, 'goblins', 'persuaded', 0, {
+    const patched = patchSiteAnswerEntry(withEntry, 'goblins', 'time', 0, {
       weight: 5,
       say: 'Fine.',
-      flee: {},
+      hold: {},
     });
-    expect(patched.factions?.[0]?.on?.persuaded?.[0]).toEqual({
+    expect(patched.factions?.[0]?.on?.time?.[0]).toEqual({
       weight: 5,
       say: 'Fine.',
-      flee: {},
+      hold: {},
     });
 
-    const removed = removeSiteAnswerEntry(patched, 'goblins', 'persuaded', 0);
-    expect(removed.factions?.[0]?.on?.persuaded).toBeUndefined();
+    const removed = removeSiteAnswerEntry(patched, 'goblins', 'time', 0);
+    expect(removed.factions?.[0]?.on?.time).toBeUndefined();
   });
 
   it('reads the one word off an entry and replaces it with its own shape', () => {
@@ -146,7 +149,9 @@ describe('site policy edits — mechanics', () => {
     expect(setAnswerEntryWord({ fact: 'x' }, 'attack')).toEqual({
       attack: 'enemy',
     });
-    expect(entryWord(defaultAnswerEntry('intimidated'))).toBe('flee');
+    // An option's verdict takes the social words, whose first empty one is
+    // `flee`.
+    expect(entryWord(defaultAnswerEntry('success'))).toBe('flee');
     expect(entryWord(defaultAnswerEntry('time'))).toBe('hold');
   });
 });
