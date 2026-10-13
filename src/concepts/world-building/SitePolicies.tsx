@@ -25,7 +25,6 @@
  * gives it. Nothing restates a word.
  */
 import {
-  ANSWER_AT_SELECTOR,
   ANSWER_SELECTOR_WORDS,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
@@ -130,10 +129,6 @@ function entryWordText(entry: AnswerEntryShape, word: string): string {
   if (shape === 'string') return ` ${String(value)}`;
   if (shape === 'selector') {
     if (typeof value === 'string') return ` ${value}`;
-    if (value && typeof value === 'object' && 'at' in value) {
-      const [col, row] = (value as { at: [number, number] }).at;
-      return ` at [${col}, ${row}]`;
-    }
   }
   return '';
 }
@@ -702,7 +697,6 @@ export function AnswerEntryRow({
   entry,
   onCommit,
   onRemove,
-  allowCellSelector = true,
   label = trigger,
   excludeWords = [],
   allowNoWord = false,
@@ -722,17 +716,6 @@ export function AnswerEntryRow({
    * accepts on any key (`wordRequiredUnlessSaid`). An option's verdict rows
    * are mostly this: what the creature SAYS back. */
   allowNoWord?: boolean;
-  /** A PLACEMENT'S table may not name a cell: `{ at: [col, row] }` is refused
-   * by name on a binding, because this dialect's cells are axial and the same
-   * bytes would mean two things in the two dialects. A faction's table keeps
-   * it. Defaults to `true` so the faction editor is untouched — a control that
-   * can never save is not authoring, it is a trap.
-   *
-   * EXPORTED (rpg-dnd5e-web#1201): a ROOT table is authored by `TablesPanel`,
-   * and it keeps the cell selector for the reason a faction's does — a root
-   * table is what a faction NAMES, so the grammar inside it is the faction's,
-   * not a placement's. One entry editor, three callers. */
-  allowCellSelector?: boolean;
 }) {
   const words = answerWordsForTrigger(trigger).filter(
     (candidate) => !excludeWords.includes(candidate.key)
@@ -740,10 +723,6 @@ export function AnswerEntryRow({
   const word = entryWord(entry) ?? (allowNoWord ? '' : (words[0]?.key ?? ''));
   const spec = answerWord(word);
   const value = (entry as Record<string, unknown>)[word];
-  /** `at:` is offered only where the engine accepts it — the `toward` word on a
-   * FACTION's table. See the prop's own note. */
-  const cellSelectorAllowed =
-    allowCellSelector && word === ANSWER_AT_SELECTOR.onlyWord;
   /** `when` is legal on `time` alone; a social key IS the condition. */
   const whenLegal = answerWhenLegalOn(trigger);
   /** `actor` needs a deed to have been the actor of. Offered only when this
@@ -758,11 +737,7 @@ export function AnswerEntryRow({
       selectorWordLegalOn(selector.key, word)
   );
   const selectorChoice =
-    typeof value === 'string'
-      ? value
-      : isMapping(value) && Array.isArray(value.at)
-        ? ANSWER_AT_SELECTOR.key
-        : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
+    typeof value === 'string' ? value : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
 
   const withWordValue = (next: unknown): AnswerEntryShape => {
     const draft = { ...(entry as Record<string, unknown>) } as AnswerEntryShape;
@@ -845,13 +820,7 @@ export function AnswerEntryRow({
                 aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
                 value={selectorChoice}
                 onChange={(event) =>
-                  onCommit(
-                    withWordValue(
-                      event.target.value === ANSWER_AT_SELECTOR.key
-                        ? { at: [0, 0] }
-                        : event.target.value
-                    )
-                  )
+                  onCommit(withWordValue(event.target.value))
                 }
               >
                 {selectorWords.map((selector) => (
@@ -859,41 +828,8 @@ export function AnswerEntryRow({
                     {selector.label} ({selector.key})
                   </option>
                 ))}
-                {cellSelectorAllowed && (
-                  <option value={ANSWER_AT_SELECTOR.key}>
-                    {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
-                  </option>
-                )}
               </select>
             </label>
-            {cellSelectorAllowed &&
-              isMapping(value) &&
-              Array.isArray(value.at) && (
-                <label>
-                  <span>Cell</span>
-                  <span className="wb-policy-cell">
-                    {([0, 1] as const).map((axis) => {
-                      const at = value.at as [number, number];
-                      return (
-                        <input
-                          key={axis}
-                          type="number"
-                          step={1}
-                          aria-label={`${
-                            axis === 0 ? 'Column' : 'Row'
-                          } for ${label} entry`}
-                          value={String(at[axis] ?? 0)}
-                          onChange={(event) => {
-                            const cell = [...at] as [number, number];
-                            cell[axis] = Number(event.target.value);
-                            onCommit(withWordValue({ at: cell }));
-                          }}
-                        />
-                      );
-                    })}
-                  </span>
-                </label>
-              )}
           </>
         )}
       </div>

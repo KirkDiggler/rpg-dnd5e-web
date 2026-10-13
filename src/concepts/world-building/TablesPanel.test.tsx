@@ -423,10 +423,15 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
   });
 
-  it('`toward` offers the sound and never a route', () => {
+  it('`toward` offers exactly enemy, attacker and sound here — never a cell or a route', () => {
     const last = mount({ when: { enemy: 'none' }, toward: 'enemy' });
-    expect(options('To for time entry')).toContain('sound');
-    expect(options('To for time entry')).not.toContain('path');
+    // `actor` waits for a deed in the row's `when`; `at` and `path` are
+    // refused by the single room (rpg-toolkit#2044), so never offered.
+    expect(options('To for time entry')).toEqual([
+      'enemy',
+      'attacker',
+      'sound',
+    ]);
     fireEvent.change(screen.getByLabelText('To for time entry'), {
       target: { value: 'sound' },
     });

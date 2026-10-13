@@ -883,7 +883,7 @@ describe('room draft v3 migration and structural exactness', () => {
         on: {
           time: [
             { when: { enemy: 'reach' }, attack: 'enemy' },
-            { toward: { at: [3, 4] } },
+            { toward: 'attacker' },
           ],
         },
         temper: 'coward',
@@ -970,7 +970,11 @@ describe('room draft v3 migration and structural exactness', () => {
     // THE SINGLE ROOM NAMES NO ROUTE (rpg-toolkit#2044): its cells have no
     // frame, exactly as `at`'s have none.
     expect(refused([{ toward: { path: [[1, 1]] } }])).toThrow(
-      /path is not a route a single room can name yet: its cells are axial/
+      /on\.time\[0\]\.toward\.path: path is not a route a single room can name yet: its cells are axial/
+    );
+    // NOR A CELL, for the same reason, whatever word it sits on.
+    expect(refused([{ toward: { at: [3, 4] } }])).toThrow(
+      /on\.time\[0\]\.toward\.at: at is not a place a single room can name yet: its cells are axial and the selector's cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer/
     );
     expect(
       refused([

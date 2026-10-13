@@ -778,6 +778,10 @@ export const HEARING_SENTENCES = Object.freeze({
   /** `AnswerSpec.UnmarshalYAML`: the word named before it was built. */
   patrol: (): string =>
     '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }',
+  /** `singleRoomCellSelector`: the v4 single room has no frame for an `at`
+   * cell — refused whatever word it sits on (rpg-toolkit#2044). */
+  singleRoomCell: (): string =>
+    "at is not a place a single room can name yet: its cells are axial and the selector's cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer",
   /** `singleRoomPathSelector`: the v4 single room has no frame for a route's
    * cells, exactly as it has none for `at`. */
   singleRoomPath: (): string =>

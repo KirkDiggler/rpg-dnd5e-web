@@ -23,16 +23,15 @@
  * and never resolves a selector. It refuses what the engine's strict decoder
  * would refuse, in the engine's own sentences, and carries the rest verbatim.
  *
- * THE `at:` CELL IS CARRIED AS WRITTEN — `[col, row]`, the file's spelling.
- * The engine resolves an offset pair under the document's `orientation`, which
- * the single-room dialect does not carry; converting here would invent a frame
- * the file does not state. Shape only: validate the pair, carry it, and let
- * the frame question be answered where the document is compiled.
+ * NO CELL AND NO ROUTE (rpg-toolkit#2044). The engine resolves an offset pair
+ * under a document `orientation`, which the single-room dialect does not
+ * carry, so it refuses `{ at }` and `{ path }` here by name; this reader
+ * refuses them in the same sentences rather than carrying bytes the server
+ * will not take. The v2 dialect (`dungeonYaml.ts`) keeps both.
  */
 
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
-  ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_PATH_SELECTOR,
   ANSWER_SELECTOR_WORDS,
@@ -43,7 +42,6 @@ import {
   answerWhenRefusal,
   answerWord,
   answerWordRefusal,
-  atSelectorRefusal,
   bothScopesRefusal,
   EMPTY_ENTRY_REFUSAL,
   EMPTY_FACT_REFUSAL,
@@ -71,10 +69,10 @@ import {
   whenShapeRefusal,
 } from '@/author/answerVocabulary';
 
-/** A selector as written: one of the sealed words (`sound` among them), or an
- * authored cell `{ at: [col, row] }`. A route (`{ path }`, rpg-project#569 R7)
- * is refused in this dialect — see [validateAnswerSelector]. */
-export type AnswerSelectorShape = string | { at: [number, number] };
+/** A selector as written: one of the sealed words (`sound` among them). An
+ * authored cell (`{ at }`) or route (`{ path }`) is refused in this dialect —
+ * its cells are axial and it states no frame for them (rpg-toolkit#2044). */
+export type AnswerSelectorShape = string;
 
 /** A `when:` as written: EXACTLY ONE exclusive enemy band, or one deed with
  * its span and — optionally — WHOSE deed it is about. The key IS the shape,
@@ -362,8 +360,9 @@ function validateAnswerEntry(
     }
   }
 
-  // `at:` is legal on one word; `actor` needs a deed to have been the actor
-  // of. The word is READ from the declaration rather than restated.
+  // `actor` needs a deed to have been the actor of; `sound` needs a row that
+  // listened. (A cell or a route never reaches here: this dialect refuses
+  // both at the selector.)
   for (const word of words) {
     const selector =
       word === 'attack'
@@ -374,11 +373,6 @@ function validateAnswerEntry(
             ? entry.away
             : undefined;
     if (selector === undefined) continue;
-    if (typeof selector !== 'string') {
-      if ('at' in selector && word !== ANSWER_AT_SELECTOR.onlyWord)
-        fail(`${path}.${word}`, atSelectorRefusal(word));
-      continue;
-    }
     // A deed named POSITIVELY by any entry of the list: a negated deed has no
     // actor to have been.
     const deedNamed = whenNamesDeedShape(entry.when);
@@ -604,7 +598,9 @@ function validateAnswerSelector(
       fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
     }
     if (!hasAt) fail(path, MISSING_AT_REFUSAL);
-    return { at: validateAtCell(value.at, `${path}.at`) };
+    // NOR A CELL (rpg-toolkit#2044, `singleRoomCellSelector`): the same
+    // missing frame, refused whatever word it sits on.
+    fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
   }
   fail(
     path,
@@ -614,24 +610,12 @@ function validateAnswerSelector(
   );
 }
 
-/** The authored cell of an `at:` selector — `[col, row]`, carried as written. */
 /** The row's own path, from a selector's `…time[i].<word>`. */
 function rowPathOf(selectorPath: string, word: string): string {
   const suffix = `.${word}`;
   return selectorPath.endsWith(suffix)
     ? selectorPath.slice(0, -suffix.length)
     : selectorPath;
-}
-
-function validateAtCell(value: unknown, path: string): [number, number] {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    !Number.isInteger(value[0]) ||
-    !Number.isInteger(value[1])
-  )
-    fail(path, 'expected [col,row]');
-  return [value[0] as number, value[1] as number];
 }
 
 // ---------------------------------------------------------------------------
