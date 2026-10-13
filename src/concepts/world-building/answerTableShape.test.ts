@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateAnswerTable } from './answerTableShape';
+import { validateAnswerTable, validateOptions } from './answerTableShape';
 
 /** A refusal is asserted through the same path a document takes, so the
  * sentence an author meets is the one pinned here. */
@@ -8,13 +8,6 @@ const table = (on: unknown) => () => validateAnswerTable(on, 'on');
 describe('answer table shape', () => {
   it('carries the shipped grammar verbatim', () => {
     const authored = {
-      intimidated: [
-        { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
-        { weight: 30, flee: {} },
-      ],
-      intimidate_failed: [{ say: 'Big talk for someone in my doorway.' }],
-      persuaded: [{ say: 'All right, the cellar is yours.' }],
-      persuade_failed: [{ say: 'Nice try.' }],
       time: [
         { when: { enemy: 'reach' }, attack: 'enemy' },
         { when: { attacked: { within: 3 } }, attack: 'attacker', weight: 3 },
@@ -22,23 +15,37 @@ describe('answer table shape', () => {
         { hold: {} },
         { when: { fled: { within: 3 } }, away: 'actor', weight: 5 },
         { when: { enemy: 'remembered' }, toward: 'enemy' },
+        // The DEED of a beaten Intimidation line is still a deed a `when`
+        // reads; only the table KEY retired.
         { when: { intimidated: { within: 1 } }, toward: 'actor' },
       ],
     };
     expect(validateAnswerTable(authored, 'on')).toEqual(authored);
   });
 
+  it('refuses the four retired social keys by name, in the engine’s sentence', () => {
+    // rpg-project#569 R2: `encounter.TableKeys` is `[time]`, and the engine's
+    // `placeOn` names where each social key went.
+    for (const key of [
+      'intimidated',
+      'intimidate_failed',
+      'persuaded',
+      'persuade_failed',
+    ])
+      expect(table({ [key]: [{ say: 'Fine!' }] })).toThrow(
+        `on.${key}: \`${key}\` is no longer a table key: author an option`
+      );
+  });
+
   it('refuses an unknown trigger and an unknown entry key, with a suggestion', () => {
     expect(table({ taunted: [{ say: 'hi' }] })).toThrow(
-      /"taunted" is not a trigger this build rolls: they are intimidated/
+      /"taunted" is not a trigger this build rolls: they are time$/
     );
-    expect(table({ intimidate: [{ say: 'hi' }] })).toThrow(
-      /did you mean "intimidated"\?/
+    expect(table({ tiem: [{ say: 'hi' }] })).toThrow(/did you mean "time"\?/);
+    expect(table({ time: [{ hodl: {}, say: 'hi' }] })).toThrow(
+      /did you mean "hold"\?/
     );
-    expect(table({ intimidated: [{ fcat: 'x', say: 'hi' }] })).toThrow(
-      /did you mean "fact"\?/
-    );
-    expect(table({ intimidated: [{ temper: 'coward' }] })).toThrow(
+    expect(table({ time: [{ temper: 'coward' }] })).toThrow(
       /unknown key "temper"/
     );
   });
@@ -52,28 +59,42 @@ describe('answer table shape', () => {
     );
   });
 
-  it('refuses a word under a trigger it is not legal on, in the engine sentences', () => {
-    expect(table({ intimidated: [{ attack: 'enemy' }] })).toThrow(
-      /`attack` is what a creature does with time, and `intimidated` is an outcome/
+  /** One option whose `success` rows are the given ones — where a social
+   * word is legal now (rpg-project#569). */
+  const verdict = (rows: unknown[]) => () =>
+    validateOptions(
+      [
+        {
+          id: 'x',
+          say: 'Hi.',
+          check: [{ ability: 'persuasion', dc: 10 }],
+          success: rows,
+        },
+      ],
+      'options',
+      false
+    );
+
+  it('refuses a word under a key it is not legal on, in the engine sentences', () => {
+    expect(verdict([{ attack: 'enemy' }])).toThrow(
+      /`attack` is what a creature does with time, and `success` is an outcome/
     );
     expect(table({ time: [{ fact: 'x' }] })).toThrow(
       /`fact` answers a social verdict, and `time` is not one/
     );
-    expect(
-      table({ intimidated: [{ when: { enemy: 'reach' }, flee: {} }] })
-    ).toThrow(
-      /`intimidated` is already the condition — a `when` under it asks when a thing that just happened happened/
+    expect(verdict([{ when: { enemy: 'reach' }, flee: {} }])).toThrow(
+      /`success` is already the condition — a `when` under it asks when a thing that just happened happened/
     );
   });
 
   it('refuses more than one word, a zero weight and an empty fact', () => {
-    expect(table({ intimidated: [{ fact: 'x', flee: {} }] })).toThrow(
+    expect(verdict([{ fact: 'x', flee: {} }])).toThrow(
       /an entry does one thing/
     );
-    expect(table({ intimidated: [{ weight: 0, say: 'hi' }] })).toThrow(
+    expect(verdict([{ weight: 0, say: 'hi' }])).toThrow(
       /a weight of 0 can never be rolled/
     );
-    expect(table({ intimidated: [{ fact: '' }] })).toThrow(
+    expect(verdict([{ fact: '' }])).toThrow(
       /this says the world learns something and does not say what/
     );
   });

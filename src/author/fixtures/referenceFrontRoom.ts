@@ -2,7 +2,8 @@
  * The reference front room — a PINNED SNAPSHOT of the server's file.
  *
  * `reference-front-room.yaml` beside this module is a verbatim copy of
- * `rpg-api/content/reference-front-room.yaml` **as it stood at `1f2a6ac8`**
+ * `rpg-api/content/reference-front-room.yaml` **as it stood at `29206a48`** (rpg-api#1099's pushed head, where the
+ * goblin's priced checks became two options — rpg-project#569)
  * (`rpg-api` `origin/dev` tip `de83ffd6`, PR #1005). It is not a conversion
  * and not this module's idea of what the room should be, so the builder's
  * fixture and the server's fixture were one text when it was taken.
@@ -43,17 +44,17 @@ import referenceFrontRoomYaml from './reference-front-room.yaml?raw';
  * `reference-tomb.yaml` is pinned.
  *
  * It does NOT pin the copy to the server's file, and it never did: the hash
- * proves the bytes are the ones taken at `1f2a6ac8`, so the test keeps
+ * proves the bytes are the ones taken at `29206a48`, so the test keeps
  * passing after upstream moves. That is a property of any hash-pinned
  * snapshot, and it is why the reconciliation is carried by an issue rather
  * than by this constant. */
 export const REFERENCE_FRONT_ROOM_YAML = referenceFrontRoomYaml;
 
-/** sha256 of the pinned snapshot taken at `1f2a6ac8` — NOT a hash of the file
+/** sha256 of the pinned snapshot taken at `29206a48` — NOT a hash of the file
  * the API ships today. Re-pin it in the same change that reconciles the copy
  * with upstream. */
 export const REFERENCE_FRONT_ROOM_SHA256 =
-  '1f2a6ac8f6969ae21d30ad5cd50f5b696e8d727d0a17491826af6bc807b4d1bb';
+  '10279c757782bc11af84332b5b305d82288482e8d38513c8bdc06a1b44df6da4';
 
 export function referenceFrontRoomDoc(): DungeonDoc {
   return parseDungeon(REFERENCE_FRONT_ROOM_YAML);

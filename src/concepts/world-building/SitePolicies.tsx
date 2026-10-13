@@ -46,21 +46,38 @@ import {
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
-import type {
-  AnswerEntryShape,
-  AnswerTableShape,
-  AnswerWhenShape,
+import {
+  OPTION_VERDICTS,
+  type AnswerEntryShape,
+  type AnswerTableShape,
+  type AnswerWhenShape,
+  type OptionShape,
+  type OptionVerdict,
 } from './answerTableShape';
+import { CheckApproachRows } from './CheckApproachRows';
 import {
   addMonsterAction,
   addMonsterHold,
+  addMonsterOption,
   moveMonsterAction,
   removeMonsterAction,
   removeMonsterHold,
+  removeMonsterOption,
   setMonsterArrives,
+  setMonsterOption,
   setMonsterTable,
   setMonsterTemper,
 } from './monsterOrderEdits';
+import {
+  addOptionApproach,
+  addOptionRow,
+  holdablePropIds,
+  patchOption,
+  patchOptionApproach,
+  patchOptionRow,
+  removeOptionApproach,
+  removeOptionRow,
+} from './optionEdits';
 import type {
   RoomGameplayData,
   RoomMonsterBinding,
@@ -421,6 +438,15 @@ function AnswerWhenEditor({
 // The shared `on:` table
 // ---------------------------------------------------------------------------
 
+/** The entry with its one word taken away — "just say it". */
+function withoutWord(entry: AnswerEntryShape): AnswerEntryShape {
+  const next = { ...entry } as Record<string, unknown>;
+  for (const key of Object.keys(next)) {
+    if (answerWord(key)) delete next[key];
+  }
+  return next as AnswerEntryShape;
+}
+
 /** One entry row: its weight, its `say`, and its ONE word. Every control
  * writes what the author set; whether the entry is legal is the server's call,
  * and `when` is carried verbatim because the builder never reads it. */
@@ -430,11 +456,25 @@ export function AnswerEntryRow({
   onCommit,
   onRemove,
   allowCellSelector = true,
+  label = trigger,
+  excludeWords = [],
+  allowNoWord = false,
 }: {
   trigger: string;
   entry: AnswerEntryShape;
   onCommit: (entry: AnswerEntryShape) => void;
   onRemove: () => void;
+  /** What this row's controls are NAMED for — the trigger by default. An
+   * option's verdict rows pass `<option id> <verdict>` so two options' rows
+   * are two sets of controls (rpg-project#569). */
+  label?: string;
+  /** Words this row may not offer although the trigger takes them: a prop's
+   * verdict rows exclude `flee` ("a prop cannot run"). */
+  excludeWords?: readonly string[];
+  /** Offer "just say it" — a row with a line and no word, which the engine
+   * accepts on any key (`wordRequiredUnlessSaid`). An option's verdict rows
+   * are mostly this: what the creature SAYS back. */
+  allowNoWord?: boolean;
   /** A PLACEMENT'S table may not name a cell: `{ at: [col, row] }` is refused
    * by name on a binding, because this dialect's cells are axial and the same
    * bytes would mean two things in the two dialects. A faction's table keeps
@@ -447,8 +487,10 @@ export function AnswerEntryRow({
    * not a placement's. One entry editor, three callers. */
   allowCellSelector?: boolean;
 }) {
-  const words = answerWordsForTrigger(trigger);
-  const word = entryWord(entry) ?? words[0]?.key ?? '';
+  const words = answerWordsForTrigger(trigger).filter(
+    (candidate) => !excludeWords.includes(candidate.key)
+  );
+  const word = entryWord(entry) ?? (allowNoWord ? '' : (words[0]?.key ?? ''));
   const spec = answerWord(word);
   const value = (entry as Record<string, unknown>)[word];
   /** `at:` is offered only where the engine accepts it — the `toward` word on a
@@ -510,12 +552,17 @@ export function AnswerEntryRow({
         <label className="wb-entry-action">
           <span>Do</span>
           <select
-            aria-label={`Do for ${trigger} entry`}
+            aria-label={`Do for ${label} entry`}
             value={word}
             onChange={(event) =>
-              onCommit(setAnswerEntryWord(entry, event.target.value))
+              onCommit(
+                event.target.value === ''
+                  ? withoutWord(entry)
+                  : setAnswerEntryWord(entry, event.target.value)
+              )
             }
           >
+            {allowNoWord && <option value="">Just say it</option>}
             {words.map((candidate) => (
               <option key={candidate.key} value={candidate.key}>
                 {candidate.commandLabel}
@@ -527,7 +574,7 @@ export function AnswerEntryRow({
           <label>
             <span>{word}</span>
             <input
-              aria-label={`${word} for ${trigger} entry`}
+              aria-label={`${word} for ${label} entry`}
               value={typeof value === 'string' ? value : ''}
               onChange={(event) => onCommit(withWordValue(event.target.value))}
             />
@@ -538,7 +585,7 @@ export function AnswerEntryRow({
             <label className="wb-entry-target">
               <span>{word === 'away' ? 'From' : 'To'}</span>
               <select
-                aria-label={`${word === 'away' ? 'From' : 'To'} for ${trigger} entry`}
+                aria-label={`${word === 'away' ? 'From' : 'To'} for ${label} entry`}
                 value={
                   typeof value === 'string'
                     ? value
@@ -583,7 +630,7 @@ export function AnswerEntryRow({
                           step={1}
                           aria-label={`${
                             axis === 0 ? 'Column' : 'Row'
-                          } for ${trigger} entry`}
+                          } for ${label} entry`}
                           value={String(at[axis] ?? 0)}
                           onChange={(event) => {
                             const cell = [...at] as [number, number];
@@ -605,7 +652,7 @@ export function AnswerEntryRow({
             Say <span className="wb-help">(optional)</span>
           </span>
           <input
-            aria-label={`Say (optional) for ${trigger} entry`}
+            aria-label={`Say (optional) for ${label} entry`}
             placeholder="Optional dialogue"
             value={entry.say ?? ''}
             onChange={(event) => {
@@ -624,7 +671,7 @@ export function AnswerEntryRow({
           <input
             type="number"
             step={1}
-            aria-label={`Weight for ${trigger} entry`}
+            aria-label={`Weight for ${label} entry`}
             value={entry.weight === undefined ? '' : String(entry.weight)}
             placeholder="1"
             onChange={(event) => {
@@ -639,7 +686,7 @@ export function AnswerEntryRow({
         <button
           type="button"
           className="wb-danger wb-entry-remove"
-          aria-label={`Remove ${trigger} entry`}
+          aria-label={`Remove ${label} entry`}
           onClick={onRemove}
         >
           Remove
@@ -726,9 +773,9 @@ function FactionTableEditor({
   );
   /** `time` FIRST, for the reason `TablesPanel`'s picker states: it is the
    * trigger a behavior table is mostly about, and the only one the `when`
-   * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
-   * lands an author on the social half, where no condition control can ever
-   * appear — the same invisibility the walk found on a creature's table.
+   * editor is legal on. (The social keys that once came first retired to
+   * options, rpg-project#569, so `time` is now the only key; the default
+   * stays for the next trigger the engine adds.)
    * FOUND IN REVIEW (independent-gate): the creature's picker was fixed and
    * the faction's was not. */
   const [newTrigger, setNewTrigger] = useState(
@@ -2010,13 +2057,45 @@ export function CreatureOrders({
         )}
       </div>
 
+      {/* WHAT A CHARACTER CAN SAY TO IT (rpg-project#569). The priced checks
+          that were here (and left in rpg-dnd5e-web#1201) came back where they
+          belong: on the LINE that rolls them, with what the creature answers
+          on either verdict. Neither inherited nor overridden — a faction never
+          supplies a line — so this is its own block. */}
+      <div className="wb-policy-block">
+        <h5>Options</h5>
+        {onOrdersChange !== undefined ? (
+          <OptionsEditor
+            owner={monster.id}
+            options={binding?.options ?? []}
+            room={room}
+            isProp={false}
+            onAdd={() => onOrdersChange(addMonsterOption(binding))}
+            onChange={(index, option) =>
+              onOrdersChange(setMonsterOption(binding, index, option))
+            }
+            onRemove={(index) =>
+              onOrdersChange(removeMonsterOption(binding, index))
+            }
+          />
+        ) : (binding?.options ?? []).length === 0 ? (
+          <p className="wb-help" data-testid="creature-options-none">
+            Nobody can speak to this creature.
+          </p>
+        ) : (
+          <ul className="wb-policy-table">
+            {(binding?.options ?? []).map((option) => (
+              <li key={option.id} className="wb-help">
+                {optionText(option)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* The creature's reserve and holdings facts (web#1176). They are
           neither inherited nor overridden — a faction never supplies them — so
-          they are their own block rather than a row in Overrides.
-
-          THE PRICED CHECKS WERE HERE AND ARE GONE (rpg-dnd5e-web#1201): a
-          check is a property of INTERACTING WITH AN NPC, and a hostile monster
-          is not one. See `RoomMonsterInteraction` in `roomDraft.ts`. */}
+          they are their own block rather than a row in Overrides. */}
       <div className="wb-policy-block">
         <h5>Reserve and holdings</h5>
         {onOrdersChange !== undefined ? (
@@ -2107,4 +2186,278 @@ export function CreatureOrders({
       </p>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// OPTIONS — the lines a character can say (rpg-project#569)
+// ---------------------------------------------------------------------------
+
+/** What gates a line, as the picker names it. */
+const REQUIRES_FORMS = [
+  { value: '', label: 'Always offered' },
+  { value: 'fact', label: 'The speaker knows a fact' },
+  { value: 'holds', label: 'The speaker carries a prop' },
+] as const;
+
+const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
+  success: 'When the check is beaten',
+  failure: 'When the check is missed',
+};
+
+/**
+ * A binding's OPTIONS editor — a creature's or a prop's (rpg-project#569).
+ *
+ * Each line is an id, the words the character says, the approaches through
+ * its check (the lock's own rows, `CheckApproachRows`), what gates it, and the
+ * rows answered on each verdict — the SAME entry editor a table uses
+ * (`AnswerEntryRow`), under the verdict's key, so a verdict row offers what
+ * the engine takes there: a line, `fact`, and `flee` (a creature's only).
+ *
+ * IT DECIDES NOTHING. Whether a check can be beaten, whether a fact will ever
+ * be known, and which row fires are the engine's; this writes the document.
+ */
+export function OptionsEditor({
+  owner,
+  options,
+  room,
+  isProp,
+  onAdd,
+  onChange,
+  onRemove,
+}: {
+  /** The binding's id — what every control here is named for. */
+  owner: string;
+  options: readonly OptionShape[];
+  room: RoomGameplayData;
+  /** A prop's lines: its rows may not `flee`. */
+  isProp: boolean;
+  onAdd: () => void;
+  onChange: (index: number, option: OptionShape) => void;
+  onRemove: (index: number) => void;
+}) {
+  const holdable = holdablePropIds(room);
+  return (
+    <div className="wb-options" data-testid={`options-${owner}`}>
+      <h6>Options — what a character can say</h6>
+      {options.length === 0 && (
+        <p className="wb-help" data-testid={`options-none-${owner}`}>
+          {isProp
+            ? 'Nobody can speak to this prop yet.'
+            : 'Nobody can speak to this creature yet — a creature with no lines cannot be talked to.'}
+        </p>
+      )}
+      {options.map((option, index) => {
+        const n = index + 1;
+        const of = `line ${n} of ${owner}`;
+        const requiresForm =
+          option.requires === undefined
+            ? ''
+            : 'fact' in option.requires
+              ? 'fact'
+              : 'holds';
+        const heldId =
+          option.requires !== undefined && 'holds' in option.requires
+            ? option.requires.holds
+            : undefined;
+        const commit = (next: OptionShape) => onChange(index, next);
+        return (
+          <div
+            key={index}
+            className="wb-option wb-policy-block"
+            data-testid={`option-${owner}-${index}`}
+          >
+            <label>
+              <span>Id</span>
+              <input
+                aria-label={`Line ${n} id for ${owner}`}
+                value={option.id}
+                onChange={(event) =>
+                  commit(patchOption(option, { id: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>Says</span>
+              <input
+                aria-label={`Line ${n} for ${owner}`}
+                placeholder="What the character says"
+                value={option.say}
+                onChange={(event) =>
+                  commit(patchOption(option, { say: event.target.value }))
+                }
+              />
+            </label>
+            <div className="wb-option-check">
+              <span>Check — any one of these</span>
+              <CheckApproachRows
+                id={of}
+                rows={option.check}
+                onPatch={(approach, patch) =>
+                  commit(patchOptionApproach(option, approach, patch))
+                }
+                onRemove={(approach) =>
+                  commit(removeOptionApproach(option, approach))
+                }
+                onAdd={() => commit(addOptionApproach(option))}
+              />
+            </div>
+            <label>
+              <span>Requires</span>
+              <select
+                aria-label={`Line ${n} requires for ${owner}`}
+                value={requiresForm}
+                onChange={(event) => {
+                  const form = event.target.value;
+                  commit(
+                    patchOption(option, {
+                      requires:
+                        form === 'fact'
+                          ? { fact: '' }
+                          : form === 'holds'
+                            ? { holds: holdable[0] ?? '' }
+                            : undefined,
+                    })
+                  );
+                }}
+              >
+                {REQUIRES_FORMS.map((form) => (
+                  <option
+                    key={form.value}
+                    value={form.value}
+                    disabled={
+                      form.value === 'holds' &&
+                      holdable.length === 0 &&
+                      requiresForm !== 'holds'
+                    }
+                  >
+                    {form.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {requiresForm === 'fact' && (
+              <label>
+                <span>Fact</span>
+                <input
+                  aria-label={`Line ${n} requires fact for ${owner}`}
+                  value={
+                    option.requires && 'fact' in option.requires
+                      ? option.requires.fact
+                      : ''
+                  }
+                  onChange={(event) =>
+                    commit(
+                      patchOption(option, {
+                        requires: { fact: event.target.value },
+                      })
+                    )
+                  }
+                />
+              </label>
+            )}
+            {requiresForm === 'holds' && (
+              <label>
+                <span>Prop</span>
+                <select
+                  aria-label={`Line ${n} requires prop for ${owner}`}
+                  value={heldId ?? ''}
+                  onChange={(event) =>
+                    commit(
+                      patchOption(option, {
+                        requires: { holds: event.target.value },
+                      })
+                    )
+                  }
+                >
+                  {heldId !== undefined && !holdable.includes(heldId) && (
+                    <option value={heldId}>
+                      {heldId || '(none)'} — nobody can pick it up
+                    </option>
+                  )}
+                  {holdable.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {holdable.length === 0 && (
+              <p className="wb-help" data-testid={`option-no-holdable-${of}`}>
+                No placed prop can be picked up, so no line can require carrying
+                one — mark a prop holdable in its orders.
+              </p>
+            )}
+            {OPTION_VERDICTS.map((verdict) => (
+              <div
+                key={verdict}
+                className="wb-policy-trigger-block"
+                data-testid={`option-${owner}-${index}-${verdict}`}
+              >
+                <p className="wb-policy-trigger">
+                  <code>{verdict}</code> {VERDICT_HEADINGS[verdict]}
+                </p>
+                <ul className="wb-policy-entries">
+                  {(option[verdict] ?? []).map((row, rowIndex) => (
+                    <AnswerEntryRow
+                      key={rowIndex}
+                      trigger={verdict}
+                      label={`${of} ${verdict}`}
+                      entry={row}
+                      allowNoWord
+                      excludeWords={isProp ? ['flee'] : []}
+                      onCommit={(next) =>
+                        commit(patchOptionRow(option, verdict, rowIndex, next))
+                      }
+                      onRemove={() =>
+                        commit(removeOptionRow(option, verdict, rowIndex))
+                      }
+                    />
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  aria-label={`Add ${verdict} row to ${of}`}
+                  onClick={() => commit(addOptionRow(option, verdict))}
+                >
+                  Add a {verdict} row
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="wb-danger"
+              aria-label={`Remove line ${n} from ${owner}`}
+              onClick={() => onRemove(index)}
+            >
+              Remove line
+            </button>
+          </div>
+        );
+      })}
+      <div className="wb-actions">
+        <button
+          type="button"
+          aria-label={`Add a line to ${owner}`}
+          onClick={onAdd}
+        >
+          Add a line
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A line as one sentence, for the read-only readout. */
+function optionText(option: OptionShape): string {
+  const check = option.check
+    .map((approach) => `${approach.ability} dc ${approach.dc}`)
+    .join(' or ');
+  const gate =
+    option.requires === undefined
+      ? ''
+      : 'fact' in option.requires
+        ? ` · requires fact ${option.requires.fact}`
+        : ` · requires holding ${option.requires.holds}`;
+  return `${option.id}: “${option.say}” · ${check}${gate}`;
 }

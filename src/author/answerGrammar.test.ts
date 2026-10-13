@@ -78,12 +78,16 @@ const PLAIN_PLACEMENT = '    at: [4, 1]';
  * Trigger -> the words the ENGINE accepts under it.
  */
 const ENGINE_WORD_LEGALITY: Readonly<Record<string, readonly string[]>> = {
-  intimidated: ['fact', 'flee'],
-  intimidate_failed: ['fact', 'flee'],
-  persuaded: ['fact', 'flee'],
-  persuade_failed: ['fact', 'flee'],
+  // Re-read at rpg-toolkit#2039 (rpg-project#569): `TableKeys` is `[time]`
+  // and the four social keys retired. `wordLegality` now judges an OPTION's
+  // verdict rows under `success`/`failure` with the same two groups.
+  success: ['fact', 'flee'],
+  failure: ['fact', 'flee'],
   time: ['hold', 'attack', 'toward', 'away'],
 };
+/** The keys of the transcription that are TABLE triggers; the rest are an
+ * option's verdicts. */
+const ENGINE_TABLE_KEYS: readonly string[] = ['time'];
 
 /** The words `wordLegality`'s `case "fact", "flee"` names — the branch that
  * decides WHICH of the two sentences an illegal pair gets. Written here for
@@ -158,17 +162,30 @@ describe('the front room snapshot carries the shipped grammar', () => {
     });
   });
 
-  it('reads the goblins’ table off the faction, with the four social keys', () => {
-    const goblins = referenceFrontRoomDoc().factions.find(
-      (f) => f.id === 'goblins'
+  it('reads the goblin’s lines, where the four social tables went', () => {
+    const goblin = referenceFrontRoomDoc().place.find(
+      (p) => p.id === 'front-goblin'
     );
-    expect(goblins?.on?.map((t) => t.trigger)).toEqual([
-      'intimidated',
-      'intimidate_failed',
-      'persuaded',
-      'persuade_failed',
+    expect(goblin?.options?.map((o) => o.id)).toEqual([
+      'lean-on-it',
+      'talk-it-round',
     ]);
-    expect(goblins?.on?.[0].entries[1].word).toEqual({ word: 'flee' });
+    expect(goblin?.options?.[0].success?.[1]).toEqual({
+      weight: 30,
+      say: 'Boss! BOSS!',
+      flee: {},
+    });
+  });
+
+  it('refuses a retired social table key by name, in the engine’s sentence', () => {
+    expect(() =>
+      parseDungeon(
+        mutated(
+          GOBLIN_MIX,
+          `${GOBLIN_MIX}\n    on:\n      intimidated:\n        - { say: "Fine." }`
+        )
+      )
+    ).toThrow('`intimidated` is no longer a table key: author an option');
   });
 
   it('re-emits and re-parses the whole room byte-for-byte', () => {
@@ -190,7 +207,7 @@ describe('a word is legal on some triggers and not others', () => {
     );
   });
 
-  it('refuses an action word on a social key with the engine’s own sentence', () => {
+  it('refuses an action word on an option’s verdict with the engine’s own sentence', () => {
     expect(() =>
       parseDungeon(
         mutated(
@@ -199,11 +216,13 @@ describe('a word is legal on some triggers and not others', () => {
         )
       )
     ).toThrow(
-      /`hold` is what a creature does with time, and `intimidate_failed` is an outcome \(line \d+\)/
+      // The option grammar is the World Builder's (`validateOptions`), which
+      // carries the engine's words without its `(line N)`.
+      /`hold` is what a creature does with time, and `failure` is an outcome/
     );
   });
 
-  it('refuses a `when` under a social key, because the key IS the condition', () => {
+  it('refuses a `when` under a verdict, because the verdict IS the condition', () => {
     expect(() =>
       parseDungeon(
         mutated(
@@ -212,7 +231,7 @@ describe('a word is legal on some triggers and not others', () => {
         )
       )
     ).toThrow(
-      /`intimidate_failed` is already the condition — a `when` under it asks when a thing that just happened happened \(line \d+\)/
+      /`failure` is already the condition — a `when` under it asks when a thing that just happened happened/
     );
   });
 
@@ -229,7 +248,7 @@ describe('a word is legal on some triggers and not others', () => {
     }
     // ...its trigger seal must be exactly the transcription's keys...
     expect([...ANSWER_TRIGGER_KEYS].sort()).toEqual(
-      Object.keys(ENGINE_WORD_LEGALITY).sort()
+      [...ENGINE_TABLE_KEYS].sort()
     );
     // ...and its word seal must be exactly the words the transcription names.
     const transcribedWords = [
@@ -258,8 +277,8 @@ describe('a word is legal on some triggers and not others', () => {
         );
       }
     }
-    // 2 social words x 1 time trigger + 4 time words x 4 social triggers.
-    expect(checked).toBe(18);
+    // 2 social words x 1 time trigger + 4 time words x 2 verdicts.
+    expect(checked).toBe(10);
   });
 
   it('refuses a scalar or sequence body on a word that carries nothing', () => {

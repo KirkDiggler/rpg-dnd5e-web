@@ -9,22 +9,14 @@
 #   - the goblins are NEUTRAL, authored — not free. Without the disposition the
 #     goblin attacks on frame one and there is no front room.
 #   - the bandits are hostile from the start.
-#   - the goblin's four outcome keys plus `time`, each entry one word and a line.
+#   - the goblin's two LINES (rpg-project#569): the threat at Intimidation DC 12
+#     and the appeal at Persuasion DC 10, "this goblin would rather be talked to
+#     than shouted at", each carrying what it answers on either verdict. These
+#     replaced v2's `intimidate:`/`persuade:` checks and the four social table
+#     keys, which the engine now refuses in both dialects.
+#   - its `time` table, each entry one word.
 #   - NO `mind`: a faction of ONE has its single member as its mind, so the
 #     neutral pair (which waits on nothing) needs none.
-#
-# WHAT DOES NOT TRANSLATE — and this is the finding, not a gap in the sample:
-#   v2's placement carries `intimidate:` / `persuade:` — the authored DC the check
-#   rolls against. The v4 single-room binding (`RoomMonsterBinding`) has `on`,
-#   `temper` and `actions` and NO social-check fields. So the front room's
-#   deliberate asymmetry — Intimidate DC 12, Persuade DC 10, "this goblin would
-#   rather be talked to than shouted at" — cannot be written here at all.
-#
-#   The checks still HAPPEN: with no authored DC the rulebook derives one from the
-#   stat block (10 + the goblin's -1 Wisdom = 9). What is lost is the author's
-#   ability to say a particular creature is harder to lean on than its block
-#   suggests. That is a v4 key that does not exist yet, and it is recorded on the
-#   issue rather than faked here.
 version: 4
 key: sample-front-room-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
@@ -81,49 +73,53 @@ room:
           startingCell: { location: { q: 4, r: 0 } },
         }
     monsterBindings:
-      # FOUR OUTCOME KEYS, one per way the conversation can go, plus the world
-      # clock. Every entry is one word and the author's line, carried verbatim
-      # onto the beat — the engine never composes speech.
+      # TWO LINES, each with its check and what is answered on either verdict,
+      # plus the world clock. Every row is the author's line and at most one
+      # word, carried verbatim onto the beat — the engine never composes
+      # speech.
       #
-      # THE GRAMMAR SPLIT, which the engine refused twice while this sample was
-      # being written: a TIME trigger takes time actions (`attack`, `toward`,
-      # `away`, `hold`); a SOCIAL OUTCOME takes `say` and a result word
+      # THE GRAMMAR SPLIT: a TIME trigger takes time actions (`attack`,
+      # `toward`, `away`, `hold`); a VERDICT takes `say` and a result word
       # (`fact`, `flee`) and NEVER a time action —
-      #   "`attack` is what a creature does with time, and `intimidate_failed`
-      #    is an outcome".
+      #   "`attack` is what a creature does with time, and `failure` is an
+      #    outcome".
       # And `toward: {at: [col,row]}` is refused here: the selector's cell is an
       # offset in a document orientation this dialect does not have, so name
       # `enemy`/`attacker`/`actor` or wait for the sites layer.
       front-goblin:
         faction: goblins
+        options:
+          - id: lean-on-it
+            say: "Where's the cellar? Tell me or you're next."
+            check: [{ ability: intimidation, dc: 12 }]
+            success:
+              - {
+                  weight: 70,
+                  say: 'Fine! The cellar door is behind the barrels.',
+                  fact: goblin-cowed,
+                }
+              - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+            # A missed threat costs nothing, deliberately.
+            failure:
+              - { say: 'Big talk, for someone standing in my doorway.' }
+          - id: talk-it-round
+            say: "We're not here for you. Where did the bandits go?"
+            check: [{ ability: persuasion, dc: 10 }]
+            # A landed appeal tells the truth and teaches nothing — talking
+            # somebody round is not frightening them.
+            success:
+              - {
+                  say: 'Bandits took the cellar. Go left at the rope, and mind the third step.',
+                }
+            # A failed appeal, and the lie is a FACT like any other. There is
+            # no truth bit on the wire, by ruling.
+            failure:
+              - {
+                  weight: 100,
+                  say: "Cellar's empty, friend. Nothing down there but rats.",
+                  fact: cellar-is-clear,
+                }
         on:
-          intimidated:
-            - {
-                weight: 70,
-                say: 'Fine! The cellar door is behind the barrels.',
-                fact: goblin-cowed,
-              }
-            - { weight: 30, say: 'Boss! BOSS!', flee: {} }
-          # A missed threat: one entry, so it always fires. Failure that costs
-          # nothing is deliberate here.
-          intimidate_failed:
-            - { say: 'Big talk, for someone standing in my doorway.' }
-          # A landed appeal: it tells the truth and teaches nothing. NOT
-          # `goblin-cowed` — talking somebody round is not frightening them, and
-          # the disposition flips on the threat's fact alone.
-          persuaded:
-            - {
-                say: 'Bandits took the cellar. Go left at the rope, and mind the third step.',
-              }
-          # A failed appeal, and the lie is a FACT like any other. There is no
-          # truth bit on the wire, by ruling: a false fact must look exactly like
-          # a true one to whoever received it.
-          persuade_failed:
-            - {
-                weight: 100,
-                say: "Cellar's empty, friend. Nothing down there but rats.",
-                fact: cellar-is-clear,
-              }
           # TIME, where the time actions are legal.
           time:
             - { when: { enemy: reach }, attack: enemy }

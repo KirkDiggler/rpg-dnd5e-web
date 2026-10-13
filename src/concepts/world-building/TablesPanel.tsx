@@ -78,8 +78,8 @@ function TableRow({
   );
   /** `time` FIRST when it is offered, for `FactionTableEditor`'s reason: it is
    * the trigger a behavior table is mostly about and the only one the `when`
-   * editor is legal on. Opening on the vocabulary's first key (`intimidated`)
-   * lands an author on the social half, where no condition control can appear. */
+   * editor is legal on. (The social keys that once came first retired to
+   * options, rpg-project#569, so `time` is now the only key.) */
   const [triggerChoice, setNewTrigger] = useState('time');
   const newTrigger = available.includes(triggerChoice)
     ? triggerChoice

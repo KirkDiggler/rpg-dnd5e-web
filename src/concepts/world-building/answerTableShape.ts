@@ -51,6 +51,8 @@ import {
   MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
+  RETIRED_TRIGGER_KEYS,
+  retiredTriggerRefusal,
   spanRefusal,
   suggestKey,
   unknownDeedRefusal,
@@ -150,6 +152,8 @@ export function validateAnswerTable(
     );
   const table: AnswerTableShape = {};
   for (const [trigger, rawEntries] of Object.entries(value)) {
+    if (RETIRED_TRIGGER_KEYS.includes(trigger))
+      fail(`${path}.${trigger}`, retiredTriggerRefusal(trigger));
     if (!ANSWER_TRIGGER_KEYS.includes(trigger)) {
       const meant = suggestKey(trigger, ANSWER_TRIGGER_KEYS);
       fail(
@@ -452,4 +456,258 @@ function validateAtCell(value: unknown, path: string): [number, number] {
   )
     fail(path, 'expected [col,row]');
   return [value[0] as number, value[1] as number];
+}
+
+// ---------------------------------------------------------------------------
+// OPTIONS — the lines a character can say to a creature or a prop
+// (rpg-project#569, rpg-toolkit#2039)
+// ---------------------------------------------------------------------------
+
+/** One way through an option's check — the engine's `ApproachSpec`, the same
+ * route a lock carries. `ability` is an opaque rulebook ref and `dc` what the
+ * roll must beat. CARRIED, NEVER INTERPRETED: what a ref resolves to is the
+ * engine's judgement. */
+export interface AnswerApproachShape {
+  ability: string;
+  dc: number;
+  tool?: string;
+}
+
+/** What must hold for the SPEAKER before a line is offered (R9): a fact the
+ * speaker knows, or a placed prop the speaker carries. Exactly one form, and
+ * only these two — `round`, `down` and `stance` answer "when", not "who may
+ * say this". */
+export type OptionRequiresShape = { fact: string } | { holds: string };
+
+/** One option as written (`dungeonspec.OptionSpec`): an id, the line, the
+ * approaches through its check, what gates it, and what is answered on each
+ * verdict. The verdict rows are answer entries judged by the table's own
+ * grammar under the verdict's key. */
+export interface OptionShape {
+  id: string;
+  say: string;
+  check: AnswerApproachShape[];
+  requires?: OptionRequiresShape;
+  success?: AnswerEntryShape[];
+  failure?: AnswerEntryShape[];
+}
+
+/** The two verdict keys, in the order the engine judges and writes them. */
+export const OPTION_VERDICTS = ['success', 'failure'] as const;
+export type OptionVerdict = (typeof OPTION_VERDICTS)[number];
+
+/** Every key an option reads — `optionKeys` in `dungeonspec/spec.go`. */
+const OPTION_KEYS: readonly string[] = Object.freeze([
+  'id',
+  'say',
+  'check',
+  'requires',
+  ...OPTION_VERDICTS,
+]);
+/** Every key an approach reads — `approachKeys` in `dungeonspec/spec.go`. */
+const APPROACH_KEYS: readonly string[] = Object.freeze([
+  'ability',
+  'tool',
+  'dc',
+]);
+
+// THE ENGINE'S SENTENCES, word for word (`dungeonspec/grammar.go`, the
+// `errOption*` constants and `grammar.options`/`optionRequires`/`approaches`).
+// The studio says what the engine will say, so an author who meets one twice —
+// once on the form, once from the server — reads one problem, not two.
+
+/** `errOptionNoID`. */
+export const OPTION_NO_ID_REFUSAL = 'the option has no id';
+/** `errOptionNoSay`. */
+export const OPTION_NO_SAY_REFUSAL =
+  'the option does not say what the character says';
+/** `errOptionNoCheck`. */
+export const OPTION_NO_CHECK_REFUSAL =
+  'this option needs at least one way to make its check — an ability and a DC';
+/** `errOptionPropFlees`. */
+export const OPTION_PROP_FLEES_REFUSAL =
+  "a prop cannot run: `flee` is a creature's answer";
+/** `grammar.options`: an id already used on this binding. */
+export function optionDuplicateRefusal(id: string, previous: number): string {
+  return `option "${id}" is already declared at options[${previous}]`;
+}
+/** `grammar.options`: a verdict written and left empty. */
+export function optionEmptyVerdictRefusal(verdict: string): string {
+  return `\`${verdict}\` lists nothing — omit it, or write what is answered`;
+}
+/** `grammar.optionRequires`: a predicate form that is not fact or holds. */
+export function optionRequiresFormRefusal(form: string): string {
+  return `an option requires { fact: <id> } or { holds: <prop id> }, and \`${form}\` is neither`;
+}
+/** `grammar.optionRequires`: a holding of a prop the room does not place. */
+export function optionHoldsNotAPropRefusal(id: string): string {
+  return `"${id}" is not a prop in this dungeon, so nobody can hold it`;
+}
+/** `grammar.optionRequires`: a holding of a prop nobody can pick up. */
+export function optionHoldsNotHoldableRefusal(id: string): string {
+  return `"${id}" is a prop nobody can pick up, so nobody can hold it`;
+}
+/** `grammar.approaches`: an approach that rolls nothing. */
+export const APPROACH_NO_ABILITY_REFUSAL =
+  'the approach does not say which ability it rolls';
+/** `grammar.approaches`: an approach with nothing to beat. */
+export function approachDcRefusal(dc: number): string {
+  return `an approach with dc ${dc} has nothing to beat`;
+}
+
+/** The predicate forms a `requires` may NOT take but the shared predicate
+ * grammar names — refused with `optionRequiresFormRefusal` by name, because
+ * the author wrote a real predicate in the wrong place. */
+const OTHER_PREDICATE_FORMS: readonly string[] = Object.freeze([
+  'round',
+  'down',
+  'stance',
+]);
+
+/**
+ * A binding's `options:` — a creature's (`isProp` false) or a prop's.
+ *
+ * WHAT IT JUDGES is everything one option can say about itself, in the
+ * engine's order and words: the id, the line, the check, the `requires` form,
+ * and each verdict's rows by the table's own grammar under the verdict's key.
+ *
+ * WHAT IT DOES NOT JUDGE is whether a `holds` names a prop somebody can pick
+ * up: that needs the room's props, which this reader does not have.
+ * [optionHoldsRefusal] answers it where the room is in hand.
+ */
+export function validateOptions(
+  value: unknown,
+  path: string,
+  isProp: boolean
+): OptionShape[] {
+  if (!Array.isArray(value)) fail(path, 'expected a list of options');
+  if (value.length === 0) fail(path, 'is empty; omit the key instead');
+  const seen = new Map<string, number>();
+  return value.map((raw, index) => {
+    const at = `${path}[${index}]`;
+    if (!isMapping(raw))
+      fail(
+        at,
+        'an option is { id, say, check } plus what it requires and answers'
+      );
+    for (const key of Object.keys(raw)) {
+      if (!OPTION_KEYS.includes(key))
+        fail(at, `field ${key} not found in type dungeonspec.OptionSpec`);
+    }
+
+    if (raw.id !== undefined && raw.id !== null && typeof raw.id !== 'string')
+      fail(`${at}.id`, 'expected a string');
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    if (id === '') fail(`${at}.id`, OPTION_NO_ID_REFUSAL);
+    const previous = seen.get(id);
+    if (previous !== undefined)
+      fail(`${at}.id`, optionDuplicateRefusal(id, previous));
+    seen.set(id, index);
+
+    if (
+      raw.say !== undefined &&
+      raw.say !== null &&
+      typeof raw.say !== 'string'
+    )
+      fail(`${at}.say`, 'expected a string');
+    const say = typeof raw.say === 'string' ? raw.say : '';
+    if (say === '') fail(`${at}.say`, OPTION_NO_SAY_REFUSAL);
+
+    const option: OptionShape = {
+      id,
+      say,
+      check: validateApproaches(raw.check, `${at}.check`),
+    };
+
+    if (raw.requires !== undefined && raw.requires !== null)
+      option.requires = validateOptionRequires(raw.requires, `${at}.requires`);
+
+    for (const verdict of OPTION_VERDICTS) {
+      const rows = raw[verdict];
+      if (rows === undefined || rows === null) continue;
+      const verdictAt = `${at}.${verdict}`;
+      if (!Array.isArray(rows)) fail(verdictAt, 'expected a list of entries');
+      if (rows.length === 0)
+        fail(verdictAt, optionEmptyVerdictRefusal(verdict));
+      option[verdict] = rows.map((row, rowIndex) => {
+        const rowAt = `${verdictAt}[${rowIndex}]`;
+        const entry = validateAnswerEntry(row, rowAt, verdict);
+        if (isProp && entry.flee !== undefined)
+          fail(`${rowAt}.flee`, OPTION_PROP_FLEES_REFUSAL);
+        return entry;
+      });
+    }
+    return option;
+  });
+}
+
+/** An option's check: at least one approach, each rolling something against
+ * something (`grammar.approaches`, the lock's own grammar). */
+function validateApproaches(
+  value: unknown,
+  path: string
+): AnswerApproachShape[] {
+  if (value === undefined || value === null)
+    fail(path, OPTION_NO_CHECK_REFUSAL);
+  if (!Array.isArray(value)) fail(path, 'expected a list of approaches');
+  if (value.length === 0) fail(path, OPTION_NO_CHECK_REFUSAL);
+  return value.map((raw, index) => {
+    const at = `${path}[${index}]`;
+    if (!isMapping(raw)) fail(at, 'an approach is { ability, dc, tool }');
+    for (const key of Object.keys(raw)) {
+      if (!APPROACH_KEYS.includes(key))
+        fail(at, `field ${key} not found in type dungeonspec.ApproachSpec`);
+    }
+    if (
+      raw.ability !== undefined &&
+      raw.ability !== null &&
+      typeof raw.ability !== 'string'
+    )
+      fail(`${at}.ability`, 'expected a string');
+    const ability = typeof raw.ability === 'string' ? raw.ability : '';
+    if (ability === '') fail(`${at}.ability`, APPROACH_NO_ABILITY_REFUSAL);
+    const rawDc = raw.dc ?? 0;
+    if (typeof rawDc !== 'number' || !Number.isInteger(rawDc))
+      fail(`${at}.dc`, 'expected a whole number');
+    if (rawDc < 1) fail(`${at}.dc`, approachDcRefusal(rawDc));
+    const approach: AnswerApproachShape = { ability, dc: rawDc };
+    if (raw.tool !== undefined && raw.tool !== null && raw.tool !== '') {
+      if (typeof raw.tool !== 'string') fail(`${at}.tool`, 'expected a string');
+      approach.tool = raw.tool;
+    }
+    return approach;
+  });
+}
+
+/** `requires`: exactly `{ fact: <id> }` or `{ holds: <prop id> }`. A real
+ * predicate of another form is refused BY NAME with the engine's sentence,
+ * since the author wrote something meaningful in the wrong place. */
+function validateOptionRequires(
+  value: unknown,
+  path: string
+): OptionRequiresShape {
+  const shape = 'an option requires { fact: <id> } or { holds: <prop id> }';
+  if (!isMapping(value) || Object.keys(value).length !== 1) fail(path, shape);
+  const form = Object.keys(value)[0];
+  if (OTHER_PREDICATE_FORMS.includes(form))
+    fail(path, optionRequiresFormRefusal(form));
+  if (form !== 'fact' && form !== 'holds') fail(path, shape);
+  const id = value[form];
+  if (typeof id !== 'string' || id === '')
+    fail(`${path}.${form}`, 'must name an id');
+  return form === 'fact' ? { fact: id } : { holds: id };
+}
+
+/** Whether a `requires: { holds }` names a prop somebody can pick up, against
+ * the room's props — id to holdable, exactly the universe the engine builds
+ * (`roomProps`: every `propDeclarations` id, holdable when its binding says
+ * so). Answers the engine's sentence, or undefined when the holding is legal. */
+export function optionHoldsRefusal(
+  holds: string,
+  props: ReadonlyMap<string, boolean>
+): string | undefined {
+  const holdable = props.get(holds);
+  if (holdable === undefined) return optionHoldsNotAPropRefusal(holds);
+  if (!holdable) return optionHoldsNotHoldableRefusal(holds);
+  return undefined;
 }

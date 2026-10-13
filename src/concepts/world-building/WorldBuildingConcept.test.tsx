@@ -2694,12 +2694,10 @@ describe('WorldBuildingConcept room publishing', () => {
     expect(
       within(policies).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
     ).toBeTruthy();
-    expect(within(policies).getByText('intimidated')).toBeTruthy();
-    expect(
-      within(policies).getByText(
-        /Fine! The cellar door is behind the barrels\./
-      )
-    ).toBeTruthy();
+    // The shared table is `time` alone: what the goblin SAYS when spoken to
+    // lives on its line since the social keys retired (rpg-project#569 R2).
+    expect(within(policies).getByText('time')).toBeTruthy();
+    expect(within(policies).queryByText('intimidated')).toBeNull();
     // The pair and its stance are the DISPOSITIONS node's, which is a peer of
     // Factions now rather than a section inside one wrapper.
     const pair = screen.getByTestId('site-dispositions');
@@ -2732,9 +2730,14 @@ describe('WorldBuildingConcept room publishing', () => {
     expect(
       within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
     ).toBeTruthy();
-    expect(within(creature).getAllByText('intimidated').length).toBeGreaterThan(
-      0
-    );
+    // … and the line a character speaks to it by, as an editable option.
+    expect(
+      (
+        within(creature).getByLabelText(
+          'Line 1 id for goblin-1'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('lean-on-it');
     // … and ITS OWN ORDERS override it: one word, one trigger, and a weapon
     // list read AS A LIST — the order is the point, so it is asserted in order
     // rather than as a joined string.

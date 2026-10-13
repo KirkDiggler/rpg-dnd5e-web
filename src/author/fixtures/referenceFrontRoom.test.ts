@@ -22,7 +22,7 @@ describe('the reference front room is a pinned snapshot of the server’s file',
     // ONE text WHEN IT WAS TAKEN. A formatter or a hand-edit breaks that
     // silently, and no other test would notice — so the bytes are pinned.
     // The hash does NOT prove the copy still matches upstream: the server
-    // moves on and this is a snapshot at `1f2a6ac8`, not the live file.
+    // moves on and this is a snapshot at `29206a48`, not the live file.
     expect(
       createHash('sha256').update(REFERENCE_FRONT_ROOM_YAML).digest('hex')
     ).toBe(REFERENCE_FRONT_ROOM_SHA256);
@@ -37,10 +37,43 @@ describe('the reference front room is a pinned snapshot of the server’s file',
     expect(() => parseDungeon(REFERENCE_FRONT_ROOM_YAML)).not.toThrow();
   });
 
-  it('carries the goblin’s social checks verbatim', () => {
-    const doc = goblin();
-    expect(doc.intimidate).toEqual([{ ability: 'intimidation', dc: 12 }]);
-    expect(doc.persuade).toEqual([{ ability: 'persuasion', dc: 10 }]);
+  it('carries the goblin’s two lines verbatim — the priced checks moved onto them', () => {
+    // rpg-project#569 R2: the threat and the appeal that were the goblin's
+    // `intimidate:`/`persuade:` checks are two OPTIONS at the same DCs, each
+    // carrying the rows its faction's four social tables used to hold.
+    expect(goblin().options).toEqual([
+      {
+        id: 'lean-on-it',
+        say: "Where's the cellar? Tell me or you're next.",
+        check: [{ ability: 'intimidation', dc: 12 }],
+        success: [
+          {
+            weight: 70,
+            say: "Fine! FINE. The cellar door is behind the barrels. Just don't.",
+            fact: 'goblin-cowed',
+          },
+          { weight: 30, say: 'Boss! BOSS!', flee: {} },
+        ],
+        failure: [{ say: 'Big talk, for someone standing in my doorway.' }],
+      },
+      {
+        id: 'talk-it-round',
+        say: "We're not here for you. Where did the bandits go?",
+        check: [{ ability: 'persuasion', dc: 10 }],
+        success: [
+          {
+            say: 'Bandits took the cellar. Go left at the rope, and mind the third step.',
+          },
+        ],
+        failure: [
+          {
+            weight: 100,
+            say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.",
+            fact: 'cellar-is-clear',
+          },
+        ],
+      },
+    ]);
   });
 
   it('carries the arms the author named, unread by this module', () => {
@@ -48,63 +81,12 @@ describe('the reference front room is a pinned snapshot of the server’s file',
     expect(doc.actions).toEqual(['dnd5e:weapons:scimitar']);
   });
 
-  it('reads the faction’s answer table in the author’s own order', () => {
-    // THE TABLE MOVED TO THE FACTION (rpg-project#466): four goblins answer
-    // ONE table, and a table on one placement cannot be shared. The placement
-    // therefore authors no table of its own, which is what inheritance means.
+  it('carries no social table: the four keys retired to the goblin’s lines', () => {
     const doc = referenceFrontRoomDoc();
     expect(goblin(doc).on).toBeUndefined();
-    expect(doc.factions[0].on?.map((t) => t.trigger)).toEqual([
-      'intimidated',
-      'intimidate_failed',
-      'persuaded',
-      'persuade_failed',
-    ]);
-  });
-
-  it('reads each entry’s weight, word and condition', () => {
-    const doc = referenceFrontRoomDoc();
-    const table = new Map(
-      doc.factions[0].on?.map((t) => [t.trigger, t.entries])
-    );
-
-    // A landed threat, 70/30. The weight is authored and kept; the line is
-    // carried verbatim; each entry does exactly ONE thing.
-    expect(table.get('intimidated')).toEqual([
-      {
-        weight: 70,
-        say: "Fine! FINE. The cellar door is behind the barrels. Just don't.",
-        word: { word: 'fact', value: 'goblin-cowed' },
-      },
-      {
-        weight: 30,
-        say: 'Boss! BOSS!',
-        word: { word: 'flee' },
-      },
-    ]);
-
-    // ABSENT WEIGHT IS NOT ZERO. This entry authored no weight, which means
-    // 1 to the engine; defaulting it to 100 here would rewrite the author's
-    // odds, and writing `weight: 1` back would be a silent edit.
-    expect(table.get('intimidate_failed')).toEqual([
-      { say: 'Big talk, for someone standing in my doorway.' },
-    ]);
-
-    expect(table.get('persuaded')).toEqual([
-      {
-        say: 'Bandits took the cellar. Go left at the rope, and mind the third step.',
-      },
-    ]);
-
-    // The lie is a fact like any other — an id with no truth bit, exactly
-    // as the engine wants it.
-    expect(table.get('persuade_failed')).toEqual([
-      {
-        weight: 100,
-        say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.",
-        word: { word: 'fact', value: 'cellar-is-clear' },
-      },
-    ]);
+    for (const faction of doc.factions)
+      for (const trigger of faction.on ?? [])
+        expect(trigger.trigger).toBe('time');
   });
 
   it('keeps the dispositions that make a neutral goblin possible', () => {
