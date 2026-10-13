@@ -54,16 +54,7 @@ room:
           time:
             - when:
                 enemy: none
-              toward:
-                path:
-                  - - 2
-                    - 3
-                  - - 6
-                    - 3
-                  - - 6
-                    - 8
-                  - - 2
-                    - 8
+              hold: {}
             - when:
                 heard:
                   kind: clang
@@ -74,13 +65,15 @@ room:
                 enemy: seen
               fact: alarm-raised
             - when:
+                heard:
+                  kind: voice
+                  within: 1
+              fact: alarm-raised
+            - when:
                 - fact: guards-turned
                 - not:
                     enemy: seen
-              toward:
-                at:
-                  - 20
-                  - 12
+              toward: attacker
             - when:
                 heard:
                   kind: boom

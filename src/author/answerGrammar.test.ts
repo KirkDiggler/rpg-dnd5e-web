@@ -333,7 +333,7 @@ describe('the `when` shape', () => {
     // R8: the list is the `and`, so the sentence names the fix
     // (`When.Validate`'s own words).
     expect(() => parseDungeon(text)).toThrow(
-      /a `when` entry names `enemy` and `fled`; give each its own entry in the list, and every entry must hold/
+      /a `when` entry is one condition, and this names 2: give each its own entry in a list, `when: \[\{ … \}, \{ … \}\]`, and every entry must hold/
     );
   });
 
@@ -351,7 +351,7 @@ describe('the `when` shape', () => {
     expect(() =>
       parseDungeon(mutated(TIME_FLED, TIME_FLED.replace('fled:', 'fleeing:')))
     ).toThrow(
-      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`\)/
+      /`fleeing` is not a deed this build holds: they are attacked, intimidated, persuaded, fled \(and `enemy`, `heard`, `fact`, `not`\)/
     );
   });
 
@@ -595,7 +595,7 @@ describe('the hearing rows', () => {
     expect(emitDungeon(parseDungeon(once))).toBe(once);
   });
 
-  it('refuses what the engine refuses, in its words', () => {
+  it('refuses what the engine refuses, in its words (rpg-toolkit#2044)', () => {
     const refused = (row: string) => () =>
       parseDungeon(mutated(TIME_NONE, `- ${row}`));
     expect(refused('{ attack: sound }')).toThrow(
@@ -605,18 +605,43 @@ describe('the hearing rows', () => {
       /`away` cannot take a `path`: a route is walked, and only `toward` walks one/
     );
     expect(refused('{ toward: { at: [1, 1], path: [[1, 1]] } }')).toThrow(
-      /`toward` names a cell \(`at`\) and a route \(`path`\); a target is exactly one of somebody, a cell or a route/
+      /a selector names a cell \(`at`\) or a route \(`path`\), and this names both/
     );
-    expect(refused('{ patrol: {} }')).toThrow(/write toward: \{ path \}/);
-    expect(refused('{ when: { heard: { kind: clang } }, hold: {} }')).toThrow(
-      /`heard` within 0: a span is counted from 1/
+    expect(refused('{ toward: { path: [] } }')).toThrow(
+      /a route with no waypoints walks nowhere — list the cells/
+    );
+    expect(refused('{ patrol: {} }')).toThrow(
+      /`patrol` is not a word: a patrol is a route, write toward: \{ path: \[\[col, row\], …\] \}/
     );
     expect(
+      refused(
+        '{ when: { not: { heard: { kind: clang, within: 2 } } }, toward: sound }'
+      )
+    ).toThrow(
+      /`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for/
+    );
+    expect(refused('{ when: { heard: { within: 2 } }, hold: {} }')).toThrow(
+      /`heard` needs a `kind`, the sound it listens for: they are boom, crash, clang, voice/
+    );
+    expect(refused('{ when: { heard: { kind: clang } }, hold: {} }')).toThrow(
+      /`heard` names no span — write \{ kind: clang, within: N \}/
+    );
+    expect(
+      refused('{ when: { heard: { kind: clang, within: 0 } }, hold: {} }')
+    ).toThrow(/a span of 0 rounds is counted from 1/);
+    expect(
       refused('{ when: { heard: { kind: growl, within: 1 } }, hold: {} }')
-    ).toThrow(/"growl" is not a sound this build hears/);
-    expect(refused('{ when: [], hold: {} }')).toThrow(/lists no conditions/);
+    ).toThrow(
+      /`heard: \{ kind: growl \}` is not a sound this build makes: they are boom, crash, clang, voice/
+    );
+    expect(refused('{ when: { fact: "" }, hold: {} }')).toThrow(
+      /`fact` in a `when` names the fact the creature must hold, and this names none/
+    );
+    expect(refused('{ when: [], hold: {} }')).toThrow(
+      /a `when` with no condition in it is on the table always — omit it/
+    );
     expect(refused('{ when: { not: [{ enemy: seen }] }, hold: {} }')).toThrow(
-      /`not` wraps one condition, never a list/
+      /a `when` is one of \{ enemy: reach \| seen \| remembered \| none \}/
     );
   });
 
@@ -624,10 +649,10 @@ describe('the hearing rows', () => {
     // The rulebook's vocabulary (R4), transcribed independently.
     expect(ANSWER_WHEN.heardKey).toBe('heard');
     expect([...ANSWER_SOUND_KINDS]).toEqual([
-      'clang',
       'boom',
-      'voice',
       'crash',
+      'clang',
+      'voice',
     ]);
   });
 });

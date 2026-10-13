@@ -26,7 +26,6 @@
  */
 import {
   ANSWER_AT_SELECTOR,
-  ANSWER_PATH_SELECTOR,
   ANSWER_SELECTOR_WORDS,
   ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
@@ -134,10 +133,6 @@ function entryWordText(entry: AnswerEntryShape, word: string): string {
     if (value && typeof value === 'object' && 'at' in value) {
       const [col, row] = (value as { at: [number, number] }).at;
       return ` at [${col}, ${row}]`;
-    }
-    if (value && typeof value === 'object' && 'path' in value) {
-      const route = (value as { path: [number, number][] }).path;
-      return ` along ${route.map(([col, row]) => `[${col}, ${row}]`).join(' → ')}`;
     }
   }
   return '';
@@ -686,77 +681,6 @@ function AnswerWhenEditor({
   );
 }
 
-/** The authored route of a `toward: { path }` selector — cells walked in
- * order (rpg-project#569 R7), typed as `[col, row]` like the `at:` cell, or
- * picked on the map when the studio offers a pick. The route holds no state:
- * which waypoint is next is the engine's to derive. */
-function RouteEditor({
-  label,
-  route,
-  onCommit,
-}: {
-  label: string;
-  route: [number, number][];
-  onCommit: (route: [number, number][]) => void;
-}) {
-  return (
-    <div
-      className="wb-policy-route"
-      role="group"
-      aria-label={`Route for ${label} entry`}
-    >
-      <ol>
-        {route.map((cell, index) => (
-          <li key={index}>
-            <span>{index + 1}.</span>
-            <span className="wb-policy-cell">
-              {([0, 1] as const).map((axis) => (
-                <input
-                  key={axis}
-                  type="number"
-                  step={1}
-                  aria-label={`Waypoint ${index + 1} ${
-                    axis === 0 ? 'column' : 'row'
-                  } for ${label} entry`}
-                  value={String(cell[axis] ?? 0)}
-                  onChange={(event) => {
-                    if (event.target.value === '') return;
-                    const next = route.map((c) => [...c] as [number, number]);
-                    next[index][axis] = Number(event.target.value);
-                    onCommit(next);
-                  }}
-                />
-              ))}
-            </span>
-            {route.length > 1 && (
-              <button
-                type="button"
-                className="wb-danger"
-                aria-label={`Remove waypoint ${index + 1} for ${label} entry`}
-                onClick={() => onCommit(route.filter((_, i) => i !== index))}
-              >
-                Remove
-              </button>
-            )}
-          </li>
-        ))}
-      </ol>
-      <button
-        type="button"
-        aria-label={`Add waypoint for ${label} entry`}
-        onClick={() =>
-          onCommit([
-            ...route,
-            [...(route[route.length - 1] ?? [0, 0])] as [number, number],
-          ])
-        }
-      >
-        Add waypoint
-      </button>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // The shared `on:` table
 // ---------------------------------------------------------------------------
@@ -820,10 +744,6 @@ export function AnswerEntryRow({
    * FACTION's table. See the prop's own note. */
   const cellSelectorAllowed =
     allowCellSelector && word === ANSWER_AT_SELECTOR.onlyWord;
-  /** A ROUTE (`{ path }`, rpg-project#569 R7) is cells too, so it follows the
-   * cell selector's rule, and `toward` alone walks one. */
-  const routeSelectorAllowed =
-    allowCellSelector && word === ANSWER_PATH_SELECTOR.onlyWord;
   /** `when` is legal on `time` alone; a social key IS the condition. */
   const whenLegal = answerWhenLegalOn(trigger);
   /** `actor` needs a deed to have been the actor of. Offered only when this
@@ -840,11 +760,9 @@ export function AnswerEntryRow({
   const selectorChoice =
     typeof value === 'string'
       ? value
-      : isMapping(value) && Array.isArray(value.path)
-        ? ANSWER_PATH_SELECTOR.key
-        : isMapping(value) && Array.isArray(value.at)
-          ? ANSWER_AT_SELECTOR.key
-          : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
+      : isMapping(value) && Array.isArray(value.at)
+        ? ANSWER_AT_SELECTOR.key
+        : (ANSWER_SELECTOR_WORDS[0]?.key ?? '');
 
   const withWordValue = (next: unknown): AnswerEntryShape => {
     const draft = { ...(entry as Record<string, unknown>) } as AnswerEntryShape;
@@ -931,9 +849,7 @@ export function AnswerEntryRow({
                     withWordValue(
                       event.target.value === ANSWER_AT_SELECTOR.key
                         ? { at: [0, 0] }
-                        : event.target.value === ANSWER_PATH_SELECTOR.key
-                          ? { path: [[0, 0]] }
-                          : event.target.value
+                        : event.target.value
                     )
                   )
                 }
@@ -948,22 +864,8 @@ export function AnswerEntryRow({
                     {ANSWER_AT_SELECTOR.label} ({ANSWER_AT_SELECTOR.key})
                   </option>
                 )}
-                {routeSelectorAllowed && (
-                  <option value={ANSWER_PATH_SELECTOR.key}>
-                    {ANSWER_PATH_SELECTOR.label} ({ANSWER_PATH_SELECTOR.key})
-                  </option>
-                )}
               </select>
             </label>
-            {routeSelectorAllowed &&
-              isMapping(value) &&
-              Array.isArray(value.path) && (
-                <RouteEditor
-                  label={label}
-                  route={value.path as [number, number][]}
-                  onCommit={(route) => onCommit(withWordValue({ path: route }))}
-                />
-              )}
             {cellSelectorAllowed &&
               isMapping(value) &&
               Array.isArray(value.at) && (

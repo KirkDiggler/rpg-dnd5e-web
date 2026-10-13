@@ -48,8 +48,10 @@ const readOptionsGolden = () =>
   );
 
 /** The encoder's output for a room whose creature's `time` table carries the
- * castle's hearing rows (rpg-project#569 R6–R8, R10): a route, `toward:
- * sound`, `fact` on `time`, and a list `when` with a `not`. A sibling of the
+ * castle's hearing rows (rpg-project#569 R6–R8, R10): `toward`/`away: sound`,
+ * `fact` on `time` with and without a line, `heard`, and a list `when` with a
+ * `not`. No route and no cell: the v4 single room refuses both
+ * (rpg-toolkit#2044, `singleRoomPathSelector`). A sibling of the
  * two goldens above, for their reason. */
 const readHearingGolden = () =>
   readFileSync(
@@ -57,29 +59,21 @@ const readHearingGolden = () =>
     'utf8'
   );
 
-/** The gate patrol's table (use-case.md §2), the one this golden pins. */
+/** The gate patrol's table (use-case.md §2) as a single room can write it. */
 const HEARING_TABLE: RoomAnswerTable = {
   time: [
-    {
-      when: { enemy: 'none' },
-      toward: {
-        path: [
-          [2, 3],
-          [6, 3],
-          [6, 8],
-          [2, 8],
-        ],
-      },
-    },
+    { when: { enemy: 'none' }, hold: {} },
     { when: { heard: { kind: 'clang', within: 2 } }, toward: 'sound' },
     {
       when: { enemy: 'seen' },
       say: 'To arms! Intruders in the yard!',
       fact: 'alarm-raised',
     },
+    // A `fact` on `time` with no line: still a voice, so still heard.
+    { when: { heard: { kind: 'voice', within: 1 } }, fact: 'alarm-raised' },
     {
       when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
-      toward: { at: [20, 12] },
+      toward: 'attacker',
     },
     { when: { heard: { kind: 'boom', within: 3 } }, away: 'sound' },
     { when: { enemy: 'reach' }, attack: 'enemy' },
@@ -328,9 +322,9 @@ play:
   });
 
   it('emits the hearing rows byte-for-byte and reads them back to the same bytes (rpg-project#569)', () => {
-    // A ROUTE, `toward: sound` and `away: sound`, `fact` on `time`, a `heard`
-    // condition, and a LIST `when` carrying a `not` — the whole wave-B
-    // vocabulary on one creature. The list stays a list and every single
+    // `toward: sound` and `away: sound`, `fact` on `time`, a `heard`
+    // condition, and a LIST `when` carrying a `not` — the wave-B vocabulary a
+    // single room can name, on one creature. The list stays a list and every single
     // mapping stays a mapping, because the file shape is carried as written.
     const draft = goldenDraft();
     draft.room.monsterBindings = {

@@ -106,7 +106,7 @@ describe('answer table shape', () => {
     expect(
       table({ time: [{ when: { enemy: 'reach', seen: 'x' }, hold: {} }] })
     ).toThrow(
-      /a `when` entry names `enemy` and `seen`; give each its own entry in the list/
+      /a `when` entry is one condition, and this names 2: give each its own entry in a list/
     );
     expect(table({ time: [{ when: { fled: {} }, hold: {} }] })).toThrow(
       /`fled` names no span/

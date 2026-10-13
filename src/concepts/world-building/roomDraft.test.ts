@@ -908,7 +908,7 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
   });
 
-  it('round trips the hearing rows: a two-entry `when` with a `not`, `heard`, `fact` on time, a route and `toward: sound` (rpg-project#569)', () => {
+  it('round trips the hearing rows: a two-entry `when` with a `not`, `heard`, `fact` on time and `toward: sound` (rpg-project#569)', () => {
     const base = createRoomDraft(createEmptyScene('scene-hear'), 'room-hear');
     const withGuard = placeRoomMonster(base, {
       id: 'gate-1',
@@ -919,16 +919,7 @@ describe('room draft v3 migration and structural exactness', () => {
       'gate-1': {
         on: {
           time: [
-            {
-              when: { enemy: 'none' },
-              toward: {
-                path: [
-                  [2, 3],
-                  [6, 3],
-                  [6, 8],
-                ],
-              },
-            },
+            { when: { enemy: 'none' }, hold: {} },
             { when: { heard: { kind: 'clang', within: 2 } }, toward: 'sound' },
             {
               when: { enemy: 'seen' },
@@ -937,7 +928,7 @@ describe('room draft v3 migration and structural exactness', () => {
             },
             {
               when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
-              toward: { at: [20, 12] },
+              toward: 'attacker',
             },
             { when: { enemy: 'reach' }, attack: 'enemy' },
           ],
@@ -974,20 +965,32 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(refused([{ attack: 'sound' }])).toThrow(
       /`attack` cannot take `sound`: a sound cannot be struck/
     );
-    expect(refused([{ away: { path: [[1, 1]] } }])).toThrow(
-      /`away` cannot take a `path`: a route is walked, and only `toward` walks one/
+    // THE SINGLE ROOM NAMES NO ROUTE (rpg-toolkit#2044): its cells have no
+    // frame, exactly as `at`'s have none.
+    expect(refused([{ toward: { path: [[1, 1]] } }])).toThrow(
+      /path is not a route a single room can name yet: its cells are axial/
     );
-    expect(refused([{ patrol: {} }])).toThrow(/write toward: \{ path \}/);
+    expect(
+      refused([
+        {
+          when: { not: { heard: { kind: 'clang', within: 2 } } },
+          toward: 'sound',
+        },
+      ])
+    ).toThrow(/`sound` needs a `heard` condition on the row/);
+    expect(refused([{ patrol: {} }])).toThrow(
+      /`patrol` is not a word: a patrol is a route/
+    );
     expect(refused([{ when: { heard: { within: 2 } }, hold: {} }])).toThrow(
-      /`heard` needs a `kind`, the sound it listens for/
+      /`heard` needs a `kind`, the sound it listens for: they are boom, crash, clang, voice/
     );
     expect(
       refused([
         { when: { not: { heard: { kind: 'clang', within: 0 } } }, hold: {} },
       ])
-    ).toThrow(/inside `not`: `heard` within 0: a span is counted from 1/);
+    ).toThrow(/a span of 0 rounds is counted from 1/);
     expect(refused([{ when: { enemy: 'seen', fact: 'x' }, hold: {} }])).toThrow(
-      /give each its own entry in the list, and every entry must hold/
+      /a `when` entry is one condition, and this names 2/
     );
   });
 

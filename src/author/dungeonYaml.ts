@@ -1216,35 +1216,21 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc | AnswerWhenDoc[] {
         `${path}: ${HEARING_SENTENCES.emptyWhenList()}`
       );
     }
-    return v.map((item, i) =>
-      answerWhenCondition(item, `${path}[${i}]`, bareSentence)
-    );
+    return v.map((item, i) => answerWhenCondition(item, `${path}[${i}]`));
   }
-  return answerWhenCondition(v, path, bareSentence);
+  return answerWhenCondition(v, path);
 }
 
-/** The identity sentence wrapper — a condition outside any `not`. */
-const bareSentence = (sentence: string): string => sentence;
-
-/** ONE condition. `wrap` prefixes what a fault inside a `not` earns
- * ("inside `not`: …", `When.Validate`'s wording). */
-function answerWhenCondition(
-  v: unknown,
-  path: string,
-  wrap: (sentence: string) => string
-): AnswerWhenDoc {
-  if (!isRecord(v)) {
-    throw new DungeonParseError(`${path}: ${wrap(whenShapeRefusal())}`);
+/** ONE condition — `WhenSpec.UnmarshalYAML`'s refusals in its order. A `not`
+ * holds one more condition, judged by this same function. */
+function answerWhenCondition(v: unknown, path: string): AnswerWhenDoc {
+  if (!isRecord(v) || Object.keys(v).length === 0) {
+    throw new DungeonParseError(`${path}: ${whenShapeRefusal()}`);
   }
   const keys = Object.keys(v);
-  if (keys.length === 0) {
-    throw new DungeonParseError(
-      `${path}: ${wrap(HEARING_SENTENCES.whenNamesNothing())}`
-    );
-  }
   if (keys.length > 1) {
     throw new DungeonParseError(
-      `${path}: ${wrap(whenIsOneConditionRefusal(keys))}`
+      `${path}: ${whenIsOneConditionRefusal(keys.length)}`
     );
   }
   const key = keys[0];
@@ -1255,50 +1241,38 @@ function answerWhenCondition(
     // an unknown band gets, not by the `when`-shape sentence (review round 1).
     const band = scalarText(v.enemy);
     if (!ANSWER_WHEN.enemyBands.includes(band)) {
-      throw new DungeonParseError(
-        `${path}: ${wrap(unknownEnemyBandRefusal(band))}`
-      );
+      throw new DungeonParseError(`${path}: ${unknownEnemyBandRefusal(band)}`);
     }
     return { kind: 'enemy', band };
   }
 
   if (key === ANSWER_WHEN.heardKey) {
-    return answerHeard(v.heard, `${path}.heard`, wrap);
+    return answerHeard(v.heard, `${path}.heard`);
   }
 
   if (key === ANSWER_WHEN.factKey) {
-    const fact = v.fact;
-    if (fact === undefined || fact === null || fact === '') {
+    // The engine reads a scalar; anything else, or nothing, names none.
+    const fact = ['string', 'number', 'boolean'].includes(typeof v.fact)
+      ? scalarText(v.fact)
+      : '';
+    if (fact === '') {
       throw new DungeonParseError(
-        `${path}.fact: ${wrap(HEARING_SENTENCES.emptyFactCondition())}`
+        `${path}.fact: ${HEARING_SENTENCES.emptyFactCondition()}`
       );
-    }
-    if (typeof fact !== 'string') {
-      throw new DungeonParseError(`${path}.fact: expected a string`);
     }
     return { kind: 'fact', fact };
   }
 
   if (key === ANSWER_WHEN.notKey) {
-    if (!isRecord(v.not)) {
-      throw new DungeonParseError(
-        `${path}.not: ${wrap(HEARING_SENTENCES.notShape())}`
-      );
-    }
-    return {
-      kind: 'not',
-      inner: answerWhenCondition(v.not, `${path}.not`, (s) =>
-        wrap(HEARING_SENTENCES.insideNot(s))
-      ),
-    };
+    return { kind: 'not', inner: answerWhenCondition(v.not, `${path}.not`) };
   }
 
   if (!ANSWER_WHEN.deeds.includes(key)) {
-    throw new DungeonParseError(`${path}: ${wrap(unknownDeedRefusal(key))}`);
+    throw new DungeonParseError(`${path}: ${unknownDeedRefusal(key)}`);
   }
   const body = v[key];
   if (!isRecord(body)) {
-    throw new DungeonParseError(`${path}: ${wrap(missingSpanRefusal(key))}`);
+    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
   }
   // UNKNOWN BODY KEYS ARE REFUSED, not dropped (rpg-dnd5e-web#1199). This
   // reader used to read `within` and silently discard everything else in the
@@ -1315,7 +1289,7 @@ function answerWhenCondition(
   }
   const within = body.within;
   if (within === undefined || within === null) {
-    throw new DungeonParseError(`${path}: ${wrap(missingSpanRefusal(key))}`);
+    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
   }
   if (typeof within !== 'number' || !Number.isInteger(within)) {
     throw new DungeonParseError(
@@ -1323,7 +1297,7 @@ function answerWhenCondition(
     );
   }
   if (within < ANSWER_WHEN.minimumWithin) {
-    throw new DungeonParseError(`${path}: ${wrap(spanRefusal(within))}`);
+    throw new DungeonParseError(`${path}: ${spanRefusal(within)}`);
   }
   const scope = answerWhenScope(body, `${path}.${key}`, key);
   return scope === undefined
@@ -1331,17 +1305,11 @@ function answerWhenCondition(
     : { kind: 'deed', deed: key, within, scope };
 }
 
-/** `heard: { kind, within }` — a sealed sound kind and a span from 1, the
- * single-room validator's rules (`answerTableShape.ts`'s `validateHeard`). */
-function answerHeard(
-  v: unknown,
-  path: string,
-  wrap: (sentence: string) => string
-): AnswerWhenDoc {
+/** `heard: { kind, within }` — `decodeHeard`'s refusals in its order, the
+ * single-room validator's too (`answerTableShape.ts`'s `validateHeard`). */
+function answerHeard(v: unknown, path: string): AnswerWhenDoc {
   if (!isRecord(v)) {
-    throw new DungeonParseError(
-      `${path}: ${wrap(HEARING_SENTENCES.heardShape())}`
-    );
+    throw new DungeonParseError(`${path}: ${HEARING_SENTENCES.heardShape()}`);
   }
   for (const k of Object.keys(v)) {
     if (ANSWER_WHEN.heardBodyKeys.includes(k)) continue;
@@ -1350,20 +1318,18 @@ function answerHeard(
     );
   }
   if (v.kind === undefined || v.kind === null || v.kind === '') {
-    throw new DungeonParseError(
-      `${path}: ${wrap(HEARING_SENTENCES.heardNoKind())}`
-    );
+    throw new DungeonParseError(`${path}: ${HEARING_SENTENCES.heardNoKind()}`);
   }
   const sound = scalarText(v.kind);
   if (!ANSWER_SOUND_KINDS.includes(sound)) {
     throw new DungeonParseError(
-      `${path}.kind: ${wrap(HEARING_SENTENCES.unknownSoundKind(sound))}`
+      `${path}.kind: ${HEARING_SENTENCES.unknownSoundKind(sound)}`
     );
   }
   const within = v.within;
   if (within === undefined || within === null) {
     throw new DungeonParseError(
-      `${path}: ${wrap(HEARING_SENTENCES.heardSpan(0))}`
+      `${path}: ${HEARING_SENTENCES.heardNoSpan(sound)}`
     );
   }
   if (typeof within !== 'number' || !Number.isInteger(within)) {
@@ -1371,7 +1337,7 @@ function answerHeard(
   }
   if (within < ANSWER_WHEN.minimumWithin) {
     throw new DungeonParseError(
-      `${path}: ${wrap(HEARING_SENTENCES.heardSpan(within))}`
+      `${path}: ${HEARING_SENTENCES.heardSpan(within)}`
     );
   }
   return { kind: 'heard', sound, within };
@@ -1456,22 +1422,19 @@ function answerSelector(
     const hasPath = v.path !== undefined && v.path !== null;
     if (hasAt && hasPath) {
       throw new DungeonParseError(
-        `${path}: ${HEARING_SENTENCES.selectorNamesSeveral(word, [
-          'a cell (`at`)',
-          'a route (`path`)',
-        ])}`
+        `${path}: ${HEARING_SENTENCES.selectorNamesBoth()}`
       );
     }
     if (hasPath) {
+      if (!Array.isArray(v.path) || v.path.length === 0) {
+        throw new DungeonParseError(
+          `${path}: ${HEARING_SENTENCES.emptyPath()}`
+        );
+      }
       // A ROUTE IS WALKED, and only `toward` walks one (R7).
       if (word !== ANSWER_PATH_SELECTOR.onlyWord) {
         throw new DungeonParseError(
           `${path}: ${HEARING_SENTENCES.pathNotToward(word)}`
-        );
-      }
-      if (!Array.isArray(v.path) || v.path.length === 0) {
-        throw new DungeonParseError(
-          `${path}.path: ${HEARING_SENTENCES.emptyPath()}`
         );
       }
       return {
@@ -1560,6 +1523,16 @@ function answerSelectorRules(
   ) {
     throw new DungeonParseError(
       `${path}.${word}: ${withLine(ACTOR_WITHOUT_DEED_REFUSAL, selectorLine)}`
+    );
+  }
+  // THE SOUND A ROW WALKS TO IS THE ONE IT LISTENED FOR (`Answer.Validate`):
+  // a top-level `heard`, never one inside a `not`. Reported at the entry.
+  if (
+    selector.word === 'sound' &&
+    !answerWhenList(entry.when).some((when) => when.kind === 'heard')
+  ) {
+    throw new DungeonParseError(
+      `${path}: ${withLine(HEARING_SENTENCES.soundWithoutHeard(), lineOf(yamlPath))}`
     );
   }
 }

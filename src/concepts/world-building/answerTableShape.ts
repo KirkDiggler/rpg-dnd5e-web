@@ -71,13 +71,10 @@ import {
   whenShapeRefusal,
 } from '@/author/answerVocabulary';
 
-/** A selector as written: one of the sealed words (`sound` among them), an
- * authored cell `{ at: [col, row] }`, or an authored route
- * `{ path: [[col, row], …] }` (rpg-project#569 R7). */
-export type AnswerSelectorShape =
-  | string
-  | { at: [number, number] }
-  | { path: [number, number][] };
+/** A selector as written: one of the sealed words (`sound` among them), or an
+ * authored cell `{ at: [col, row] }`. A route (`{ path }`, rpg-project#569 R7)
+ * is refused in this dialect — see [validateAnswerSelector]. */
+export type AnswerSelectorShape = string | { at: [number, number] };
 
 /** A `when:` as written: EXACTLY ONE exclusive enemy band, or one deed with
  * its span and — optionally — WHOSE deed it is about. The key IS the shape,
@@ -155,6 +152,12 @@ export function whenFromConditions(
   if (conditions.length === 1 && !isNotCondition(conditions[0]))
     return conditions[0];
   return [...conditions];
+}
+
+/** Whether the row LISTENS — a `heard` among its top-level conditions, never
+ * one inside a `not` (`Answer.listens`). What makes `sound` legal. */
+export function whenListensShape(when: AnswerWhenShape | undefined): boolean {
+  return whenConditions(when).some((condition) => 'heard' in condition);
 }
 
 /** Whether any condition the row stands on names a DEED — positively; a
@@ -381,90 +384,85 @@ function validateAnswerEntry(
     const deedNamed = whenNamesDeedShape(entry.when);
     if (selector === 'actor' && !deedNamed)
       fail(`${path}.${word}`, ACTOR_WITHOUT_DEED_REFUSAL);
+    // THE SOUND A ROW WALKS TO IS THE ONE IT LISTENED FOR (R10, as the
+    // behavior review refined it): `sound` needs a top-level `heard`, and a
+    // `heard` inside a `not` is not listening. Reported at the entry, as the
+    // engine reports mind/behavior's own refusals.
+    if (selector === 'sound' && !whenListensShape(entry.when))
+      fail(path, HEARING_SENTENCES.soundWithoutHeard());
   }
 
   return entry;
 }
 
-/** A `when:` — EXACTLY ONE of the four exclusive enemy bands, or one of the
- * four deeds with `{ within: N }` and an optional SCOPE
- * (`dungeonspec.WhenSpec`).
+/** A `when:` — ONE condition as a single mapping, or a LIST of them every
+ * one of which must hold (rpg-project#569 R8; `WhenListSpec`).
  *
  * THE REFUSALS RUN IN THE ENGINE'S OWN ORDER (`WhenSpec.UnmarshalYAML`), so an
  * author who made one mistake gets one sentence: the shape, then two
- * conditions, then the enemy band or the deed, then an unknown BODY key by
- * hand, then the span, then the scope.
+ * conditions, then the condition's own rules.
  *
- * UNKNOWN BODY KEYS ARE REFUSED BY HAND because `Decode`'s strictness does not
- * reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3). Before scopes
- * a dropped key in this body did nothing; now the dropped key decides WHOSE
- * deeds the row reads — `no: ally` would leave the condition on the self
- * reading, firing for the wrong wound and never for its own. So a body key
- * this build does not read is refused rather than dropped. */
+ * A LIST IS CARRIED AS A LIST, never folded to a single mapping here, so the
+ * bytes the author wrote are the bytes that round-trip. */
 function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
-  // THE LIST FORM (rpg-project#569 R8): every entry must hold. Carried as a
-  // list — never folded to a single mapping here — so the bytes the author
-  // wrote are the bytes that round-trip.
   if (Array.isArray(value)) {
     if (value.length === 0) fail(path, HEARING_SENTENCES.emptyWhenList());
     return value.map((item, index) =>
-      validateWhenCondition(item, `${path}[${index}]`, (s) => s)
+      validateWhenCondition(item, `${path}[${index}]`)
     );
   }
-  return validateWhenCondition(value, path, (s) => s);
+  return validateWhenCondition(value, path);
 }
 
-/** ONE condition. `wrap` prefixes the sentence a fault inside a `not` earns
- * ("inside `not`: …", `When.Validate`'s own wording), so the refusal says
- * where the fault is in the engine's words and the path says it in the
- * file's. */
+/** ONE condition: an enemy band, a deed with its span and scope, `heard`,
+ * `fact`, or `not` around one more condition.
+ *
+ * UNKNOWN BODY KEYS ARE REFUSED BY HAND because `Decode`'s strictness does not
+ * reach inside a custom unmarshaler (rpg-toolkit#1890 thread 3): the dropped
+ * key would decide WHOSE deeds the row reads. */
 function validateWhenCondition(
   value: unknown,
-  path: string,
-  wrap: (sentence: string) => string
+  path: string
 ): AnswerWhenCondition {
-  if (!isMapping(value)) fail(path, wrap(whenShapeRefusal()));
+  if (!isMapping(value) || Object.keys(value).length === 0)
+    fail(path, whenShapeRefusal());
   const keys = Object.keys(value);
-  if (keys.length === 0) fail(path, wrap(HEARING_SENTENCES.whenNamesNothing()));
-  if (keys.length > 1) fail(path, wrap(whenIsOneConditionRefusal(keys)));
+  if (keys.length > 1) fail(path, whenIsOneConditionRefusal(keys.length));
   const key = keys[0];
+
+  if (key === ANSWER_WHEN.heardKey)
+    return { heard: validateHeard(value.heard, `${path}.heard`) };
+
+  if (key === ANSWER_WHEN.factKey) {
+    const fact = value.fact;
+    // The engine reads a scalar here; anything else, or nothing, names none.
+    if (
+      typeof fact !== 'string' &&
+      typeof fact !== 'number' &&
+      typeof fact !== 'boolean'
+    )
+      fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
+    const id = scalarText(fact);
+    if (id === '') fail(`${path}.fact`, HEARING_SENTENCES.emptyFactCondition());
+    return { fact: id };
+  }
+
+  if (key === ANSWER_WHEN.notKey) {
+    // ONE CONDITION, judged by this same function: a `not` inside a `not` is
+    // legal, and a list or a scalar is refused with the shape sentence.
+    return { not: validateWhenCondition(value.not, `${path}.not`) };
+  }
 
   if (key === 'enemy') {
     const band = scalarText(value.enemy);
     if (!ANSWER_WHEN.enemyBands.includes(band))
-      fail(path, wrap(unknownEnemyBandRefusal(band)));
+      fail(path, unknownEnemyBandRefusal(band));
     return { enemy: band };
   }
 
-  if (key === ANSWER_WHEN.heardKey)
-    return { heard: validateHeard(value.heard, `${path}.heard`, wrap) };
-
-  if (key === ANSWER_WHEN.factKey) {
-    const fact = value.fact;
-    if (fact === undefined || fact === null || fact === '')
-      fail(`${path}.fact`, wrap(HEARING_SENTENCES.emptyFactCondition()));
-    if (typeof fact !== 'string') fail(`${path}.fact`, 'expected a string');
-    return { fact };
-  }
-
-  if (key === ANSWER_WHEN.notKey) {
-    // ONE CONDITION, NEVER A LIST: a negated `and` is an `or` the grammar has
-    // not paid for. A `not` inside a `not` is legal (the engine reads it), so
-    // the inner condition is judged by this same function.
-    const inner = value.not;
-    if (!isMapping(inner))
-      fail(`${path}.not`, wrap(HEARING_SENTENCES.notShape()));
-    return {
-      not: validateWhenCondition(inner, `${path}.not`, (s) =>
-        wrap(HEARING_SENTENCES.insideNot(s))
-      ),
-    };
-  }
-
-  if (!ANSWER_WHEN.deeds.includes(key))
-    fail(path, wrap(unknownDeedRefusal(key)));
+  if (!ANSWER_WHEN.deeds.includes(key)) fail(path, unknownDeedRefusal(key));
   const body = value[key];
-  if (!isMapping(body)) fail(path, wrap(missingSpanRefusal(key)));
+  if (!isMapping(body)) fail(path, missingSpanRefusal(key));
 
   for (const bodyKey of Object.keys(body)) {
     // `within`, `on` and `as` are the three keys the engine decodes, read from
@@ -479,42 +477,37 @@ function validateWhenCondition(
 
   const within = body.within;
   if (within === undefined || within === null)
-    fail(path, wrap(missingSpanRefusal(key)));
+    fail(path, missingSpanRefusal(key));
   if (typeof within !== 'number' || !Number.isInteger(within))
     fail(`${path}.${key}.within`, 'expected a whole number');
-  if (within < ANSWER_WHEN.minimumWithin) fail(path, wrap(spanRefusal(within)));
+  if (within < ANSWER_WHEN.minimumWithin) fail(path, spanRefusal(within));
 
   const scope = validateWhenScope(body, `${path}.${key}`, key);
   return { [key]: { within, ...scope } } as AnswerWhenCondition;
 }
 
-/** `heard: { kind, within }` — a sealed sound kind and a span counted from 1.
- * The kind is refused by name when it is not one of the rulebook's four: the
- * engine compares kinds and never interprets them, so a misspelt kind would be
- * a row that can never fire. */
-function validateHeard(
-  value: unknown,
-  path: string,
-  wrap: (sentence: string) => string
-): AnswerWhenHeard {
-  if (!isMapping(value)) fail(path, wrap(HEARING_SENTENCES.heardShape()));
+/** `heard: { kind, within }` — `decodeHeard`'s refusals in its order: the
+ * shape, an unknown key, no kind, a kind no deed makes, no span, a span from
+ * zero. */
+function validateHeard(value: unknown, path: string): AnswerWhenHeard {
+  if (!isMapping(value)) fail(path, HEARING_SENTENCES.heardShape());
   for (const key of Object.keys(value)) {
     if (ANSWER_WHEN.heardBodyKeys.includes(key)) continue;
     fail(`${path}.${key}`, HEARING_SENTENCES.heardUnknownKey(key));
   }
   const kind = value.kind;
   if (kind === undefined || kind === null || kind === '')
-    fail(path, wrap(HEARING_SENTENCES.heardNoKind()));
+    fail(path, HEARING_SENTENCES.heardNoKind());
   const kindText = scalarText(kind);
   if (!ANSWER_SOUND_KINDS.includes(kindText))
-    fail(`${path}.kind`, wrap(HEARING_SENTENCES.unknownSoundKind(kindText)));
+    fail(`${path}.kind`, HEARING_SENTENCES.unknownSoundKind(kindText));
   const within = value.within;
   if (within === undefined || within === null)
-    fail(path, wrap(HEARING_SENTENCES.heardSpan(0)));
+    fail(path, HEARING_SENTENCES.heardNoSpan(kindText));
   if (typeof within !== 'number' || !Number.isInteger(within))
     fail(`${path}.within`, 'expected a whole number');
   if (within < ANSWER_WHEN.minimumWithin)
-    fail(path, wrap(HEARING_SENTENCES.heardSpan(within)));
+    fail(path, HEARING_SENTENCES.heardSpan(within));
   return { kind: kindText, within };
 }
 
@@ -573,10 +566,15 @@ function validateWhenScope(
   return {};
 }
 
-/** One selector on a table word: a sealed word, `{ at: [col, row] }`, or
- * `{ path: [[col, row], …] }`. `word` is the table word it sits on, because
- * two of the refusals are about the pair: `sound` on `attack`, and a route on
- * anything but `toward` (`Selector.validate`'s own rules). */
+/** One selector on a table word: a sealed word (`sound` among them) or
+ * `{ at: [col, row] }`. `word` is the table word it sits on, because `sound`
+ * on `attack` is refused for the pair.
+ *
+ * A ROUTE IS REFUSED IN THIS DIALECT (rpg-toolkit#2044): `{ path }` is a list
+ * of the same offset cells `at` is, and the v4 single room has no frame for
+ * either, so the engine names it once for the route. The decoder's own two
+ * refusals — both keys at once, an empty route — come first, as they do
+ * there. */
 function validateAnswerSelector(
   value: unknown,
   path: string,
@@ -597,18 +595,11 @@ function validateAnswerSelector(
     const hasPath =
       value[ANSWER_PATH_SELECTOR.key] !== undefined &&
       value[ANSWER_PATH_SELECTOR.key] !== null;
-    if (hasAt && hasPath)
-      fail(
-        path,
-        HEARING_SENTENCES.selectorNamesSeveral(word, [
-          'a cell (`at`)',
-          'a route (`path`)',
-        ])
-      );
+    if (hasAt && hasPath) fail(path, HEARING_SENTENCES.selectorNamesBoth());
     if (hasPath) {
-      if (word !== ANSWER_PATH_SELECTOR.onlyWord)
-        fail(path, HEARING_SENTENCES.pathNotToward(word));
-      return { path: validatePath(value.path, `${path}.path`) };
+      if (!Array.isArray(value.path) || value.path.length === 0)
+        fail(path, HEARING_SENTENCES.emptyPath());
+      fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
     }
     if (!hasAt) fail(path, MISSING_AT_REFUSAL);
     return { at: validateAtCell(value.at, `${path}.at`) };
@@ -619,13 +610,6 @@ function validateAnswerSelector(
       ', '
     )}, or { at: [col, row] }, or { path: [[col, row], …] }`
   );
-}
-
-/** An authored route — at least one `[col, row]`, carried as written. */
-function validatePath(value: unknown, path: string): [number, number][] {
-  if (!Array.isArray(value) || value.length === 0)
-    fail(path, HEARING_SENTENCES.emptyPath());
-  return value.map((cell, index) => validateAtCell(cell, `${path}[${index}]`));
 }
 
 /** The authored cell of an `at:` selector — `[col, row]`, carried as written. */

@@ -309,10 +309,11 @@ export const ANSWER_WHEN: AnswerWhenSpec = Object.freeze({
  * use case brings the deed that makes it, and is added here, once.
  */
 export const ANSWER_SOUND_KINDS: readonly string[] = Object.freeze([
-  'clang',
+  // `encounter.SoundKinds`, in the engine's own order.
   'boom',
-  'voice',
   'crash',
+  'clang',
+  'voice',
 ]);
 
 /** One selector word: what an `attack`/`toward`/`away` entry acts on
@@ -598,12 +599,10 @@ export function answerWhenRefusal(trigger: string): string | undefined {
   return `\`${trigger}\` is already the condition — a \`when\` under it asks when a thing that just happened happened`;
 }
 
-/** `When.Validate` (mind/behavior, rpg-project#569 R8): two conditions in
- * one `when` entry. The list is the `and`, so the fix is to split them.
- * `keys` are the keys as written; they are named in the engine's order
- * (enemy, the deed, heard, fact, not). */
-export function whenIsOneConditionRefusal(keys: readonly string[]): string {
-  return HEARING_SENTENCES.whenNamesSeveral(keys);
+/** `WhenSpec.UnmarshalYAML`: two conditions in one `when` entry. The list is
+ * the `and` (rpg-project#569 R8), so the sentence names the fix. */
+export function whenIsOneConditionRefusal(count: number): string {
+  return HEARING_SENTENCES.whenNamesSeveral(count);
 }
 
 /** `WhenSpec.UnmarshalYAML`: the shape, for a `when` that is not a map at
@@ -623,7 +622,7 @@ export function unknownEnemyBandRefusal(band: string): string {
 export function unknownDeedRefusal(deed: string): string {
   return `\`${deed}\` is not a deed this build holds: they are ${ANSWER_WHEN.deeds.join(
     ', '
-  )} (and \`enemy\`)`;
+  )} (and \`enemy\`, \`heard\`, \`fact\`, \`not\`)`;
 }
 
 /** `WhenSpec.UnmarshalYAML`: a deed with no span written. */
@@ -676,7 +675,8 @@ export function unknownSelectorKeyRefusal(key: string): string {
 }
 
 /** `SelectorSpec.UnmarshalYAML`: an `at:` mapping with no cell in it. */
-export const MISSING_AT_REFUSAL = 'a cell selector is { at: [col, row] }';
+export const MISSING_AT_REFUSAL =
+  'a cell selector is { at: [col, row] }, a route { path: [[col, row], …] }';
 
 /** The keys a selector MAPPING may carry — a cell or a route. */
 export const SELECTOR_MAPPING_KEYS: readonly string[] = Object.freeze([
@@ -711,105 +711,77 @@ export const EMPTY_TEMPER_MIX_REFUSAL =
   'a temper mix with nothing in it deals nothing';
 
 // ---------------------------------------------------------------------------
-// THE HEARING SENTENCES (rpg-project#569 R4–R8, R10) — ONE TABLE, SO THEY CAN
-// BE SWAPPED.
+// THE HEARING SENTENCES (rpg-project#569 R4–R8, R10) — ONE TABLE.
 //
-// Where the words are already the toolkit's they are copied from
-// `mind/behavior`'s `When.Validate` and `Selector.validate` (rpg-toolkit#2043),
-// which `dungeonspec` calls at its door. The rest — marked PROVISIONAL — are
-// this module's until the encounter PR ("feat(encounter)!: hearing") lands its
-// `dungeonspec` refusals; reconciling them is an edit to this table alone, and
-// every reader (the v2 parser, the single-room validator, the panels) reads
-// them from here.
+// Every one is the engine's, word for word: `dungeonspec`'s decoder and
+// grammar (rpg-toolkit#2044, `dungeonspec/hearing_test.go` and
+// `single_room_site.go`) and the `mind/behavior` refusals the grammar reports
+// at the entry (rpg-toolkit#2043, `Answer.Validate`), minus the `line N:`
+// prefix and the sentinel suffix the engine trims for the form.
 // ---------------------------------------------------------------------------
 
-/** The `when` condition keys in the order the engine names them in a
- * refusal: the band, the deeds, then the three this wave adds. */
-function whenKeyOrder(key: string): number {
-  if (key === 'enemy') return 0;
-  if (ANSWER_WHEN.deeds.includes(key)) return 1;
-  if (key === ANSWER_WHEN.heardKey) return 2;
-  if (key === ANSWER_WHEN.factKey) return 3;
-  if (key === ANSWER_WHEN.notKey) return 4;
-  return 5;
-}
-
-/** "a and b", "a, b and c" — `andList` in mind/behavior. */
-function andList(words: readonly string[]): string {
-  if (words.length < 2) return words.join('');
-  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
-}
-
 export const HEARING_SENTENCES = Object.freeze({
-  /** `When.Validate`, verbatim. */
-  whenNamesSeveral: (keys: readonly string[]): string =>
-    `a \`when\` entry names ${andList(
-      [...keys]
-        .sort((a, b) => whenKeyOrder(a) - whenKeyOrder(b))
-        .map((key) => `\`${key}\``)
-    )}; give each its own entry in the list, and every entry must hold`,
-  /** `When.Validate`, verbatim: an entry with no condition in it. */
-  whenNamesNothing: (): string =>
-    `a \`when\` entry names no condition; give it one of ${[
-      'enemy',
-      ...ANSWER_WHEN.deeds,
-      ANSWER_WHEN.heardKey,
-      ANSWER_WHEN.factKey,
-    ]
-      .map((key) => `\`${key}\``)
-      .join(', ')} or \`${ANSWER_WHEN.notKey}\``,
-  /** PROVISIONAL: the shape sentence, grown by the three new conditions and
-   * the list form. */
+  /** `WhenSpec.UnmarshalYAML`: two conditions in one entry of the list. */
+  whenNamesSeveral: (count: number): string =>
+    `a \`when\` entry is one condition, and this names ${count}: give each its own entry in a list, \`when: [{ … }, { … }]\`, and every entry must hold`,
+  /** `WhenSpec.UnmarshalYAML`: a condition that is not a mapping, or names
+   * nothing — and a `not` around anything but one condition. */
   whenShape: (): string =>
     `a \`when\` is one of { enemy: ${ANSWER_WHEN.enemyBands.join(
       ' | '
-    )} }, { <deed>: { within: N } }, { heard: { kind, within } }, { fact: <id> } or { not: { … } } — or a list of them, every one of which must hold`,
-  /** `When.Validate`, verbatim. */
-  heardNoKind: (): string => '`heard` needs a `kind`, the sound it listens for',
-  /** `When.Validate`, verbatim. */
-  heardSpan: (within: number): string =>
-    `\`heard\` within ${within}: a span is counted from 1`,
-  /** PROVISIONAL: a kind outside the sealed rulebook vocabulary. */
-  unknownSoundKind: (kind: string): string =>
-    `"${kind}" is not a sound this build hears: they are ${ANSWER_SOUND_KINDS.join(
+    )} }, { <deed>: { within: N } }, { heard: { kind, within } }, { fact: <id> } or { not: { … } }`,
+  /** `WhenListSpec.UnmarshalYAML`: `when: []`. */
+  emptyWhenList: (): string =>
+    'a `when` with no condition in it is on the table always — omit it',
+  /** `decodeHeard`: a body that is not a mapping. */
+  heardShape: (): string => '`heard` takes { kind, within: N }',
+  /** `decodeHeard`: a body key nobody designed. */
+  heardUnknownKey: (key: string): string =>
+    `field ${key} not found in type dungeonspec.heardBody`,
+  /** `decodeHeard`: no kind. */
+  heardNoKind: (): string =>
+    `\`heard\` needs a \`kind\`, the sound it listens for: they are ${ANSWER_SOUND_KINDS.join(
       ', '
     )}`,
-  /** PROVISIONAL: a `heard` body key nobody designed (Go's strict-field
-   * wording, as the deed body's). */
-  heardUnknownKey: (key: string): string =>
-    `field ${key} not found in type dungeonspec.HeardSpec`,
-  /** PROVISIONAL: `heard` written as anything but a mapping. */
-  heardShape: (): string =>
-    'a `heard` condition is { kind: <sound>, within: N }',
-  /** PROVISIONAL: `fact:` with no id. */
+  /** `decodeHeard`: a kind no deed makes. */
+  unknownSoundKind: (kind: string): string =>
+    `\`heard: { kind: ${kind} }\` is not a sound this build makes: they are ${ANSWER_SOUND_KINDS.join(
+      ', '
+    )}`,
+  /** `decodeHeard`: no span. */
+  heardNoSpan: (kind: string): string =>
+    `\`heard\` names no span — write { kind: ${kind}, within: N }`,
+  /** `decodeHeard`: a span counted from zero — the deed's own sentence. */
+  heardSpan: (within: number): string =>
+    `a span of ${within} rounds is counted from 1`,
+  /** `WhenSpec.UnmarshalYAML`: `fact:` naming nothing. */
   emptyFactCondition: (): string =>
-    'a `fact` condition does not say which fact',
-  /** `When.Validate`'s prefix for a fault inside a `not`, verbatim. */
-  insideNot: (inner: string): string => `inside \`not\`: ${inner}`,
-  /** PROVISIONAL: `not` around a list or a non-mapping. */
-  notShape: (): string =>
-    '`not` wraps one condition, never a list: write not: { <condition> }',
-  /** PROVISIONAL: a `when` list with nothing in it. */
-  emptyWhenList: (): string =>
-    'this `when` lists no conditions — omit it for a row that is always eligible',
-  /** `Selector.validate`, verbatim: `sound` on `attack`. */
+    '`fact` in a `when` names the fact the creature must hold, and this names none',
+  /** `Selector.validate` (mind/behavior): `sound` on `attack`. */
   attackSound: (): string =>
     '`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from',
-  /** `Selector.validate`, verbatim: a route on a word that does not walk one. */
+  /** `Answer.Validate` (mind/behavior): `sound` on a row whose top-level
+   * conditions listen for nothing — a `heard` inside a `not` is not
+   * listening. */
+  soundWithoutHeard: (): string =>
+    '`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for',
+  /** `Selector.validate` (mind/behavior): a route on a word that does not
+   * walk one. */
   pathNotToward: (word: string): string =>
     `\`${word}\` cannot take a \`path\`: a route is walked, and only \`toward\` walks one`,
-  /** `Selector.validate`, verbatim: a selector naming two targets. */
-  selectorNamesSeveral: (word: string, named: readonly string[]): string =>
-    `\`${word}\` names ${andList(
-      named
-    )}; a target is exactly one of somebody, a cell or a route`,
-  /** PROVISIONAL: a route with no cells in it. */
+  /** `SelectorSpec.UnmarshalYAML`: `at` and `path` at once. */
+  selectorNamesBoth: (): string =>
+    'a selector names a cell (`at`) or a route (`path`), and this names both',
+  /** `SelectorSpec.UnmarshalYAML`: `path: []`. */
   emptyPath: (): string =>
-    'a route needs at least one cell: write { path: [[col, row], …] }',
-  /** PROVISIONAL: the retired word, pointing at its replacement (the plan's
-   * own words: "write toward: { path }"). */
+    'a route with no waypoints walks nowhere — list the cells, { path: [[col, row], …] }',
+  /** `AnswerSpec.UnmarshalYAML`: the word named before it was built. */
   patrol: (): string =>
-    '`patrol` is not a word this build reads: write toward: { path }',
+    '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }',
+  /** `singleRoomPathSelector`: the v4 single room has no frame for a route's
+   * cells, exactly as it has none for `at`. */
+  singleRoomPath: (): string =>
+    'path is not a route a single room can name yet: its cells are axial and a waypoint is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer',
 });
 
 /**

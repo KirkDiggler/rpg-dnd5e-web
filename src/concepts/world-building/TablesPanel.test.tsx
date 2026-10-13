@@ -323,9 +323,9 @@ describe('the faction’s table reference', () => {
 /**
  * THE HEARING ROWS IN THE ROOT TABLE EDITOR (rpg-project#569 R6–R8, R10): a
  * `when` is a list with a `not` per condition, `heard` and `fact` join the
- * conditions, `fact` is a word on `time`, `toward` walks a route or to a
- * sound, `away` flees a sound, `attack` never offers `sound`, and `patrol` is
- * never offered at all.
+ * conditions, `fact` is a word on `time`, `toward` walks to a sound, `away`
+ * flees one, `attack` never offers `sound`, and neither a route nor `patrol`
+ * is ever offered — the v4 single room names no route (rpg-toolkit#2044).
  */
 describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
   type Entry = NonNullable<
@@ -386,19 +386,19 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     fireEvent.change(screen.getByLabelText('When for time entry'), {
       target: { value: 'heard' },
     });
-    expect(last()?.when).toEqual({ heard: { kind: 'clang', within: 1 } });
+    expect(last()?.when).toEqual({ heard: { kind: 'boom', within: 1 } });
   });
 
-  it('offers exactly clang, boom, voice and crash and keeps the span when the kind changes', () => {
+  it('offers exactly the four sealed kinds, in the engine’s order, and keeps the span when the kind changes', () => {
     const last = mount({
       when: { heard: { kind: 'clang', within: 2 } },
       toward: 'sound',
     });
     expect(options('Sound for time entry')).toEqual([
-      'clang',
       'boom',
-      'voice',
       'crash',
+      'clang',
+      'voice',
     ]);
     fireEvent.change(screen.getByLabelText('Sound for time entry'), {
       target: { value: 'voice' },
@@ -423,34 +423,14 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
   });
 
-  it('`toward` offers a route and the sound; a route grows waypoint by waypoint', () => {
+  it('`toward` offers the sound and never a route', () => {
     const last = mount({ when: { enemy: 'none' }, toward: 'enemy' });
-    expect(options('To for time entry')).toEqual(
-      expect.arrayContaining(['enemy', 'sound', 'at', 'path'])
-    );
+    expect(options('To for time entry')).toContain('sound');
+    expect(options('To for time entry')).not.toContain('path');
     fireEvent.change(screen.getByLabelText('To for time entry'), {
-      target: { value: 'path' },
+      target: { value: 'sound' },
     });
-    expect(last()?.toward).toEqual({ path: [[0, 0]] });
-  });
-
-  it('edits and extends an authored route', () => {
-    const last = mount({
-      when: { enemy: 'none' },
-      toward: { path: [[2, 3]] },
-    });
-    fireEvent.change(
-      screen.getByLabelText('Waypoint 1 column for time entry'),
-      { target: { value: '6' } }
-    );
-    expect(last()?.toward).toEqual({ path: [[6, 3]] });
-    fireEvent.click(screen.getByLabelText('Add waypoint for time entry'));
-    expect(last()?.toward).toEqual({
-      path: [
-        [2, 3],
-        [2, 3],
-      ],
-    });
+    expect(last()?.toward).toBe('sound');
   });
 
   it('`away` offers the sound but no route; `attack` offers neither; `patrol` is never a word', () => {
