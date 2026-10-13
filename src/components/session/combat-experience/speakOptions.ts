@@ -1,9 +1,11 @@
 import type { SpeakTarget } from '@/api/useSessionSpeak';
-import { refLabel } from '@/utils/refs';
+import { getSkillDisplay, getSkillEnum } from '@/utils/enumDisplay';
+import { refId, refLabel } from '@/utils/refs';
 import type {
   Declaration,
   SpeakOption,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
  * READING A SPEAK OFFER (rpg-project#569): who can be spoken to, and what can
@@ -94,13 +96,17 @@ export function speakLine(
 }
 
 /**
- * The skill a `Spoke` beat rolled, as a word a reader knows: "intimidation"
- * reads "Intimidation", "dnd5e:skills:sleight-of-hand" reads "Sleight Of Hand".
+ * The skill a `Spoke` beat rolled, as the client already names skills
+ * everywhere else: "dnd5e:skills:sleight-of-hand" reads "Sleight of Hand".
  *
- * THE REF IS OPAQUE, carried and not interpreted. `refLabel` reads the
- * content's own id; this only changes its case and never maps a skill to
- * anything.
+ * THE ONE SKILL DISPLAY PATH. The content id is read off the ref and handed
+ * to `getSkillEnum`/`getSkillDisplay`, so the log and the character sheet
+ * cannot disagree on a name. A skill the enum does not know falls back to
+ * the ref's own label rather than to "Unknown" — the beat carries the skill
+ * opaquely, and an unknown word is still the author's word.
  */
 export function speakSkillName(skill: string): string {
-  return refLabel(skill).replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const id = refId(skill) ?? skill;
+  const known = getSkillEnum(id);
+  return known === Skill.UNSPECIFIED ? refLabel(skill) : getSkillDisplay(known);
 }

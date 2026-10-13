@@ -11,6 +11,7 @@ import {
   sameSpeakTarget,
   speakLine,
   speakLinesFor,
+  speakSkillName,
   speakTargetsOf,
 } from './speakOptions';
 
@@ -97,5 +98,23 @@ describe('the line step', () => {
     );
     expect(speakLine(declaration, goblin, 'kitchen-word')).toBeUndefined();
     expect(speakLine(declaration, cook, 'troupe')).toBeUndefined();
+  });
+});
+
+describe('the skill a spoken line rolled', () => {
+  it('reads through the client’s one skill display, casing included', () => {
+    // Not a local title-caser: "Sleight Of Hand" would disagree with the
+    // character sheet's "Sleight of Hand".
+    expect(speakSkillName('dnd5e:skills:sleight-of-hand')).toBe(
+      'Sleight of Hand'
+    );
+    expect(speakSkillName('animal_handling')).toBe('Animal Handling');
+    expect(speakSkillName('persuasion')).toBe('Persuasion');
+  });
+
+  it('keeps the author’s word for a skill the enum does not know', () => {
+    expect(speakSkillName('dnd5e:skills:courtly-manners')).toBe(
+      'courtly manners'
+    );
   });
 });
