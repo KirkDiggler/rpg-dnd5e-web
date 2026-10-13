@@ -1,6 +1,7 @@
 /**
  * The Props panel: one placed prop's ORDERS — whether it can be taken, what it
- * carries, and whether it is here yet (rpg-project#488 R1, rpg-toolkit#1855).
+ * carries, whether it is here yet (rpg-project#488 R1, rpg-toolkit#1855), and
+ * the lines a character can say to it (rpg-project#569 — "Examine the altar").
  *
  * IT RENDERS CONTROLS OVER CONFIGURATION THE ENGINE ALREADY TAKES, and decides
  * nothing about what that configuration means. `holdable` is a checkbox,
@@ -29,14 +30,17 @@
  */
 import {
   addPropHold,
+  addPropOption,
   propBindingCandidateIds,
   removePropHold,
+  removePropOption,
   setPropArrives,
   setPropHoldable,
+  setPropOption,
   type PropBindings,
 } from './propBindingEdits';
 import type { RoomGameplayData, RoomPropBinding } from './roomDraft';
-import { ArrivesEditor } from './SitePolicies';
+import { ArrivesEditor, OptionsEditor } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import type { WorldScene } from './types';
 
@@ -158,6 +162,21 @@ export function PropOrders({
               room={room}
               arrives={binding?.arrives}
               onCommit={(next) => onChange(id, setPropArrives(binding, next))}
+            />
+            {/* A prop answers a line as a creature does, with one difference
+                the editor carries: it cannot run, so `flee` is not offered. */}
+            <OptionsEditor
+              owner={id}
+              options={binding?.options ?? []}
+              room={room}
+              isProp
+              onAdd={() => onChange(id, addPropOption(binding))}
+              onChange={(index, option) =>
+                onChange(id, setPropOption(binding, index, option))
+              }
+              onRemove={(index) =>
+                onChange(id, removePropOption(binding, index))
+              }
             />
             <p className="wb-help" data-testid={`prop-orders-note-${id}`}>
               Held and arriving props compile since rpg-toolkit#1854: taking a

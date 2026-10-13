@@ -2,7 +2,7 @@
 import type { WorldSurfaceMaterial } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: 'c9b6d2a075b8d5b757204a363e4c4084daaaf47f',
+  commit: '44ade03e1336a8ff747ab4a052b5998677ef4781',
   catalogSha256:
     '79ee1ca52c356038669cadbf710c83f8648bd514482ffc23abc36de53ece3224' as
       | string

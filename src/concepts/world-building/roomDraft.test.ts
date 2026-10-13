@@ -881,10 +881,6 @@ describe('room draft v3 migration and structural exactness', () => {
       'goblin-1': {
         faction: 'goblins',
         on: {
-          intimidated: [
-            { weight: 70, say: 'Fine!', fact: 'goblin-cowed' },
-            { weight: 30, flee: {} },
-          ],
           time: [
             { when: { enemy: 'reach' }, attack: 'enemy' },
             { toward: { at: [3, 4] } },
@@ -977,9 +973,8 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(
       rejection({ gone: { actions: ['dnd5e:weapons:scimitar'] } })
     ).toThrow(/Monster binding owner does not exist: gone/);
-    // A key this dialect's binding does not carry is still refused as the
-    // unknown key it is — the boundary `intimidate` sits INSIDE of, because it
-    // is read even though no control offers it (rpg-dnd5e-web#1201).
+    // A key this dialect's binding does not carry is refused as the unknown
+    // key it is.
     expect(rejection({ 'goblin-1': { intimidating: {} } })).toThrow(
       /Monster binding for goblin-1 has an unsupported field: intimidating/
     );
@@ -989,22 +984,22 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(rejection({ 'goblin-1': { actions: [] } })).toThrow(
       /Monster binding for goblin-1 actions is empty/
     );
-    // READ, NEVER OFFERED (rpg-dnd5e-web#1201). Kirk removed the priced checks
-    // from the builder — a check is a property of INTERACTING WITH AN NPC, and
-    // a hostile monster is not one — but a document authored before that still
-    // carries them and the ENGINE still reads them. So they must still open and
-    // still round-trip; refusing them here would make an editable file
-    // unopenable while the server accepts it.
-    const withChecks = {
-      'goblin-1': { intimidate: [{ ability: 'intimidation', dc: 12 }] },
-    };
-    expect(rejection(withChecks)).not.toThrow();
-    (draft.room as unknown as Record<string, unknown>).monsterBindings =
-      withChecks;
+    // THE TWO RETIRED KEYS ARE REFUSED BY NAME (rpg-project#569 R2). They were
+    // read-never-offered while the engine still read them; it now refuses
+    // them, so the studio says the engine's sentence rather than carrying a
+    // file the server will not take.
     expect(
-      parseRoomDraftJson(stringifyRoomDraft(structuredClone(draft))).room
-        .monsterBindings?.['goblin-1'].intimidate
-    ).toEqual([{ ability: 'intimidation', dc: 12 }]);
+      rejection({
+        'goblin-1': { intimidate: [{ ability: 'intimidation', dc: 12 }] },
+      })
+    ).toThrow(
+      'Monster binding for goblin-1 intimidate: `intimidate` is no longer a key: author an option whose check rolls it'
+    );
+    expect(
+      rejection({
+        'goblin-1': { persuade: [{ ability: 'persuasion', dc: 10 }] },
+      })
+    ).toThrow('`persuade` is no longer a key: author an option');
     expect(rejection({ 'goblin-1': { actions: ['dnd5e:weapons'] } })).toThrow(
       /must be a weapon reference/
     );
@@ -1768,4 +1763,182 @@ it('scene4 full document JSON/reload/resize retains settings, scope and independ
   expect(
     parseRoomDraftJson(stringifyRoomDraft(document.draft)).scene.version
   ).toBe(4);
+});
+
+describe('options on a binding (rpg-project#569)', () => {
+  /** A room with one goblin, one altar and one purse — the purse holdable,
+   * so a line may require carrying it. */
+  function optionsDraft(): RoomDraft {
+    const scene = createEmptyScene('scene-options');
+    for (const [id, x] of [
+      ['altar', 0],
+      ['purse', 2],
+    ] as const) {
+      scene.items.push({
+        id,
+        kind: 'prop',
+        assetRef: 'dnd5e:props:torture-table',
+        label: id,
+        transform: { x, y: 0, z: 0, rotationY: 0 },
+      });
+    }
+    const draft = createRoomDraft(scene, 'room-options');
+    for (const id of ['altar', 'purse'])
+      draft.room.propDeclarations[id] = {
+        blocksMovement: false,
+        blocksLineOfSight: false,
+        footprint: { width: 0.5, depth: 0.5, offsetX: 0, offsetZ: 0 },
+      };
+    draft.room.monsterDeclarations = [
+      {
+        id: 'goblin-1',
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 1, r: 0 } },
+      },
+    ];
+    draft.room.monsterBindings = {
+      'goblin-1': {
+        faction: 'goblins',
+        options: [
+          {
+            id: 'lean-on-it',
+            say: "Where's the cellar?",
+            check: [{ ability: 'intimidation', dc: 12 }],
+            success: [
+              {
+                weight: 70,
+                say: 'Behind the barrels.',
+                fact: 'goblin-cowed',
+              },
+              { weight: 30, say: 'Boss! BOSS!', flee: {} },
+            ],
+            failure: [{ say: 'Big talk.' }],
+          },
+          {
+            id: 'bribe',
+            say: 'Ten gold says you never saw us.',
+            requires: { holds: 'purse' },
+            check: [
+              { ability: 'persuasion', dc: 8 },
+              { ability: 'deception', dc: 10, tool: 'dnd5e:items:dice' },
+            ],
+            success: [{ say: 'Saw who?', fact: 'party-unseen' }],
+          },
+        ],
+      },
+    };
+    draft.room.propBindings = {
+      purse: { holdable: true },
+      altar: {
+        options: [
+          {
+            id: 'examine',
+            say: 'Examine the altar.',
+            requires: { fact: 'altar-noticed' },
+            check: [{ ability: 'religion', dc: 12 }],
+            success: [{ say: 'The Pale One.', fact: 'king-is-cultist' }],
+            failure: [{ say: 'Old stone, old candles.' }],
+          },
+        ],
+      },
+    };
+    return draft;
+  }
+
+  it('round-trips a binding with two options and a prop with one', () => {
+    const draft = optionsDraft();
+    const roundTrip = parseRoomDraftJson(stringifyRoomDraft(draft));
+    expect(roundTrip).toEqual(draft);
+    expect(
+      roundTrip.room.monsterBindings?.['goblin-1'].options?.map((o) => o.id)
+    ).toEqual(['lean-on-it', 'bribe']);
+    expect(roundTrip.room.propBindings?.altar.options?.[0].requires).toEqual({
+      fact: 'altar-noticed',
+    });
+  });
+
+  it('refuses each defect of a line in the engine’s own words', () => {
+    const refusal = (mutate: (draft: RoomDraft) => void): (() => string) => {
+      const draft = optionsDraft();
+      mutate(draft);
+      return () => stringifyRoomDraft(draft);
+    };
+    const goblin = (draft: RoomDraft) =>
+      draft.room.monsterBindings!['goblin-1'].options!;
+    const altar = (draft: RoomDraft) => draft.room.propBindings!.altar.options!;
+
+    expect(refusal((d) => (goblin(d)[0].id = ''))).toThrow(
+      'Monster binding for goblin-1 options[0].id: the option has no id'
+    );
+    expect(refusal((d) => (goblin(d)[1].id = 'lean-on-it'))).toThrow(
+      'options[1].id: option "lean-on-it" is already declared at options[0]'
+    );
+    expect(refusal((d) => (goblin(d)[0].say = ''))).toThrow(
+      'options[0].say: the option does not say what the character says'
+    );
+    expect(refusal((d) => (goblin(d)[0].check = []))).toThrow(
+      'options[0].check: this option needs at least one way to make its check — an ability and a DC'
+    );
+    expect(refusal((d) => (goblin(d)[0].check[0].ability = ''))).toThrow(
+      'options[0].check[0].ability: the approach does not say which ability it rolls'
+    );
+    expect(refusal((d) => (goblin(d)[0].check[0].dc = 0))).toThrow(
+      'options[0].check[0].dc: an approach with dc 0 has nothing to beat'
+    );
+    expect(
+      refusal(
+        (d) =>
+          ((goblin(d)[0] as unknown as Record<string, unknown>).requires = {
+            round: 2,
+          })
+      )
+    ).toThrow(
+      'options[0].requires: an option requires { fact: <id> } or { holds: <prop id> }, and `round` is neither'
+    );
+    expect(refusal((d) => (goblin(d)[0].failure = []))).toThrow(
+      'options[0].failure: `failure` lists nothing — omit it, or write what is answered'
+    );
+    // A verdict row is judged by the table's own grammar, under the verdict.
+    expect(
+      refusal(
+        (d) =>
+          (goblin(d)[0].failure = [
+            { say: 'Get out.', attack: 'enemy' } as never,
+          ])
+      )
+    ).toThrow(
+      'options[0].failure[0].attack: `attack` is what a creature does with time, and `failure` is an outcome'
+    );
+    expect(
+      refusal(
+        (d) =>
+          (goblin(d)[0].success = [
+            { when: { enemy: 'seen' }, say: 'Fine.' } as never,
+          ])
+      )
+    ).toThrow(
+      'options[0].success[0].when: `success` is already the condition — a `when` under it asks when a thing that just happened happened'
+    );
+    // A prop cannot run.
+    expect(
+      refusal((d) => (altar(d)[0].success = [{ say: 'Wobble.', flee: {} }]))
+    ).toThrow(
+      "Prop binding for altar options[0].success[0].flee: a prop cannot run: `flee` is a creature's answer"
+    );
+    // `requires: { holds }` names a placed prop somebody can pick up.
+    expect(
+      refusal((d) => (goblin(d)[1].requires = { holds: 'crown' }))
+    ).toThrow(
+      'Monster binding for goblin-1 options[1].requires.holds: "crown" is not a prop in this dungeon, so nobody can hold it'
+    );
+    expect(
+      refusal((d) => (goblin(d)[1].requires = { holds: 'altar' }))
+    ).toThrow('"altar" is a prop nobody can pick up, so nobody can hold it');
+    expect(
+      refusal(
+        (d) =>
+          ((goblin(d)[0] as unknown as Record<string, unknown>).intimidate = [])
+      )
+    ).toThrow('field intimidate not found in type dungeonspec.OptionSpec');
+  });
 });

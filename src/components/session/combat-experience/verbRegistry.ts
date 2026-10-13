@@ -25,9 +25,9 @@ import {
  *   - missing from the dispatch: a button that clicks and sends no RPC.
  *
  * Bardic Inspiration shipped one of these. Thunderwave shipped another.
- * Intimidate would have shipped a third. Adding Persuade — a verb that is
- * Intimidate's twin in every respect — would have meant six more edits with
- * six more chances to miss one, so this is the slice that pays it down.
+ * Intimidate would have shipped a third, and Persuade — its twin — six more
+ * chances to miss one, so this is the slice that paid it down. Speak, which
+ * replaced both (rpg-project#569), is one row.
  *
  * # The shape, and why it is a table rather than a switch
  *
@@ -160,26 +160,35 @@ export const VERB_REGISTRY: Readonly<Record<Verb, VerbBehavior>> =
       freeOnWorldClock: false,
     },
 
-    // The threat (rpg-project#454). Arms like a swing against a candidate list
-    // that points the OTHER WAY — the members who can see the actor, not the
-    // ones the actor can see — which nothing in this client needs to know,
-    // because it reads the list and never the direction.
+    // THE ONE SOCIAL VERB (rpg-project#569, R2). Intimidate and Persuade are
+    // options now, whose check lists their skill, and every option a target
+    // offers rides this one row's `speak_options`. Arms for a MEMBER like a
+    // swing: the player picks who to talk to, then which line, and the line
+    // step is drawn from the declaration's own option rows, never invented.
     //
-    // FREE ON THE WORLD CLOCK as of R3: the front room has no fight, so it has
-    // no economy to fall short of.
-    [Verb.INTIMIDATE]: {
+    // FREE ON THE WORLD CLOCK, as the two verbs it replaces were (R3 of
+    // rpg-project#457): the front room has no fight, so it has no economy to
+    // fall short of.
+    [Verb.SPEAK]: {
       executable: true,
       arms: TargetKind.MEMBER,
       freeOnWorldClock: true,
     },
 
-    // The appeal (rpg-project#458). Intimidate's twin, and its row here is
-    // identical on purpose: the whole point of this table is that adding the
-    // second social verb is one row rather than six edits.
+    // RETIRED (rpg-project#569). The proto keeps both values, deprecated, so
+    // the table must still answer for them — and the answer is UNSPECIFIED's:
+    // drawn as nothing, armed for nothing, dispatched to nothing. A server
+    // that still sent one would be offering a verb this client no longer has
+    // an RPC for, and a silent nothing beats a dead button.
+    [Verb.INTIMIDATE]: {
+      executable: false,
+      arms: null,
+      freeOnWorldClock: false,
+    },
     [Verb.PERSUADE]: {
-      executable: true,
-      arms: TargetKind.MEMBER,
-      freeOnWorldClock: true,
+      executable: false,
+      arms: null,
+      freeOnWorldClock: false,
     },
   });
 
@@ -226,11 +235,11 @@ export function isFreeOnWorldClock(verb: Verb): boolean {
 }
 
 /**
- * The two social verbs, as one list, for the sites that genuinely mean "a
+ * The social verbs, as one list, for the sites that genuinely mean "a
  * social verb" rather than "a verb that arms for a member".
  *
  * A DERIVED LIST RATHER THAN A SEVENTH HAND-WRITTEN ONE: it reads the table's
- * own `freeOnWorldClock` flag, so a third social verb joins it by adding its
+ * own `freeOnWorldClock` flag, so another social verb joins it by adding its
  * row above and nothing else.
  */
 export const SOCIAL_VERBS: readonly Verb[] = Object.freeze(

@@ -11,8 +11,8 @@ const merchant = 'dnd5e:npcs:kingdom:merchant-01';
 
 describe('published NPC look choices', () => {
   it('exposes all four looks and three skins immediately for every Kingdom base model', () => {
-    const models = NPC_APPEARANCE_FAMILIES.filter(
-      (family) => family.defaultLook.look
+    const models = NPC_APPEARANCE_FAMILIES.filter((family) =>
+      family.ref.startsWith('dnd5e:npcs:kingdom:')
     );
     expect(models).toHaveLength(17);
     for (const model of models) {
@@ -27,8 +27,8 @@ describe('published NPC look choices', () => {
   });
   it('offers families, not hundreds of variants in the appearance selector', () => {
     expect(NPC_APPEARANCE_FAMILIES).toHaveLength(30);
-    const kingdom = NPC_APPEARANCE_FAMILIES.filter(
-      (family) => family.defaultLook.look
+    const kingdom = NPC_APPEARANCE_FAMILIES.filter((family) =>
+      family.ref.startsWith('dnd5e:npcs:kingdom:')
     );
     expect(kingdom).toHaveLength(17);
     for (const family of kingdom) {
@@ -39,6 +39,55 @@ describe('published NPC look choices', () => {
       expect(
         new Set(family.looks.map((look) => look.look!.skinPalette))
       ).toEqual(new Set(['A', 'B', 'C']));
+    }
+  });
+
+  it('adds twelve choices to exactly six existing pack-human families without replacing their default refs', () => {
+    const humanNames = [
+      'knight-01',
+      'prisoner-01',
+      'prisoner-02',
+      'prisoner-03',
+      'ranger-01',
+      'wizard-01',
+    ];
+    const humans = NPC_APPEARANCE_FAMILIES.filter(
+      (family) =>
+        family.ref.startsWith('dnd5e:npcs:goblin:') && family.defaultLook.look
+    );
+    expect(humans.map((family) => family.ref).sort()).toEqual(
+      humanNames.map((name) => `dnd5e:npcs:goblin:${name}`).sort()
+    );
+    for (const name of humanNames) {
+      const ref = `dnd5e:npcs:goblin:${name}`;
+      const family = humans.find((entry) => entry.ref === ref)!;
+      expect(family.looks).toHaveLength(12);
+      expect(family.defaultLook.assetRef).toBe(ref);
+      expect(family.defaultLook.standingUrl).toBe(
+        `/models/synty/npcs/goblin-${name}.glb`
+      );
+      expect(npcAppearanceOptions(ref).styles).toEqual([
+        '01',
+        '02',
+        '03',
+        '04',
+      ]);
+      expect(npcAppearanceOptions(ref).skinPalettes).toEqual(['A', 'B', 'C']);
+      const styled = chooseNpcAppearance({
+        currentRef: ref,
+        control: 'style',
+        value: '04',
+      });
+      const selected = chooseNpcAppearance({
+        currentRef: styled,
+        control: 'skinPalette',
+        value: 'C',
+      });
+      expect(resolveNpcAppearance(selected)?.look).toEqual({
+        familyRef: ref,
+        style: '04',
+        skinPalette: 'C',
+      });
     }
   });
 

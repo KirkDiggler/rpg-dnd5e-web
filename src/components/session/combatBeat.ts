@@ -33,6 +33,7 @@ import {
   DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { speakSkillName } from './combat-experience/speakOptions';
 import { dissolveSentence, formatFactionBeat } from './factionBeat';
 import { formatHoldingBeat } from './holdingBeat';
 import { resolveName, resolveNameLower } from './participantNames';
@@ -144,47 +145,32 @@ export function formatBeat(
       }
       return d.actor ? `${who} shuts the door.` : 'The door shuts.';
     }
-    case 'intimidated': {
-      // The first shenanigan (rpg-project#454). THE ONLY ACCOUNT OF THIS
-      // ROLL, and the actor reads it here too: `IntimidateResponse` carries
-      // no beaten, total or dc precisely so this line is the one place the
-      // number lives, and the person who threw the die is not a special
-      // case. Delivered on a missed threat as well as a beaten one — the
-      // miss is as much fiction as the hit, the same reason the door beat
-      // narrates a failed pick.
+    case 'spoke': {
+      // THE ONE SOCIAL CHECK (rpg-project#569): the line as authored, then
+      // the skill it rolled and the numbers. THE ONLY ACCOUNT OF THIS ROLL,
+      // and the actor reads it here too: `SpeakResponse` carries no beaten,
+      // total or dc. Delivered on a miss as well as a hit — the miss is as
+      // much fiction as the hit, the same reason the door beat narrates a
+      // failed pick.
       //
       // THE READING IS THE SERVER'S. `beaten` is copied, never derived here
-      // from total against dc: the day a rule changes what beating a DC
-      // means, a client that compared them would be wrong at once — the law
-      // `Saved.succeeded` already keeps.
+      // from total against dc.
       //
-      // NOTHING ABOUT WHAT HAPPENS NEXT. A cowed goblin's flight is its
-      // MIND's decision and it reaches the log as that creature's next turn,
-      // not as a clause on this line. "Cowed" says the check landed; it does
-      // not promise the monster runs.
-      const i = event.body.value;
-      const verb = i.actor === member ? 'intimidate' : 'intimidates';
+      // NOTHING ABOUT WHAT HAPPENS NEXT. What the creature says or does about
+      // it is the `answered` beat below, rolled on that option's table.
+      const sp = event.body.value;
+      const actor = resolveName(names, sp.actor, member);
+      const target =
+        sp.target.case === 'memberId'
+          ? resolveNameLower(names, sp.target.value, member)
+          : (sp.target.value ?? 'something');
+      const said = sp.line
+        ? `${actor}: “${sp.line}”`
+        : `${actor} ${sp.actor === member ? 'speak' : 'speaks'} to ${target}`;
+      if (!sp.check) return `${said}.`;
       return (
-        `${resolveName(names, i.actor, member)} ${verb} ` +
-        `${resolveNameLower(names, i.target, member)} — ${i.total} vs DC ` +
-        `${i.dc}. ${i.beaten ? 'Cowed.' : 'Unmoved.'}`
-      );
-    }
-    case 'persuaded': {
-      // THE APPEAL (rpg-project#458). The threat's line above with Persuasion
-      // where Intimidation is, under the same three laws: this beat is the
-      // ONLY account of the roll, a miss is narrated as much as a hit, and
-      // `beaten` is the SERVER'S reading, copied and never derived here from
-      // total against dc.
-      //
-      // NOTHING ABOUT WHAT THE CREATURE SAYS OR DOES. That is the `answered`
-      // beat below, which is the world's roll on the author's own table.
-      const pd = event.body.value;
-      const verb = pd.actor === member ? 'persuade' : 'persuades';
-      return (
-        `${resolveName(names, pd.actor, member)} ${verb} ` +
-        `${resolveNameLower(names, pd.target, member)} — ${pd.total} vs DC ` +
-        `${pd.dc}. ${pd.beaten ? 'Won round.' : 'Unconvinced.'}`
+        `${said} — ${speakSkillName(sp.skill)} ${sp.check.total} vs DC ` +
+        `${sp.check.dc}. ${sp.check.beaten ? 'Success.' : 'Failure.'}`
       );
     }
     case 'answered': {

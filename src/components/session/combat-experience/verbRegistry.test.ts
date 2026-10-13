@@ -40,7 +40,7 @@ describe('the verb registry knows every verb the wire defines', () => {
     // Without this, a change that made ALL_VERBS empty would turn the
     // exhaustiveness check above into a test that can never fail.
     expect(ALL_VERBS.length).toBeGreaterThanOrEqual(10);
-    expect(ALL_VERBS).toContain(Verb.PERSUADE);
+    expect(ALL_VERBS).toContain(Verb.SPEAK);
     expect(ALL_VERBS).toContain(Verb.UNSPECIFIED);
   });
 
@@ -66,13 +66,23 @@ describe('what the table says about each verb', () => {
     expect(isExecutableVerb(Verb.ACTIVATE)).toBe(true);
     expect(isExecutableVerb(Verb.CAST)).toBe(true);
     expect(isExecutableVerb(Verb.DEATH_SAVE)).toBe(true);
-    expect(isExecutableVerb(Verb.INTIMIDATE)).toBe(true);
-    expect(isExecutableVerb(Verb.PERSUADE)).toBe(true);
+    expect(isExecutableVerb(Verb.SPEAK)).toBe(true);
 
     // END_TURN has its own control and REACT is answered through the interrupt
     // window. Drawing either as a priced row would draw it twice.
     expect(isExecutableVerb(Verb.END_TURN)).toBe(false);
     expect(isExecutableVerb(Verb.REACT)).toBe(false);
+  });
+
+  it('draws nothing for the two retired social verbs (rpg-project#569)', () => {
+    // Speak replaced both. The proto keeps the values, deprecated, so the
+    // table still answers for them — with the zero value's answer, so a
+    // server that still sent one meets no button rather than a dead one.
+    for (const retired of [Verb.INTIMIDATE, Verb.PERSUADE]) {
+      expect(isExecutableVerb(retired)).toBe(false);
+      expect(promptsForMember(retired)).toBe(false);
+      expect(isFreeOnWorldClock(retired)).toBe(false);
+    }
   });
 
   it('draws nothing at all for a verb this build cannot name', () => {
@@ -88,14 +98,13 @@ describe('what the table says about each verb', () => {
     expect(promptsForMember(Verb.ATTACK)).toBe(true);
     expect(promptsForMember(Verb.ACTIVATE)).toBe(true);
     expect(promptsForMember(Verb.CAST)).toBe(true);
-    expect(promptsForMember(Verb.INTIMIDATE)).toBe(true);
-    expect(promptsForMember(Verb.PERSUADE)).toBe(true);
+    expect(promptsForMember(Verb.SPEAK)).toBe(true);
 
     // Move picks a path on its own surface and a death save has nobody to
     // point at: the click IS the whole interaction for both.
     expect(promptsForMember(Verb.MOVE)).toBe(false);
     expect(promptsForMember(Verb.DEATH_SAVE)).toBe(false);
-    expect(VERB_REGISTRY[Verb.PERSUADE].arms).toBe(TargetKind.MEMBER);
+    expect(VERB_REGISTRY[Verb.SPEAK].arms).toBe(TargetKind.MEMBER);
   });
 
   it('treats an undefined verb as arming for nothing', () => {
@@ -106,8 +115,7 @@ describe('what the table says about each verb', () => {
   });
 
   it('marks exactly the social verbs free on the world clock (R3)', () => {
-    expect(isFreeOnWorldClock(Verb.INTIMIDATE)).toBe(true);
-    expect(isFreeOnWorldClock(Verb.PERSUADE)).toBe(true);
+    expect(isFreeOnWorldClock(Verb.SPEAK)).toBe(true);
 
     // Every turn-economy verb spends a turn's budget and is not a world-clock
     // row. Move is deliberately not one either: free roam has its own
@@ -120,10 +128,8 @@ describe('what the table says about each verb', () => {
 
   it('derives SOCIAL_VERBS from the table rather than restating it', () => {
     // A seventh hand-written list is exactly what this file exists to prevent,
-    // so the social list is derived. A third social verb joins it by adding
-    // its row and nothing else.
-    expect([...SOCIAL_VERBS].sort()).toEqual(
-      [Verb.INTIMIDATE, Verb.PERSUADE].sort()
-    );
+    // so the social list is derived. Speak replaced two rows with one
+    // (rpg-project#569), and the list followed with no edit of its own.
+    expect([...SOCIAL_VERBS]).toEqual([Verb.SPEAK]);
   });
 });

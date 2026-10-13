@@ -1,6 +1,7 @@
 /**
  * Editing a placed prop's orders — `holdable`, `holds`, `arrives`
- * (rpg-project#488 R1, rpg-toolkit#1855).
+ * (rpg-project#488 R1, rpg-toolkit#1855), and the `options` a character
+ * speaks to it by (rpg-project#569).
  *
  * THE BUILDER IS A FORM BUILDER, AND THESE ARE ITS MECHANICS. Every function
  * moves bytes the toolkit accepts: it never resolves a record id, never decides
@@ -15,7 +16,13 @@
  * `undefined` rather than `{}`. Absence is the authored state "none".
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
-import type { RoomPropBinding } from './roomDraft';
+import {
+  addOption,
+  normalizeOptions,
+  removeOption,
+  replaceOption,
+} from './optionEdits';
+import type { RoomOption, RoomPropBinding } from './roomDraft';
 
 /** The authored orders, keyed by prop id. `undefined` is the authored state
  * "nothing here" and is the ONLY empty representation — never `{}`. */
@@ -34,6 +41,8 @@ export function normalizePropBinding(
   if (next.holds !== undefined && next.holds.length > 0)
     normalized.holds = next.holds;
   if (next.arrives !== undefined) normalized.arrives = next.arrives;
+  const options = normalizeOptions(next.options);
+  if (options !== undefined) normalized.options = options;
   return Object.keys(normalized).length === 0 ? undefined : normalized;
 }
 
@@ -122,4 +131,38 @@ export function setPropArrives(
   arrives: PredicateDoc | undefined
 ): RoomPropBinding | undefined {
   return normalizePropBinding({ ...working(binding), arrives });
+}
+
+// ---------------------------------------------------------------------------
+// The lines a character can say to this prop (rpg-project#569) — "Examine the
+// altar." The list grammar is `optionEdits.ts`'s, shared with a creature's.
+
+export function addPropOption(
+  binding: RoomPropBinding | undefined
+): RoomPropBinding | undefined {
+  const next = working(binding);
+  return normalizePropBinding({ ...next, options: addOption(next.options) });
+}
+
+export function setPropOption(
+  binding: RoomPropBinding | undefined,
+  index: number,
+  option: RoomOption
+): RoomPropBinding | undefined {
+  const next = working(binding);
+  return normalizePropBinding({
+    ...next,
+    options: replaceOption(next.options, index, option),
+  });
+}
+
+export function removePropOption(
+  binding: RoomPropBinding | undefined,
+  index: number
+): RoomPropBinding | undefined {
+  const next = working(binding);
+  return normalizePropBinding({
+    ...next,
+    options: removeOption(next.options, index),
+  });
 }

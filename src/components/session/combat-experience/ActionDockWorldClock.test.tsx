@@ -7,7 +7,7 @@
  * and the entire scenario is talking to it — and a branch that still drew only
  * the message would hide rows the SERVER SENT.
  *
- * WHY THIS IS SEPARATE FROM `persuadeFlow.test.tsx`. That file drives the hook
+ * WHY THIS IS SEPARATE FROM `speakFlow.test.tsx`. That file drives the hook
  * and proves the arm, the click and the send. It cannot see this bug: the dock
  * returns early on the world clock long before any of that runs, so every
  * assertion downstream still passes against a dock that draws nothing.
@@ -37,7 +37,7 @@ function socialRow(
     verb,
     slot: Slot.NONE,
     available: true,
-    id: `v2.${verb === Verb.PERSUADE ? 'persuade' : 'intimidate'}.sealed.1`,
+    id: `v2.${Verb[verb]?.toLowerCase() ?? 'unknown'}.sealed.1`,
     targetKind: TargetKind.MEMBER,
     candidates: [{ member: 'front-goblin', available: true }],
     ...overrides,
@@ -61,7 +61,7 @@ function worldDock(declarations: Declaration[], onSelect = vi.fn()) {
 
 describe('the dock outside a fight', () => {
   it('uses desktop icons for the same world offers without adding Move or favorites', () => {
-    const offered = create(DeclarationSchema, socialRow(Verb.PERSUADE));
+    const offered = create(DeclarationSchema, socialRow(Verb.SPEAK));
     const select = vi.fn();
     const center = vi.fn();
     const equipment = vi.fn();
@@ -90,7 +90,7 @@ describe('the dock outside a fight', () => {
     expect(select).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Edit bar' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Move/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Persuade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speak' }));
     expect(select).toHaveBeenCalledWith(offered);
   });
 
@@ -126,7 +126,7 @@ describe('the dock outside a fight', () => {
     const select = vi.fn();
     const offered = create(
       DeclarationSchema,
-      socialRow(Verb.PERSUADE, {
+      socialRow(Verb.SPEAK, {
         available: false,
         why: { text: 'No audience' },
       })
@@ -143,27 +143,26 @@ describe('the dock outside a fight', () => {
         onEndTurn={vi.fn()}
       />
     );
-    const button = screen.getByRole('button', { name: 'Persuade' });
+    const button = screen.getByRole('button', { name: 'Speak' });
     fireEvent.focus(button);
     expect(screen.getByRole('tooltip').textContent).toContain('No audience');
     fireEvent.click(button);
     expect(select).not.toHaveBeenCalled();
   });
 
-  it('draws both social rows the server sent', () => {
-    worldDock([socialRow(Verb.INTIMIDATE), socialRow(Verb.PERSUADE)]);
+  it('draws the Speak row the server sent', () => {
+    worldDock([socialRow(Verb.SPEAK)]);
 
-    expect(screen.getByRole('button', { name: /Intimidate/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Persuade/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Speak/ })).toBeTruthy();
   });
 
   it('shows NO PRICE on a row the server sent at no cost', () => {
     // A badge here would invent an economy. The world clock has none —
     // Move's own rule, not a discount — and "No turn slot" would imply a
     // budget the player could run out of.
-    worldDock([socialRow(Verb.PERSUADE)]);
+    worldDock([socialRow(Verb.SPEAK)]);
 
-    const button = screen.getByRole('button', { name: /Persuade/ });
+    const button = screen.getByRole('button', { name: /Speak/ });
     expect(button.querySelector('[data-cost]')).toBeNull();
   });
 
@@ -171,26 +170,26 @@ describe('the dock outside a fight', () => {
     // The suppression reads what the server sent rather than applying a
     // blanket rule about the clock, so a priced row keeps its badge and the
     // player is never told something is free when it is not.
-    worldDock([socialRow(Verb.PERSUADE, { slot: Slot.ACTION })]);
+    worldDock([socialRow(Verb.SPEAK, { slot: Slot.ACTION })]);
 
-    const button = screen.getByRole('button', { name: /Persuade/ });
+    const button = screen.getByRole('button', { name: /Speak/ });
     expect(button.querySelector('[data-cost="action"]')).not.toBeNull();
   });
 
   it('keeps the exploration message beside the rows, not instead of them', () => {
     // Movement on this clock is still the floor click, and the rows do not
     // replace that instruction — the two affordances coexist.
-    worldDock([socialRow(Verb.PERSUADE)]);
+    worldDock([socialRow(Verb.SPEAK)]);
 
     expect(screen.getByText('Click the floor to move')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Persuade/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Speak/ })).toBeTruthy();
   });
 
   it('hands the whole declaration back on click', () => {
-    const declaration = socialRow(Verb.PERSUADE);
+    const declaration = socialRow(Verb.SPEAK);
     const onSelect = worldDock([declaration]);
 
-    fireEvent.click(screen.getByRole('button', { name: /Persuade/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Speak/ }));
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0]![0]).toBe(declaration);
@@ -202,7 +201,7 @@ describe('the dock outside a fight', () => {
     // declaration to echo, and the message above the rows already says how to
     // move. A Move row would be a second, competing affordance for it.
     worldDock([
-      socialRow(Verb.PERSUADE),
+      socialRow(Verb.SPEAK),
       {
         verb: Verb.MOVE,
         slot: Slot.NONE,
@@ -211,7 +210,7 @@ describe('the dock outside a fight', () => {
       } as unknown as Declaration,
     ]);
 
-    expect(screen.getByRole('button', { name: /Persuade/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Speak/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Move/ })).toBeNull();
   });
 
@@ -230,7 +229,7 @@ describe('the dock outside a fight', () => {
     // client that hid the row would leave the player wondering whether they
     // can talk to the goblin at all.
     worldDock([
-      socialRow(Verb.PERSUADE, {
+      socialRow(Verb.SPEAK, {
         available: false,
         candidates: [],
         why: { text: 'nobody can see you to be spoken to' },
@@ -238,7 +237,7 @@ describe('the dock outside a fight', () => {
     ]);
 
     const button = screen.getByRole('button', {
-      name: /Persuade/,
+      name: /Speak/,
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
   });

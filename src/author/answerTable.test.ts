@@ -44,7 +44,7 @@ function mutated(from: string, to: string): string {
  * above it merely mentions `goblin-cowed`, so this cannot collide. */
 const ENTRY_FACT =
   '- { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don\'t.", fact: goblin-cowed }';
-/** The failed-intimidation entry: no weight, one line, no word. */
+/** The threat line's failure row: no weight, one line, no word. */
 const ENTRY_SAY_ONLY =
   '{ say: "Big talk, for someone standing in my doorway." }';
 /** One `time` row of a bandit's table — the only `time` table in the file, so
@@ -66,10 +66,8 @@ function authoredWord(word: AnswerWordSpec): string {
 
 describe('a typo is answered with what the author meant', () => {
   it('names the trigger a slip was reaching for', () => {
-    expect(() =>
-      parseDungeon(mutated('      intimidated:', '      intimidatedd:'))
-    ).toThrow(
-      /"intimidatedd" is not a trigger this build rolls: they are intimidated, intimidate_failed, persuaded, persuade_failed, time — did you mean "intimidated"\?/
+    expect(() => parseDungeon(mutated('      time:', '      tiem:'))).toThrow(
+      /"tiem" is not a trigger this build rolls: they are time — did you mean "time"\?/
     );
   });
 
@@ -112,10 +110,9 @@ describe('the vocabulary declaration is the single source', () => {
   });
 
   it('reads exactly the triggers the declaration seals', () => {
-    // Bidirectional, so neither side can drift. The goblins' inherited table
-    // is the four social keys; the bandits' is `time`; between them the file
-    // exercises every declared trigger and the declaration offers nothing the
-    // file does not carry.
+    // Bidirectional, so neither side can drift. The bandits' table is `time`,
+    // the one trigger left since the social keys retired to the goblin's
+    // lines (rpg-project#569 R2).
     const doc = parseDungeon(REFERENCE_FRONT_ROOM_YAML);
     const authored = new Set(
       doc.factions
@@ -123,24 +120,12 @@ describe('the vocabulary declaration is the single source', () => {
         .concat(doc.place.flatMap((p) => p.on?.map((t) => t.trigger) ?? []))
     );
     expect([...authored].sort()).toEqual([...ANSWER_TRIGGER_KEYS].sort());
-    expect(doc.factions[0].on?.map((t) => t.trigger)).toEqual([
-      'intimidated',
-      'intimidate_failed',
-      'persuaded',
-      'persuade_failed',
-    ]);
   });
 
-  it('seals the triggers to the five the engine reads', () => {
-    // Not decoration: the count and the order are the engine's
-    // (`encounter.TableKeys`), and `time` shipped with rpg-project#466.
-    expect(ANSWER_TRIGGER_KEYS).toEqual([
-      'intimidated',
-      'intimidate_failed',
-      'persuaded',
-      'persuade_failed',
-      'time',
-    ]);
+  it('seals the triggers to the one the engine reads', () => {
+    // Not decoration: the engine's `encounter.TableKeys` is `[time]` since
+    // rpg-toolkit#2039 — the four social keys retired to options.
+    expect(ANSWER_TRIGGER_KEYS).toEqual(['time']);
     expect(ANSWER_WORD_KEYS).toEqual([
       'fact',
       'flee',
@@ -154,10 +139,13 @@ describe('the vocabulary declaration is the single source', () => {
   it('offers only the words a trigger is legal on', () => {
     // THE DIMENSION #1118 COULD NOT EXPRESS. A picker built from the flat word
     // list would offer `flee` on `time`; a picker built from this does not.
-    expect(answerWordsForTrigger('intimidated').map((w) => w.key)).toEqual([
+    // An option's verdict takes the social words.
+    expect(answerWordsForTrigger('success').map((w) => w.key)).toEqual([
       'fact',
       'flee',
     ]);
+    // A retired social key offers nothing: it is not a trigger any more.
+    expect(answerWordsForTrigger('intimidated')).toEqual([]);
     expect(answerWordsForTrigger('time').map((w) => w.key)).toEqual([
       'hold',
       'attack',
@@ -209,14 +197,16 @@ describe('an entry does one thing, and says something', () => {
         mutated(ENTRY_FACT, ENTRY_FACT.replace(' }', ', flee: {} }'))
       )
     ).toThrow(
-      /factions\[0\]\.on\.intimidated\[0\]: an entry does one thing: `fact` and `flee` in the same entry is 2 \(line \d+\)/
+      // On an option's verdict row now, in the engine's words without its
+      // `(line N)` (the option grammar is `validateOptions`).
+      /options\[0\]\.success\[0\]: an entry does one thing: `fact` and `flee` in the same entry is 2/
     );
   });
 
   it('refuses an entry with no word and nothing to say', () => {
     expect(() =>
       parseDungeon(mutated(ENTRY_SAY_ONLY, '{ weight: 5 }'))
-    ).toThrow(/this entry does nothing and says nothing \(line \d+\)/);
+    ).toThrow(/this entry does nothing and says nothing/);
   });
 
   it('refuses a weight below one, because omitted IS one', () => {
@@ -242,13 +232,11 @@ describe('an authored weight is kept exactly as authored', () => {
   });
 
   it('leaves an absent weight absent', () => {
-    // The failed-intimidation entry authored no weight, and writing one
-    // back would be a silent edit to the author's odds.
+    // The threat's failure row authored no weight, and writing one back
+    // would be a silent edit to the author's odds.
     const doc = parseDungeon(REFERENCE_FRONT_ROOM_YAML);
-    const failed = doc.factions[0].on?.find(
-      (t) => t.trigger === 'intimidate_failed'
-    );
-    expect(failed?.entries[0].weight).toBeUndefined();
+    const goblin = doc.place.find((p) => p.id === 'front-goblin');
+    expect(goblin?.options?.[0].failure?.[0].weight).toBeUndefined();
     expect(emitDungeon(doc)).toContain(ENTRY_SAY_ONLY);
   });
 });

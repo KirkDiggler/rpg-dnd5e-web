@@ -7,7 +7,13 @@ import {
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { parseRef } from '@/utils/refs';
-import { validateAnswerTable, type AnswerTableShape } from './answerTableShape';
+import {
+  optionHoldsRefusal,
+  validateAnswerTable,
+  validateOptions,
+  type AnswerTableShape,
+  type OptionShape,
+} from './answerTableShape';
 import { setActorName } from './creaturePalette';
 import { MAX_JSON_LENGTH, validateScene } from './serialization';
 import {
@@ -132,7 +138,19 @@ export interface RoomPropBinding {
   holds?: string[];
   /** The predicate that brings this prop into the run. */
   arrives?: PredicateDoc;
+  /** The lines a character can say to this prop — "Examine the altar." —
+   * each with its own check and what the prop answers on either verdict
+   * (rpg-project#569, `RoomPropBinding.Options`). A prop answers with no
+   * deed and never runs: a `flee` row is refused. Absent means nobody can
+   * speak to it. */
+  options?: RoomOption[];
 }
+
+/** One line a character can say to a creature or a prop (rpg-project#569):
+ * the engine's `OptionSpec`, declared once in `answerTableShape.ts` beside the
+ * answer rows it carries, because its verdict rows ARE answer rows judged by
+ * the table's own grammar. */
+export type RoomOption = OptionShape;
 
 /** The orders block for one creature, under its stable id — the THIRD
  * declaration kind on a placed thing, after `propDeclarations` and the
@@ -146,9 +164,6 @@ export interface RoomPropBinding {
  *
  * `on`, `temper` and `actions` are all here, because the engine carries all
  * three on a binding (`RoomMonsterBinding`, `dungeonspec/single_room.go`).
- * `intimidate`, `persuade` and `arrives` are its own `PlaceSpec` fields and
- * have a home here when a use case brings them. NOTHING READS ANY OF THEM YET
- * (slice 1, shape only).
  *
  * `temper` is ONE WORD here and a word or a MIX on a faction, and that
  * asymmetry is the engine's rather than a preference: `RoomMonsterBinding.Temper`
@@ -161,8 +176,8 @@ export interface RoomPropBinding {
  * `dnd5e:weapons:<id>` refs, monsters only, "CARRIED, NOT INTERPRETED", and
  * THE ORDER IS THE POINT — both drivers take the first action whose target is
  * in reach. */
-/** One check row a creature carries — `{ ability, dc, tool? }`, the authored
- * route for `intimidate:`/`persuade:` (dungeonspec's own `CheckSpec` shape).
+/** One check row — `{ ability, dc, tool? }`, dungeonspec's own `ApproachSpec`
+ * shape, carried by a door's lock, a concealment and an option's check.
  * `ability` is an opaque rulebook ref (`str`, `deception`, …) and `dc` the
  * number that route must beat. CARRIED, NEVER INTERPRETED — whether a ref
  * resolves and what an absent DC derives is the engine's judgement. */
@@ -181,38 +196,20 @@ export interface RoomCheckApproach {
  * These are the per-creature declaration a faction never supplies, so nothing
  * is inherited and nothing is overridable — the whole authored fact block,
  * mirroring how a prop's `propDeclarations[itemId]` is the whole authored
- * fact block for a placed thing (site design Decision 4). */
+ * fact block for a placed thing (site design Decision 4).
+ *
+ * `intimidate` AND `persuade` ARE GONE, AND SO IS THE CARRY (rpg-project#569
+ * R2). They were read and never offered since rpg-dnd5e-web#1201, kept only
+ * because the engine still read them. It no longer does: a priced check now
+ * lives on the LINE that rolls it ([RoomMonsterInteraction.options]), and the
+ * engine refuses the two keys by name — so the studio refuses them in the
+ * engine's words rather than carry a file the server will not take. */
 export interface RoomMonsterInteraction {
-  /** The priced checks the party must beat to frighten this creature, in the
-   * author's order, each a route (`CheckSpec`).
-   *
-   * READ, NEVER OFFERED (rpg-dnd5e-web#1201, Kirk 2026-09-24):
-   *
-   *   "remove intimidate and persuade. they will come back when we have the use
-   *    case but monsters that are hostile cannot have them and they should come
-   *    from interacting with an npc so remove and deferred."
-   *
-   * So NO CONTROL WRITES THEM ANY MORE — the reason is the useful part: a
-   * priced check is a property of INTERACTING WITH AN NPC, and a hostile
-   * monster is not one. Authoring a DC on every bandit said the party could
-   * talk it round, which is the opposite of what a hostile disposition means.
-   *
-   * BUT THEY ARE STILL READ, and that is deliberate. A document authored before
-   * this still carries them, the ENGINE still reads them (`single_room.go`,
-   * validated in `single_room_site.go`), and refusing them here would make an
-   * editable file unopenable while the server accepts it. So they are CARRIED,
-   * NOT GRADED — `holds`' and `arrives`' own law (rpg-dnd5e-web#1176): the web
-   * keeps the shape so the file round-trips, and the engine judges it at
-   * `PutDungeon`.
-   *
-   * DEFERRED, NOT DELETED. They return with the NPC-interaction use case, which
-   * is where the `intimidate`/`persuade` SESSION VERBS already live
-   * (`useSessionIntimidate`, `useSessionPersuade`) — those are the live action a
-   * player takes at the table and are untouched by this. */
-  intimidate?: RoomCheckApproach[];
-  /** The checks the party must beat to talk this creature round —
-   * [RoomMonsterInteraction.intimidate]'s twin. Read, never offered. */
-  persuade?: RoomCheckApproach[];
+  /** The lines a character can say to this creature, each with its check
+   * and what the creature answers on either verdict (rpg-project#569,
+   * `RoomMonsterBinding.Options`). A creature with no options cannot be
+   * spoken to. Absent means none — never an empty list. */
+  options?: RoomOption[];
 
   /** The intel records this creature carries, by record id (`PlaceSpec.Holds`).
    * Absent means it carries none. These are the AUTHORED record ids; the
@@ -222,7 +219,7 @@ export interface RoomMonsterInteraction {
 
 /** One creature's ORDERS plus its interaction facts (rpg-dnd5e-web#1176).
  * `on`, `temper` and `actions` are what the faction would otherwise supply
- * (nearest layer wins wholesale); `intimidate`/`persuade`/`arrives`/`holds`
+ * (nearest layer wins wholesale); `options`/`arrives`/`holds`
  * are per-creature declarations a faction never supplies, so they live beside
  * them as this creature's own authored fact block. `arrives` is the predicate
  * that holds this creature in RESERVE until it holds — the same
@@ -892,20 +889,25 @@ const MONSTER_KEYS = ['id', 'ref', 'startingCell', 'appearanceRef'] as const;
 /** What `startingCell` may carry. `location` is required and `facing` is not —
  * a model has no "no orientation", so absence means the asset's own. */
 const STARTING_CELL_KEYS = ['location', 'facing'] as const;
-/** What a monster binding may carry. `intimidate` and `persuade` were removed
- * here (rpg-dnd5e-web#1201) — see `RoomMonsterInteraction` for why a priced
- * check is not a monster's fact. */
+/** What a monster binding may carry. `options` replaced `intimidate` and
+ * `persuade` (rpg-project#569 R2) — see `RoomMonsterInteraction`. */
 const BINDING_KEYS = [
   'faction',
   'table',
   'on',
   'temper',
   'actions',
-  'intimidate',
-  'persuade',
+  'options',
   'arrives',
   'holds',
 ] as const;
+/** The two binding keys that retired to options, refused BY NAME in the
+ * engine's own sentence (`dungeonspec`'s retired-key refusal) rather than as
+ * an unknown field: the author wrote something this build once understood. */
+const RETIRED_BINDING_KEYS = ['intimidate', 'persuade'] as const;
+function retiredBindingKeyRefusal(key: string): string {
+  return `\`${key}\` is no longer a key: author an option whose check rolls it`;
+}
 
 function validateMonsters(value: unknown): RoomMonsterPlacement[] {
   if (!Array.isArray(value))
@@ -983,45 +985,6 @@ function validateBindingTemper(value: unknown, path: string): string {
   );
 }
 
-/** One creature's `intimidate:`/`persuade:` route list (`CheckSpec`), CARRIED
- * verbatim. Only the SHAPE is kept here — `ability` an opaque string and `dc`
- * a whole number of at least 1 — because what a route resolves to and what an
- * absent DC derives is the engine's judgement at `PutDungeon`.
- *
- * READ, NEVER OFFERED (rpg-dnd5e-web#1201): no control writes these, but a file
- * carrying them still opens. See `RoomMonsterInteraction`. */
-function validateCheckApproaches(
-  value: unknown,
-  path: string
-): RoomCheckApproach[] {
-  if (!Array.isArray(value)) throw new Error(`${path} must be a list.`);
-  if (value.length === 0)
-    throw new Error(`${path} is empty; omit the key instead.`);
-  return value.map((row, index) => {
-    const rowPath = `${path} ${index}`;
-    const source = objectShape(row, rowPath);
-    rejectUnknownKeys(source, ['ability', 'dc', 'tool'], rowPath);
-    if (typeof source.ability !== 'string' || !source.ability)
-      throw new Error(`${rowPath} ability must name an ability or skill.`);
-    if (
-      typeof source.dc !== 'number' ||
-      !Number.isInteger(source.dc) ||
-      source.dc < 1
-    )
-      throw new Error(`${rowPath} dc must be a whole number of at least 1.`);
-    const approach: RoomCheckApproach = {
-      ability: source.ability,
-      dc: source.dc,
-    };
-    if (source.tool !== undefined && source.tool !== null) {
-      if (typeof source.tool !== 'string' || !source.tool)
-        throw new Error(`${rowPath} tool must name an item.`);
-      approach.tool = source.tool;
-    }
-    return approach;
-  });
-}
-
 /** The orders blocks, keyed by the creature's stable id. A binding whose
  * creature is gone is REFUSED, not silently dropped — the same discipline
  * `propDeclarations` already keeps ("Declaration owner does not exist"). */
@@ -1036,6 +999,12 @@ function validateMonsterBindings(
     if (!ids.has(id))
       throw new Error(`Monster binding owner does not exist: ${id}`);
     const block = objectShape(binding, `Monster binding for ${id}`);
+    for (const key of RETIRED_BINDING_KEYS) {
+      if (Object.hasOwn(block, key))
+        throw new Error(
+          `Monster binding for ${id} ${key}: ${retiredBindingKeyRefusal(key)}`
+        );
+    }
     rejectUnknownKeys(block, BINDING_KEYS, `Monster binding for ${id}`);
     const parsed: RoomMonsterBinding = {};
     if (Object.hasOwn(block, 'faction')) {
@@ -1086,25 +1055,19 @@ function validateMonsterBindings(
     }
     // Interaction + reserve facts are CARRIED, NOT GRADED (rpg-dnd5e-web#1176):
     // the web keeps the SHAPE so the file round-trips, and the engine judges
-    // what a check ref resolves to, what an absent DC derives, and what an
-    // `arrives` or `holds` name at PutDungeon — with its own path and sentence.
+    // what a check ref resolves to and what an `arrives` or `holds` name at
+    // PutDungeon — with its own path and sentence.
     //
-    // `intimidate`/`persuade` ARE READ HERE AND NO LONGER OFFERED
-    // (rpg-dnd5e-web#1201): a document authored before that change still
-    // carries them and the engine still reads them, so refusing them would make
-    // an editable file unopenable while the server accepts it. See
-    // `RoomMonsterInteraction`.
-    const checkPath = (key: 'intimidate' | 'persuade') =>
-      `Monster binding for ${id} ${key}`;
-    if (Object.hasOwn(block, 'intimidate'))
-      parsed.intimidate = validateCheckApproaches(
-        block.intimidate,
-        checkPath('intimidate')
-      );
-    if (Object.hasOwn(block, 'persuade'))
-      parsed.persuade = validateCheckApproaches(
-        block.persuade,
-        checkPath('persuade')
+    // OPTIONS ARE JUDGED HERE IN THE ENGINE'S WORDS (rpg-project#569): every
+    // refusal an option can earn about itself is one `validateOptions` copies
+    // from `dungeonspec`. Whether a `requires: { holds }` names a prop somebody
+    // can pick up is asked once the room's props are in hand
+    // (`requireOptionHoldings`).
+    if (Object.hasOwn(block, 'options'))
+      parsed.options = validateOptions(
+        block.options,
+        `Monster binding for ${id} options`,
+        false
       );
     if (Object.hasOwn(block, 'arrives'))
       // The SAME predicate grammar a disposition's `until` uses, validated by
@@ -1138,8 +1101,7 @@ function validateMonsterBindings(
       parsed.on === undefined &&
       parsed.temper === undefined &&
       parsed.actions === undefined &&
-      parsed.intimidate === undefined &&
-      parsed.persuade === undefined &&
+      parsed.options === undefined &&
       parsed.arrives === undefined &&
       parsed.holds === undefined
     )
@@ -1149,6 +1111,64 @@ function validateMonsterBindings(
     bindings[id] = parsed;
   }
   return bindings;
+}
+
+/** A prop binding is CARRIED, NOT GRADED — except its `options`, which are
+ * judged in the engine's words as a creature's are (rpg-project#569), with the
+ * one difference a prop has: it cannot `flee`. Everything else in the block is
+ * returned as it came. */
+function validatePropBindingOptions(
+  bindings: Record<string, RoomPropBinding>
+): Record<string, RoomPropBinding> {
+  const out: Record<string, RoomPropBinding> = {};
+  for (const [id, binding] of Object.entries(bindings)) {
+    const block = objectShape(binding, `Prop binding for ${id}`);
+    if (!Object.hasOwn(block, 'options')) {
+      out[id] = binding;
+      continue;
+    }
+    out[id] = {
+      ...(block as RoomPropBinding),
+      options: validateOptions(
+        block.options,
+        `Prop binding for ${id} options`,
+        true
+      ),
+    };
+  }
+  return out;
+}
+
+/** Every `requires: { holds }` on a creature's or a prop's lines names a
+ * placed prop somebody can pick up — refused otherwise in the engine's own
+ * sentences. The universe is the engine's `roomProps`: every declared prop,
+ * holdable when its binding says so. */
+function requireOptionHoldings(
+  propDeclarations: Record<string, RoomPropDeclaration>,
+  monsterBindings: Record<string, RoomMonsterBinding> | undefined,
+  propBindings: Record<string, RoomPropBinding> | undefined
+): void {
+  const props = new Map(
+    Object.keys(propDeclarations).map((id) => [
+      id,
+      propBindings?.[id]?.holdable === true,
+    ])
+  );
+  const check = (owner: string, options: RoomOption[] | undefined) => {
+    for (const [index, option] of (options ?? []).entries()) {
+      if (option.requires === undefined || !('holds' in option.requires))
+        continue;
+      const refusal = optionHoldsRefusal(option.requires.holds, props);
+      if (refusal)
+        throw new Error(
+          `${owner} options[${index}].requires.holds: ${refusal}`
+        );
+    }
+  };
+  for (const [id, binding] of Object.entries(monsterBindings ?? {}))
+    check(`Monster binding for ${id}`, binding.options);
+  for (const [id, binding] of Object.entries(propBindings ?? {}))
+    check(`Prop binding for ${id}`, binding.options);
 }
 
 function validateDraft(value: unknown): RoomDraft {
@@ -1306,11 +1326,17 @@ function validateDraft(value: unknown): RoomDraft {
   // arrangement template) are the engine's, each at its own path. Only the
   // SHAPE is checked here.
   const propBindings = Object.hasOwn(room, 'propBindings')
-    ? (objectShape(room.propBindings, 'Prop bindings') as Record<
-        string,
-        RoomPropBinding
-      >)
+    ? validatePropBindingOptions(
+        objectShape(room.propBindings, 'Prop bindings') as Record<
+          string,
+          RoomPropBinding
+        >
+      )
     : undefined;
+  // A LINE GATED ON HOLDING A PROP needs the prop to be placed and holdable —
+  // the engine's `optionRequires`, asked here because this is the first place
+  // both the lines and the room's props are in hand.
+  requireOptionHoldings(propDeclarations, monsterBindings, propBindings);
   // A BOUND DOOR REQUIRES ITS STATE. An opening that carries a `door` owns a
   // `doorBindings` entry; absence is a bare opening, never a hidden or open
   // door. This is the ONE owner-specific shape rule, and it applies ONLY to

@@ -29,10 +29,10 @@
         {
           "assetRef": "dnd5e:npcs:goblin:knight-01",
           "displayName": "Knight 01",
-          "downedSha256": "8bb6c4ba24eccb70092c4ab0e08ec024e173b375f788a9db63b069f73e80ddb8",
+          "downedSha256": "1930c99620ab1d139ff50576a2eac26190fe29489d8595edb067631b3a9a8211",
           "jointCount": 50,
           "manifestId": "goblinKnight01",
-          "standingSha256": "d8f31c9058322ad8e6682aa1e33ec1f34dea50d2b8918389dda0ad453075e372"
+          "standingSha256": "345fac3cdcb4a834c8c375e111bdce96469afd1a93a6866612e2fa07c2d304df"
         },
         {
           "assetRef": "dnd5e:npcs:goblin:shaman-01",
@@ -69,42 +69,42 @@
         {
           "assetRef": "dnd5e:npcs:goblin:prisoner-01",
           "displayName": "Prisoner 01",
-          "downedSha256": "fbfc3e4dbe0a7643fdecd56ef1eb0259c46a8b6ceac5bf5659461bf83ec46356",
+          "downedSha256": "f966c83d0da90c4d5d33a43b7bd747f19e28664e2f6e67edb333ef24369e171a",
           "jointCount": 50,
           "manifestId": "goblinPrisoner01",
-          "standingSha256": "0c5535d587009dfe0657d12ee6b9fd703f12d282e58c2799e628f965aa3885d6"
+          "standingSha256": "4da6ee6c5ca60612463e524a6e848daba9529329cd48cc875800cc8c71573482"
         },
         {
           "assetRef": "dnd5e:npcs:goblin:prisoner-02",
           "displayName": "Prisoner 02",
-          "downedSha256": "5049bcd1c9be36b4125135c91faabec522f64635e313b54f17a825cdeb0d5147",
+          "downedSha256": "b9897ac957b88c48820f766bd2ce8ce9a9a0126e5d983fb8e696d2e034ec35d5",
           "jointCount": 50,
           "manifestId": "goblinPrisoner02",
-          "standingSha256": "758ce0e950044f6b90ea7e3c684f13813fa0b52014d81e6aead12060b6c69389"
+          "standingSha256": "0aece9cf96b50f4c10db03ac8c2376c571a13b0c76c38c24add486bc5b50b8c5"
         },
         {
           "assetRef": "dnd5e:npcs:goblin:prisoner-03",
           "displayName": "Prisoner 03",
-          "downedSha256": "edbf48297b1ce8d851013cfae5f57d687e21d110a0a6e3b499818b14ad800843",
+          "downedSha256": "3399d5e00847a22ee175c357a8192ec1df080d26ca6622ade9d410d0a2c9578e",
           "jointCount": 50,
           "manifestId": "goblinPrisoner03",
-          "standingSha256": "a738215711177dad9e8cfbf2552d8b4b6128962d754055c7a10dabe6108a3c50"
+          "standingSha256": "46dbc9f460d844784c1946fcd402cdfe2768a67f59a6eb5c9dfad8a922ed8f6a"
         },
         {
           "assetRef": "dnd5e:npcs:goblin:ranger-01",
           "displayName": "Ranger 01",
-          "downedSha256": "7a658e8f37dac3e924736fae784752bae0f7197c5056de81d9b24488a34994bb",
+          "downedSha256": "f03c555e0fd9b0f1a4c81ef8f3260a6af2e8dad350a6d360e1cfb301190642ab",
           "jointCount": 50,
           "manifestId": "goblinRanger01",
-          "standingSha256": "27f03eb0f3ca1e9968b76a6baaea1472c420e160d496cc3c0df2e046d2311172"
+          "standingSha256": "673756c0dbb33d09090cb713fea08545ac7d6672a16dd7c95ed372f2ce9408d2"
         },
         {
           "assetRef": "dnd5e:npcs:goblin:wizard-01",
           "displayName": "Wizard 01",
-          "downedSha256": "4a6042dd3237c30378db7b990d3c72c29128c818cac687d3163c19c7b99ac6bd",
+          "downedSha256": "a74ec0c987b6f5f8d6d608a960ad255d2dd430dc0adecf470896e2b0f17aa410",
           "jointCount": 50,
           "manifestId": "goblinWizard01",
-          "standingSha256": "1c7ade7d4eb1536ff85db8195d775eb308764493310070f716054f3878852285"
+          "standingSha256": "8d6c1b6cd7d3d7627b15a81069d7ec90e54a7ce348e5eb0582544c55009af163"
         }
       ],
       "releaseId": "goblin-war-camp-v1"
@@ -256,7 +256,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-01-b",
-          "displayName": "Blacksmith Female \u00b7 01 B",
+          "displayName": "Blacksmith Female · 01 B",
           "jointCount": 55,
           "standingSha256": "d85ce417d5aab1011f8028491895ada87ade283cb7b486e488db3c393b69bab1",
           "downedSha256": "9d363c4370388629b41816eee1a9499a3060de4c9855125f7eb0c701c3a9a38a"
@@ -264,7 +264,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-01-c",
-          "displayName": "Blacksmith Female \u00b7 01 C",
+          "displayName": "Blacksmith Female · 01 C",
           "jointCount": 55,
           "standingSha256": "a87eea49a3fac0e864438aac49ad477225b6046594f6878f21b64d8423cf72e7",
           "downedSha256": "1ced64922eb2d3f2b6480fcd003d3d959c956783e7919c35d2b1723c8894a751"
@@ -272,7 +272,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-02-a",
-          "displayName": "Blacksmith Female \u00b7 02 A",
+          "displayName": "Blacksmith Female · 02 A",
           "jointCount": 55,
           "standingSha256": "623bdc51a1db0b2afdcaa71846ecdfad927be72bed084332efbdb08398054a2a",
           "downedSha256": "47be28e89bc8191bb420c2edf8575c38e0d224032022ff2a9d004cb630449b0b"
@@ -280,7 +280,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-02-b",
-          "displayName": "Blacksmith Female \u00b7 02 B",
+          "displayName": "Blacksmith Female · 02 B",
           "jointCount": 55,
           "standingSha256": "665d6e5ecd578c7aae1d2e8ce98b71db1c4968f1ec209e2a06f83b1093a09220",
           "downedSha256": "f0826a844bb01ec2c38f5d05e1046d759eda88e085baf27a146ff51a0b6f62bf"
@@ -288,7 +288,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-02-c",
-          "displayName": "Blacksmith Female \u00b7 02 C",
+          "displayName": "Blacksmith Female · 02 C",
           "jointCount": 55,
           "standingSha256": "23b2dfd4ffb1accde7801e6807196063bb92d8cb2b814bbff62cfc374d256bc7",
           "downedSha256": "f97b464c185e2dc4acaab4702c64d6af17e4c3230c41aaa4b8a3eeb41401391e"
@@ -296,7 +296,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-03-a",
-          "displayName": "Blacksmith Female \u00b7 03 A",
+          "displayName": "Blacksmith Female · 03 A",
           "jointCount": 55,
           "standingSha256": "867caedc882c4c72132ae9e941ec1450149acc2cd61f8a76ebee4787bcc56501",
           "downedSha256": "a60b457ff6f38297cf1ebc12a8c6710593f741d47cf6c3f803bfcba2c40bf1b3"
@@ -304,7 +304,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-03-b",
-          "displayName": "Blacksmith Female \u00b7 03 B",
+          "displayName": "Blacksmith Female · 03 B",
           "jointCount": 55,
           "standingSha256": "3789bf6dbb41ca42663f79945a91b40312b68a12e43a185f7bfc9eea7a3c1fc9",
           "downedSha256": "d56d825f8d9b687cba3d4625f8cc8f800aa7a56fa2ad3eaf26732cc836521701"
@@ -312,7 +312,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-03-c",
-          "displayName": "Blacksmith Female \u00b7 03 C",
+          "displayName": "Blacksmith Female · 03 C",
           "jointCount": 55,
           "standingSha256": "c2a6fc3b0bdd58ed7e436a152f8e4adf384e77545b0e0ee703b073ee9dd9c044",
           "downedSha256": "bed0f4df6d29553d48b266e5f0cb822c985607bba327529d648746e26d813c2a"
@@ -320,7 +320,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-04-a",
-          "displayName": "Blacksmith Female \u00b7 04 A",
+          "displayName": "Blacksmith Female · 04 A",
           "jointCount": 55,
           "standingSha256": "a906ca4b5f67eee5b532c32acc0b46dabec49b51dc11037e9a73df5313421f58",
           "downedSha256": "4ed80baf086fabe91e93047b1568e61a1b5174c5bdcf30f3378a55d4c48293a6"
@@ -328,7 +328,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-04-b",
-          "displayName": "Blacksmith Female \u00b7 04 B",
+          "displayName": "Blacksmith Female · 04 B",
           "jointCount": 55,
           "standingSha256": "b08fbfb014afa1c4ab69f63dcc43effa0ba408c3622692fe699570a8db4f25df",
           "downedSha256": "53b83db13840c2363d71d41535dd09d3d2fe476e38e3da927ae39794f976d8f3"
@@ -336,7 +336,7 @@
         {
           "manifestId": "castleBlacksmithFemale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-female-01-style-04-c",
-          "displayName": "Blacksmith Female \u00b7 04 C",
+          "displayName": "Blacksmith Female · 04 C",
           "jointCount": 55,
           "standingSha256": "3a7479deb9645b589041ceed3a678e1b9e6b8bd912631dce7234e32234c22e52",
           "downedSha256": "8011d7a981018d28c2b4995d2351e0623e53cda96dcb9da46d2fee97a7284fc1"
@@ -344,7 +344,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-01-b",
-          "displayName": "Blacksmith Male \u00b7 01 B",
+          "displayName": "Blacksmith Male · 01 B",
           "jointCount": 55,
           "standingSha256": "811044776cc3c915037c7f4659451a25718a3276923db6de75c227467724cc63",
           "downedSha256": "b8dd2b5413afa064d91ed05b5fc53dbe1dde347f6ac00ae7d62ba422eb216baf"
@@ -352,7 +352,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-01-c",
-          "displayName": "Blacksmith Male \u00b7 01 C",
+          "displayName": "Blacksmith Male · 01 C",
           "jointCount": 55,
           "standingSha256": "7d3f69bed6b28ac346687ec66bce1b8ee98a3e00b25a0a2b018f188582740f6f",
           "downedSha256": "f6cc6e5567301b6f84692d44e973d6eb4854a50a28abd6799809c84f64b16bdc"
@@ -360,7 +360,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-02-a",
-          "displayName": "Blacksmith Male \u00b7 02 A",
+          "displayName": "Blacksmith Male · 02 A",
           "jointCount": 55,
           "standingSha256": "afa2f6fb96a30353d042f5759a561db40008d50c11627f22929e8929802b62a9",
           "downedSha256": "ccebff759e303245b39ceee988c13b2d830e8fb64ec5a7d55d8d72e3c9da7569"
@@ -368,7 +368,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-02-b",
-          "displayName": "Blacksmith Male \u00b7 02 B",
+          "displayName": "Blacksmith Male · 02 B",
           "jointCount": 55,
           "standingSha256": "e718bea3e4122b4d8838ac072d12ae19918e9400f07812f5489aa3a557cb7b7e",
           "downedSha256": "a259a4c4bef71de7cd7f08bb5f0e63056c9e2a3cd9c73f7fa4b1aee584ad0c53"
@@ -376,7 +376,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-02-c",
-          "displayName": "Blacksmith Male \u00b7 02 C",
+          "displayName": "Blacksmith Male · 02 C",
           "jointCount": 55,
           "standingSha256": "e3e35fe285c5fc13a5638599306adaf6a5a32b1a50f83a2a45ab8a53535ced0a",
           "downedSha256": "48c78f72010ebb91173bc0c321c0fff3f58149f716d8e9616f5f509ab13374d4"
@@ -384,7 +384,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-03-a",
-          "displayName": "Blacksmith Male \u00b7 03 A",
+          "displayName": "Blacksmith Male · 03 A",
           "jointCount": 55,
           "standingSha256": "7867ab6da2b7afad19a84e2ea8792757b95ce3ed096683153021d21d70a104f5",
           "downedSha256": "d964563b567a0721d58bf53368995f0f065ea56a3ce21f6368380349f9b0aff5"
@@ -392,7 +392,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-03-b",
-          "displayName": "Blacksmith Male \u00b7 03 B",
+          "displayName": "Blacksmith Male · 03 B",
           "jointCount": 55,
           "standingSha256": "19784f6e218b5563cef281608724213887c0e2cc573c6d51f0cc279c7913695b",
           "downedSha256": "ae38595f7ee557eaea6833aee683dd660efcedb010de9103127f03efd899dab9"
@@ -400,7 +400,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-03-c",
-          "displayName": "Blacksmith Male \u00b7 03 C",
+          "displayName": "Blacksmith Male · 03 C",
           "jointCount": 55,
           "standingSha256": "2da664152afea3190ee55a5b65d067ff1c91221e97bf05475aa8e7d8c98a2887",
           "downedSha256": "23a2d30131f6cf40e720ecdb33d113b4a1303d4a5e8e7d08a07551247463bdf4"
@@ -408,7 +408,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-04-a",
-          "displayName": "Blacksmith Male \u00b7 04 A",
+          "displayName": "Blacksmith Male · 04 A",
           "jointCount": 55,
           "standingSha256": "0c4ece8c0fa99a9db18a051ed71a7c0a8595a94b6d32de24d448fa42f6097e44",
           "downedSha256": "91c11c38a040eeefc9636397014c19ec264037cd72fae34ae25c2d7538484571"
@@ -416,7 +416,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-04-b",
-          "displayName": "Blacksmith Male \u00b7 04 B",
+          "displayName": "Blacksmith Male · 04 B",
           "jointCount": 55,
           "standingSha256": "44ac0d4dcef269db56382928f1e80e9a806a58919957899ec3bc089fd5eb3974",
           "downedSha256": "a7a589401e2829ca55484269d809f2f17bc83674ff504bf7002500085f5e03d0"
@@ -424,7 +424,7 @@
         {
           "manifestId": "castleBlacksmithMale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:blacksmith-male-01-style-04-c",
-          "displayName": "Blacksmith Male \u00b7 04 C",
+          "displayName": "Blacksmith Male · 04 C",
           "jointCount": 55,
           "standingSha256": "c2242b1760ee6c07123989d32368a895803ec28669a29a9f219701446110a991",
           "downedSha256": "1288afadca2102f5920785a2b33e19c019a10872c08d483826841665eb0f068c"
@@ -432,7 +432,7 @@
         {
           "manifestId": "castleHermit01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-01-b",
-          "displayName": "Hermit \u00b7 01 B",
+          "displayName": "Hermit · 01 B",
           "jointCount": 55,
           "standingSha256": "09daedaefe13d19ea70aee4fc3c9a407ec1cede091686434081fc4ae56077d09",
           "downedSha256": "c22b37db055a0fa0b25a4438b65cab3218a5b6ada925cb3b194c11206541f252"
@@ -440,7 +440,7 @@
         {
           "manifestId": "castleHermit01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-01-c",
-          "displayName": "Hermit \u00b7 01 C",
+          "displayName": "Hermit · 01 C",
           "jointCount": 55,
           "standingSha256": "4e8e960fa401353ef09a43caa273d33e1b3639986dd8f6bbf118a159bf110a7c",
           "downedSha256": "839d913f25bf924c20a1f82312c51b2727adce1ae91278aa5d12899fa2b43e8e"
@@ -448,7 +448,7 @@
         {
           "manifestId": "castleHermit01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-02-a",
-          "displayName": "Hermit \u00b7 02 A",
+          "displayName": "Hermit · 02 A",
           "jointCount": 55,
           "standingSha256": "44d873804c9faa483a5e91866cd8befc0d3c85bbd2aef773ee0480f5e58e4833",
           "downedSha256": "0464548d211460a1c87c9e72a90ce2fd03e45033bd77c6789bff3b34fe22bdcc"
@@ -456,7 +456,7 @@
         {
           "manifestId": "castleHermit01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-02-b",
-          "displayName": "Hermit \u00b7 02 B",
+          "displayName": "Hermit · 02 B",
           "jointCount": 55,
           "standingSha256": "7588e51d924df8015556cbde7b2f26070ad74f855c09e8330585b9e30cd178cb",
           "downedSha256": "f2ec260c7c0659b80db6985a0b9023caf5120be1b3f212c834fbbf2c5a052f8f"
@@ -464,7 +464,7 @@
         {
           "manifestId": "castleHermit01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-02-c",
-          "displayName": "Hermit \u00b7 02 C",
+          "displayName": "Hermit · 02 C",
           "jointCount": 55,
           "standingSha256": "4faa350685efc72982b440c209fe0f2e875b43c28058cf9f0a3236341941ef53",
           "downedSha256": "112540d5c5964ec9331635b8a343a7478ed111614223a4d9d54878f5c42fc3cc"
@@ -472,7 +472,7 @@
         {
           "manifestId": "castleHermit01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-03-a",
-          "displayName": "Hermit \u00b7 03 A",
+          "displayName": "Hermit · 03 A",
           "jointCount": 55,
           "standingSha256": "0ee844e80303409d2a35d854e1c06bc005676f72982c4a435d2aaa211f314ca7",
           "downedSha256": "b7e3498ce5697bec52a4f094c9a47491c82d09584a9f462a7cff6b67a743cb7f"
@@ -480,7 +480,7 @@
         {
           "manifestId": "castleHermit01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-03-b",
-          "displayName": "Hermit \u00b7 03 B",
+          "displayName": "Hermit · 03 B",
           "jointCount": 55,
           "standingSha256": "100625087f06501daa2bd58217b100e40e544f7ce41bfa93e7ec52c9ace0a6bf",
           "downedSha256": "d5829d0d214dc19cf5b67781df910bd52ceff9c54630da5bd3521ebb83d0185d"
@@ -488,7 +488,7 @@
         {
           "manifestId": "castleHermit01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-03-c",
-          "displayName": "Hermit \u00b7 03 C",
+          "displayName": "Hermit · 03 C",
           "jointCount": 55,
           "standingSha256": "36d1a58b96f5ad4e3334386d26963bfa95fd0057a19b971920ab119c8b9582aa",
           "downedSha256": "37757d4ef87009d7c0938352730745d909c19e3a5a3da18f4f31111013428b01"
@@ -496,7 +496,7 @@
         {
           "manifestId": "castleHermit01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-04-a",
-          "displayName": "Hermit \u00b7 04 A",
+          "displayName": "Hermit · 04 A",
           "jointCount": 55,
           "standingSha256": "a4f63d0b54fe54a9da0e2a303b0d99868caf5cef877c9bd58fbd464bc828e1b6",
           "downedSha256": "547d082992fe2cac7cb1c19687f4c1bca9920ef6e43d7ac4b1a205f6685d089b"
@@ -504,7 +504,7 @@
         {
           "manifestId": "castleHermit01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-04-b",
-          "displayName": "Hermit \u00b7 04 B",
+          "displayName": "Hermit · 04 B",
           "jointCount": 55,
           "standingSha256": "3f623ae719d5505faae145ad67617bb82ba608eb90a5b729b687f4926eb73bcf",
           "downedSha256": "d204e33dc0bce3c440c7b7c69177436e4da86d892983bed959967fa2260076fe"
@@ -512,7 +512,7 @@
         {
           "manifestId": "castleHermit01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:hermit-01-style-04-c",
-          "displayName": "Hermit \u00b7 04 C",
+          "displayName": "Hermit · 04 C",
           "jointCount": 55,
           "standingSha256": "e142c2afc5bba6e82e463a1bb195d29314a08c15349c9cee4bc9d74fbeb12873",
           "downedSha256": "f8d4b1740ce1041df3aa92d520583810e18ef60653072e67bdacd454e025d5aa"
@@ -520,7 +520,7 @@
         {
           "manifestId": "castleJester01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-01-b",
-          "displayName": "Jester \u00b7 01 B",
+          "displayName": "Jester · 01 B",
           "jointCount": 55,
           "standingSha256": "3ae050f81875cbbd6145435d9830bc2eeaae23b60555cf9ce791569a28e0ef0e",
           "downedSha256": "5d166b0576f2509344a7282dcaf243a3cb5715c318e04ee51c5c7b552fa49e06"
@@ -528,7 +528,7 @@
         {
           "manifestId": "castleJester01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-01-c",
-          "displayName": "Jester \u00b7 01 C",
+          "displayName": "Jester · 01 C",
           "jointCount": 55,
           "standingSha256": "818c25abdd54423c5421eba23729bc4bd158f9336ab4559ff3a58921c7ffc708",
           "downedSha256": "bda948d301359f8774cac3c82690cc9c3190a4f395c69b3ffffce3c6e457e8f7"
@@ -536,7 +536,7 @@
         {
           "manifestId": "castleJester01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-02-a",
-          "displayName": "Jester \u00b7 02 A",
+          "displayName": "Jester · 02 A",
           "jointCount": 55,
           "standingSha256": "a18e74b6ab29e04c1de9c3ffd97c2fa4dc5304ba0c5f78ee8278156b8f5c91db",
           "downedSha256": "70de8c3868a596a441e8fe9e453abd30437870028c678e934ca5f7e196faf94a"
@@ -544,7 +544,7 @@
         {
           "manifestId": "castleJester01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-02-b",
-          "displayName": "Jester \u00b7 02 B",
+          "displayName": "Jester · 02 B",
           "jointCount": 55,
           "standingSha256": "817c5efe192505ebd1fe746aa43830d5ddc93ff3e2d5a49f11411eed80e47f3f",
           "downedSha256": "4ed8cfef6353455cb5dead91066544647b92657de1d6fe88aee604c655af5724"
@@ -552,7 +552,7 @@
         {
           "manifestId": "castleJester01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-02-c",
-          "displayName": "Jester \u00b7 02 C",
+          "displayName": "Jester · 02 C",
           "jointCount": 55,
           "standingSha256": "04755cf5d99973051310fa5a8debff15d8845cb15cf1310a990063ce6f437b2d",
           "downedSha256": "c8e5dd239dc281c43fc6216759ca607c883e9c8d667b439617932528d1a03fcf"
@@ -560,7 +560,7 @@
         {
           "manifestId": "castleJester01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-03-a",
-          "displayName": "Jester \u00b7 03 A",
+          "displayName": "Jester · 03 A",
           "jointCount": 55,
           "standingSha256": "1c44da87a1ce2a8aca5c0abd2d1692a46ece735d995387064adc3db48de2e79b",
           "downedSha256": "7cbcc6cd0fce195b25bd06fb5b050c3d6a73f8c4d0d6ee29637dddf17e5ce6d9"
@@ -568,7 +568,7 @@
         {
           "manifestId": "castleJester01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-03-b",
-          "displayName": "Jester \u00b7 03 B",
+          "displayName": "Jester · 03 B",
           "jointCount": 55,
           "standingSha256": "42e225beec48bbb89f912101e5a8a20b27846dedc233d9ce65e151c3c3146463",
           "downedSha256": "b2d185ca6c75844bf2687a1b5560a47b8ac4742c37c5027b63eca40e7a402b03"
@@ -576,7 +576,7 @@
         {
           "manifestId": "castleJester01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-03-c",
-          "displayName": "Jester \u00b7 03 C",
+          "displayName": "Jester · 03 C",
           "jointCount": 55,
           "standingSha256": "66c48b72eb55837919874849764a49ad9ad77f83df95fd4343901f62e850e8e2",
           "downedSha256": "be391ae3bef239d67d9df7b9d4756acb9fe7fadbc064e1bf300aa05a54bc9ef2"
@@ -584,7 +584,7 @@
         {
           "manifestId": "castleJester01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-04-a",
-          "displayName": "Jester \u00b7 04 A",
+          "displayName": "Jester · 04 A",
           "jointCount": 55,
           "standingSha256": "c53cc0b04c43f424b6247510820e35fc1c2153151089aaf989870b9756452b90",
           "downedSha256": "015d5332f49d0c66402e72dabc336810b535fd2cb8125bc12ca8af9b55002915"
@@ -592,7 +592,7 @@
         {
           "manifestId": "castleJester01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-04-b",
-          "displayName": "Jester \u00b7 04 B",
+          "displayName": "Jester · 04 B",
           "jointCount": 55,
           "standingSha256": "d5f75dd58d1fb2830ab3d2b28924bdffca90f4fdca7393dec98ea94eb5bd17d7",
           "downedSha256": "784266ba87ad2c72ba9e4bdd710b86c3b49ecfa6be5ea92aa9351dab763937fa"
@@ -600,7 +600,7 @@
         {
           "manifestId": "castleJester01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:jester-01-style-04-c",
-          "displayName": "Jester \u00b7 04 C",
+          "displayName": "Jester · 04 C",
           "jointCount": 55,
           "standingSha256": "1d5cc4ac8ee02c19e3b53e6de25e11b49429540f1422e4a75cdef7c6a8753859",
           "downedSha256": "d66d99ab2074ae885086fe2c3132ef8412aed24d5b339189185f256c9e12d2e2"
@@ -608,7 +608,7 @@
         {
           "manifestId": "castleKing01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-01-b",
-          "displayName": "King \u00b7 01 B",
+          "displayName": "King · 01 B",
           "jointCount": 55,
           "standingSha256": "92e4479358d7b9772baa39afd0f12c8cb3709b6c7564e8f3dbd00509555c663e",
           "downedSha256": "5622aa13bea77d621507807e10bdefbea2129ff4d4366363b7fc2fb9ea45af42"
@@ -616,7 +616,7 @@
         {
           "manifestId": "castleKing01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-01-c",
-          "displayName": "King \u00b7 01 C",
+          "displayName": "King · 01 C",
           "jointCount": 55,
           "standingSha256": "1cae89f640f656f832005cc3d47bfd342d352b4ae83e17218c0e770dd3b9980e",
           "downedSha256": "9c8c651c3e527830ed763d1fac542132dec31660b2945f5251d1102e3e02752e"
@@ -624,7 +624,7 @@
         {
           "manifestId": "castleKing01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-02-a",
-          "displayName": "King \u00b7 02 A",
+          "displayName": "King · 02 A",
           "jointCount": 55,
           "standingSha256": "39b0980521848759095dc54551da1226fd68f9b5a1b4c077d053db2fce8b45b0",
           "downedSha256": "f0809782847e43f47659df4b6cacb336da29096a47957151105bd90d32f16f5b"
@@ -632,7 +632,7 @@
         {
           "manifestId": "castleKing01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-02-b",
-          "displayName": "King \u00b7 02 B",
+          "displayName": "King · 02 B",
           "jointCount": 55,
           "standingSha256": "7becfd823cb5add275746fa912df7d047574e816e5088dac38bf255e231c3552",
           "downedSha256": "1aed4dbb1c02c287f1abea4f7b3b5914fe40b3ae495ed057239d3e85f5766a16"
@@ -640,7 +640,7 @@
         {
           "manifestId": "castleKing01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-02-c",
-          "displayName": "King \u00b7 02 C",
+          "displayName": "King · 02 C",
           "jointCount": 55,
           "standingSha256": "4a279d890c9dc9d2b248f739aae1e59d1a1486351c2fd9fc58384ae5736dace8",
           "downedSha256": "14cdb5eca80e243784dfe5f7333d2a15abc25cce29dce2e6ee38240a7a4468e1"
@@ -648,7 +648,7 @@
         {
           "manifestId": "castleKing01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-03-a",
-          "displayName": "King \u00b7 03 A",
+          "displayName": "King · 03 A",
           "jointCount": 55,
           "standingSha256": "7428f7bcc3ee794438be2a85e2a8e6a3bf4ccc2a09847df31c205540cfe9c5aa",
           "downedSha256": "4c9a3a118dd7494e7b9207b529c9f043827ad9def38b41c2614b4f9a305c4fba"
@@ -656,7 +656,7 @@
         {
           "manifestId": "castleKing01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-03-b",
-          "displayName": "King \u00b7 03 B",
+          "displayName": "King · 03 B",
           "jointCount": 55,
           "standingSha256": "4128a8d7f5af38c1231f9b9869a72e2939118c865c4f6cf16242757cd0568512",
           "downedSha256": "30b36ff623bb863495238169c0f5fe639ece92509414530d917f43746dbff030"
@@ -664,7 +664,7 @@
         {
           "manifestId": "castleKing01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-03-c",
-          "displayName": "King \u00b7 03 C",
+          "displayName": "King · 03 C",
           "jointCount": 55,
           "standingSha256": "2f33574d153fe7a04bd01344f7c2503a91a30d233293614d0ee1ce62bd3c88ca",
           "downedSha256": "90ef6fcc828e35604d00d7954263eaedd755c9b3b286011ee116f6d4e644beba"
@@ -672,7 +672,7 @@
         {
           "manifestId": "castleKing01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-04-a",
-          "displayName": "King \u00b7 04 A",
+          "displayName": "King · 04 A",
           "jointCount": 55,
           "standingSha256": "6a05987d75929d53dcdd20707840ab35d504a06a4119f39583dfe66ce76d9cd5",
           "downedSha256": "01fced8ce86c84185980caa54bab4ec145955f1bd71ba8f287abac53ba5f8d8a"
@@ -680,7 +680,7 @@
         {
           "manifestId": "castleKing01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-04-b",
-          "displayName": "King \u00b7 04 B",
+          "displayName": "King · 04 B",
           "jointCount": 55,
           "standingSha256": "efa02f040a116b0a6c8db7e173e196d6526d8a6024bbcfb0c4864d66c35e9bd5",
           "downedSha256": "6e9e14b2c2869f329702cf95a51a9187c1f5b27912e83c8831747d05ff44f98d"
@@ -688,7 +688,7 @@
         {
           "manifestId": "castleKing01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:king-01-style-04-c",
-          "displayName": "King \u00b7 04 C",
+          "displayName": "King · 04 C",
           "jointCount": 55,
           "standingSha256": "f337ad8fc3c260c2c23afa8df5f704b58b31d3cda9d07d39cee1b1eea9b87aeb",
           "downedSha256": "565d293f80cf62f6bdb56edd2eca1801f38e1a644ff9f782d65d8c17b5550fc4"
@@ -696,7 +696,7 @@
         {
           "manifestId": "castleMageCape01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-01-b",
-          "displayName": "Mage Cape \u00b7 01 B",
+          "displayName": "Mage Cape · 01 B",
           "jointCount": 55,
           "standingSha256": "0d894cf970b437a2f3994cdc33aeaaf0cc3020d591a28ef91b41f8ae1d6c6dc7",
           "downedSha256": "fde1532744a750986f1f6a74d063cbb58a68fdd3399f8de4807b5f93354df127"
@@ -704,7 +704,7 @@
         {
           "manifestId": "castleMageCape01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-01-c",
-          "displayName": "Mage Cape \u00b7 01 C",
+          "displayName": "Mage Cape · 01 C",
           "jointCount": 55,
           "standingSha256": "e6461ede72a086042f9a3a937d7886f540671116f16006e7726ac3868946afbd",
           "downedSha256": "b31f33c2d040d80d51c733b1974940ba2dd76efc9fcac18891f7fa0e8c68e22d"
@@ -712,7 +712,7 @@
         {
           "manifestId": "castleMageCape01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-02-a",
-          "displayName": "Mage Cape \u00b7 02 A",
+          "displayName": "Mage Cape · 02 A",
           "jointCount": 55,
           "standingSha256": "8dd6fbb17f02da994d110c8669d82087c6c8e0788e41c29844ab21d791b5ed6a",
           "downedSha256": "490a9984932656426ea9fa4772796a43bb6a281990b48bd7ef47c177c380c6b7"
@@ -720,7 +720,7 @@
         {
           "manifestId": "castleMageCape01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-02-b",
-          "displayName": "Mage Cape \u00b7 02 B",
+          "displayName": "Mage Cape · 02 B",
           "jointCount": 55,
           "standingSha256": "a50b888ef4ff40a8b20cc1a3292f521c43b26c155f8e5d90b7b2bb424df4a54f",
           "downedSha256": "885acca5a59e769090979e7ac8f5a2b746a521b38268fc6032576f4e3b91da3a"
@@ -728,7 +728,7 @@
         {
           "manifestId": "castleMageCape01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-02-c",
-          "displayName": "Mage Cape \u00b7 02 C",
+          "displayName": "Mage Cape · 02 C",
           "jointCount": 55,
           "standingSha256": "49cdfbbd878ac1f2cec0b186ca64f4624f5a6ed95e8d6cf876d5c8ef82c032c5",
           "downedSha256": "bb8de775a893b1948a32d3e3571e5a934d3a83f5c471acada4d2eb93932cf2dd"
@@ -736,7 +736,7 @@
         {
           "manifestId": "castleMageCape01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-03-a",
-          "displayName": "Mage Cape \u00b7 03 A",
+          "displayName": "Mage Cape · 03 A",
           "jointCount": 55,
           "standingSha256": "ba5d26f7bb0938384d3a5ff4853de657ca3d9566cecebdfafddfa2ad0d2e5e5f",
           "downedSha256": "544cc9afd1b81fba6857a1e4eb714d9ea42f3e796576959c5f1d28f685fed37e"
@@ -744,7 +744,7 @@
         {
           "manifestId": "castleMageCape01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-03-b",
-          "displayName": "Mage Cape \u00b7 03 B",
+          "displayName": "Mage Cape · 03 B",
           "jointCount": 55,
           "standingSha256": "783be66494c4129b97c310452a783192cc18b0416e581064c51637a6f41e4333",
           "downedSha256": "1657d7252ad2ece8fca538b4c108f6171fcff2437012694a2bcdfc26318e41ee"
@@ -752,7 +752,7 @@
         {
           "manifestId": "castleMageCape01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-03-c",
-          "displayName": "Mage Cape \u00b7 03 C",
+          "displayName": "Mage Cape · 03 C",
           "jointCount": 55,
           "standingSha256": "48f6c9bfdfca6adb98830bb2759758d3347c2a4ce2fcfe0dd7479b64526a171b",
           "downedSha256": "1b5ffb9e9eb10e3a581b8a8df6e0ccee988d7d5847c1e2fa84e8c5580ad1eba4"
@@ -760,7 +760,7 @@
         {
           "manifestId": "castleMageCape01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-04-a",
-          "displayName": "Mage Cape \u00b7 04 A",
+          "displayName": "Mage Cape · 04 A",
           "jointCount": 55,
           "standingSha256": "b77ae892ccf5db722894f839fb09c5087721198f4aebe35abbf357fccf51f39c",
           "downedSha256": "892874df4c44dd072efc6c229cd8d2889ae7e01f1be6b3c57ed46da2b8e1eab4"
@@ -768,7 +768,7 @@
         {
           "manifestId": "castleMageCape01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-04-b",
-          "displayName": "Mage Cape \u00b7 04 B",
+          "displayName": "Mage Cape · 04 B",
           "jointCount": 55,
           "standingSha256": "cf55ca22ad5216077da05b8b3af5de2c433920c640ba4946d6d3a359a3a5d76d",
           "downedSha256": "820ff0d2411f27c7a7053cf93e66e0fbc1aec85a9dd53828caffa8b3231da423"
@@ -776,7 +776,7 @@
         {
           "manifestId": "castleMageCape01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:mage-cape-01-style-04-c",
-          "displayName": "Mage Cape \u00b7 04 C",
+          "displayName": "Mage Cape · 04 C",
           "jointCount": 55,
           "standingSha256": "cee720b68d710eefd1adc87b74fa914b0a59acb0b6b1e98af39327dc6001b25c",
           "downedSha256": "ad3f693bbaf95f172cf58673a5330b24abf5407ca1b1ba7ebdbe94ecf31f6bd1"
@@ -784,7 +784,7 @@
         {
           "manifestId": "castleMerchant01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-01-b",
-          "displayName": "Merchant \u00b7 01 B",
+          "displayName": "Merchant · 01 B",
           "jointCount": 55,
           "standingSha256": "f87dc3b121f60690601ceded8c04ef6dc8048432540afeeab1c7ef16e388b238",
           "downedSha256": "8a581c524f587b37046e36e716a5ad5a969fdec1faa12034b3567029ae28fbdd"
@@ -792,7 +792,7 @@
         {
           "manifestId": "castleMerchant01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-01-c",
-          "displayName": "Merchant \u00b7 01 C",
+          "displayName": "Merchant · 01 C",
           "jointCount": 55,
           "standingSha256": "f5329097dfb4fde275edf74bb85cde11f182393e9bb5ed45baa0a056668f36d2",
           "downedSha256": "080b75e248268469a0a6f152220c2b2f719e2b1a4c3c44ad545fe45eec31aecb"
@@ -800,7 +800,7 @@
         {
           "manifestId": "castleMerchant01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-02-a",
-          "displayName": "Merchant \u00b7 02 A",
+          "displayName": "Merchant · 02 A",
           "jointCount": 55,
           "standingSha256": "68f8dccee53c789f604bdf55c2dcdcc9171ee722bc55cf5d20eb9f60239f7439",
           "downedSha256": "05679e389527a796ab4229b5fc233d68fbe411ff02d69abc1520fdbdac011d91"
@@ -808,7 +808,7 @@
         {
           "manifestId": "castleMerchant01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-02-b",
-          "displayName": "Merchant \u00b7 02 B",
+          "displayName": "Merchant · 02 B",
           "jointCount": 55,
           "standingSha256": "cb58601ecfca16278e6d0f65c166d8a53c2909800d2e80e5dda61368c7c70eb1",
           "downedSha256": "1024498be1ea8c3fa3a59d41035a26d607597fe7d8202c68cde9578153ad0a3f"
@@ -816,7 +816,7 @@
         {
           "manifestId": "castleMerchant01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-02-c",
-          "displayName": "Merchant \u00b7 02 C",
+          "displayName": "Merchant · 02 C",
           "jointCount": 55,
           "standingSha256": "40f0094d56ba9327d8602fd2d3d5d663e9485bba432abdaf9fb9856c7921a84b",
           "downedSha256": "a4ecb1a6680a5f3e83554939e7f96fc41edbf24ad073879c50dec44871f897f3"
@@ -824,7 +824,7 @@
         {
           "manifestId": "castleMerchant01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-03-a",
-          "displayName": "Merchant \u00b7 03 A",
+          "displayName": "Merchant · 03 A",
           "jointCount": 55,
           "standingSha256": "4ebd8ad49916edae784fe652fed0f900244d54efc664c1c69fb3acb903d880f4",
           "downedSha256": "c9c2cd989777715b2eb46a4d970237fd81c27fa65f7d7943671cd667a53a34d6"
@@ -832,7 +832,7 @@
         {
           "manifestId": "castleMerchant01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-03-b",
-          "displayName": "Merchant \u00b7 03 B",
+          "displayName": "Merchant · 03 B",
           "jointCount": 55,
           "standingSha256": "2dc758158069e04dd5aaaa6067ec78f016a29a60070147c0187243ba6bf47a3e",
           "downedSha256": "2c0282ec43780c0c8a8525e4b987dfa3e7f911e73e6b086e63f09ba095e799d6"
@@ -840,7 +840,7 @@
         {
           "manifestId": "castleMerchant01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-03-c",
-          "displayName": "Merchant \u00b7 03 C",
+          "displayName": "Merchant · 03 C",
           "jointCount": 55,
           "standingSha256": "6626581aed2dfa5a75f1fc3b3f8996a7a83c3de63ec7076c9d70a23b996f5dd9",
           "downedSha256": "b6d6ce1e18955b65eab8867a7fc759fdd46548d82ebdac3fe04b2487d07f34c3"
@@ -848,7 +848,7 @@
         {
           "manifestId": "castleMerchant01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-04-a",
-          "displayName": "Merchant \u00b7 04 A",
+          "displayName": "Merchant · 04 A",
           "jointCount": 55,
           "standingSha256": "d33f08007a9b3993b6d53ea193c547c0b132b882116bdf2180bfdc5c85635206",
           "downedSha256": "620c0f427130e18be53eff7c6206420f79277f3e57f27b253ed3089bfa315a1e"
@@ -856,7 +856,7 @@
         {
           "manifestId": "castleMerchant01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-04-b",
-          "displayName": "Merchant \u00b7 04 B",
+          "displayName": "Merchant · 04 B",
           "jointCount": 55,
           "standingSha256": "155be3d2ff5ab76e42a7f46261a92fc833909896b04fc39aeef3e3f17720ea49",
           "downedSha256": "b494f45a0220c7463adf67c192941643c0f08c3c4b6b073599706726e1807567"
@@ -864,7 +864,7 @@
         {
           "manifestId": "castleMerchant01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:merchant-01-style-04-c",
-          "displayName": "Merchant \u00b7 04 C",
+          "displayName": "Merchant · 04 C",
           "jointCount": 55,
           "standingSha256": "14b040bf8f5630bc1011145ee4aa9b53aba5c110c0ef07fd84c93ad43367dba1",
           "downedSha256": "49b76961ba3d3ec10ea0e7ddc5563d16b4d44e8aaf76e741163268c04b89c644"
@@ -872,7 +872,7 @@
         {
           "manifestId": "castleMonk01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-01-b",
-          "displayName": "Monk \u00b7 01 B",
+          "displayName": "Monk · 01 B",
           "jointCount": 55,
           "standingSha256": "c013d05aac0c0355d8c2b5b4d7e8ffe4701667783272f6e00638a71b92bf3cdc",
           "downedSha256": "f4743755dd571c913d8c12d93af11a596a161abe9f6b6024b0662b4db7599aaa"
@@ -880,7 +880,7 @@
         {
           "manifestId": "castleMonk01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-01-c",
-          "displayName": "Monk \u00b7 01 C",
+          "displayName": "Monk · 01 C",
           "jointCount": 55,
           "standingSha256": "620f1b2a48320fd8ca0179b1e0f3b8391c22a1750a45099a39b30bf8e0346ed0",
           "downedSha256": "8bf50e5409116e49ca18ef439e1fe828bbba2fd9acc7c65363791dc08447b6ed"
@@ -888,7 +888,7 @@
         {
           "manifestId": "castleMonk01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-02-a",
-          "displayName": "Monk \u00b7 02 A",
+          "displayName": "Monk · 02 A",
           "jointCount": 55,
           "standingSha256": "e880817a97dd5a8d042e0ac0a04a6cd948c267be383c87ed3204738aff8b61f4",
           "downedSha256": "47368993923df45086f6a1498613b51046580fb7132e639f578b12c6a67a1eef"
@@ -896,7 +896,7 @@
         {
           "manifestId": "castleMonk01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-02-b",
-          "displayName": "Monk \u00b7 02 B",
+          "displayName": "Monk · 02 B",
           "jointCount": 55,
           "standingSha256": "5ede5bbf514ef35f91bb066669fe62757e455bab206e0a4547d7eae502bf74b2",
           "downedSha256": "c8f4ae4f57b9fa36b560e82cdc2f1cacd288933bd391f4eae892b748bea101fe"
@@ -904,7 +904,7 @@
         {
           "manifestId": "castleMonk01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-02-c",
-          "displayName": "Monk \u00b7 02 C",
+          "displayName": "Monk · 02 C",
           "jointCount": 55,
           "standingSha256": "08f5816ecb0a707fc0bae5141f051cd3274e84084028be0d5cd95b934ce83463",
           "downedSha256": "a4aa0eb0f9a2981e04002d5c4dcb363b185b36c6da719150305384ca993fae57"
@@ -912,7 +912,7 @@
         {
           "manifestId": "castleMonk01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-03-a",
-          "displayName": "Monk \u00b7 03 A",
+          "displayName": "Monk · 03 A",
           "jointCount": 55,
           "standingSha256": "967ae233c7c565bd86690ec1785e0bb543b13db7a58a509d53d52546a1f38bb9",
           "downedSha256": "0e65ed1df96ef86d2e6b3e4e8d9b46f806e375db80f5ff11c28abd2377522a04"
@@ -920,7 +920,7 @@
         {
           "manifestId": "castleMonk01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-03-b",
-          "displayName": "Monk \u00b7 03 B",
+          "displayName": "Monk · 03 B",
           "jointCount": 55,
           "standingSha256": "c0ddd22e579c3eeb6f99deb7e2113d498f868f6eaf3bad403a1122c8c66b5548",
           "downedSha256": "2da00f6ffbd16da7e26c6fe98130bc1506a33b460b42ff0d26764e72e4114eed"
@@ -928,7 +928,7 @@
         {
           "manifestId": "castleMonk01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-03-c",
-          "displayName": "Monk \u00b7 03 C",
+          "displayName": "Monk · 03 C",
           "jointCount": 55,
           "standingSha256": "c7f9585c1eac4be1f9d0b7a89567a3206a01bfede8297756f3c855c019cbc293",
           "downedSha256": "8c200537590928e41451f2a27d3c7273f03cfd3e20ec6f9708f66c71a6d3c165"
@@ -936,7 +936,7 @@
         {
           "manifestId": "castleMonk01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-04-a",
-          "displayName": "Monk \u00b7 04 A",
+          "displayName": "Monk · 04 A",
           "jointCount": 55,
           "standingSha256": "d633c9c060938156fb6df4cf829b80f2779895a4904539f95111473440dedfb0",
           "downedSha256": "9ec2b51300ff51d7d078d67ab6f45e6ffa0ae50d8d9a0b16257b33b317048a6e"
@@ -944,7 +944,7 @@
         {
           "manifestId": "castleMonk01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-04-b",
-          "displayName": "Monk \u00b7 04 B",
+          "displayName": "Monk · 04 B",
           "jointCount": 55,
           "standingSha256": "73f694a126e7f3c8533ed73fc955cfca627efec4440d792764e05a702b8e3d2a",
           "downedSha256": "912937f0476f9b8478294e4f0f5a138426905bac51a6bdf5900fbb7fcf1e0caf"
@@ -952,7 +952,7 @@
         {
           "manifestId": "castleMonk01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:monk-01-style-04-c",
-          "displayName": "Monk \u00b7 04 C",
+          "displayName": "Monk · 04 C",
           "jointCount": 55,
           "standingSha256": "ce0af96bc732e3af06b271ee206f7da4a109ce16e096f62d42c8b29c799b1245",
           "downedSha256": "e5f6bad09d7ecbd73f193c9fa363b9bad22774070f0ff989666ac5458672a23f"
@@ -960,7 +960,7 @@
         {
           "manifestId": "castleNun01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-01-b",
-          "displayName": "Nun \u00b7 01 B",
+          "displayName": "Nun · 01 B",
           "jointCount": 55,
           "standingSha256": "06f736e1fdd178b16aa9c0a1662db8316d48069734d7d9d6ea5613134e10c98e",
           "downedSha256": "33e230e108f0289a6c36130e21e189f9089094e1ccc5821df4a7dd0f7bd7a439"
@@ -968,7 +968,7 @@
         {
           "manifestId": "castleNun01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-01-c",
-          "displayName": "Nun \u00b7 01 C",
+          "displayName": "Nun · 01 C",
           "jointCount": 55,
           "standingSha256": "e039a7916a72fbc52cb29f908e9659ba6496f22f1c9bdf21ea822cffd94921d1",
           "downedSha256": "f33969c1a47b2c08c5bb186737b246623ce637d5483921c1610991e0237462e1"
@@ -976,7 +976,7 @@
         {
           "manifestId": "castleNun01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-02-a",
-          "displayName": "Nun \u00b7 02 A",
+          "displayName": "Nun · 02 A",
           "jointCount": 55,
           "standingSha256": "729f3a4451b0356ff12b775fbff935a7804fea420eaed7b682d21f3c3d07c9e3",
           "downedSha256": "c69a751ec75acf56182002ce06b4386bb508b50cdaa2278d7211cbfa3d1bbc81"
@@ -984,7 +984,7 @@
         {
           "manifestId": "castleNun01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-02-b",
-          "displayName": "Nun \u00b7 02 B",
+          "displayName": "Nun · 02 B",
           "jointCount": 55,
           "standingSha256": "6f18baaa109fffb1f025f6adb867d94376091fc6c47847fa382014a8eb0542ea",
           "downedSha256": "a159e0fc0e08335dad8ad994101960405e78856b59281f8123d76e808ccf05c1"
@@ -992,7 +992,7 @@
         {
           "manifestId": "castleNun01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-02-c",
-          "displayName": "Nun \u00b7 02 C",
+          "displayName": "Nun · 02 C",
           "jointCount": 55,
           "standingSha256": "04d55bf34a87b0d88a6152444e252acf56aaca012e39796eef3b4c9a591c9efc",
           "downedSha256": "1c418584f67bc004c5b5b6155fbdb2e6375ae110051f4600fee07beec385a620"
@@ -1000,7 +1000,7 @@
         {
           "manifestId": "castleNun01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-03-a",
-          "displayName": "Nun \u00b7 03 A",
+          "displayName": "Nun · 03 A",
           "jointCount": 55,
           "standingSha256": "4b069d99f9f184e9daf22f0779bea1854eb49f7481e14eb45302f317d95d7290",
           "downedSha256": "32d7485b8079f3517562ba1147201978e399da521f64af3936e09f063b3b53aa"
@@ -1008,7 +1008,7 @@
         {
           "manifestId": "castleNun01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-03-b",
-          "displayName": "Nun \u00b7 03 B",
+          "displayName": "Nun · 03 B",
           "jointCount": 55,
           "standingSha256": "cf08c466dcf7996961ec7d195d5149417b6a9a378a9f09d3263983ef7a87302a",
           "downedSha256": "30dc73f42329ac6b064efc3eb5f8e2ed039eb8e2b4fedec81546d4655d87e970"
@@ -1016,7 +1016,7 @@
         {
           "manifestId": "castleNun01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-03-c",
-          "displayName": "Nun \u00b7 03 C",
+          "displayName": "Nun · 03 C",
           "jointCount": 55,
           "standingSha256": "57315944a4bee36a9ab5bd5503770956b88933fa9a1da07d3e54632ba7c04c23",
           "downedSha256": "b9084e1311661dea8f5ebdd8e9e973b3dc6a3dffbef783e3788924c9b868d4e1"
@@ -1024,7 +1024,7 @@
         {
           "manifestId": "castleNun01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-04-a",
-          "displayName": "Nun \u00b7 04 A",
+          "displayName": "Nun · 04 A",
           "jointCount": 55,
           "standingSha256": "c00d61f92f01913865cc7ab15626587e02ab35bda95cd714ad4b4c9d553699da",
           "downedSha256": "8bd5dcfce8f5ab9fadfa533517fcc99e302a2c5ba5ac0c274e412aa8ab5b0218"
@@ -1032,7 +1032,7 @@
         {
           "manifestId": "castleNun01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-04-b",
-          "displayName": "Nun \u00b7 04 B",
+          "displayName": "Nun · 04 B",
           "jointCount": 55,
           "standingSha256": "f7564a0c1166599ad689d53c4ca99bfe95175888d01473ba481ca9427fdc18d4",
           "downedSha256": "b5bd2320face5ff771a8bc77624fec4c633784cb939d016d5235621eef524f7c"
@@ -1040,7 +1040,7 @@
         {
           "manifestId": "castleNun01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:nun-01-style-04-c",
-          "displayName": "Nun \u00b7 04 C",
+          "displayName": "Nun · 04 C",
           "jointCount": 55,
           "standingSha256": "eaf4c2023c5a9d8907d9420f3373f79607d2e1c11f87e457e64dcdfa07f92736",
           "downedSha256": "0ffd047f36ae3d928516a7364ff51c940906333e2d319068164f23fda697d2bb"
@@ -1048,7 +1048,7 @@
         {
           "manifestId": "castlePeasantFemale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-01-b",
-          "displayName": "Peasant Female \u00b7 01 B",
+          "displayName": "Peasant Female · 01 B",
           "jointCount": 55,
           "standingSha256": "3b07648481e4859400bf651ee5d3b5f8eb2475c895c7a5c1d5152b5dc087b74b",
           "downedSha256": "e715906af393d710834b2f7dfe49623141bf23154f6af1eb8edc1e002ec6fbdd"
@@ -1056,7 +1056,7 @@
         {
           "manifestId": "castlePeasantFemale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-01-c",
-          "displayName": "Peasant Female \u00b7 01 C",
+          "displayName": "Peasant Female · 01 C",
           "jointCount": 55,
           "standingSha256": "dad94255cd7e8f2ebca3fd4fa10a869d74823b5aa586df1391f0a75fcb9de26c",
           "downedSha256": "154f0a72a3db3e4f3ed7df29f93d40714f68a49a2080b07fd7f45e6fc07d15fd"
@@ -1064,7 +1064,7 @@
         {
           "manifestId": "castlePeasantFemale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-02-a",
-          "displayName": "Peasant Female \u00b7 02 A",
+          "displayName": "Peasant Female · 02 A",
           "jointCount": 55,
           "standingSha256": "280a70e411e121868fcf3437d893dd1098f53423ee37d0b7d35cdf1d8c1f7301",
           "downedSha256": "2bffbc968f9c6a19cdcc2d7ca309358d30c16ba9c278172c06c030dd6d45df67"
@@ -1072,7 +1072,7 @@
         {
           "manifestId": "castlePeasantFemale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-02-b",
-          "displayName": "Peasant Female \u00b7 02 B",
+          "displayName": "Peasant Female · 02 B",
           "jointCount": 55,
           "standingSha256": "d0676a4f8487a468e947bd10c387ed696004b4b7ce3fb5315446eeb6e145d85b",
           "downedSha256": "d5cebc43982e9e447fdf449f13e106e8395329cffac7ea64633b3cdf788dd61a"
@@ -1080,7 +1080,7 @@
         {
           "manifestId": "castlePeasantFemale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-02-c",
-          "displayName": "Peasant Female \u00b7 02 C",
+          "displayName": "Peasant Female · 02 C",
           "jointCount": 55,
           "standingSha256": "4f080887b20230c7c337a9d7359d2dd643eb3e6e658428f63d857c9c19a50d8b",
           "downedSha256": "fd8dc48793da3e35bddd11a3cc5e6b9029f5cf0962525bf065aad7c676fff53d"
@@ -1088,7 +1088,7 @@
         {
           "manifestId": "castlePeasantFemale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-03-a",
-          "displayName": "Peasant Female \u00b7 03 A",
+          "displayName": "Peasant Female · 03 A",
           "jointCount": 55,
           "standingSha256": "73685e606f04298b7803d4b68f543b17211da97a5923af947e02ad289bf6d78f",
           "downedSha256": "4667ecc914026d7e3333ecec3bd82034e6aa5f9b4dd121791df0a0dba228ad87"
@@ -1096,7 +1096,7 @@
         {
           "manifestId": "castlePeasantFemale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-03-b",
-          "displayName": "Peasant Female \u00b7 03 B",
+          "displayName": "Peasant Female · 03 B",
           "jointCount": 55,
           "standingSha256": "7ab6c08e05343050948cbd48db6ce050c359a55317161f4605040d26d36d8c9f",
           "downedSha256": "433066fbf652f4c709429673e8ac977cea66945d2b0d723040225539b2517c06"
@@ -1104,7 +1104,7 @@
         {
           "manifestId": "castlePeasantFemale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-03-c",
-          "displayName": "Peasant Female \u00b7 03 C",
+          "displayName": "Peasant Female · 03 C",
           "jointCount": 55,
           "standingSha256": "f8ea10c6c1cd2f0cb4e75391e84728e86c0e48916b6d276a2e232c196819806d",
           "downedSha256": "1ce41f84e89ea27aa3e2b2c3870c9e749e42f46be41f0fb9dfb2a0547ea134b4"
@@ -1112,7 +1112,7 @@
         {
           "manifestId": "castlePeasantFemale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-04-a",
-          "displayName": "Peasant Female \u00b7 04 A",
+          "displayName": "Peasant Female · 04 A",
           "jointCount": 55,
           "standingSha256": "bc2c92bdf84e3d8556282a30706e392bfffc64734663230b3cd116d0fbe708fd",
           "downedSha256": "5b5bc8dd90b5fc3c1e3968322731fae94401b5998ea75b656e6b96cee108a4f2"
@@ -1120,7 +1120,7 @@
         {
           "manifestId": "castlePeasantFemale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-04-b",
-          "displayName": "Peasant Female \u00b7 04 B",
+          "displayName": "Peasant Female · 04 B",
           "jointCount": 55,
           "standingSha256": "4973aabd1988bc56d9876e9960dc258cbc632c46070faf9c5d42d1f0357e3ab5",
           "downedSha256": "8d25a83c9bfc804d20126a4d1f755ee57fc23abe2b4fa7ff40ff3b254debd3bb"
@@ -1128,7 +1128,7 @@
         {
           "manifestId": "castlePeasantFemale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-female-01-style-04-c",
-          "displayName": "Peasant Female \u00b7 04 C",
+          "displayName": "Peasant Female · 04 C",
           "jointCount": 55,
           "standingSha256": "ffe56e558b36f90c158f2d8a85f1aca6d1b0694d574d5ec54da4397da5acbb22",
           "downedSha256": "d51b58dc800de35ed78dc54732d97a13a4e09fc41a0f71105299a5bed899a65e"
@@ -1136,7 +1136,7 @@
         {
           "manifestId": "castlePeasantMale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-01-b",
-          "displayName": "Peasant Male \u00b7 01 B",
+          "displayName": "Peasant Male · 01 B",
           "jointCount": 55,
           "standingSha256": "897f91db36000c632b398e5f6ac9563b503bd52bfd20615a6038e1ccd9401e51",
           "downedSha256": "ebbc988e63c0ff80adc8a7e195545dc36e6849b440cbc831841a6ce35e3cc558"
@@ -1144,7 +1144,7 @@
         {
           "manifestId": "castlePeasantMale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-01-c",
-          "displayName": "Peasant Male \u00b7 01 C",
+          "displayName": "Peasant Male · 01 C",
           "jointCount": 55,
           "standingSha256": "e563467273f1d0f7991afb20e39f89ee98fccc46f0a3362498307aa18bfb6a92",
           "downedSha256": "395f926fa49476de44dd859eea7d0d828bca23ad5c5c521525e42b63e8e75481"
@@ -1152,7 +1152,7 @@
         {
           "manifestId": "castlePeasantMale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-02-a",
-          "displayName": "Peasant Male \u00b7 02 A",
+          "displayName": "Peasant Male · 02 A",
           "jointCount": 55,
           "standingSha256": "1a6489fed264ff28f0a7f4dbdb9f7a388d6a3e1451198a96c77b2f9f82decc57",
           "downedSha256": "b227ff13050cd7f2c4656d41f2442be4d79b425b1c1f1ac352a81d1ca5d95686"
@@ -1160,7 +1160,7 @@
         {
           "manifestId": "castlePeasantMale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-02-b",
-          "displayName": "Peasant Male \u00b7 02 B",
+          "displayName": "Peasant Male · 02 B",
           "jointCount": 55,
           "standingSha256": "6d215d5a4adbe25d7be47d1dcea8cb854e6203d0a6fa74620de744d51b38cb39",
           "downedSha256": "9182c6aeb414967908db6a7b88e1e73885bf4ee3b100fc137ee330ce3c1ecc42"
@@ -1168,7 +1168,7 @@
         {
           "manifestId": "castlePeasantMale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-02-c",
-          "displayName": "Peasant Male \u00b7 02 C",
+          "displayName": "Peasant Male · 02 C",
           "jointCount": 55,
           "standingSha256": "965bad5fa24d1b0ad85b68b19568851081897a6ef8650698ca605e6fcfefa5e3",
           "downedSha256": "1f1efae9754199f19c6d59754849ea310990115a6ab04adb54e3645288c4ac3b"
@@ -1176,7 +1176,7 @@
         {
           "manifestId": "castlePeasantMale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-03-a",
-          "displayName": "Peasant Male \u00b7 03 A",
+          "displayName": "Peasant Male · 03 A",
           "jointCount": 55,
           "standingSha256": "d832f896614486e06dac60421aa0d2ff00814b330c06d8c0a654dbcbee82bdbf",
           "downedSha256": "cc91bf85009f4b3c1ecfaad77bf8f72c262ba75d7965dfabd2f6d33bdfc41fa6"
@@ -1184,7 +1184,7 @@
         {
           "manifestId": "castlePeasantMale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-03-b",
-          "displayName": "Peasant Male \u00b7 03 B",
+          "displayName": "Peasant Male · 03 B",
           "jointCount": 55,
           "standingSha256": "72b81f64a0c1af6721e5bd59a669550a492eaccc8307b7da29f038bd0cb6cfb7",
           "downedSha256": "289fd8159ce9d276315792d93c5681cd26cca61909eac9f769fa15906e82a183"
@@ -1192,7 +1192,7 @@
         {
           "manifestId": "castlePeasantMale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-03-c",
-          "displayName": "Peasant Male \u00b7 03 C",
+          "displayName": "Peasant Male · 03 C",
           "jointCount": 55,
           "standingSha256": "97fcbee6ddf51736919c9eb387a98cfb5c3706d3b0bd4924d46603b242c9c217",
           "downedSha256": "f80f2c085805d8e9b85b5417ad2f040ecada999736ca21a120952d63d7bee475"
@@ -1200,7 +1200,7 @@
         {
           "manifestId": "castlePeasantMale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-04-a",
-          "displayName": "Peasant Male \u00b7 04 A",
+          "displayName": "Peasant Male · 04 A",
           "jointCount": 55,
           "standingSha256": "097bf9b1e54665f0b60de3dada4d2ed9b462a89e6c09ba6b1fc58d08d1be4600",
           "downedSha256": "6b9770072c9813f64eeb2e7283e9cdb232b09cc92b8119a2d092e280a0ebdbdf"
@@ -1208,7 +1208,7 @@
         {
           "manifestId": "castlePeasantMale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-04-b",
-          "displayName": "Peasant Male \u00b7 04 B",
+          "displayName": "Peasant Male · 04 B",
           "jointCount": 55,
           "standingSha256": "b09b59b08342a7caafa409b02c7c7eb5887b99b1acc727b37b5c15a638eb1825",
           "downedSha256": "1ea12ebc35a212b2fe754637c583abf2cbf6e514b3b6e97b0154c1e7a09c067b"
@@ -1216,7 +1216,7 @@
         {
           "manifestId": "castlePeasantMale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:peasant-male-01-style-04-c",
-          "displayName": "Peasant Male \u00b7 04 C",
+          "displayName": "Peasant Male · 04 C",
           "jointCount": 55,
           "standingSha256": "a7337dbebf936951008e8749bd17ffc58c51336a8a98ae37cfa01e3334a82901",
           "downedSha256": "230592c54244e8c5c9ecdd72adfb99b91f0840ce7e441c124f40f183d3b24439"
@@ -1224,7 +1224,7 @@
         {
           "manifestId": "castlePriest01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-01-b",
-          "displayName": "Priest \u00b7 01 B",
+          "displayName": "Priest · 01 B",
           "jointCount": 55,
           "standingSha256": "090dfa391d9d7320c298505a73ebbb786c8fb54d55bb3e2c02c06c6ed0ff71f1",
           "downedSha256": "11ebf00833f9af7f3509212c3108f3f784d0e54daeb58c3c1f457e8cc97bcd6d"
@@ -1232,7 +1232,7 @@
         {
           "manifestId": "castlePriest01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-01-c",
-          "displayName": "Priest \u00b7 01 C",
+          "displayName": "Priest · 01 C",
           "jointCount": 55,
           "standingSha256": "63cee8c15591e41a98ad22e82b80d96f0127efd3efdb1f0a3930040673c84516",
           "downedSha256": "c41bae5c776bff10ee367fe32c6e20c0aca053579d9c6e1cff57cd7818123f3a"
@@ -1240,7 +1240,7 @@
         {
           "manifestId": "castlePriest01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-02-a",
-          "displayName": "Priest \u00b7 02 A",
+          "displayName": "Priest · 02 A",
           "jointCount": 55,
           "standingSha256": "507815058bdfdeb285b5860514b502031068f9ba809e28bb0f44e4fa18fd9af5",
           "downedSha256": "f7d1af321f77710b76d22e656640fa0ea4e871e2a5a46924fb113da9b4331bd0"
@@ -1248,7 +1248,7 @@
         {
           "manifestId": "castlePriest01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-02-b",
-          "displayName": "Priest \u00b7 02 B",
+          "displayName": "Priest · 02 B",
           "jointCount": 55,
           "standingSha256": "5064c884349a60b6e9940c80666ba0e13458540bcca31c396538055daf3e83ec",
           "downedSha256": "e8a7f54e817074f60de920ef82a5ef0bcc01c22aadeb6720492be96723046e5b"
@@ -1256,7 +1256,7 @@
         {
           "manifestId": "castlePriest01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-02-c",
-          "displayName": "Priest \u00b7 02 C",
+          "displayName": "Priest · 02 C",
           "jointCount": 55,
           "standingSha256": "73da065edc588e9d938b55f21f916ee386e29acce7927448618ca223732ddd30",
           "downedSha256": "4a04c22298964462dc93fcfe539399f2c2afbc8ad764efe44dff3df250f0835c"
@@ -1264,7 +1264,7 @@
         {
           "manifestId": "castlePriest01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-03-a",
-          "displayName": "Priest \u00b7 03 A",
+          "displayName": "Priest · 03 A",
           "jointCount": 55,
           "standingSha256": "802fd627e09af2ab42dbd52161452e7c04b600d5ccd901cb2bc431bc79820241",
           "downedSha256": "e26b41aa2157fdb95010681d402acac63f9e1fc2232a8692287413a88ef16b38"
@@ -1272,7 +1272,7 @@
         {
           "manifestId": "castlePriest01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-03-b",
-          "displayName": "Priest \u00b7 03 B",
+          "displayName": "Priest · 03 B",
           "jointCount": 55,
           "standingSha256": "8dc617c30c2123f148888616aef2049f943119cf0a873350bc7a175185ba3f11",
           "downedSha256": "c58a6bceb5febb5bdbdda286a8eabeced6a4529739a9e55526fa143627b2e400"
@@ -1280,7 +1280,7 @@
         {
           "manifestId": "castlePriest01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-03-c",
-          "displayName": "Priest \u00b7 03 C",
+          "displayName": "Priest · 03 C",
           "jointCount": 55,
           "standingSha256": "d238e1384c722c0476e5f2bdbfa9f129e703423fc77e9da9d13a295ee4bb19c8",
           "downedSha256": "f0f454382a59404504b3c98c185d2fb40590a6d582d49f020350d790b04c535d"
@@ -1288,7 +1288,7 @@
         {
           "manifestId": "castlePriest01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-04-a",
-          "displayName": "Priest \u00b7 04 A",
+          "displayName": "Priest · 04 A",
           "jointCount": 55,
           "standingSha256": "a051d869272095e0d9bfd6aad876157f6fc3da29d2c07e1fd3fee324db94a939",
           "downedSha256": "2aa7e8649b94c4e770f0ad1b14377d8dd97b6209f19e190043d56e2cc5f94b8f"
@@ -1296,7 +1296,7 @@
         {
           "manifestId": "castlePriest01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-04-b",
-          "displayName": "Priest \u00b7 04 B",
+          "displayName": "Priest · 04 B",
           "jointCount": 55,
           "standingSha256": "55b4da6f6ec3b7911ff98b63543b46cc623ebb5398b601a2e848e9c8c8a2f8b3",
           "downedSha256": "351314caeaf92684201b1b03b7bf5f76b2c1a2411c3b31dce23239d4fba5ee17"
@@ -1304,7 +1304,7 @@
         {
           "manifestId": "castlePriest01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:priest-01-style-04-c",
-          "displayName": "Priest \u00b7 04 C",
+          "displayName": "Priest · 04 C",
           "jointCount": 55,
           "standingSha256": "5ffd35fa4ddbe5eef5eb4e5e42af0d14c6bc4a9d2da7a6c83bfcd5e52ba1a128",
           "downedSha256": "096b9cbf744ced5a0094fcb74959f0d0ecf512bc41da37d8f68ee722bd55f6f4"
@@ -1312,7 +1312,7 @@
         {
           "manifestId": "castlePrince01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-01-b",
-          "displayName": "Prince \u00b7 01 B",
+          "displayName": "Prince · 01 B",
           "jointCount": 55,
           "standingSha256": "997442293a05f371128a867c85e2f1dcc135583d27addd69975f6345c04b33f0",
           "downedSha256": "26dbd07ab11a3ef59ff145246b46ad79575ca36d0e96eb74ff46212fa773297a"
@@ -1320,7 +1320,7 @@
         {
           "manifestId": "castlePrince01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-01-c",
-          "displayName": "Prince \u00b7 01 C",
+          "displayName": "Prince · 01 C",
           "jointCount": 55,
           "standingSha256": "a809aa03d432f0841d3e43ca095b815a2d9b7303fbf344485107deadc99e8ec2",
           "downedSha256": "54cff4f06ea73b12db77e849477e151da54766e487763a7addf84e174d8588fe"
@@ -1328,7 +1328,7 @@
         {
           "manifestId": "castlePrince01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-02-a",
-          "displayName": "Prince \u00b7 02 A",
+          "displayName": "Prince · 02 A",
           "jointCount": 55,
           "standingSha256": "9226259f7a1d6073407c58b3301194977e1a092e16b7d336d96e779826ea9388",
           "downedSha256": "1bca22d6a8c6ba1aed36bf5fc4c28a969bf4b7309e10be20e19bde218d21b075"
@@ -1336,7 +1336,7 @@
         {
           "manifestId": "castlePrince01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-02-b",
-          "displayName": "Prince \u00b7 02 B",
+          "displayName": "Prince · 02 B",
           "jointCount": 55,
           "standingSha256": "bbe7524c6703d1f873cee96aaaeb00a3c154d19d518f19ff54cf61602d232326",
           "downedSha256": "668846903d44b74ca1791952aeefbd1ff4196e270b0d77e1c8c3512db8b51278"
@@ -1344,7 +1344,7 @@
         {
           "manifestId": "castlePrince01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-02-c",
-          "displayName": "Prince \u00b7 02 C",
+          "displayName": "Prince · 02 C",
           "jointCount": 55,
           "standingSha256": "02bcaf398e6d4f16567242a4d0708ff105f2111c3876d553b64390ce90b74a49",
           "downedSha256": "0b9a5dcb36451d7a5db5a8eadd71344ffaef092a1e104d089c021d83aaf59769"
@@ -1352,7 +1352,7 @@
         {
           "manifestId": "castlePrince01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-03-a",
-          "displayName": "Prince \u00b7 03 A",
+          "displayName": "Prince · 03 A",
           "jointCount": 55,
           "standingSha256": "5c018bda929bcda2162710d8b89cc139c14f3858c497a52b67b2d903693d5fb4",
           "downedSha256": "343dd5d54444404a34864ebaa7dee7077575307b5a1a2d37eb253501b00ba9b2"
@@ -1360,7 +1360,7 @@
         {
           "manifestId": "castlePrince01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-03-b",
-          "displayName": "Prince \u00b7 03 B",
+          "displayName": "Prince · 03 B",
           "jointCount": 55,
           "standingSha256": "d072501d2b6d16473f5a1f245d3c5e97a0d8a047d9ed2cd43b62e788a77e83ae",
           "downedSha256": "e026b28612fc8c99db98ad4b6b5e3134decd2eb708f03801717739c9529e7f5e"
@@ -1368,7 +1368,7 @@
         {
           "manifestId": "castlePrince01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-03-c",
-          "displayName": "Prince \u00b7 03 C",
+          "displayName": "Prince · 03 C",
           "jointCount": 55,
           "standingSha256": "3e6389484930636c5217463fc01e143afb4b8b9e5251a018f0dcbd1260dd1f78",
           "downedSha256": "f8f0bfc01d16711fb889b885c2cfa5aee53855d7a0c1a577fcf3d740ec08f5b3"
@@ -1376,7 +1376,7 @@
         {
           "manifestId": "castlePrince01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-04-a",
-          "displayName": "Prince \u00b7 04 A",
+          "displayName": "Prince · 04 A",
           "jointCount": 55,
           "standingSha256": "77903be84ae3256e88e0fcb1d3a44eebf8fb2ddcd34329cc491245eec2f1fbed",
           "downedSha256": "210235da178871eed7aa708395e65731721bd423a73d5c7686d75cd0a944f3e4"
@@ -1384,7 +1384,7 @@
         {
           "manifestId": "castlePrince01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-04-b",
-          "displayName": "Prince \u00b7 04 B",
+          "displayName": "Prince · 04 B",
           "jointCount": 55,
           "standingSha256": "0e0dd59a3bffa5c1d3d7c3467b8b8f09af13ea2a7e36188da30028ae4bb7b9d8",
           "downedSha256": "d7af1e5edd4d54911233abf2d5e548fe8ec0a913a5d54ffc20266ea5c9280901"
@@ -1392,7 +1392,7 @@
         {
           "manifestId": "castlePrince01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:prince-01-style-04-c",
-          "displayName": "Prince \u00b7 04 C",
+          "displayName": "Prince · 04 C",
           "jointCount": 55,
           "standingSha256": "304bce1a286d666ecb5fa8d2e8a667752210c9350024ae315a542f9678acfbe2",
           "downedSha256": "09f087b64b0cb6b7423b5c0914a6680b5cbce05122fcb63f086b2d0b3d1b73a5"
@@ -1400,7 +1400,7 @@
         {
           "manifestId": "castlePrincess01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-01-b",
-          "displayName": "Princess \u00b7 01 B",
+          "displayName": "Princess · 01 B",
           "jointCount": 55,
           "standingSha256": "c855310ac57e2990f1663eeb7f6e85e122930abee5903fbd2d991fd2b87106f0",
           "downedSha256": "7a96e102ec9f750fe4c3b50d32c5bb859585b81a57c4568d57952cf51e0f5364"
@@ -1408,7 +1408,7 @@
         {
           "manifestId": "castlePrincess01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-01-c",
-          "displayName": "Princess \u00b7 01 C",
+          "displayName": "Princess · 01 C",
           "jointCount": 55,
           "standingSha256": "fdc37ebfd97560f835058902244ffa33212fa18e51f6981b239893e772839073",
           "downedSha256": "ae82c246260b44424886c64c38fbc98788eb9e9827966ed423250118dd95e50f"
@@ -1416,7 +1416,7 @@
         {
           "manifestId": "castlePrincess01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-02-a",
-          "displayName": "Princess \u00b7 02 A",
+          "displayName": "Princess · 02 A",
           "jointCount": 55,
           "standingSha256": "b3042a0798d6eef334de98dbbdacf3fa5681b6e43163f8bf6c0f599fcd2f2243",
           "downedSha256": "96265e3cfdfb13a5fdc1f4dc157d79a9b70ae528faed43b5c7074f9771e09349"
@@ -1424,7 +1424,7 @@
         {
           "manifestId": "castlePrincess01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-02-b",
-          "displayName": "Princess \u00b7 02 B",
+          "displayName": "Princess · 02 B",
           "jointCount": 55,
           "standingSha256": "f0c3d94b6e0d3757ed4a73e92f9b6fad0eb30cd0ce930c1eb87425f5291f6d23",
           "downedSha256": "caffc0015fce4bafe92a3b19b0c9b201bd7e30ce52fc273afef94af74c7f4a0a"
@@ -1432,7 +1432,7 @@
         {
           "manifestId": "castlePrincess01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-02-c",
-          "displayName": "Princess \u00b7 02 C",
+          "displayName": "Princess · 02 C",
           "jointCount": 55,
           "standingSha256": "bd08d6cd7709bc02929cfc9284f08ebb5141533ce2fb224eb82645174342f76f",
           "downedSha256": "1cfc17e8d520804c1f369335ab0e0f06fa3a3a3a05e56be118b3dbe89233cbca"
@@ -1440,7 +1440,7 @@
         {
           "manifestId": "castlePrincess01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-03-a",
-          "displayName": "Princess \u00b7 03 A",
+          "displayName": "Princess · 03 A",
           "jointCount": 55,
           "standingSha256": "a2d9ffdd89c784e696772067ed27adcd3b5475fec3ca23efcab72e72de31c2d3",
           "downedSha256": "ea208fec57a4f2b12d10abe1a300c2277bc28d763f3985270aee96239a6f8dce"
@@ -1448,7 +1448,7 @@
         {
           "manifestId": "castlePrincess01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-03-b",
-          "displayName": "Princess \u00b7 03 B",
+          "displayName": "Princess · 03 B",
           "jointCount": 55,
           "standingSha256": "e8f5ba91eb3c1ee876a990899a9b0c15490a612a51580f003f6ca01e9103c4c7",
           "downedSha256": "cbd56032c2f09fcb88c4e7bdc1d4e0493fe69a050be01f5278bc4ea10ce3df46"
@@ -1456,7 +1456,7 @@
         {
           "manifestId": "castlePrincess01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-03-c",
-          "displayName": "Princess \u00b7 03 C",
+          "displayName": "Princess · 03 C",
           "jointCount": 55,
           "standingSha256": "3a2fea8b555e7d8635dd731ff2384e7afe6e57a3757aa09df9f4d702ad21a64c",
           "downedSha256": "3e76024bebca9fe782db522748f98a7e74411fb0eecf114ecbb55a390f389ecb"
@@ -1464,7 +1464,7 @@
         {
           "manifestId": "castlePrincess01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-04-a",
-          "displayName": "Princess \u00b7 04 A",
+          "displayName": "Princess · 04 A",
           "jointCount": 55,
           "standingSha256": "446f12df13a0078850af93f0d6e1e1a12a57b6749ead2266ab2e677c773cff48",
           "downedSha256": "70277e4746c0b82529e731fe2f4701c28661e3f0923ef430f452f269f2b6c7aa"
@@ -1472,7 +1472,7 @@
         {
           "manifestId": "castlePrincess01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-04-b",
-          "displayName": "Princess \u00b7 04 B",
+          "displayName": "Princess · 04 B",
           "jointCount": 55,
           "standingSha256": "8723c81b9b66c690cc5dc072f43bd64ca63dcd3907e180e1d1387e50e13f0c86",
           "downedSha256": "6e72c0f8ea3d0ebd8588d550560f2f7892e7ab0fe036ee2934c797e6c6bc20d9"
@@ -1480,7 +1480,7 @@
         {
           "manifestId": "castlePrincess01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:princess-01-style-04-c",
-          "displayName": "Princess \u00b7 04 C",
+          "displayName": "Princess · 04 C",
           "jointCount": 55,
           "standingSha256": "aaebf99ab54810de4724f0e57e802b99933ff3fa596cc3694df21effa7f6ae3f",
           "downedSha256": "804152e350fb7b826f2568a9fdd8123df3eac8a48f2ba992f1330098626f6aff"
@@ -1488,7 +1488,7 @@
         {
           "manifestId": "castleRider01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-01-b",
-          "displayName": "Rider \u00b7 01 B",
+          "displayName": "Rider · 01 B",
           "jointCount": 55,
           "standingSha256": "b9e153b94acd502c4d131c8b9d907ab69ad118bcef532eb93f1e26f44d04bbdf",
           "downedSha256": "d41c31d15285ae32b3735459d42aa0a70d98f7780356f7a440c2eb1bcb68b2e5"
@@ -1496,7 +1496,7 @@
         {
           "manifestId": "castleRider01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-01-c",
-          "displayName": "Rider \u00b7 01 C",
+          "displayName": "Rider · 01 C",
           "jointCount": 55,
           "standingSha256": "d352bc7b0fb9c4af6ca0db6ebe0d94c0b8bceda62b5ae7cd6150df652c7ffd9b",
           "downedSha256": "7d25fcf42045c75f69431f45f5c49182cdbccada2faa21c2ec6f8713551a4dcd"
@@ -1504,7 +1504,7 @@
         {
           "manifestId": "castleRider01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-02-a",
-          "displayName": "Rider \u00b7 02 A",
+          "displayName": "Rider · 02 A",
           "jointCount": 55,
           "standingSha256": "ca5c6d88ca7eddd2a3af440245418db8f20b875e03378ab9b9b24e8fbb179fba",
           "downedSha256": "18e874e405e2f19fc4bdfc90c5b5f647fa2b6ca7e98ed4e99aff91480e806aa1"
@@ -1512,7 +1512,7 @@
         {
           "manifestId": "castleRider01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-02-b",
-          "displayName": "Rider \u00b7 02 B",
+          "displayName": "Rider · 02 B",
           "jointCount": 55,
           "standingSha256": "a31881f40233af240e47012ccff40a1ee38aa36ffa0f39750da483f234cac4c2",
           "downedSha256": "35c75943c8b3c6459d5630fbdc8b7c97c18a706a79c01c6ca64f13b341fcc8e6"
@@ -1520,7 +1520,7 @@
         {
           "manifestId": "castleRider01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-02-c",
-          "displayName": "Rider \u00b7 02 C",
+          "displayName": "Rider · 02 C",
           "jointCount": 55,
           "standingSha256": "7d5fcd36f8170387c74652b1fd04106f18a8ec77a6a9507287baec94eb54c3ce",
           "downedSha256": "0fab9979f0818318882e53d5ecbb3505465342a80623a1e11fe8fb4d11f8841e"
@@ -1528,7 +1528,7 @@
         {
           "manifestId": "castleRider01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-03-a",
-          "displayName": "Rider \u00b7 03 A",
+          "displayName": "Rider · 03 A",
           "jointCount": 55,
           "standingSha256": "d3246a9ed3c28a229e975e5744302e2d580f48863e70750f71c79f645ce9f1a5",
           "downedSha256": "23c134ae01c6a18d78f4e33388d6b6dd143c18781784734fe89e01eb04aa6b35"
@@ -1536,7 +1536,7 @@
         {
           "manifestId": "castleRider01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-03-b",
-          "displayName": "Rider \u00b7 03 B",
+          "displayName": "Rider · 03 B",
           "jointCount": 55,
           "standingSha256": "a7e74eea5225a3f3db1356839951324d2a2e7954f9b1096a365da31d1844f40d",
           "downedSha256": "afc18b73f39a8b1354cf48d44e201197311dd2b09c7189857da181c7864535a0"
@@ -1544,7 +1544,7 @@
         {
           "manifestId": "castleRider01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-03-c",
-          "displayName": "Rider \u00b7 03 C",
+          "displayName": "Rider · 03 C",
           "jointCount": 55,
           "standingSha256": "b20cf34e023737ad1908813aab423ad71e620c314bc8b879af0c701aa5152a15",
           "downedSha256": "597ef120b2fa4e17889292ad555ddfb060eef8772a3c75f6813e1fd3187b7a34"
@@ -1552,7 +1552,7 @@
         {
           "manifestId": "castleRider01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-04-a",
-          "displayName": "Rider \u00b7 04 A",
+          "displayName": "Rider · 04 A",
           "jointCount": 55,
           "standingSha256": "504ec4e6ffd2eafc97324822a1cfd651d33c8a4b2ca555c080ecb6811c956e0e",
           "downedSha256": "23300c1c4ca01f5d5889a3571e1119cc30da5e2a761df686faaccc408e533e1c"
@@ -1560,7 +1560,7 @@
         {
           "manifestId": "castleRider01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-04-b",
-          "displayName": "Rider \u00b7 04 B",
+          "displayName": "Rider · 04 B",
           "jointCount": 55,
           "standingSha256": "844106327fc1cda2ca0cd9555d1e868d6d751a77d061628bf79b655c333129f3",
           "downedSha256": "85431c696c4e79e896920048400ef232eaa58f1006c360cb96bba2508b3a01ea"
@@ -1568,7 +1568,7 @@
         {
           "manifestId": "castleRider01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:rider-01-style-04-c",
-          "displayName": "Rider \u00b7 04 C",
+          "displayName": "Rider · 04 C",
           "jointCount": 55,
           "standingSha256": "5958e6a7776e9651dcec540835c072da7d465fc5ad12637487d022466bbd3929",
           "downedSha256": "29dfe0d6618067925a060c4c381f1c1bbb343b7b7ee78c9a9bf53b86840d4646"
@@ -1576,7 +1576,7 @@
         {
           "manifestId": "castleSoldierFemale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-01-b",
-          "displayName": "Soldier Female \u00b7 01 B",
+          "displayName": "Soldier Female · 01 B",
           "jointCount": 55,
           "standingSha256": "6a7db0bf65dc29ad2ea5729ef85785d2499d698fd9963a060872887149e1e966",
           "downedSha256": "8de527d21065ccc114a2c8f19dcdb7478ff68bccd7ae092ac2b043df47c73c99"
@@ -1584,7 +1584,7 @@
         {
           "manifestId": "castleSoldierFemale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-01-c",
-          "displayName": "Soldier Female \u00b7 01 C",
+          "displayName": "Soldier Female · 01 C",
           "jointCount": 55,
           "standingSha256": "c7245750f27e3b472036e6462419790df9f3c0d240900ff9c107c0c0f567470c",
           "downedSha256": "1f1324ccf922c02eab6c63bad7dff06157427d3fd6006556b60b97256f745f1f"
@@ -1592,7 +1592,7 @@
         {
           "manifestId": "castleSoldierFemale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-02-a",
-          "displayName": "Soldier Female \u00b7 02 A",
+          "displayName": "Soldier Female · 02 A",
           "jointCount": 55,
           "standingSha256": "b563e8ecddc56d5594434b2ca9e17ba1c0c699c4f842a7637d940d4a155e669d",
           "downedSha256": "3301c1941eb5c47c93a0ff3193a2f50e9b249b8f079dc4dedbf6c7e67337a5eb"
@@ -1600,7 +1600,7 @@
         {
           "manifestId": "castleSoldierFemale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-02-b",
-          "displayName": "Soldier Female \u00b7 02 B",
+          "displayName": "Soldier Female · 02 B",
           "jointCount": 55,
           "standingSha256": "42f32e00d4b487000ee83cf1c4ce69314efb641d32e657b82e6786aff8eec642",
           "downedSha256": "1e890e6eee69d4d0a0b45d58e0a75ab6d349cbe7a4d561fb047ac2844318592c"
@@ -1608,7 +1608,7 @@
         {
           "manifestId": "castleSoldierFemale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-02-c",
-          "displayName": "Soldier Female \u00b7 02 C",
+          "displayName": "Soldier Female · 02 C",
           "jointCount": 55,
           "standingSha256": "9c57a88b6d0440fb64135f8445d4ba1a676454f847181a02312deef402249be4",
           "downedSha256": "7d45919f7fa34231a3fc7338cdd61496c9f6d312884cd0ac659b6054227bbc8c"
@@ -1616,7 +1616,7 @@
         {
           "manifestId": "castleSoldierFemale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-03-a",
-          "displayName": "Soldier Female \u00b7 03 A",
+          "displayName": "Soldier Female · 03 A",
           "jointCount": 55,
           "standingSha256": "7fc0b23f42944e3ede40e664f8bb359d998fda05ba42433d7b02cd405039c579",
           "downedSha256": "b492d348191d64c4b8e2f78a569788326946ca84d7243358f944ae2277703867"
@@ -1624,7 +1624,7 @@
         {
           "manifestId": "castleSoldierFemale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-03-b",
-          "displayName": "Soldier Female \u00b7 03 B",
+          "displayName": "Soldier Female · 03 B",
           "jointCount": 55,
           "standingSha256": "32b1561450059200306de439911cd3f902705454d4a098f2e45b19d4826bb547",
           "downedSha256": "9fe9f482f93170c915a3b84a5dded45b966af0df3d366783d997954aab9c10d0"
@@ -1632,7 +1632,7 @@
         {
           "manifestId": "castleSoldierFemale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-03-c",
-          "displayName": "Soldier Female \u00b7 03 C",
+          "displayName": "Soldier Female · 03 C",
           "jointCount": 55,
           "standingSha256": "77d71075f114366236e71bb65ddf6553941cb33e820710e3d9a7c3921519af59",
           "downedSha256": "1d84daf999af3e32112e72df5cb7b8d1591e1b24ac168a586c3002b2a96b8bf0"
@@ -1640,7 +1640,7 @@
         {
           "manifestId": "castleSoldierFemale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-04-a",
-          "displayName": "Soldier Female \u00b7 04 A",
+          "displayName": "Soldier Female · 04 A",
           "jointCount": 55,
           "standingSha256": "513d8e6a50373729c5dd6bcc39c5abdb81ee34b978a917e650f3b872ba3f9a55",
           "downedSha256": "11aedd4c71b1b86f47ae268a9f9545b428d2094233261b74e3cdaad95190d4a8"
@@ -1648,7 +1648,7 @@
         {
           "manifestId": "castleSoldierFemale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-04-b",
-          "displayName": "Soldier Female \u00b7 04 B",
+          "displayName": "Soldier Female · 04 B",
           "jointCount": 55,
           "standingSha256": "b61b286e85c25819cda8b245ba01ad343a300d743b8a5888e70edcca18325ee9",
           "downedSha256": "e68dfe5fe289d4e4fe0d3afa6e8173352b15e23beee510bb8e2626a344bd2271"
@@ -1656,7 +1656,7 @@
         {
           "manifestId": "castleSoldierFemale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-female-01-style-04-c",
-          "displayName": "Soldier Female \u00b7 04 C",
+          "displayName": "Soldier Female · 04 C",
           "jointCount": 55,
           "standingSha256": "97b973c8c8bd6f979f9738b8141473d397b77d26bb618a5fdc84dfffbfe8735d",
           "downedSha256": "101eb94e6ab410989b2a00ad68683299dd49c5570b6d17b8d1c2393f7bb3887e"
@@ -1664,7 +1664,7 @@
         {
           "manifestId": "castleSoldierMale01Style01B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-01-b",
-          "displayName": "Soldier Male \u00b7 01 B",
+          "displayName": "Soldier Male · 01 B",
           "jointCount": 55,
           "standingSha256": "023b6fd020c8a619c703a058071c5ba94a169b7646f530354b219b00c0ceb07f",
           "downedSha256": "f8c273da0ed5a4aee778e88f5213387559bda48391b07a4be336d605a462e5be"
@@ -1672,7 +1672,7 @@
         {
           "manifestId": "castleSoldierMale01Style01C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-01-c",
-          "displayName": "Soldier Male \u00b7 01 C",
+          "displayName": "Soldier Male · 01 C",
           "jointCount": 55,
           "standingSha256": "f4d9ab91bf3544f52c70593b470086b6bdfc6c0f005325965f34be243d4cc2af",
           "downedSha256": "6580cc6fc366b5252dd313751cc37097fc1ffe53d5e650d4c76aabff5e778399"
@@ -1680,7 +1680,7 @@
         {
           "manifestId": "castleSoldierMale01Style02A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-02-a",
-          "displayName": "Soldier Male \u00b7 02 A",
+          "displayName": "Soldier Male · 02 A",
           "jointCount": 55,
           "standingSha256": "c40111381c30ab2d201c1edcaac21f06790b763a7879860cfb6e46a5d24b8524",
           "downedSha256": "9f86f192e33d7ed1987317e78ee33da0b10980c8a23e38433065b444b3ce9357"
@@ -1688,7 +1688,7 @@
         {
           "manifestId": "castleSoldierMale01Style02B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-02-b",
-          "displayName": "Soldier Male \u00b7 02 B",
+          "displayName": "Soldier Male · 02 B",
           "jointCount": 55,
           "standingSha256": "296f441b22d3f2fce7402df8ca68a9f97892f223d87e4b8a84aae0f7be8b0ecd",
           "downedSha256": "0c3437207ac2a1b4d572172cea250d207b04aaa6672ee0343d20f9d751d3d7e1"
@@ -1696,7 +1696,7 @@
         {
           "manifestId": "castleSoldierMale01Style02C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-02-c",
-          "displayName": "Soldier Male \u00b7 02 C",
+          "displayName": "Soldier Male · 02 C",
           "jointCount": 55,
           "standingSha256": "b5c6ae35a2e79190ee5012baff78f09287e2656ff2dce1b82f5f4414171f922d",
           "downedSha256": "7b980faff7e818236345b4f1315476fc3a2ad01518ef0a2c27208e8dcd6698fc"
@@ -1704,7 +1704,7 @@
         {
           "manifestId": "castleSoldierMale01Style03A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-03-a",
-          "displayName": "Soldier Male \u00b7 03 A",
+          "displayName": "Soldier Male · 03 A",
           "jointCount": 55,
           "standingSha256": "2ad4ac11fabba9107882ba449887b292ae8783a94bb62831e527e9e11f88c817",
           "downedSha256": "8954acd2e6c3543705eac693fa169c17bcd3306c3d4ac4e9ae1f88d85d8209a4"
@@ -1712,7 +1712,7 @@
         {
           "manifestId": "castleSoldierMale01Style03B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-03-b",
-          "displayName": "Soldier Male \u00b7 03 B",
+          "displayName": "Soldier Male · 03 B",
           "jointCount": 55,
           "standingSha256": "b287c201f43e6f347fb62b835827f656a0d1d1a1cef55b50b5b206d9d9433a74",
           "downedSha256": "9953a03e92230fdbc0cf0c53bc958d35407f9fa9c5c347bd43f90eaaea48781c"
@@ -1720,7 +1720,7 @@
         {
           "manifestId": "castleSoldierMale01Style03C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-03-c",
-          "displayName": "Soldier Male \u00b7 03 C",
+          "displayName": "Soldier Male · 03 C",
           "jointCount": 55,
           "standingSha256": "90f87693f5eb6f7196dd21cc3d3c52dc7b084632f6971dabdd476510c761ac4d",
           "downedSha256": "90f1213dafb2edb67b4afed0bb8538430d993a4420ecd5cb86c98f0066c5e27f"
@@ -1728,7 +1728,7 @@
         {
           "manifestId": "castleSoldierMale01Style04A",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-04-a",
-          "displayName": "Soldier Male \u00b7 04 A",
+          "displayName": "Soldier Male · 04 A",
           "jointCount": 55,
           "standingSha256": "99183cf2a14fa1603424ee40140e34d27007217ae55c6371280135b7f5a578de",
           "downedSha256": "aa3aafc0c4b24a895baa73b0adeea9df93ffa853f00b8f26a27a3af2373762df"
@@ -1736,7 +1736,7 @@
         {
           "manifestId": "castleSoldierMale01Style04B",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-04-b",
-          "displayName": "Soldier Male \u00b7 04 B",
+          "displayName": "Soldier Male · 04 B",
           "jointCount": 55,
           "standingSha256": "aa2e0be662400ba9135dd598593e9948d6d2d270a2b5c72fa7cbe1f5a10bc11b",
           "downedSha256": "cdb357f3ac742f7c7da8daa695571c471f33519cdd7e0c9712c0d8d875aa32bc"
@@ -1744,10 +1744,543 @@
         {
           "manifestId": "castleSoldierMale01Style04C",
           "assetRef": "dnd5e:npcs:kingdom:soldier-male-01-style-04-c",
-          "displayName": "Soldier Male \u00b7 04 C",
+          "displayName": "Soldier Male · 04 C",
           "jointCount": 55,
           "standingSha256": "2300f9374369fefd896d7a24e57c88270fe96eb34c3f210a3b246a17976dea5f",
           "downedSha256": "9213ee42814c3fee65de9fa2152ce4e6eb800372d09b96b0fe6d4629d8dc22cc"
+        }
+      ]
+    },
+    {
+      "releaseId": "goblin-human-palettes-v2",
+      "appearances": [
+        {
+          "manifestId": "goblinKnight01Style01B",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-01-b",
+          "displayName": "Knight 01 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "1bc8784e83061c3f36492778528983903e710dd0a417e36a0420561844e7e61e",
+          "downedSha256": "1c3d31aca3bf4d42ce409a99e65eec761d123138d72b9f816f2e9f9089252cc5"
+        },
+        {
+          "manifestId": "goblinKnight01Style01C",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-01-c",
+          "displayName": "Knight 01 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "18cbcbd4fb3c555f3d1241ac27c665bdd9584248471928fa347d5e25fd6486d3",
+          "downedSha256": "d6d5c5198b6d91a53e84d4af5e9d3bcf948083bd5aa27b465b12b066cf95c932"
+        },
+        {
+          "manifestId": "goblinKnight01Style02A",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-02-a",
+          "displayName": "Knight 01 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "e488530a6b316400c8738fd9ad085db65f2f632efdcff5db03d501c867a246e4",
+          "downedSha256": "b0a29fdbc6a9bec19e2592e4066d59bda752be23675bbc07bb8af56744307ec1"
+        },
+        {
+          "manifestId": "goblinKnight01Style02B",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-02-b",
+          "displayName": "Knight 01 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "b8d00c6ded9b7e5d09049ae16b8d2d4343fbf613b827a2f6182d81603472e30f",
+          "downedSha256": "fcb66c8356de9e2bd2ffbc4118222552373404704a5f90322439a52da02805a5"
+        },
+        {
+          "manifestId": "goblinKnight01Style02C",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-02-c",
+          "displayName": "Knight 01 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "c78e5abf6acde8c13ca84bfd8a86039a02b1dae5f25deba43014096edb567684",
+          "downedSha256": "9f2ed21fea3b1acb230844c3da69016bd98124e998e8523e166d808d5db35fa5"
+        },
+        {
+          "manifestId": "goblinKnight01Style03A",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-03-a",
+          "displayName": "Knight 01 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "efe232cd67eda60f0884ca8336f49570b7aa7cad011542a2fc9c393bdc3f355a",
+          "downedSha256": "d148d50aba5a5c1fdfc56a349fb08ed0408dd1fc00862ae9b254a304ffa7e0c5"
+        },
+        {
+          "manifestId": "goblinKnight01Style03B",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-03-b",
+          "displayName": "Knight 01 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "aabfbb145df9a39c572bb17af823bd6832a3c8c80d425fc3702ba70aedf5a1db",
+          "downedSha256": "2557e5ecdf78ddf46b613564193e726517d9530ad90edefcc1cffc67845c3627"
+        },
+        {
+          "manifestId": "goblinKnight01Style03C",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-03-c",
+          "displayName": "Knight 01 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "cdc5201187a007e49a6e9905e64c0cca494987017796e30207259f8583130948",
+          "downedSha256": "638ede47c046be69a52f6de751a95d5d85f12d81f13f7caaa40ea7299a99d1fb"
+        },
+        {
+          "manifestId": "goblinKnight01Style04A",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-04-a",
+          "displayName": "Knight 01 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "e03397d06fff4abf79e9cafc17ec04c3bc2017c986d12ccc8e32a1ef219c969e",
+          "downedSha256": "a47ce8e1eaf0aef900733eb41b72480aa8deff9a20ca6ed7fd3ac308e546c8f7"
+        },
+        {
+          "manifestId": "goblinKnight01Style04B",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-04-b",
+          "displayName": "Knight 01 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "24fc152f17e471217aa121e5211ff8d923f13a4f83203ec98c9a82ae2173b68c",
+          "downedSha256": "7861a0e1fb66a789f85a366382826cdc6b1e12bdb25cb710e8a54d6d7e9e3392"
+        },
+        {
+          "manifestId": "goblinKnight01Style04C",
+          "assetRef": "dnd5e:npcs:goblin:knight-01-style-04-c",
+          "displayName": "Knight 01 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "2ae6b47f3cfe6039f60c015d151764d9ab930d51edb17d7d323deeaa7e8eadef",
+          "downedSha256": "42c5c4ae38096d37014f3a3538afe4d367111b33487508a7c9fd39a021d0bb4b"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style01B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-01-b",
+          "displayName": "Prisoner 01 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "d875758d3f015e0b3c6f3d05aceeb038fe8198e356e1beb29f155dc05146bd95",
+          "downedSha256": "cfc048f109b1870a6d10492614246ff6075d5e9ae1c018e5d169ec70bd634a19"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style01C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-01-c",
+          "displayName": "Prisoner 01 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "bd7d2ca39699e6346915efbe0a31c17d4b921cbc240b9c2a925f2ddbb1c588a7",
+          "downedSha256": "664ad29e632198fc358ba6484d0d62bdee6257a683928efde0e3154ed4eaff33"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style02A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-02-a",
+          "displayName": "Prisoner 01 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "35c4805d7808102832bb7ccce98d461a90da32d8abc2a25600b3d5defae725c9",
+          "downedSha256": "133c51e1ee051a7585a64737b08729383dd98888ecce8521a901fc68f7b2a744"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style02B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-02-b",
+          "displayName": "Prisoner 01 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "6aaa11f0576abd0164c85897ae536de862a1ec8753e339e889dc7dd91d4431e9",
+          "downedSha256": "54872c52652cb52c72c26f87b42a8ea195ff143e00199b0323ea48976b275cfb"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style02C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-02-c",
+          "displayName": "Prisoner 01 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "91dabef2b88533e217ae5752500bc7ea3d192963eff54a673abbdeaf17585633",
+          "downedSha256": "cf2ff574d8557862b3292d424a293a442cc8389be3ec84cdbdcbc6f57b4aec5b"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style03A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-03-a",
+          "displayName": "Prisoner 01 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "60ed7f884d59134c6bf4c98888ea03302fd86dc22c30fe9a87af67149f849a26",
+          "downedSha256": "52f5751cbb89b26e76b339f8ec5354e8e44ff8b2a901d2e9bbb640d6598bb31a"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style03B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-03-b",
+          "displayName": "Prisoner 01 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "18d98a0137edf407748ce3ae164a132b8e13acb892b776465f97bf514dbf5794",
+          "downedSha256": "9d40d48d30a833e85a5ca7d1749500124f9f3f885591571df1f081116008a334"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style03C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-03-c",
+          "displayName": "Prisoner 01 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "4815efa6f8d5f3d8e6fd1f17ef6b6082d526f83def6672cc7903205bbaf5dba6",
+          "downedSha256": "d9e861ecd079eaca3af76d866572a8b004ab85160782d52b73b357fa6d09d9c5"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style04A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-04-a",
+          "displayName": "Prisoner 01 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "5e2c8148528f7fa2bf6c15f58560fe5d6b69e2cddc4ca9b91ef5eff5ff4a6613",
+          "downedSha256": "1d52c5f2a3a41081aeebff179d8700c90280a9f327bbebbf0c417ba851487aea"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style04B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-04-b",
+          "displayName": "Prisoner 01 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "e19cbe1fad38994395ebc88b62c3c01dcd19ee21d02b5c204914eee0a96a571a",
+          "downedSha256": "b4dc416c322aca414aab7a36eb81017ad0d1f240e4a3bc43e2e2361da716f70d"
+        },
+        {
+          "manifestId": "goblinPrisoner01Style04C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-01-style-04-c",
+          "displayName": "Prisoner 01 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "f40c1f8e986e1699817b21e0d790100b6df6c8424b31bcd48ad43db0164bfc89",
+          "downedSha256": "d0d8c3392fd5205f03115bea7230d8ef0cc9e48bfb4b5391c3d90ba5192e2905"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style01B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-01-b",
+          "displayName": "Prisoner 02 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "b29a70d9a6aa953c64b49fb1e82f1a1d6930ccaf13fb57f07664bfa2e180fe58",
+          "downedSha256": "9cedc6c83a32509d44e2e86dd91b446841ecb26d7a2b15c07aa3924c8aec9bb6"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style01C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-01-c",
+          "displayName": "Prisoner 02 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "1d492688eb953ed8fadc37dfd6c377cd5cd8be52e6aa1ceea949cd2889922686",
+          "downedSha256": "901556f9b148bbc7e2f6804bfca99f80681a71075b73a19e75db5c969e4325dd"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style02A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-02-a",
+          "displayName": "Prisoner 02 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "70b64f33a3367edc2b56db73fffe26cba3dc50acbe7678639af67469c0029614",
+          "downedSha256": "673f030622e0325fb9eb5673674d324148c10f08d7906c95268cb8c799dccef9"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style02B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-02-b",
+          "displayName": "Prisoner 02 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "3529afd4e221c19d6109c5476f8ba69281beb9b932f3ea209d97a377fb85cd63",
+          "downedSha256": "cc767aa913a7586e8610ba34c6f71f36391e6a2d881e729604592c2f1eb3110d"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style02C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-02-c",
+          "displayName": "Prisoner 02 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "e03930b1502294395363f96c08877231d3c0d23e2ceff8ef68c490491e0f7629",
+          "downedSha256": "4ba941c3993f8f40f838f7dc972a015b2649e69af88d5bf863f958132392c5c9"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style03A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-03-a",
+          "displayName": "Prisoner 02 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "8e13044d014ee41d447e9df26dbac09ce5fc61f5e0ebddd72e3e4fc09a75830b",
+          "downedSha256": "b55078d237399a0451c5b4c653d64b7f5082e8f8b8bb159c198e838b7d90ea1c"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style03B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-03-b",
+          "displayName": "Prisoner 02 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "ddbb546f38c6901dcba4a5280854752ebd10d65f10062cee81f26b5665f9cd3b",
+          "downedSha256": "09db49eb68fe7fe763702c13f132c691e05e8b6e7ba414a483ca0660d0f86d31"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style03C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-03-c",
+          "displayName": "Prisoner 02 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "c926aa0dbe1693e4be69e529ec83ff189a93f8f30189d2c521fbcea344805680",
+          "downedSha256": "4d30c5030b1d3822de3b3aade4222f2a47a1f4eded343ac325f2ff5bd6104468"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style04A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-04-a",
+          "displayName": "Prisoner 02 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "6e5d617bab11a6087d8ae1a8a3a2d8879eef5b94fcd5c089511dcc4873f85d17",
+          "downedSha256": "86dc0d75b3faa4bbb7a9d3ef9d56be651eb3213cab2c73c76d174e469dcc9863"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style04B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-04-b",
+          "displayName": "Prisoner 02 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "fd7f6fb3db8746362bd25260be0a6f67f4faa51a166c0ce7ec0f351c6853321f",
+          "downedSha256": "82640f4c04fcc35a6816e1de5cd406868ec5ee3ea7df6916fa52036f469d651a"
+        },
+        {
+          "manifestId": "goblinPrisoner02Style04C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-02-style-04-c",
+          "displayName": "Prisoner 02 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "95631ac0fce4e823f542262ddca1461b62c97dd85f243edbf629509687b1b049",
+          "downedSha256": "66927c87c0450d66cebb533f4db024139141454f628ab222f63480ceab21a5a6"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style01B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-01-b",
+          "displayName": "Prisoner 03 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "9ac9a6d5de32198763d72f3a8db9f4f6e165510f4c7ffa288b47c3870cfb4b51",
+          "downedSha256": "3b999bf5b10205ce5c30fd787c98aefa29233bb99cbd2bb8ae0883ce932e0065"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style01C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-01-c",
+          "displayName": "Prisoner 03 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "6830966f32da2a225435b1926da96fcebdb36793a26542a0ab36959b897525de",
+          "downedSha256": "be4d05d2c19ae38b9567452c49c9eec878df6695bf94054c7452c300199ec23e"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style02A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-02-a",
+          "displayName": "Prisoner 03 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "1057ba8c30a9bd8700d4c25683d86d61510511d4ec4fc225631b242b9dbefaeb",
+          "downedSha256": "a3ca946db3c434a1af95110469054f21eeaa417b4542b069f8107daa8fe53f7c"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style02B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-02-b",
+          "displayName": "Prisoner 03 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "08f6c8435a3c80296b49b27dfbb81892bc42d42350105e7bddbc4ad94695a4c4",
+          "downedSha256": "ff5be54b6b0f22ee36f018d9d5ffced654df6e11cd81fd58c0af92ab7a4a0c0b"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style02C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-02-c",
+          "displayName": "Prisoner 03 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "93e14473cc0a03d9f96d5c75fe46bc28ebfa0f2b682251f102886f305c585e4e",
+          "downedSha256": "56826d28fdc287286b0628d3cbdd9ddec9888510fdd87cd7c4e8abcc28ecf8c4"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style03A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-03-a",
+          "displayName": "Prisoner 03 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "3ab9d60a039fee2b05fb8dfc7ed4c67c0bc18ad357b1c797535e53a21a3b08cd",
+          "downedSha256": "a568b6a4f2037a28958611f7e43d213b121910f4c3d37685a0a2a97b41e12988"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style03B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-03-b",
+          "displayName": "Prisoner 03 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "4baccc4da6c60d1bddfc61735a118d9f8c04baf0adfc0535872296f065629ea5",
+          "downedSha256": "147b989ee21285a0c460da0aba59dcbdef3bf1bb2edb46e5752f9fd1c9127a40"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style03C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-03-c",
+          "displayName": "Prisoner 03 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "dd670fcfb82d5528527a11b61840f700cd79f3edb6909dc7a9a94edb23be9cad",
+          "downedSha256": "bfd09b117b2ce16f48fcf93fbbcc2e8094ff2742b9418a61d3dcf773d538fcfc"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style04A",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-04-a",
+          "displayName": "Prisoner 03 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "17788a6a0c2497846e9364150342f0ea18161de54a2a166278a326995ca6faf2",
+          "downedSha256": "e9f8e42a77172743f21196d8af6ebdc53fdf28d1ffed518b45a41f26a2d1f1bd"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style04B",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-04-b",
+          "displayName": "Prisoner 03 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "aca510468997677048dce5c16d00900d9ed39307c327c6cdb8746a38c8da8767",
+          "downedSha256": "429540224316a566445accdbb0825d26823c9f24b9f855d9e328eddbbd2e0ef2"
+        },
+        {
+          "manifestId": "goblinPrisoner03Style04C",
+          "assetRef": "dnd5e:npcs:goblin:prisoner-03-style-04-c",
+          "displayName": "Prisoner 03 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "dc0f8cef40fa2716ed865d457590b47dc35f8fb503ad62f2ab0e0e5c0e32194d",
+          "downedSha256": "25c8f2f73f6a54b3ee86dbea9e8e1211af1a4842bcdbb72178909c8635dab2ad"
+        },
+        {
+          "manifestId": "goblinRanger01Style01B",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-01-b",
+          "displayName": "Ranger 01 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "63968d121b94afbe9dcee9dbc5fe366db7cbf0e148179d82dbf8844827437fd9",
+          "downedSha256": "2b5ca6f65d7a5137baf0550703f716a9a38de30126a846f1cde88951aab5ca59"
+        },
+        {
+          "manifestId": "goblinRanger01Style01C",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-01-c",
+          "displayName": "Ranger 01 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "cf2df99a9529c234aade9c040dd28a4adb73ca06fc6f7cabb683d9c63f05254f",
+          "downedSha256": "38dafb7c0b40753244dddeeb5ef92cae6f71c71b1a6ef82381edd1f8546fdc00"
+        },
+        {
+          "manifestId": "goblinRanger01Style02A",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-02-a",
+          "displayName": "Ranger 01 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "0234c124360200ba07f37eb4ee3a9aa09e555fb9f9a4ae507aecfd3c0e93e7eb",
+          "downedSha256": "0b82aad9a88ce5adfb71391394018fb121b6f96401f9765ab9973dd986e6bde5"
+        },
+        {
+          "manifestId": "goblinRanger01Style02B",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-02-b",
+          "displayName": "Ranger 01 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "b9fb2a56a02a74afb2484fa6fdcf2b1682d85d7ba68280002525f3237f43e949",
+          "downedSha256": "a74567a682db00b1d14d0a0845b93a61797621b57d864cf02536c269752f3cf2"
+        },
+        {
+          "manifestId": "goblinRanger01Style02C",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-02-c",
+          "displayName": "Ranger 01 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "3144503641f62e61d8de7d52ddfa296d36beaa096f06bedc2e88644f112dc09d",
+          "downedSha256": "ea9837ce9cdde952844aff480ce03c1e988136df1b5a62f684112812fa0c0d50"
+        },
+        {
+          "manifestId": "goblinRanger01Style03A",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-03-a",
+          "displayName": "Ranger 01 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "6ce955e74bbf8de7177382ffad91bc6ae616ed96734cbf69097a67d86e5f1efa",
+          "downedSha256": "c37a8707da9f1a140793ccf88b9892c664e790b85f7b0ed2fa66ce5bee49ac0d"
+        },
+        {
+          "manifestId": "goblinRanger01Style03B",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-03-b",
+          "displayName": "Ranger 01 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "5e612e05df20ecfc28e2b02438520487406a85f76db082f09bcb97034468cf0e",
+          "downedSha256": "6e33366bc43c99620a68fdf62b2d222ffca0042a981d51f369cc49a7f136e559"
+        },
+        {
+          "manifestId": "goblinRanger01Style03C",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-03-c",
+          "displayName": "Ranger 01 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "14a5dc7603c33a340424d5a5bd88f1e6dc26de8ac612fd1b270ef75ec1aee251",
+          "downedSha256": "75c874221ee82aea37459dd02e3573aa986d42aabb6029cfc648af739b3bd16c"
+        },
+        {
+          "manifestId": "goblinRanger01Style04A",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-04-a",
+          "displayName": "Ranger 01 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "2f58df852b12e63468cfa019030342cc209b4f24b99ac42d4ba211e1ea924bd7",
+          "downedSha256": "00f1d83e2edfc46df7747d33a49c55d169601c602e378c647c0a3530fdf2fe47"
+        },
+        {
+          "manifestId": "goblinRanger01Style04B",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-04-b",
+          "displayName": "Ranger 01 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "4ff8ad4862a2879e1ec69dabbbb02f85c718ef15ee1e54e1abc821a3f5fcab81",
+          "downedSha256": "9587cc7aaf777ed7e23dd8e044534c6df18c83a4b2bcda282774c779508691ac"
+        },
+        {
+          "manifestId": "goblinRanger01Style04C",
+          "assetRef": "dnd5e:npcs:goblin:ranger-01-style-04-c",
+          "displayName": "Ranger 01 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "3eef01940fe68d7e53b0512a014ec3f5ca92aae5e8dd1f08ded517b3ac777711",
+          "downedSha256": "38263f8fce3b231e6f818659848501911de44ddfe3d95aab1a102c2772466a56"
+        },
+        {
+          "manifestId": "goblinWizard01Style01B",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-01-b",
+          "displayName": "Wizard 01 · 01 B",
+          "jointCount": 50,
+          "standingSha256": "686702810da4bc7c2325349b0430643a65aac18e2105bf680042cb52bd186d0f",
+          "downedSha256": "7ce66bf184c048bb806d19b6d23b255a307c6f173084011d6c4a4b508ba7dfe3"
+        },
+        {
+          "manifestId": "goblinWizard01Style01C",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-01-c",
+          "displayName": "Wizard 01 · 01 C",
+          "jointCount": 50,
+          "standingSha256": "274d856487fed0153cffc54ff9f161500c17ce2ea82961151374caa201176678",
+          "downedSha256": "acb2d481b70bce29de7b9b3c9973136638256a13d655c5b6ae00daa07d07a6ce"
+        },
+        {
+          "manifestId": "goblinWizard01Style02A",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-02-a",
+          "displayName": "Wizard 01 · 02 A",
+          "jointCount": 50,
+          "standingSha256": "3ffc32a894799f0005e304a7b0f20dce7cd26ff7a060524fca1d09a724fc4ce4",
+          "downedSha256": "75d4a24861521ab78f01f8c5661c5c8fd4604c42f52b54a39982d73c239d271f"
+        },
+        {
+          "manifestId": "goblinWizard01Style02B",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-02-b",
+          "displayName": "Wizard 01 · 02 B",
+          "jointCount": 50,
+          "standingSha256": "4058185341163a8b70fb8c93dd7c56f9a51aea08019c3047b3f970d6a36059f9",
+          "downedSha256": "21d8c1f1f24fc3c0fe7aa195bb5c2bd33aaad0cadf3d3bd6e71f6aa4c48bf02a"
+        },
+        {
+          "manifestId": "goblinWizard01Style02C",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-02-c",
+          "displayName": "Wizard 01 · 02 C",
+          "jointCount": 50,
+          "standingSha256": "b0a9ebf7ee16ee2f81cd5e22192ede2a0f4b48550ec83a8326709fa7b5363a79",
+          "downedSha256": "53aa74e38d8b00defa72ee4876fb9462cbe1dbc3dcfd1d2b23c8024733a0477a"
+        },
+        {
+          "manifestId": "goblinWizard01Style03A",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-03-a",
+          "displayName": "Wizard 01 · 03 A",
+          "jointCount": 50,
+          "standingSha256": "469dab0ca93c031b5e5edc1d75e4e502d8ca2ae7aa03856fd3be08c30d00b9a6",
+          "downedSha256": "d66da3140af5c9242e9afa7d9639a1659d77be1b670a34a10f38cecc35341bc9"
+        },
+        {
+          "manifestId": "goblinWizard01Style03B",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-03-b",
+          "displayName": "Wizard 01 · 03 B",
+          "jointCount": 50,
+          "standingSha256": "6838e95d6f8ce824066e5bed3c4bd2af474ed995702e15c2aa6534152b2887f8",
+          "downedSha256": "7357b5f151c6bc7e0a0ac865856de75d418c62983f4520a4add64999d2f33104"
+        },
+        {
+          "manifestId": "goblinWizard01Style03C",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-03-c",
+          "displayName": "Wizard 01 · 03 C",
+          "jointCount": 50,
+          "standingSha256": "8fa03248f9de29d54a8ead3666d5d40fb9a1033d3bfabb3a1e1b46dfa93713f1",
+          "downedSha256": "930ab2ed50d29c3ab4349c24659e3ef761afad869a839bf84db84fdf3fa9edb9"
+        },
+        {
+          "manifestId": "goblinWizard01Style04A",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-04-a",
+          "displayName": "Wizard 01 · 04 A",
+          "jointCount": 50,
+          "standingSha256": "0959ac2dc61a044a2794faca9c61e8cf84402a2b3b40c803f0c87828432d94eb",
+          "downedSha256": "2e6805d99b68aeb09a366780e9b775d01cf625ec5e7c28a0b0a4000b06a9ddad"
+        },
+        {
+          "manifestId": "goblinWizard01Style04B",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-04-b",
+          "displayName": "Wizard 01 · 04 B",
+          "jointCount": 50,
+          "standingSha256": "9e420eb9bd7933c6dd97e3fbd69e0b425330030f093c2560e47905ef1bae197d",
+          "downedSha256": "e6104d6256b8d4f8bdd1b5cae7ecae83cfad2dd4f3ebf9fc8b50c0eafce5cefe"
+        },
+        {
+          "manifestId": "goblinWizard01Style04C",
+          "assetRef": "dnd5e:npcs:goblin:wizard-01-style-04-c",
+          "displayName": "Wizard 01 · 04 C",
+          "jointCount": 50,
+          "standingSha256": "f88cb3aaf401c3d5ce9794c698af12f823914b2e79b8b73f60bf2577de834330",
+          "downedSha256": "cc70b8bb9caf5860f1cb8c586a2756edbe1710e2e79cba1b0c14071bbc89b82a"
         }
       ]
     }

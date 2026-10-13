@@ -29,9 +29,10 @@ import sample04FrontRoom from './04-front-room-in-v4.yaml?raw';
  *   - a faction of MANY that waits on a fact must name a `mind`
  *     ("name a mind, or the faction cannot learn"). A faction of one does not:
  *     its single member is its mind;
- *   - a social outcome takes `say` and a result word, NEVER a time action
- *     ("`attack` is what a creature does with time, and `intimidate_failed` is
- *     an outcome");
+ *   - a verdict takes `say` and a result word, NEVER a time action
+ *     ("`attack` is what a creature does with time, and `failure` is an
+ *     outcome") — the social table keys this once read as `intimidate_failed`
+ *     retired to options (rpg-project#569 R2) and are refused by name now;
  *   - `toward: {at: [col,row]}` is refused in this dialect — name `enemy`,
  *     `attacker` or `actor`, or wait for the sites layer.
  */

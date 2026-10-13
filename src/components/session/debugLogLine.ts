@@ -68,7 +68,6 @@ import {
   DamageType,
   DissolveKind,
   DoorState,
-  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   formatDebugDamageComponents,
@@ -181,22 +180,6 @@ function answerKeyName(key: AnswerKey): string {
 
 function temperName(temper: Temper): string {
   return Temper[temper] ?? String(temper);
-}
-
-/** Whether a key had a verb and a check behind it — which is the whole
- * question `verb` and `beaten` answer (rpg-project#465).
- *
- * THE PAIR IS DEPRECATED AND UNSET ON A TIME PICK, and printing it anyway
- * would render `verb=UNSPECIFIED beaten=false` about a creature that simply
- * took its turn — a sentence about a threat that never happened. The server
- * leaves both unset there by contract; this line leaves them out. */
-function answerKeyIsSocial(key: AnswerKey): boolean {
-  return (
-    key === AnswerKey.INTIMIDATED ||
-    key === AnswerKey.INTIMIDATE_FAILED ||
-    key === AnswerKey.PERSUADED ||
-    key === AnswerKey.PERSUADE_FAILED
-  );
 }
 
 /** THE LOADED TABLE AS ROLLED, one pair per eligible entry:
@@ -440,25 +423,34 @@ export function formatDebugLine(
         text: `${prefix} ${name(b.member)} ${b.beaten ? 'passed' : 'failed'} ${b.ability} check · ${b.total}${checkCalculationText(b.calculation)}`,
       };
     }
-    case 'intimidated':
-    // eslint-disable-next-line no-fallthrough
-    case 'persuaded': {
-      //
-      // AND THE WHOLE ROLL BEHIND THE VERDICT. `dc total beaten` is the
-      // OUTCOME; the calculation is what was thrown to reach it, which for an
-      // untrained character is two faces, the kept one, and the word
-      // "Untrained". Without it this line is the single settled number the
-      // slice exists to remove, and it reads as finished because the story
-      // half already shows the faces.
+    case 'spoke': {
+      // THE ONE SOCIAL CHECK (rpg-project#569), typed for R1's reason: THE
+      // DIE IS HERE. Which option, to whom, the skill it rolled, the outcome
+      // and the whole roll behind it — for an untrained character that is two
+      // faces, the kept one, and the word "Untrained". The line itself is
+      // prose and lives in the story log.
       const b = event.body.value;
-      const verb = event.body.case;
+      const target =
+        b.target.case === 'memberId'
+          ? `target=${name(b.target.value)}`
+          : b.target.case === 'propId'
+            ? `prop=${quoteDebugString(b.target.value)}`
+            : 'target=none';
+      const check = b.check
+        ? `dc=${b.check.dc} total=${b.check.total} beaten=${b.check.beaten}` +
+          checkCalculationText(b.check.calculation)
+        : 'check=none';
       return {
         seq,
-        ids: [b.actor, b.target, ...keepSourceIds(b.calculation)],
+        ids: [
+          b.actor,
+          ...(b.target.case === 'memberId' ? [b.target.value] : []),
+          ...keepSourceIds(b.check?.calculation),
+        ],
         text:
-          `${prefix} ${verb} actor=${name(b.actor)} target=${name(b.target)} ` +
-          `dc=${b.dc} total=${b.total} beaten=${b.beaten}` +
-          checkCalculationText(b.calculation),
+          `${prefix} spoke actor=${name(b.actor)} ${target} ` +
+          `option=${quoteDebugString(b.optionId)} skill=${quoteDebugString(b.skill)} ` +
+          check,
       };
     }
     // R1 IN FULL, AND NOW ITS ARITHMETIC (rpg-project#465 §6): which table the
@@ -483,9 +475,16 @@ export function formatDebugLine(
     case 'answered': {
       const b = event.body.value;
       const word = AnswerWord[b.word] ?? String(b.word);
-      const key = answerKeyIsSocial(b.key)
-        ? `key=${answerKeyName(b.key)} verb=${Verb[b.verb] ?? String(b.verb)} beaten=${b.beaten}`
-        : `key=${answerKeyName(b.key)}`;
+      // WHICH OPTION'S TABLE (rpg-project#569). Set on every SUCCESS or
+      // FAILURE answer and empty on a `time` pick, where no option stands
+      // behind the roll — so it prints only when there is one.
+      const option = b.optionId
+        ? ` option=${quoteDebugString(b.optionId)}`
+        : '';
+      // THE DEPRECATED verb/beaten PAIR IS NOT PRINTED. It belonged to the
+      // retired social keys; a SUCCESS or FAILURE key already says whether
+      // the check was beaten, and the `spoke` line above carries the numbers.
+      const key = `key=${answerKeyName(b.key)}${option}`;
       return {
         seq,
         ids: [b.creature],

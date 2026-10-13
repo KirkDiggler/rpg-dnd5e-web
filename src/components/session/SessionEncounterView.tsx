@@ -2012,6 +2012,8 @@ function SessionEncounterScope({
             onCancelCastOption={combat.onCancelCastOption}
             onCancelSelection={combat.onCancelSelection}
             onTargetClick={combat.onTargetClick}
+            onChooseSpeakTarget={combat.onChooseSpeakTarget}
+            onSpeakOption={combat.onSpeakOption}
             onConfirmTargets={combat.onConfirmTargets}
             onEndTurn={combat.onEndTurn}
             // The log's own mode switch is deliberately NOT gated on the run

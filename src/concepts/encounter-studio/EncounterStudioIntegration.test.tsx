@@ -18,7 +18,9 @@ import {
 } from '@testing-library/react';
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import frontGoblinOptionsYaml from '../world-building/fixtures/frontGoblinOptions.yaml?raw';
 import { nextIntelId } from '../world-building/intelEdits';
 import { createRoomLabel } from '../world-building/regionEdits';
 import {
@@ -588,6 +590,96 @@ it('authors social definitions in Encounter and attaches records to selected cre
   mounted.unmount();
   mount(storage);
   expect(storage.document()).toEqual(attached);
+});
+
+it('authors the front room goblin’s two lines, and emits the engine’s own options block', () => {
+  // THE FRONT ROOM'S GOBLIN, authored through the studio from nothing
+  // (rpg-project#569 U1). The seed's goblin carries the engine example's line;
+  // it is cleared so every key below is one the studio wrote.
+  const document = seed();
+  const goblin = document.draft.room.monsterBindings!['goblin-1'];
+  delete goblin.options;
+  const storage = new MemoryStorage(
+    parseRoomDocumentJson(stringifyRoomDraft(document.draft, document.scope))
+  );
+  mount(storage);
+  fireEvent.click(button('Build'));
+  switchTo('3D');
+  act(() =>
+    viewport().roomAuthoring!.onSelectActorTarget!({
+      kind: 'actor',
+      id: 'goblin-1',
+    })
+  );
+  const label = (text: string) => screen.getByLabelText(text);
+  const set = (text: string, value: string, index = 0) =>
+    fireEvent.change(screen.getAllByLabelText(text)[index], {
+      target: { value },
+    });
+  const line1 = 'line 1 of goblin-1';
+  const line2 = 'line 2 of goblin-1';
+
+  // Line 1 — lean on it: Intimidation DC 12.
+  fireEvent.click(label('Add a line to goblin-1'));
+  set('Line 1 id for goblin-1', 'lean-on-it');
+  set('Line 1 for goblin-1', "Where's the cellar? Tell me or you're next.");
+  set(`Ability for approach 0 of ${line1}`, 'intimidation');
+  set(`DC for approach 0 of ${line1}`, '12');
+  fireEvent.click(label(`Add success row to ${line1}`));
+  set(`Weight for ${line1} success entry`, '70');
+  set(
+    `Say (optional) for ${line1} success entry`,
+    "Fine! FINE. The cellar door is behind the barrels. Just don't."
+  );
+  set(`Do for ${line1} success entry`, 'fact');
+  set(`fact for ${line1} success entry`, 'goblin-cowed');
+  fireEvent.click(label(`Add success row to ${line1}`));
+  set(`Weight for ${line1} success entry`, '30', 1);
+  set(`Say (optional) for ${line1} success entry`, 'Boss! BOSS!', 1);
+  set(`Do for ${line1} success entry`, 'flee', 1);
+  fireEvent.click(label(`Add failure row to ${line1}`));
+  set(
+    `Say (optional) for ${line1} failure entry`,
+    'Big talk, for someone standing in my doorway.'
+  );
+
+  // Line 2 — talk it round: Persuasion DC 10, which is where a line starts.
+  fireEvent.click(label('Add a line to goblin-1'));
+  set('Line 2 id for goblin-1', 'talk-it-round');
+  set(
+    'Line 2 for goblin-1',
+    "We're not here for you. Where did the bandits go?"
+  );
+  fireEvent.click(label(`Add success row to ${line2}`));
+  set(
+    `Say (optional) for ${line2} success entry`,
+    'Bandits took the cellar. Go left at the rope, and mind the third step.'
+  );
+  fireEvent.click(label(`Add failure row to ${line2}`));
+  set(`Weight for ${line2} failure entry`, '100');
+  set(
+    `Say (optional) for ${line2} failure entry`,
+    "Cellar's empty, friend. Nothing down there but rats. Straight on through."
+  );
+  set(`Do for ${line2} failure entry`, 'fact');
+  set(`fact for ${line2} failure entry`, 'cellar-is-clear');
+
+  // The EMITTED document carries the engine's own block, key for key: the
+  // fixture is a verbatim copy of the toolkit golden's `front-goblin` options.
+  const authored = storage.document();
+  const emitted = encodeSingleRoomDungeon({
+    key: 'front-room',
+    draft: authored.draft,
+    ...authored.scope,
+  });
+  const engine = parseYaml(frontGoblinOptionsYaml) as { options: unknown };
+  expect(
+    parseYaml(emitted).room.room.monsterBindings['goblin-1'].options
+  ).toEqual(engine.options);
+  // And nothing else on the goblin moved.
+  const rest = { ...authored.draft.room.monsterBindings!['goblin-1'] };
+  delete rest.options;
+  expect(rest).toEqual(goblin);
 });
 
 it('requires explicit prop declaration before attaching intel and scopes controls to one selection', () => {

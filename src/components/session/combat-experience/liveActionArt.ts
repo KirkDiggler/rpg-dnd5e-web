@@ -45,8 +45,7 @@ const BY_VERB: ReadonlyMap<Verb, ActionIconPresentation> = new Map([
   [Verb.ACTIVATE, { src: '', fallback: '✦', tone: 'gold' }],
   [Verb.CAST, { src: '', fallback: '✧', tone: 'blue' }],
   [Verb.DEATH_SAVE, { src: '', fallback: '✚', tone: 'green' }],
-  [Verb.INTIMIDATE, { src: '', fallback: '☠', tone: 'violet' }],
-  [Verb.PERSUADE, { src: '', fallback: '☮', tone: 'blue' }],
+  [Verb.SPEAK, { src: '', fallback: '❝', tone: 'blue' }],
 ]);
 const UNKNOWN: ActionIconPresentation = {
   src: '',

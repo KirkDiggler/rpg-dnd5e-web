@@ -3,6 +3,7 @@ import {
   ActivatedSchema,
   ActivationResultSchema,
   AnsweredSchema,
+  AnswerKey,
   AnswerWord,
   ArrivedSchema,
   AttackModifierSourceSchema,
@@ -19,11 +20,12 @@ import {
   HealingAppliedSchema,
   IntimidatedSchema,
   MoveImposedSchema,
-  PersuadedSchema,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
   RollWindowOpenedSchema,
+  SpeakCheckSchema,
+  SpokeSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -33,7 +35,6 @@ import {
   DissolveKind,
   PlacementKind,
   ReactionRefSchema,
-  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
@@ -1001,69 +1002,105 @@ describe('attack roll source breakdown', () => {
   );
 });
 
-// The first shenanigan (rpg-project#454). The `intimidated` beat is the ONLY
-// account of the roll — IntimidateResponse carries no beaten, total or dc —
-// so this entry is where the actor reads their own die, like every other
-// witness, and both outcomes get one.
-describe('the Story log on a threat (rpg-project#454)', () => {
-  function threatBeat(
-    seq: bigint,
-    total: number,
-    dc: number,
-    beaten: boolean
-  ): CombatStoryFact {
-    return visible(
-      create(EventSchema, {
-        session: 'three-minds',
-        seq,
-        kind: EventKind.INTIMIDATED,
-        body: {
-          case: 'intimidated',
-          value: create(IntimidatedSchema, {
-            actor: 'aldric',
-            target: 'skeleton-guard',
-            dc,
-            total,
-            beaten,
-          }),
-        },
-      })
-    );
-  }
+// The one social check (rpg-project#569). The `spoke` beat is the ONLY account
+// of the roll — SpeakResponse carries no beaten, total or dc — so this entry
+// is where the actor reads their own die, like every other witness, and both
+// outcomes get one.
+function spokeEvent(
+  seq: bigint,
+  fields: {
+    line?: string;
+    skill?: string;
+    total?: number;
+    dc?: number;
+    beaten?: boolean;
+    target?: { case: 'memberId' | 'propId'; value: string };
+  } = {}
+) {
+  return create(EventSchema, {
+    session: 'front-room',
+    seq,
+    at: 20n,
+    recipient: 'aldric',
+    kind: EventKind.SPOKE,
+    body: {
+      case: 'spoke',
+      value: create(SpokeSchema, {
+        actor: 'aldric',
+        target: fields.target ?? { case: 'memberId', value: 'skeleton-guard' },
+        optionId: 'troupe',
+        line: fields.line ?? "We're the troupe for the feast.",
+        skill: fields.skill ?? 'performance',
+        check: create(SpeakCheckSchema, {
+          dc: fields.dc ?? 13,
+          total: fields.total ?? 17,
+          beaten: fields.beaten ?? true,
+        }),
+      }),
+    },
+  });
+}
 
-  it('a beaten threat is one entry carrying both numbers', () => {
-    const [entry] = buildCombatStory([threatBeat(11n, 14, 9, true)], context);
-    expect(entry.eyebrow).toBe('Threat');
-    expect(entry.headline).toBe('Aldric leans on Skeleton Guard');
-    expect(entry.detail).toContain('14 against DC 9');
-    expect(entry.detail).toContain('Cowed');
+describe('the Story log on a spoken line (rpg-project#569)', () => {
+  it('quotes the line, then the skill it rolled and both numbers', () => {
+    const [entry] = buildCombatStory([visible(spokeEvent(11n))], context);
+    expect(entry.eyebrow).toBe('Speech');
+    expect(entry.headline).toBe("Aldric: “We're the troupe for the feast.”");
+    expect(entry.detail).toBe('Performance 17 vs DC 13 · Success');
     expect(entry.tone).toBe('success');
   });
 
-  it('a missed threat gets an entry too — the miss is as much fiction as the hit', () => {
-    const [entry] = buildCombatStory([threatBeat(12n, 4, 9, false)], context);
-    expect(entry.eyebrow).toBe('Threat');
-    expect(entry.detail).toContain('4 against DC 9');
-    expect(entry.detail).toContain('Unmoved');
+  it('a missed check gets an entry too — the miss is as much fiction as the hit', () => {
+    const [entry] = buildCombatStory(
+      [
+        visible(
+          spokeEvent(12n, {
+            skill: 'dnd5e:skills:intimidation',
+            total: 4,
+            dc: 9,
+            beaten: false,
+          })
+        ),
+      ],
+      context
+    );
+    expect(entry.detail).toBe('Intimidation 4 vs DC 9 · Failure');
     expect(entry.tone).toBe('neutral');
   });
 
   it('the reading is COPIED, never derived from total against dc', () => {
-    // A 20 the server says did not land reads as Unmoved. Deriving it here
-    // would make every client wrong at once the day a rule changes what
-    // beating a DC means — the law Saved.succeeded already keeps.
-    const [entry] = buildCombatStory([threatBeat(13n, 20, 9, false)], context);
-    expect(entry.detail).toContain('Unmoved');
+    // A 20 the server says did not land reads as a failure — the law
+    // Saved.succeeded already keeps.
+    const [entry] = buildCombatStory(
+      [visible(spokeEvent(13n, { total: 20, dc: 9, beaten: false }))],
+      context
+    );
+    expect(entry.detail).toContain('Failure');
     expect(entry.tone).toBe('neutral');
   });
 
+  it('names the target when the author wrote no line — it never invents one', () => {
+    const [entry] = buildCombatStory(
+      [
+        visible(
+          spokeEvent(14n, {
+            line: '',
+            skill: 'religion',
+            target: { case: 'propId', value: 'altar-1' },
+          })
+        ),
+      ],
+      context
+    );
+    expect(entry.headline).toBe('Aldric speaks to altar-1');
+    expect(entry.detail).toContain('Religion');
+  });
+
   it('says nothing about what the creature does next', () => {
-    // The consequence is the threatened creature's mind's to decide and
-    // arrives as its next turn. A clause here promising flight would make
-    // the outcome the verb's instead of the mind's.
-    const [entry] = buildCombatStory([threatBeat(14n, 14, 9, true)], context);
+    // That is the `answered` beat's, rolled on the option's own table.
+    const [entry] = buildCombatStory([visible(spokeEvent(15n))], context);
     const line = `${entry.eyebrow} ${entry.headline} ${entry.detail}`;
-    expect(line).not.toMatch(/flee|flees|runs|charge|charges|frightened/i);
+    expect(line).not.toMatch(/flee|flees|runs|bolts|charge|frightened/i);
   });
 });
 
@@ -1075,109 +1112,85 @@ describe('the Story log on a threat (rpg-project#454)', () => {
  * ACCEPTED: a body with no row in `EXPECTED_OTHER_KIND` is discarded by
  * `relevantOtherEvent` as a "typed event kind/body mismatch" and is gone
  * before any story arm runs. The tests above pass in that world; only this
- * one does not. It is the same gap slice two fell into with `saved`, and the
- * one `concentrationEnded` keeps its own copy of.
+ * one does not.
  */
-describe('a threat surviving the reducer (rpg-project#454)', () => {
+describe('a spoken line surviving the reducer (rpg-project#569)', () => {
   function configured() {
     return reduceCombatPresentation(emptyPresentation(), {
       type: 'configure',
-      session: 'three-minds',
+      session: 'front-room',
       viewerMember: 'aldric',
       memberNames: { aldric: 'Aldric', 'skeleton-guard': 'Skeleton Guard' },
       rollerRoles: { aldric: 'player', 'skeleton-guard': 'monster' },
     });
   }
 
-  function threatEvent(beaten: boolean) {
-    return create(EventSchema, {
-      session: 'three-minds',
-      seq: 11n,
-      at: 20n,
-      recipient: 'aldric',
-      kind: EventKind.INTIMIDATED,
-      body: {
-        case: 'intimidated',
-        value: create(IntimidatedSchema, {
-          actor: 'aldric',
-          target: 'skeleton-guard',
-          dc: 9,
-          total: beaten ? 14 : 4,
-          beaten,
-        }),
-      },
-    });
-  }
-
   it('reaches the log through the real stream path, not just the builder', () => {
     const state = reduceCombatPresentation(configured(), {
       type: 'stream-event',
-      event: threatEvent(true),
+      event: spokeEvent(11n),
       metadata: { source: 'live' },
     });
 
     const story = selectVisibleStory(state);
-
     expect(story).toHaveLength(1);
-    expect(story[0]?.headline).toBe('Aldric leans on Skeleton Guard');
-    expect(story[0]?.detail).toContain('14 against DC 9');
-    expect(story[0]?.detail).toContain('Cowed');
+    expect(story[0]?.headline).toBe(
+      "Aldric: “We're the troupe for the feast.”"
+    );
+    expect(story[0]?.detail).toContain('Performance 17 vs DC 13');
   });
 
-  it('a missed threat survives it too — the actor has no other account', () => {
-    // The one that would hurt most to lose. IntimidateResponse carries no
-    // verdict, so a threat discarded here leaves the person who threw the
-    // die with nothing at all to read.
+  it('a missed check survives it too — the actor has no other account', () => {
     const state = reduceCombatPresentation(configured(), {
       type: 'stream-event',
-      event: threatEvent(false),
+      event: spokeEvent(12n, { total: 4, beaten: false }),
       metadata: { source: 'live' },
     });
 
     const story = selectVisibleStory(state);
-
     expect(story).toHaveLength(1);
-    expect(story[0]?.detail).toContain('Unmoved');
+    expect(story[0]?.detail).toContain('Failure');
+  });
+
+  it('a retired social check is accepted and drawn as nothing', () => {
+    // Speak replaced Intimidate and Persuade. Their bodies stay on the wire,
+    // deprecated; this client narrates `spoke` only.
+    const state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: create(EventSchema, {
+        session: 'front-room',
+        seq: 13n,
+        at: 22n,
+        recipient: 'aldric',
+        kind: EventKind.INTIMIDATED,
+        body: {
+          case: 'intimidated',
+          value: create(IntimidatedSchema, {
+            actor: 'aldric',
+            target: 'skeleton-guard',
+            dc: 9,
+            total: 14,
+            beaten: true,
+          }),
+        },
+      }),
+      metadata: { source: 'live' },
+    });
+
+    expect(selectVisibleStory(state)).toHaveLength(0);
   });
 });
 
-// The front room goblin (rpg-project#458). TWO beats per attempt: the check,
-// which is the only account of the player's roll, and the ANSWER, which is the
-// world's roll on the author's own table and the only place the creature's
-// line exists.
-describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
-  function appealBeat(
-    seq: bigint,
-    total: number,
-    dc: number,
-    beaten: boolean
-  ): CombatStoryFact {
-    return visible(
-      create(EventSchema, {
-        session: 'front-room',
-        seq,
-        kind: EventKind.PERSUADED,
-        body: {
-          case: 'persuaded',
-          value: create(PersuadedSchema, {
-            actor: 'aldric',
-            target: 'skeleton-guard',
-            dc,
-            total,
-            beaten,
-          }),
-        },
-      })
-    );
-  }
-
+// The creature's ANSWER (rpg-project#458, keyed by option since #569): the
+// world's roll on the picked option's own table and the only place the
+// creature's line exists.
+describe('the Story log on an answer (rpg-project#458, #569)', () => {
   function answerBeat(
     seq: bigint,
     fields: {
       word: AnswerWord;
       say?: string;
       fact?: string;
-      beaten?: boolean;
       roll?: number;
       of?: number;
       entry?: number;
@@ -1192,8 +1205,8 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
           case: 'answered',
           value: create(AnsweredSchema, {
             creature: 'skeleton-guard',
-            verb: Verb.PERSUADE,
-            beaten: fields.beaten ?? true,
+            key: AnswerKey.SUCCESS,
+            optionId: 'troupe',
             roll: fields.roll ?? 42,
             of: fields.of ?? 100,
             entry: fields.entry ?? 0,
@@ -1205,27 +1218,6 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
       })
     );
   }
-
-  it('a landed appeal is one entry carrying both numbers', () => {
-    const [entry] = buildCombatStory([appealBeat(11n, 13, 10, true)], context);
-    expect(entry.eyebrow).toBe('Appeal');
-    expect(entry.headline).toBe('Aldric talks to Skeleton Guard');
-    expect(entry.detail).toContain('13 against DC 10');
-    expect(entry.detail).toContain('Won round');
-    expect(entry.tone).toBe('success');
-  });
-
-  it('a failed appeal gets an entry too — it is where the bad directions come from', () => {
-    const [entry] = buildCombatStory([appealBeat(12n, 4, 10, false)], context);
-    expect(entry.detail).toContain('4 against DC 10');
-    expect(entry.detail).toContain('Unconvinced');
-    expect(entry.tone).toBe('neutral');
-  });
-
-  it('the reading is COPIED, never derived from total against dc', () => {
-    const [entry] = buildCombatStory([appealBeat(13n, 20, 10, false)], context);
-    expect(entry.detail).toContain('Unconvinced');
-  });
 
   it("the answer prints the author's line VERBATIM, quoted and attributed", () => {
     // `say` is the one field in this whole slice the engine is forbidden to
@@ -1324,7 +1316,7 @@ describe('the Story log on an appeal and its answer (rpg-project#458)', () => {
  * `relevantOtherEvent` as a typed kind/body mismatch and is gone before any
  * story arm runs.
  */
-describe('the appeal and its answer surviving the reducer (rpg-project#458)', () => {
+describe('the answer surviving the reducer (rpg-project#458)', () => {
   function configured() {
     return reduceCombatPresentation(emptyPresentation(), {
       type: 'configure',
@@ -1334,34 +1326,6 @@ describe('the appeal and its answer surviving the reducer (rpg-project#458)', ()
       rollerRoles: { aldric: 'player', 'skeleton-guard': 'monster' },
     });
   }
-
-  it('an appeal reaches the log through the real stream path', () => {
-    const state = reduceCombatPresentation(configured(), {
-      type: 'stream-event',
-      event: create(EventSchema, {
-        session: 'front-room',
-        seq: 11n,
-        at: 20n,
-        recipient: 'aldric',
-        kind: EventKind.PERSUADED,
-        body: {
-          case: 'persuaded',
-          value: create(PersuadedSchema, {
-            actor: 'aldric',
-            target: 'skeleton-guard',
-            dc: 10,
-            total: 13,
-            beaten: true,
-          }),
-        },
-      }),
-      metadata: { source: 'live' },
-    });
-
-    const story = selectVisibleStory(state);
-    expect(story).toHaveLength(1);
-    expect(story[0]?.headline).toBe('Aldric talks to Skeleton Guard');
-  });
 
   it("the answer does too — it is the only place the creature's line exists", () => {
     // The one that would hurt most to lose. Dropped here, a goblin walks out
@@ -1378,8 +1342,8 @@ describe('the appeal and its answer surviving the reducer (rpg-project#458)', ()
           case: 'answered',
           value: create(AnsweredSchema, {
             creature: 'skeleton-guard',
-            verb: Verb.PERSUADE,
-            beaten: false,
+            key: AnswerKey.FAILURE,
+            optionId: 'troupe',
             roll: 3,
             of: 4,
             entry: 1,

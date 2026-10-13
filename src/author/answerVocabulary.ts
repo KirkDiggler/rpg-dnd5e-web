@@ -145,43 +145,66 @@ export interface AnswerTriggerSpec {
   readonly applicability: AnswerApplicability;
 }
 
-/** Sealed to `encounter.TableKeys`: the four social keys, then `time` —
- * the engine's own order (`table.go`), which is also the order the reference
- * page lists and the order the panels offer.
+/** Sealed to `encounter.TableKeys`, which is `time` alone since
+ * rpg-toolkit#2039: the four social keys retired to OPTIONS (rpg-project#569
+ * R2), where a line carries its own check and what is answered on either
+ * verdict ([ANSWER_VERDICTS]). They are refused by name
+ * ([RETIRED_TRIGGER_KEYS]), not offered.
  *
  * `time` FIRES WITHOUT ANYBODY TALKING TO IT — the creature's turn in a
  * fight, or a round of the world clock — which is why it is the one trigger
  * the four action words are legal on. */
 export const ANSWER_TRIGGERS: readonly AnswerTriggerSpec[] = Object.freeze([
   {
-    key: 'intimidated',
-    label: 'Intimidation landed',
-    help: 'The threat worked. What the creature does now.',
-    applicability: 'social',
-  },
-  {
-    key: 'intimidate_failed',
-    label: 'Intimidation failed',
-    help: 'The threat did not land. Failure may cost the party something — that is what gives the attempt teeth.',
-    applicability: 'social',
-  },
-  {
-    key: 'persuaded',
-    label: 'Persuasion landed',
-    help: 'The appeal worked. What the creature does now.',
-    applicability: 'social',
-  },
-  {
-    key: 'persuade_failed',
-    label: 'Persuasion failed',
-    help: 'The appeal did not land. A failed appeal is where a lie or bad directions live.',
-    applicability: 'social',
-  },
-  {
     key: 'time',
     label: 'Has time',
     help: 'The creature’s turn in a fight, or a round of the world clock — the one trigger that fires without anybody talking to it.',
     applicability: 'time',
+  },
+]);
+
+/** The four social table keys that retired to options (rpg-project#569 R2) —
+ * `encounter.RetiredTableKeys`. A table carrying one is refused BY NAME with
+ * the engine's sentence ([retiredTriggerRefusal]) rather than as an unknown
+ * trigger: the author wrote something this build once understood. The deeds
+ * of the same names (`when: { intimidated }`) are NOT retired — a beaten
+ * Intimidation line still lands the deed. */
+export const RETIRED_TRIGGER_KEYS: readonly string[] = Object.freeze([
+  'intimidated',
+  'intimidate_failed',
+  'persuaded',
+  'persuade_failed',
+]);
+
+/** `dungeonspec`'s `retiredTableKey`: where a retired social key went. */
+export function retiredTriggerRefusal(key: string): string {
+  return `\`${key}\` is no longer a table key: author an option`;
+}
+
+/** The two VERDICTS an option answers on (rpg-project#569 R2) — `success`
+ * when the speaker's check was beaten, `failure` when it was missed.
+ *
+ * THEY ARE NOT TRIGGERS, and that is why they are their own list. A trigger is
+ * a key of an `on:` table; a verdict is a key of ONE OPTION (`OptionSpec`'s
+ * `success:`/`failure:`), and `on: { success: … }` is refused as the unknown
+ * trigger it is. What they share with the social triggers is the applicability
+ * group: the engine judges an option row with the table's own `answerEntry`
+ * under the verdict's key (`grammar.options`), so `fact`, `flee` and a line are
+ * legal there, a time word and a `when` are not, and the sentences name the
+ * verdict — "`attack` is what a creature does with time, and `success` is an
+ * outcome". */
+export const ANSWER_VERDICTS: readonly AnswerTriggerSpec[] = Object.freeze([
+  {
+    key: 'success',
+    label: 'The check was beaten',
+    help: 'What it answers when the line landed.',
+    applicability: 'social',
+  },
+  {
+    key: 'failure',
+    label: 'The check was missed',
+    help: 'What it answers when the line did not land — the half that makes trying worse than not trying.',
+    applicability: 'social',
   },
 ]);
 
@@ -361,12 +384,14 @@ export function answerTrigger(key: string): AnswerTriggerSpec | undefined {
   return ANSWER_TRIGGERS.find((t) => t.key === key);
 }
 
-/** What group a trigger belongs to, or undefined when it is not a trigger
- * this build rolls. */
+/** What group a trigger — or an option's verdict ([ANSWER_VERDICTS]) —
+ * belongs to, or undefined when it is neither. */
 export function answerTriggerApplicability(
   trigger: string
 ): AnswerApplicability | undefined {
-  return answerTrigger(trigger)?.applicability;
+  return (
+    answerTrigger(trigger) ?? ANSWER_VERDICTS.find((v) => v.key === trigger)
+  )?.applicability;
 }
 
 /** Whether a word may be written under a trigger — the whole of the

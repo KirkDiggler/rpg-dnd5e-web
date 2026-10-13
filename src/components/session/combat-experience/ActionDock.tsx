@@ -93,16 +93,12 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.CAST) {
     return castLabel(declaration);
   }
-  // The social verbs name themselves, like the two reaction answers above and
-  // unlike the weapon, the ability and the spell: the server compiles no
-  // action definition for either (the seam sends a sealed selector and no
-  // AttackRef), so there is no authored label to prefer and nothing here is
-  // going stale against content.
-  if (declaration.verb === Verb.INTIMIDATE) {
-    return 'Intimidate';
-  }
-  if (declaration.verb === Verb.PERSUADE) {
-    return 'Persuade';
+  // Speak names itself, like the two reaction answers above and unlike the
+  // weapon, the ability and the spell: the server compiles no action
+  // definition for it, so there is no authored label to prefer. The lines it
+  // offers are authored, and they are drawn on the target step, not here.
+  if (declaration.verb === Verb.SPEAK) {
+    return 'Speak';
   }
   return 'Move';
 }
@@ -132,11 +128,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   if (declaration.verb === Verb.REACT) return '⚡';
   if (declaration.verb === Verb.CAST) return '✧';
-  if (declaration.verb === Verb.INTIMIDATE) return '☠';
-  // The appeal's own mark, and deliberately not the threat's: the two verbs
-  // share one machine and are opposite choices, so a player scanning the dock
-  // must not have to read the label to tell them apart.
-  if (declaration.verb === Verb.PERSUADE) return '☮';
+  if (declaration.verb === Verb.SPEAK) return '❝';
   return '➜';
 }
 

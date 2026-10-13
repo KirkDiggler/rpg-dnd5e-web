@@ -3,12 +3,13 @@
 import type { MainHandSocket } from '../components/hex-grid/mainHandPresentation';
 
 export const GENERATED_NPC_APPEARANCE_PROVIDER = Object.freeze({
-  commit: '455f19a0d30e4cb940128f5fb16d447b89a5bbac',
+  commit: 'fa590ed40f1aadedb6add6074f8dc6efa07dd457',
   manifestSha256:
-    'bd57b084aea1cfd0e5da8ef44179d38cd01cbb741a113afe663ad1794472a7d5',
+    'f286568ddc4b16de39002849560b8f1c4a8eff7f81192831a888c24d8c86007d',
   selectionSha256:
-    '22cf7b0e853030b59e32ba19e2e3ca247e064c58b9a9c03ad965680624920391',
+    'b7c20429176906c91186f80f399698a38223ecdcd75fd6f82df11e9c7859d17d',
   releases: Object.freeze([
+    'goblin-human-palettes-v2',
     'goblin-war-camp-v1',
     'kingdom-npcs-v1',
     'kingdom-palettes-v1',
@@ -283,15 +284,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-knight-01.glb',
     downedUrl: '/models/synty/npcs/goblin-knight-01-downed.glb',
     standingSha256:
-      'd8f31c9058322ad8e6682aa1e33ec1f34dea50d2b8918389dda0ad453075e372',
+      '345fac3cdcb4a834c8c375e111bdce96469afd1a93a6866612e2fa07c2d304df',
     downedSha256:
-      '8bb6c4ba24eccb70092c4ab0e08ec024e173b375f788a9db63b069f73e80ddb8',
+      '1930c99620ab1d139ff50576a2eac26190fe29489d8595edb067631b3a9a8211',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style01B',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-01-b',
+    displayName: 'Knight 01 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/01-b-downed.glb',
+    standingSha256:
+      '1bc8784e83061c3f36492778528983903e710dd0a417e36a0420561844e7e61e',
+    downedSha256:
+      '1c3d31aca3bf4d42ce409a99e65eec761d123138d72b9f816f2e9f9089252cc5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style01C',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-01-c',
+    displayName: 'Knight 01 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/01-c-downed.glb',
+    standingSha256:
+      '18cbcbd4fb3c555f3d1241ac27c665bdd9584248471928fa347d5e25fd6486d3',
+    downedSha256:
+      'd6d5c5198b6d91a53e84d4af5e9d3bcf948083bd5aa27b465b12b066cf95c932',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style02A',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-02-a',
+    displayName: 'Knight 01 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-a-downed.glb',
+    standingSha256:
+      'e488530a6b316400c8738fd9ad085db65f2f632efdcff5db03d501c867a246e4',
+    downedSha256:
+      'b0a29fdbc6a9bec19e2592e4066d59bda752be23675bbc07bb8af56744307ec1',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style02B',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-02-b',
+    displayName: 'Knight 01 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-b-downed.glb',
+    standingSha256:
+      'b8d00c6ded9b7e5d09049ae16b8d2d4343fbf613b827a2f6182d81603472e30f',
+    downedSha256:
+      'fcb66c8356de9e2bd2ffbc4118222552373404704a5f90322439a52da02805a5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style02C',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-02-c',
+    displayName: 'Knight 01 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/02-c-downed.glb',
+    standingSha256:
+      'c78e5abf6acde8c13ca84bfd8a86039a02b1dae5f25deba43014096edb567684',
+    downedSha256:
+      '9f2ed21fea3b1acb230844c3da69016bd98124e998e8523e166d808d5db35fa5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style03A',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-03-a',
+    displayName: 'Knight 01 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-a-downed.glb',
+    standingSha256:
+      'efe232cd67eda60f0884ca8336f49570b7aa7cad011542a2fc9c393bdc3f355a',
+    downedSha256:
+      'd148d50aba5a5c1fdfc56a349fb08ed0408dd1fc00862ae9b254a304ffa7e0c5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style03B',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-03-b',
+    displayName: 'Knight 01 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-b-downed.glb',
+    standingSha256:
+      'aabfbb145df9a39c572bb17af823bd6832a3c8c80d425fc3702ba70aedf5a1db',
+    downedSha256:
+      '2557e5ecdf78ddf46b613564193e726517d9530ad90edefcc1cffc67845c3627',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style03C',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-03-c',
+    displayName: 'Knight 01 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/03-c-downed.glb',
+    standingSha256:
+      'cdc5201187a007e49a6e9905e64c0cca494987017796e30207259f8583130948',
+    downedSha256:
+      '638ede47c046be69a52f6de751a95d5d85f12d81f13f7caaa40ea7299a99d1fb',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style04A',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-04-a',
+    displayName: 'Knight 01 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-a-downed.glb',
+    standingSha256:
+      'e03397d06fff4abf79e9cafc17ec04c3bc2017c986d12ccc8e32a1ef219c969e',
+    downedSha256:
+      'a47ce8e1eaf0aef900733eb41b72480aa8deff9a20ca6ed7fd3ac308e546c8f7',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style04B',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-04-b',
+    displayName: 'Knight 01 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-b-downed.glb',
+    standingSha256:
+      '24fc152f17e471217aa121e5211ff8d923f13a4f83203ec98c9a82ae2173b68c',
+    downedSha256:
+      '7861a0e1fb66a789f85a366382826cdc6b1e12bdb25cb710e8a54d6d7e9e3392',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:knight-01-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinKnight01Style04C',
+    assetRef: 'dnd5e:npcs:goblin:knight-01-style-04-c',
+    displayName: 'Knight 01 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Knight_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinKnight01/04-c-downed.glb',
+    standingSha256:
+      '2ae6b47f3cfe6039f60c015d151764d9ab930d51edb17d7d323deeaa7e8eadef',
+    downedSha256:
+      '42c5c4ae38096d37014f3a3538afe4d367111b33487508a7c9fd39a021d0bb4b',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:knight-01',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:goblin:prisoner-01': Object.freeze({
     releaseId: 'goblin-war-camp-v1',
@@ -304,15 +618,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-prisoner-01.glb',
     downedUrl: '/models/synty/npcs/goblin-prisoner-01-downed.glb',
     standingSha256:
-      '0c5535d587009dfe0657d12ee6b9fd703f12d282e58c2799e628f965aa3885d6',
+      '4da6ee6c5ca60612463e524a6e848daba9529329cd48cc875800cc8c71573482',
     downedSha256:
-      'fbfc3e4dbe0a7643fdecd56ef1eb0259c46a8b6ceac5bf5659461bf83ec46356',
+      'f966c83d0da90c4d5d33a43b7bd747f19e28664e2f6e67edb333ef24369e171a',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style01B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-01-b',
+    displayName: 'Prisoner 01 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/01-b-downed.glb',
+    standingSha256:
+      'd875758d3f015e0b3c6f3d05aceeb038fe8198e356e1beb29f155dc05146bd95',
+    downedSha256:
+      'cfc048f109b1870a6d10492614246ff6075d5e9ae1c018e5d169ec70bd634a19',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style01C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-01-c',
+    displayName: 'Prisoner 01 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/01-c-downed.glb',
+    standingSha256:
+      'bd7d2ca39699e6346915efbe0a31c17d4b921cbc240b9c2a925f2ddbb1c588a7',
+    downedSha256:
+      '664ad29e632198fc358ba6484d0d62bdee6257a683928efde0e3154ed4eaff33',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style02A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-02-a',
+    displayName: 'Prisoner 01 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-a-downed.glb',
+    standingSha256:
+      '35c4805d7808102832bb7ccce98d461a90da32d8abc2a25600b3d5defae725c9',
+    downedSha256:
+      '133c51e1ee051a7585a64737b08729383dd98888ecce8521a901fc68f7b2a744',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style02B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-02-b',
+    displayName: 'Prisoner 01 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-b-downed.glb',
+    standingSha256:
+      '6aaa11f0576abd0164c85897ae536de862a1ec8753e339e889dc7dd91d4431e9',
+    downedSha256:
+      '54872c52652cb52c72c26f87b42a8ea195ff143e00199b0323ea48976b275cfb',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style02C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-02-c',
+    displayName: 'Prisoner 01 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/02-c-downed.glb',
+    standingSha256:
+      '91dabef2b88533e217ae5752500bc7ea3d192963eff54a673abbdeaf17585633',
+    downedSha256:
+      'cf2ff574d8557862b3292d424a293a442cc8389be3ec84cdbdcbc6f57b4aec5b',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style03A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-03-a',
+    displayName: 'Prisoner 01 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-a-downed.glb',
+    standingSha256:
+      '60ed7f884d59134c6bf4c98888ea03302fd86dc22c30fe9a87af67149f849a26',
+    downedSha256:
+      '52f5751cbb89b26e76b339f8ec5354e8e44ff8b2a901d2e9bbb640d6598bb31a',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style03B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-03-b',
+    displayName: 'Prisoner 01 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-b-downed.glb',
+    standingSha256:
+      '18d98a0137edf407748ce3ae164a132b8e13acb892b776465f97bf514dbf5794',
+    downedSha256:
+      '9d40d48d30a833e85a5ca7d1749500124f9f3f885591571df1f081116008a334',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style03C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-03-c',
+    displayName: 'Prisoner 01 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/03-c-downed.glb',
+    standingSha256:
+      '4815efa6f8d5f3d8e6fd1f17ef6b6082d526f83def6672cc7903205bbaf5dba6',
+    downedSha256:
+      'd9e861ecd079eaca3af76d866572a8b004ab85160782d52b73b357fa6d09d9c5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style04A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-04-a',
+    displayName: 'Prisoner 01 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-a-downed.glb',
+    standingSha256:
+      '5e2c8148528f7fa2bf6c15f58560fe5d6b69e2cddc4ca9b91ef5eff5ff4a6613',
+    downedSha256:
+      '1d52c5f2a3a41081aeebff179d8700c90280a9f327bbebbf0c417ba851487aea',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style04B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-04-b',
+    displayName: 'Prisoner 01 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-b-downed.glb',
+    standingSha256:
+      'e19cbe1fad38994395ebc88b62c3c01dcd19ee21d02b5c204914eee0a96a571a',
+    downedSha256:
+      'b4dc416c322aca414aab7a36eb81017ad0d1f240e4a3bc43e2e2361da716f70d',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-01-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner01Style04C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-01-style-04-c',
+    displayName: 'Prisoner 01 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner01/04-c-downed.glb',
+    standingSha256:
+      'f40c1f8e986e1699817b21e0d790100b6df6c8424b31bcd48ad43db0164bfc89',
+    downedSha256:
+      'd0d8c3392fd5205f03115bea7230d8ef0cc9e48bfb4b5391c3d90ba5192e2905',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-01',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:goblin:prisoner-02': Object.freeze({
     releaseId: 'goblin-war-camp-v1',
@@ -325,15 +952,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-prisoner-02.glb',
     downedUrl: '/models/synty/npcs/goblin-prisoner-02-downed.glb',
     standingSha256:
-      '758ce0e950044f6b90ea7e3c684f13813fa0b52014d81e6aead12060b6c69389',
+      '0aece9cf96b50f4c10db03ac8c2376c571a13b0c76c38c24add486bc5b50b8c5',
     downedSha256:
-      '5049bcd1c9be36b4125135c91faabec522f64635e313b54f17a825cdeb0d5147',
+      'b9897ac957b88c48820f766bd2ce8ce9a9a0126e5d983fb8e696d2e034ec35d5',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style01B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-01-b',
+    displayName: 'Prisoner 02 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/01-b-downed.glb',
+    standingSha256:
+      'b29a70d9a6aa953c64b49fb1e82f1a1d6930ccaf13fb57f07664bfa2e180fe58',
+    downedSha256:
+      '9cedc6c83a32509d44e2e86dd91b446841ecb26d7a2b15c07aa3924c8aec9bb6',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style01C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-01-c',
+    displayName: 'Prisoner 02 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/01-c-downed.glb',
+    standingSha256:
+      '1d492688eb953ed8fadc37dfd6c377cd5cd8be52e6aa1ceea949cd2889922686',
+    downedSha256:
+      '901556f9b148bbc7e2f6804bfca99f80681a71075b73a19e75db5c969e4325dd',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style02A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-02-a',
+    displayName: 'Prisoner 02 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-a-downed.glb',
+    standingSha256:
+      '70b64f33a3367edc2b56db73fffe26cba3dc50acbe7678639af67469c0029614',
+    downedSha256:
+      '673f030622e0325fb9eb5673674d324148c10f08d7906c95268cb8c799dccef9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style02B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-02-b',
+    displayName: 'Prisoner 02 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-b-downed.glb',
+    standingSha256:
+      '3529afd4e221c19d6109c5476f8ba69281beb9b932f3ea209d97a377fb85cd63',
+    downedSha256:
+      'cc767aa913a7586e8610ba34c6f71f36391e6a2d881e729604592c2f1eb3110d',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style02C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-02-c',
+    displayName: 'Prisoner 02 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/02-c-downed.glb',
+    standingSha256:
+      'e03930b1502294395363f96c08877231d3c0d23e2ceff8ef68c490491e0f7629',
+    downedSha256:
+      '4ba941c3993f8f40f838f7dc972a015b2649e69af88d5bf863f958132392c5c9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style03A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-03-a',
+    displayName: 'Prisoner 02 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-a-downed.glb',
+    standingSha256:
+      '8e13044d014ee41d447e9df26dbac09ce5fc61f5e0ebddd72e3e4fc09a75830b',
+    downedSha256:
+      'b55078d237399a0451c5b4c653d64b7f5082e8f8b8bb159c198e838b7d90ea1c',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style03B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-03-b',
+    displayName: 'Prisoner 02 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-b-downed.glb',
+    standingSha256:
+      'ddbb546f38c6901dcba4a5280854752ebd10d65f10062cee81f26b5665f9cd3b',
+    downedSha256:
+      '09db49eb68fe7fe763702c13f132c691e05e8b6e7ba414a483ca0660d0f86d31',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style03C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-03-c',
+    displayName: 'Prisoner 02 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/03-c-downed.glb',
+    standingSha256:
+      'c926aa0dbe1693e4be69e529ec83ff189a93f8f30189d2c521fbcea344805680',
+    downedSha256:
+      '4d30c5030b1d3822de3b3aade4222f2a47a1f4eded343ac325f2ff5bd6104468',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style04A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-04-a',
+    displayName: 'Prisoner 02 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-a-downed.glb',
+    standingSha256:
+      '6e5d617bab11a6087d8ae1a8a3a2d8879eef5b94fcd5c089511dcc4873f85d17',
+    downedSha256:
+      '86dc0d75b3faa4bbb7a9d3ef9d56be651eb3213cab2c73c76d174e469dcc9863',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style04B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-04-b',
+    displayName: 'Prisoner 02 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-b-downed.glb',
+    standingSha256:
+      'fd7f6fb3db8746362bd25260be0a6f67f4faa51a166c0ce7ec0f351c6853321f',
+    downedSha256:
+      '82640f4c04fcc35a6816e1de5cd406868ec5ee3ea7df6916fa52036f469d651a',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-02-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner02Style04C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-02-style-04-c',
+    displayName: 'Prisoner 02 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_02',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner02/04-c-downed.glb',
+    standingSha256:
+      '95631ac0fce4e823f542262ddca1461b62c97dd85f243edbf629509687b1b049',
+    downedSha256:
+      '66927c87c0450d66cebb533f4db024139141454f628ab222f63480ceab21a5a6',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-02',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:goblin:prisoner-03': Object.freeze({
     releaseId: 'goblin-war-camp-v1',
@@ -346,15 +1286,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-prisoner-03.glb',
     downedUrl: '/models/synty/npcs/goblin-prisoner-03-downed.glb',
     standingSha256:
-      'a738215711177dad9e8cfbf2552d8b4b6128962d754055c7a10dabe6108a3c50',
+      '46dbc9f460d844784c1946fcd402cdfe2768a67f59a6eb5c9dfad8a922ed8f6a',
     downedSha256:
-      'edbf48297b1ce8d851013cfae5f57d687e21d110a0a6e3b499818b14ad800843',
+      '3399d5e00847a22ee175c357a8192ec1df080d26ca6622ade9d410d0a2c9578e',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style01B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-01-b',
+    displayName: 'Prisoner 03 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/01-b-downed.glb',
+    standingSha256:
+      '9ac9a6d5de32198763d72f3a8db9f4f6e165510f4c7ffa288b47c3870cfb4b51',
+    downedSha256:
+      '3b999bf5b10205ce5c30fd787c98aefa29233bb99cbd2bb8ae0883ce932e0065',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style01C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-01-c',
+    displayName: 'Prisoner 03 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/01-c-downed.glb',
+    standingSha256:
+      '6830966f32da2a225435b1926da96fcebdb36793a26542a0ab36959b897525de',
+    downedSha256:
+      'be4d05d2c19ae38b9567452c49c9eec878df6695bf94054c7452c300199ec23e',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style02A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-02-a',
+    displayName: 'Prisoner 03 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-a-downed.glb',
+    standingSha256:
+      '1057ba8c30a9bd8700d4c25683d86d61510511d4ec4fc225631b242b9dbefaeb',
+    downedSha256:
+      'a3ca946db3c434a1af95110469054f21eeaa417b4542b069f8107daa8fe53f7c',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style02B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-02-b',
+    displayName: 'Prisoner 03 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-b-downed.glb',
+    standingSha256:
+      '08f6c8435a3c80296b49b27dfbb81892bc42d42350105e7bddbc4ad94695a4c4',
+    downedSha256:
+      'ff5be54b6b0f22ee36f018d9d5ffced654df6e11cd81fd58c0af92ab7a4a0c0b',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style02C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-02-c',
+    displayName: 'Prisoner 03 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/02-c-downed.glb',
+    standingSha256:
+      '93e14473cc0a03d9f96d5c75fe46bc28ebfa0f2b682251f102886f305c585e4e',
+    downedSha256:
+      '56826d28fdc287286b0628d3cbdd9ddec9888510fdd87cd7c4e8abcc28ecf8c4',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style03A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-03-a',
+    displayName: 'Prisoner 03 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-a-downed.glb',
+    standingSha256:
+      '3ab9d60a039fee2b05fb8dfc7ed4c67c0bc18ad357b1c797535e53a21a3b08cd',
+    downedSha256:
+      'a568b6a4f2037a28958611f7e43d213b121910f4c3d37685a0a2a97b41e12988',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style03B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-03-b',
+    displayName: 'Prisoner 03 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-b-downed.glb',
+    standingSha256:
+      '4baccc4da6c60d1bddfc61735a118d9f8c04baf0adfc0535872296f065629ea5',
+    downedSha256:
+      '147b989ee21285a0c460da0aba59dcbdef3bf1bb2edb46e5752f9fd1c9127a40',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style03C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-03-c',
+    displayName: 'Prisoner 03 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/03-c-downed.glb',
+    standingSha256:
+      'dd670fcfb82d5528527a11b61840f700cd79f3edb6909dc7a9a94edb23be9cad',
+    downedSha256:
+      'bfd09b117b2ce16f48fcf93fbbcc2e8094ff2742b9418a61d3dcf773d538fcfc',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style04A',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-04-a',
+    displayName: 'Prisoner 03 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-a-downed.glb',
+    standingSha256:
+      '17788a6a0c2497846e9364150342f0ea18161de54a2a166278a326995ca6faf2',
+    downedSha256:
+      'e9f8e42a77172743f21196d8af6ebdc53fdf28d1ffed518b45a41f26a2d1f1bd',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style04B',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-04-b',
+    displayName: 'Prisoner 03 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-b-downed.glb',
+    standingSha256:
+      'aca510468997677048dce5c16d00900d9ed39307c327c6cdb8746a38c8da8767',
+    downedSha256:
+      '429540224316a566445accdbb0825d26823c9f24b9f855d9e328eddbbd2e0ef2',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:prisoner-03-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinPrisoner03Style04C',
+    assetRef: 'dnd5e:npcs:goblin:prisoner-03-style-04-c',
+    displayName: 'Prisoner 03 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Prisoner_03',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinPrisoner03/04-c-downed.glb',
+    standingSha256:
+      'dc0f8cef40fa2716ed865d457590b47dc35f8fb503ad62f2ab0e0e5c0e32194d',
+    downedSha256:
+      '25c8f2f73f6a54b3ee86dbea9e8e1211af1a4842bcdbb72178909c8635dab2ad',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 51): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 1): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:prisoner-03',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:goblin:ranger-01': Object.freeze({
     releaseId: 'goblin-war-camp-v1',
@@ -367,15 +1620,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-ranger-01.glb',
     downedUrl: '/models/synty/npcs/goblin-ranger-01-downed.glb',
     standingSha256:
-      '27f03eb0f3ca1e9968b76a6baaea1472c420e160d496cc3c0df2e046d2311172',
+      '673756c0dbb33d09090cb713fea08545ac7d6672a16dd7c95ed372f2ce9408d2',
     downedSha256:
-      '7a658e8f37dac3e924736fae784752bae0f7197c5056de81d9b24488a34994bb',
+      'f03c555e0fd9b0f1a4c81ef8f3260a6af2e8dad350a6d360e1cfb301190642ab',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style01B',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-01-b',
+    displayName: 'Ranger 01 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/01-b-downed.glb',
+    standingSha256:
+      '63968d121b94afbe9dcee9dbc5fe366db7cbf0e148179d82dbf8844827437fd9',
+    downedSha256:
+      '2b5ca6f65d7a5137baf0550703f716a9a38de30126a846f1cde88951aab5ca59',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style01C',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-01-c',
+    displayName: 'Ranger 01 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/01-c-downed.glb',
+    standingSha256:
+      'cf2df99a9529c234aade9c040dd28a4adb73ca06fc6f7cabb683d9c63f05254f',
+    downedSha256:
+      '38dafb7c0b40753244dddeeb5ef92cae6f71c71b1a6ef82381edd1f8546fdc00',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style02A',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-02-a',
+    displayName: 'Ranger 01 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-a-downed.glb',
+    standingSha256:
+      '0234c124360200ba07f37eb4ee3a9aa09e555fb9f9a4ae507aecfd3c0e93e7eb',
+    downedSha256:
+      '0b82aad9a88ce5adfb71391394018fb121b6f96401f9765ab9973dd986e6bde5',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style02B',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-02-b',
+    displayName: 'Ranger 01 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-b-downed.glb',
+    standingSha256:
+      'b9fb2a56a02a74afb2484fa6fdcf2b1682d85d7ba68280002525f3237f43e949',
+    downedSha256:
+      'a74567a682db00b1d14d0a0845b93a61797621b57d864cf02536c269752f3cf2',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style02C',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-02-c',
+    displayName: 'Ranger 01 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/02-c-downed.glb',
+    standingSha256:
+      '3144503641f62e61d8de7d52ddfa296d36beaa096f06bedc2e88644f112dc09d',
+    downedSha256:
+      'ea9837ce9cdde952844aff480ce03c1e988136df1b5a62f684112812fa0c0d50',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style03A',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-03-a',
+    displayName: 'Ranger 01 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-a-downed.glb',
+    standingSha256:
+      '6ce955e74bbf8de7177382ffad91bc6ae616ed96734cbf69097a67d86e5f1efa',
+    downedSha256:
+      'c37a8707da9f1a140793ccf88b9892c664e790b85f7b0ed2fa66ce5bee49ac0d',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style03B',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-03-b',
+    displayName: 'Ranger 01 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-b-downed.glb',
+    standingSha256:
+      '5e612e05df20ecfc28e2b02438520487406a85f76db082f09bcb97034468cf0e',
+    downedSha256:
+      '6e33366bc43c99620a68fdf62b2d222ffca0042a981d51f369cc49a7f136e559',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style03C',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-03-c',
+    displayName: 'Ranger 01 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/03-c-downed.glb',
+    standingSha256:
+      '14a5dc7603c33a340424d5a5bd88f1e6dc26de8ac612fd1b270ef75ec1aee251',
+    downedSha256:
+      '75c874221ee82aea37459dd02e3573aa986d42aabb6029cfc648af739b3bd16c',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style04A',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-04-a',
+    displayName: 'Ranger 01 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-a-downed.glb',
+    standingSha256:
+      '2f58df852b12e63468cfa019030342cc209b4f24b99ac42d4ba211e1ea924bd7',
+    downedSha256:
+      '00f1d83e2edfc46df7747d33a49c55d169601c602e378c647c0a3530fdf2fe47',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style04B',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-04-b',
+    displayName: 'Ranger 01 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-b-downed.glb',
+    standingSha256:
+      '4ff8ad4862a2879e1ec69dabbbb02f85c718ef15ee1e54e1abc821a3f5fcab81',
+    downedSha256:
+      '9587cc7aaf777ed7e23dd8e044534c6df18c83a4b2bcda282774c779508691ac',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:ranger-01-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinRanger01Style04C',
+    assetRef: 'dnd5e:npcs:goblin:ranger-01-style-04-c',
+    displayName: 'Ranger 01 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Ranger_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinRanger01/04-c-downed.glb',
+    standingSha256:
+      '3eef01940fe68d7e53b0512a014ec3f5ca92aae5e8dd1f08ded517b3ac777711',
+    downedSha256:
+      '38263f8fce3b231e6f818659848501911de44ddfe3d95aab1a102c2772466a56',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:ranger-01',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:goblin:shaman-01': Object.freeze({
     releaseId: 'goblin-war-camp-v1',
@@ -430,15 +1996,328 @@ export const GENERATED_NPC_APPEARANCES: Readonly<
     standingUrl: '/models/synty/npcs/goblin-wizard-01.glb',
     downedUrl: '/models/synty/npcs/goblin-wizard-01-downed.glb',
     standingSha256:
-      '1c7ade7d4eb1536ff85db8195d775eb308764493310070f716054f3878852285',
+      '8d6c1b6cd7d3d7627b15a81069d7ec90e54a7ce348e5eb0582544c55009af163',
     downedSha256:
-      '4a6042dd3237c30378db7b990d3c72c29128c818cac687d3163c19c7b99ac6bd',
+      'a74ec0c987b6f5f8d6d608a960ad255d2dd430dc0adecf470896e2b0f17aa410',
     animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
     jointCount: 50,
-    pose: 'Compatible baked 50-bone donor Actions: Idle_Relaxed [2,55] and in-place Walk_Forward [2,33], 30 fps; one constant whole-body grounding offset per clip.',
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
     rootWrapper:
-      'Standing preserves the standard-rig Armature root; static downed sibling uses the established Root 0.01/90-degree-X wrapper.',
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
     forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '01',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-01-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style01B',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-01-b',
+    displayName: 'Wizard 01 · 01 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/01-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/01-b-downed.glb',
+    standingSha256:
+      '686702810da4bc7c2325349b0430643a65aac18e2105bf680042cb52bd186d0f',
+    downedSha256:
+      '7ce66bf184c048bb806d19b6d23b255a307c6f173084011d6c4a4b508ba7dfe3',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '01',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-01-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style01C',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-01-c',
+    displayName: 'Wizard 01 · 01 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/01-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/01-c-downed.glb',
+    standingSha256:
+      '274d856487fed0153cffc54ff9f161500c17ce2ea82961151374caa201176678',
+    downedSha256:
+      'acb2d481b70bce29de7b9b3c9973136638256a13d655c5b6ae00daa07d07a6ce',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '01',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-02-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style02A',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-02-a',
+    displayName: 'Wizard 01 · 02 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-a-downed.glb',
+    standingSha256:
+      '3ffc32a894799f0005e304a7b0f20dce7cd26ff7a060524fca1d09a724fc4ce4',
+    downedSha256:
+      '75d4a24861521ab78f01f8c5661c5c8fd4604c42f52b54a39982d73c239d271f',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '02',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-02-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style02B',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-02-b',
+    displayName: 'Wizard 01 · 02 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-b-downed.glb',
+    standingSha256:
+      '4058185341163a8b70fb8c93dd7c56f9a51aea08019c3047b3f970d6a36059f9',
+    downedSha256:
+      '21d8c1f1f24fc3c0fe7aa195bb5c2bd33aaad0cadf3d3bd6e71f6aa4c48bf02a',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '02',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-02-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style02C',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-02-c',
+    displayName: 'Wizard 01 · 02 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/02-c-downed.glb',
+    standingSha256:
+      'b0a9ebf7ee16ee2f81cd5e22192ede2a0f4b48550ec83a8326709fa7b5363a79',
+    downedSha256:
+      '53aa74e38d8b00defa72ee4876fb9462cbe1dbc3dcfd1d2b23c8024733a0477a',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '02',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-03-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style03A',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-03-a',
+    displayName: 'Wizard 01 · 03 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-a-downed.glb',
+    standingSha256:
+      '469dab0ca93c031b5e5edc1d75e4e502d8ca2ae7aa03856fd3be08c30d00b9a6',
+    downedSha256:
+      'd66da3140af5c9242e9afa7d9639a1659d77be1b670a34a10f38cecc35341bc9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '03',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-03-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style03B',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-03-b',
+    displayName: 'Wizard 01 · 03 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-b-downed.glb',
+    standingSha256:
+      '6838e95d6f8ce824066e5bed3c4bd2af474ed995702e15c2aa6534152b2887f8',
+    downedSha256:
+      '7357b5f151c6bc7e0a0ac865856de75d418c62983f4520a4add64999d2f33104',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '03',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-03-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style03C',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-03-c',
+    displayName: 'Wizard 01 · 03 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/03-c-downed.glb',
+    standingSha256:
+      '8fa03248f9de29d54a8ead3666d5d40fb9a1033d3bfabb3a1e1b46dfa93713f1',
+    downedSha256:
+      '930ab2ed50d29c3ab4349c24659e3ef761afad869a839bf84db84fdf3fa9edb9',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '03',
+      skinPalette: 'C',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-04-a': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style04A',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-04-a',
+    displayName: 'Wizard 01 · 04 A',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-a.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-a-downed.glb',
+    standingSha256:
+      '0959ac2dc61a044a2794faca9c61e8cf84402a2b3b40c803f0c87828432d94eb',
+    downedSha256:
+      '2e6805d99b68aeb09a366780e9b775d01cf625ec5e7c28a0b0a4000b06a9ddad',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '04',
+      skinPalette: 'A',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-04-b': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style04B',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-04-b',
+    displayName: 'Wizard 01 · 04 B',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-b.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-b-downed.glb',
+    standingSha256:
+      '9e420eb9bd7933c6dd97e3fbd69e0b425330030f093c2560e47905ef1bae197d',
+    downedSha256:
+      'e6104d6256b8d4f8bdd1b5cae7ecae83cfad2dd4f3ebf9fc8b50c0eafce5cefe',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '04',
+      skinPalette: 'B',
+    }),
+  }),
+  'dnd5e:npcs:goblin:wizard-01-style-04-c': Object.freeze({
+    releaseId: 'goblin-human-palettes-v2',
+    manifestId: 'goblinWizard01Style04C',
+    assetRef: 'dnd5e:npcs:goblin:wizard-01-style-04-c',
+    displayName: 'Wizard 01 · 04 C',
+    rulesRef: null,
+    sourceName: 'SM_Chr_Wizard_01',
+    sourcePack: 'polygon-goblin-war-camp-v2',
+    standingUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-c.glb',
+    downedUrl:
+      '/models/synty/npcs/palettes/goblin-humans-v2/goblinWizard01/04-c-downed.glb',
+    standingSha256:
+      'f88cb3aaf401c3d5ce9794c698af12f823914b2e79b8b73f60bf2577de834330',
+    downedSha256:
+      'cc70b8bb9caf5860f1cb8c586a2756edbe1710e2e79cba1b0c14071bbc89b82a',
+    animationClips: Object.freeze(['Idle_Relaxed', 'Walk_Forward']),
+    jointCount: 50,
+    pose: 'Human Idle_Relaxed and Walk_Forward retargeted onto the original 50-joint rig; static downed sibling. Includes fitted Hood 2.',
+    rootWrapper:
+      "Standing scene roots: 'Armature' (node 52): translation [0, 0, 0], rotation [0.7071068286895752, 0, 0, 0.7071068286895752], scale [0.009999999776482582, 0.009999999776482582, 0.009999999776482582]. Downed scene roots: 'Armature' (node 2): identity.",
+    forwardAxis: '+Z',
+    look: Object.freeze({
+      familyRef: 'dnd5e:npcs:goblin:wizard-01',
+      style: '04',
+      skinPalette: 'C',
+    }),
   }),
   'dnd5e:npcs:kingdom:blacksmith-female-01': Object.freeze({
     releaseId: 'kingdom-npcs-v1',
