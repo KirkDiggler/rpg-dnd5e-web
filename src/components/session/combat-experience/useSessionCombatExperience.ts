@@ -3,9 +3,8 @@ import { useSessionAttack } from '@/api/useSessionAttack';
 import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
-import { useSessionIntimidate } from '@/api/useSessionIntimidate';
-import { useSessionPersuade } from '@/api/useSessionPersuade';
 import { useSessionReact } from '@/api/useSessionReact';
+import { useSessionSpeak, type SpeakTarget } from '@/api/useSessionSpeak';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
   DicePresentationEvent,
@@ -46,6 +45,7 @@ import {
   selectCombatExperience,
   staleDeclarationMessage,
 } from './selection';
+import { speakLine, speakLinesFor } from './speakOptions';
 import { formatAttackRollArithmetic, storyId } from './story';
 import type {
   CombatExperienceAttackOutcome,
@@ -70,6 +70,7 @@ const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
   selectedCandidateMembers: Object.freeze([]),
   optionDeclarationId: null,
   selectedOption: null,
+  speakTarget: null,
   changedOptionNotice: null,
 });
 
@@ -147,6 +148,10 @@ export interface UseSessionCombatExperienceResult {
   /** Close the option menu without casting. Nothing has been sent yet. */
   onCancelCastOption: () => void;
   onTargetClick: (target: string) => void;
+  /** Speak's first step: pick (or with null, un-pick) who to talk to. */
+  onChooseSpeakTarget: (target: SpeakTarget | null) => void;
+  /** Speak's second step: say the chosen target's line with this option id. */
+  onSpeakOption: (optionId: string) => void;
   onConfirmTargets: () => void;
   /** The cell an armed caster-edge cast is aimed toward, in the wire's own
    * axial coordinates. A reference the engine reads, never a computed shape:
@@ -337,8 +342,7 @@ export function useSessionCombatExperience({
   const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
   const castInFlightRef = useRef(false);
-  const intimidateInFlightRef = useRef(false);
-  const persuadeInFlightRef = useRef(false);
+  const speakInFlightRef = useRef(false);
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -444,8 +448,7 @@ export function useSessionCombatExperience({
   const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
   const { cast } = useSessionCast();
-  const { intimidate } = useSessionIntimidate();
-  const { persuade } = useSessionPersuade();
+  const { speak } = useSessionSpeak();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -639,7 +642,14 @@ export function useSessionCombatExperience({
       (armedIsFreeHere || (clock === ClockKind.TURN && active === member)) &&
       armedMatches.length === 1 &&
       (promptsForMemberNow || promptsForCell) &&
-      armedMatches[0]?.available;
+      armedMatches[0]?.available &&
+      // A CHOSEN SPEAK TARGET MUST STILL HAVE SOMETHING TO HEAR. A fresh
+      // Afford that gated its last line (or lost sight of it) leaves the line
+      // step with nothing to draw, so the offer is judged changed rather than
+      // left open on an empty list (rpg-project#569).
+      (armedVerb !== Verb.SPEAK ||
+        !interaction.speakTarget ||
+        speakLinesFor(armedMatches[0], interaction.speakTarget).length > 0);
     return {
       armedIsCurrent: current,
       presentationState: current
@@ -956,13 +966,10 @@ export function useSessionCombatExperience({
       // Afford lists the members who can see the ACTOR rather than the ones
       // the actor can see, because that is the direction a threat travels.
       // This client reads the list and never the direction.
-      // AND SO DOES THE APPEAL (rpg-project#458), on the same branch rather
-      // than a copied one: the two social verbs differ in which RPC runs and
-      // in nothing else up to the click.
-      if (
-        candidate.verb === Verb.INTIMIDATE ||
-        candidate.verb === Verb.PERSUADE
-      ) {
+      // SPEAK, WHICH REPLACED BOTH SOCIAL VERBS (rpg-project#569), arms the
+      // same way. What differs is after the arm: the target click opens that
+      // target's lines rather than sending, and the line click sends.
+      if (candidate.verb === Verb.SPEAK) {
         const current = uniqueCurrentDeclaration(
           declarationsRef.current,
           candidate,
@@ -1190,6 +1197,120 @@ export function useSessionCombatExperience({
     onCancelSelection();
   }, [onCancelSelection]);
 
+  /**
+   * The armed Speak offer, read from the CURRENT declarations, or undefined
+   * when nothing coherent is armed or this clock gives the actor no say.
+   * Shared by both Speak steps so the target pick and the line pick ask the
+   * same question the same way.
+   */
+  const armedSpeak = useCallback((): Declaration | undefined => {
+    if (
+      !selectionIsCurrent() ||
+      speakInFlightRef.current ||
+      !authorityRef.current.fresh
+    ) {
+      return undefined;
+    }
+    const armedId = interactionRef.current.armedDeclarationId;
+    if (!armedId) return undefined;
+    const armed = declarationsRef.current.filter(
+      (declaration) => declaration.id === armedId
+    );
+    const declaration = armed.length === 1 ? armed[0] : undefined;
+    if (declaration?.verb !== Verb.SPEAK || !declaration.available) {
+      return undefined;
+    }
+    // Free on the world clock; on the turn clock, only on the actor's turn —
+    // the same per-verb gate the target click applies.
+    const freeOnThisClock =
+      authorityRef.current.clock === ClockKind.WORLD &&
+      isFreeOnWorldClock(Verb.SPEAK);
+    if (
+      !freeOnThisClock &&
+      (authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member)
+    ) {
+      return undefined;
+    }
+    return declaration;
+  }, [member, selectionIsCurrent]);
+
+  /**
+   * Speak's first step (rpg-project#569): who to talk to. A creature arrives
+   * here from the map or the list; a prop only from the list, because a prop
+   * is never a member candidate. Null steps back to the target list.
+   *
+   * A TARGET WITH NO AVAILABLE LINE IS NOT CHOSEN. The offer lists every
+   * (target, option) pair with its own `available`; a target whose lines are
+   * all gated has nothing to say to, so the click means nothing.
+   */
+  const chooseSpeakTarget = useCallback(
+    (target: SpeakTarget | null): void => {
+      const declaration = armedSpeak();
+      if (!declaration) return;
+      if (target && speakLinesFor(declaration, target).length === 0) return;
+      setInteraction({
+        ...interactionRef.current,
+        speakTarget: target,
+        changedOptionNotice: null,
+      });
+      setTargeting(true);
+    },
+    [armedSpeak, setInteraction]
+  );
+
+  /**
+   * Speak's second step: say one line. Sends the target and the option id
+   * echoed verbatim from the offer row, and nothing else.
+   */
+  const onSpeakOption = useCallback(
+    (optionId: string): void => {
+      const declaration = armedSpeak();
+      if (!declaration) return;
+      const target = interactionRef.current.speakTarget;
+      if (!target || !speakLine(declaration, target, optionId)) return;
+      setInteraction(EMPTY_INTERACTION);
+      setTargeting(false);
+      speakInFlightRef.current = true;
+      void (async () => {
+        try {
+          await speak({ session, member, target, optionId });
+          if (!mountedRef.current) return;
+          // NOTHING IS READ OFF THE RESPONSE. The roll reaches every witness,
+          // the actor included, on the `spoke` beat; what the creature does
+          // about it arrives as `answered`. Both are the world's account.
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          // A refusal at the door — the target cannot perceive the actor, or
+          // the option was withdrawn (`ErrNoOption`) — is shown as one. The
+          // request names no selector, so there is no stale id to recover.
+          const notice = `Speak failed: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`;
+          invalidateAuthority();
+          setInteraction({
+            ...EMPTY_INTERACTION,
+            changedOptionNotice: notice,
+          });
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+        } finally {
+          speakInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      armedSpeak,
+      invalidateAuthority,
+      member,
+      scheduleRefresh,
+      session,
+      setInteraction,
+      speak,
+    ]
+  );
+
   const onTargetClick = useCallback(
     (target: string) => {
       if (
@@ -1198,8 +1319,7 @@ export function useSessionCombatExperience({
         attackInFlightRef.current ||
         activateInFlightRef.current ||
         castInFlightRef.current ||
-        intimidateInFlightRef.current ||
-        persuadeInFlightRef.current ||
+        speakInFlightRef.current ||
         !authorityRef.current.fresh
       ) {
         return;
@@ -1232,6 +1352,13 @@ export function useSessionCombatExperience({
         (declaration) => declaration.id === presentationState.armedDeclarationId
       );
       const castDeclaration = armed.length === 1 ? armed[0] : undefined;
+      // A SPEAK TARGET CLICK SENDS NOTHING (rpg-project#569). It opens the
+      // creature's lines; the line click is what sends. A creature with no
+      // available line is not a target at all, so the click means nothing.
+      if (castDeclaration?.verb === Verb.SPEAK) {
+        chooseSpeakTarget({ case: 'memberId', value: target });
+        return;
+      }
       // A CREATURE IS NOT A CELL. Entity clicks take priority over the ground
       // in the canvas, so a player who clicks a skeleton while Thunderwave is
       // armed arrives here holding an offer that names no candidates at all.
@@ -1403,68 +1530,6 @@ export function useSessionCombatExperience({
         return;
       }
 
-      // THE TWO SOCIAL VERBS SHARE ONE DISPATCH (rpg-project#458), because
-      // they differ in exactly one thing — which RPC runs — and two copies
-      // would be two answers to every question below, free to drift the first
-      // time one of them learned something.
-      if (
-        declaration.verb === Verb.INTIMIDATE ||
-        declaration.verb === Verb.PERSUADE
-      ) {
-        const threatening = declaration.verb === Verb.INTIMIDATE;
-        const inFlight = threatening
-          ? intimidateInFlightRef
-          : persuadeInFlightRef;
-        const send = threatening ? intimidate : persuade;
-        const name = threatening ? 'Intimidate' : 'Persuade';
-
-        inFlight.current = true;
-        void (async () => {
-          try {
-            // NO SELECTOR GOES BACK. Neither request names a declaration —
-            // both carry the session, the member and the target and nothing
-            // else — so unlike Attack and Activate above there is no opaque
-            // id for the door to reject as stale, and no recovery path to
-            // take when it does. The offer's id is what the dock armed; the
-            // verb never asks for it.
-            await send({ session, member, target: exactTarget });
-            if (!mountedRef.current) return;
-            // NOTHING IS READ OFF THE RESPONSE, and that is the ruling
-            // rather than an omission here. It carries no beaten, total or
-            // dc: the roll reaches this player on the check beat, the same
-            // one every other witness reads, so the story log narrates it
-            // once for the whole table and the actor is not a special case
-            // (rpg-api-protos#339, #340).
-            //
-            // NOR THE CREATURE'S ANSWER. What the goblin said, what it
-            // taught and whether it bolted arrive on their own `answered`
-            // beat, which is the world's account and not this caller's
-            // receipt.
-            invalidateAuthority();
-            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-          } catch (error) {
-            if (!mountedRef.current) return;
-            // A verb the target could never have heard is refused at the
-            // door, and the offer that named them was not wrong to exist:
-            // the panel asks who the ACTOR can see, and the verb asks the
-            // other direction. So this is an ordinary refusal to show, not
-            // a stale offer to recover — there is no id to recover with.
-            const notice = `${name} failed: ${
-              error instanceof Error ? error.message : 'unknown error'
-            }`;
-            invalidateAuthority();
-            setInteraction({
-              ...EMPTY_INTERACTION,
-              changedOptionNotice: notice,
-            });
-            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
-          } finally {
-            inFlight.current = false;
-          }
-        })();
-        return;
-      }
-
       attackInFlightRef.current = true;
       void (async () => {
         try {
@@ -1520,8 +1585,7 @@ export function useSessionCombatExperience({
     [
       activate,
       attack,
-      intimidate,
-      persuade,
+      chooseSpeakTarget,
       invalidateAuthority,
       member,
       presentation,
@@ -2172,6 +2236,8 @@ export function useSessionCombatExperience({
       onChangeCastOption,
       onCancelCastOption,
       onTargetClick,
+      onChooseSpeakTarget: chooseSpeakTarget,
+      onSpeakOption,
       onConfirmTargets,
       onCellClick,
       cellCastArmed,
@@ -2204,6 +2270,8 @@ export function useSessionCombatExperience({
       onSelectCastOption,
       onSelectDeclaration,
       onTargetClick,
+      chooseSpeakTarget,
+      onSpeakOption,
       onConfirmTargets,
       pacing.notice,
       pacing.result,

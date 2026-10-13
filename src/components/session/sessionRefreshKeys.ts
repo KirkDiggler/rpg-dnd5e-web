@@ -207,19 +207,24 @@ export function refreshKeysFor(
     // else's cached read moved, so nobody else refetches. No discovery roll
     // and no discovery decision happens in web — the server resolved the
     // check; this row is the mechanical invalidation of that member's own
-    // read, exactly as `intimidated`/`persuaded` below are scoped to the
+    // read, exactly as `spoke` below is scoped to the
     // actor.
     case 'discoveryChecked':
       return event.body.value.member === member
         ? ['characterData', 'afford']
         : [];
-    // THE APPEAL IS THE SAME BEAT WITH A DIFFERENT NAME (rpg-project#458) and
-    // shares this row, with ONE correction the threat's comment above did not
-    // have to make: on the WORLD clock a social verb costs nothing at all (R3),
-    // so `characterData` re-reads a sheet that did not change. It stays anyway,
-    // because the clock is not on this beat and guessing it from an absent
-    // field is exactly the kind of local decision that goes wrong the first
-    // time a rule moves. One wasted read is cheaper than a stale action bar.
+    // A MEMBER SPOKE (rpg-project#569), scoped to the actor: their action may
+    // be spent and what they may say next may have changed. On the WORLD
+    // clock Speak costs nothing at all (R3), so `characterData` re-reads a
+    // sheet that did not change. It stays anyway, because the clock is not on
+    // this beat and guessing it from an absent field is exactly the kind of
+    // local decision that goes wrong the first time a rule moves. One wasted
+    // read is cheaper than a stale action bar.
+    //
+    // THE TWO RETIRED CHECKS KEEP THE SAME ROW. Speak replaced them; their
+    // bodies stay on the wire, deprecated, and this switch is exhaustive, so
+    // they get the row their beat always had rather than a guess.
+    case 'spoke':
     case 'intimidated':
     // eslint-disable-next-line no-fallthrough
     case 'persuaded':

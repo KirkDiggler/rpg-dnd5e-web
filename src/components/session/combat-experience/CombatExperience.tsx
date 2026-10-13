@@ -189,6 +189,8 @@ export function CombatExperience({
   onCancelCastOption,
   onCancelSelection,
   onTargetClick,
+  onChooseSpeakTarget,
+  onSpeakOption,
   onConfirmTargets,
   onEndTurn,
   onLogModeChange,
@@ -470,6 +472,9 @@ export function CombatExperience({
             renderMap={renderMap}
             hoveredTarget={hoveredTarget}
             onTargetClick={onTargetClick}
+            speakTarget={presentationState.speakTarget}
+            onChooseSpeakTarget={onChooseSpeakTarget}
+            onSpeakOption={onSpeakOption}
             onConfirmTargets={onConfirmTargets}
             onCancelSelection={
               actionPresentation?.mode === 'organized-hud'

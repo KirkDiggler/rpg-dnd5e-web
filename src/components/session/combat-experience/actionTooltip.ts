@@ -220,9 +220,8 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
   // default here exactly as it did in the two label functions, so the dock
   // drew a row called "Persuade" whose own tooltip was titled "Move".
   //
-  // Both social verbs name themselves, for the label functions' reason: the
-  // server compiles no action definition for either, so there is no authored
-  // title to prefer.
+  // Speak names itself, for the label functions' reason: the server compiles
+  // no action definition for it, so there is no authored title to prefer.
   const title =
     declaration.verb === Verb.REACT
       ? declaration.reaction?.name || 'Reaction'
@@ -236,11 +235,9 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
               ? declaration.deathSave?.name || 'Death Save'
               : declaration.verb === Verb.CAST
                 ? castLabel(declaration)
-                : declaration.verb === Verb.INTIMIDATE
-                  ? 'Intimidate'
-                  : declaration.verb === Verb.PERSUADE
-                    ? 'Persuade'
-                    : 'Move';
+                : declaration.verb === Verb.SPEAK
+                  ? 'Speak'
+                  : 'Move';
 
   const lines: ActionTooltipLine[] = (
     declaration.information?.details ?? []
