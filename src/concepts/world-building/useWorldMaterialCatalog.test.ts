@@ -61,7 +61,7 @@ afterEach(() => {
   pinned.materials.length = 0;
 });
 describe('explicit development material catalog loader', () => {
-  it('uses pinned material records in production without fetching or enrolling undeclared faces', () => {
+  it('uses pinned material records in production and joins only declared faces without fetching', () => {
     vi.stubEnv('MODE', 'production');
     vi.stubEnv('VITE_WORLD_MATERIAL_PREVIEW', '0');
     const fetch = vi.fn();
@@ -88,7 +88,15 @@ describe('explicit development material catalog loader', () => {
     expect(result.current.catalog?.materials[0].normal.url).toMatch(
       /^\/models\/synty\/world-materials\//
     );
-    expect(result.current.catalog?.surfaces).toEqual([]);
+    expect(result.current.catalog?.surfaces).toEqual(
+      Object.values(GENERATED_WORLD_ASSETS)
+        .filter((asset) => asset.surfaces)
+        .map((asset) => ({
+          assetRef: asset.ref,
+          glbSha256: asset.glbSha256,
+          bindings: asset.surfaces,
+        }))
+    );
     expect(fetch).not.toHaveBeenCalled();
   });
   it.each(['production', 'test'])(

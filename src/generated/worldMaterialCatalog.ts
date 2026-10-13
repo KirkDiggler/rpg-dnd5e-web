@@ -2,9 +2,63 @@
 import type { WorldSurfaceMaterial } from '../rendering/worldMaterialTypes';
 
 export const GENERATED_WORLD_MATERIAL_PROVIDER = Object.freeze({
-  commit: 'adf5ed95d20668254d445d1a171e1086671c0cc0',
-  catalogSha256: null as string | null,
+  commit: 'c9b6d2a075b8d5b757204a363e4c4084daaaf47f',
+  catalogSha256:
+    '79ee1ca52c356038669cadbf710c83f8648bd514482ffc23abc36de53ece3224' as
+      | string
+      | null,
 });
 
 export const GENERATED_WORLD_MATERIALS: readonly WorldSurfaceMaterial[] =
-  Object.freeze([] as WorldSurfaceMaterial[]);
+  Object.freeze([
+    {
+      ref: 'dnd5e:material:fantasy-kingdom:wall_dungeon_01',
+      displayName: 'Small gray masonry',
+      family: 'masonry',
+      repeatMeters: [3.2995567884187116, 3.2995567884187116],
+      normalScale: [1, 1],
+      roughness: 0.5,
+      metalness: 0,
+      baseColor: {
+        url: '/models/synty/world-materials/images/2295eb68d831360163560a9b322187e45281158bb278e74d8dd28ada7e5a33db.png?v=2295eb68d831360163560a9b322187e45281158bb278e74d8dd28ada7e5a33db',
+        sha256:
+          '2295eb68d831360163560a9b322187e45281158bb278e74d8dd28ada7e5a33db',
+        sizeBytes: 60320,
+        width: 512,
+        height: 512,
+      },
+      normal: {
+        url: '/models/synty/world-materials/images/2d64b6d2bc975b3d78ab38e8f02396ebdf4e51aabb41e72b3e0e7ed83d31f336.png?v=2d64b6d2bc975b3d78ab38e8f02396ebdf4e51aabb41e72b3e0e7ed83d31f336',
+        sha256:
+          '2d64b6d2bc975b3d78ab38e8f02396ebdf4e51aabb41e72b3e0e7ed83d31f336',
+        sizeBytes: 112833,
+        width: 512,
+        height: 512,
+      },
+    },
+    {
+      ref: 'dnd5e:material:fantasy-kingdom:wall_large_brick_01',
+      displayName: 'Large gray masonry',
+      family: 'masonry',
+      repeatMeters: [3.2995567884187116, 3.2995567884187116],
+      normalScale: [1, 1],
+      roughness: 0.5,
+      metalness: 0,
+      baseColor: {
+        url: '/models/synty/world-materials/images/e480690618f21a9c3fc5c4f35e0fbd6c4d5c6a47c356235f18a2690624681fe8.png?v=e480690618f21a9c3fc5c4f35e0fbd6c4d5c6a47c356235f18a2690624681fe8',
+        sha256:
+          'e480690618f21a9c3fc5c4f35e0fbd6c4d5c6a47c356235f18a2690624681fe8',
+        sizeBytes: 27963,
+        width: 512,
+        height: 512,
+      },
+      normal: {
+        url: '/models/synty/world-materials/images/582ffa44ff1723697084a60893cd622d3119420979ae0deecdb342a7cfd4a61a.png?v=582ffa44ff1723697084a60893cd622d3119420979ae0deecdb342a7cfd4a61a',
+        sha256:
+          '582ffa44ff1723697084a60893cd622d3119420979ae0deecdb342a7cfd4a61a',
+        sizeBytes: 64353,
+        width: 512,
+        height: 512,
+      },
+    },
+  ] as WorldSurfaceMaterial[]);
