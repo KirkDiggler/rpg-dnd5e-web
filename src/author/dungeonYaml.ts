@@ -38,6 +38,8 @@ import {
   ACTOR_WITHOUT_DEED_REFUSAL,
   ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
+  ANSWER_PATH_SELECTOR,
+  ANSWER_SOUND_KINDS,
   ANSWER_TEMPER,
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
@@ -52,12 +54,15 @@ import {
   EMPTY_TEMPER_MIX_REFUSAL,
   EMPTY_TRIGGER_REFUSAL,
   entryDoesOneThingRefusal,
+  HEARING_SENTENCES,
   isSelectorWord,
   MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
+  SELECTOR_MAPPING_KEYS,
+  selectorWordLegalOn,
   spanRefusal,
   suggestKey,
   temperShareRefusal,
@@ -203,7 +208,10 @@ export type PlacementOffset = [number, number] | [number, number, number];
 export interface AnswerEntryDoc {
   weight?: number;
   say?: string;
-  when?: AnswerWhenDoc;
+  /** One condition as a single mapping, or a LIST every entry of which must
+   * hold (rpg-project#569 R8) — carried in the spelling the file used, so an
+   * unedited table re-emits its own bytes. */
+  when?: AnswerWhenDoc | AnswerWhenDoc[];
   word?: AnswerWordDoc;
 }
 
@@ -233,7 +241,22 @@ export type AnswerWhenDoc =
       within: number;
       /** `on: ally` or `as: actor`, absent for the creature itself. */
       scope?: AnswerWhenScopeDoc;
-    };
+    }
+  /** `heard: { kind, within }` (rpg-project#569 H2): a sound of a sealed
+   * kind, no older than the span. Never a maker (R4). */
+  | { kind: 'heard'; sound: string; within: number }
+  /** `fact: <id>` (R6): the creature holds that world fact. */
+  | { kind: 'fact'; fact: string }
+  /** `not: { … }` (R8): holds when the one condition inside does not. */
+  | { kind: 'not'; inner: AnswerWhenDoc };
+
+/** The conditions of a `when` as a list — a single mapping is one entry. */
+export function answerWhenList(
+  when: AnswerWhenDoc | AnswerWhenDoc[] | undefined
+): AnswerWhenDoc[] {
+  if (when === undefined) return [];
+  return Array.isArray(when) ? when : [when];
+}
 
 /** One scope as written: the key the body carries and the value it takes. Both
  * are the file's spellings, so the emitter writes them back unchanged. */
@@ -251,6 +274,9 @@ export interface AnswerSelectorDoc {
   /** The authored cell, AXIAL like every other cell in the model — the file's
    * `[col,row]` spelling is `parseDungeon`'s and `emitDungeon`'s business. */
   at?: Axial;
+  /** An authored route (rpg-project#569 R7), axial cells walked in order.
+   * Legal on `toward` alone. */
+  path?: Axial[];
 }
 
 /** One word plus what it carries. `fact` carries an opaque id; `flee` and
@@ -1067,6 +1093,12 @@ function answerEntry(
   const known = ['weight', 'say', 'when', ...ANSWER_WORD_KEYS];
   for (const k of Object.keys(v)) {
     if (known.includes(k)) continue;
+    // The retired word points at its replacement (rpg-project#569 R7).
+    if (k === 'patrol') {
+      throw new DungeonParseError(
+        `${path}.patrol: ${HEARING_SENTENCES.patrol()}`
+      );
+    }
     const meant = suggestKey(k, known);
     throw new DungeonParseError(
       `${path}: unknown key "${k}"${meant ? ` — did you mean "${meant}"?` : ''}`
@@ -1175,14 +1207,44 @@ function answerEntry(
  * key — `{ fled: { within: 3 } }` — so the shape is the file's, not a generic
  * `deed:` field this module invented.
  */
-function answerWhen(v: unknown, path: string): AnswerWhenDoc {
-  if (!isRecord(v) || Object.keys(v).length === 0) {
-    throw new DungeonParseError(`${path}: ${whenShapeRefusal()}`);
+function answerWhen(v: unknown, path: string): AnswerWhenDoc | AnswerWhenDoc[] {
+  // THE LIST FORM (rpg-project#569 R8): every entry must hold. Carried as a
+  // list so an unedited file keeps its spelling.
+  if (Array.isArray(v)) {
+    if (v.length === 0) {
+      throw new DungeonParseError(
+        `${path}: ${HEARING_SENTENCES.emptyWhenList()}`
+      );
+    }
+    return v.map((item, i) =>
+      answerWhenCondition(item, `${path}[${i}]`, bareSentence)
+    );
+  }
+  return answerWhenCondition(v, path, bareSentence);
+}
+
+/** The identity sentence wrapper — a condition outside any `not`. */
+const bareSentence = (sentence: string): string => sentence;
+
+/** ONE condition. `wrap` prefixes what a fault inside a `not` earns
+ * ("inside `not`: …", `When.Validate`'s wording). */
+function answerWhenCondition(
+  v: unknown,
+  path: string,
+  wrap: (sentence: string) => string
+): AnswerWhenDoc {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(`${path}: ${wrap(whenShapeRefusal())}`);
   }
   const keys = Object.keys(v);
+  if (keys.length === 0) {
+    throw new DungeonParseError(
+      `${path}: ${wrap(HEARING_SENTENCES.whenNamesNothing())}`
+    );
+  }
   if (keys.length > 1) {
     throw new DungeonParseError(
-      `${path}: ${whenIsOneConditionRefusal(keys.length)}`
+      `${path}: ${wrap(whenIsOneConditionRefusal(keys))}`
     );
   }
   const key = keys[0];
@@ -1193,17 +1255,50 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
     // an unknown band gets, not by the `when`-shape sentence (review round 1).
     const band = scalarText(v.enemy);
     if (!ANSWER_WHEN.enemyBands.includes(band)) {
-      throw new DungeonParseError(`${path}: ${unknownEnemyBandRefusal(band)}`);
+      throw new DungeonParseError(
+        `${path}: ${wrap(unknownEnemyBandRefusal(band))}`
+      );
     }
     return { kind: 'enemy', band };
   }
 
+  if (key === ANSWER_WHEN.heardKey) {
+    return answerHeard(v.heard, `${path}.heard`, wrap);
+  }
+
+  if (key === ANSWER_WHEN.factKey) {
+    const fact = v.fact;
+    if (fact === undefined || fact === null || fact === '') {
+      throw new DungeonParseError(
+        `${path}.fact: ${wrap(HEARING_SENTENCES.emptyFactCondition())}`
+      );
+    }
+    if (typeof fact !== 'string') {
+      throw new DungeonParseError(`${path}.fact: expected a string`);
+    }
+    return { kind: 'fact', fact };
+  }
+
+  if (key === ANSWER_WHEN.notKey) {
+    if (!isRecord(v.not)) {
+      throw new DungeonParseError(
+        `${path}.not: ${wrap(HEARING_SENTENCES.notShape())}`
+      );
+    }
+    return {
+      kind: 'not',
+      inner: answerWhenCondition(v.not, `${path}.not`, (s) =>
+        wrap(HEARING_SENTENCES.insideNot(s))
+      ),
+    };
+  }
+
   if (!ANSWER_WHEN.deeds.includes(key)) {
-    throw new DungeonParseError(`${path}: ${unknownDeedRefusal(key)}`);
+    throw new DungeonParseError(`${path}: ${wrap(unknownDeedRefusal(key))}`);
   }
   const body = v[key];
   if (!isRecord(body)) {
-    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
+    throw new DungeonParseError(`${path}: ${wrap(missingSpanRefusal(key))}`);
   }
   // UNKNOWN BODY KEYS ARE REFUSED, not dropped (rpg-dnd5e-web#1199). This
   // reader used to read `within` and silently discard everything else in the
@@ -1220,7 +1315,7 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
   }
   const within = body.within;
   if (within === undefined || within === null) {
-    throw new DungeonParseError(`${path}: ${missingSpanRefusal(key)}`);
+    throw new DungeonParseError(`${path}: ${wrap(missingSpanRefusal(key))}`);
   }
   if (typeof within !== 'number' || !Number.isInteger(within)) {
     throw new DungeonParseError(
@@ -1228,12 +1323,58 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc {
     );
   }
   if (within < ANSWER_WHEN.minimumWithin) {
-    throw new DungeonParseError(`${path}: ${spanRefusal(within)}`);
+    throw new DungeonParseError(`${path}: ${wrap(spanRefusal(within))}`);
   }
   const scope = answerWhenScope(body, `${path}.${key}`, key);
   return scope === undefined
     ? { kind: 'deed', deed: key, within }
     : { kind: 'deed', deed: key, within, scope };
+}
+
+/** `heard: { kind, within }` — a sealed sound kind and a span from 1, the
+ * single-room validator's rules (`answerTableShape.ts`'s `validateHeard`). */
+function answerHeard(
+  v: unknown,
+  path: string,
+  wrap: (sentence: string) => string
+): AnswerWhenDoc {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(
+      `${path}: ${wrap(HEARING_SENTENCES.heardShape())}`
+    );
+  }
+  for (const k of Object.keys(v)) {
+    if (ANSWER_WHEN.heardBodyKeys.includes(k)) continue;
+    throw new DungeonParseError(
+      `${path}.${k}: ${HEARING_SENTENCES.heardUnknownKey(k)}`
+    );
+  }
+  if (v.kind === undefined || v.kind === null || v.kind === '') {
+    throw new DungeonParseError(
+      `${path}: ${wrap(HEARING_SENTENCES.heardNoKind())}`
+    );
+  }
+  const sound = scalarText(v.kind);
+  if (!ANSWER_SOUND_KINDS.includes(sound)) {
+    throw new DungeonParseError(
+      `${path}.kind: ${wrap(HEARING_SENTENCES.unknownSoundKind(sound))}`
+    );
+  }
+  const within = v.within;
+  if (within === undefined || within === null) {
+    throw new DungeonParseError(
+      `${path}: ${wrap(HEARING_SENTENCES.heardSpan(0))}`
+    );
+  }
+  if (typeof within !== 'number' || !Number.isInteger(within)) {
+    throw new DungeonParseError(`${path}.within: expected a whole number`);
+  }
+  if (within < ANSWER_WHEN.minimumWithin) {
+    throw new DungeonParseError(
+      `${path}: ${wrap(HEARING_SENTENCES.heardSpan(within))}`
+    );
+  }
+  return { kind: 'heard', sound, within };
 }
 
 /** WHOSE deed a condition is about, or undefined for the creature itself.
@@ -1290,27 +1431,62 @@ function answerWhenScope(
 function answerSelector(
   v: unknown,
   path: string,
-  orientation: Orientation
+  orientation: Orientation,
+  word: string
 ): AnswerSelectorDoc {
   if (typeof v === 'string') {
     if (!isSelectorWord(v)) {
       throw new DungeonParseError(`${path}: ${unknownSelectorRefusal(v)}`);
     }
+    // `sound` on `attack` (R10): a sound cannot be struck.
+    if (!selectorWordLegalOn(v, word)) {
+      throw new DungeonParseError(
+        `${path}: ${HEARING_SENTENCES.attackSound()}`
+      );
+    }
     return { word: v };
   }
   if (isRecord(v)) {
     for (const k of Object.keys(v)) {
-      if (k !== 'at') {
+      if (!SELECTOR_MAPPING_KEYS.includes(k)) {
         throw new DungeonParseError(`${path}: ${unknownSelectorKeyRefusal(k)}`);
       }
     }
-    if (v.at === undefined || v.at === null) {
+    const hasAt = v.at !== undefined && v.at !== null;
+    const hasPath = v.path !== undefined && v.path !== null;
+    if (hasAt && hasPath) {
+      throw new DungeonParseError(
+        `${path}: ${HEARING_SENTENCES.selectorNamesSeveral(word, [
+          'a cell (`at`)',
+          'a route (`path`)',
+        ])}`
+      );
+    }
+    if (hasPath) {
+      // A ROUTE IS WALKED, and only `toward` walks one (R7).
+      if (word !== ANSWER_PATH_SELECTOR.onlyWord) {
+        throw new DungeonParseError(
+          `${path}: ${HEARING_SENTENCES.pathNotToward(word)}`
+        );
+      }
+      if (!Array.isArray(v.path) || v.path.length === 0) {
+        throw new DungeonParseError(
+          `${path}.path: ${HEARING_SENTENCES.emptyPath()}`
+        );
+      }
+      return {
+        path: v.path.map((cell, i) =>
+          fromOffset(orientation, pair(cell, `${path}.path[${i}]`))
+        ),
+      };
+    }
+    if (!hasAt) {
       throw new DungeonParseError(`${path}: ${MISSING_AT_REFUSAL}`);
     }
     return { at: fromOffset(orientation, pair(v.at, `${path}.at`)) };
   }
   throw new DungeonParseError(
-    `${path}: a selector is one of enemy, attacker, actor, or { at: [col, row] }`
+    `${path}: a selector is one of enemy, attacker, actor, sound, or { at: [col, row] }, or { path: [[col, row], …] }`
   );
 }
 
@@ -1331,7 +1507,7 @@ function answerWordValue(
     return { word, value: raw };
   }
   if (shape === 'selector') {
-    return { word, selector: answerSelector(raw, path, orientation) };
+    return { word, selector: answerSelector(raw, path, orientation, word) };
   }
   // `value: 'none'` — the engine's `FleeSpec`/`HoldSpec` are structs, so a
   // scalar or a sequence body is a decode error there and is refused here.
@@ -1376,9 +1552,11 @@ function answerSelectorRules(
     }
     return;
   }
+  // A deed named POSITIVELY by any condition of the list: a negated deed has
+  // no actor to have been.
   if (
     selector.word === 'actor' &&
-    (entry.when === undefined || entry.when.kind !== 'deed')
+    !answerWhenList(entry.when).some((when) => when.kind === 'deed')
   ) {
     throw new DungeonParseError(
       `${path}.${word}: ${withLine(ACTOR_WITHOUT_DEED_REFUSAL, selectorLine)}`
@@ -2036,8 +2214,15 @@ function fmtApproach(a: ApproachDoc): string {
 /** One `when:` as the file writes it — the enemy band, or the deed's own
  * past-tense name with its span. The language is the author's, not a generic
  * `deed:` key this module invented. */
-function whenText(when: AnswerWhenDoc): string {
+function whenText(when: AnswerWhenDoc | AnswerWhenDoc[]): string {
+  // THE LIST IS WRITTEN AS A LIST, a single mapping as a mapping: the
+  // spelling is the document's, chosen by whoever wrote it (R8).
+  if (Array.isArray(when)) return `[${when.map(whenText).join(', ')}]`;
   if (when.kind === 'enemy') return `{ enemy: ${when.band} }`;
+  if (when.kind === 'heard')
+    return `{ heard: { kind: ${scalar(when.sound)}, within: ${when.within} } }`;
+  if (when.kind === 'fact') return `{ fact: ${scalar(when.fact)} }`;
+  if (when.kind === 'not') return `{ not: ${whenText(when.inner)} }`;
   // THE SCOPE IS WRITTEN ONLY WHEN IT WAS READ, so a condition about the
   // creature itself round-trips as the bytes it arrived as — the scope being
   // absent is what "the creature itself" means, and writing a third word for
@@ -2050,6 +2235,11 @@ function whenText(when: AnswerWhenDoc): string {
 /** One selector as the file writes it: a word, or the authored cell — axial
  * in the model, `[col,row]` in the bytes, like every other cell. */
 function selectorText(selector: AnswerSelectorDoc, o: Orientation): string {
+  if (selector.path !== undefined) {
+    return `{ path: [${selector.path
+      .map((cell) => fmtPair(toOffset(o, cell)))
+      .join(', ')}] }`;
+  }
   return selector.at !== undefined
     ? `{ at: ${fmtPair(toOffset(o, selector.at))} }`
     : (selector.word ?? '');

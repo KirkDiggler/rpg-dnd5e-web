@@ -79,8 +79,8 @@ describe('answer table shape', () => {
     expect(verdict([{ attack: 'enemy' }])).toThrow(
       /`attack` is what a creature does with time, and `success` is an outcome/
     );
-    expect(table({ time: [{ fact: 'x' }] })).toThrow(
-      /`fact` answers a social verdict, and `time` is not one/
+    expect(table({ time: [{ flee: {} }] })).toThrow(
+      /`flee` answers a social verdict, and `time` is not one/
     );
     expect(verdict([{ when: { enemy: 'reach' }, flee: {} }])).toThrow(
       /`success` is already the condition — a `when` under it asks when a thing that just happened happened/
@@ -105,7 +105,9 @@ describe('answer table shape', () => {
     );
     expect(
       table({ time: [{ when: { enemy: 'reach', seen: 'x' }, hold: {} }] })
-    ).toThrow(/a `when` is one condition, and this names 2/);
+    ).toThrow(
+      /a `when` entry names `enemy` and `seen`; give each its own entry in the list/
+    );
     expect(table({ time: [{ when: { fled: {} }, hold: {} }] })).toThrow(
       /`fled` names no span/
     );

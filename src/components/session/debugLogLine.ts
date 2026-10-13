@@ -472,6 +472,19 @@ export function formatDebugLine(
     // so the server leaves it unset by ruling (rpg-project#458) — printing a
     // field that is always empty would be this log implying the server
     // sometimes fills it.
+    case 'heard': {
+      // A SOUND REACHED THIS LISTENER (rpg-project#569 H5): kind, where it was
+      // made, how many regions it crossed. No maker — the wire has none (R4),
+      // so there is no id here to name but the listener's own.
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.listener],
+        text:
+          `${prefix} heard listener=${name(b.listener)} ` +
+          `kind=${quoteDebugString(b.kind)} at=${positionText(b.position)} hops=${b.hops}`,
+      };
+    }
     case 'answered': {
       const b = event.body.value;
       const word = AnswerWord[b.word] ?? String(b.word);

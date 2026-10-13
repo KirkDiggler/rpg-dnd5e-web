@@ -35,6 +35,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { speakSkillName } from './combat-experience/speakOptions';
 import { dissolveSentence, formatFactionBeat } from './factionBeat';
+import { heardSentence, type HeardCell } from './heardBeat';
 import { formatHoldingBeat } from './holdingBeat';
 import { resolveName, resolveNameLower } from './participantNames';
 
@@ -76,7 +77,10 @@ function damageText(damage: number, attack: AttackRef | undefined): string {
 export function formatBeat(
   event: SessionEvent,
   member: string,
-  names: Map<string, string>
+  names: Map<string, string>,
+  /** Where this player stood when the beat arrived — read only by a `heard`
+   * beat, for which way to look. Absent leaves the bearing out. */
+  listenerAt?: HeardCell | null
 ): string | null {
   // Loot, hold, drop and leave read as ONE set of sentences wherever they
   // are narrated (`holdingBeat.ts`), so this line and the Story log cannot
@@ -173,6 +177,10 @@ export function formatBeat(
         `${sp.check.dc}. ${sp.check.beaten ? 'Success.' : 'Failure.'}`
       );
     }
+    case 'heard':
+      // A SOUND, NEVER ITS MAKER (rpg-project#569 R4). One sentence, shared
+      // with the Story log (`heardBeat.ts`).
+      return heardSentence(event.body.value, listenerAt);
     case 'answered': {
       // WHAT THE CREATURE DID ABOUT IT (rpg-project#458): the author's line,
       // VERBATIM and quoted, plus one sentence for the word.

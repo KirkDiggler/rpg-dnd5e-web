@@ -319,3 +319,150 @@ describe('the faction’s table reference', () => {
     expect('table' in (faction ?? {})).toBe(false);
   });
 });
+
+/**
+ * THE HEARING ROWS IN THE ROOT TABLE EDITOR (rpg-project#569 R6–R8, R10): a
+ * `when` is a list with a `not` per condition, `heard` and `fact` join the
+ * conditions, `fact` is a word on `time`, `toward` walks a route or to a
+ * sound, `away` flees a sound, `attack` never offers `sound`, and `patrol` is
+ * never offered at all.
+ */
+describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
+  type Entry = NonNullable<
+    NonNullable<SiteScope['tables']>[string]['time']
+  >[number];
+
+  /** Mount one table holding `entry`, open it, and answer the entry the last
+   * edit committed. */
+  function mount(entry: Entry) {
+    const onChange = vi.fn();
+    render(
+      <TablesPanel
+        scope={{ tables: { patrol: { time: [entry] } } }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Table patrol'));
+    return () =>
+      (onChange.mock.calls.at(-1)![0] as SiteScope).tables?.patrol?.time?.[0];
+  }
+
+  const options = (label: string) =>
+    Array.from((screen.getByLabelText(label) as HTMLSelectElement).options).map(
+      (option) => option.value
+    );
+
+  it('adds a second condition as a list, every entry of which must hold', () => {
+    const last = mount({ when: { enemy: 'none' }, hold: {} });
+    fireEvent.click(screen.getByLabelText('Add condition for time entry'));
+    expect(last()?.when).toEqual([{ enemy: 'none' }, { enemy: 'reach' }]);
+  });
+
+  it('a `not` wraps one condition and writes the list form', () => {
+    const last = mount({ when: { enemy: 'seen' }, hold: {} });
+    fireEvent.click(screen.getByLabelText('Not for time entry'));
+    expect(last()?.when).toEqual([{ not: { enemy: 'seen' } }]);
+  });
+
+  it('a list back down to one plain condition is written as the single mapping', () => {
+    const last = mount({
+      when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
+      hold: {},
+    });
+    // Both rows are shown, the second with its `not` ticked.
+    expect(
+      (screen.getByLabelText('Not 2 for time entry') as HTMLInputElement)
+        .checked
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText('Fact for time entry') as HTMLInputElement).value
+    ).toBe('guards-turned');
+    fireEvent.click(screen.getByLabelText('Remove condition 2 for time entry'));
+    expect(last()?.when).toEqual({ fact: 'guards-turned' });
+  });
+
+  it('authors `heard` from the four sealed kinds, with a span', () => {
+    const last = mount({ when: { enemy: 'none' }, hold: {} });
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'heard' },
+    });
+    expect(last()?.when).toEqual({ heard: { kind: 'clang', within: 1 } });
+  });
+
+  it('offers exactly clang, boom, voice and crash and keeps the span when the kind changes', () => {
+    const last = mount({
+      when: { heard: { kind: 'clang', within: 2 } },
+      toward: 'sound',
+    });
+    expect(options('Sound for time entry')).toEqual([
+      'clang',
+      'boom',
+      'voice',
+      'crash',
+    ]);
+    fireEvent.change(screen.getByLabelText('Sound for time entry'), {
+      target: { value: 'voice' },
+    });
+    expect(last()?.when).toEqual({ heard: { kind: 'voice', within: 2 } });
+  });
+
+  it('authors a `fact` condition as a free id', () => {
+    const last = mount({ when: { enemy: 'none' }, hold: {} });
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'fact' },
+    });
+    expect(last()?.when).toEqual({ fact: '' });
+  });
+
+  it('offers `fact` as a word on `time` — the alarm', () => {
+    const last = mount({ when: { enemy: 'seen' }, hold: {} });
+    expect(options('Do for time entry')).toContain('fact');
+    fireEvent.change(screen.getByLabelText('Do for time entry'), {
+      target: { value: 'fact' },
+    });
+    expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
+  });
+
+  it('`toward` offers a route and the sound; a route grows waypoint by waypoint', () => {
+    const last = mount({ when: { enemy: 'none' }, toward: 'enemy' });
+    expect(options('To for time entry')).toEqual(
+      expect.arrayContaining(['enemy', 'sound', 'at', 'path'])
+    );
+    fireEvent.change(screen.getByLabelText('To for time entry'), {
+      target: { value: 'path' },
+    });
+    expect(last()?.toward).toEqual({ path: [[0, 0]] });
+  });
+
+  it('edits and extends an authored route', () => {
+    const last = mount({
+      when: { enemy: 'none' },
+      toward: { path: [[2, 3]] },
+    });
+    fireEvent.change(
+      screen.getByLabelText('Waypoint 1 column for time entry'),
+      { target: { value: '6' } }
+    );
+    expect(last()?.toward).toEqual({ path: [[6, 3]] });
+    fireEvent.click(screen.getByLabelText('Add waypoint for time entry'));
+    expect(last()?.toward).toEqual({
+      path: [
+        [2, 3],
+        [2, 3],
+      ],
+    });
+  });
+
+  it('`away` offers the sound but no route; `attack` offers neither; `patrol` is never a word', () => {
+    mount({ when: { heard: { kind: 'boom', within: 3 } }, away: 'sound' });
+    expect(options('From for time entry')).toContain('sound');
+    expect(options('From for time entry')).not.toContain('path');
+    expect(options('Do for time entry')).not.toContain('patrol');
+  });
+
+  it('`attack` never offers the sound — a sound cannot be struck', () => {
+    mount({ when: { enemy: 'reach' }, attack: 'enemy' });
+    expect(options('To for time entry')).not.toContain('sound');
+    expect(options('To for time entry')).not.toContain('path');
+  });
+});

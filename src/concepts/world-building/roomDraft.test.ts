@@ -908,6 +908,89 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(roundTrip.room.monsterBindings?.['goblin-2']).toBeUndefined();
   });
 
+  it('round trips the hearing rows: a two-entry `when` with a `not`, `heard`, `fact` on time, a route and `toward: sound` (rpg-project#569)', () => {
+    const base = createRoomDraft(createEmptyScene('scene-hear'), 'room-hear');
+    const withGuard = placeRoomMonster(base, {
+      id: 'gate-1',
+      ref: 'dnd5e:monsters:guard',
+      startingCell: { location: { q: 1, r: 0 } },
+    });
+    withGuard.room.monsterBindings = {
+      'gate-1': {
+        on: {
+          time: [
+            {
+              when: { enemy: 'none' },
+              toward: {
+                path: [
+                  [2, 3],
+                  [6, 3],
+                  [6, 8],
+                ],
+              },
+            },
+            { when: { heard: { kind: 'clang', within: 2 } }, toward: 'sound' },
+            {
+              when: { enemy: 'seen' },
+              say: 'To arms!',
+              fact: 'alarm-raised',
+            },
+            {
+              when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
+              toward: { at: [20, 12] },
+            },
+            { when: { enemy: 'reach' }, attack: 'enemy' },
+          ],
+        },
+      },
+    };
+
+    const json = stringifyRoomDraft(withGuard);
+    const roundTrip = parseRoomDraftJson(json);
+    expect(roundTrip).toEqual(withGuard);
+    const time = roundTrip.room.monsterBindings?.['gate-1'].on?.time ?? [];
+    // THE SPELLING SURVIVES: the list is still a list, and every single
+    // mapping is still a mapping.
+    expect(Array.isArray(time[3]?.when)).toBe(true);
+    expect(Array.isArray(time[0]?.when)).toBe(false);
+    expect(time[1]?.toward).toBe('sound');
+    expect(time[2]?.fact).toBe('alarm-raised');
+  });
+
+  it('refuses the hearing rows the engine refuses, in its words (rpg-project#569)', () => {
+    const base = createRoomDraft(createEmptyScene('scene-hear'), 'room-hear');
+    const withGuard = placeRoomMonster(base, {
+      id: 'gate-1',
+      ref: 'dnd5e:monsters:guard',
+      startingCell: { location: { q: 1, r: 0 } },
+    });
+    const refused = (time: unknown[]) => {
+      const draft = structuredClone(withGuard);
+      draft.room.monsterBindings = {
+        'gate-1': { on: { time } as never },
+      };
+      return () => parseRoomDraftJson(stringifyRoomDraft(draft));
+    };
+    expect(refused([{ attack: 'sound' }])).toThrow(
+      /`attack` cannot take `sound`: a sound cannot be struck/
+    );
+    expect(refused([{ away: { path: [[1, 1]] } }])).toThrow(
+      /`away` cannot take a `path`: a route is walked, and only `toward` walks one/
+    );
+    expect(refused([{ patrol: {} }])).toThrow(/write toward: \{ path \}/);
+    expect(refused([{ when: { heard: { within: 2 } }, hold: {} }])).toThrow(
+      /`heard` needs a `kind`, the sound it listens for/
+    );
+    expect(
+      refused([
+        { when: { not: { heard: { kind: 'clang', within: 0 } } }, hold: {} },
+      ])
+    ).toThrow(/inside `not`: `heard` within 0: a span is counted from 1/);
+    expect(refused([{ when: { enemy: 'seen', fact: 'x' }, hold: {} }])).toThrow(
+      /give each its own entry in the list, and every entry must hold/
+    );
+  });
+
   it("a binding's temper is ONE word — the faction's mix is refused there", () => {
     const draft = createRoomDraft(
       createEmptyScene('scene-temper'),

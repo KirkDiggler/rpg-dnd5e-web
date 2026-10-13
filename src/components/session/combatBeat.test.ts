@@ -479,3 +479,35 @@ describe('formatBeat — spoke and answered', () => {
     expect(line).not.toContain('100');
   });
 });
+
+describe('formatBeat on a heard sound (rpg-project#569)', () => {
+  it('says the kind, the bearing and the rooms, and never a maker', () => {
+    const e = event({
+      case: 'heard',
+      value: {
+        listener: 'char-1',
+        kind: 'clang',
+        position: { x: 1, y: -2 },
+        hops: 2,
+      },
+    } as never);
+    expect(formatBeat(e, 'char-1', names, { x: 0, y: 0 })).toBe(
+      'You hear metal clanging, to the north, 2 rooms away.'
+    );
+  });
+
+  it('without a known position the bearing is left out, not guessed', () => {
+    const e = event({
+      case: 'heard',
+      value: {
+        listener: 'char-1',
+        kind: 'boom',
+        position: { x: 1, y: -2 },
+        hops: 1,
+      },
+    } as never);
+    expect(formatBeat(e, 'char-1', names)).toBe(
+      'You hear a boom, 1 room away.'
+    );
+  });
+});

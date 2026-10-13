@@ -64,7 +64,9 @@ export interface UseCombatPresentationResult {
   readonly acceptDeathSaveResponse: (fact: DeathSaveResponseFact) => void;
   readonly acceptStreamEvent: (
     event: Event,
-    metadata: SessionEventDeliveryMetadata
+    metadata: SessionEventDeliveryMetadata,
+    /** Where the viewer stands now; kept with a `heard` beat for its bearing. */
+    listenerAt?: { readonly x: number; readonly y: number } | null
   ) => void;
   readonly onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
   readonly onSemanticReleaseRequest: () => void;
@@ -174,8 +176,12 @@ export function useCombatPresentation(
     [dispatch]
   );
   const acceptStreamEvent = useCallback(
-    (event: Event, metadata: SessionEventDeliveryMetadata) => {
-      dispatch({ type: 'stream-event', event, metadata });
+    (
+      event: Event,
+      metadata: SessionEventDeliveryMetadata,
+      listenerAt?: { readonly x: number; readonly y: number } | null
+    ) => {
+      dispatch({ type: 'stream-event', event, metadata, listenerAt });
     },
     [dispatch]
   );

@@ -100,12 +100,17 @@ describe('the vocabulary declaration is the single source', () => {
     // EACH WORD GOES UNDER A TRIGGER OF ITS OWN GROUP: `flee` on `time` is
     // exactly the combination #1137 exists to refuse, so offering every word
     // to one trigger would test the wrong thing.
+    //
+    // A WORD IN BOTH GROUPS IS TRIED IN BOTH (`fact` on `time` is the alarm,
+    // rpg-project#569 R6).
     for (const word of ANSWER_WORDS) {
-      const [anchor, authored] =
-        word.legalOn === 'time'
-          ? [ENTRY_TIME, `- ${authoredWord(word)}`]
-          : [ENTRY_SAY_ONLY, authoredWord(word)];
-      expect(() => parseDungeon(mutated(anchor, authored))).not.toThrow();
+      for (const group of word.legalOn) {
+        const [anchor, authored] =
+          group === 'time'
+            ? [ENTRY_TIME, `- ${authoredWord(word)}`]
+            : [ENTRY_SAY_ONLY, authoredWord(word)];
+        expect(() => parseDungeon(mutated(anchor, authored))).not.toThrow();
+      }
     }
   });
 
@@ -147,6 +152,7 @@ describe('the vocabulary declaration is the single source', () => {
     // A retired social key offers nothing: it is not a trigger any more.
     expect(answerWordsForTrigger('intimidated')).toEqual([]);
     expect(answerWordsForTrigger('time').map((w) => w.key)).toEqual([
+      'fact',
       'hold',
       'attack',
       'toward',

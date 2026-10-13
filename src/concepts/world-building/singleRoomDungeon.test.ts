@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
+import type { AnswerTableShape as RoomAnswerTable } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { createMapLabel, deleteMapLabel } from './mapLabelEdits';
 import {
@@ -45,6 +46,45 @@ const readOptionsGolden = () =>
     'src/concepts/world-building/fixtures/singleRoomOptions.golden.yaml',
     'utf8'
   );
+
+/** The encoder's output for a room whose creature's `time` table carries the
+ * castle's hearing rows (rpg-project#569 R6–R8, R10): a route, `toward:
+ * sound`, `fact` on `time`, and a list `when` with a `not`. A sibling of the
+ * two goldens above, for their reason. */
+const readHearingGolden = () =>
+  readFileSync(
+    'src/concepts/world-building/fixtures/singleRoomHearing.golden.yaml',
+    'utf8'
+  );
+
+/** The gate patrol's table (use-case.md §2), the one this golden pins. */
+const HEARING_TABLE: RoomAnswerTable = {
+  time: [
+    {
+      when: { enemy: 'none' },
+      toward: {
+        path: [
+          [2, 3],
+          [6, 3],
+          [6, 8],
+          [2, 8],
+        ],
+      },
+    },
+    { when: { heard: { kind: 'clang', within: 2 } }, toward: 'sound' },
+    {
+      when: { enemy: 'seen' },
+      say: 'To arms! Intruders in the yard!',
+      fact: 'alarm-raised',
+    },
+    {
+      when: [{ fact: 'guards-turned' }, { not: { enemy: 'seen' } }],
+      toward: { at: [20, 12] },
+    },
+    { when: { heard: { kind: 'boom', within: 3 } }, away: 'sound' },
+    { when: { enemy: 'reach' }, attack: 'enemy' },
+  ],
+};
 
 /** The front room's goblin's two lines, as the ENGINE's golden writes them
  * (`fixtures/frontGoblinOptions.yaml`, a verbatim copy). */
@@ -285,6 +325,26 @@ play:
     expect(emitted).not.toContain('dispositions');
     expect(emitted).not.toContain('faction');
     expect(emitted).not.toContain('monsterBindings');
+  });
+
+  it('emits the hearing rows byte-for-byte and reads them back to the same bytes (rpg-project#569)', () => {
+    // A ROUTE, `toward: sound` and `away: sound`, `fact` on `time`, a `heard`
+    // condition, and a LIST `when` carrying a `not` — the whole wave-B
+    // vocabulary on one creature. The list stays a list and every single
+    // mapping stays a mapping, because the file shape is carried as written.
+    const draft = goldenDraft();
+    draft.room.monsterBindings = {
+      'skeleton-a': { on: structuredClone(HEARING_TABLE) },
+    };
+    const emitted = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    expect(emitted).toBe(readHearingGolden());
+    const decoded = decodeSingleRoomDungeon(readHearingGolden());
+    expect(decoded.draft.room.monsterBindings?.['skeleton-a']?.on).toEqual(
+      HEARING_TABLE
+    );
+    expect(
+      encodeSingleRoomDungeon({ key: 'crypt-room', draft: decoded.draft })
+    ).toBe(readHearingGolden());
   });
 
   it('emits a creature’s and a prop’s options byte-for-byte, in the engine’s shape', () => {
