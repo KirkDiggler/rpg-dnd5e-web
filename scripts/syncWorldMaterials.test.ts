@@ -207,6 +207,52 @@ describe('world-material sync ownership', () => {
     );
     expect(existsSync(join(f.runtime, newer.file))).toBe(false);
   });
+  it('assembles all four owners across three distinct pins while preserving generated metadata', () => {
+    const f = fixture();
+    f.run('--world-materials');
+    const materialCatalog = readFileSync(f.output, 'utf8');
+    put(join(f.source, 'world-assets/keep.glb'), 'world-v2');
+    const worldPin = commit(f.provider);
+    const newer = f.resources(202);
+    put(join(f.source, 'world-assets/keep.glb'), 'world-head');
+    put(join(f.source, 'characters/keep.glb'), 'character-head');
+    put(join(f.source, 'npcs/keep.glb'), 'npc-head');
+    const head = commit(f.provider);
+    const catalogs = [
+      ['characterCustomizationCatalog.ts', 'providerCommit', head],
+      ['npcAppearanceCatalog.ts', 'commit', f.pin],
+      ['worldAssetCatalog.ts', 'commit', worldPin],
+    ];
+    for (const [file, key, pin] of catalogs)
+      put(
+        join(f.web, 'src/generated', file),
+        `export const PROVIDER = {\n ${key}: '${pin}',\n};\n`
+      );
+    const before = catalogs.map(([file]) =>
+      readFileSync(join(f.web, 'src/generated', file), 'utf8')
+    );
+    f.run('--pinned-runtime');
+    expect(readFileSync(join(f.runtime, 'characters/keep.glb'), 'utf8')).toBe(
+      'character-head'
+    );
+    expect(readFileSync(join(f.runtime, 'npcs/keep.glb'), 'utf8')).toBe('npcs');
+    expect(readFileSync(join(f.runtime, 'world-assets/keep.glb'), 'utf8')).toBe(
+      'world-v2'
+    );
+    expect(readFileSync(join(f.runtime, f.material!.file))).toEqual(
+      f.material!.bytes
+    );
+    expect(existsSync(join(f.runtime, newer.file))).toBe(false);
+    expect(readFileSync(f.output, 'utf8')).toBe(materialCatalog);
+    expect(
+      catalogs.map(([file]) =>
+        readFileSync(join(f.web, 'src/generated', file), 'utf8')
+      )
+    ).toEqual(before);
+    expect(git(f.provider, 'rev-parse', 'HEAD')).toBe(head);
+    expect(git(f.provider, 'status', '--porcelain')).toBe('');
+  });
+
   it('pins absence and removes future HEAD material files only in the assembled/destination owner', () => {
     const f = fixture(false);
     f.run('--world-materials');
