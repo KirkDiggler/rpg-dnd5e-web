@@ -1280,19 +1280,19 @@ const EXPECTED_OTHER_KIND = {
   // dropped as a kind/body mismatch.
   equipmentChanged: EventKind.EQUIPMENT_CHANGED,
   rested: EventKind.RESTED,
-  // THE FIRST SHENANIGAN (rpg-project#454), and it has to be here for
+  // THE ONE SOCIAL CHECK (rpg-project#569), and it has to be here for
   // `concentrationEnded`'s reason directly above: a body with no row is
   // discarded as a typed kind/body mismatch, and this beat is the ONLY
-  // account of the roll — the response carries no beaten, total or dc — so
+  // account of the roll — `SpeakResponse` carries no beaten, total or dc — so
   // dropping it would lose the die for the whole table, actor included.
+  // `answered` is the only account of ANYTHING the creature did about it:
+  // the line it spoke, the fact it taught and whether it bolted all ride that
+  // one body.
+  spoke: EventKind.SPOKE,
+  // RETIRED, NOT NARRATED (rpg-project#569). Speak replaced both; the bodies
+  // stay on the wire, deprecated, so they are listed to be ACCEPTED and then
+  // silenced in SILENT_OTHER_BODIES rather than accused as a mismatch.
   intimidated: EventKind.INTIMIDATED,
-  // THE FRONT ROOM GOBLIN (rpg-project#458), and both arms are here for
-  // `intimidated`'s reason one line up. `persuaded` is the only account of its
-  // own roll, exactly as the threat's is. `answered` is the only account of
-  // ANYTHING the creature did: the line it spoke, the fact it taught and
-  // whether it bolted all ride that one body, so dropping it as a typed
-  // kind/body mismatch would leave a goblin running out of the room with
-  // nothing anywhere saying why.
   persuaded: EventKind.PERSUADED,
   discoveryChecked: EventKind.DISCOVERY_CHECKED,
   answered: EventKind.ANSWERED,
@@ -1343,6 +1343,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.CONCENTRATION_ENDED,
   EventKind.EQUIPMENT_CHANGED,
   EventKind.RESTED,
+  EventKind.SPOKE,
   EventKind.INTIMIDATED,
   EventKind.PERSUADED,
   EventKind.ANSWERED,
@@ -1382,6 +1383,10 @@ const TYPED_EVENT_KINDS = new Set<number>([
 const SILENT_OTHER_BODIES = [
   'tempered',
   'stayed',
+  // The two retired social checks (rpg-project#569): Speak replaced both, and
+  // this client narrates `spoke` only.
+  'intimidated',
+  'persuaded',
 ] as const satisfies readonly (keyof typeof EXPECTED_OTHER_KIND)[];
 
 type SilentOtherBody = (typeof SILENT_OTHER_BODIES)[number];
@@ -1632,22 +1637,25 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         beaten: event.body.value.beaten,
         calculation: event.body.value.calculation,
       });
-    case 'intimidated':
-    // The appeal takes the threat's identity whole, for the threat's reason:
-    // actor and target alone would hash two attempts on one creature the
-    // same, and the second would be recorded as a conflicting duplicate of
-    // the first. A party face may work on the same goblin twice.
-    // eslint-disable-next-line no-fallthrough
-    case 'persuaded':
+    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#454, kept by #569). Actor,
+    // target and option alone would hash two tries of the same line on the
+    // same goblin the same, and the second would be recorded as a conflicting
+    // duplicate of the first; the numbers are what differ.
+    case 'spoke': {
+      const spoke = event.body.value;
       return Object.freeze({
         kind: event.kind,
         bodyCase,
-        actor: event.body.value.actor,
-        target: event.body.value.target,
-        dc: event.body.value.dc,
-        total: event.body.value.total,
-        beaten: event.body.value.beaten,
+        actor: spoke.actor,
+        target: spoke.target.value,
+        targetCase: spoke.target.case,
+        optionId: spoke.optionId,
+        skill: spoke.skill,
+        dc: spoke.check?.dc,
+        total: spoke.check?.total,
+        beaten: spoke.check?.beaten,
       });
+    }
     // THE WORLD'S ROLL IS THE IDENTITY (rpg-project#458). The creature and the
     // verb alone would hash two answers to two attempts on one goblin the
     // same, and the author's whole point is that the SECOND attempt can roll
@@ -1658,6 +1666,10 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         kind: event.kind,
         bodyCase,
         creature: event.body.value.creature,
+        key: event.body.value.key,
+        // Which option's table: two answers to two different lines on one
+        // goblin must not hash the same (rpg-project#569).
+        optionId: event.body.value.optionId,
         verb: event.body.value.verb,
         beaten: event.body.value.beaten,
         roll: event.body.value.roll,
@@ -1881,6 +1893,8 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     case 'concealmentRevealed':
     case 'tempered':
     case 'stayed':
+    case 'intimidated':
+    case 'persuaded':
       return undefined;
   }
 }

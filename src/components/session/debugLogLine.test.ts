@@ -828,24 +828,49 @@ describe('formatDebugLine', () => {
   // not story but the debug log for sure." The story log shows the outcome and
   // the creature's line; THIS is where the die lives, and a typed line rather
   // than the default branch's raw JSON is what makes it readable.
-  it('a persuaded beat renders the whole check', () => {
+  it('a spoke beat renders the option, the skill and the whole check', () => {
     const event = baseEvent({
-      kind: EventKind.PERSUADED,
+      kind: EventKind.SPOKE,
       body: {
-        case: 'persuaded',
+        case: 'spoke',
         value: {
           actor: 'char-1',
-          target: 'skeleton-1',
-          dc: 10,
-          total: 13,
-          beaten: true,
+          target: { case: 'memberId', value: 'skeleton-1' },
+          optionId: 'troupe',
+          line: "We're the troupe for the feast.",
+          skill: 'performance',
+          check: { dc: 13, total: 17, beaten: true },
         },
       },
     });
     const line = formatDebugLine(event, names);
     expect(line.ids).toEqual(['char-1', 'skeleton-1']);
-    expect(line.text).toContain('persuaded');
-    expect(line.text).toContain('dc=10 total=13 beaten=true');
+    expect(line.text).toContain('spoke');
+    expect(line.text).toContain('option="troupe" skill="performance"');
+    expect(line.text).toContain('dc=13 total=17 beaten=true');
+    // The line is prose; it lives in the story log, not here.
+    expect(line.text).not.toContain('troupe for the feast');
+  });
+
+  it('a spoke beat to a prop names the prop and hovers no member for it', () => {
+    const event = baseEvent({
+      kind: EventKind.SPOKE,
+      body: {
+        case: 'spoke',
+        value: {
+          actor: 'char-1',
+          target: { case: 'propId', value: 'altar-1' },
+          optionId: 'pray',
+          line: '',
+          skill: 'religion',
+          check: { dc: 12, total: 9, beaten: false },
+        },
+      },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toContain('prop="altar-1"');
+    expect(line.text).toContain('dc=12 total=9 beaten=false');
   });
 
   it('an answered beat renders the die, the weights, the entry, the word and the fact', () => {
@@ -860,9 +885,8 @@ describe('formatDebugLine', () => {
         case: 'answered',
         value: {
           creature: 'skeleton-1',
-          key: AnswerKey.PERSUADE_FAILED,
-          verb: 9,
-          beaten: true,
+          key: AnswerKey.FAILURE,
+          optionId: 'troupe',
           roll: 8300,
           of: 10000,
           entry: 1,
@@ -880,7 +904,9 @@ describe('formatDebugLine', () => {
     const line = formatDebugLine(event, names);
     expect(line.ids).toEqual(['skeleton-1']);
     expect(line.text).toContain('answered');
-    expect(line.text).toContain('verb=PERSUADE');
+    // Which option's table the world rolled on (rpg-project#569).
+    expect(line.text).toContain('key=FAILURE option="troupe"');
+    expect(line.text).not.toContain('verb=');
     expect(line.text).toContain('roll=8300 of=10000 entry=1');
     expect(line.text).toContain('word=FLEE');
     // The fact never rides this beat at all — see the scene below.
@@ -899,9 +925,8 @@ describe('formatDebugLine', () => {
         case: 'answered',
         value: {
           creature: 'skeleton-1',
-          key: AnswerKey.INTIMIDATED,
-          verb: 8,
-          beaten: true,
+          key: AnswerKey.SUCCESS,
+          optionId: 'threat',
           roll: 4200,
           of: 10000,
           entry: 0,
@@ -914,7 +939,7 @@ describe('formatDebugLine', () => {
       },
     });
     const line = formatDebugLine(event, names);
-    expect(line.text).toContain('verb=INTIMIDATE');
+    expect(line.text).toContain('key=SUCCESS option="threat"');
     expect(line.text).toContain('word=FACT');
     expect(line.text).not.toContain('fact=');
     expect(line.text).not.toContain('goblin-cowed');
@@ -963,13 +988,14 @@ describe('formatDebugLine', () => {
     expect(line.text).toContain('candidates=[0:3×300=900 3:1×700=700]');
     expect(line.text).not.toContain('verb=');
     expect(line.text).not.toContain('beaten=');
+    // No option stands behind a `time` pick, so none is printed.
+    expect(line.text).not.toContain('option=');
   });
 
-  it('a social pick still prints the deprecated verb and beaten beside the key', () => {
-    // THE COMPATIBILITY HALF. The pair is deprecated by `key` and still filled
-    // on all four social keys, so a reader built against the shipped shape
-    // goes on working — and this line shows both, because the debug log's
-    // whole job is every field on the wire.
+  it('prints no deprecated verb/beaten pair, even under a retired social key', () => {
+    // Speak retired the four social keys (rpg-project#569). The pair belonged
+    // to them; SUCCESS and FAILURE already say whether the check was beaten,
+    // and the `spoke` line carries the numbers.
     const event = baseEvent({
       kind: EventKind.ANSWERED,
       body: {
@@ -986,21 +1012,15 @@ describe('formatDebugLine', () => {
           say: 'Fine! FINE.',
           fact: '',
           temper: Temper.AGGRESSIVE,
-          candidates: [
-            { entry: 0, weight: 70, percent: 100, loaded: 7000 },
-            { entry: 1, weight: 30, percent: 25, loaded: 750 },
-          ],
+          candidates: [{ entry: 0, weight: 70, percent: 100, loaded: 7000 }],
         },
       },
     });
     const line = formatDebugLine(event, names);
     expect(line.text).toContain('key=INTIMIDATED');
-    expect(line.text).toContain('verb=INTIMIDATE');
-    expect(line.text).toContain('beaten=true');
+    expect(line.text).not.toContain('verb=');
+    expect(line.text).not.toContain('beaten=');
     expect(line.text).toContain('temper=AGGRESSIVE');
-    // The quartered `flee` line is the temperament doing its work, visible as
-    // arithmetic rather than as a word: 30 authored, ×25, 750 on the die.
-    expect(line.text).toContain('candidates=[0:70×100=7000 1:30×25=750]');
   });
 
   it('an untempered creature prints NONE, never UNSPECIFIED and never SOLDIER', () => {
@@ -1212,18 +1232,23 @@ describe('formatDebugLine', () => {
     };
   }
 
-  it('an untrained intimidate prints both faces, the kept one and the rule', () => {
+  it('an untrained spoken check prints both faces, the kept one and the rule', () => {
     const event = baseEvent({
-      kind: EventKind.INTIMIDATED,
+      kind: EventKind.SPOKE,
       body: {
-        case: 'intimidated',
+        case: 'spoke',
         value: {
           actor: 'char-1',
-          target: 'skeleton-1',
-          dc: 13,
-          total: 6,
-          beaten: false,
-          calculation: untrainedCheck(),
+          target: { case: 'memberId', value: 'skeleton-1' },
+          optionId: 'threat',
+          line: 'Move.',
+          skill: 'intimidation',
+          check: {
+            dc: 13,
+            total: 6,
+            beaten: false,
+            calculation: untrainedCheck(),
+          },
         },
       },
     });
@@ -1234,27 +1259,6 @@ describe('formatDebugLine', () => {
     expect(line.text).toContain('Untrained');
     // The entity behind the rule is hoverable, the way struck's already is.
     expect(line.ids).toContain('helper-1');
-  });
-
-  it('an untrained persuade prints the same, on the shared case', () => {
-    const event = baseEvent({
-      kind: EventKind.PERSUADED,
-      body: {
-        case: 'persuaded',
-        value: {
-          actor: 'char-1',
-          target: 'skeleton-1',
-          dc: 10,
-          total: 6,
-          beaten: false,
-          calculation: untrainedCheck(),
-        },
-      },
-    });
-    const line = formatDebugLine(event, names);
-    expect(line.text).toContain('persuaded');
-    expect(line.text).toContain('final_rolls=[6,14]');
-    expect(line.text).toContain('Untrained');
   });
 
   it('a forced lock prints the roll behind the door', () => {
