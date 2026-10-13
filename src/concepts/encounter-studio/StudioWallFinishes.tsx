@@ -103,8 +103,8 @@ export function StudioWallFinishes({
             onChange({ finishB: ref })
           )}
           <p className="es-help">
-            A is left of Start → End; B is right. The map markers identify each
-            side.
+            Use the A/B map markers to identify each face. They follow the wall
+            when it rotates.
           </p>
         </>
       ) : (

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { worldToClient } from '../encounter-studio/layoutGeometry';
 import { setRegionWallFinish } from './regionFinishEdits';
 import {
   finishRoomFixture,
@@ -8,9 +9,13 @@ import {
   FIT_WALL_REF,
   GRAY_REF,
 } from './roomFinishTestFixtures';
+import * as roomCharts from './roomWallFinishes';
 import { projectRoomWallFinishes } from './roomWallFinishes';
 import { setWallFinishes } from './wallFinishEdits';
-import { projectWallFinishes } from './wallFinishProjection';
+import {
+  projectWallFinishes,
+  wallFaceGuidePoints,
+} from './wallFinishProjection';
 const small = 'dnd5e:material:test:small_gray';
 const image = {
   url: '/test.png',
@@ -58,6 +63,63 @@ const catalog: WorldMaterialCatalog = {
   ],
 };
 describe('wall choices over optional room defaults', () => {
+  it('fails closed if a region-chart provider violates the certified non-overlap contract', () => {
+    const draft = setRegionWallFinish(finishRoomFixture(), 'left', {
+      materialRef: GRAY_REF,
+    });
+    draft.scene = setWallFinishes(draft.scene, 'north', {
+      'positive-z': small,
+    });
+    const defaults = projectRoomWallFinishes(draft, catalog),
+      north = defaults.spans.find((span) => span.wallId === 'north')!;
+    // Fault injection at the producer boundary, not a claim that valid authored
+    // regions can overlap. Pin the defensive guard to its actual failure path.
+    const provider = vi
+      .spyOn(roomCharts, 'projectRoomWallFinishes')
+      .mockReturnValue({
+        ...defaults,
+        spans: [
+          ...defaults.spans,
+          { ...north, regionId: 'overlapping-provider-row' },
+        ],
+      });
+    try {
+      const projected = projectWallFinishes(draft, catalog);
+      expect(projected.walls).toEqual([
+        {
+          wallId: 'north',
+          side: 'positive-z',
+          status: 'unresolved',
+          reason: 'Conflicting region charts on one wall face.',
+        },
+      ]);
+      expect(
+        projected.spans.some(
+          (span) => span.wallId === 'north' && span.side === 'positive-z'
+        )
+      ).toBe(false);
+    } finally {
+      provider.mockRestore();
+    }
+  });
+  it('keeps A on positive local Z and B on negative local Z through rotation and Layout projection', () => {
+    const wall = finishRoomFixture().room.walls![0];
+    const east = wallFaceGuidePoints(wall);
+    expect(east).toEqual({ a: { x: 4, z: 0.5 }, b: { x: 4, z: -0.5 } });
+    const transform = {
+      bounds: { left: 0, top: 0, width: 800, height: 600 },
+      center: { x: 0, z: 0 },
+      scale: 20,
+    };
+    expect(worldToClient(east.a, transform)!.y).toBeGreaterThan(
+      worldToClient(east.b, transform)!.y
+    );
+    const rotated = wallFaceGuidePoints({
+      ...wall,
+      line: { start: { x: 0, z: 0 }, end: { x: 0, z: 8 } },
+    });
+    expect(rotated).toEqual({ a: { x: -0.5, z: 4 }, b: { x: 0.5, z: 4 } });
+  });
   it('finishes both sides of a standalone wall with no region and fixed Start-relative phase', () => {
     const draft = finishRoomFixture();
     delete draft.scene.authoringRegions;

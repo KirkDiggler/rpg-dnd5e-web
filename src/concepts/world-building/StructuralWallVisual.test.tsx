@@ -1,5 +1,6 @@
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import type { ReactElement, ReactNode } from 'react';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { attachedDoorVisualPose } from './structuralDoorEditing';
@@ -46,7 +47,9 @@ for (const name of [
 }
 
 vi.mock('@react-three/drei', () => ({
-  Html: () => null,
+  Html: ({ children }: { children: ReactNode }) => (
+    <group name="html-test-probe" userData={{ content: children }} />
+  ),
   useGLTF: () => {
     if (modelState.mode === 'pending') throw modelState.pending;
     return { scene: loadedScene };
@@ -83,6 +86,44 @@ function wall(overrides: Partial<StructuralWall> = {}): StructuralWall {
 }
 
 describe('StructuralWallVisual', () => {
+  it('keeps the first named face refusal on the deduplicated 3D wall marker', async () => {
+    modelState.mode = 'loaded';
+    const renderer = await ReactThreeTestRenderer.create(
+      <StructuralWallVisual
+        walls={[wall()]}
+        selectedWallId={null}
+        selectable={false}
+        finishProjection={{
+          regions: [],
+          spans: [],
+          walls: [
+            {
+              wallId: 'wall-1',
+              side: 'positive-z',
+              status: 'unresolved',
+              reason: 'Missing material resources.',
+            },
+            {
+              wallId: 'wall-1',
+              side: 'negative-z',
+              status: 'unresolved',
+              reason: 'No compatible face.',
+            },
+          ],
+        }}
+      />
+    );
+    const markers = renderer.scene.findAllByProps({ name: 'html-test-probe' });
+    expect(markers).toHaveLength(1);
+    const label = (markers[0].instance as THREE.Object3D).userData
+      .content as ReactElement<{ title: string; children: ReactNode }>;
+    expect(label.props.title).toBe('Side A: Missing material resources.');
+    expect(label.props.children).toEqual([
+      'Wall finish unapplied: ',
+      'Side A: Missing material resources.',
+    ]);
+    await renderer.unmount();
+  });
   it('repeats real pieces across the cut spans and skips the opening interval', async () => {
     modelState.mode = 'loaded';
     const renderer = await ReactThreeTestRenderer.create(

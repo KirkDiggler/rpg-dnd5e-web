@@ -566,15 +566,16 @@ export function StructuralWallVisual({
   const marker = finishProjection?.regions.find(
     (r) => r.id === patternRegionId
   )?.marker;
+  const wallRefusals = new Map<string, string>();
+  for (const status of finishProjection?.walls ?? [])
+    if (status.status === 'unresolved' && !wallRefusals.has(status.wallId))
+      wallRefusals.set(
+        status.wallId,
+        `Side ${status.side === 'positive-z' ? 'A' : 'B'}: ${status.reason ?? 'Unresolved finish.'}`
+      );
   return (
     <group name="structural-walls">
-      {[
-        ...new Set(
-          (finishProjection?.walls ?? [])
-            .filter((s) => s.status === 'unresolved')
-            .map((s) => s.wallId)
-        ),
-      ].map((id) => {
+      {[...wallRefusals].map(([id, reason]) => {
         const wall = walls.find((w) => w.id === id);
         if (!wall) return null;
         const p = wallMidpoint(wall);
@@ -593,6 +594,7 @@ export function StructuralWallVisual({
           >
             <span
               role="status"
+              title={reason}
               style={{
                 pointerEvents: 'none',
                 whiteSpace: 'nowrap',
@@ -601,7 +603,7 @@ export function StructuralWallVisual({
                 padding: '3px 6px',
               }}
             >
-              Wall finish unapplied
+              Wall finish unapplied: {reason}
             </span>
           </Html>
         );

@@ -198,7 +198,8 @@ policy; save/export still require complete codec validation.
 ## Selected-wall finishes and optional room defaults
 
 A selected wall can choose one finish for both faces or separate choices for A
-and B. A is left of Start→End (`positive-z`); B is right (`negative-z`). Both-side
+and B. A identifies the wall's `positive-z` face and B its `negative-z` face;
+the map markers follow that source orientation, not camera-relative left/right. Both-side
 editing is the default affordance; changing the control mode alone writes no
 content. Choices stage beside the other Arrange fields and use the same atomic
 Apply/Cancel transaction, with the same selection/document/epoch fences.

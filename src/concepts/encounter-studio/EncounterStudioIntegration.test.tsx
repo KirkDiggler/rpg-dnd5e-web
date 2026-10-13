@@ -1037,6 +1037,48 @@ describe('Studio authoring homes through the real owner', () => {
     ).toBe('1');
   });
 
+  it('refuses an incompatible staged appearance and finish as one transaction, then accepts correction without losing staged inputs', () => {
+    installFinishPreview();
+    const draft = finishRoomFixture();
+    delete draft.scene.authoringRegions;
+    delete draft.scene.mapLabels;
+    draft.room.walls = [draft.room.walls![0]];
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    const before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.click(button('Change wall appearance'));
+    const form = screen.getByRole('form', { name: 'Arrange selected noun' });
+    fireEvent.click(
+      within(form).getByTitle('dnd5e:env:dark-fortress:45_wall_01')
+    );
+    fireEvent.click(button('Apply Arrange'));
+    // This must reach compatibility refusal, not an unrelated schema/asset guard.
+    expect(
+      screen.getByText(/has no compatible A face for this finish/)
+    ).toBeTruthy();
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    expect(
+      (screen.getByLabelText('Appearance height') as HTMLInputElement).value
+    ).toBe('4');
+    fireEvent.click(within(form).getByTitle(FIT_WALL_REF));
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(storage.document().draft.room.walls![0].appearance.height).toBe(4);
+    expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': GRAY_REF,
+    });
+  });
+
   it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
     const { smallRef } = installFinishPreview(),
       draft = finishRoomFixture();
