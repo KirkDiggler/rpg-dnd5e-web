@@ -81,10 +81,15 @@ describe('monster declarations consumer contract', () => {
     ).toBeUndefined();
   });
 
-  it('preserves carried-only interaction facts when editing membership', () => {
+  it('preserves a creature’s lines when editing membership', () => {
     const facts = {
-      intimidate: [{ ability: 'intimidation', dc: 12 }],
-      persuade: [{ ability: 'persuasion', dc: 10 }],
+      options: [
+        {
+          id: 'lean-on-it',
+          say: 'Where is the cellar?',
+          check: [{ ability: 'intimidation', dc: 12 }],
+        },
+      ],
     };
     const bound = setMonsterFaction(facts, 'watch');
     expect(withBinding(undefined, 'guard', bound)).toEqual({

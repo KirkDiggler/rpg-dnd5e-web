@@ -1,12 +1,13 @@
 /**
  * Editing ONE creature's own orders and reserve facts — its `on`, its
- * `temper`, its `actions` (rpg-dnd5e-web#1164), and its `arrives` and `holds`
- * (rpg-dnd5e-web#1176).
+ * `temper`, its `actions` (rpg-dnd5e-web#1164), its `arrives` and `holds`
+ * (rpg-dnd5e-web#1176), and the `options` a character speaks to it by
+ * (rpg-project#569).
  *
- * `intimidate` AND `persuade` WERE EDITED HERE AND ARE GONE
- * (rpg-dnd5e-web#1201). They are not a monster's fact: a priced check is a
- * property of INTERACTING WITH AN NPC, and a hostile monster is not one. See
- * `RoomMonsterInteraction` in `roomDraft.ts` for the reason in full.
+ * `intimidate` AND `persuade` ARE GONE (rpg-dnd5e-web#1201, then
+ * rpg-project#569 R2): a priced check lives on the LINE that rolls it, so an
+ * author writes an option whose check is Intimidation instead. See
+ * `RoomMonsterInteraction` in `roomDraft.ts`.
  *
  * THE BUILDER IS A FORM BUILDER, AND THESE ARE ITS MECHANICS, NOT ITS
  * OPINIONS. Every function here moves bytes the toolkit already accepts
@@ -27,7 +28,7 @@
  * REFUSES these states outright (`roomDraft.ts`'s `validateMonsterBindings`):
  *
  *   `actions: []`          -> "actions is empty; omit the key instead."
- *   `intimidate: []`       -> "intimidate is empty; omit the key instead."
+ *   `options: []`          -> "options is empty; omit the key instead."
  *   `holds: []`            -> "holds is empty; omit the key instead."
  *   a binding with no keys -> "declares no bindings; omit the binding instead."
  *
@@ -44,7 +45,13 @@
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
-import type { RoomMonsterBinding } from './roomDraft';
+import {
+  addOption,
+  normalizeOptions,
+  removeOption,
+  replaceOption,
+} from './optionEdits';
+import type { RoomMonsterBinding, RoomOption } from './roomDraft';
 import { defaultAnswerEntry } from './sitePolicyEdits';
 
 /** The authored orders, keyed by creature id. `undefined` is the authored
@@ -60,10 +67,6 @@ export function normalizeBinding(
   const normalized: RoomMonsterBinding = {};
   if (next.faction !== undefined && next.faction !== '')
     normalized.faction = next.faction;
-  // These are still accepted on import, although no longer offered by the UI.
-  // Editing membership must not erase the imported creature's other facts.
-  if (next.intimidate !== undefined) normalized.intimidate = next.intimidate;
-  if (next.persuade !== undefined) normalized.persuade = next.persuade;
   // A NAMED ROOT TABLE IS A REFERENCE, SO IT IS KEPT VERBATIM (rpg-toolkit#1897).
   // Every other key here is an override that can be emptied and must then be
   // dropped; a reference has no empty state — it names a table or it is absent.
@@ -88,6 +91,10 @@ export function normalizeBinding(
   if (next.holds !== undefined && next.holds.length > 0)
     normalized.holds = next.holds;
   if (next.arrives !== undefined) normalized.arrives = next.arrives;
+  // An empty option list is "none", and the encoder refuses it, so it is
+  // never stored (`optionEdits.ts` normalizes each line the same way).
+  const options = normalizeOptions(next.options);
+  if (options !== undefined) normalized.options = options;
   return Object.keys(normalized).length === 0 ? undefined : normalized;
 }
 
@@ -283,4 +290,44 @@ export function setMonsterArrives(
   arrives: PredicateDoc | undefined
 ): RoomMonsterBinding | undefined {
   return normalizeBinding({ ...working(binding), arrives });
+}
+
+// ---------------------------------------------------------------------------
+// The lines a character can say to this creature (rpg-project#569). The list
+// grammar is `optionEdits.ts`'s, shared with a prop's; these put the list back
+// on the creature and normalize the binding, so removing the last line can
+// delete the binding.
+
+/** Append a new line, with a fresh id and a starting check. */
+export function addMonsterOption(
+  binding: RoomMonsterBinding | undefined
+): RoomMonsterBinding | undefined {
+  const next = working(binding);
+  return normalizeBinding({ ...next, options: addOption(next.options) });
+}
+
+/** Replace one line by index — every edit inside an option (its id, line,
+ * check, gate and verdict rows) arrives here as the whole edited option. */
+export function setMonsterOption(
+  binding: RoomMonsterBinding | undefined,
+  index: number,
+  option: RoomOption
+): RoomMonsterBinding | undefined {
+  const next = working(binding);
+  return normalizeBinding({
+    ...next,
+    options: replaceOption(next.options, index, option),
+  });
+}
+
+/** Remove one line by index. The last one gone is "nobody can speak to it". */
+export function removeMonsterOption(
+  binding: RoomMonsterBinding | undefined,
+  index: number
+): RoomMonsterBinding | undefined {
+  const next = working(binding);
+  return normalizeBinding({
+    ...next,
+    options: removeOption(next.options, index),
+  });
 }

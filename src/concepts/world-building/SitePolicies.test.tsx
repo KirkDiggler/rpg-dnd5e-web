@@ -12,9 +12,12 @@
  * readout with both asymmetries stated.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AnswerTableShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
+import { PropOrders } from './PropOrders';
+import type { RoomMonsterBinding, RoomPropBinding } from './roomDraft';
 import {
   CreatureOrders,
   DispositionsPanel,
@@ -97,21 +100,10 @@ describe('SitePolicies — the site’s own facts, editable', () => {
       within(panel).getByText('temper coward ×2 · soldier ×1 · aggressive ×1')
     ).toBeTruthy();
 
-    // The shared table, trigger by trigger, with each entry's weight, its `say`
-    // and the one word it does. THE SOCIAL ROWS CARRY NO CONDITION LEAD: `when`
-    // is illegal under a social key (the verdict IS the condition), so "any
-    // time" there would assert a timing the row does not have. Only the `time`
-    // row leads with its condition. (Corrected in review — the first cut
-    // labelled every row, social included.)
-    expect(within(panel).getByText('intimidated')).toBeTruthy();
-    expect(
-      within(panel).getByText(
-        'weight 70 · say “Fine! The cellar door is behind the barrels.” · fact goblin-cowed'
-      )
-    ).toBeTruthy();
-    expect(
-      within(panel).getByText('weight 30 · say “Boss! BOSS!” · flee')
-    ).toBeTruthy();
+    // The shared table, trigger by trigger. The engine's example carries
+    // `time` alone since the social keys retired to options (rpg-project#569
+    // R2): what the goblin SAYS when spoken to is on its line now.
+    expect(within(panel).queryByText('intimidated')).toBeNull();
     expect(within(panel).getByText('time')).toBeTruthy();
     expect(
       within(panel).getByText('when enemy reach · weight 1 · attack enemy')
@@ -204,11 +196,19 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
     const creature = screen.getByLabelText('Selected creature');
     expect(within(creature).getByText('goblins')).toBeTruthy();
 
-    // Inherited: the faction's mix and both shared-table triggers.
+    // Inherited: the faction's mix and its shared `time` table.
     expect(
       within(creature).getByText(/coward ×2 · soldier ×1 · aggressive ×1/)
     ).toBeTruthy();
-    expect(within(creature).getByText('intimidated')).toBeTruthy();
+    expect(
+      within(creature).getByText('when enemy seen · weight 1 · toward enemy')
+    ).toBeTruthy();
+    // And its own line, read out (no editor is given here).
+    expect(
+      within(creature).getByText(
+        'lean-on-it: “Where is the cellar?” · intimidation dc 12'
+      )
+    ).toBeTruthy();
 
     // Overridden: its own ONE word, its own `time` table and its actions.
     expect(within(creature).getByText(/^temper coward$/)).toBeTruthy();
@@ -301,31 +301,26 @@ describe('CreatureOrders — inherited vs overridden for a selected creature', (
 
 describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () => {
   /**
-   * THE PRICED CHECKS ARE NO LONGER OFFERED (rpg-dnd5e-web#1201). Kirk ruled
-   * they come off the builder — a check is a property of INTERACTING WITH AN
-   * NPC, and a hostile monster is not one — so this asserts the ABSENCE, which
-   * is the behaviour change. The fields are still READ (see
-   * `roomDraft.test.ts`), so a document carrying them still opens.
+   * THE PRICED CHECKS CAME BACK ON THE LINE THAT ROLLS THEM (rpg-project#569).
+   * There is no per-creature Intimidate or Persuade control any more; a check
+   * is part of an option, so what remains to assert here is the absence of
+   * the old controls and the presence of the new block.
    */
-  it('offers no control for the priced checks, which are no longer the builder’s', () => {
+  it('offers lines, not the old per-creature priced checks', () => {
     render(
       <CreatureOrders
         scope={siteScope}
         monster={goblin}
         room={fixture.draft.room}
-        binding={{
-          intimidate: [{ ability: 'intimidation', dc: 12 }],
-          persuade: [{ ability: 'persuasion', dc: 10 }],
-          holds: ['cellar-lie'],
-        }}
+        binding={{ holds: ['cellar-lie'] }}
         onOrdersChange={vi.fn()}
       />
     );
     expect(screen.queryByTestId('creature-intimidate')).toBeNull();
     expect(screen.queryByTestId('creature-persuade')).toBeNull();
     expect(screen.queryByLabelText('Add Intimidate row')).toBeNull();
-    // And the block they lived in is now about what it still carries.
     expect(screen.getByText('Reserve and holdings')).toBeTruthy();
+    expect(screen.getByTestId('options-none-goblin-1')).toBeTruthy();
   });
 
   it('gives and takes away a held record from the site’s declared ones', () => {
@@ -404,11 +399,13 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
         monster={goblin}
         room={fixture.draft.room}
         binding={{
-          // CARRIED, NOT SHOWN (rpg-dnd5e-web#1201): these still round-trip
-          // through the document, and the panel no longer reports them.
-          intimidate: [{ ability: 'intimidation', dc: 12 }],
-          persuade: [
-            { ability: 'persuasion', dc: 10, tool: 'dnd5e:items:lute' },
+          options: [
+            {
+              id: 'lean-on-it',
+              say: 'Where is the cellar?',
+              check: [{ ability: 'intimidation', dc: 12 }],
+              requires: { fact: 'cellar-exists' },
+            },
           ],
           holds: ['cellar-lie'],
           arrives: { fact: 'cellar-is-clear' },
@@ -420,7 +417,11 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
     expect(
       within(creature).getByText(/held in reserve until fact cellar-is-clear/)
     ).toBeTruthy();
-    expect(within(creature).queryByText(/intimidate dc/)).toBeNull();
+    expect(
+      within(creature).getByText(
+        'lean-on-it: “Where is the cellar?” · intimidation dc 12 · requires fact cellar-exists'
+      )
+    ).toBeTruthy();
     expect(screen.getByTestId('creature-interaction-readonly')).toBeTruthy();
   });
 });
@@ -689,5 +690,195 @@ describe('an entry’s `when:` condition is authored, not just read (web#1192)',
     const table = lastTable(onChange);
     expect('when' in table.time![0]!).toBe(false);
     expect(table.time![0]!.away).not.toBe('actor');
+  });
+});
+
+describe('Options — the lines a character can say (rpg-project#569)', () => {
+  /** The example's room with its table marked holdable, so a line may
+   * require carrying it. */
+  const room = {
+    ...fixture.draft.room,
+    propBindings: { table: { holdable: true } },
+  };
+
+  /** CreatureOrders holding its own binding, so edits accumulate the way the
+   * studio's history makes them. */
+  function Creature({
+    onBinding,
+  }: {
+    onBinding: (binding: RoomMonsterBinding | undefined) => void;
+  }) {
+    const [binding, setBinding] = useState<RoomMonsterBinding | undefined>();
+    return (
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={room}
+        binding={binding}
+        onOrdersChange={(next) => {
+          setBinding(next);
+          onBinding(next);
+        }}
+      />
+    );
+  }
+
+  it('adds a line gated on carrying a placed prop, with both verdicts', () => {
+    let latest: RoomMonsterBinding | undefined;
+    render(<Creature onBinding={(next) => (latest = next)} />);
+    expect(screen.getByTestId('options-none-goblin-1')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Add a line to goblin-1'));
+    expect(latest?.options).toEqual([
+      { id: 'line-1', say: '', check: [{ ability: 'persuasion', dc: 10 }] },
+    ]);
+    fireEvent.change(screen.getByLabelText('Line 1 id for goblin-1'), {
+      target: { value: 'bribe' },
+    });
+    fireEvent.change(screen.getByLabelText('Line 1 for goblin-1'), {
+      target: { value: 'Ten gold says you never saw us.' },
+    });
+    fireEvent.change(
+      screen.getByLabelText('DC for approach 0 of line 1 of goblin-1'),
+      { target: { value: '8' } }
+    );
+
+    // `requires: holds` offers the room's HOLDABLE props — the table only; the
+    // cellar door is declared but nobody can pick it up.
+    fireEvent.change(screen.getByLabelText('Line 1 requires for goblin-1'), {
+      target: { value: 'holds' },
+    });
+    const prop = screen.getByLabelText(
+      'Line 1 requires prop for goblin-1'
+    ) as HTMLSelectElement;
+    expect([...prop.options].map((option) => option.value)).toEqual(['table']);
+    expect(prop.value).toBe('table');
+
+    fireEvent.click(
+      screen.getByLabelText('Add success row to line 1 of goblin-1')
+    );
+    fireEvent.change(
+      screen.getByLabelText(
+        'Say (optional) for line 1 of goblin-1 success entry'
+      ),
+      { target: { value: 'Saw who?' } }
+    );
+    fireEvent.change(
+      screen.getByLabelText('Do for line 1 of goblin-1 success entry'),
+      { target: { value: 'fact' } }
+    );
+    fireEvent.change(
+      screen.getByLabelText('fact for line 1 of goblin-1 success entry'),
+      { target: { value: 'feast-tonight' } }
+    );
+    fireEvent.click(
+      screen.getByLabelText('Add failure row to line 1 of goblin-1')
+    );
+    fireEvent.change(
+      screen.getByLabelText(
+        'Say (optional) for line 1 of goblin-1 failure entry'
+      ),
+      { target: { value: 'Keep your coin.' } }
+    );
+
+    expect(latest).toEqual({
+      options: [
+        {
+          id: 'bribe',
+          say: 'Ten gold says you never saw us.',
+          check: [{ ability: 'persuasion', dc: 8 }],
+          requires: { holds: 'table' },
+          success: [{ say: 'Saw who?', fact: 'feast-tonight' }],
+          failure: [{ say: 'Keep your coin.' }],
+        },
+      ],
+    });
+
+    // A verdict row offers what the engine takes under a verdict: a line, a
+    // fact, a flee — never a time word.
+    const words = [
+      ...(
+        screen.getByLabelText(
+          'Do for line 1 of goblin-1 failure entry'
+        ) as HTMLSelectElement
+      ).options,
+    ].map((option) => option.value);
+    expect(words).toEqual(['', 'fact', 'flee']);
+
+    // Removing the last line is "nobody can speak to it", and the binding
+    // that held nothing else goes with it.
+    fireEvent.click(screen.getByLabelText('Remove line 1 from goblin-1'));
+    expect(latest).toBeUndefined();
+  });
+
+  it('cannot require carrying a prop when nothing placed can be picked up', () => {
+    render(
+      <CreatureOrders
+        scope={siteScope}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{
+          options: [
+            {
+              id: 'gossip',
+              say: 'Busy night?',
+              check: [{ ability: 'persuasion', dc: 10 }],
+            },
+          ],
+        }}
+        onOrdersChange={vi.fn()}
+      />
+    );
+    const holds = [
+      ...(
+        screen.getByLabelText(
+          'Line 1 requires for goblin-1'
+        ) as HTMLSelectElement
+      ).options,
+    ].find((option) => option.value === 'holds');
+    expect(holds?.disabled).toBe(true);
+    expect(
+      screen.getByTestId('option-no-holdable-line 1 of goblin-1')
+    ).toBeTruthy();
+  });
+
+  it('gives a prop lines, and never offers it `flee`', () => {
+    let latest: RoomPropBinding | undefined;
+    render(
+      <PropOrders
+        items={fixture.draft.scene.items.filter((item) => item.id === 'table')}
+        bindings={{
+          table: {
+            options: [
+              {
+                id: 'examine',
+                say: 'Examine the table.',
+                check: [{ ability: 'investigation', dc: 12 }],
+                success: [{ say: 'A false bottom.', fact: 'table-hollow' }],
+              },
+            ],
+          },
+        }}
+        declaredIds={new Set(['table'])}
+        doorIds={new Set()}
+        recordIds={[]}
+        scope={siteScope}
+        room={fixture.draft.room}
+        onChange={(_, next) => (latest = next)}
+      />
+    );
+    const words = [
+      ...(
+        screen.getByLabelText(
+          'Do for line 1 of table success entry'
+        ) as HTMLSelectElement
+      ).options,
+    ].map((option) => option.value);
+    expect(words).toEqual(['', 'fact']);
+    fireEvent.click(screen.getByLabelText('Add a line to table'));
+    expect(latest?.options?.map((option) => option.id)).toEqual([
+      'examine',
+      'line-1',
+    ]);
   });
 });

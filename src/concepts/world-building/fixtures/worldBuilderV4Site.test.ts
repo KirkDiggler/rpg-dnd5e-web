@@ -35,7 +35,8 @@ describe('the engine’s own v4 single-room example', () => {
     // that must NOT be accepted on a binding.
     expect(goblins?.temper).toEqual({ coward: 2, soldier: 1, aggressive: 1 });
     // The shared table its members inherit.
-    expect(Object.keys(goblins?.on ?? {})).toEqual(['intimidated', 'time']);
+    // `time` alone: the social keys retired to options (rpg-project#569 R2).
+    expect(Object.keys(goblins?.on ?? {})).toEqual(['time']);
   });
 
   it('reads the dispositions, including the predicate that ends one', () => {
@@ -69,6 +70,23 @@ describe('the engine’s own v4 single-room example', () => {
       on: { time: [{ when: { enemy: 'reach' }, hold: {} }] },
       temper: 'coward',
       actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:shortbow'],
+      // THE LINE A CHARACTER SPEAKS TO IT BY (rpg-project#569): an option
+      // carries its own check and what the goblin answers on the verdict.
+      options: [
+        {
+          id: 'lean-on-it',
+          say: 'Where is the cellar?',
+          check: [{ ability: 'intimidation', dc: 12 }],
+          success: [
+            {
+              weight: 70,
+              say: 'Fine! The cellar door is behind the barrels.',
+              fact: 'goblin-cowed',
+            },
+            { weight: 30, say: 'Boss! BOSS!', flee: {} },
+          ],
+        },
+      ],
     });
     // A binding that overrides only actions is a binding, not a partial one.
     expect(bindings?.['skeleton-a']).toEqual({

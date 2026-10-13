@@ -185,6 +185,33 @@ export const ANSWER_TRIGGERS: readonly AnswerTriggerSpec[] = Object.freeze([
   },
 ]);
 
+/** The two VERDICTS an option answers on (rpg-project#569 R2) — `success`
+ * when the speaker's check was beaten, `failure` when it was missed.
+ *
+ * THEY ARE NOT TRIGGERS, and that is why they are their own list. A trigger is
+ * a key of an `on:` table; a verdict is a key of ONE OPTION (`OptionSpec`'s
+ * `success:`/`failure:`), and `on: { success: … }` is refused as the unknown
+ * trigger it is. What they share with the social triggers is the applicability
+ * group: the engine judges an option row with the table's own `answerEntry`
+ * under the verdict's key (`grammar.options`), so `fact`, `flee` and a line are
+ * legal there, a time word and a `when` are not, and the sentences name the
+ * verdict — "`attack` is what a creature does with time, and `success` is an
+ * outcome". */
+export const ANSWER_VERDICTS: readonly AnswerTriggerSpec[] = Object.freeze([
+  {
+    key: 'success',
+    label: 'The check was beaten',
+    help: 'What it answers when the line landed.',
+    applicability: 'social',
+  },
+  {
+    key: 'failure',
+    label: 'The check was missed',
+    help: 'What it answers when the line did not land — the half that makes trying worse than not trying.',
+    applicability: 'social',
+  },
+]);
+
 export const ANSWER_WORD_KEYS: readonly string[] = Object.freeze(
   ANSWER_WORDS.map((w) => w.key)
 );
@@ -361,12 +388,14 @@ export function answerTrigger(key: string): AnswerTriggerSpec | undefined {
   return ANSWER_TRIGGERS.find((t) => t.key === key);
 }
 
-/** What group a trigger belongs to, or undefined when it is not a trigger
- * this build rolls. */
+/** What group a trigger — or an option's verdict ([ANSWER_VERDICTS]) —
+ * belongs to, or undefined when it is neither. */
 export function answerTriggerApplicability(
   trigger: string
 ): AnswerApplicability | undefined {
-  return answerTrigger(trigger)?.applicability;
+  return (
+    answerTrigger(trigger) ?? ANSWER_VERDICTS.find((v) => v.key === trigger)
+  )?.applicability;
 }
 
 /** Whether a word may be written under a trigger — the whole of the

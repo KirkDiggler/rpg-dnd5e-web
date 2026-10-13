@@ -1,0 +1,111 @@
+version: 4
+key: crypt-room
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+room:
+  version: 3
+  id: room-1
+  name: Untitled room
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  workspace:
+    hexRadius: 6
+    horizontalLimit: 12
+  scene:
+    version: 1
+    id: scene-1
+    name: Untitled world
+    items:
+      - id: prop-1
+        kind: prop
+        assetRef: dnd5e:props:torture-table
+        label: table
+        transform:
+          x: -2.25
+          y: 1.2
+          z: 1.3
+          rotationY: 0.37
+        heightScale: 1.5
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes: []
+    propDeclarations:
+      prop-1:
+        blocksMovement: true
+        blocksLineOfSight: false
+        footprint:
+          width: 1.2
+          depth: 0.5
+          offsetX: 0
+          offsetZ: 0
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: skeleton-a
+        ref: dnd5e:monsters:skeleton
+        startingCell:
+          location:
+            q: 2
+            r: -1
+      - id: front-goblin
+        ref: dnd5e:monsters:goblin
+        startingCell:
+          location:
+            q: 1
+            r: 0
+    partyStart:
+      q: 0
+      r: 0
+    monsterBindings:
+      front-goblin:
+        options:
+          - id: lean-on-it
+            say: Where's the cellar? Tell me or you're next.
+            check:
+              - ability: intimidation
+                dc: 12
+            success:
+              - weight: 70
+                say: Fine! FINE. The cellar door is behind the barrels. Just don't.
+                fact: goblin-cowed
+              - weight: 30
+                say: Boss! BOSS!
+                flee: {}
+            failure:
+              - say: Big talk, for someone standing in my doorway.
+          - id: talk-it-round
+            say: We're not here for you. Where did the bandits go?
+            check:
+              - ability: persuasion
+                dc: 10
+            success:
+              - say: Bandits took the cellar. Go left at the rope, and mind the third step.
+            failure:
+              - weight: 100
+                say: Cellar's empty, friend. Nothing down there but rats. Straight on through.
+                fact: cellar-is-clear
+    propBindings:
+      prop-1:
+        holdable: true
+        options:
+          - id: examine
+            say: Examine the table.
+            check:
+              - ability: investigation
+                dc: 12
+              - ability: perception
+                dc: 14
+                tool: dnd5e:items:lantern
+            requires:
+              fact: table-noticed
+            success:
+              - say: A false bottom.
+                fact: table-hollow
+            failure:
+              - say: Just a table.

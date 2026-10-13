@@ -1,0 +1,28 @@
+# The front room's goblin, spoken to by two lines — a VERBATIM COPY of the
+# `options:` block on `front-goblin` in rpg-toolkit
+# `rulebooks/dnd5e/encounter/dungeonspec/testdata/world-builder-v4-front-room.yaml`
+# as it stood at `3bba256e` (rpg-toolkit#2039, rpg-project#569), dedented by
+# eight spaces and nothing else. The engine compiles that file, so a studio
+# that emits THESE options emits a block the engine takes.
+#
+# EncounterStudioIntegration.test.tsx authors the goblin through the studio and
+# asserts the emitted block equals this one.
+options:
+  - id: lean-on-it
+    say: "Where's the cellar? Tell me or you're next."
+    check: [{ ability: intimidation, dc: 12 }]
+    success:
+      - { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don't.", fact: goblin-cowed }
+      - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+    failure:
+      - { say: 'Big talk, for someone standing in my doorway.' }
+  - id: talk-it-round
+    say: "We're not here for you. Where did the bandits go?"
+    check: [{ ability: persuasion, dc: 10 }]
+    success:
+      - { say: 'Bandits took the cellar. Go left at the rope, and mind the third step.' }
+    # A failed appeal, and the lie is a FACT like any other. The
+    # bandits' `arrives` below reads it; there is no truth bit anywhere
+    # on the wire.
+    failure:
+      - { weight: 100, say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.", fact: cellar-is-clear }

@@ -16,6 +16,7 @@ import {
   resizeRoomWorkspace,
   stringifyRoomDraft,
   type RoomDraft,
+  type RoomOption,
 } from './roomDraft';
 import { createEmptyScene } from './sceneState';
 import {
@@ -34,6 +35,28 @@ const readGolden = () =>
     'src/concepts/world-building/fixtures/singleRoomV4.golden.yaml',
     'utf8'
   );
+
+/** The encoder's output for a room whose creature and prop carry OPTIONS
+ * (rpg-project#569), committed byte-accurate. A SIBLING of the golden above
+ * rather than an edit to it: that one pins what a room with NO bindings emits,
+ * and its own assertions say so. */
+const readOptionsGolden = () =>
+  readFileSync(
+    'src/concepts/world-building/fixtures/singleRoomOptions.golden.yaml',
+    'utf8'
+  );
+
+/** The front room's goblin's two lines, as the ENGINE's golden writes them
+ * (`fixtures/frontGoblinOptions.yaml`, a verbatim copy). */
+const engineGoblinOptions = () =>
+  (
+    parse(
+      readFileSync(
+        'src/concepts/world-building/fixtures/frontGoblinOptions.yaml',
+        'utf8'
+      )
+    ) as { options: RoomOption[] }
+  ).options;
 
 /** The golden's own draft: a room with a prop, a start and one actor, and none
  * of the new keys. */
@@ -264,6 +287,52 @@ play:
     expect(emitted).not.toContain('monsterBindings');
   });
 
+  it('emits a creature’s and a prop’s options byte-for-byte, in the engine’s shape', () => {
+    // THE FRONT ROOM'S GOBLIN, with the engine's own two lines, and a prop
+    // with one — every option key once: id, say, check (two approaches and a
+    // tool), requires in both forms, success and failure.
+    const draft = goldenDraft();
+    draft.room.propDeclarations['prop-1'] = {
+      blocksMovement: true,
+      blocksLineOfSight: false,
+      footprint: { width: 1.2, depth: 0.5, offsetX: 0, offsetZ: 0 },
+    };
+    draft.room.monsterDeclarations.push({
+      id: 'front-goblin',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 1, r: 0 } },
+    });
+    draft.room.monsterBindings = {
+      'front-goblin': { options: engineGoblinOptions() },
+    };
+    draft.room.propBindings = {
+      'prop-1': {
+        holdable: true,
+        options: [
+          {
+            id: 'examine',
+            say: 'Examine the table.',
+            check: [
+              { ability: 'investigation', dc: 12 },
+              { ability: 'perception', dc: 14, tool: 'dnd5e:items:lantern' },
+            ],
+            requires: { fact: 'table-noticed' },
+            success: [{ say: 'A false bottom.', fact: 'table-hollow' }],
+            failure: [{ say: 'Just a table.' }],
+          },
+        ],
+      },
+    };
+    const emitted = encodeSingleRoomDungeon({ key: 'crypt-room', draft });
+    expect(emitted).toBe(readOptionsGolden());
+    // The goblin's block is the ENGINE's block, key for key.
+    const room = parse(emitted).room.room;
+    expect(room.monsterBindings['front-goblin'].options).toEqual(
+      engineGoblinOptions()
+    );
+    expect(decodeSingleRoomDungeon(emitted).draft).toEqual(draft);
+  });
+
   it('treats an empty site scope and empty bindings as absence, not as bytes', () => {
     // "Omitted means none" cuts both ways: an explicitly empty list is the
     // authored state "no factions", so it is neither refused nor written.
@@ -409,12 +478,13 @@ intel:
 ${ROOM_BLOCK}
     monsterBindings:
       goblin-1:
-        intimidate: [{ability: intimidation, dc: 12}]
-        persuade: [{ability: persuasion, dc: 10}]
         holds: [cellar-lie]
-        on:
-          persuade_failed:
-            - {weight: 100, say: "Cellar's empty, friend.", fact: cellar-is-clear}
+        options:
+          - id: talk-it-round
+            say: Where did the bandits go?
+            check: [{ability: persuasion, dc: 10}]
+            failure:
+              - {weight: 100, say: "Cellar's empty, friend.", fact: cellar-is-clear}
 `;
 
     const decoded = decodeSingleRoomDungeon(source);
@@ -423,18 +493,21 @@ ${ROOM_BLOCK}
     ]);
     expect(decoded.draft.room.monsterBindings).toEqual({
       'goblin-1': {
-        intimidate: [{ ability: 'intimidation', dc: 12 }],
-        persuade: [{ ability: 'persuasion', dc: 10 }],
         holds: ['cellar-lie'],
-        on: {
-          persuade_failed: [
-            {
-              weight: 100,
-              say: "Cellar's empty, friend.",
-              fact: 'cellar-is-clear',
-            },
-          ],
-        },
+        options: [
+          {
+            id: 'talk-it-round',
+            say: 'Where did the bandits go?',
+            check: [{ ability: 'persuasion', dc: 10 }],
+            failure: [
+              {
+                weight: 100,
+                say: "Cellar's empty, friend.",
+                fact: 'cellar-is-clear',
+              },
+            ],
+          },
+        ],
       },
     });
 
@@ -448,8 +521,8 @@ ${ROOM_BLOCK}
     expect(emitted.startsWith('version: 4\n')).toBe(true);
     expect(emitted).toContain('intel:');
     expect(emitted).toContain('reveals:');
-    expect(emitted).toContain('intimidate:');
-    expect(emitted).toContain('dc: 12');
+    expect(emitted).toContain('options:');
+    expect(emitted).toContain('dc: 10');
     expect(emitted).toContain('holds:');
     // Parse -> emit -> parse is idempotent.
     expect(decodeSingleRoomDungeon(emitted)).toEqual(decoded);
@@ -583,14 +656,14 @@ ${ROOM_BLOCK}
     expect(withTemper.draft.room.monsterBindings?.['goblin-1'].temper).toBe(
       'coward'
     );
-    // `intimidate` IS carried since web#1176, so it decodes rather than being
-    // refused — and an actually-unknown key is still refused by name.
-    const withCheck = decodeSingleRoomDungeon(
-      `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
-    );
-    expect(
-      withCheck.draft.room.monsterBindings?.['goblin-1'].intimidate
-    ).toEqual([{ ability: 'intimidation', dc: 12 }]);
+    // `intimidate` RETIRED to options (rpg-project#569 R2) and is refused by
+    // name in the engine's sentence; an actually-unknown key is still refused
+    // as unknown.
+    expect(() =>
+      decodeSingleRoomDungeon(
+        `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidate: [{ ability: intimidation, dc: 12 }]\n`
+      )
+    ).toThrow(/`intimidate` is no longer a key: author an option/);
     expect(() =>
       decodeSingleRoomDungeon(
         `version: 4\nkey: crypt-room\n${PLAY_BLOCK}\n${ROOM_BLOCK}\n    monsterBindings:\n      goblin-1:\n        intimidating: {dc: 12}\n`
