@@ -52,6 +52,7 @@ import {
   OPTION_VERDICTS,
   whenConditions,
   whenFromConditions,
+  whenListensShape,
   whenNamesDeedShape,
   type AnswerEntryShape,
   type AnswerTableShape,
@@ -729,11 +730,15 @@ export function AnswerEntryRow({
    * entry's `when` names one, so the list never offers an illegal choice —
    * and the engine's own sentence stays the backstop for a hand-written file. */
   const actorLegal = whenNamesDeed(entry.when);
-  /** `sound` is never offered on `attack` (R10: a sound cannot be struck),
+  /** `sound` needs a row that LISTENS — a top-level `heard` (R10; a `heard`
+   * inside a `not` is not listening) — so it is offered only then, exactly as
+   * `actor` waits for a deed. Never on `attack` (a sound cannot be struck),
    * read from the declaration's own `refusedOn`. */
+  const soundLegal = whenListensShape(entry.when);
   const selectorWords = ANSWER_SELECTOR_WORDS.filter(
     (selector) =>
       (selector.key !== 'actor' || actorLegal) &&
+      (selector.key !== 'sound' || soundLegal) &&
       selectorWordLegalOn(selector.key, word)
   );
   const selectorChoice =
@@ -745,19 +750,23 @@ export function AnswerEntryRow({
     return draft;
   };
 
-  /** Set or clear the condition. CLEARING IT ALSO CLEARS AN `actor` SELECTOR,
-   * because `actor` without a deed is refused by name and leaving it behind
-   * would publish a document the engine rejects — the one place this form
-   * edits a second field, and it does so only to avoid writing a known-bad
-   * state. Any other selector is left exactly as the author set it. */
+  /** Set or clear the condition. CLEARING IT ALSO CLEARS AN `actor` SELECTOR
+   * — and a `sound` one once the row no longer listens — because each is
+   * refused by name without its condition and leaving it behind would publish
+   * a document the engine rejects. The one place this form edits a second
+   * field, and only to avoid writing a known-bad state. Any other selector is
+   * left exactly as the author set it. */
   const withWhen = (when: AnswerWhenShape | undefined): void => {
     const next: AnswerEntryShape = { ...entry };
     if (when === undefined) delete next.when;
     else next.when = when;
+    // AND `sound` WITHOUT A LISTENING ROW, for the same reason: the engine
+    // refuses it by name, so removing or negating the row's `heard` must not
+    // leave it behind.
     if (
       spec?.value === 'selector' &&
-      value === 'actor' &&
-      !whenNamesDeed(when)
+      ((value === 'actor' && !whenNamesDeed(when)) ||
+        (value === 'sound' && !whenListensShape(when)))
     ) {
       (next as Record<string, unknown>)[word] =
         ANSWER_SELECTOR_WORDS[0]?.key ?? 'enemy';

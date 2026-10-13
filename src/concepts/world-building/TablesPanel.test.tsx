@@ -423,10 +423,18 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     expect(last()).toEqual({ when: { enemy: 'seen' }, fact: '' });
   });
 
-  it('`toward` offers exactly enemy, attacker and sound here — never a cell or a route', () => {
-    const last = mount({ when: { enemy: 'none' }, toward: 'enemy' });
-    // `actor` waits for a deed in the row's `when`; `at` and `path` are
-    // refused by the single room (rpg-toolkit#2044), so never offered.
+  it('`toward` offers exactly enemy and attacker on a row that listens for nothing — never a cell or a route', () => {
+    mount({ when: { enemy: 'none' }, toward: 'enemy' });
+    // `actor` waits for a deed and `sound` for a top-level `heard`; `at` and
+    // `path` are refused by the single room (rpg-toolkit#2044).
+    expect(options('To for time entry')).toEqual(['enemy', 'attacker']);
+  });
+
+  it('`toward` offers the sound once the row listens', () => {
+    const last = mount({
+      when: { heard: { kind: 'clang', within: 2 } },
+      toward: 'enemy',
+    });
     expect(options('To for time entry')).toEqual([
       'enemy',
       'attacker',
@@ -436,6 +444,37 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
       target: { value: 'sound' },
     });
     expect(last()?.toward).toBe('sound');
+  });
+
+  it('a `heard` inside a `not` is not listening: no sound offered', () => {
+    mount({
+      when: [{ not: { heard: { kind: 'clang', within: 2 } } }],
+      toward: 'enemy',
+    });
+    expect(options('To for time entry')).not.toContain('sound');
+  });
+
+  it('negating or replacing the row’s `heard` takes a `sound` selector with it', () => {
+    const last = mount({
+      when: { heard: { kind: 'clang', within: 2 } },
+      toward: 'sound',
+    });
+    fireEvent.click(screen.getByLabelText('Not for time entry'));
+    expect(last()).toEqual({
+      when: [{ not: { heard: { kind: 'clang', within: 2 } } }],
+      toward: 'enemy',
+    });
+  });
+
+  it('clearing the `heard` condition takes a `sound` selector with it', () => {
+    const last = mount({
+      when: { heard: { kind: 'boom', within: 3 } },
+      away: 'sound',
+    });
+    fireEvent.change(screen.getByLabelText('When for time entry'), {
+      target: { value: 'any' },
+    });
+    expect(last()).toEqual({ away: 'enemy' });
   });
 
   it('`away` offers the sound but no route; `attack` offers neither; `patrol` is never a word', () => {

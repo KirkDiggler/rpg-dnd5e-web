@@ -595,44 +595,55 @@ describe('the hearing rows', () => {
     expect(emitDungeon(parseDungeon(once))).toBe(once);
   });
 
-  it('refuses what the engine refuses, in its words (rpg-toolkit#2044)', () => {
+  it('refuses what the engine refuses, in its words, at its paths (rpg-toolkit#2044 at 6081ad79)', () => {
     const refused = (row: string) => () =>
       parseDungeon(mutated(TIME_NONE, `- ${row}`));
+    // mind/behavior's refusals are reported at the ROW, `…time[i]`.
+    const row = 'on\\.time\\[\\d+\\]: ';
+    const at = (sentence: string) => new RegExp(row + sentence);
     expect(refused('{ attack: sound }')).toThrow(
-      /`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from/
+      at(
+        '`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from'
+      )
     );
-    // Reported at the ROW, `…time[i]`, as the engine reports it.
     expect(refused('{ away: { path: [[1, 1]] } }')).toThrow(
-      /on\.time\[\d+\]: `away` cannot take a `path`: a route is walked, and only `toward` walks one/
-    );
-    expect(refused('{ attack: sound }')).toThrow(
-      /on\.time\[\d+\]: `attack` cannot take `sound`/
+      at(
+        '`away` cannot take a `path`: a route is walked, and only `toward` walks one'
+      )
     );
     expect(refused('{ toward: { at: [1, 1], path: [[1, 1]] } }')).toThrow(
-      /a selector names a cell \(`at`\) or a route \(`path`\), and this names both/
+      at(
+        '`toward` names a cell \\(`at`\\) and a route \\(`path`\\); a target is exactly one of somebody, a cell or a route'
+      )
     );
     expect(refused('{ toward: { path: [] } }')).toThrow(
-      /a route with no waypoints walks nowhere — list the cells/
+      at('`toward` names no target; give it one of somebody, a cell')
     );
-    expect(refused('{ patrol: {} }')).toThrow(
-      /`patrol` is not a word: a patrol is a route, write toward: \{ path: \[\[col, row\], …\] \}/
-    );
+    expect(refused('{ toward: {} }')).toThrow(at('`toward` names no target'));
     expect(
       refused(
         '{ when: { not: { heard: { kind: clang, within: 2 } } }, toward: sound }'
       )
     ).toThrow(
-      /`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for/
+      at(
+        '`sound` needs a `heard` condition on the row: the sound it walks to is the one the row listened for'
+      )
     );
     expect(refused('{ when: { heard: { within: 2 } }, hold: {} }')).toThrow(
-      /`heard` needs a `kind`, the sound it listens for: they are boom, crash, clang, voice/
+      at('`heard` needs a `kind`, the sound it listens for$')
     );
     expect(refused('{ when: { heard: { kind: clang } }, hold: {} }')).toThrow(
-      /`heard` names no span — write \{ kind: clang, within: N \}/
+      at('`heard` within 0: a span is counted from 1')
     );
     expect(
-      refused('{ when: { heard: { kind: clang, within: 0 } }, hold: {} }')
-    ).toThrow(/a span of 0 rounds is counted from 1/);
+      refused(
+        '{ when: { not: { heard: { kind: clang, within: 0 } } }, hold: {} }'
+      )
+    ).toThrow(at('inside `not`: `heard` within 0: a span is counted from 1'));
+    // The decoder's own, in its words.
+    expect(refused('{ patrol: {} }')).toThrow(
+      /`patrol` is not a word: a patrol is a route, write toward: \{ path: \[\[col, row\], …\] \}/
+    );
     expect(
       refused('{ when: { heard: { kind: growl, within: 1 } }, hold: {} }')
     ).toThrow(

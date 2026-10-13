@@ -987,14 +987,24 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(refused([{ patrol: {} }])).toThrow(
       /`patrol` is not a word: a patrol is a route/
     );
+    // `heard` faults are mind/behavior's, reported at the ROW.
     expect(refused([{ when: { heard: { within: 2 } }, hold: {} }])).toThrow(
-      /`heard` needs a `kind`, the sound it listens for: they are boom, crash, clang, voice/
+      /on\.time\[0\]: `heard` needs a `kind`, the sound it listens for$/
+    );
+    expect(refused([{ when: { heard: { kind: 'clang' } }, hold: {} }])).toThrow(
+      /on\.time\[0\]: `heard` within 0: a span is counted from 1/
     );
     expect(
       refused([
         { when: { not: { heard: { kind: 'clang', within: 0 } } }, hold: {} },
       ])
-    ).toThrow(/a span of 0 rounds is counted from 1/);
+    ).toThrow(
+      /on\.time\[0\]: inside `not`: `heard` within 0: a span is counted from 1/
+    );
+    // A mapping naming no target, at the row.
+    expect(refused([{ toward: {} }])).toThrow(
+      /on\.time\[0\]: `toward` names no target/
+    );
     expect(refused([{ when: { enemy: 'seen', fact: 'x' }, hold: {} }])).toThrow(
       /a `when` entry is one condition, and this names 2/
     );

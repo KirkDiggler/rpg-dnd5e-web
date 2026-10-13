@@ -49,7 +49,6 @@ import {
   entryDoesOneThingRefusal,
   HEARING_SENTENCES,
   isSelectorWord,
-  MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
@@ -304,7 +303,7 @@ function validateAnswerEntry(
   }
 
   if (value.when !== undefined && value.when !== null)
-    entry.when = validateAnswerWhen(value.when, `${path}.when`);
+    entry.when = validateAnswerWhen(value.when, `${path}.when`, path);
 
   // --- the engine's own rules, in `answerEntry`'s order ---
 
@@ -398,14 +397,18 @@ function validateAnswerEntry(
  *
  * A LIST IS CARRIED AS A LIST, never folded to a single mapping here, so the
  * bytes the author wrote are the bytes that round-trip. */
-function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
+function validateAnswerWhen(
+  value: unknown,
+  path: string,
+  rowPath: string
+): AnswerWhenShape {
   if (Array.isArray(value)) {
     if (value.length === 0) fail(path, HEARING_SENTENCES.emptyWhenList());
     return value.map((item, index) =>
-      validateWhenCondition(item, `${path}[${index}]`)
+      validateWhenCondition(item, `${path}[${index}]`, rowPath, (s) => s)
     );
   }
-  return validateWhenCondition(value, path);
+  return validateWhenCondition(value, path, rowPath, (s) => s);
 }
 
 /** ONE condition: an enemy band, a deed with its span and scope, `heard`,
@@ -416,7 +419,11 @@ function validateAnswerWhen(value: unknown, path: string): AnswerWhenShape {
  * key would decide WHOSE deeds the row reads. */
 function validateWhenCondition(
   value: unknown,
-  path: string
+  path: string,
+  /** Where a `mind/behavior` fault is reported — the row, `…time[i]`. */
+  rowPath: string,
+  /** "inside `not`: …" once per `not` this condition sits in. */
+  wrap: (sentence: string) => string
 ): AnswerWhenCondition {
   if (!isMapping(value) || Object.keys(value).length === 0)
     fail(path, whenShapeRefusal());
@@ -425,7 +432,9 @@ function validateWhenCondition(
   const key = keys[0];
 
   if (key === ANSWER_WHEN.heardKey)
-    return { heard: validateHeard(value.heard, `${path}.heard`) };
+    return {
+      heard: validateHeard(value.heard, `${path}.heard`, rowPath, wrap),
+    };
 
   if (key === ANSWER_WHEN.factKey) {
     const fact = value.fact;
@@ -444,7 +453,11 @@ function validateWhenCondition(
   if (key === ANSWER_WHEN.notKey) {
     // ONE CONDITION, judged by this same function: a `not` inside a `not` is
     // legal, and a list or a scalar is refused with the shape sentence.
-    return { not: validateWhenCondition(value.not, `${path}.not`) };
+    return {
+      not: validateWhenCondition(value.not, `${path}.not`, rowPath, (s) =>
+        wrap(HEARING_SENTENCES.insideNot(s))
+      ),
+    };
   }
 
   if (key === 'enemy') {
@@ -480,29 +493,39 @@ function validateWhenCondition(
   return { [key]: { within, ...scope } } as AnswerWhenCondition;
 }
 
-/** `heard: { kind, within }` — `decodeHeard`'s refusals in its order: the
- * shape, an unknown key, no kind, a kind no deed makes, no span, a span from
- * zero. */
-function validateHeard(value: unknown, path: string): AnswerWhenHeard {
+/** `heard: { kind, within }`. The DECODER refuses the shape, an unknown key
+ * and a kind no deed makes; a missing kind and a span below 1 (an absent span
+ * reads as 0) are `When.Validate`'s, reported at the ROW and prefixed
+ * "inside `not`:" once per `not` around them — the engine's own split. */
+function validateHeard(
+  value: unknown,
+  path: string,
+  rowPath: string,
+  wrap: (sentence: string) => string
+): AnswerWhenHeard {
   if (!isMapping(value)) fail(path, HEARING_SENTENCES.heardShape());
   for (const key of Object.keys(value)) {
     if (ANSWER_WHEN.heardBodyKeys.includes(key)) continue;
     fail(`${path}.${key}`, HEARING_SENTENCES.heardUnknownKey(key));
   }
-  const kind = value.kind;
-  if (kind === undefined || kind === null || kind === '')
-    fail(path, HEARING_SENTENCES.heardNoKind());
-  const kindText = scalarText(kind);
-  if (!ANSWER_SOUND_KINDS.includes(kindText))
-    fail(`${path}.kind`, HEARING_SENTENCES.unknownSoundKind(kindText));
-  const within = value.within;
-  if (within === undefined || within === null)
-    fail(path, HEARING_SENTENCES.heardNoSpan(kindText));
-  if (typeof within !== 'number' || !Number.isInteger(within))
+  const kind =
+    value.kind === undefined || value.kind === null
+      ? ''
+      : scalarText(value.kind);
+  if (kind !== '' && !ANSWER_SOUND_KINDS.includes(kind))
+    fail(`${path}.kind`, HEARING_SENTENCES.unknownSoundKind(kind));
+  const raw = value.within;
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    (typeof raw !== 'number' || !Number.isInteger(raw))
+  )
     fail(`${path}.within`, 'expected a whole number');
+  const within = typeof raw === 'number' ? raw : 0;
+  if (kind === '') fail(rowPath, wrap(HEARING_SENTENCES.heardNoKind()));
   if (within < ANSWER_WHEN.minimumWithin)
-    fail(path, HEARING_SENTENCES.heardSpan(within));
-  return { kind: kindText, within };
+    fail(rowPath, wrap(HEARING_SENTENCES.heardSpan(within)));
+  return { kind, within };
 }
 
 /** WHOSE deed a condition is about — `on: ally`, `as: actor`, or `undefined`
@@ -589,18 +612,15 @@ function validateAnswerSelector(
     }
     const hasAt = value.at !== undefined && value.at !== null;
     const hasPath =
-      value[ANSWER_PATH_SELECTOR.key] !== undefined &&
-      value[ANSWER_PATH_SELECTOR.key] !== null;
-    if (hasAt && hasPath) fail(path, HEARING_SENTENCES.selectorNamesBoth());
-    if (hasPath) {
-      if (!Array.isArray(value.path) || value.path.length === 0)
-        fail(path, HEARING_SENTENCES.emptyPath());
-      fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
-    }
-    if (!hasAt) fail(path, MISSING_AT_REFUSAL);
-    // NOR A CELL (rpg-toolkit#2044, `singleRoomCellSelector`): the same
-    // missing frame, refused whatever word it sits on.
-    fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
+      Array.isArray(value[ANSWER_PATH_SELECTOR.key]) &&
+      (value[ANSWER_PATH_SELECTOR.key] as unknown[]).length > 0;
+    // THE ENGINE'S ORDER (rpg-toolkit#2044): the frame refusal first — a
+    // route, then a cell — then mind/behavior's shape at the row. With no
+    // frame here, every cell or route is refused by name, and a mapping that
+    // names neither (`{}`, `path: []`) names no target.
+    if (hasPath) fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
+    if (hasAt) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
+    fail(rowPathOf(path, word), HEARING_SENTENCES.namesNoTarget(word));
   }
   fail(
     path,

@@ -674,10 +674,6 @@ export function unknownSelectorKeyRefusal(key: string): string {
   return `field ${key} not found in type dungeonspec.SelectorSpec`;
 }
 
-/** `SelectorSpec.UnmarshalYAML`: an `at:` mapping with no cell in it. */
-export const MISSING_AT_REFUSAL =
-  'a cell selector is { at: [col, row] }, a route { path: [[col, row], …] }';
-
 /** The keys a selector MAPPING may carry — a cell or a route. */
 export const SELECTOR_MAPPING_KEYS: readonly string[] = Object.freeze([
   ANSWER_AT_SELECTOR.key,
@@ -713,11 +709,12 @@ export const EMPTY_TEMPER_MIX_REFUSAL =
 // ---------------------------------------------------------------------------
 // THE HEARING SENTENCES (rpg-project#569 R4–R8, R10) — ONE TABLE.
 //
-// Every one is the engine's, word for word: `dungeonspec`'s decoder and
-// grammar (rpg-toolkit#2044, `dungeonspec/hearing_test.go` and
-// `single_room_site.go`) and the `mind/behavior` refusals the grammar reports
-// at the entry (rpg-toolkit#2043, `Answer.Validate`), minus the `line N:`
-// prefix and the sentinel suffix the engine trims for the form.
+// Every one is the engine's, word for word, at rpg-toolkit#2044's final head
+// (6081ad79, `dungeonspec/hearing_test.go`, `single_room_site.go`) and the
+// `mind/behavior` it pins (29ea4324, `When.Validate`, `Selector.validate`,
+// `Answer.Validate`) — minus the `line N:` prefix and the sentinel suffix the
+// engine trims for the form. A `mind/behavior` refusal is reported at the ROW
+// (`…time[i]`), as the grammar reports it.
 // ---------------------------------------------------------------------------
 
 export const HEARING_SENTENCES = Object.freeze({
@@ -738,22 +735,19 @@ export const HEARING_SENTENCES = Object.freeze({
   /** `decodeHeard`: a body key nobody designed. */
   heardUnknownKey: (key: string): string =>
     `field ${key} not found in type dungeonspec.heardBody`,
-  /** `decodeHeard`: no kind. */
-  heardNoKind: (): string =>
-    `\`heard\` needs a \`kind\`, the sound it listens for: they are ${ANSWER_SOUND_KINDS.join(
-      ', '
-    )}`,
+  /** `When.Validate` (mind/behavior), reported at the ROW: no kind. */
+  heardNoKind: (): string => '`heard` needs a `kind`, the sound it listens for',
   /** `decodeHeard`: a kind no deed makes. */
   unknownSoundKind: (kind: string): string =>
     `\`heard: { kind: ${kind} }\` is not a sound this build makes: they are ${ANSWER_SOUND_KINDS.join(
       ', '
     )}`,
-  /** `decodeHeard`: no span. */
-  heardNoSpan: (kind: string): string =>
-    `\`heard\` names no span — write { kind: ${kind}, within: N }`,
-  /** `decodeHeard`: a span counted from zero — the deed's own sentence. */
+  /** `When.Validate` (mind/behavior), reported at the ROW: a span below 1 —
+   * an absent span reads as 0. */
   heardSpan: (within: number): string =>
-    `a span of ${within} rounds is counted from 1`,
+    `\`heard\` within ${within}: a span is counted from 1`,
+  /** `When.Validate`'s prefix for a fault inside a `not`. */
+  insideNot: (inner: string): string => `inside \`not\`: ${inner}`,
   /** `WhenSpec.UnmarshalYAML`: `fact:` naming nothing. */
   emptyFactCondition: (): string =>
     '`fact` in a `when` names the fact the creature must hold, and this names none',
@@ -769,12 +763,14 @@ export const HEARING_SENTENCES = Object.freeze({
    * walk one. */
   pathNotToward: (word: string): string =>
     `\`${word}\` cannot take a \`path\`: a route is walked, and only \`toward\` walks one`,
-  /** `SelectorSpec.UnmarshalYAML`: `at` and `path` at once. */
-  selectorNamesBoth: (): string =>
-    'a selector names a cell (`at`) or a route (`path`), and this names both',
-  /** `SelectorSpec.UnmarshalYAML`: `path: []`. */
-  emptyPath: (): string =>
-    'a route with no waypoints walks nowhere — list the cells, { path: [[col, row], …] }',
+  /** `Selector.validate` (mind/behavior), at the ROW: a cell and a route at
+   * once. */
+  selectorNamesBoth: (word: string): string =>
+    `\`${word}\` names a cell (\`at\`) and a route (\`path\`); a target is exactly one of somebody, a cell or a route`,
+  /** `Selector.validate` (mind/behavior), at the ROW: a mapping naming no
+   * target — `{}`, or a route with no waypoints. */
+  namesNoTarget: (word: string): string =>
+    `\`${word}\` names no target; give it one of somebody, a cell (\`at\`) or a route (\`path\`)`,
   /** `AnswerSpec.UnmarshalYAML`: the word named before it was built. */
   patrol: (): string =>
     '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }',

@@ -1438,7 +1438,7 @@ describe('the Story log on a heard sound (rpg-project#569)', () => {
     expect(entry.detail).toBe('1 room away');
   });
 
-  it('keeps the bearing it was heard at through the reducer, whatever happens after', () => {
+  it('keeps the bearing it was heard at after the viewer has moved', () => {
     const configured = reduceCombatPresentation(emptyPresentation(), {
       type: 'configure',
       session: 'front-room',
@@ -1446,18 +1446,29 @@ describe('the Story log on a heard sound (rpg-project#569)', () => {
       memberNames: { aldric: 'Aldric' },
       rollerRoles: { aldric: 'player' },
     });
-    // (2, 0) is due east of (0, 0).
-    const state = reduceCombatPresentation(configured, {
+    // Heard at (0, 0): the crash at (2, 0) is due east.
+    const heard = reduceCombatPresentation(configured, {
       type: 'stream-event',
       event: heardEvent(44n, { kind: 'crash', x: 2, y: 0, hops: 1 }),
       metadata: { source: 'live' },
       listenerAt: { x: 0, y: 0 },
     });
-    const story = selectVisibleStory(state);
-    expect(story).toHaveLength(1);
+    // THE VIEWER THEN STANDS ELSEWHERE: the next beat arrives with the viewer
+    // at (4, 0), east of the first sound. Read from the viewer's current cell,
+    // the first line would now say "west"; it must still say "east".
+    const moved = reduceCombatPresentation(heard, {
+      type: 'stream-event',
+      event: heardEvent(45n, { kind: 'voice', x: 5, y: -2, hops: 0 }),
+      metadata: { source: 'live' },
+      listenerAt: { x: 4, y: 0 },
+    });
+    const story = selectVisibleStory(moved);
+    expect(story).toHaveLength(2);
     expect(story[0]?.headline).toBe('You hear a crash, to the east');
     expect(story[0]?.detail).toBe('1 room away');
+    // The second line is measured from where the viewer stood for IT.
+    expect(story[1]?.headline).toBe('You hear a voice, to the north');
     // Accepted as story, not diagnosed as a kind/body mismatch.
-    expect(state.diagnostics).toEqual([]);
+    expect(moved.diagnostics).toEqual([]);
   });
 });

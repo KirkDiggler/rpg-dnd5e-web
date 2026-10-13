@@ -56,7 +56,6 @@ import {
   entryDoesOneThingRefusal,
   HEARING_SENTENCES,
   isSelectorWord,
-  MISSING_AT_REFUSAL,
   missingSpanRefusal,
   noneWordBodyRefusal,
   RETIRED_TRIGGER_KEYS,
@@ -1119,7 +1118,7 @@ function answerEntry(
     entry.say = str(v, 'say', path);
   }
   if (v.when !== undefined && v.when !== null) {
-    entry.when = answerWhen(v.when, `${path}.when`);
+    entry.when = answerWhen(v.when, `${path}.when`, path);
   }
   // The words, found by ASKING THE VOCABULARY rather than by listing keys
   // here: a word the engine adds is read by this loop with no change.
@@ -1207,7 +1206,11 @@ function answerEntry(
  * key — `{ fled: { within: 3 } }` — so the shape is the file's, not a generic
  * `deed:` field this module invented.
  */
-function answerWhen(v: unknown, path: string): AnswerWhenDoc | AnswerWhenDoc[] {
+function answerWhen(
+  v: unknown,
+  path: string,
+  rowPath: string
+): AnswerWhenDoc | AnswerWhenDoc[] {
   // THE LIST FORM (rpg-project#569 R8): every entry must hold. Carried as a
   // list so an unedited file keeps its spelling.
   if (Array.isArray(v)) {
@@ -1216,14 +1219,26 @@ function answerWhen(v: unknown, path: string): AnswerWhenDoc | AnswerWhenDoc[] {
         `${path}: ${HEARING_SENTENCES.emptyWhenList()}`
       );
     }
-    return v.map((item, i) => answerWhenCondition(item, `${path}[${i}]`));
+    return v.map((item, i) =>
+      answerWhenCondition(item, `${path}[${i}]`, rowPath, sameSentence)
+    );
   }
-  return answerWhenCondition(v, path);
+  return answerWhenCondition(v, path, rowPath, sameSentence);
 }
+
+/** A condition outside any `not` says its sentence as it is. */
+const sameSentence = (sentence: string): string => sentence;
 
 /** ONE condition — `WhenSpec.UnmarshalYAML`'s refusals in its order. A `not`
  * holds one more condition, judged by this same function. */
-function answerWhenCondition(v: unknown, path: string): AnswerWhenDoc {
+function answerWhenCondition(
+  v: unknown,
+  path: string,
+  /** Where a `mind/behavior` fault is reported — the row, `…time[i]`. */
+  rowPath: string,
+  /** "inside `not`: …" once per `not` this condition sits in. */
+  wrap: (sentence: string) => string
+): AnswerWhenDoc {
   if (!isRecord(v) || Object.keys(v).length === 0) {
     throw new DungeonParseError(`${path}: ${whenShapeRefusal()}`);
   }
@@ -1247,7 +1262,7 @@ function answerWhenCondition(v: unknown, path: string): AnswerWhenDoc {
   }
 
   if (key === ANSWER_WHEN.heardKey) {
-    return answerHeard(v.heard, `${path}.heard`);
+    return answerHeard(v.heard, `${path}.heard`, rowPath, wrap);
   }
 
   if (key === ANSWER_WHEN.factKey) {
@@ -1264,7 +1279,12 @@ function answerWhenCondition(v: unknown, path: string): AnswerWhenDoc {
   }
 
   if (key === ANSWER_WHEN.notKey) {
-    return { kind: 'not', inner: answerWhenCondition(v.not, `${path}.not`) };
+    return {
+      kind: 'not',
+      inner: answerWhenCondition(v.not, `${path}.not`, rowPath, (s) =>
+        wrap(HEARING_SENTENCES.insideNot(s))
+      ),
+    };
   }
 
   if (!ANSWER_WHEN.deeds.includes(key)) {
@@ -1305,9 +1325,16 @@ function answerWhenCondition(v: unknown, path: string): AnswerWhenDoc {
     : { kind: 'deed', deed: key, within, scope };
 }
 
-/** `heard: { kind, within }` — `decodeHeard`'s refusals in its order, the
- * single-room validator's too (`answerTableShape.ts`'s `validateHeard`). */
-function answerHeard(v: unknown, path: string): AnswerWhenDoc {
+/** `heard: { kind, within }` — the decoder's refusals (shape, unknown key, a
+ * kind no deed makes), then `When.Validate`'s at the ROW (no kind, a span
+ * below 1; an absent span reads as 0), as `answerTableShape.ts`'s
+ * `validateHeard` does. */
+function answerHeard(
+  v: unknown,
+  path: string,
+  rowPath: string,
+  wrap: (sentence: string) => string
+): AnswerWhenDoc {
   if (!isRecord(v)) {
     throw new DungeonParseError(`${path}: ${HEARING_SENTENCES.heardShape()}`);
   }
@@ -1317,27 +1344,30 @@ function answerHeard(v: unknown, path: string): AnswerWhenDoc {
       `${path}.${k}: ${HEARING_SENTENCES.heardUnknownKey(k)}`
     );
   }
-  if (v.kind === undefined || v.kind === null || v.kind === '') {
-    throw new DungeonParseError(`${path}: ${HEARING_SENTENCES.heardNoKind()}`);
-  }
-  const sound = scalarText(v.kind);
-  if (!ANSWER_SOUND_KINDS.includes(sound)) {
+  const sound =
+    v.kind === undefined || v.kind === null ? '' : scalarText(v.kind);
+  if (sound !== '' && !ANSWER_SOUND_KINDS.includes(sound)) {
     throw new DungeonParseError(
       `${path}.kind: ${HEARING_SENTENCES.unknownSoundKind(sound)}`
     );
   }
-  const within = v.within;
-  if (within === undefined || within === null) {
-    throw new DungeonParseError(
-      `${path}: ${HEARING_SENTENCES.heardNoSpan(sound)}`
-    );
-  }
-  if (typeof within !== 'number' || !Number.isInteger(within)) {
+  const raw = v.within;
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    (typeof raw !== 'number' || !Number.isInteger(raw))
+  ) {
     throw new DungeonParseError(`${path}.within: expected a whole number`);
+  }
+  const within = typeof raw === 'number' ? raw : 0;
+  if (sound === '') {
+    throw new DungeonParseError(
+      `${rowPath}: ${wrap(HEARING_SENTENCES.heardNoKind())}`
+    );
   }
   if (within < ANSWER_WHEN.minimumWithin) {
     throw new DungeonParseError(
-      `${path}: ${HEARING_SENTENCES.heardSpan(within)}`
+      `${rowPath}: ${wrap(HEARING_SENTENCES.heardSpan(within))}`
     );
   }
   return { kind: 'heard', sound, within };
@@ -1429,18 +1459,20 @@ function answerSelector(
       }
     }
     const hasAt = v.at !== undefined && v.at !== null;
-    const hasPath = v.path !== undefined && v.path !== null;
+    const hasPath = Array.isArray(v.path) && v.path.length > 0;
+    // mind/behavior's shape, at the ROW (`Selector.validate`): exactly one
+    // target — `{}` or `path: []` names none, a cell and a route name two.
     if (hasAt && hasPath) {
       throw new DungeonParseError(
-        `${path}: ${HEARING_SENTENCES.selectorNamesBoth()}`
+        `${rowPathOf(path, word)}: ${HEARING_SENTENCES.selectorNamesBoth(word)}`
       );
     }
-    if (hasPath) {
-      if (!Array.isArray(v.path) || v.path.length === 0) {
-        throw new DungeonParseError(
-          `${path}: ${HEARING_SENTENCES.emptyPath()}`
-        );
-      }
+    if (!hasAt && !hasPath) {
+      throw new DungeonParseError(
+        `${rowPathOf(path, word)}: ${HEARING_SENTENCES.namesNoTarget(word)}`
+      );
+    }
+    if (hasPath && Array.isArray(v.path)) {
       // A ROUTE IS WALKED, and only `toward` walks one (R7).
       if (word !== ANSWER_PATH_SELECTOR.onlyWord) {
         throw new DungeonParseError(
@@ -1452,9 +1484,6 @@ function answerSelector(
           fromOffset(orientation, pair(cell, `${path}.path[${i}]`))
         ),
       };
-    }
-    if (!hasAt) {
-      throw new DungeonParseError(`${path}: ${MISSING_AT_REFUSAL}`);
     }
     return { at: fromOffset(orientation, pair(v.at, `${path}.at`)) };
   }

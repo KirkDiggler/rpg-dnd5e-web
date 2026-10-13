@@ -16,8 +16,9 @@
  * distance, no line of sight, no loudness — the server already judged all of
  * that; this only says which way to look.
  */
-import { cubeToWorld } from '@/components/hex-grid/hexMath';
+import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import type { Heard } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { worldPositionOf } from './positionBridge';
 
 /** A cell, dungeon-absolute and axial like every position on this seam. */
 export interface HeardCell {
@@ -57,14 +58,15 @@ const COMPASS = [
 export type CompassWord = (typeof COMPASS)[number];
 
 /** The compass word from one cell toward another, or undefined for the same
- * cell. Axial (q, r) is placed on the board's own pointy-top layout so a
- * bearing reads the way the map draws it: +X east, +Z south. */
+ * cell. Each wire cell goes through the board's own bridge
+ * (`positionBridge.worldPositionOf`), so a bearing reads the way the map
+ * draws it: +X east, +Z south. */
 export function compassFrom(
   from: HeardCell,
   to: HeardCell
 ): CompassWord | undefined {
-  const a = cubeToWorld({ x: from.x, y: -from.x - from.y, z: from.y }, 1);
-  const b = cubeToWorld({ x: to.x, y: -to.x - to.y, z: to.y }, 1);
+  const a = worldPositionOf(from, HEX_SIZE);
+  const b = worldPositionOf(to, HEX_SIZE);
   const east = b.x - a.x;
   const north = a.z - b.z;
   if (Math.abs(east) < 1e-9 && Math.abs(north) < 1e-9) return undefined;
