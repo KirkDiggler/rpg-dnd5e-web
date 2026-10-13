@@ -1,5 +1,6 @@
 import type { PatternCornerRef } from './regionSurfaceBoundary';
 import { objectShape, rejectUnknownKeys } from './strictShape';
+import { validateMaterialRef } from './wallFinishTypes';
 
 export interface RoomWallFinish {
   materialRef: string;
@@ -35,15 +36,8 @@ export function validateRoomWallFinish(
 ): RoomWallFinish {
   const row = objectShape(value, path);
   rejectUnknownKeys(row, ['materialRef', 'patternStart'], path);
-  if (
-    typeof row.materialRef !== 'string' ||
-    !/^dnd5e:material:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:_[a-z0-9]+)*$/.test(
-      row.materialRef
-    )
-  )
-    throw new Error(`${path}.materialRef must be an exact material reference.`);
   return {
-    materialRef: row.materialRef,
+    materialRef: validateMaterialRef(row.materialRef, `${path}.materialRef`),
     patternStart: validatePatternStart(
       row.patternStart,
       `${path}.patternStart`

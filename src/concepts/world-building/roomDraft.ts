@@ -21,6 +21,7 @@ import {
   type StructuralWall,
 } from './structuralWalls';
 import type { KeyValueStorage, WorldScene } from './types';
+import { pruneWallFinishes } from './wallFinishEdits';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import {
   centeredRoomWorkspace,
@@ -729,7 +730,11 @@ export function reconcileRoomDraft(
   if (propBindings && Object.keys(propBindings).length > 0)
     room.propBindings = propBindings;
   else delete room.propBindings;
-  return { ...draft, scene, room };
+  const nextScene = pruneWallFinishes(
+    scene,
+    new Set((room.walls ?? []).map((wall) => wall.id))
+  );
+  return { ...draft, scene: nextScene, room };
 }
 
 export function remapRoomDeclarations(
@@ -1191,7 +1196,8 @@ function validateDraft(value: unknown): RoomDraft {
     input.scene?.version !== 3 &&
     input.scene?.version !== 4 &&
     input.scene?.version !== 5 &&
-    input.scene?.version !== 6
+    input.scene?.version !== 6 &&
+    input.scene?.version !== 7
   )
     throw new Error(
       'Centered room workspace requires scene version 2 or later.'
@@ -1361,6 +1367,10 @@ function validateDraft(value: unknown): RoomDraft {
         : {}),
     },
   } as RoomDraft;
+  const wallIds = new Set(walls.map((wall) => wall.id));
+  for (const id of Object.keys(draft.scene.wallFinishes ?? {}))
+    if (!wallIds.has(id))
+      throw new Error(`scene.wallFinishes.${id}: wall target does not exist.`);
   // Only the new region identities are globally reserved. Legacy labels retain
   // their existing local identity semantics; references are not new owners.
   const ownedIds = new Set([

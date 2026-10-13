@@ -91,6 +91,10 @@ export interface StudioWallAppearanceOption {
  * are fenced to their captured intent epoch, document and mounted owner. */
 export interface StudioWallEditing {
   readonly selectedId: string | null;
+  readonly finishes?: {
+    catalog: import('../world-building/useWorldMaterialCatalog').WorldMaterialCatalogState;
+    statuses: readonly import('../world-building/wallFinishProjection').WallFinishStatus[];
+  };
   readonly assetRef: string | null;
   readonly snapEnabled: boolean;
   readonly endpointSnapEnabled: boolean;

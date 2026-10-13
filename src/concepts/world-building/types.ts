@@ -60,7 +60,9 @@ export interface MapLabel {
 }
 
 export interface WorldScene {
-  version: 1 | 2 | 3 | 4 | 5 | 6;
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** Scene7 editor-only face choices, linked to room wall identities. */
+  wallFinishes?: import('./wallFinishTypes').WallFinishes;
   /** Saved editor recipes; never placed or used to enrich runtime actors. */
   creaturePalette?: CreaturePaletteEntry[];
   /** Per-placement labels for the authoring map, independent of rules names. */

@@ -13,6 +13,7 @@ import type {
   WorldScene,
   WorldTransform,
 } from './types';
+import { validateWallFinishes } from './wallFinishTypes';
 import {
   containsWorkspacePoint,
   type RoomWorkspace,
@@ -306,9 +307,15 @@ export function validateScene(
     input.version !== 3 &&
     input.version !== 4 &&
     input.version !== 5 &&
-    input.version !== 6
+    input.version !== 6 &&
+    input.version !== 7
   )
-    throw new Error('Scene version must be 1, 2, 3, 4, 5 or 6.');
+    throw new Error('Scene version must be 1, 2, 3, 4, 5, 6 or 7.');
+  if (input.version < 7 && Object.hasOwn(input, 'wallFinishes'))
+    throw new Error('wallFinishes requires scene version 7.');
+  const wallFinishes = Object.hasOwn(input, 'wallFinishes')
+    ? validateWallFinishes(input.wallFinishes)
+    : {};
   if (input.version < 5 && Object.hasOwn(input, 'actorNames'))
     throw new Error('actorNames requires scene version 5 or later.');
   const actorNames = Object.hasOwn(input, 'actorNames')
@@ -324,6 +331,7 @@ export function validateScene(
     input.version !== 4 &&
     input.version !== 5 &&
     input.version !== 6 &&
+    input.version !== 7 &&
     Object.hasOwn(input, 'authoringRegions')
   )
     throw new Error('authoringRegions requires scene version 3 or later.');
@@ -340,6 +348,7 @@ export function validateScene(
         'authoringRegions',
         'creaturePalette',
         'actorNames',
+        'wallFinishes',
       ],
       'scene'
     );
@@ -380,6 +389,7 @@ export function validateScene(
     ...(authoringRegions.length > 0 ? { authoringRegions } : {}),
     ...(creaturePalette.length > 0 ? { creaturePalette } : {}),
     ...(Object.keys(actorNames).length ? { actorNames } : {}),
+    ...(Object.keys(wallFinishes).length ? { wallFinishes } : {}),
   };
 }
 

@@ -140,6 +140,8 @@ export interface StudioSceneArrangeEdit {
 
 export interface StudioWallArrangeEdit {
   readonly kind: 'wall-edit';
+  /** Scene-owned presentation patch, committed with the wall in one transaction. */
+  readonly wallFinishes?: import('./wallFinishTypes').WallFinishPatch;
   readonly target: Extract<StudioArrangeTarget, { kind: 'wall' }>;
   readonly midpoint?: Partial<WorldPoint>;
   readonly start?: Partial<WorldPoint>;

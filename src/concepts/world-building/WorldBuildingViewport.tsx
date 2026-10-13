@@ -118,7 +118,7 @@ export interface WorldBuildingViewportProps {
   roomAuthoring?: {
     /** Committed Studio-only configured/resolved areas; no preview acquisition. */
     regionLighting?: RegionLightingProjection;
-    roomFinishes?: import('./roomWallFinishes').RoomWallFinishProjection;
+    roomFinishes?: import('./wallFinishProjection').WallFinishProjection;
     patternRegionId?: string;
     tool:
       | 'select'

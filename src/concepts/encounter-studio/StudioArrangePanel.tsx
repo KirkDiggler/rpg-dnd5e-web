@@ -20,6 +20,7 @@ import type {
 } from './studioSession';
 import { StudioWallAppearanceChoices } from './StudioWallAppearanceChoices';
 import { StudioWallConstraints } from './StudioWallConstraints';
+import { StudioWallFinishes } from './StudioWallFinishes';
 
 function StudioArrangeField({
   field,
@@ -280,6 +281,17 @@ function SelectedArrange({
           }
         }}
       >
+        {selection.kind === 'wall' && (
+          <StudioWallFinishes
+            session={session}
+            wall={selection.wall}
+            draft={draft}
+            onChange={(patch) => {
+              setDraft((previous) => ({ ...previous, ...patch }));
+              setError(null);
+            }}
+          />
+        )}
         <div className="es-arrange-fields">
           {fields.filter((field) => !field.secondary).map(renderField)}
           {fields.some((field) => field.secondary) && (

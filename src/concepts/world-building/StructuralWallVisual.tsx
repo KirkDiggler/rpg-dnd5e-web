@@ -40,10 +40,7 @@ import {
 } from 'react';
 import * as THREE from 'three';
 import { doorBindingState, type DoorBindings } from './doorBindingEdits';
-import type {
-  RoomWallFinishProjection,
-  RoomWallFinishSpan,
-} from './roomWallFinishes';
+import type { WallFinishSpan } from './roomWallFinishes';
 import { attachedDoorVisualPose } from './structuralDoorEditing';
 import {
   wallDirectionYaw,
@@ -57,10 +54,14 @@ import {
   StructuralWallSurfacePieces,
 } from './StructuralWallSurfaces';
 import { deriveWallCornerFits, type WallEndFits } from './wallCornerFits';
+import {
+  wallFaceGuidePoints,
+  type WallFinishProjection,
+} from './wallFinishProjection';
 
 export interface StructuralWallVisualProps {
   walls: readonly StructuralWall[];
-  finishProjection?: RoomWallFinishProjection;
+  finishProjection?: WallFinishProjection;
   patternRegionId?: string;
   selectedWallId: string | null;
   /** The open document's attached-door state, keyed by bound door id. Drives
@@ -152,6 +153,7 @@ function WallGuides({
   const length = wallLength(wall);
   const rotationY = wallDirectionYaw(wall);
   const { offsetX, offsetZ, width, depth } = wall.blocker.footprint;
+  const faceGuides = wallFaceGuidePoints(wall);
   return (
     <group name={`structural-wall-guide-${wall.id}`}>
       {selectable && onSelectWall && (
@@ -204,6 +206,33 @@ function WallGuides({
           />
         </mesh>
       )}
+      {selected &&
+        (['a', 'b'] as const).map((side) => (
+          <Html
+            key={side}
+            position={[
+              faceGuides[side].x,
+              DUNGEON_SURFACE_Y +
+                wall.appearance.elevation +
+                wall.appearance.height +
+                0.15,
+              faceGuides[side].z,
+            ]}
+            center
+          >
+            <span
+              aria-label={`Wall side ${side.toUpperCase()}`}
+              style={{
+                pointerEvents: 'none',
+                background: '#15222c',
+                color: '#a7ffeb',
+                padding: '2px 4px',
+              }}
+            >
+              {side.toUpperCase()}
+            </span>
+          </Html>
+        ))}
       {selected &&
         (['start', 'end'] as const).map((end) => (
           <Html
@@ -441,7 +470,7 @@ function WallVisual({
 }: {
   wall: StructuralWall;
   endFits?: WallEndFits;
-  finishSpans?: readonly RoomWallFinishSpan[];
+  finishSpans?: readonly WallFinishSpan[];
   doorBindings?: DoorBindings;
   maxPieces?: number;
   onMeasured: () => void;
@@ -539,6 +568,44 @@ export function StructuralWallVisual({
   )?.marker;
   return (
     <group name="structural-walls">
+      {[
+        ...new Set(
+          (finishProjection?.walls ?? [])
+            .filter((s) => s.status === 'unresolved')
+            .map((s) => s.wallId)
+        ),
+      ].map((id) => {
+        const wall = walls.find((w) => w.id === id);
+        if (!wall) return null;
+        const p = wallMidpoint(wall);
+        return (
+          <Html
+            key={`finish-error-${id}`}
+            position={[
+              p.x,
+              DUNGEON_SURFACE_Y +
+                wall.appearance.elevation +
+                wall.appearance.height +
+                0.4,
+              p.z,
+            ]}
+            center
+          >
+            <span
+              role="status"
+              style={{
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                background: '#33221a',
+                color: '#ffd3a0',
+                padding: '3px 6px',
+              }}
+            >
+              Wall finish unapplied
+            </span>
+          </Html>
+        );
+      })}
       {finishProjection?.regions
         .filter(
           (region) => region.status === 'unresolved' && region.diagnosticPoint

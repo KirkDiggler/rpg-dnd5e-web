@@ -195,7 +195,33 @@ all other scope fields remain intact. An editable post-removal draft is not a
 claim of publishability. Ordinary wall/name edits retain unfinished editable
 policy; save/export still require complete codec validation.
 
-## Studio room-owned wall finishes
+## Selected-wall finishes and optional room defaults
+
+A selected wall can choose one finish for both faces or separate choices for A
+and B. A is left of Start→End (`positive-z`); B is right (`negative-z`). Both-side
+editing is the default affordance; changing the control mode alone writes no
+content. Choices stage beside the other Arrange fields and use the same atomic
+Apply/Cancel transaction, with the same selection/document/epoch fences.
+
+Scene7 optionally stores `wallFinishes` by structural wall ID, with independently
+optional `positive-z` / `negative-z` material refs. This is presentation intent,
+not a second wall model or new server wall grammar. Old scenes refuse the field;
+absent faces inherit. Empty face records refuse; an empty map normalizes to
+absence. Room validation refuses orphan wall IDs; explicit wall removal prunes
+its overrides through existing reconciliation in the same Undo-able transaction.
+Later edits never demote scene7. Unknown resource refs remain editable.
+
+Explicit wall-face choice wins over a resolved region default, which wins over
+authored appearance. Overrides cover the entire source wall face, including
+standalone walls, internal stubs and unowned tails. Resolved region charts remain
+in effect on their intervals; elsewhere U repeats from the wall's Start datum
+(A forward, B reverse), with the common floor datum for V. No region or mapping
+anchor is invented. Clearing a choice restores inheritance. Invalid explicit
+intent suppresses that face's inherited finish and shows a named refusal, rather
+than appearing successful with another material. Other faces remain independent.
+Provider surface capability is still mandatory; this does not enroll new models.
+
+### Optional room finish and shared pattern alignment
 
 Scene6 permits a region's optional `wallFinish:{materialRef,patternStart}`. The
 pattern start names incoming/outgoing oriented source wall runs, not label text,

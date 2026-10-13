@@ -48,7 +48,7 @@ export function setRegionWallFinish(
     ...draft,
     scene: {
       ...draft.scene,
-      version: 6,
+      version: draft.scene.version >= 6 ? draft.scene.version : 6,
       authoringRegions: draft.scene.authoringRegions!.map((row) =>
         row.id === regionId ? next : row
       ),

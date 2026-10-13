@@ -669,6 +669,61 @@ it('names an older creature and moves it once without changing its rules, looks 
   expect(storage.document()).toEqual(moved);
 });
 
+function installFinishPreview(): { smallRef: string } {
+  const asset = WORLD_BUILDING_CATALOG_BY_REF.get(FIT_WALL_REF)!;
+  if (asset.source !== 'generated') throw new Error('Expected fit wall.');
+  const image = {
+    url: '/test.png',
+    sha256: 'a'.repeat(64),
+    sizeBytes: 10,
+    width: 1,
+    height: 1,
+  };
+  const material = {
+    ref: GRAY_REF,
+    displayName: 'Large gray masonry',
+    family: 'masonry',
+    baseColor: image,
+    normal: image,
+    repeatMeters: [3.3, 3.3] as [number, number],
+    normalScale: [1, 1] as [number, number],
+    roughness: 0.5,
+    metalness: 0,
+  };
+  const smallRef = 'dnd5e:material:test:small_gray';
+  materialPreview.catalog = {
+    kind: 'candidate',
+    catalogSha256: 'a'.repeat(64),
+    materials: [
+      material,
+      { ...material, ref: smallRef, displayName: 'Small gray masonry' },
+    ],
+    surfaces: [
+      {
+        assetRef: FIT_WALL_REF,
+        glbSha256: asset.asset.glbSha256,
+        bindings: [
+          {
+            id: 'front',
+            node: 'WallBody_v1',
+            material: 'Masonry_Front',
+            side: 'positive-z',
+            family: 'masonry',
+          },
+          {
+            id: 'back',
+            node: 'WallBody_v1',
+            material: 'Masonry_Back',
+            side: 'negative-z',
+            family: 'masonry',
+          },
+        ],
+      },
+    ],
+  };
+  return { smallRef };
+}
+
 function seed(emptyFloor = false): RoomDraftDocument {
   const document = createPopulatedStudioDocument();
   if (emptyFloor) document.draft.room.walkableHexes = [];
@@ -917,57 +972,7 @@ describe('Studio authoring homes through the real owner', () => {
   });
 
   it('authors independent wall finishes and pattern starts through shared history, YAML and reload', () => {
-    const asset = WORLD_BUILDING_CATALOG_BY_REF.get(FIT_WALL_REF)!;
-    if (asset.source !== 'generated') throw new Error('Expected fit wall.');
-    const image = {
-      url: '/test.png',
-      sha256: 'a'.repeat(64),
-      sizeBytes: 10,
-      width: 1,
-      height: 1,
-    };
-    const material = {
-      ref: GRAY_REF,
-      displayName: 'Large gray masonry',
-      family: 'masonry',
-      baseColor: image,
-      normal: image,
-      repeatMeters: [3.3, 3.3] as [number, number],
-      normalScale: [1, 1] as [number, number],
-      roughness: 0.5,
-      metalness: 0,
-    };
-    const smallRef = 'dnd5e:material:test:small_gray';
-    materialPreview.catalog = {
-      kind: 'candidate',
-      catalogSha256: 'a'.repeat(64),
-      materials: [
-        material,
-        { ...material, ref: smallRef, displayName: 'Small gray masonry' },
-      ],
-      surfaces: [
-        {
-          assetRef: FIT_WALL_REF,
-          glbSha256: asset.asset.glbSha256,
-          bindings: [
-            {
-              id: 'front',
-              node: 'WallBody_v1',
-              material: 'Masonry_Front',
-              side: 'positive-z',
-              family: 'masonry',
-            },
-            {
-              id: 'back',
-              node: 'WallBody_v1',
-              material: 'Masonry_Back',
-              side: 'negative-z',
-              family: 'masonry',
-            },
-          ],
-        },
-      ],
-    };
+    const { smallRef } = installFinishPreview();
     const storage = new MemoryStorage({
         draft: finishRoomFixture(true),
         scope: {},
@@ -1030,6 +1035,122 @@ describe('Studio authoring homes through the real owner', () => {
     expect(
       (screen.getByLabelText('Pattern start') as HTMLSelectElement).value
     ).toBe('1');
+  });
+
+  it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
+    const { smallRef } = installFinishPreview(),
+      draft = finishRoomFixture();
+    delete draft.scene.authoringRegions;
+    delete draft.scene.mapLabels;
+    draft.room.walls = [draft.room.walls![0]];
+    const storage = new MemoryStorage({ draft, scope: {} }),
+      mounted = mount(storage),
+      before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const mode = () =>
+      screen.getByLabelText('Set sides separately') as HTMLInputElement;
+    expect(mode().checked).toBe(false);
+    expect(screen.getByLabelText('Wall side A')).toBeTruthy();
+    expect(screen.getByLabelText('Wall side B')).toBeTruthy();
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Cancel Arrange'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    const both = storage.document();
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(both.draft.scene.version).toBe(7);
+    expect(both.draft.scene.authoringRegions).toBeUndefined();
+    expect(both.draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': GRAY_REF,
+    });
+    expect(both.draft.room.walls![0].appearance.height).toBe(4);
+    expect(both.draft.room.walls![0].blocker).toEqual(
+      before.draft.room.walls![0].blocker
+    );
+    switchTo('3D');
+    const previewWall = {
+      ...both.draft.room.walls![0],
+      line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
+    };
+    act(() => viewport().roomAuthoring!.onWallTransformPreview!(previewWall));
+    expect(
+      viewport().roomAuthoring!.roomFinishes!.spans.map((span) => span.end)
+    ).toEqual([10, 10]);
+    expect(storage.document()).toEqual(both);
+    act(() => viewport().roomAuthoring!.onWallTransformPreview!(null));
+    expect(
+      viewport().roomAuthoring!.roomFinishes!.spans.map((span) => span.end)
+    ).toEqual([8, 8]);
+    switchTo('Layout');
+    fireEvent.click(mode());
+    expect(storage.document()).toEqual(both);
+    fireEvent.change(screen.getByLabelText('Side B finish'), {
+      target: { value: smallRef },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    const split = storage.document();
+    expect(split.draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': smallRef,
+    });
+    const splitWrites = storage.roomWrites();
+    fireEvent.click(mode());
+    expect(
+      (screen.getByLabelText('Wall finish (both sides)') as HTMLSelectElement)
+        .value
+    ).toBe('__mixed__');
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document()).toEqual(split);
+    expect(storage.roomWrites()).toBe(splitWrites);
+    fireEvent.click(mode());
+    fireEvent.change(screen.getByLabelText('Side B finish'), {
+      target: { value: '' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(split);
+    fireEvent.click(button('Remove wall'));
+    expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(split);
+    const yaml = encodeSingleRoomDungeon({
+      key: 'wall-overrides',
+      draft: split.draft,
+      ...split.scope,
+    });
+    expect(decodeSingleRoomDungeon(yaml).draft.scene.wallFinishes).toEqual(
+      split.draft.scene.wallFinishes
+    );
+    mounted.unmount();
+    mount(storage);
+    selectWall(storage, storage.document().draft.room.walls![0]);
+    expect(mode().checked).toBe(true);
+    expect(
+      (screen.getByLabelText('Side B finish') as HTMLSelectElement).value
+    ).toBe(smallRef);
+    fireEvent.click(button('Use region / authored defaults'));
+    expect(storage.document()).toEqual(split);
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
+    expect(storage.document().draft.scene.version).toBe(7);
   });
 
   it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {

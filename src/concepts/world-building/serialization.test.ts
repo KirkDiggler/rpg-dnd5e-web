@@ -347,9 +347,9 @@ describe('scene version 2 annotation preservation', () => {
     expect(() =>
       validateScene({ ...validScene(), version: 2, mapLabels: null })
     ).toThrow(/mapLabels/);
-    // Scene3–6 are opt-in and supported; an unknown successor still fails closed.
-    expect(() => validateScene({ ...validScene(), version: 7 })).toThrow(
-      /version must be 1, 2, 3, 4, 5 or 6/
+    // Scene3–7 are opt-in and supported; an unknown successor still fails closed.
+    expect(() => validateScene({ ...validScene(), version: 8 })).toThrow(
+      /version must be 1, 2, 3, 4, 5, 6 or 7/
     );
   });
 });
@@ -390,7 +390,7 @@ describe('opt-in scene3 authoring definitions', () => {
         /version 3/
       );
     }
-    expect(() => validateScene({ ...scene, version: 7 })).toThrow(/version/);
+    expect(() => validateScene({ ...scene, version: 8 })).toThrow(/version/);
   });
   it('protects stored unknown scene3 fields and invalid links instead of pruning them', () => {
     const fallback = validScene();

@@ -15,8 +15,9 @@ import type { RoomDraft } from './roomDraft';
 import type { WorldPoint } from './types';
 import { pointOnWallAxis } from './wallAngleConstraint';
 
-export interface RoomWallFinishSpan {
-  regionId: string;
+export interface WallFinishSpan {
+  /** Present only when this interval uses a resolved region's chart. */
+  regionId?: string;
   wallId: string;
   side: 'positive-z' | 'negative-z';
   start: number;
@@ -37,7 +38,14 @@ export interface RoomFinishStatus {
 }
 export interface RoomWallFinishProjection {
   regions: RoomFinishStatus[];
-  spans: RoomWallFinishSpan[];
+  spans: WallFinishSpan[];
+}
+export function surfaceRepeatSceneUnits(
+  material: WorldSurfaceMaterial
+): [number, number] {
+  return material.repeatMeters.map(
+    (meters) => (meters * sceneUnitsPerFoot(1)) / 0.3048
+  ) as [number, number];
 }
 const cross = (a: WorldPoint, b: WorldPoint): number => a.x * b.z - a.z * b.x;
 const subtract = (a: WorldPoint, b: WorldPoint): WorldPoint => ({
@@ -173,7 +181,7 @@ export function projectRoomWallFinishes(
       if (start < 0)
         throw new Error('Pattern start has no certified source transition.');
       let distance = 0;
-      const spans: RoomWallFinishSpan[] = [];
+      const spans: WallFinishSpan[] = [];
       for (let step = 0; step < lines.length; step++) {
         const i = (start + step) % lines.length,
           line = lines[i];
@@ -188,9 +196,7 @@ export function projectRoomWallFinishes(
         const sign = line.side.direction === 'start-to-end' ? 1 : -1;
         const sourceAtStart =
           dot(subtract(starts[i], line.wall.line.start), line.direction) * sign;
-        const repeat = material.repeatMeters.map(
-          (meters) => (meters * sceneUnitsPerFoot(1)) / 0.3048
-        ) as [number, number];
+        const repeat = surfaceRepeatSceneUnits(material);
         spans.push({
           regionId: region.id,
           wallId: line.side.wallId,
@@ -229,8 +235,8 @@ export function projectRoomWallFinishes(
 export function partitionFinishInterval(
   start: number,
   end: number,
-  spans: readonly RoomWallFinishSpan[]
-): Array<{ start: number; end: number; finishes: RoomWallFinishSpan[] }> {
+  spans: readonly WallFinishSpan[]
+): Array<{ start: number; end: number; finishes: WallFinishSpan[] }> {
   const cuts = [
     ...new Set([
       start,

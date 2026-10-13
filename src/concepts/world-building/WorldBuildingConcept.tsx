@@ -107,7 +107,6 @@ import {
   type RoomWorkspace,
 } from './roomDraft';
 import { RoomPublishingPanel } from './RoomPublishingPanel';
-import { projectRoomWallFinishes } from './roomWallFinishes';
 import {
   addProp,
   createEmptyScene,
@@ -202,6 +201,12 @@ import type {
 import type { RoomPublishingCapability } from './useRoomPublishing';
 import { useWorldMaterialCatalog } from './useWorldMaterialCatalog';
 import { applyWallCornerJoin, type WallCornerJoin } from './wallCornerJoins';
+import { setWallFinishes } from './wallFinishEdits';
+import {
+  projectWallFinishes,
+  resolveWallFaceFinish,
+} from './wallFinishProjection';
+import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -1582,8 +1587,14 @@ export function WorldBuildingConcept({
     }));
   }, [roomMode]);
   const commitWalls = useCallback(
-    (nextWalls: StructuralWall[]) => {
-      return commit(scene, selectedIds, {
+    (
+      nextWalls: StructuralWall[],
+      finishEdit?: { wallId: string; patch: WallFinishPatch }
+    ) => {
+      const nextScene = finishEdit
+        ? setWallFinishes(scene, finishEdit.wallId, finishEdit.patch)
+        : scene;
+      return commit(nextScene, selectedIds, {
         ...roomDraft.room,
         walls: nextWalls,
       });
@@ -1731,7 +1742,11 @@ export function WorldBuildingConcept({
     [roomTool, selectStudioWall]
   );
   const editWall = useCallback(
-    (next: StructuralWall, join?: WallCornerJoin): boolean => {
+    (
+      next: StructuralWall,
+      join?: WallCornerJoin,
+      wallFinishes?: WallFinishPatch
+    ): boolean => {
       if (!walls.some((wall) => wall.id === next.id)) {
         setNotice(`Wall edit refused; unknown wall ${next.id}.`);
         return false;
@@ -1743,7 +1758,8 @@ export function WorldBuildingConcept({
         return commitWalls(
           join
             ? applyWallCornerJoin(updated, next.line, join, next.id)
-            : updated
+            : updated,
+          wallFinishes ? { wallId: next.id, patch: wallFinishes } : undefined
         );
       } catch (error) {
         return rejectEdit(error);
@@ -3560,8 +3576,22 @@ export function WorldBuildingConcept({
   );
   const materialCatalog = useWorldMaterialCatalog();
   const roomFinishes = useMemo(
-    () => projectRoomWallFinishes(roomDraft, materialCatalog.catalog),
-    [roomDraft, materialCatalog.catalog]
+    () =>
+      projectWallFinishes(
+        previewWall
+          ? {
+              ...roomDraft,
+              room: {
+                ...roomDraft.room,
+                walls: roomDraft.room.walls?.map((wall) =>
+                  wall.id === previewWall.id ? previewWall : wall
+                ),
+              },
+            }
+          : roomDraft,
+        materialCatalog.catalog
+      ),
+    [roomDraft, previewWall, materialCatalog.catalog]
   );
   const regionLighting = useMemo(
     () =>
@@ -3704,7 +3734,14 @@ export function WorldBuildingConcept({
             )
           )
             throw new Error('Unsupported wall appearance.');
-          return editWall(applyStudioWallArrange(roomDraft, intent));
+          const next = applyStudioWallArrange(roomDraft, intent);
+          if (intent.wallFinishes)
+            for (const side of WALL_FINISH_SIDES) {
+              const ref = intent.wallFinishes[side];
+              if (ref !== undefined && ref !== null)
+                resolveWallFaceFinish(materialCatalog.catalog, next, side, ref);
+            }
+          return editWall(next, undefined, intent.wallFinishes);
         }
         case 'wall-remove':
           return removeWall(intent.target.id);
@@ -4672,6 +4709,10 @@ export function WorldBuildingConcept({
           },
           renameDocument: guardSnapshotIntent(renameDocument),
           wallEditing: {
+            finishes: {
+              catalog: materialCatalog,
+              statuses: roomFinishes.walls,
+            },
             selectedId:
               activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
             assetRef: wallAssetRef,

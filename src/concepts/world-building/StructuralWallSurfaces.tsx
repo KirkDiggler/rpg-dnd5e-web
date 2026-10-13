@@ -33,7 +33,7 @@ import * as THREE from 'three';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import {
   partitionFinishInterval,
-  type RoomWallFinishSpan,
+  type WallFinishSpan,
 } from './roomWallFinishes';
 import {
   isAttachableDoorAsset,
@@ -151,7 +151,7 @@ export function StructuralWallSurfacePieces({
 }: {
   wall: StructuralWallSurface;
   endFits?: WallEndFits;
-  finishSpans?: readonly RoomWallFinishSpan[];
+  finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
   visualLighting?: RegionLightingMaterialBinding;
   onMeasured?: () => void;
