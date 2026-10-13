@@ -24,6 +24,7 @@ import { dissolveSentence, formatFactionBeat } from '../factionBeat';
 import { formatHoldingBeat } from '../holdingBeat';
 import { formatWardBeat } from '../wardBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
+import { speakSkillName } from './speakOptions';
 import type {
   CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
@@ -670,76 +671,49 @@ function buildOtherStory(
         tone: check.beaten ? 'success' : 'neutral',
       });
     }
-    case 'intimidated': {
-      // The first shenanigan (rpg-project#454), narrated like the door's own
-      // check one case down: the numbers, and the SERVER'S reading of them.
-      // `beaten` is copied rather than derived from total against dc.
+    case 'spoke': {
+      // THE ONE SOCIAL CHECK (rpg-project#569): who said what to whom, the
+      // skill it rolled, and the SERVER'S reading of the numbers. `beaten` is
+      // copied rather than derived from total against dc.
       //
       // ONE ENTRY WHETHER IT LANDED OR NOT. Every witness sees the die,
-      // including the actor, because `IntimidateResponse` carries no verdict
-      // for them to read anywhere else.
+      // including the actor, because `SpeakResponse` carries no verdict for
+      // them to read anywhere else.
       //
-      // The tone is the CHECK's, not the consequence's: a cowed goblin may
-      // or may not run, because that is its mind's decision and it shows up
-      // as its next turn, never as a clause here.
+      // THE LINE IS THE AUTHOR'S, verbatim and quoted; the engine never
+      // composes one and neither does this. An option written without a line
+      // is narrated as speaking to the target, never as an invented sentence.
       //
-      // THE WHOLE ROLL WHEN THERE IS ONE (rpg-project#462). The beat used to
-      // publish one settled number, which is how the untrained rule shipped
-      // applied and INVISIBLE: a character who threw two dice and kept the
-      // lower read a plain total and never learned why. When the calculation
-      // is present the line shows both faces, the kept one and the rule's own
-      // name; when it is absent — an older beat — it falls back to the total
-      // it always printed, rather than going blank.
-      const threat = event.body.value;
-      const actor = memberName(threat.actor, context);
-      const target = memberName(threat.target, context);
-      const arithmetic = threat.calculation
-        ? formatRollCalculation(threat.calculation, (sourceId) =>
-            memberName(sourceId, context)
-          )
-        : undefined;
-      return Object.freeze({
-        ...base,
-        eyebrow: 'Threat',
-        headline: `${actor} leans on ${target}`,
-        detail: `${arithmetic ?? threat.total} against DC ${threat.dc} · ${
-          threat.beaten ? 'Cowed' : 'Unmoved'
-        }`,
-        tone: threat.beaten ? 'success' : 'neutral',
-      });
-    }
-    case 'persuaded': {
-      // THE APPEAL (rpg-project#458), narrated as the threat's twin one case
-      // up and built from the same fields under the same laws: the numbers,
-      // and the SERVER'S reading of them. `beaten` is copied rather than
-      // derived from total against dc.
-      //
-      // ONE ENTRY WHETHER IT LANDED OR NOT, because `PersuadeResponse`
-      // carries no verdict and this is the actor's only account of their own
-      // die. A failed appeal especially: it is the entry the goblin's bad
-      // directions follow from.
+      // THE WHOLE ROLL WHEN THERE IS ONE (rpg-project#462): both faces and
+      // the rule's own name when the calculation is present, the total when
+      // it is not.
       //
       // NOTHING ABOUT WHAT THE CREATURE DOES. That is the `answered` beat
-      // below — the world's roll on the author's table — and putting a word
-      // of it here would make this one beat claim two things.
-      //
-      // AND THE WHOLE ROLL, the threat's twin here too (rpg-project#462).
-      const appeal = event.body.value;
-      const actor = memberName(appeal.actor, context);
-      const target = memberName(appeal.target, context);
-      const arithmetic = appeal.calculation
-        ? formatRollCalculation(appeal.calculation, (sourceId) =>
+      // below — the world's roll on that option's own table.
+      const spoke = event.body.value;
+      const actor = memberName(spoke.actor, context);
+      const target =
+        spoke.target.case === 'memberId'
+          ? memberName(spoke.target.value, context)
+          : (spoke.target.value ?? 'something');
+      const check = spoke.check;
+      const arithmetic = check?.calculation
+        ? formatRollCalculation(check.calculation, (sourceId) =>
             memberName(sourceId, context)
           )
         : undefined;
       return Object.freeze({
         ...base,
-        eyebrow: 'Appeal',
-        headline: `${actor} talks to ${target}`,
-        detail: `${arithmetic ?? appeal.total} against DC ${appeal.dc} · ${
-          appeal.beaten ? 'Won round' : 'Unconvinced'
-        }`,
-        tone: appeal.beaten ? 'success' : 'neutral',
+        eyebrow: 'Speech',
+        headline: spoke.line
+          ? `${actor}: “${spoke.line}”`
+          : `${actor} speaks to ${target}`,
+        detail: check
+          ? `${speakSkillName(spoke.skill)} ${arithmetic ?? check.total} vs DC ${
+              check.dc
+            } · ${check.beaten ? 'Success' : 'Failure'}`
+          : speakSkillName(spoke.skill),
+        tone: check?.beaten ? 'success' : 'neutral',
       });
     }
     case 'answered': {

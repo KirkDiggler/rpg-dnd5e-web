@@ -1,3 +1,4 @@
+import type { SpeakTarget } from '@/api/useSessionSpeak';
 import {
   FootprintOrigin,
   FootprintShape,
@@ -21,6 +22,7 @@ import {
   type MemberTargetingInput,
 } from './memberTargeting';
 import type { SelectedCombatExperience } from './selection';
+import { speakLinesFor, speakTargetsOf } from './speakOptions';
 import type {
   CombatExperienceMapRenderProps,
   CombatExperiencePhase,
@@ -48,6 +50,13 @@ export interface TargetSurfaceProps {
   navigationControls?: React.ReactNode;
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
+  /** Who an armed Speak is aimed at, once picked (rpg-project#569). */
+  speakTarget?: SpeakTarget | null;
+  /** Pick a Speak target from the list (a prop can only be picked here), or
+   * with null step back to the list. */
+  onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
+  /** Say one of the chosen target's lines. */
+  onSpeakOption?: (optionId: string) => void;
   onConfirmTargets?: () => void;
   /** Clears a local selection only; no command is sent. */
   onCancelSelection?: () => void;
@@ -76,13 +85,22 @@ export function TargetSurface({
   navigationControls,
   renderMap,
   onTargetClick,
+  speakTarget,
+  onChooseSpeakTarget,
+  onSpeakOption,
   onConfirmTargets,
   onCancelSelection,
   hoveredTarget,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
+  // SPEAK HAS ITS OWN TWO STEPS (rpg-project#569): who, then which line. Its
+  // targets and lines come from `speak_options`, which can name a prop — a
+  // thing no member list or map-first picker can hold — so it never takes the
+  // generic member list or the map-first tray.
+  const isSpeak = declaration?.verb === Verb.SPEAK;
   const mapFirstActive = Boolean(
     mapFirst &&
+    !isSpeak &&
     phase === 'targeting' &&
     (!mapFirst.declaration ||
       mapFirst.declaration.targetKind === TargetKind.MEMBER)
@@ -190,12 +208,23 @@ export function TargetSurface({
   const isCellTargeted =
     declaration?.verb === Verb.CAST &&
     declaration.targetKind === TargetKind.CELL;
+  const speakTargets =
+    phase === 'targeting' && isSpeak ? speakTargetsOf(declaration) : [];
+  const speakLines = speakTarget ? speakLinesFor(declaration, speakTarget) : [];
+  const speakTargetName = (target: SpeakTarget): string =>
+    target.case === 'memberId'
+      ? memberNames.get(target.value) || target.value
+      : target.value;
   const availableTargets =
-    phase === 'targeting' && isMemberTargeted
-      ? declaration.candidates
-          .filter((candidate) => candidate.available)
-          .map((candidate) => candidate.member)
-      : [];
+    phase === 'targeting' && isSpeak
+      ? speakTargets
+          .filter((target) => target.case === 'memberId')
+          .map((target) => target.value)
+      : phase === 'targeting' && isMemberTargeted
+        ? declaration.candidates
+            .filter((candidate) => candidate.available)
+            .map((candidate) => candidate.member)
+        : [];
   // The server authors the label for both verbs; there is no ref-to-name
   // table here, and "Attack" is only the last resort for an attack.
   // A THREAT NAMES ITSELF, and is the one armed row with no server-authored
@@ -211,11 +240,9 @@ export function TargetSurface({
       ? declaration.ability?.name || 'Ability'
       : declaration?.verb === Verb.CAST
         ? `${castLabel(declaration)}${optionLabel ? ` · ${optionLabel}` : ''}`
-        : declaration?.verb === Verb.INTIMIDATE
-          ? 'Intimidate'
-          : declaration?.verb === Verb.PERSUADE
-            ? 'Persuade'
-            : declaration?.attack?.name || 'Attack';
+        : isSpeak
+          ? 'Speak'
+          : declaration?.attack?.name || 'Attack';
   const changeChoice =
     optionLabel && onChangeCastOption ? (
       <button
@@ -327,124 +354,65 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {!mapFirstActive && phase === 'targeting' && isMemberTargeted && (
+      {phase === 'targeting' && isSpeak && (
         <div className={styles.contextPrompt} data-phase="targeting">
           <span className={styles.turnPromptKicker}>{armedName} armed</span>
-          <strong>
-            {declaration.verb === Verb.CAST
-              ? declaration.minTargets === 1 && declaration.maxTargets === 1
-                ? 'Choose a target'
-                : declaration.minTargets === declaration.maxTargets
-                  ? `Choose ${declaration.minTargets} targets`
-                  : `Choose ${declaration.minTargets}–${declaration.maxTargets} targets`
-              : 'Choose a target'}
-          </strong>
-          <span>
-            {isMultiTargetCast
-              ? `${selectedTargets.length}/${declaration.maxTargets} selected`
-              : `${availableTargets.length} highlighted target${availableTargets.length === 1 ? '' : 's'}`}
-          </span>
-          {castCost && <span>{castCost}</span>}
-          {changeChoice}
-          <ul className={styles.targetList} aria-label={`${armedName} targets`}>
-            {declaration.candidates.map((candidate, index) => {
-              const name =
-                memberNames.get(candidate.member) || candidate.member;
-              const hasRows = candidateHasRows(candidate);
-              const selectedIndex = selectedTargets.findIndex(
-                (selected) => selected.member === candidate.member
-              );
-              const atTargetLimit =
-                isMultiTargetCast &&
-                selectedTargets.length >= declaration.maxTargets &&
-                selectedIndex < 0;
-              const status =
-                selectedIndex >= 0
-                  ? `Selected ${selectedIndex + 1}`
-                  : atTargetLimit
-                    ? 'Target limit reached'
-                    : candidate.available
-                      ? 'Available'
-                      : `Unavailable: ${candidate.why?.text || 'Unavailable'}`;
-              return (
-                <li
-                  key={`${candidate.member}:${index}`}
-                  className={hasRows ? styles.targetChoiceRow : undefined}
-                  data-inspected={
-                    hasRows && inspectedMember === candidate.member
-                      ? 'true'
-                      : undefined
-                  }
-                  // Mouse and pen only; a touch tap is a choice, and touch
-                  // reads rows through the Effects toggle instead.
-                  onPointerEnter={
-                    hasRows
-                      ? (event) => {
-                          if (
-                            event.pointerType === 'mouse' ||
-                            event.pointerType === 'pen'
-                          ) {
-                            preview(candidate.member);
-                          }
-                        }
-                      : undefined
-                  }
-                  onFocus={
-                    hasRows ? () => preview(candidate.member) : undefined
-                  }
-                >
-                  <button
-                    type="button"
-                    className={
-                      candidate.available
-                        ? styles.targetChoice
-                        : `${styles.targetChoice} ${styles.targetChoiceUnavailable}`
-                    }
-                    disabled={!candidate.available || atTargetLimit}
-                    onClick={() => {
-                      if (candidate.available && !atTargetLimit) {
-                        onTargetClick(candidate.member);
-                      }
-                    }}
-                  >
-                    {name}: {status}
-                  </button>
-                  {hasRows && (
-                    // Read-only: shows this candidate's rows, never chooses it.
-                    // A toggle button whose state IS the pin (`aria-pressed`):
-                    // focus or hover may already preview the rows, so the
-                    // press must change something a screen reader announces.
-                    // The panel it controls names whose rows it shows.
+          {speakTarget && speakLines.length > 0 ? (
+            <>
+              {/* THE SECOND STEP: the chosen target's AVAILABLE lines, in the
+                  order the server sent them. A gated line is not drawn — the
+                  offer already hid it, and a greyed row would tell the player
+                  a line exists their character has no way to know about. */}
+              <strong>
+                What do you say to {speakTargetName(speakTarget)}?
+              </strong>
+              <ul
+                className={styles.targetList}
+                aria-label={`Lines for ${speakTargetName(speakTarget)}`}
+              >
+                {speakLines.map((option) => (
+                  <li key={option.optionId}>
                     <button
                       type="button"
-                      className={styles.targetEffectsToggle}
-                      aria-pressed={current?.pinned === candidate.member}
-                      aria-controls={effectsPanelId}
-                      aria-label={`Effects against ${name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        togglePin(candidate.member);
-                      }}
+                      className={styles.targetChoice}
+                      onClick={() => onSpeakOption?.(option.optionId)}
                     >
-                      Effects
+                      {option.line ? `“${option.line}”` : option.optionId}
                     </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {isMultiTargetCast && onConfirmTargets && (
-            <button
-              type="button"
-              className={styles.targetChoice}
-              disabled={
-                selectedTargets.length < declaration.minTargets ||
-                selectedTargets.length > declaration.maxTargets
-              }
-              onClick={onConfirmTargets}
-            >
-              Cast at selected targets
-            </button>
+                  </li>
+                ))}
+              </ul>
+              {onChooseSpeakTarget && (
+                <button
+                  type="button"
+                  className={styles.targetChoice}
+                  onClick={() => onChooseSpeakTarget(null)}
+                >
+                  Speak to someone else
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <strong>Choose who to speak to</strong>
+              <ul className={styles.targetList} aria-label="Speak targets">
+                {speakTargets.map((target) => (
+                  <li key={`${target.case}:${target.value}`}>
+                    <button
+                      type="button"
+                      className={styles.targetChoice}
+                      onClick={() =>
+                        target.case === 'memberId'
+                          ? onTargetClick(target.value)
+                          : onChooseSpeakTarget?.(target)
+                      }
+                    >
+                      {speakTargetName(target)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           {onCancelSelection && (
             <button
@@ -452,11 +420,147 @@ export function TargetSurface({
               className={styles.targetChoice}
               onClick={onCancelSelection}
             >
-              Cancel targeting
+              Cancel
             </button>
           )}
         </div>
       )}
+      {!mapFirstActive &&
+        phase === 'targeting' &&
+        isMemberTargeted &&
+        !isSpeak && (
+          <div className={styles.contextPrompt} data-phase="targeting">
+            <span className={styles.turnPromptKicker}>{armedName} armed</span>
+            <strong>
+              {declaration.verb === Verb.CAST
+                ? declaration.minTargets === 1 && declaration.maxTargets === 1
+                  ? 'Choose a target'
+                  : declaration.minTargets === declaration.maxTargets
+                    ? `Choose ${declaration.minTargets} targets`
+                    : `Choose ${declaration.minTargets}–${declaration.maxTargets} targets`
+                : 'Choose a target'}
+            </strong>
+            <span>
+              {isMultiTargetCast
+                ? `${selectedTargets.length}/${declaration.maxTargets} selected`
+                : `${availableTargets.length} highlighted target${availableTargets.length === 1 ? '' : 's'}`}
+            </span>
+            {castCost && <span>{castCost}</span>}
+            {changeChoice}
+            <ul
+              className={styles.targetList}
+              aria-label={`${armedName} targets`}
+            >
+              {declaration.candidates.map((candidate, index) => {
+                const name =
+                  memberNames.get(candidate.member) || candidate.member;
+                const hasRows = candidateHasRows(candidate);
+                const selectedIndex = selectedTargets.findIndex(
+                  (selected) => selected.member === candidate.member
+                );
+                const atTargetLimit =
+                  isMultiTargetCast &&
+                  selectedTargets.length >= declaration.maxTargets &&
+                  selectedIndex < 0;
+                const status =
+                  selectedIndex >= 0
+                    ? `Selected ${selectedIndex + 1}`
+                    : atTargetLimit
+                      ? 'Target limit reached'
+                      : candidate.available
+                        ? 'Available'
+                        : `Unavailable: ${candidate.why?.text || 'Unavailable'}`;
+                return (
+                  <li
+                    key={`${candidate.member}:${index}`}
+                    className={hasRows ? styles.targetChoiceRow : undefined}
+                    data-inspected={
+                      hasRows && inspectedMember === candidate.member
+                        ? 'true'
+                        : undefined
+                    }
+                    // Mouse and pen only; a touch tap is a choice, and touch
+                    // reads rows through the Effects toggle instead.
+                    onPointerEnter={
+                      hasRows
+                        ? (event) => {
+                            if (
+                              event.pointerType === 'mouse' ||
+                              event.pointerType === 'pen'
+                            ) {
+                              preview(candidate.member);
+                            }
+                          }
+                        : undefined
+                    }
+                    onFocus={
+                      hasRows ? () => preview(candidate.member) : undefined
+                    }
+                  >
+                    <button
+                      type="button"
+                      className={
+                        candidate.available
+                          ? styles.targetChoice
+                          : `${styles.targetChoice} ${styles.targetChoiceUnavailable}`
+                      }
+                      disabled={!candidate.available || atTargetLimit}
+                      onClick={() => {
+                        if (candidate.available && !atTargetLimit) {
+                          onTargetClick(candidate.member);
+                        }
+                      }}
+                    >
+                      {name}: {status}
+                    </button>
+                    {hasRows && (
+                      // Read-only: shows this candidate's rows, never chooses it.
+                      // A toggle button whose state IS the pin (`aria-pressed`):
+                      // focus or hover may already preview the rows, so the
+                      // press must change something a screen reader announces.
+                      // The panel it controls names whose rows it shows.
+                      <button
+                        type="button"
+                        className={styles.targetEffectsToggle}
+                        aria-pressed={current?.pinned === candidate.member}
+                        aria-controls={effectsPanelId}
+                        aria-label={`Effects against ${name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          togglePin(candidate.member);
+                        }}
+                      >
+                        Effects
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {isMultiTargetCast && onConfirmTargets && (
+              <button
+                type="button"
+                className={styles.targetChoice}
+                disabled={
+                  selectedTargets.length < declaration.minTargets ||
+                  selectedTargets.length > declaration.maxTargets
+                }
+                onClick={onConfirmTargets}
+              >
+                Cast at selected targets
+              </button>
+            )}
+            {onCancelSelection && (
+              <button
+                type="button"
+                className={styles.targetChoice}
+                onClick={onCancelSelection}
+              >
+                Cancel targeting
+              </button>
+            )}
+          </div>
+        )}
       {!mapFirstActive &&
         phase === 'targeting' &&
         isMemberTargeted &&

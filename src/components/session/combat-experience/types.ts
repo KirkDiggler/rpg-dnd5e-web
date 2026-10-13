@@ -1,3 +1,4 @@
+import type { SpeakTarget } from '@/api/useSessionSpeak';
 import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
@@ -45,6 +46,16 @@ export interface CombatExperiencePresentationState {
    * branched on it would be authoring 5e.
    */
   selectedOption?: string | null;
+  /**
+   * Who an armed Speak is aimed at, once the player has picked (rpg-project#569).
+   *
+   * THE SECOND STEP'S KEY. Speak arms like a swing, but a target click does
+   * not send: it opens that target's lines, drawn from the declaration's own
+   * `speak_options` filtered to this target. A creature or a placed prop —
+   * the wire's own oneof — because a prop can be spoken to and is never a
+   * member candidate. Null whenever no Speak target is chosen.
+   */
+  speakTarget?: SpeakTarget | null;
   changedOptionNotice: string | null;
 }
 
@@ -246,6 +257,11 @@ interface CombatExperienceBaseProps {
   /** Clear the currently selected action without sending a command. */
   onCancelSelection?: () => void;
   onTargetClick: (targetId: string) => void;
+  /** Pick (or, with null, un-pick) who an armed Speak is aimed at. A member
+   * target may equally arrive through `onTargetClick` from the map. */
+  onChooseSpeakTarget?: (target: SpeakTarget | null) => void;
+  /** Say one of the chosen target's lines: the option id, echoed verbatim. */
+  onSpeakOption?: (optionId: string) => void;
   onConfirmTargets?: () => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;

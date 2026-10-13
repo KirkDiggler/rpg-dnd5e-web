@@ -235,16 +235,11 @@ describe('actionTooltipText', () => {
 // rpg-dnd5e-web#1104 enumerated six; this one was found on the walk, drawing a
 // row labelled "Persuade" whose own tooltip was titled "Move".
 describe('the social verbs in the tooltip', () => {
-  it('titles each social row with its own name, not the Move default', () => {
+  it('titles the Speak row with its own name, not the Move default', () => {
     expect(
-      buildActionTooltip(
-        declaration({ verb: Verb.INTIMIDATE, slot: Slot.NONE })
-      ).title
-    ).toBe('Intimidate');
-    expect(
-      buildActionTooltip(declaration({ verb: Verb.PERSUADE, slot: Slot.NONE }))
+      buildActionTooltip(declaration({ verb: Verb.SPEAK, slot: Slot.NONE }))
         .title
-    ).toBe('Persuade');
+    ).toBe('Speak');
   });
 
   it('shows NO cost line for a row the server sent free', () => {
@@ -252,7 +247,7 @@ describe('the social verbs in the tooltip', () => {
     // world clock there is none. The badge is already suppressed; a tooltip
     // that still said it would move the wrong claim one hover away.
     const tooltip = buildActionTooltip(
-      declaration({ verb: Verb.PERSUADE, slot: Slot.NONE, cost: [] })
+      declaration({ verb: Verb.SPEAK, slot: Slot.NONE, cost: [] })
     );
     expect(
       tooltip.lines.find((line) => line.label === 'Costs')
@@ -264,7 +259,7 @@ describe('the social verbs in the tooltip', () => {
     // The SLOT is the test and not the clock, so a social verb on the turn
     // clock still tells the player what it spends.
     const tooltip = buildActionTooltip(
-      declaration({ verb: Verb.PERSUADE, slot: Slot.ACTION })
+      declaration({ verb: Verb.SPEAK, slot: Slot.ACTION })
     );
     expect(tooltip.lines.find((line) => line.label === 'Costs')?.value).toBe(
       'Action'
@@ -276,7 +271,7 @@ describe('the social verbs in the tooltip', () => {
     // charge still says so, and dropping the whole line would hide it.
     const tooltip = buildActionTooltip(
       declaration({
-        verb: Verb.PERSUADE,
+        verb: Verb.SPEAK,
         slot: Slot.NONE,
         cost: [{ needed: 1, label: 'Bardic Inspiration' } as never],
       })

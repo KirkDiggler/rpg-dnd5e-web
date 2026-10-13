@@ -66,21 +66,21 @@ describe('organizeDeclarations', () => {
 // DRAWS, so an unlisted verb is not a dead button — it is no button at all,
 // dropped before anything downstream ever sees it. The flow test one file
 // over drives the hook directly and cannot catch that.
-describe('organizeDeclarations — a threat is an ordinary priced row', () => {
-  it('draws Intimidate in the actions section, beside Attack', () => {
+describe('organizeDeclarations — Speak is an ordinary priced row', () => {
+  it('draws Speak in the actions section, beside Attack', () => {
     const organized = organizeDeclarations(
-      [offer('attack', Verb.ATTACK), offer('intimidate', Verb.INTIMIDATE)],
+      [offer('attack', Verb.ATTACK), offer('speak', Verb.SPEAK)],
       undefined
     );
     expect(organized.sections.actions.map((item) => item.id)).toEqual([
       'attack',
-      'intimidate',
+      'speak',
     ]);
   });
 
   it('is NOT filed under spells or abilities — it is neither', () => {
     const organized = organizeDeclarations(
-      [offer('intimidate', Verb.INTIMIDATE)],
+      [offer('speak', Verb.SPEAK)],
       undefined
     );
     expect(organized.sections.spells).toEqual([]);
@@ -89,16 +89,10 @@ describe('organizeDeclarations — a threat is an ordinary priced row', () => {
 
   it('is resolvable at dispatch time, and a spent one is refused like any other', () => {
     expect(
-      currentExecutableDeclaration(
-        [offer('intimidate', Verb.INTIMIDATE)],
-        'intimidate'
-      )?.id
-    ).toBe('intimidate');
+      currentExecutableDeclaration([offer('speak', Verb.SPEAK)], 'speak')?.id
+    ).toBe('speak');
     expect(
-      currentExecutableDeclaration(
-        [offer('intimidate', Verb.INTIMIDATE, false)],
-        'intimidate'
-      )
+      currentExecutableDeclaration([offer('speak', Verb.SPEAK, false)], 'speak')
     ).toBeUndefined();
   });
 });

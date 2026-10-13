@@ -287,81 +287,38 @@ describe('the hold-out beats on the beat line (rpg-project#375 §5)', () => {
   });
 });
 
-// The first shenanigan (rpg-project#454). The `intimidated` beat is the ONLY
-// account of this roll — `IntimidateResponse` carries no beaten, total or dc
-// — so the person who threw the die reads it off this line like everyone
-// else, and both outcomes get one.
-describe('formatBeat — intimidated', () => {
-  function threat(
-    actor: string,
-    target: string,
-    total: number,
-    dc: number,
-    beaten: boolean
-  ): SessionEvent {
+// The one social check (rpg-project#569). The `spoke` beat is the ONLY account
+// of this roll — `SpeakResponse` carries no beaten, total or dc — so the person
+// who threw the die reads it off this line like everyone else, and both
+// outcomes get one. The creature's reply is the separate `answered` beat.
+describe('formatBeat — spoke and answered', () => {
+  function spoke(fields: {
+    actor: string;
+    target?: { case: 'memberId' | 'propId'; value: string };
+    line?: string;
+    skill?: string;
+    total?: number;
+    dc?: number;
+    beaten?: boolean;
+    check?: false;
+  }): SessionEvent {
     return event({
-      case: 'intimidated',
-      value: { actor, target, dc, total, beaten } as never,
-    });
-  }
-
-  it("the local player's own beaten threat reads in second person", () => {
-    expect(
-      formatBeat(threat('char-1', 'skeleton-1', 14, 9, true), 'char-1', names)
-    ).toBe('You intimidate skeleton-1 — 14 vs DC 9. Cowed.');
-  });
-
-  it('a missed threat is narrated too — the miss is as much fiction as the hit', () => {
-    expect(
-      formatBeat(threat('char-1', 'skeleton-1', 4, 9, false), 'char-1', names)
-    ).toBe('You intimidate skeleton-1 — 4 vs DC 9. Unmoved.');
-  });
-
-  it("someone else's threat uses third person and lowercase for the target", () => {
-    expect(
-      formatBeat(threat('skeleton-1', 'char-1', 16, 12, true), 'char-1', names)
-    ).toBe('skeleton-1 intimidates you — 16 vs DC 12. Cowed.');
-  });
-
-  it('the reading is COPIED, never derived from total against dc', () => {
-    // A server that says a 20 did not beat a DC 9 is telling this client
-    // something it must not argue with: the day a rule changes what beating
-    // a DC means, a line that compared the two would be wrong at once. This
-    // is the same law `Saved.succeeded` keeps.
-    expect(
-      formatBeat(threat('char-1', 'skeleton-1', 20, 9, false), 'char-1', names)
-    ).toBe('You intimidate skeleton-1 — 20 vs DC 9. Unmoved.');
-  });
-
-  it('says nothing about what the creature does next', () => {
-    // A cowed monster may run, may charge, or may hold the deed and ignore
-    // it — its mind decides, and that reaches the log as its next turn. A
-    // clause here promising flight would make the outcome the verb's instead
-    // of the mind's, which is the first cut the design broke.
-    const line = formatBeat(
-      threat('char-1', 'skeleton-1', 14, 9, true),
-      'char-1',
-      names
-    );
-    expect(line).not.toMatch(/flee|flees|runs|charge|charges|frightened/i);
-  });
-});
-
-// The front room goblin (rpg-project#458). Two beats per attempt: the check,
-// which is the actor's only account of their own roll, and the ANSWER, which
-// is the world's roll on the author's table and the only place the creature's
-// line exists.
-describe('formatBeat — persuaded and answered', () => {
-  function appeal(
-    actor: string,
-    target: string,
-    total: number,
-    dc: number,
-    beaten: boolean
-  ): SessionEvent {
-    return event({
-      case: 'persuaded',
-      value: { actor, target, dc, total, beaten } as never,
+      case: 'spoke',
+      value: {
+        actor: fields.actor,
+        target: fields.target ?? { case: 'memberId', value: 'skeleton-1' },
+        optionId: 'troupe',
+        line: fields.line ?? '',
+        skill: fields.skill ?? 'performance',
+        check:
+          fields.check === false
+            ? undefined
+            : {
+                dc: fields.dc ?? 13,
+                total: fields.total ?? 17,
+                beaten: fields.beaten ?? true,
+              },
+      } as never,
     });
   }
 
@@ -383,22 +340,99 @@ describe('formatBeat — persuaded and answered', () => {
     });
   }
 
-  it("the local player's own landed appeal reads in second person", () => {
+  it('quotes the line, then the skill it rolled and the numbers', () => {
     expect(
-      formatBeat(appeal('char-1', 'skeleton-1', 13, 10, true), 'char-1', names)
-    ).toBe('You persuade skeleton-1 — 13 vs DC 10. Won round.');
+      formatBeat(
+        spoke({
+          actor: 'char-1',
+          line: "We're the troupe for the feast.",
+          skill: 'performance',
+          total: 17,
+          dc: 13,
+          beaten: true,
+        }),
+        'char-1',
+        names
+      )
+    ).toBe(
+      "You: “We're the troupe for the feast.” — Performance 17 vs DC 13. Success."
+    );
   });
 
-  it('a failed appeal is narrated too — it is where bad directions come from', () => {
+  it('a missed check is narrated too — the miss is as much fiction as the hit', () => {
     expect(
-      formatBeat(appeal('char-1', 'skeleton-1', 4, 10, false), 'char-1', names)
-    ).toBe('You persuade skeleton-1 — 4 vs DC 10. Unconvinced.');
+      formatBeat(
+        spoke({
+          actor: 'skeleton-1',
+          line: 'Move.',
+          skill: 'dnd5e:skills:intimidation',
+          total: 4,
+          dc: 9,
+          beaten: false,
+        }),
+        'char-1',
+        names
+      )
+    ).toBe('skeleton-1: “Move.” — Intimidation 4 vs DC 9. Failure.');
   });
 
   it('the reading is COPIED, never derived from total against dc', () => {
+    // A server that says a 20 did not beat a DC 9 is telling this client
+    // something it must not argue with — the law `Saved.succeeded` keeps.
     expect(
-      formatBeat(appeal('char-1', 'skeleton-1', 20, 10, false), 'char-1', names)
-    ).toBe('You persuade skeleton-1 — 20 vs DC 10. Unconvinced.');
+      formatBeat(
+        spoke({
+          actor: 'char-1',
+          line: 'Hi.',
+          total: 20,
+          dc: 9,
+          beaten: false,
+        }),
+        'char-1',
+        names
+      )
+    ).toBe('You: “Hi.” — Performance 20 vs DC 9. Failure.');
+  });
+
+  it('names the target when the author wrote no line — it never invents one', () => {
+    expect(
+      formatBeat(
+        spoke({
+          actor: 'char-1',
+          target: { case: 'propId', value: 'altar-1' },
+          skill: 'religion',
+          total: 12,
+          dc: 12,
+        }),
+        'char-1',
+        names
+      )
+    ).toBe('You speak to altar-1 — Religion 12 vs DC 12. Success.');
+  });
+
+  it('says nothing about what the creature does next', () => {
+    // What the creature does about it is the `answered` beat's, rolled on the
+    // option's own table — never a clause on the check.
+    const line = formatBeat(
+      spoke({ actor: 'char-1', line: 'Move.', skill: 'intimidation' }),
+      'char-1',
+      names
+    );
+    expect(line).not.toMatch(/flee|flees|runs|bolts|charge|frightened/i);
+  });
+
+  it('draws nothing for the retired checks', () => {
+    // Speak replaced both (rpg-project#569); their bodies have no line here.
+    expect(
+      formatBeat(
+        event({
+          case: 'intimidated',
+          value: { actor: 'char-1', target: 'skeleton-1' } as never,
+        }),
+        'char-1',
+        names
+      )
+    ).toBeNull();
   });
 
   it("the answer quotes the author's line verbatim and adds one clause for FACT", () => {
