@@ -40,6 +40,7 @@ import {
 } from 'react';
 import * as THREE from 'three';
 import { doorBindingState, type DoorBindings } from './doorBindingEdits';
+import type { WallFinishSpan } from './roomWallFinishes';
 import { attachedDoorVisualPose } from './structuralDoorEditing';
 import {
   wallDirectionYaw,
@@ -53,9 +54,15 @@ import {
   StructuralWallSurfacePieces,
 } from './StructuralWallSurfaces';
 import { deriveWallCornerFits, type WallEndFits } from './wallCornerFits';
+import {
+  wallFaceGuidePoints,
+  type WallFinishProjection,
+} from './wallFinishProjection';
 
 export interface StructuralWallVisualProps {
   walls: readonly StructuralWall[];
+  finishProjection?: WallFinishProjection;
+  patternRegionId?: string;
   selectedWallId: string | null;
   /** The open document's attached-door state, keyed by bound door id. Drives
    * the authored INITIAL-state preview only; it is never a live engine
@@ -146,6 +153,7 @@ function WallGuides({
   const length = wallLength(wall);
   const rotationY = wallDirectionYaw(wall);
   const { offsetX, offsetZ, width, depth } = wall.blocker.footprint;
+  const faceGuides = wallFaceGuidePoints(wall);
   return (
     <group name={`structural-wall-guide-${wall.id}`}>
       {selectable && onSelectWall && (
@@ -198,6 +206,33 @@ function WallGuides({
           />
         </mesh>
       )}
+      {selected &&
+        (['a', 'b'] as const).map((side) => (
+          <Html
+            key={side}
+            position={[
+              faceGuides[side].x,
+              DUNGEON_SURFACE_Y +
+                wall.appearance.elevation +
+                wall.appearance.height +
+                0.15,
+              faceGuides[side].z,
+            ]}
+            center
+          >
+            <span
+              aria-label={`Wall side ${side.toUpperCase()}`}
+              style={{
+                pointerEvents: 'none',
+                background: '#15222c',
+                color: '#a7ffeb',
+                padding: '2px 4px',
+              }}
+            >
+              {side.toUpperCase()}
+            </span>
+          </Html>
+        ))}
       {selected &&
         (['start', 'end'] as const).map((end) => (
           <Html
@@ -427,6 +462,7 @@ function DoorHit({
 function WallVisual({
   wall,
   endFits,
+  finishSpans,
   doorBindings,
   maxPieces,
   onMeasured,
@@ -434,6 +470,7 @@ function WallVisual({
 }: {
   wall: StructuralWall;
   endFits?: WallEndFits;
+  finishSpans?: readonly WallFinishSpan[];
   doorBindings?: DoorBindings;
   maxPieces?: number;
   onMeasured: () => void;
@@ -450,6 +487,7 @@ function WallVisual({
         <StructuralWallSurfacePieces
           wall={wall}
           endFits={endFits}
+          finishSpans={finishSpans}
           maxPieces={maxPieces}
           onMeasured={onMeasured}
           visualLighting={visualLighting}
@@ -467,6 +505,8 @@ function WallVisual({
 
 export function StructuralWallVisual({
   walls,
+  finishProjection,
+  patternRegionId,
   selectedWallId,
   doorBindings,
   selectable,
@@ -523,14 +563,117 @@ export function StructuralWallVisual({
     preview?.valid && preview.purpose === 'placement'
       ? { ...doorBindings, [preview.target.doorId]: { closed: true } }
       : doorBindings;
+  const marker = finishProjection?.regions.find(
+    (r) => r.id === patternRegionId
+  )?.marker;
+  const wallRefusals = new Map<string, string>();
+  for (const status of finishProjection?.walls ?? [])
+    if (status.status === 'unresolved' && !wallRefusals.has(status.wallId))
+      wallRefusals.set(
+        status.wallId,
+        `Side ${status.side === 'positive-z' ? 'A' : 'B'}: ${status.reason ?? 'Unresolved finish.'}`
+      );
   return (
     <group name="structural-walls">
+      {[...wallRefusals].map(([id, reason]) => {
+        const wall = walls.find((w) => w.id === id);
+        if (!wall) return null;
+        const p = wallMidpoint(wall);
+        return (
+          <Html
+            key={`finish-error-${id}`}
+            position={[
+              p.x,
+              DUNGEON_SURFACE_Y +
+                wall.appearance.elevation +
+                wall.appearance.height +
+                0.4,
+              p.z,
+            ]}
+            center
+          >
+            <span
+              role="status"
+              title={reason}
+              style={{
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                background: '#33221a',
+                color: '#ffd3a0',
+                padding: '3px 6px',
+              }}
+            >
+              Wall finish unapplied: {reason}
+            </span>
+          </Html>
+        );
+      })}
+      {finishProjection?.regions
+        .filter(
+          (region) => region.status === 'unresolved' && region.diagnosticPoint
+        )
+        .map((region) => (
+          <Html
+            key={region.id}
+            position={[
+              region.diagnosticPoint!.x,
+              DUNGEON_SURFACE_Y + 0.4,
+              region.diagnosticPoint!.z,
+            ]}
+            center
+          >
+            <span
+              role="status"
+              title={region.reason}
+              style={{
+                whiteSpace: 'nowrap',
+                background: '#33221a',
+                color: '#ffd3a0',
+                padding: '3px 6px',
+              }}
+            >
+              Wall finish unapplied: {region.reason}
+            </span>
+          </Html>
+        ))}
+      {marker && (
+        <Html
+          position={[
+            marker.x,
+            DUNGEON_SURFACE_Y +
+              Math.max(
+                0,
+                ...walls.map(
+                  (w) => w.appearance.elevation + w.appearance.height
+                )
+              ) +
+              0.3,
+            marker.z,
+          ]}
+          center
+        >
+          <span
+            style={{
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              background: '#182a33',
+              color: '#a7ffeb',
+              padding: '3px 6px',
+            }}
+          >
+            ◆ Pattern start
+          </span>
+        </Html>
+      )}
       <group ref={piecesRef} name="structural-wall-pieces">
         {displayedWalls.map((wall) => (
           <WallVisual
             key={wall.id}
             wall={wall}
             endFits={cornerFits.fits.get(wall.id)}
+            finishSpans={finishProjection?.spans.filter(
+              (span) => span.wallId === wall.id
+            )}
             doorBindings={displayedBindings}
             maxPieces={maxPieces}
             onMeasured={bumpGeometry}

@@ -24,6 +24,7 @@ function withRegions(draft: RoomDraft, regions: AuthoringRegion[]): RoomDraft {
   const valid = validateAuthoringRegions(regions, scene.mapLabels ?? [], {
     workspace: draft.workspace,
     allowLighting: scene.version >= 4,
+    allowWallFinish: scene.version >= 6,
     reservedIds: new Set([
       draft.id,
       scene.id,

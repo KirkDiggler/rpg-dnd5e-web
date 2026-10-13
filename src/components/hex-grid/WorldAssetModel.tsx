@@ -11,7 +11,19 @@ import {
 } from '@/rendering/plainWallFit';
 import { propVisualScale } from '@/rendering/propVisualScale';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import {
+  applyWallSurfaceCharts,
+  type WallSurfaceChart,
+} from '@/rendering/wallSurfaceCharts';
+import type { WorldSurfaceAsset } from '@/rendering/worldMaterialCatalog';
+import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
+import {
+  createWorldSurfaceSampler,
+  resolveWorldSurfaceTargets,
+  type WorldSurfaceSelection,
+} from '@/rendering/worldSurfaceMaterials';
 import { useGLTF } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { PropModelBounds } from './PropModel';
@@ -57,6 +69,14 @@ export interface WorldAssetModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
+  /** Transient, fully loaded finish sets for explicit provider surface bindings.
+   * The caller supplies a fitted compatible chart; no persisted room state here. */
+  surfaceSelections?: readonly WorldSurfaceSelection[];
+  surfacePlans?: readonly {
+    material: WorldSurfaceMaterial;
+    chart: WallSurfaceChart;
+  }[];
+  surfaceProvider?: WorldSurfaceAsset;
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -288,6 +308,9 @@ function LoadedWorldAssetModel({
   remembered,
   visualLighting,
   plainWallFit,
+  surfaces,
+  surfaceSelections,
+  surfaceCharts,
 }: {
   assetRef: string;
   url: string;
@@ -305,20 +328,46 @@ function LoadedWorldAssetModel({
   remembered: boolean;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  surfaces: GeneratedWorldAsset['surfaces'];
+  surfaceSelections?: readonly WorldSurfaceSelection[];
+  surfaceCharts?: readonly WallSurfaceChart[];
 }) {
   const { scene } = useGLTF(url);
   const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
+  const chartKey = JSON.stringify(surfaceCharts ?? []);
+  const bindingKey = JSON.stringify(surfaces ?? []);
   const instance = useMemo(() => {
     const object = scene.clone(true);
     const fit = fitKey ? (JSON.parse(fitKey) as PlainWallFit) : undefined;
-    return {
-      object,
-      fit,
-      ...(fit
-        ? fitPlainWallInstance(object, fit)
-        : { profile: undefined, owned: [] as THREE.BufferGeometry[] }),
-    };
-  }, [scene, fitKey]);
+    const fitted = fit
+      ? fitPlainWallInstance(object, fit)
+      : { profile: undefined, owned: [] as THREE.BufferGeometry[] };
+    try {
+      const charts = JSON.parse(chartKey) as WallSurfaceChart[];
+      if (charts.length) {
+        const bindings = JSON.parse(bindingKey) as NonNullable<
+          GeneratedWorldAsset['surfaces']
+        >;
+        if (!fit || !fitted.profile || !bindings.length)
+          throw new Error(
+            'Room finish charts require an enrolled fitted wall.'
+          );
+        applyWallSurfaceCharts({
+          root: object,
+          assetRef,
+          bindings,
+          charts,
+          fit,
+          profile: fitted.profile,
+          owned: fitted.owned,
+        });
+      }
+      return { object, fit, ...fitted };
+    } catch (error) {
+      for (const geometry of fitted.owned) geometry.dispose();
+      throw error;
+    }
+  }, [scene, fitKey, chartKey, bindingKey, assetRef]);
   const cloned = instance.object;
   const fit = instance.fit;
   useEffect(
@@ -327,12 +376,21 @@ function LoadedWorldAssetModel({
     },
     [instance]
   );
+  const surfaceTreatment = useMemo(
+    () =>
+      surfaceSelections?.length
+        ? { bindings: surfaces, selections: surfaceSelections }
+        : undefined,
+    [surfaces, surfaceSelections]
+  );
   useRememberedModelTint(
     cloned,
     remembered,
     heightScale,
     visualLighting,
-    assetRef
+    assetRef,
+    'lit',
+    surfaceTreatment
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -576,6 +634,79 @@ function LoadedWorldAssetModel({
   );
 }
 
+function PreparedWorldAssetModel({
+  plans,
+  ...props
+}: React.ComponentProps<typeof LoadedWorldAssetModel> & {
+  plans: NonNullable<WorldAssetModelProps['surfacePlans']>;
+}): React.JSX.Element | null {
+  const { scene } = useGLTF(props.url);
+  const planKey = JSON.stringify(plans);
+  const requests = plans.flatMap((plan) =>
+    (['baseColor', 'normal', 'metallicRoughness', 'occlusion'] as const)
+      .filter((role) => !!plan.material[role])
+      .map((role) => ({ role, url: plan.material[role]!.url }))
+  );
+  const textures = useLoader(
+    THREE.TextureLoader,
+    requests.map((row) => row.url)
+  );
+  const textureKey = textures.map((texture) => texture.uuid).join(',');
+  const selections = useMemo(() => {
+    let index = 0;
+    return (JSON.parse(planKey) as typeof plans).map((plan) => {
+      const binding = props.surfaces?.find(
+        (row) => row.id === plan.chart.surfaceId
+      );
+      if (!binding) throw new Error('Missing provider surface binding.');
+      const targets = resolveWorldSurfaceTargets(
+        scene,
+        binding,
+        props.assetRef
+      );
+      const channel = targets[0].source.normalMap?.channel;
+      if (channel === undefined)
+        throw new Error('Missing paired surface UV channel.');
+      const maps = {} as WorldSurfaceSelection['maps'];
+      for (const role of [
+        'baseColor',
+        'normal',
+        'metallicRoughness',
+        'occlusion',
+      ] as const) {
+        if (!plan.material[role]) continue;
+        maps[role] = createWorldSurfaceSampler(textures[index++], {
+          role:
+            role === 'baseColor'
+              ? 'baseColor'
+              : role === 'normal'
+                ? 'normal'
+                : 'data',
+          channel,
+        });
+      }
+      return { surfaceId: plan.chart.surfaceId, material: plan.material, maps };
+    });
+    // The cache UUIDs describe immutable source objects; plans are value-keyed
+    // so ordinary pointer/selection renders do not churn samplers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, planKey, textureKey, props.surfaces, props.assetRef]);
+  useEffect(() => {
+    const samplers = selections.flatMap((s) => Object.values(s.maps));
+    samplers.forEach((texture) => {
+      texture.needsUpdate = true;
+    });
+    return () => samplers.forEach((texture) => texture.dispose());
+  }, [selections]);
+  return (
+    <LoadedWorldAssetModel
+      {...props}
+      surfaceSelections={selections}
+      surfaceCharts={plans.map((plan) => plan.chart)}
+    />
+  );
+}
+
 /**
  * Generic renderer for provider-normalized world assets. The provider has
  * already baked scale correction, yaw, centering, and grounding into the GLB;
@@ -598,6 +729,9 @@ export function WorldAssetModel({
   onDoorClick,
   onDoorsResolved,
   plainWallFit,
+  surfaceSelections,
+  surfacePlans,
+  surfaceProvider,
 }: WorldAssetModelProps) {
   const safeHeightScale = propVisualScale(heightScale);
   const asset = resolveWorldAsset(assetRef, (diagnostic) =>
@@ -606,8 +740,20 @@ export function WorldAssetModel({
   if (!asset) return null;
   if (plainWallFit && !asset.tags.includes('wall-miter-90'))
     throw new Error('This asset is not enrolled for plain wall fitting.');
+  if (
+    surfaceProvider &&
+    (surfaceProvider.assetRef !== assetRef ||
+      surfaceProvider.glbSha256 !== asset.glbSha256)
+  )
+    throw new Error(
+      'Surface provider geometry differs from the pinned world asset.'
+    );
+  const Component = surfacePlans?.length
+    ? PreparedWorldAssetModel
+    : LoadedWorldAssetModel;
   return (
-    <LoadedWorldAssetModel
+    <Component
+      plans={surfacePlans ?? []}
       assetRef={assetRef}
       url={asset.url}
       boundsMeters={asset.boundsMeters}
@@ -624,6 +770,8 @@ export function WorldAssetModel({
       remembered={remembered}
       visualLighting={visualLighting}
       plainWallFit={plainWallFit}
+      surfaces={surfaceProvider?.bindings ?? asset.surfaces}
+      surfaceSelections={surfaceSelections}
     />
   );
 }

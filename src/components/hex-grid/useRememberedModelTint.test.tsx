@@ -1,5 +1,9 @@
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
 import { createTestLightingBinding } from '@/rendering/regionLightingTestFixtures';
+import {
+  createWorldSurfaceSampler,
+  type WorldSurfaceMaterialsInput,
+} from '@/rendering/worldSurfaceMaterials';
 import { cleanup, render } from '@testing-library/react';
 import { StrictMode, Suspense, useLayoutEffect } from 'react';
 import * as THREE from 'three';
@@ -16,6 +20,7 @@ function Owner({
   revision = 0,
   tile,
   pending = false,
+  surfaces,
 }: {
   root: THREE.Object3D;
   remembered?: boolean;
@@ -23,13 +28,16 @@ function Owner({
   revision?: number;
   tile?: THREE.Object3D;
   pending?: boolean;
+  surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>;
 }): null {
   useRememberedModelTint(
     root,
     remembered,
     revision,
     binding,
-    'test-native-leaf'
+    'test-native-leaf',
+    'lit',
+    surfaces
   );
   useLayoutEffect(() => {
     if (!tile) return;
@@ -42,6 +50,140 @@ function Owner({
   return null;
 }
 describe('single per-instance memory/lighting material owner', () => {
+  it('owns finish before overlays and restores in reverse order across StrictMode, selection updates and suspension', () => {
+    const geometry = new THREE.PlaneGeometry();
+    geometry.setAttribute('uv2', geometry.getAttribute('uv').clone());
+    const source = new THREE.MeshStandardMaterial();
+    source.name = 'Front';
+    source.map = new THREE.Texture();
+    source.map.channel = 2;
+    source.normalMap = new THREE.Texture();
+    source.normalMap.channel = 2;
+    source.normalScale.set(1, -1);
+    const root = new THREE.Mesh(geometry, source);
+    root.name = 'WallBody_v1';
+    const map = () => ({
+      baseColor: createWorldSurfaceSampler(new THREE.Texture(), {
+        role: 'baseColor',
+        channel: 2,
+      }),
+      normal: createWorldSurfaceSampler(new THREE.Texture(), {
+        role: 'normal',
+        channel: 2,
+      }),
+    });
+    const largeMaps = map(),
+      smallMaps = map();
+    const image = {
+      url: '/test.png',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 10,
+      width: 1,
+      height: 1,
+    };
+    const surfaces: Pick<
+      WorldSurfaceMaterialsInput,
+      'bindings' | 'selections'
+    > = {
+      bindings: [
+        {
+          id: 'front',
+          node: 'WallBody_v1',
+          material: 'Front',
+          side: 'positive-z',
+          family: 'masonry',
+        },
+      ],
+      selections: [
+        {
+          surfaceId: 'front',
+          material: {
+            ref: 'dnd5e:material:test:large_gray',
+            displayName: 'Large gray',
+            family: 'masonry',
+            baseColor: image,
+            normal: image,
+            repeatMeters: [3.3, 3.3],
+            normalScale: [1, 1],
+            roughness: 0.5,
+            metalness: 0,
+          },
+          maps: largeMaps,
+        },
+      ],
+    };
+    const originalDispose = vi.spyOn(source, 'dispose');
+    const samplerDispose = vi.spyOn(largeMaps.normal, 'dispose');
+    const binding = createTestLightingBinding();
+    const view = render(
+      <StrictMode>
+        <Owner root={root} surfaces={surfaces} binding={binding} remembered />
+      </StrictMode>
+    );
+    expect(root.material.map).toBe(largeMaps.baseColor);
+    expect(root.material.normalMap).toBe(largeMaps.normal);
+    expect(root.material.customProgramCacheKey()).toContain(
+      'STUDIO_REGION_LIGHTING'
+    );
+    const first = root.material,
+      firstDispose = vi.spyOn(first, 'dispose');
+    const small = {
+      ...surfaces,
+      selections: [{ ...surfaces.selections[0], maps: smallMaps }],
+    };
+    view.rerender(
+      <StrictMode>
+        <Owner root={root} surfaces={small} binding={binding} />
+      </StrictMode>
+    );
+    expect(root.material.map).toBe(smallMaps.baseColor);
+    expect(root.material.normalMap).toBe(smallMaps.normal);
+    expect(root.material.normalScale.toArray()).toEqual([1, -1]);
+    expect(firstDispose).toHaveBeenCalledOnce();
+    view.rerender(
+      <StrictMode>
+        <Owner root={root} surfaces={small} />
+      </StrictMode>
+    );
+    expect(root.material.map).toBe(smallMaps.baseColor);
+    view.rerender(
+      <StrictMode>
+        <Owner root={root} />
+      </StrictMode>
+    );
+    expect(root.material).toBe(source);
+    view.unmount();
+    expect(originalDispose).not.toHaveBeenCalled();
+    expect(samplerDispose).not.toHaveBeenCalled();
+    const clone = vi.spyOn(source, 'clone');
+    const waiting = render(
+      <Suspense fallback={null}>
+        <Owner root={root} surfaces={surfaces} pending />
+      </Suspense>
+    );
+    expect(clone).not.toHaveBeenCalled();
+    expect(root.material).toBe(source);
+    waiting.rerender(
+      <Suspense fallback={null}>
+        <Owner root={root} surfaces={surfaces} />
+      </Suspense>
+    );
+    expect(root.material.map).toBe(largeMaps.baseColor);
+    waiting.unmount();
+    expect(root.material).toBe(source);
+    // A downstream diagnostic/overlay failure also unwinds the installed finish.
+    root.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()));
+    vi.spyOn(binding, 'reportDiagnostic').mockImplementation(() => {
+      throw new Error('overlay failure');
+    });
+    expect(() =>
+      render(<Owner root={root} surfaces={surfaces} binding={binding} />)
+    ).toThrow('overlay failure');
+    expect(root.material).toBe(source);
+    expect(originalDispose).not.toHaveBeenCalled();
+    binding.dispose();
+  });
+
   it('no-binding is source identity; arrays share one clone per source; StrictMode restores/disposes only owned materials', () => {
     const map = new THREE.Texture(),
       geometry = new THREE.BoxGeometry(),

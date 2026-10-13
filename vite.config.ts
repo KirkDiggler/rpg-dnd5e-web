@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { availableParallelism } from 'node:os';
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
+import { worldMaterialPreviewPlugin } from './scripts/worldMaterialPreviewPlugin';
 
 // Computed once per build. public/ assets (the /themes/*.css files) are not
 // fingerprinted by Vite, so runtime-injected stylesheet links append this as a
@@ -29,7 +30,12 @@ function buildId(): string {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    worldMaterialPreviewPlugin(
+      resolve(__dirname, '.local/world-material-preview')
+    ),
+  ],
   define: {
     __BUILD_ID__: JSON.stringify(buildId()),
   },

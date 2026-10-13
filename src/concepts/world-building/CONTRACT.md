@@ -156,6 +156,24 @@ fit values preserve instance resources. Other props/actors/thumbnails use the
 unchanged ordinary model path. Studio derives joins only from its supplied walls;
 no gameplay visibility authority is introduced.
 
+### Declared surface material consumption
+
+The shared model leaf accepts transient, fully loaded `surfaceSelections` only
+against provider `surfaces` declarations. Exact node/material bindings select all
+matching exported primitives; miter tags do not imply enrollment. Absent choices
+retain authored materials. Invalid bindings, incomplete map sets, incompatible
+families or unsupported chart/basis inputs refuse rather than partially apply.
+Legacy non-generated props cannot accept a surface selection.
+
+The existing material-treatment owner applies the finish before memory/lighting
+and restores overlays before restoring/disposal of the finish. StrictMode setup
+reapplies from authored materials; suspended renders allocate no finish resources.
+Only selected material clones are owned here. Role/channel-specific samplers share
+immutable pixels, not mutable texture settings. Geometry mapping, room ownership,
+selection persistence and resource loading remain caller concerns; this transient
+seam does not declare a saved room-finish schema or Play delivery. See
+[consumer verification](../../../docs/how-to/verify-world-material-candidates.md).
+
 A provider update may carry aperture-fit doorway assets. The legacy complete-door
 tool refuses `wall-opening` candidates until its separate anchor-aware consumer
 is implemented; assembly bounds must not be offered as aperture dimensions.
@@ -176,6 +194,75 @@ and bindings so those unchanged references resolve again. Unrelated bindings and
 all other scope fields remain intact. An editable post-removal draft is not a
 claim of publishability. Ordinary wall/name edits retain unfinished editable
 policy; save/export still require complete codec validation.
+
+## Selected-wall finishes and optional room defaults
+
+A selected wall can choose one finish for both faces or separate choices for A
+and B. A identifies the wall's `positive-z` face and B its `negative-z` face;
+the map markers follow that source orientation, not camera-relative left/right. Both-side
+editing is the default affordance; changing the control mode alone writes no
+content. Choices stage beside the other Arrange fields and use the same atomic
+Apply/Cancel transaction, with the same selection/document/epoch fences.
+
+Scene7 optionally stores `wallFinishes` by structural wall ID, with independently
+optional `positive-z` / `negative-z` material refs. This is presentation intent,
+not a second wall model or new server wall grammar. Old scenes refuse the field;
+absent faces inherit. Empty face records refuse; an empty map normalizes to
+absence. Room validation refuses orphan wall IDs; explicit wall removal prunes
+its overrides through existing reconciliation in the same Undo-able transaction.
+Later edits never demote scene7. Unknown resource refs remain editable.
+
+Explicit wall-face choice wins over a resolved region default, which wins over
+authored appearance. Overrides cover the entire source wall face, including
+standalone walls, internal stubs and unowned tails. Resolved region charts remain
+in effect on their intervals; elsewhere U repeats from the wall's Start datum
+(A forward, B reverse), with the common floor datum for V. No region or mapping
+anchor is invented. Clearing a choice restores inheritance. Invalid explicit
+intent suppresses that face's inherited finish and shows a named refusal, rather
+than appearing successful with another material. Other faces remain independent.
+Provider surface capability is still mandatory; this does not enroll new models.
+
+### Optional room finish and shared pattern alignment
+
+Scene6 permits a region's optional `wallFinish:{materialRef,patternStart}`. The
+pattern start names incoming/outgoing oriented source wall runs, not label text,
+a world point or a second polygon. Earlier scene versions refuse this field;
+loading never upgrades, and clearing a finish or editing creature metadata never
+demotes scene6. Unknown but shape-valid material/anchor refs stay editable.
+
+First selection chooses one certified corner. Material changes preserve that
+choice; moving a label never moves the chart. A missing/reversed/ambiguous corner,
+unresolved boundary, incompatible wall or missing resource leaves intent intact
+and names an unapplied finish in Regions and the viewport. Repair selects a
+current offered corner explicitly. Painted areas do not infer wall ownership.
+
+The geometry owner provides clipped, oriented wall-side spans. The mapping owner
+measures the half-thickness-offset room-facing path, intersecting perpendicular
+face lines and continuing compatible collinear runs. Collapsed/unsupported paths
+refuse rather than guessing. Meter repeats convert once through the canonical
+feet/scene adapter, not the asset scale. Fixed repeat size leaves one phase seam
+at the chosen corner; openings consume distance without restarting the pattern.
+U follows boundary distance and V decreases with height above the common floor
+datum, paired with the verified no-tangent derivative normal adapter.
+
+Derived visual pieces partition at side-ownership boundaries. Opposite faces and
+different subintervals of one source wall can carry different finishes; wall IDs,
+openings, mechanical blockers and corner fitting remain unchanged. Only enrolled
+side UVs/materials change. Caps and door artwork retain authored appearance.
+The existing document transaction/selection/epoch gates own finish changes, undo,
+JSON/YAML and reload. Accepted no-ops add no history.
+
+The normal material registry consumes committed, independently pinned material
+resources and world surface declarations. Catalog absence is explicit and cannot
+be filled by a miter tag, provider HEAD or a development fixture. Generated pins
+and the scoped runtime mirror own delivery; Studio does not fetch asset policy
+from the game API or author publication records.
+
+Private candidate previews require explicit development opt-in and verified local
+staging. Their resources live outside `public/` and are served by development-only
+middleware, never a production build. Candidate geometry must match the pinned
+GLB. A working preview is not appearance/scale acceptance or publication. These
+settings are Studio-only; no permitted Play layout or proto delivery is implied.
 
 ## Centered workspaces and map annotations (#1239)
 
@@ -322,6 +409,28 @@ The source map and conservative geometric refusals live in the
 [region walkthrough](../../../docs/architecture/components/encounter-studio-regions/README.md).
 Provider carriage/export acceptance requires a separate actual-pin probe; this
 contract makes no provider readiness claim.
+
+### Certified wall-side projection
+
+`projectRegionWallBoundaries` derives wall-side provenance from the same certified
+graph and conflict checks as region resolution. Source runs stay aligned with
+compressed/rotated face nodes; the independently rotated witness and ring are
+never zipped. Oriented spans keep the room on their left, exposing the source
+wall's positive-Z or negative-Z side and clipped low/high source distances in
+scene units. These are centerline facts, not fitted-face UV distances or material
+bindings. Partial exterior coverage is not a second owner of a certified run.
+
+Only resolved wall-enclosed regions yield wall-side spans. A painted region can
+remain a resolved area while its wall-side projection reports `not-wall-bound`;
+there is no nearest-label/cell ownership inference. Returned points/runs are
+copies and projection does not rebind regions or change documents.
+
+Transient pattern-corner references name incoming/outgoing oriented source runs,
+not label text, world position or array indices. Initial default selection chooses
+a certified geometric turn; flat source transitions are not corners. Resolving an
+existing reference never chooses a replacement after missing/ambiguous provenance.
+These internal projection types do not introduce persisted finish/anchor fields or
+settle material resource, mapping or Play-delivery contracts.
 
 ## Structural-wall authoring (#527 in rpg-project)
 

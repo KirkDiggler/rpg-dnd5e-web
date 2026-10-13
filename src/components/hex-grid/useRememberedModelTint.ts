@@ -2,6 +2,10 @@ import {
   cloneRegionLightingMaterial,
   type RegionLightingMaterialBinding,
 } from '@/rendering/regionLightingMaterials';
+import {
+  applyWorldSurfaceMaterials,
+  type WorldSurfaceMaterialsInput,
+} from '@/rendering/worldSurfaceMaterials';
 import { useEffect, useState, type RefObject } from 'react';
 import * as THREE from 'three';
 import { cloneCryptMaterials } from './sceneKnowledge';
@@ -14,7 +18,8 @@ export function useRememberedModelTint(
   revision?: number,
   visualLighting?: RegionLightingMaterialBinding,
   assetRef?: string,
-  receiver: 'lit' | 'workspace-basic' = 'lit'
+  receiver: 'lit' | 'workspace-basic' = 'lit',
+  surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>
 ): void {
   // Courses created while a previous treatment is mounted can inherit one of
   // its clones. Retain weak provenance, not retired meshes or owned resources.
@@ -27,6 +32,15 @@ export function useRememberedModelTint(
   useEffect(() => {
     const root = 'current' in object ? object.current : object;
     if (!root) return;
+    if (surfaces?.selections.length && !assetRef)
+      throw new Error('World surface treatment requires an asset reference.');
+    // One committed material owner: finish first, then memory/lighting. Reverse
+    // the order on cleanup so StrictMode and selection changes start from the
+    // authored source rather than a retired finish or overlay.
+    const finish =
+      surfaces && assetRef
+        ? applyWorldSurfaceMaterials({ root, assetRef, ...surfaces })
+        : undefined;
     const originals = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
     const created = new Set<THREE.Material>();
     const treated = new Map<THREE.Material, THREE.Material>();
@@ -61,27 +75,34 @@ export function useRememberedModelTint(
       treated.set(source, material);
       return material;
     };
-    root.traverse((child) => {
-      if (!(child as THREE.Mesh).isMesh) return;
-      const mesh = child as THREE.Mesh;
-      const source = Array.isArray(mesh.material)
-        ? (arrayProvenance.get(mesh.material) ?? mesh.material)
-        : original(mesh.material);
-      originals.set(mesh, source);
-      if (remembered || visualLighting) {
-        if (Array.isArray(source)) {
-          const materials = source.map(treat);
-          arrayProvenance.set(materials, source);
-          mesh.material = materials;
-        } else mesh.material = treat(source);
-      } else mesh.material = source;
-    });
-    return () => {
+    const restore = (): void => {
       originals.forEach((source, mesh) => {
         mesh.material = source;
       });
       created.forEach((material) => material.dispose());
+      finish?.dispose();
     };
+    try {
+      root.traverse((child) => {
+        if (!(child as THREE.Mesh).isMesh) return;
+        const mesh = child as THREE.Mesh;
+        const source = Array.isArray(mesh.material)
+          ? (arrayProvenance.get(mesh.material) ?? mesh.material)
+          : original(mesh.material);
+        originals.set(mesh, source);
+        if (remembered || visualLighting) {
+          if (Array.isArray(source)) {
+            const materials = source.map(treat);
+            arrayProvenance.set(materials, source);
+            mesh.material = materials;
+          } else mesh.material = treat(source);
+        } else mesh.material = source;
+      });
+    } catch (error) {
+      restore();
+      throw error;
+    }
+    return restore;
   }, [
     object,
     provenance,
@@ -91,5 +112,6 @@ export function useRememberedModelTint(
     visualLighting,
     assetRef,
     receiver,
+    surfaces,
   ]);
 }

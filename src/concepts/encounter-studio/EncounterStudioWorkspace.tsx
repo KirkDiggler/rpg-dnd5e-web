@@ -654,6 +654,11 @@ function StudioSurface({
                 doorEditing={home === 'build' ? session.doorEditing : undefined}
                 regionEditing={session.regionEditing}
                 selectedRegion={selectedRegion}
+                patternStart={
+                  session.regionEditing.finishes?.projection.regions.find(
+                    (r) => r.id === selectedRegion?.id
+                  )?.marker
+                }
                 regionTool={regionTool}
                 onExitRegionTool={exitRegion}
                 onExitDoorTool={exitDoor}

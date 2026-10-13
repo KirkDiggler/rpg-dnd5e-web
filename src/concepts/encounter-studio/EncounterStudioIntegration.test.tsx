@@ -4,6 +4,7 @@ import {
   decodeRoomDocumentJson,
   encodeRoomDocument,
 } from '@/compositions/roomDocument';
+import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
@@ -32,6 +33,11 @@ import {
   type RoomDraftDocument,
   type RoomHexCell,
 } from '../world-building/roomDraft';
+import {
+  finishRoomFixture,
+  FIT_WALL_REF,
+  GRAY_REF,
+} from '../world-building/roomFinishTestFixtures';
 import {
   moveSelection,
   rotateSelection,
@@ -91,6 +97,16 @@ import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 
+const materialPreview = vi.hoisted(() => ({
+  catalog: null as WorldMaterialCatalog | null,
+}));
+vi.mock('../world-building/useWorldMaterialCatalog', () => ({
+  useWorldMaterialCatalog: () => ({
+    catalog: materialPreview.catalog,
+    status: materialPreview.catalog ? 'ready' : 'unavailable',
+    message: 'Candidate preview — scale awaits acceptance.',
+  }),
+}));
 const boundary = vi.hoisted(() => ({
   latest: null as WorldBuildingViewportProps | null,
 }));
@@ -194,6 +210,7 @@ let source: CompositionSource;
 beforeEach(() => {
   vi.clearAllMocks();
   boundary.latest = null;
+  materialPreview.catalog = null;
   captured = new Set();
   source = {
     worldId: 'joined-test-world',
@@ -744,6 +761,61 @@ it('names an older creature and moves it once without changing its rules, looks 
   expect(storage.document()).toEqual(moved);
 });
 
+function installFinishPreview(): { smallRef: string } {
+  const asset = WORLD_BUILDING_CATALOG_BY_REF.get(FIT_WALL_REF)!;
+  if (asset.source !== 'generated') throw new Error('Expected fit wall.');
+  const image = {
+    url: '/test.png',
+    sha256: 'a'.repeat(64),
+    sizeBytes: 10,
+    width: 1,
+    height: 1,
+  };
+  const material = {
+    ref: GRAY_REF,
+    displayName: 'Large gray masonry',
+    family: 'masonry',
+    baseColor: image,
+    normal: image,
+    repeatMeters: [3.3, 3.3] as [number, number],
+    normalScale: [1, 1] as [number, number],
+    roughness: 0.5,
+    metalness: 0,
+  };
+  const smallRef = 'dnd5e:material:test:small_gray';
+  materialPreview.catalog = {
+    kind: 'candidate',
+    catalogSha256: 'a'.repeat(64),
+    materials: [
+      material,
+      { ...material, ref: smallRef, displayName: 'Small gray masonry' },
+    ],
+    surfaces: [
+      {
+        assetRef: FIT_WALL_REF,
+        glbSha256: asset.asset.glbSha256,
+        bindings: [
+          {
+            id: 'front',
+            node: 'WallBody_v1',
+            material: 'Masonry_Front',
+            side: 'positive-z',
+            family: 'masonry',
+          },
+          {
+            id: 'back',
+            node: 'WallBody_v1',
+            material: 'Masonry_Back',
+            side: 'negative-z',
+            family: 'masonry',
+          },
+        ],
+      },
+    ],
+  };
+  return { smallRef };
+}
+
 function seed(emptyFloor = false): RoomDraftDocument {
   const document = createPopulatedStudioDocument();
   if (emptyFloor) document.draft.room.walkableHexes = [];
@@ -989,6 +1061,230 @@ describe('Studio authoring homes through the real owner', () => {
     expect(session.document.draft).toEqual(before.draft);
     act(() => session.undo());
     expect(session.document).toEqual(before);
+  });
+
+  it('authors independent wall finishes and pattern starts through shared history, YAML and reload', () => {
+    const { smallRef } = installFinishPreview();
+    const storage = new MemoryStorage({
+        draft: finishRoomFixture(true),
+        scope: {},
+      }),
+      mounted = mount(storage),
+      before = storage.document();
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region Left'));
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: GRAY_REF },
+    });
+    const left = storage.document();
+    expect(left.draft.scene.version).toBe(6);
+    expect(left.draft.scene.authoringRegions![0].wallFinish!.materialRef).toBe(
+      GRAY_REF
+    );
+    expect(screen.getByLabelText('Pattern start marker')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Pattern start'), {
+      target: { value: '1' },
+    });
+    const shifted = storage.document();
+    expect(
+      shifted.draft.scene.authoringRegions![0].wallFinish!.patternStart
+    ).not.toEqual(
+      left.draft.scene.authoringRegions![0].wallFinish!.patternStart
+    );
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(left);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(shifted);
+    fireEvent.click(button('Edit region Right'));
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: smallRef },
+    });
+    const both = storage.document();
+    expect(
+      both.draft.scene.authoringRegions!.map((r) => r.wallFinish!.materialRef)
+    ).toEqual([GRAY_REF, smallRef]);
+    expect(both.draft.room).toEqual(before.draft.room);
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: smallRef },
+    });
+    expect(storage.roomWrites()).toBe(writes);
+    const decoded = decodeSingleRoomDungeon(
+      encodeSingleRoomDungeon({
+        key: 'finish-walk',
+        draft: both.draft,
+        ...both.scope,
+      })
+    );
+    expect(decoded.draft.scene.authoringRegions).toEqual(
+      both.draft.scene.authoringRegions
+    );
+    mounted.unmount();
+    mount(storage);
+    expect(storage.document()).toEqual(both);
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region Left'));
+    expect(
+      (screen.getByLabelText('Pattern start') as HTMLSelectElement).value
+    ).toBe('1');
+  });
+
+  it('refuses an incompatible staged appearance and finish as one transaction, then accepts correction without losing staged inputs', () => {
+    installFinishPreview();
+    const draft = finishRoomFixture();
+    delete draft.scene.authoringRegions;
+    delete draft.scene.mapLabels;
+    draft.room.walls = [draft.room.walls![0]];
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    const before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.click(button('Change wall appearance'));
+    const form = screen.getByRole('form', { name: 'Arrange selected noun' });
+    fireEvent.click(
+      within(form).getByTitle('dnd5e:env:dark-fortress:45_wall_01')
+    );
+    fireEvent.click(button('Apply Arrange'));
+    // This must reach compatibility refusal, not an unrelated schema/asset guard.
+    expect(
+      screen.getByText(/has no compatible A face for this finish/)
+    ).toBeTruthy();
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    expect(
+      (screen.getByLabelText('Appearance height') as HTMLInputElement).value
+    ).toBe('4');
+    fireEvent.click(within(form).getByTitle(FIT_WALL_REF));
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(storage.document().draft.room.walls![0].appearance.height).toBe(4);
+    expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': GRAY_REF,
+    });
+  });
+
+  it('sets a standalone wall on both sides by default, stages geometry and finishes atomically, and preserves separate faces through Undo/reload', () => {
+    const { smallRef } = installFinishPreview(),
+      draft = finishRoomFixture();
+    delete draft.scene.authoringRegions;
+    delete draft.scene.mapLabels;
+    draft.room.walls = [draft.room.walls![0]];
+    const storage = new MemoryStorage({ draft, scope: {} }),
+      mounted = mount(storage),
+      before = storage.document();
+    selectWall(storage, before.draft.room.walls![0]);
+    const mode = () =>
+      screen.getByLabelText('Set sides separately') as HTMLInputElement;
+    expect(mode().checked).toBe(false);
+    expect(screen.getByLabelText('Wall side A')).toBeTruthy();
+    expect(screen.getByLabelText('Wall side B')).toBeTruthy();
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+    fireEvent.click(button('Cancel Arrange'));
+    expect(storage.document()).toEqual(before);
+    fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
+      target: { value: GRAY_REF },
+    });
+    fireEvent.change(screen.getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    const both = storage.document();
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(both.draft.scene.version).toBe(7);
+    expect(both.draft.scene.authoringRegions).toBeUndefined();
+    expect(both.draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': GRAY_REF,
+    });
+    expect(both.draft.room.walls![0].appearance.height).toBe(4);
+    expect(both.draft.room.walls![0].blocker).toEqual(
+      before.draft.room.walls![0].blocker
+    );
+    switchTo('3D');
+    const previewWall = {
+      ...both.draft.room.walls![0],
+      line: { start: { x: 0, z: 0 }, end: { x: 10, z: 0 } },
+    };
+    act(() => viewport().roomAuthoring!.onWallTransformPreview!(previewWall));
+    expect(
+      viewport().roomAuthoring!.roomFinishes!.spans.map((span) => span.end)
+    ).toEqual([10, 10]);
+    expect(storage.document()).toEqual(both);
+    act(() => viewport().roomAuthoring!.onWallTransformPreview!(null));
+    expect(
+      viewport().roomAuthoring!.roomFinishes!.spans.map((span) => span.end)
+    ).toEqual([8, 8]);
+    switchTo('Layout');
+    fireEvent.click(mode());
+    expect(storage.document()).toEqual(both);
+    fireEvent.change(screen.getByLabelText('Side B finish'), {
+      target: { value: smallRef },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    const split = storage.document();
+    expect(split.draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+      'negative-z': smallRef,
+    });
+    const splitWrites = storage.roomWrites();
+    fireEvent.click(mode());
+    expect(
+      (screen.getByLabelText('Wall finish (both sides)') as HTMLSelectElement)
+        .value
+    ).toBe('__mixed__');
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document()).toEqual(split);
+    expect(storage.roomWrites()).toBe(splitWrites);
+    fireEvent.click(mode());
+    fireEvent.change(screen.getByLabelText('Side B finish'), {
+      target: { value: '' },
+    });
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
+      'positive-z': GRAY_REF,
+    });
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(split);
+    fireEvent.click(button('Remove wall'));
+    expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(split);
+    const yaml = encodeSingleRoomDungeon({
+      key: 'wall-overrides',
+      draft: split.draft,
+      ...split.scope,
+    });
+    expect(decodeSingleRoomDungeon(yaml).draft.scene.wallFinishes).toEqual(
+      split.draft.scene.wallFinishes
+    );
+    mounted.unmount();
+    mount(storage);
+    selectWall(storage, storage.document().draft.room.walls![0]);
+    expect(mode().checked).toBe(true);
+    expect(
+      (screen.getByLabelText('Side B finish') as HTMLSelectElement).value
+    ).toBe(smallRef);
+    fireEvent.click(button('Use region / authored defaults'));
+    expect(storage.document()).toEqual(split);
+    fireEvent.click(button('Apply Arrange'));
+    expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
+    expect(storage.document().draft.scene.version).toBe(7);
   });
 
   it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {

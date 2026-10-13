@@ -1,3 +1,4 @@
+import { StudioRegionFinishes } from './StudioRegionFinishes';
 import type { EncounterStudioSession } from './studioSession';
 
 /** Region identities and settings remain scene-owned, linked to map labels. */
@@ -19,7 +20,7 @@ export function StudioRegions({
       <h2>Regions & lighting</h2>
       <p className="es-help">
         Define rooms and outdoor areas, repair their boundaries, and set their
-        background light.
+        background light and room-facing masonry.
       </p>
       <button type="button" onClick={onCreate} disabled={!canCreate}>
         New region
@@ -51,12 +52,28 @@ export function StudioRegions({
                   onClick={() => onSelect(region.labelId)}
                 >
                   {label?.text ?? region.id}
+                  {session.regionEditing.finishes?.projection.regions.find(
+                    (r) => r.id === region.id
+                  )?.status === 'unresolved' && (
+                    <small> — finish unapplied</small>
+                  )}
                 </button>
               </li>
             );
           })}
         </ul>
       )}
+      {regions
+        .filter(
+          (region) => region.labelId === session.mapLabelSelection.selectedId
+        )
+        .map((region) => (
+          <StudioRegionFinishes
+            key={region.id}
+            region={region}
+            session={session}
+          />
+        ))}
     </section>
   );
 }

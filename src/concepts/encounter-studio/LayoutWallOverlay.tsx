@@ -5,6 +5,7 @@ import {
 import { wallLength } from '../world-building/structuralWallEditing';
 import { wallSolidIntervals } from '../world-building/structuralWallGeometry';
 import type { WallCornerJoin } from '../world-building/wallCornerJoins';
+import { wallFaceGuidePoints } from '../world-building/wallFinishProjection';
 import { worldToClient, type LayoutTransform } from './layoutGeometry';
 import type {
   StructuralWall,
@@ -97,6 +98,27 @@ export function LayoutWallOverlay({
                   parallel.
                 </title>
               </path>
+              {(['a', 'b'] as const).map((side) => {
+                const p = project(wallFaceGuidePoints(wall)[side]);
+                return (
+                  <text
+                    key={side}
+                    x={p.x}
+                    y={p.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={12}
+                    fill="#a7ffeb"
+                    stroke="#101923"
+                    strokeWidth={3}
+                    paintOrder="stroke"
+                    pointerEvents="none"
+                    aria-label={`Wall side ${side.toUpperCase()}`}
+                  >
+                    {side.toUpperCase()}
+                  </text>
+                );
+              })}
               {(['start', 'end'] as const).map((endpoint) => {
                 const point = project(wall.line[endpoint]);
                 return (

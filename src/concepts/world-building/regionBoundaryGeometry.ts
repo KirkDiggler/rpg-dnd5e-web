@@ -23,6 +23,10 @@ import {
   type CertifiedPoint,
   type Interval,
 } from './regionBoundaryPredicates';
+import type {
+  RegionBoundaryCorner,
+  RegionWallBoundary,
+} from './regionSurfaceBoundary';
 import type { RoomDraft, RoomHexCell } from './roomDraft';
 import type { StructuralWall } from './structuralWalls';
 import type { WorldPoint } from './types';
@@ -48,7 +52,7 @@ type Edge = {
   twin: Edge;
   used: boolean;
 };
-type Face = { nodes: Node[]; witness: EnclosureWitness };
+type Face = { nodes: Node[]; runs: BoundaryRun[]; witness: EnclosureWitness };
 type Graph = {
   faces: Face[];
   unsupportedFaces: Node[][];
@@ -56,13 +60,9 @@ type Graph = {
   walls: StructuralWall[];
 };
 
-function vector(edge: Edge): CertifiedPoint {
-  const a = exactPoint(
-    edge.forward ? edge.wall.line.start : edge.wall.line.end
-  );
-  const b = exactPoint(
-    edge.forward ? edge.wall.line.end : edge.wall.line.start
-  );
+function sourceVector(wall: StructuralWall, forward: boolean): CertifiedPoint {
+  const a = exactPoint(forward ? wall.line.start : wall.line.end);
+  const b = exactPoint(forward ? wall.line.end : wall.line.start);
   const x = sub(b.x, a.x),
     z = sub(b.z, a.z);
   return {
@@ -70,6 +70,9 @@ function vector(edge: Edge): CertifiedPoint {
     x,
     z,
   };
+}
+function vector(edge: Edge): CertifiedPoint {
+  return sourceVector(edge.wall, edge.forward);
 }
 function quadrant(p: WorldPoint): number {
   return p.z >= 0 ? (p.x >= 0 ? 0 : 1) : p.x < 0 ? 2 : 3;
@@ -365,15 +368,16 @@ function buildGraph(walls: StructuralWall[]): Graph {
       }
       // Remove only same-owner/direction subdivisions, AFTER raw validation.
       // Collinear transitions between distinct sources remain visible.
-      const faceNodes = walk
+      const boundary = walk
+        .map((edge, i) => ({ edge, run: sources[i] }))
         .filter((_, i) => {
           const previous = sources[(i + sources.length - 1) % sources.length];
           return (
             previous.wallId !== sources[i].wallId ||
             previous.direction !== sources[i].direction
           );
-        })
-        .map((e) => e.from);
+        });
+      const faceNodes = boundary.map(({ edge }) => edge.from);
       let start = 0;
       for (let i = 1; i < faceNodes.length; i++)
         if (
@@ -384,6 +388,9 @@ function buildGraph(walls: StructuralWall[]): Graph {
           start = i;
       faces.push({
         nodes: [...faceNodes.slice(start), ...faceNodes.slice(0, start)],
+        runs: [...boundary.slice(start), ...boundary.slice(0, start)].map(
+          ({ run }) => ({ ...run })
+        ),
         witness: canonicalizeEnclosureWitness({
           walk: sources,
         }),
@@ -576,16 +583,25 @@ function polygonConflict(
 }
 /** Pure projection. Unbound definitions are never acquired, and matched bound
  * walks recover without writes. One graph per call, independent of floor/UI. */
-export function resolveAuthoringRegions(
-  draft: Readonly<RoomDraft>
-): RegionResolution[] {
+function regionGraph(draft: Readonly<RoomDraft>): Graph {
   const regions = draft.scene.authoringRegions ?? [];
-  if (!regions.length) return [];
-  const graph = regions.some(
+  return regions.some(
     (r) => r.boundary.kind === 'automatic' && r.boundary.witness
   )
     ? buildGraph([...(draft.room.walls ?? [])])
-    : ({ faces: [], unsupportedFaces: [], failures: [], walls: [] } as Graph);
+    : { faces: [], unsupportedFaces: [], failures: [], walls: [] };
+}
+export function resolveAuthoringRegions(
+  draft: Readonly<RoomDraft>
+): RegionResolution[] {
+  return resolveWithGraph(draft, regionGraph(draft));
+}
+function resolveWithGraph(
+  draft: Readonly<RoomDraft>,
+  graph: Graph
+): RegionResolution[] {
+  const regions = draft.scene.authoringRegions ?? [];
+  if (!regions.length) return [];
   const witnesses = new Map<string, EnclosureWitness>();
   const rings = new Map<string, CertifiedPoint[]>();
   const results = regions.map((region): RegionResolution => {
@@ -679,5 +695,133 @@ export function resolveAuthoringRegions(
     conflicts.has(i)
       ? { id: result.id, status: 'unresolved', reason: conflicts.get(i)! }
       : result
+  );
+}
+
+/** Certified wall-side provenance for presentation consumers. This shares the
+ * region resolver's graph/conflict law; no nearest-label ownership or second
+ * enclosure search is introduced. The witness and ring have DIFFERENT canonical
+ * starting rotations, so only the graph's aligned source runs may be used. */
+export function projectRegionWallBoundaries(
+  draft: Readonly<RoomDraft>
+): RegionWallBoundary[] {
+  const graph = regionGraph(draft);
+  const regions = draft.scene.authoringRegions ?? [];
+  const walls = new Map(
+    (draft.room.walls ?? []).map((wall) => [wall.id, wall])
+  );
+  return resolveWithGraph(draft, graph).map(
+    (resolution): RegionWallBoundary => {
+      if (resolution.status === 'unresolved') return { ...resolution };
+      const region = regions.find((value) => value.id === resolution.id)!;
+      if (region.boundary.kind !== 'automatic' || !region.boundary.witness)
+        return {
+          id: region.id,
+          status: 'unresolved',
+          reason: 'not-wall-bound',
+        };
+      const witness = region.boundary.witness;
+      const matches = graph.faces.filter((face) =>
+        enclosureWitnessesEqual(face.witness, witness)
+      );
+      if (matches.length !== 1)
+        return {
+          id: region.id,
+          status: 'unresolved',
+          reason: 'uncertain-geometry',
+        };
+      const face = matches[0];
+      const sides = face.runs.map((run, i) => {
+        const wall = walls.get(run.wallId)!;
+        const from = { ...face.nodes[i].p.point };
+        const to = { ...face.nodes[(i + 1) % face.nodes.length].p.point };
+        const dx = wall.line.end.x - wall.line.start.x,
+          dz = wall.line.end.z - wall.line.start.z;
+        const length = Math.hypot(dx, dz);
+        const along = (point: WorldPoint): number => {
+          if (point.x === wall.line.start.x && point.z === wall.line.start.z)
+            return 0;
+          if (point.x === wall.line.end.x && point.z === wall.line.end.z)
+            return length;
+          const axis = wallAxis(wall);
+          if (axis)
+            return (
+              (point[axis] - wall.line.start[axis]) *
+              (wall.line.end[axis] > wall.line.start[axis] ? 1 : -1)
+            );
+          return (
+            ((point.x - wall.line.start.x) * dx +
+              (point.z - wall.line.start.z) * dz) /
+            length
+          );
+        };
+        const a = along(from),
+          b = along(to);
+        return {
+          ...run,
+          side:
+            run.direction === 'start-to-end'
+              ? ('positive-z' as const)
+              : ('negative-z' as const),
+          from,
+          to,
+          start: Math.min(a, b),
+          end: Math.max(a, b),
+        };
+      });
+      if (
+        sides.some((side) => {
+          const wall = walls.get(side.wallId)!;
+          const length = Math.hypot(
+            wall.line.end.x - wall.line.start.x,
+            wall.line.end.z - wall.line.start.z
+          );
+          return (
+            !Number.isFinite(side.start) ||
+            !Number.isFinite(side.end) ||
+            side.start < 0 ||
+            side.end <= side.start ||
+            side.end > length
+          );
+        })
+      )
+        return {
+          id: region.id,
+          status: 'unresolved',
+          reason: 'uncertain-geometry',
+        };
+      const corners: RegionBoundaryCorner[] = [];
+      for (let i = 0; i < face.runs.length; i++) {
+        const incoming =
+            face.runs[(i + face.runs.length - 1) % face.runs.length],
+          outgoing = face.runs[i];
+        const inWall = walls.get(incoming.wallId)!,
+          outWall = walls.get(outgoing.wallId)!;
+        const axis = wallAxis(inWall);
+        // Exact axis provenance certifies flat source transitions; interval
+        // subtraction alone deliberately cannot certify a zero determinant.
+        if (axis && wallAxis(outWall) === axis) {
+          const fixed = axis === 'x' ? 'z' : 'x';
+          if (inWall.line.start[fixed] === outWall.line.start[fixed]) continue;
+        }
+        const turn = orientation(
+          exactPoint({ x: 0, z: 0 }),
+          sourceVector(inWall, incoming.direction === 'start-to-end'),
+          sourceVector(outWall, outgoing.direction === 'start-to-end')
+        );
+        if (turn === 'uncertain')
+          return {
+            id: region.id,
+            status: 'unresolved',
+            reason: 'uncertain-geometry',
+          };
+        if (turn !== 0)
+          corners.push({
+            reference: { incoming: { ...incoming }, outgoing: { ...outgoing } },
+            point: { ...face.nodes[i].p.point },
+          });
+      }
+      return { id: region.id, status: 'resolved', sides, corners };
+    }
   );
 }

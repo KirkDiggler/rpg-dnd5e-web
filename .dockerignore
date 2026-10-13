@@ -11,6 +11,9 @@ build/
 # Development files
 .git/
 .gitignore
+# Private candidate previews and parallel checkouts never enter build layers.
+.local/
+.worktrees/
 .env
 .env.*
 !.env.example

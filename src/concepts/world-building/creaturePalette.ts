@@ -84,7 +84,10 @@ export function setActorName(
   const names = { ...scene.actorNames };
   if (name === null) delete names[id];
   else names[id] = name;
-  const next: WorldScene = { ...scene, version: 5 };
+  const next: WorldScene = {
+    ...scene,
+    version: scene.version >= 5 ? scene.version : 5,
+  };
   if (Object.keys(names).length) next.actorNames = names;
   else delete next.actorNames;
   return next;
@@ -97,7 +100,10 @@ export function setCreaturePalette(
   const valid = validateCreaturePalette(entries);
   if (JSON.stringify(valid) === JSON.stringify(scene.creaturePalette ?? []))
     return scene;
-  const next: WorldScene = { ...scene, version: 5 };
+  const next: WorldScene = {
+    ...scene,
+    version: scene.version >= 5 ? scene.version : 5,
+  };
   if (valid.length) next.creaturePalette = valid;
   else delete next.creaturePalette;
   return next;
