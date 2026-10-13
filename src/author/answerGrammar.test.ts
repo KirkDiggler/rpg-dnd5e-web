@@ -601,8 +601,12 @@ describe('the hearing rows', () => {
     expect(refused('{ attack: sound }')).toThrow(
       /`attack` cannot take `sound`: a sound cannot be struck, only walked toward or away from/
     );
+    // Reported at the ROW, `…time[i]`, as the engine reports it.
     expect(refused('{ away: { path: [[1, 1]] } }')).toThrow(
-      /`away` cannot take a `path`: a route is walked, and only `toward` walks one/
+      /on\.time\[\d+\]: `away` cannot take a `path`: a route is walked, and only `toward` walks one/
+    );
+    expect(refused('{ attack: sound }')).toThrow(
+      /on\.time\[\d+\]: `attack` cannot take `sound`/
     );
     expect(refused('{ toward: { at: [1, 1], path: [[1, 1]] } }')).toThrow(
       /a selector names a cell \(`at`\) or a route \(`path`\), and this names both/

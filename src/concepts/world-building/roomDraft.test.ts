@@ -962,8 +962,10 @@ describe('room draft v3 migration and structural exactness', () => {
       };
       return () => parseRoomDraftJson(stringifyRoomDraft(draft));
     };
+    // A selector-shape fault is the ROW's, reported at `…time[i]` as the
+    // engine reports it (rpg-toolkit#2044).
     expect(refused([{ attack: 'sound' }])).toThrow(
-      /`attack` cannot take `sound`: a sound cannot be struck/
+      /on\.time\[0\]: `attack` cannot take `sound`: a sound cannot be struck/
     );
     // THE SINGLE ROOM NAMES NO ROUTE (rpg-toolkit#2044): its cells have no
     // frame, exactly as `at`'s have none.

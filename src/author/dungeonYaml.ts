@@ -1394,6 +1394,16 @@ function answerWhenScope(
 /** One selector: a word (`enemy`/`attacker`/`actor`) or `{ at: [col,row] }`.
  * The `at:` spelling is parsed here and its legality on the entry's word is
  * the rules pass's job (`answerSelectorRules`). */
+/** The row's own path, from a selector's `…time[i].<word>`: a selector-shape
+ * fault is reported at the ROW, as the engine reports mind/behavior's
+ * refusals (rpg-toolkit#2044). */
+function rowPathOf(selectorPath: string, word: string): string {
+  const suffix = `.${word}`;
+  return selectorPath.endsWith(suffix)
+    ? selectorPath.slice(0, -suffix.length)
+    : selectorPath;
+}
+
 function answerSelector(
   v: unknown,
   path: string,
@@ -1407,7 +1417,7 @@ function answerSelector(
     // `sound` on `attack` (R10): a sound cannot be struck.
     if (!selectorWordLegalOn(v, word)) {
       throw new DungeonParseError(
-        `${path}: ${HEARING_SENTENCES.attackSound()}`
+        `${rowPathOf(path, word)}: ${HEARING_SENTENCES.attackSound()}`
       );
     }
     return { word: v };
@@ -1434,7 +1444,7 @@ function answerSelector(
       // A ROUTE IS WALKED, and only `toward` walks one (R7).
       if (word !== ANSWER_PATH_SELECTOR.onlyWord) {
         throw new DungeonParseError(
-          `${path}: ${HEARING_SENTENCES.pathNotToward(word)}`
+          `${rowPathOf(path, word)}: ${HEARING_SENTENCES.pathNotToward(word)}`
         );
       }
       return {

@@ -583,7 +583,9 @@ function validateAnswerSelector(
   if (typeof value === 'string') {
     if (!isSelectorWord(value)) fail(path, unknownSelectorRefusal(value));
     if (!selectorWordLegalOn(value, word))
-      fail(path, HEARING_SENTENCES.attackSound());
+      // A SELECTOR-SHAPE FAULT IS THE ROW'S (rpg-toolkit#2044): the engine
+      // asks mind/behavior of the compiled row and reports at `…time[i]`.
+      fail(rowPathOf(path, word), HEARING_SENTENCES.attackSound());
     return value;
   }
   if (isMapping(value)) {
@@ -613,6 +615,14 @@ function validateAnswerSelector(
 }
 
 /** The authored cell of an `at:` selector — `[col, row]`, carried as written. */
+/** The row's own path, from a selector's `…time[i].<word>`. */
+function rowPathOf(selectorPath: string, word: string): string {
+  const suffix = `.${word}`;
+  return selectorPath.endsWith(suffix)
+    ? selectorPath.slice(0, -suffix.length)
+    : selectorPath;
+}
+
 function validateAtCell(value: unknown, path: string): [number, number] {
   if (
     !Array.isArray(value) ||
