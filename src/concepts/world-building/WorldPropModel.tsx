@@ -5,6 +5,7 @@ import {
 import {
   WorldAssetModel,
   type WorldAssetModelDiagnostic,
+  type WorldAssetModelProps,
 } from '@/components/hex-grid/WorldAssetModel';
 import type { PlainWallFit } from '@/rendering/plainWallFit';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
@@ -20,6 +21,8 @@ export interface WorldPropModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
   surfaceSelections?: readonly WorldSurfaceSelection[];
+  surfacePlans?: WorldAssetModelProps['surfacePlans'];
+  surfaceProvider?: WorldAssetModelProps['surfaceProvider'];
   /** A door item's live state: TRUE swings every declared group open. Absent
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
@@ -45,12 +48,17 @@ export function WorldPropModel({
   visualLighting,
   plainWallFit,
   surfaceSelections,
+  surfacePlans,
+  surfaceProvider,
   open,
   onDoorClick,
   onBoundsMeasured,
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
-  if (surfaceSelections?.length && entry.source !== 'generated')
+  if (
+    (surfaceSelections?.length || surfacePlans?.length) &&
+    entry.source !== 'generated'
+  )
     throw new Error(
       'World surface selection requires a provider-enrolled asset.'
     );
@@ -62,6 +70,8 @@ export function WorldPropModel({
       assetRef={entry.ref}
       plainWallFit={plainWallFit}
       surfaceSelections={surfaceSelections}
+      surfacePlans={surfacePlans}
+      surfaceProvider={surfaceProvider}
       remembered={remembered}
       visualLighting={visualLighting}
       position={position}

@@ -4,6 +4,7 @@ import {
   decodeRoomDocumentJson,
   encodeRoomDocument,
 } from '@/compositions/roomDocument';
+import type { WorldMaterialCatalog } from '@/rendering/worldMaterialCatalog';
 import { create } from '@bufbuild/protobuf';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import {
@@ -30,6 +31,11 @@ import {
   type RoomDraftDocument,
   type RoomHexCell,
 } from '../world-building/roomDraft';
+import {
+  finishRoomFixture,
+  FIT_WALL_REF,
+  GRAY_REF,
+} from '../world-building/roomFinishTestFixtures';
 import {
   moveSelection,
   rotateSelection,
@@ -89,6 +95,16 @@ import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
 
+const materialPreview = vi.hoisted(() => ({
+  catalog: null as WorldMaterialCatalog | null,
+}));
+vi.mock('../world-building/useWorldMaterialCatalog', () => ({
+  useWorldMaterialCatalog: () => ({
+    catalog: materialPreview.catalog,
+    status: materialPreview.catalog ? 'ready' : 'unavailable',
+    message: 'Candidate preview — scale awaits acceptance.',
+  }),
+}));
 const boundary = vi.hoisted(() => ({
   latest: null as WorldBuildingViewportProps | null,
 }));
@@ -192,6 +208,7 @@ let source: CompositionSource;
 beforeEach(() => {
   vi.clearAllMocks();
   boundary.latest = null;
+  materialPreview.catalog = null;
   captured = new Set();
   source = {
     worldId: 'joined-test-world',
@@ -897,6 +914,122 @@ describe('Studio authoring homes through the real owner', () => {
     expect(session.document.draft).toEqual(before.draft);
     act(() => session.undo());
     expect(session.document).toEqual(before);
+  });
+
+  it('authors independent wall finishes and pattern starts through shared history, YAML and reload', () => {
+    const asset = WORLD_BUILDING_CATALOG_BY_REF.get(FIT_WALL_REF)!;
+    if (asset.source !== 'generated') throw new Error('Expected fit wall.');
+    const image = {
+      url: '/test.png',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 10,
+      width: 1,
+      height: 1,
+    };
+    const material = {
+      ref: GRAY_REF,
+      displayName: 'Large gray masonry',
+      family: 'masonry',
+      baseColor: image,
+      normal: image,
+      repeatMeters: [3.3, 3.3] as [number, number],
+      normalScale: [1, 1] as [number, number],
+      roughness: 0.5,
+      metalness: 0,
+    };
+    const smallRef = 'dnd5e:material:test:small_gray';
+    materialPreview.catalog = {
+      kind: 'candidate',
+      catalogSha256: 'a'.repeat(64),
+      materials: [
+        material,
+        { ...material, ref: smallRef, displayName: 'Small gray masonry' },
+      ],
+      surfaces: [
+        {
+          assetRef: FIT_WALL_REF,
+          glbSha256: asset.asset.glbSha256,
+          bindings: [
+            {
+              id: 'front',
+              node: 'WallBody_v1',
+              material: 'Masonry_Front',
+              side: 'positive-z',
+              family: 'masonry',
+            },
+            {
+              id: 'back',
+              node: 'WallBody_v1',
+              material: 'Masonry_Back',
+              side: 'negative-z',
+              family: 'masonry',
+            },
+          ],
+        },
+      ],
+    };
+    const storage = new MemoryStorage({
+        draft: finishRoomFixture(true),
+        scope: {},
+      }),
+      mounted = mount(storage),
+      before = storage.document();
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region Left'));
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: GRAY_REF },
+    });
+    const left = storage.document();
+    expect(left.draft.scene.version).toBe(6);
+    expect(left.draft.scene.authoringRegions![0].wallFinish!.materialRef).toBe(
+      GRAY_REF
+    );
+    expect(screen.getByLabelText('Pattern start marker')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Pattern start'), {
+      target: { value: '1' },
+    });
+    const shifted = storage.document();
+    expect(
+      shifted.draft.scene.authoringRegions![0].wallFinish!.patternStart
+    ).not.toEqual(
+      left.draft.scene.authoringRegions![0].wallFinish!.patternStart
+    );
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(left);
+    fireEvent.click(button('Redo'));
+    expect(storage.document()).toEqual(shifted);
+    fireEvent.click(button('Edit region Right'));
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: smallRef },
+    });
+    const both = storage.document();
+    expect(
+      both.draft.scene.authoringRegions!.map((r) => r.wallFinish!.materialRef)
+    ).toEqual([GRAY_REF, smallRef]);
+    expect(both.draft.room).toEqual(before.draft.room);
+    const writes = storage.roomWrites();
+    fireEvent.change(screen.getByLabelText('Room masonry'), {
+      target: { value: smallRef },
+    });
+    expect(storage.roomWrites()).toBe(writes);
+    const decoded = decodeSingleRoomDungeon(
+      encodeSingleRoomDungeon({
+        key: 'finish-walk',
+        draft: both.draft,
+        ...both.scope,
+      })
+    );
+    expect(decoded.draft.scene.authoringRegions).toEqual(
+      both.draft.scene.authoringRegions
+    );
+    mounted.unmount();
+    mount(storage);
+    expect(storage.document()).toEqual(both);
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Edit region Left'));
+    expect(
+      (screen.getByLabelText('Pattern start') as HTMLSelectElement).value
+    ).toBe('1');
   });
 
   it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {

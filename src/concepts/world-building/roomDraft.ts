@@ -1190,10 +1190,11 @@ function validateDraft(value: unknown): RoomDraft {
     input.scene?.version !== 2 &&
     input.scene?.version !== 3 &&
     input.scene?.version !== 4 &&
-    input.scene?.version !== 5
+    input.scene?.version !== 5 &&
+    input.scene?.version !== 6
   )
     throw new Error(
-      'Centered room workspace requires scene version 2, 3, 4 or 5.'
+      'Centered room workspace requires scene version 2 or later.'
     );
   const room = objectShape(input.room, 'Room gameplay data');
   if (Object.hasOwn(room, 'monsters'))

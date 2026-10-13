@@ -56,7 +56,7 @@ export function createWorldSurfaceSampler(
   return texture;
 }
 
-interface Target {
+export interface WorldSurfaceTarget {
   mesh: THREE.Mesh;
   slot: number;
   source: THREE.MeshStandardMaterial;
@@ -64,11 +64,11 @@ interface Target {
 function refuse(assetRef: string, id: string, message: string): never {
   throw new Error(`World surface ${assetRef}/${id}: ${message}`);
 }
-function targets(
+export function resolveWorldSurfaceTargets(
   root: THREE.Object3D,
   binding: Binding,
   assetRef: string
-): Target[] {
+): WorldSurfaceTarget[] {
   const fail = (message: string): never =>
     refuse(assetRef, binding.id, message);
   const named: THREE.Object3D[] = [];
@@ -77,7 +77,7 @@ function targets(
   });
   if (named.length !== 1)
     fail(`node ${binding.node} must resolve exactly once`);
-  const found: Target[] = [];
+  const found: WorldSurfaceTarget[] = [];
   const identities = new Set<THREE.Material>();
   // GLTFLoader may represent one glTF node as a Group with a mesh per primitive.
   named[0].traverse((node) => {
@@ -117,7 +117,7 @@ function targets(
 }
 
 function validateMaps(
-  target: Target,
+  target: WorldSurfaceTarget,
   selection: WorldSurfaceSelection,
   assetRef: string
 ): void {
@@ -228,7 +228,7 @@ export function applyWorldSurfaceMaterials(
     selected.add(selection.surfaceId);
     if (binding!.family !== selection.material.family)
       fail('incompatible material family');
-    const found = targets(root, binding!, assetRef);
+    const found = resolveWorldSurfaceTargets(root, binding!, assetRef);
     for (const target of found) {
       const slots = claimed.get(target.mesh) ?? new Set<number>();
       if (slots.has(target.slot)) fail('overlapping primitive ownership');

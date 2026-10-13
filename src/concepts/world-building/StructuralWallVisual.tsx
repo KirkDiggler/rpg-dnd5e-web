@@ -40,6 +40,10 @@ import {
 } from 'react';
 import * as THREE from 'three';
 import { doorBindingState, type DoorBindings } from './doorBindingEdits';
+import type {
+  RoomWallFinishProjection,
+  RoomWallFinishSpan,
+} from './roomWallFinishes';
 import { attachedDoorVisualPose } from './structuralDoorEditing';
 import {
   wallDirectionYaw,
@@ -56,6 +60,8 @@ import { deriveWallCornerFits, type WallEndFits } from './wallCornerFits';
 
 export interface StructuralWallVisualProps {
   walls: readonly StructuralWall[];
+  finishProjection?: RoomWallFinishProjection;
+  patternRegionId?: string;
   selectedWallId: string | null;
   /** The open document's attached-door state, keyed by bound door id. Drives
    * the authored INITIAL-state preview only; it is never a live engine
@@ -427,6 +433,7 @@ function DoorHit({
 function WallVisual({
   wall,
   endFits,
+  finishSpans,
   doorBindings,
   maxPieces,
   onMeasured,
@@ -434,6 +441,7 @@ function WallVisual({
 }: {
   wall: StructuralWall;
   endFits?: WallEndFits;
+  finishSpans?: readonly RoomWallFinishSpan[];
   doorBindings?: DoorBindings;
   maxPieces?: number;
   onMeasured: () => void;
@@ -450,6 +458,7 @@ function WallVisual({
         <StructuralWallSurfacePieces
           wall={wall}
           endFits={endFits}
+          finishSpans={finishSpans}
           maxPieces={maxPieces}
           onMeasured={onMeasured}
           visualLighting={visualLighting}
@@ -467,6 +476,8 @@ function WallVisual({
 
 export function StructuralWallVisual({
   walls,
+  finishProjection,
+  patternRegionId,
   selectedWallId,
   doorBindings,
   selectable,
@@ -523,14 +534,77 @@ export function StructuralWallVisual({
     preview?.valid && preview.purpose === 'placement'
       ? { ...doorBindings, [preview.target.doorId]: { closed: true } }
       : doorBindings;
+  const marker = finishProjection?.regions.find(
+    (r) => r.id === patternRegionId
+  )?.marker;
   return (
     <group name="structural-walls">
+      {finishProjection?.regions
+        .filter(
+          (region) => region.status === 'unresolved' && region.diagnosticPoint
+        )
+        .map((region) => (
+          <Html
+            key={region.id}
+            position={[
+              region.diagnosticPoint!.x,
+              DUNGEON_SURFACE_Y + 0.4,
+              region.diagnosticPoint!.z,
+            ]}
+            center
+          >
+            <span
+              role="status"
+              title={region.reason}
+              style={{
+                whiteSpace: 'nowrap',
+                background: '#33221a',
+                color: '#ffd3a0',
+                padding: '3px 6px',
+              }}
+            >
+              Wall finish unapplied: {region.reason}
+            </span>
+          </Html>
+        ))}
+      {marker && (
+        <Html
+          position={[
+            marker.x,
+            DUNGEON_SURFACE_Y +
+              Math.max(
+                0,
+                ...walls.map(
+                  (w) => w.appearance.elevation + w.appearance.height
+                )
+              ) +
+              0.3,
+            marker.z,
+          ]}
+          center
+        >
+          <span
+            style={{
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              background: '#182a33',
+              color: '#a7ffeb',
+              padding: '3px 6px',
+            }}
+          >
+            ◆ Pattern start
+          </span>
+        </Html>
+      )}
       <group ref={piecesRef} name="structural-wall-pieces">
         {displayedWalls.map((wall) => (
           <WallVisual
             key={wall.id}
             wall={wall}
             endFits={cornerFits.fits.get(wall.id)}
+            finishSpans={finishProjection?.spans.filter(
+              (span) => span.wallId === wall.id
+            )}
             doorBindings={displayedBindings}
             maxPieces={maxPieces}
             onMeasured={bumpGeometry}

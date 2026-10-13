@@ -195,6 +195,42 @@ all other scope fields remain intact. An editable post-removal draft is not a
 claim of publishability. Ordinary wall/name edits retain unfinished editable
 policy; save/export still require complete codec validation.
 
+## Studio room-owned wall finishes
+
+Scene6 permits a region's optional `wallFinish:{materialRef,patternStart}`. The
+pattern start names incoming/outgoing oriented source wall runs, not label text,
+a world point or a second polygon. Earlier scene versions refuse this field;
+loading never upgrades, and clearing a finish or editing creature metadata never
+demotes scene6. Unknown but shape-valid material/anchor refs stay editable.
+
+First selection chooses one certified corner. Material changes preserve that
+choice; moving a label never moves the chart. A missing/reversed/ambiguous corner,
+unresolved boundary, incompatible wall or missing resource leaves intent intact
+and names an unapplied finish in Regions and the viewport. Repair selects a
+current offered corner explicitly. Painted areas do not infer wall ownership.
+
+The geometry owner provides clipped, oriented wall-side spans. The mapping owner
+measures the half-thickness-offset room-facing path, intersecting perpendicular
+face lines and continuing compatible collinear runs. Collapsed/unsupported paths
+refuse rather than guessing. Meter repeats convert once through the canonical
+feet/scene adapter, not the asset scale. Fixed repeat size leaves one phase seam
+at the chosen corner; openings consume distance without restarting the pattern.
+U follows boundary distance and V decreases with height above the common floor
+datum, paired with the verified no-tangent derivative normal adapter.
+
+Derived visual pieces partition at side-ownership boundaries. Opposite faces and
+different subintervals of one source wall can carry different finishes; wall IDs,
+openings, mechanical blockers and corner fitting remain unchanged. Only enrolled
+side UVs/materials change. Caps and door artwork retain authored appearance.
+The existing document transaction/selection/epoch gates own finish changes, undo,
+JSON/YAML and reload. Accepted no-ops add no history.
+
+Private candidate previews require explicit development opt-in and verified local
+staging. Their resources live outside `public/` and are served by development-only
+middleware, never a production build. Candidate geometry must match the pinned
+GLB. A working preview is not appearance/scale acceptance or publication. These
+settings are Studio-only; no permitted Play layout or proto delivery is implied.
+
 ## Centered workspaces and map annotations (#1239)
 
 **Width (hexes)** and **Height (hexes)** stage integer counts in `1..128`.
@@ -340,6 +376,28 @@ The source map and conservative geometric refusals live in the
 [region walkthrough](../../../docs/architecture/components/encounter-studio-regions/README.md).
 Provider carriage/export acceptance requires a separate actual-pin probe; this
 contract makes no provider readiness claim.
+
+### Certified wall-side projection
+
+`projectRegionWallBoundaries` derives wall-side provenance from the same certified
+graph and conflict checks as region resolution. Source runs stay aligned with
+compressed/rotated face nodes; the independently rotated witness and ring are
+never zipped. Oriented spans keep the room on their left, exposing the source
+wall's positive-Z or negative-Z side and clipped low/high source distances in
+scene units. These are centerline facts, not fitted-face UV distances or material
+bindings. Partial exterior coverage is not a second owner of a certified run.
+
+Only resolved wall-enclosed regions yield wall-side spans. A painted region can
+remain a resolved area while its wall-side projection reports `not-wall-bound`;
+there is no nearest-label/cell ownership inference. Returned points/runs are
+copies and projection does not rebind regions or change documents.
+
+Transient pattern-corner references name incoming/outgoing oriented source runs,
+not label text, world position or array indices. Initial default selection chooses
+a certified geometric turn; flat source transitions are not corners. Resolving an
+existing reference never chooses a replacement after missing/ambiguous provenance.
+These internal projection types do not introduce persisted finish/anchor fields or
+settle material resource, mapping or Play-delivery contracts.
 
 ## Structural-wall authoring (#527 in rpg-project)
 

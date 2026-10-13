@@ -195,6 +195,12 @@ export type StudioArrangeIntent =
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
       readonly text?: string;
       readonly location?: Partial<WorldPoint>;
+      readonly regionWallFinish?: {
+        readonly regionId: string;
+        readonly value:
+          | import('./regionFinishTypes').RegionWallFinishPatch
+          | null;
+      };
       readonly regionLighting?: {
         readonly regionId: string;
         readonly value: Readonly<RegionLighting> | null;

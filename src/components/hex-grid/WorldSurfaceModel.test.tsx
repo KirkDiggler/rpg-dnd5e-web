@@ -10,7 +10,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { PROP_KEYS } from './propManifest';
 import { WorldAssetModel } from './WorldAssetModel';
 
-const state = vi.hoisted(() => ({ scene: null as THREE.Group | null }));
+const state = vi.hoisted(() => ({
+  scene: null as THREE.Group | null,
+  textures: new Map<string, THREE.Texture>(),
+}));
+vi.mock('@react-three/fiber', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@react-three/fiber')>()),
+  useLoader: (_loader: unknown, urls: string[]) =>
+    urls.map((url) => state.textures.get(url)!),
+}));
 vi.mock('@react-three/drei', () => ({
   useGLTF: () => ({ scene: state.scene }),
 }));
@@ -190,6 +198,53 @@ describe('surface materials through the shared fitted model leaf', () => {
     binding.dispose();
     expect(sourceDispose).not.toHaveBeenCalled();
     expect(mapsDispose).not.toHaveBeenCalled();
+  });
+
+  it('loads a complete finish plan, maps the fitted UV channel and owns samplers without changing the texture cache', async () => {
+    const f = fixture(),
+      sourceTexture = new THREE.Texture(),
+      selected = f.selection();
+    state.textures.set('/test.png', sourceTexture);
+    const disposed = vi.spyOn(sourceTexture, 'dispose');
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldAssetModel
+        assetRef="enrolled"
+        position={[0, 0, 0]}
+        plainWallFit={{ width: 8, height: 3, depth: 0.4, offset: 4 }}
+        surfacePlans={[
+          {
+            material: selected.material,
+            chart: {
+              surfaceId: 'front',
+              phase: -0.2,
+              direction: 1,
+              repeat: [2, 3],
+              elevation: 0,
+            },
+          },
+        ]}
+      />
+    );
+    const root = renderer.scene.findByProps({ name: 'world-asset-model' })
+      .instance as THREE.Group;
+    const mesh = root.getObjectByName('WallBody_v1')!.children[0] as THREE.Mesh<
+      THREE.BufferGeometry,
+      THREE.MeshStandardMaterial
+    >;
+    expect(mesh.material.map).not.toBe(sourceTexture);
+    expect(mesh.material.map!.source).toBe(sourceTexture.source);
+    expect(mesh.material.map!.channel).toBe(2);
+    expect(mesh.material.normalMap!.channel).toBe(2);
+    expect(mesh.material.normalMap).not.toBe(mesh.material.map);
+    expect(mesh.material.normalScale.toArray()).toEqual([0.8, -0.6]);
+    expect(sourceTexture.channel).toBe(0);
+    expect(sourceTexture.flipY).toBe(true);
+    const sampler = mesh.material.normalMap!,
+      samplerDispose = vi.spyOn(sampler, 'dispose');
+    expect(mesh.geometry.getAttribute('uv2').getY(0)).toBeCloseTo(-1);
+    await renderer.unmount();
+    expect(disposed).not.toHaveBeenCalled();
+    expect(samplerDispose).toHaveBeenCalledOnce();
   });
 
   it('refuses a requested finish without provider surface enrollment', async () => {

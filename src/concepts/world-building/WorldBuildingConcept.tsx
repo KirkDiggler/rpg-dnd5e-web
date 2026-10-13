@@ -69,6 +69,8 @@ import {
   setExplicitRegionArea,
   setRegionLighting,
 } from './regionEdits';
+import { setRegionWallFinish } from './regionFinishEdits';
+import type { RegionWallFinishPatch } from './regionFinishTypes';
 import { projectRegionLighting } from './regionLighting';
 import { addRepeatedProps } from './repeatPlacement';
 import {
@@ -105,6 +107,7 @@ import {
   type RoomWorkspace,
 } from './roomDraft';
 import { RoomPublishingPanel } from './RoomPublishingPanel';
+import { projectRoomWallFinishes } from './roomWallFinishes';
 import {
   addProp,
   createEmptyScene,
@@ -197,6 +200,7 @@ import type {
   WorldScene,
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
+import { useWorldMaterialCatalog } from './useWorldMaterialCatalog';
 import { applyWallCornerJoin, type WallCornerJoin } from './wallCornerJoins';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
@@ -3554,6 +3558,11 @@ export function WorldBuildingConcept({
     () => resolveAuthoringRegions(roomDraft),
     [roomDraft]
   );
+  const materialCatalog = useWorldMaterialCatalog();
+  const roomFinishes = useMemo(
+    () => projectRoomWallFinishes(roomDraft, materialCatalog.catalog),
+    [roomDraft, materialCatalog.catalog]
+  );
   const regionLighting = useMemo(
     () =>
       projectRegionLighting(
@@ -3749,6 +3758,28 @@ export function WorldBuildingConcept({
           );
           if (!label) throw new Error('Label target no longer exists.');
           let draft = current.draft;
+          if (Object.hasOwn(intent, 'regionWallFinish')) {
+            const patch = intent.regionWallFinish!;
+            const linked = current.draft.scene.authoringRegions?.find(
+              (r) => r.id === patch.regionId
+            );
+            if (
+              arrange.kind !== 'label' ||
+              arrange.region?.id !== patch.regionId ||
+              linked?.labelId !== label.id
+            )
+              return false;
+            if (
+              patch.value?.materialRef &&
+              !materialCatalog.catalog?.materials.some(
+                (m) => m.ref === patch.value!.materialRef
+              )
+            )
+              throw new Error(
+                'Selected wall finish resources are unavailable.'
+              );
+            draft = setRegionWallFinish(draft, patch.regionId, patch.value);
+          }
           if (Object.hasOwn(intent, 'regionLighting')) {
             const patch = intent.regionLighting!;
             const linked = current.draft.scene.authoringRegions?.find(
@@ -3774,7 +3805,8 @@ export function WorldBuildingConcept({
           // Explicit label tokens, even equal values, and empty old intent
           // retain the complete policy gate. Only lighting alone is ordinary.
           const lightingOnly =
-            Object.hasOwn(intent, 'regionLighting') &&
+            (Object.hasOwn(intent, 'regionLighting') ||
+              Object.hasOwn(intent, 'regionWallFinish')) &&
             !Object.hasOwn(intent, 'text') &&
             !Object.hasOwn(intent, 'location');
           return commitRoomDocument(
@@ -4040,6 +4072,10 @@ export function WorldBuildingConcept({
                 doorEditing,
                 intentEpoch: viewportGenerationRef.current,
                 regionLighting,
+                roomFinishes,
+                patternRegionId: roomDraft.scene.authoringRegions?.find(
+                  (r) => r.labelId === selectedLabelId
+                )?.id,
               }
             : {}),
           workspace: roomDraft.workspace,
@@ -4557,6 +4593,23 @@ export function WorldBuildingConcept({
           },
           regionEditing: {
             resolutions: regionResolutions,
+            finishes: {
+              catalog: materialCatalog,
+              projection: roomFinishes,
+              set: guardSnapshotIntent(
+                (
+                  regionId: string,
+                  value: RegionWallFinishPatch | null
+                ): boolean =>
+                  arrange?.kind === 'label'
+                    ? commitArrange({
+                        kind: 'label-edit',
+                        target: arrange.target,
+                        regionWallFinish: { regionId, value },
+                      })
+                    : false
+              ),
+            },
             createRoomLabel: guardSnapshotIntent(
               (text: string, location: WorldPoint): boolean => {
                 if (

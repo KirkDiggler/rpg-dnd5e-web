@@ -97,7 +97,7 @@ function parseRoles(value, label) {
   });
 }
 
-function parseSurfaces(value, label) {
+export function parseSurfaces(value, label) {
   if (value === undefined) return undefined;
   const at = `${label}.surfaces`;
   if (!Array.isArray(value) || value.length === 0)

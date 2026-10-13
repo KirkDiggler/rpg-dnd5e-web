@@ -60,7 +60,7 @@ export interface MapLabel {
 }
 
 export interface WorldScene {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   /** Saved editor recipes; never placed or used to enrich runtime actors. */
   creaturePalette?: CreaturePaletteEntry[];
   /** Per-placement labels for the authoring map, independent of rules names. */

@@ -140,6 +140,7 @@ export interface LayoutViewportProps {
   regionEditing?: StudioRegionEditing;
   /** Derived from the existing linked-label selection, never a second store. */
   selectedRegion?: Readonly<AuthoringRegion>;
+  patternStart?: WorldPoint;
   regionTool?: LayoutFloorTool;
   onExitRegionTool?(): void;
   onExitDoorTool?(): void;
@@ -157,6 +158,16 @@ export interface LayoutViewportProps {
  * Captured callbacks retire on document/epoch/selection changes. */
 export interface StudioRegionEditing {
   readonly resolutions: readonly RegionResolution[];
+  readonly finishes?: {
+    catalog: import('../world-building/useWorldMaterialCatalog').WorldMaterialCatalogState;
+    projection: import('../world-building/roomWallFinishes').RoomWallFinishProjection;
+    set(
+      regionId: string,
+      patch:
+        | import('../world-building/regionFinishTypes').RegionWallFinishPatch
+        | null
+    ): boolean;
+  };
   /** Atomic pair creation uses the existing strict label codec gate. Unbound
    * geometry alone is valid metadata, not a publication/creation refusal. */
   createRoomLabel(text: string, location: WorldPoint): boolean;
