@@ -38,7 +38,9 @@ export type ArrangeFieldKey =
   | 'startX'
   | 'startZ'
   | 'endX'
-  | 'endZ';
+  | 'endZ'
+  | 'finishA'
+  | 'finishB';
 export type ArrangeDraft = Partial<Record<ArrangeFieldKey, string>>;
 export interface ArrangeField {
   key: ArrangeFieldKey;
@@ -367,6 +369,18 @@ export function arrangeIntent(
             }
           : {}),
         ...(Object.keys(appearance).length ? { appearance } : {}),
+        ...(draft.finishA !== undefined || draft.finishB !== undefined
+          ? {
+              wallFinishes: {
+                ...(draft.finishA !== undefined
+                  ? { 'positive-z': draft.finishA || null }
+                  : {}),
+                ...(draft.finishB !== undefined
+                  ? { 'negative-z': draft.finishB || null }
+                  : {}),
+              },
+            }
+          : {}),
       };
     }
     case 'label': {

@@ -69,6 +69,8 @@ import {
   setExplicitRegionArea,
   setRegionLighting,
 } from './regionEdits';
+import { setRegionWallFinish } from './regionFinishEdits';
+import type { RegionWallFinishPatch } from './regionFinishTypes';
 import { projectRegionLighting } from './regionLighting';
 import { addRepeatedProps } from './repeatPlacement';
 import {
@@ -197,7 +199,14 @@ import type {
   WorldScene,
 } from './types';
 import type { RoomPublishingCapability } from './useRoomPublishing';
+import { useWorldMaterialCatalog } from './useWorldMaterialCatalog';
 import { applyWallCornerJoin, type WallCornerJoin } from './wallCornerJoins';
+import { setWallFinishes } from './wallFinishEdits';
+import {
+  projectWallFinishes,
+  resolveWallFaceFinish,
+} from './wallFinishProjection';
+import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
@@ -1578,8 +1587,14 @@ export function WorldBuildingConcept({
     }));
   }, [roomMode]);
   const commitWalls = useCallback(
-    (nextWalls: StructuralWall[]) => {
-      return commit(scene, selectedIds, {
+    (
+      nextWalls: StructuralWall[],
+      finishEdit?: { wallId: string; patch: WallFinishPatch }
+    ) => {
+      const nextScene = finishEdit
+        ? setWallFinishes(scene, finishEdit.wallId, finishEdit.patch)
+        : scene;
+      return commit(nextScene, selectedIds, {
         ...roomDraft.room,
         walls: nextWalls,
       });
@@ -1727,7 +1742,11 @@ export function WorldBuildingConcept({
     [roomTool, selectStudioWall]
   );
   const editWall = useCallback(
-    (next: StructuralWall, join?: WallCornerJoin): boolean => {
+    (
+      next: StructuralWall,
+      join?: WallCornerJoin,
+      wallFinishes?: WallFinishPatch
+    ): boolean => {
       if (!walls.some((wall) => wall.id === next.id)) {
         setNotice(`Wall edit refused; unknown wall ${next.id}.`);
         return false;
@@ -1739,7 +1758,8 @@ export function WorldBuildingConcept({
         return commitWalls(
           join
             ? applyWallCornerJoin(updated, next.line, join, next.id)
-            : updated
+            : updated,
+          wallFinishes ? { wallId: next.id, patch: wallFinishes } : undefined
         );
       } catch (error) {
         return rejectEdit(error);
@@ -3554,6 +3574,25 @@ export function WorldBuildingConcept({
     () => resolveAuthoringRegions(roomDraft),
     [roomDraft]
   );
+  const materialCatalog = useWorldMaterialCatalog();
+  const roomFinishes = useMemo(
+    () =>
+      projectWallFinishes(
+        previewWall
+          ? {
+              ...roomDraft,
+              room: {
+                ...roomDraft.room,
+                walls: roomDraft.room.walls?.map((wall) =>
+                  wall.id === previewWall.id ? previewWall : wall
+                ),
+              },
+            }
+          : roomDraft,
+        materialCatalog.catalog
+      ),
+    [roomDraft, previewWall, materialCatalog.catalog]
+  );
   const regionLighting = useMemo(
     () =>
       projectRegionLighting(
@@ -3695,7 +3734,14 @@ export function WorldBuildingConcept({
             )
           )
             throw new Error('Unsupported wall appearance.');
-          return editWall(applyStudioWallArrange(roomDraft, intent));
+          const next = applyStudioWallArrange(roomDraft, intent);
+          if (intent.wallFinishes)
+            for (const side of WALL_FINISH_SIDES) {
+              const ref = intent.wallFinishes[side];
+              if (ref !== undefined && ref !== null)
+                resolveWallFaceFinish(materialCatalog.catalog, next, side, ref);
+            }
+          return editWall(next, undefined, intent.wallFinishes);
         }
         case 'wall-remove':
           return removeWall(intent.target.id);
@@ -3749,6 +3795,28 @@ export function WorldBuildingConcept({
           );
           if (!label) throw new Error('Label target no longer exists.');
           let draft = current.draft;
+          if (Object.hasOwn(intent, 'regionWallFinish')) {
+            const patch = intent.regionWallFinish!;
+            const linked = current.draft.scene.authoringRegions?.find(
+              (r) => r.id === patch.regionId
+            );
+            if (
+              arrange.kind !== 'label' ||
+              arrange.region?.id !== patch.regionId ||
+              linked?.labelId !== label.id
+            )
+              return false;
+            if (
+              patch.value?.materialRef &&
+              !materialCatalog.catalog?.materials.some(
+                (m) => m.ref === patch.value!.materialRef
+              )
+            )
+              throw new Error(
+                'Selected wall finish resources are unavailable.'
+              );
+            draft = setRegionWallFinish(draft, patch.regionId, patch.value);
+          }
           if (Object.hasOwn(intent, 'regionLighting')) {
             const patch = intent.regionLighting!;
             const linked = current.draft.scene.authoringRegions?.find(
@@ -3774,7 +3842,8 @@ export function WorldBuildingConcept({
           // Explicit label tokens, even equal values, and empty old intent
           // retain the complete policy gate. Only lighting alone is ordinary.
           const lightingOnly =
-            Object.hasOwn(intent, 'regionLighting') &&
+            (Object.hasOwn(intent, 'regionLighting') ||
+              Object.hasOwn(intent, 'regionWallFinish')) &&
             !Object.hasOwn(intent, 'text') &&
             !Object.hasOwn(intent, 'location');
           return commitRoomDocument(
@@ -4040,6 +4109,10 @@ export function WorldBuildingConcept({
                 doorEditing,
                 intentEpoch: viewportGenerationRef.current,
                 regionLighting,
+                roomFinishes,
+                patternRegionId: roomDraft.scene.authoringRegions?.find(
+                  (r) => r.labelId === selectedLabelId
+                )?.id,
               }
             : {}),
           workspace: roomDraft.workspace,
@@ -4557,6 +4630,23 @@ export function WorldBuildingConcept({
           },
           regionEditing: {
             resolutions: regionResolutions,
+            finishes: {
+              catalog: materialCatalog,
+              projection: roomFinishes,
+              set: guardSnapshotIntent(
+                (
+                  regionId: string,
+                  value: RegionWallFinishPatch | null
+                ): boolean =>
+                  arrange?.kind === 'label'
+                    ? commitArrange({
+                        kind: 'label-edit',
+                        target: arrange.target,
+                        regionWallFinish: { regionId, value },
+                      })
+                    : false
+              ),
+            },
             createRoomLabel: guardSnapshotIntent(
               (text: string, location: WorldPoint): boolean => {
                 if (
@@ -4619,6 +4709,10 @@ export function WorldBuildingConcept({
           },
           renameDocument: guardSnapshotIntent(renameDocument),
           wallEditing: {
+            finishes: {
+              catalog: materialCatalog,
+              statuses: roomFinishes.walls,
+            },
             selectedId:
               activeStudioTarget?.kind === 'wall' ? selectedWallId : null,
             assetRef: wallAssetRef,

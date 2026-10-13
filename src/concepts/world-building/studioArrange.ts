@@ -140,6 +140,8 @@ export interface StudioSceneArrangeEdit {
 
 export interface StudioWallArrangeEdit {
   readonly kind: 'wall-edit';
+  /** Scene-owned presentation patch, committed with the wall in one transaction. */
+  readonly wallFinishes?: import('./wallFinishTypes').WallFinishPatch;
   readonly target: Extract<StudioArrangeTarget, { kind: 'wall' }>;
   readonly midpoint?: Partial<WorldPoint>;
   readonly start?: Partial<WorldPoint>;
@@ -195,6 +197,12 @@ export type StudioArrangeIntent =
       readonly target: Extract<StudioArrangeTarget, { kind: 'label' }>;
       readonly text?: string;
       readonly location?: Partial<WorldPoint>;
+      readonly regionWallFinish?: {
+        readonly regionId: string;
+        readonly value:
+          | import('./regionFinishTypes').RegionWallFinishPatch
+          | null;
+      };
       readonly regionLighting?: {
         readonly regionId: string;
         readonly value: Readonly<RegionLighting> | null;

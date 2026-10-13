@@ -1,3 +1,7 @@
+import {
+  validateRoomWallFinish,
+  type RoomWallFinish,
+} from './regionFinishTypes';
 import { objectShape, rejectUnknownKeys } from './strictShape';
 import type { MapLabel, WorldPoint } from './types';
 import {
@@ -18,6 +22,7 @@ export type AuthoringRegion = {
   id: string;
   labelId: string;
   lighting?: RegionLighting;
+  wallFinish?: RoomWallFinish;
   boundary:
     | { kind: 'automatic'; witness?: EnclosureWitness }
     | { kind: 'explicit'; cells: RoomHexCell[] };
@@ -166,6 +171,7 @@ export function validateAuthoringRegions(
     workspace?: RoomWorkspace;
     reservedIds?: ReadonlySet<string>;
     allowLighting?: boolean;
+    allowWallFinish?: boolean;
   } = {}
 ): AuthoringRegion[] {
   if (!Array.isArray(value) || value.length > labels.length)
@@ -185,12 +191,28 @@ export function validateAuthoringRegions(
         'labelId',
         'boundary',
         ...(options.allowLighting ? ['lighting'] : []),
+        ...(options.allowWallFinish ? ['wallFinish'] : []),
       ],
       path
     );
-    const lighting = Object.hasOwn(input, 'lighting')
-      ? { lighting: validateRegionLighting(input.lighting, `${path}.lighting`) }
-      : {};
+    const lighting = {
+      ...(Object.hasOwn(input, 'lighting')
+        ? {
+            lighting: validateRegionLighting(
+              input.lighting,
+              `${path}.lighting`
+            ),
+          }
+        : {}),
+      ...(Object.hasOwn(input, 'wallFinish')
+        ? {
+            wallFinish: validateRoomWallFinish(
+              input.wallFinish,
+              `${path}.wallFinish`
+            ),
+          }
+        : {}),
+    };
     const regionId = id(input.id, `${path}.id`);
     if (ids.has(regionId) || labelIds.has(regionId))
       throw new Error(`${path}.id: duplicate region identity ${regionId}.`);

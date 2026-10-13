@@ -371,6 +371,32 @@
   color: #ffe2a6;
 }
 
+.es-wall-finish {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  margin: 0.35rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.es-wall-finish-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.es-wall-finish-choice select {
+  width: 100%;
+  min-width: 0;
+}
+.es-wall-finish-sides {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* Region intent stays in the existing compact context band, not a new dock. */
 .es-region-controls {
   display: flex;

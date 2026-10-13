@@ -78,11 +78,17 @@ jobs:
           TMP_DIR=$(mktemp -d)
           trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
           git clone --depth 1 "https://x-access-token:${ASSETS_READ_TOKEN}@github.com/KirkDiggler/rpg-game-assets.git" "$TMP_DIR"
+          # Fetch only the exact generated provider pins, not full binary history.
+          # Capture first so an invalid/missing pin fails the step (not a subshell).
+          PINS=$(node scripts/asset-provider-pins.mjs)
+          for PIN in $PINS; do
+            git -C "$TMP_DIR" fetch --depth 1 origin "$PIN"
+          done
 
           RPG_GAME_ASSETS_PATH="$TMP_DIR" \
             RPG_WEB_ROOT="$GITHUB_WORKSPACE" \
             ASSETS_SYNC_SKIP_UPDATE=1 \
-            sh scripts/sync-game-assets.sh --runtime-assets
+            sh scripts/sync-game-assets.sh --pinned-runtime
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

@@ -5,9 +5,11 @@ import {
 import {
   WorldAssetModel,
   type WorldAssetModelDiagnostic,
+  type WorldAssetModelProps,
 } from '@/components/hex-grid/WorldAssetModel';
 import type { PlainWallFit } from '@/rendering/plainWallFit';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import type { WorldSurfaceSelection } from '@/rendering/worldSurfaceMaterials';
 import type { WorldBuildingCatalogEntry } from './catalog';
 
 export interface WorldPropModelProps {
@@ -18,6 +20,9 @@ export interface WorldPropModelProps {
   remembered?: boolean;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  surfaceSelections?: readonly WorldSurfaceSelection[];
+  surfacePlans?: WorldAssetModelProps['surfacePlans'];
+  surfaceProvider?: WorldAssetModelProps['surfaceProvider'];
   /** A door item's live state: TRUE swings every declared group open. Absent
    * for a prop that is not a door, and for a door whose state the caller does
    * not hold — both render the asset's authored rest pose. */
@@ -42,11 +47,21 @@ export function WorldPropModel({
   remembered = false,
   visualLighting,
   plainWallFit,
+  surfaceSelections,
+  surfacePlans,
+  surfaceProvider,
   open,
   onDoorClick,
   onBoundsMeasured,
   onGeneratedDiagnostic,
 }: WorldPropModelProps) {
+  if (
+    (surfaceSelections?.length || surfacePlans?.length) &&
+    entry.source !== 'generated'
+  )
+    throw new Error(
+      'World surface selection requires a provider-enrolled asset.'
+    );
   // `open`/`onDoorClick` reach the generated branch only: a door is a
   // promoted exact asset carrying `roles`, so a legacy variant has no named
   // leaf to swing and no door-ness to be clicked.
@@ -54,6 +69,9 @@ export function WorldPropModel({
     <WorldAssetModel
       assetRef={entry.ref}
       plainWallFit={plainWallFit}
+      surfaceSelections={surfaceSelections}
+      surfacePlans={surfacePlans}
+      surfaceProvider={surfaceProvider}
       remembered={remembered}
       visualLighting={visualLighting}
       position={position}

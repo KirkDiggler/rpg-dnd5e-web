@@ -32,6 +32,10 @@ import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import {
+  partitionFinishInterval,
+  type WallFinishSpan,
+} from './roomWallFinishes';
+import {
   isAttachableDoorAsset,
   type FittedDoorPose,
 } from './structuralDoorEditing';
@@ -143,9 +147,11 @@ export function StructuralWallSurfacePieces({
   maxPieces,
   onMeasured,
   visualLighting,
+  finishSpans = [],
 }: {
   wall: StructuralWallSurface;
   endFits?: WallEndFits;
+  finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
   visualLighting?: RegionLightingMaterialBinding;
   onMeasured?: () => void;
@@ -202,66 +208,85 @@ export function StructuralWallSurfacePieces({
   return (
     <group ref={piecesRef} name={`structural-wall-pieces-${wall.id}`}>
       {layouts.flatMap((layout, spanIndex) =>
-        layout.pieces.map((piece, pieceIndex) => {
-          // The shared leaf adds `DUNGEON_SURFACE_Y` once, inside its own
-          // group. The parent would scale that offset by the exact fit, so the
-          // parent's own Y is lowered by the scaled amount: the net floor lift
-          // is exactly `DUNGEON_SURFACE_Y`, unscaled, at the authored
-          // elevation.
-          const baseY = capable
-            ? piece.y
-            : piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
-          return (
-            <group
-              key={`${spanIndex}-${pieceIndex}`}
-              name={`structural-wall-piece-${wall.id}-${spanIndex}-${pieceIndex}`}
-              userData={{
-                wallId: wall.id,
-                span: layout.span,
-                baseY,
-                heightScale: piece.heightScale,
-              }}
-              position={[piece.point.x, baseY, piece.point.z]}
-              rotation={[0, piece.rotationY, 0]}
-              scale={
-                capable
-                  ? [1, 1, 1]
-                  : [piece.widthScale, piece.heightScale, piece.depthScale]
-              }
-            >
-              <WorldPropModel
-                entry={entry}
-                plainWallFit={
-                  capable
-                    ? {
-                        width:
-                          (layout.span.end - layout.span.start) /
-                          layout.pieces.length,
-                        offset:
-                          layout.span.start +
-                          (pieceIndex * (layout.span.end - layout.span.start)) /
-                            layout.pieces.length,
-                        height: wall.appearance.height,
-                        depth: wall.appearance.thickness,
-                        start:
-                          layout.span.start === 0 && pieceIndex === 0
-                            ? endFits?.start
-                            : undefined,
-                        end:
-                          layout.span.end === wallLength(wall) &&
-                          pieceIndex === layout.pieces.length - 1
-                            ? endFits?.end
-                            : undefined,
-                      }
-                    : undefined
-                }
-                visualLighting={visualLighting}
-                position={[0, 0, 0]}
-                rotationY={0}
-                heightScale={1}
-                onBoundsMeasured={onMeasured}
-              />
-            </group>
+        layout.pieces.flatMap((piece, pieceIndex) => {
+          const length =
+            (layout.span.end - layout.span.start) / layout.pieces.length;
+          const start = layout.span.start + pieceIndex * length;
+          const end =
+            pieceIndex === layout.pieces.length - 1
+              ? layout.span.end
+              : start + length;
+          return partitionFinishInterval(start, end, finishSpans).map(
+            (segment, segmentIndex) => {
+              const middle = (segment.start + segment.end) / 2;
+              const total = wallLength(wall);
+              const point = finishSpans.length
+                ? {
+                    x:
+                      wall.line.start.x +
+                      ((wall.line.end.x - wall.line.start.x) * middle) / total,
+                    z:
+                      wall.line.start.z +
+                      ((wall.line.end.z - wall.line.start.z) * middle) / total,
+                  }
+                : piece.point;
+              // The shared leaf adds `DUNGEON_SURFACE_Y` once, inside its own
+              // group. The parent would scale that offset by the exact fit, so the
+              // parent's own Y is lowered by the scaled amount: the net floor lift
+              // is exactly `DUNGEON_SURFACE_Y`, unscaled, at the authored
+              // elevation.
+              const baseY = capable
+                ? piece.y
+                : piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
+              return (
+                <group
+                  key={`${spanIndex}-${pieceIndex}-${segmentIndex}`}
+                  name={`structural-wall-piece-${wall.id}-${spanIndex}-${pieceIndex}${segmentIndex ? `-${segmentIndex}` : ''}`}
+                  userData={{
+                    wallId: wall.id,
+                    span: layout.span,
+                    baseY,
+                    heightScale: piece.heightScale,
+                  }}
+                  position={[point.x, baseY, point.z]}
+                  rotation={[0, piece.rotationY, 0]}
+                  scale={
+                    capable
+                      ? [1, 1, 1]
+                      : [piece.widthScale, piece.heightScale, piece.depthScale]
+                  }
+                >
+                  <WorldPropModel
+                    entry={entry}
+                    plainWallFit={
+                      capable
+                        ? {
+                            width: segment.end - segment.start,
+                            offset: segment.start,
+                            height: wall.appearance.height,
+                            depth: wall.appearance.thickness,
+                            start:
+                              segment.start === 0 ? endFits?.start : undefined,
+                            end:
+                              segment.end === wallLength(wall)
+                                ? endFits?.end
+                                : undefined,
+                          }
+                        : undefined
+                    }
+                    surfaceProvider={segment.finishes[0]?.provider}
+                    surfacePlans={segment.finishes.map(
+                      ({ material, chart }) => ({ material, chart })
+                    )}
+                    visualLighting={visualLighting}
+                    position={[0, 0, 0]}
+                    rotationY={0}
+                    heightScale={1}
+                    onBoundsMeasured={onMeasured}
+                  />
+                </group>
+              );
+            }
           );
         })
       )}

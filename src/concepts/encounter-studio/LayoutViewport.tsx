@@ -198,6 +198,7 @@ export function LayoutViewport({
   doorEditing,
   regionEditing,
   selectedRegion,
+  patternStart,
   regionTool = 'paint',
   onExitRegionTool,
   onExitDoorTool,
@@ -1018,6 +1019,30 @@ export function LayoutViewport({
           transform={worldTransform}
         >
           <LayoutGrid cells={workspace} committed={committed} />
+        </g>
+      )}
+      {transform && patternStart && (
+        <g
+          transform={worldTransform}
+          pointerEvents="none"
+          aria-label="Pattern start marker"
+        >
+          <circle
+            cx={patternStart.x}
+            cy={patternStart.z}
+            r={0.18}
+            fill="#a7ffeb"
+            stroke="#182a33"
+            strokeWidth={0.04}
+          />
+          <text
+            x={patternStart.x + 0.25}
+            y={patternStart.z - 0.25}
+            fontSize={0.35}
+            fill="#a7ffeb"
+          >
+            Pattern start
+          </text>
         </g>
       )}
       {transform && regionEditing && (

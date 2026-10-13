@@ -92,8 +92,8 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
     '1385fb00a17a5e3429ba4d039fc0c1ed52fc78a5a6fe9f07ea66580f663803eb',
   ],
   'dnd5e:npcs:goblin:knight-01': [
-    'd8f31c9058322ad8e6682aa1e33ec1f34dea50d2b8918389dda0ad453075e372',
-    '8bb6c4ba24eccb70092c4ab0e08ec024e173b375f788a9db63b069f73e80ddb8',
+    '345fac3cdcb4a834c8c375e111bdce96469afd1a93a6866612e2fa07c2d304df',
+    '1930c99620ab1d139ff50576a2eac26190fe29489d8595edb067631b3a9a8211',
   ],
   'dnd5e:npcs:goblin:shaman-01': [
     '9aa2a48e0c152398c581f693f1d2a14c3d7edadcacdcfdeb62a0486c6b4f9f20',
@@ -112,38 +112,39 @@ const EXPECTED_HASHES: Readonly<Record<string, readonly [string, string]>> = {
     'ab4c86e1e1929621378e8f261997bff23f9e96a640b3ad90c6f612760aefd42c',
   ],
   'dnd5e:npcs:goblin:prisoner-01': [
-    '0c5535d587009dfe0657d12ee6b9fd703f12d282e58c2799e628f965aa3885d6',
-    'fbfc3e4dbe0a7643fdecd56ef1eb0259c46a8b6ceac5bf5659461bf83ec46356',
+    '4da6ee6c5ca60612463e524a6e848daba9529329cd48cc875800cc8c71573482',
+    'f966c83d0da90c4d5d33a43b7bd747f19e28664e2f6e67edb333ef24369e171a',
   ],
   'dnd5e:npcs:goblin:prisoner-02': [
-    '758ce0e950044f6b90ea7e3c684f13813fa0b52014d81e6aead12060b6c69389',
-    '5049bcd1c9be36b4125135c91faabec522f64635e313b54f17a825cdeb0d5147',
+    '0aece9cf96b50f4c10db03ac8c2376c571a13b0c76c38c24add486bc5b50b8c5',
+    'b9897ac957b88c48820f766bd2ce8ce9a9a0126e5d983fb8e696d2e034ec35d5',
   ],
   'dnd5e:npcs:goblin:prisoner-03': [
-    'a738215711177dad9e8cfbf2552d8b4b6128962d754055c7a10dabe6108a3c50',
-    'edbf48297b1ce8d851013cfae5f57d687e21d110a0a6e3b499818b14ad800843',
+    '46dbc9f460d844784c1946fcd402cdfe2768a67f59a6eb5c9dfad8a922ed8f6a',
+    '3399d5e00847a22ee175c357a8192ec1df080d26ca6622ade9d410d0a2c9578e',
   ],
   'dnd5e:npcs:goblin:ranger-01': [
-    '27f03eb0f3ca1e9968b76a6baaea1472c420e160d496cc3c0df2e046d2311172',
-    '7a658e8f37dac3e924736fae784752bae0f7197c5056de81d9b24488a34994bb',
+    '673756c0dbb33d09090cb713fea08545ac7d6672a16dd7c95ed372f2ce9408d2',
+    'f03c555e0fd9b0f1a4c81ef8f3260a6af2e8dad350a6d360e1cfb301190642ab',
   ],
   'dnd5e:npcs:goblin:wizard-01': [
-    '1c7ade7d4eb1536ff85db8195d775eb308764493310070f716054f3878852285',
-    '4a6042dd3237c30378db7b990d3c72c29128c818cac687d3163c19c7b99ac6bd',
+    '8d6c1b6cd7d3d7627b15a81069d7ec90e54a7ce348e5eb0582544c55009af163',
+    'a74ec0c987b6f5f8d6d608a960ad255d2dd430dc0adecf470896e2b0f17aa410',
   ],
 };
 
 describe('approved NPC appearance publication', () => {
-  it('exports exactly 13 Goblin and 204 Kingdom look identities and no provider extras', () => {
+  it('exports 13 pack defaults, 66 human palettes and 204 Kingdom looks without provider extras', () => {
     expect(GENERATED_NPC_APPEARANCE_PROVIDER).toMatchObject({
-      commit: '455f19a0d30e4cb940128f5fb16d447b89a5bbac',
+      commit: 'fa590ed40f1aadedb6add6074f8dc6efa07dd457',
       releases: [
+        'goblin-human-palettes-v2',
         'goblin-war-camp-v1',
         'kingdom-npcs-v1',
         'kingdom-palettes-v1',
       ],
     });
-    expect(NPC_APPEARANCE_CATALOG).toHaveLength(217);
+    expect(NPC_APPEARANCE_CATALOG).toHaveLength(283);
     expect(new Set(NPC_APPEARANCE_CATALOG)).toEqual(
       new Set(Object.values(GENERATED_NPC_APPEARANCES))
     );
@@ -156,7 +157,7 @@ describe('approved NPC appearance publication', () => {
         )
       )
     );
-    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(217);
+    expect(Object.keys(GENERATED_NPC_APPEARANCES)).toHaveLength(283);
   });
 
   it('retains exact standing/downed hashes, URLs, null rules, and provider-declared rig/pose metadata', () => {
@@ -176,7 +177,7 @@ describe('approved NPC appearance publication', () => {
         'Idle_Relaxed',
         'Walk_Forward',
       ]);
-      expect(appearance!.pose).toContain('50-bone');
+      expect(appearance!.pose).toMatch(/50-(?:bone|joint)/);
       expect(appearance!.rootWrapper).toContain('Armature');
       expect(appearance!.standingUrl).toMatch(
         /^\/models\/synty\/npcs\/.+\.glb$/

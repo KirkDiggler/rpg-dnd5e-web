@@ -118,6 +118,8 @@ export interface WorldBuildingViewportProps {
   roomAuthoring?: {
     /** Committed Studio-only configured/resolved areas; no preview acquisition. */
     regionLighting?: RegionLightingProjection;
+    roomFinishes?: import('./wallFinishProjection').WallFinishProjection;
+    patternRegionId?: string;
     tool:
       | 'select'
       | 'move'
@@ -961,6 +963,8 @@ export function WorldSceneContents(
               ? props.roomAuthoring.previewWall
               : wall
           )}
+          finishProjection={props.roomAuthoring.roomFinishes}
+          patternRegionId={props.roomAuthoring.patternRegionId}
           selectedWallId={props.roomAuthoring.selectedWallId ?? null}
           visualLighting={visualLighting}
           doorBindings={props.roomAuthoring.doorBindings}

@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -79,6 +80,8 @@ async function makeFixture() {
   const customDiceRoot = join(providerRoot, 'harness', 'models', 'custom-dice');
 
   await put(join(syntyRoot, 'world-assets', 'crypt-wall.glb'), 'world-runtime');
+  await put(join(syntyRoot, 'characters', 'keep.glb'), 'character-runtime');
+  await put(join(syntyRoot, 'npcs', 'keep.glb'), 'npc-runtime');
   await put(join(syntyRoot, 'source.blend'), 'private-source');
   await put(
     join(customDiceRoot, 'original-set', 'Original_D20_Source.glb'),
@@ -120,10 +123,71 @@ async function makeFixture() {
     env: gitEnvironment,
   });
 
+  const pin = (
+    await execFileAsync('git', ['rev-parse', 'HEAD'], {
+      cwd: providerRoot,
+      env: gitEnvironment,
+    })
+  ).stdout.trim();
   await mkdir(join(webRoot, 'scripts'), { recursive: true });
   await writeFile(
     join(webRoot, 'scripts', 'sync-game-assets.sh'),
     await readFile(syncScript)
+  );
+  for (const name of [
+    'asset-provider-pins.mjs',
+    'generate-world-material-catalog.mjs',
+    'generate-world-asset-catalog.mjs',
+    'world-material-catalog.mjs',
+  ])
+    await writeFile(
+      join(webRoot, 'scripts', name),
+      await readFile(join(repoRoot, 'scripts', name))
+    );
+  await writeFile(
+    join(webRoot, '.prettierrc'),
+    await readFile(join(repoRoot, '.prettierrc'))
+  );
+  await symlink(
+    join(repoRoot, 'node_modules'),
+    join(webRoot, 'node_modules'),
+    'dir'
+  );
+  for (const [file, key] of [
+    ['characterCustomizationCatalog.ts', 'providerCommit'],
+    ['npcAppearanceCatalog.ts', 'commit'],
+    ['worldAssetCatalog.ts', 'commit'],
+  ])
+    await put(
+      join(webRoot, 'src/generated', file),
+      `export const PROVIDER = {\n  ${key}: '${pin}',\n};\n`
+    );
+  await execFileAsync(
+    process.execPath,
+    [
+      join(webRoot, 'scripts/generate-world-material-catalog.mjs'),
+      '--provider-root',
+      providerRoot,
+      '--output',
+      join(webRoot, 'src/generated/worldMaterialCatalog.ts'),
+    ],
+    { env: gitEnvironment }
+  );
+  // The shallow clone starts at a later HEAD. Only the workflow's explicit
+  // fetch makes the old pin available, and the material pin owns ABSENCE.
+  await put(
+    join(syntyRoot, 'world-assets', 'crypt-wall.glb'),
+    'later-head-world'
+  );
+  await put(join(syntyRoot, 'world-materials', 'future.png'), 'not-in-the-pin');
+  await execFileAsync('git', ['add', '.'], {
+    cwd: providerRoot,
+    env: gitEnvironment,
+  });
+  await execFileAsync(
+    'git',
+    ['commit', '--quiet', '-m', 'later provider HEAD'],
+    { cwd: providerRoot, env: gitEnvironment }
   );
 
   const realGit = (
@@ -135,8 +199,7 @@ async function makeFixture() {
     `#!/bin/sh
 if [ "$1" = "clone" ]; then
   for destination do :; done
-  cp -R "$FIXTURE_PROVIDER"/. "$destination"/
-  exit 0
+  exec "$REAL_GIT" clone --quiet --no-hardlinks --depth 1 "file://$FIXTURE_PROVIDER" "$destination"
 fi
 exec "$REAL_GIT" "$@"
 `
@@ -213,6 +276,17 @@ describe('production Docker private runtime packaging', () => {
         'utf8'
       )
     ).resolves.toBe('world-runtime');
+    expect(
+      await exists(
+        join(fixture.webRoot, 'public/models/synty/world-materials/future.png')
+      )
+    ).toBe(false);
+    expect(
+      await readFile(
+        join(fixture.webRoot, 'src/generated/worldMaterialCatalog.ts'),
+        'utf8'
+      )
+    ).toContain('catalogSha256: null');
     await expect(
       readFile(
         join(
