@@ -156,6 +156,24 @@ fit values preserve instance resources. Other props/actors/thumbnails use the
 unchanged ordinary model path. Studio derives joins only from its supplied walls;
 no gameplay visibility authority is introduced.
 
+### Declared surface material consumption
+
+The shared model leaf accepts transient, fully loaded `surfaceSelections` only
+against provider `surfaces` declarations. Exact node/material bindings select all
+matching exported primitives; miter tags do not imply enrollment. Absent choices
+retain authored materials. Invalid bindings, incomplete map sets, incompatible
+families or unsupported chart/basis inputs refuse rather than partially apply.
+Legacy non-generated props cannot accept a surface selection.
+
+The existing material-treatment owner applies the finish before memory/lighting
+and restores overlays before restoring/disposal of the finish. StrictMode setup
+reapplies from authored materials; suspended renders allocate no finish resources.
+Only selected material clones are owned here. Role/channel-specific samplers share
+immutable pixels, not mutable texture settings. Geometry mapping, room ownership,
+selection persistence and resource loading remain caller concerns; this transient
+seam does not declare a saved room-finish schema or Play delivery. See
+[consumer verification](../../../docs/how-to/verify-world-material-candidates.md).
+
 A provider update may carry aperture-fit doorway assets. The legacy complete-door
 tool refuses `wall-opening` candidates until its separate anchor-aware consumer
 is implemented; assembly bounds must not be offered as aperture dimensions.

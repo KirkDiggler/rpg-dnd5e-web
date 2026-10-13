@@ -11,6 +11,7 @@ import {
 } from '@/rendering/plainWallFit';
 import { propVisualScale } from '@/rendering/propVisualScale';
 import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMaterials';
+import type { WorldSurfaceSelection } from '@/rendering/worldSurfaceMaterials';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -57,6 +58,9 @@ export interface WorldAssetModelProps {
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
+  /** Transient, fully loaded finish sets for explicit provider surface bindings.
+   * The caller supplies a fitted compatible chart; no persisted room state here. */
+  surfaceSelections?: readonly WorldSurfaceSelection[];
   /** Asset-local door ids rendered OPEN: every `leaf` in the group swings about its own hinge. */
   openDoors?: readonly string[];
   /** Every declared group is open. The coarser form for a caller holding ONE
@@ -288,6 +292,8 @@ function LoadedWorldAssetModel({
   remembered,
   visualLighting,
   plainWallFit,
+  surfaces,
+  surfaceSelections,
 }: {
   assetRef: string;
   url: string;
@@ -305,6 +311,8 @@ function LoadedWorldAssetModel({
   remembered: boolean;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
+  surfaces: GeneratedWorldAsset['surfaces'];
+  surfaceSelections?: readonly WorldSurfaceSelection[];
 }) {
   const { scene } = useGLTF(url);
   const fitKey = plainWallFit ? JSON.stringify(plainWallFit) : '';
@@ -327,12 +335,21 @@ function LoadedWorldAssetModel({
     },
     [instance]
   );
+  const surfaceTreatment = useMemo(
+    () =>
+      surfaceSelections?.length
+        ? { bindings: surfaces, selections: surfaceSelections }
+        : undefined,
+    [surfaces, surfaceSelections]
+  );
   useRememberedModelTint(
     cloned,
     remembered,
     heightScale,
     visualLighting,
-    assetRef
+    assetRef,
+    'lit',
+    surfaceTreatment
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -598,6 +615,7 @@ export function WorldAssetModel({
   onDoorClick,
   onDoorsResolved,
   plainWallFit,
+  surfaceSelections,
 }: WorldAssetModelProps) {
   const safeHeightScale = propVisualScale(heightScale);
   const asset = resolveWorldAsset(assetRef, (diagnostic) =>
@@ -624,6 +642,8 @@ export function WorldAssetModel({
       remembered={remembered}
       visualLighting={visualLighting}
       plainWallFit={plainWallFit}
+      surfaces={asset.surfaces}
+      surfaceSelections={surfaceSelections}
     />
   );
 }

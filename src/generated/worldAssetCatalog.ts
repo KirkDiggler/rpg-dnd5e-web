@@ -65,6 +65,15 @@ export interface GeneratedWorldAsset {
   boundsMeters: [number, number, number];
   tags: string[];
   supportsDecoration: boolean;
+  surfaces?: ReadonlyArray<
+    Readonly<{
+      id: string;
+      node: string;
+      material: string;
+      side: 'positive-z' | 'negative-z';
+      family: string;
+    }>
+  >;
   thumbnail?: Readonly<{
     url: string;
     sha256: string;

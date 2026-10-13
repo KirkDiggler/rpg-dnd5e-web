@@ -136,6 +136,65 @@ afterEach(() => {
 });
 
 describe('world asset catalog generator', () => {
+  const front = {
+    id: 'front',
+    node: 'WallBody_v1',
+    material: 'MasonryFront',
+    side: 'positive-z',
+    family: 'masonry',
+  };
+  it('accepts declared independent side surfaces without inferring enrollment from tags', () => {
+    const fixture = makeFixture();
+    fixture.catalog.assets[0]!.surfaces = [
+      front,
+      {
+        ...front,
+        id: 'back',
+        material: 'MasonryBack',
+        side: 'negative-z',
+      },
+    ];
+    rewriteCatalog(fixture);
+    generateWorldAssetCatalog({
+      providerRoot: fixture.provider,
+      outputPath: fixture.output,
+    });
+    const generated = readFileSync(fixture.output, 'utf8');
+    expect(generated).toContain('surfaces?:');
+    expect(generated).toContain("material: 'MasonryFront'");
+    expect(generated).toContain("side: 'negative-z'");
+  });
+
+  it.each(
+    [
+      null,
+      [],
+      {},
+      [null],
+      [{ ...front, side: 'front' }],
+      [{ ...front, id: 'Bad ID' }],
+      [{ ...front, family: '../masonry' }],
+      [{ ...front, node: ' WallBody_v1' }],
+      [{ ...front, material: 'a/b' }],
+      [{ ...front, material: 'a\u200bb' }],
+      [{ ...front, privateSource: '/tmp/a' }],
+      [front, { ...front, material: 'other' }],
+      [front, { ...front, id: 'other' }],
+    ].map((value) => [value])
+  )('refuses malformed or overlapping surface declarations %j', (surfaces) => {
+    const fixture = makeFixture();
+    fixture.catalog.assets[0]!.surfaces = surfaces;
+    rewriteCatalog(fixture);
+    put(fixture.output, 'prior output');
+    expect(() =>
+      generateWorldAssetCatalog({
+        providerRoot: fixture.provider,
+        outputPath: fixture.output,
+      })
+    ).toThrow(/surface/);
+    expect(readFileSync(fixture.output, 'utf8')).toBe('prior output');
+  });
+
   it('accepts verified provider thumbnails and projects only runtime image metadata', () => {
     const fixture = makeFixture();
     const thumbnail = addThumbnail(fixture);
