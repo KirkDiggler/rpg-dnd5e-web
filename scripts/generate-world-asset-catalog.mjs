@@ -255,7 +255,7 @@ function parseThumbnail(value, providerRoot, runtimeRoot, label) {
   };
 }
 
-function cleanProviderCommit(providerRoot) {
+export function cleanProviderCommit(providerRoot) {
   let commit;
   try {
     commit = execFileSync(

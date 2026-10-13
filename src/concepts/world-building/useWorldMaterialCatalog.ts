@@ -1,18 +1,43 @@
+import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
 import {
+  GENERATED_WORLD_MATERIAL_PROVIDER,
+  GENERATED_WORLD_MATERIALS,
+} from '@/generated/worldMaterialCatalog';
+import {
+  createPinnedWorldMaterialCatalog,
   parseWorldMaterialPreview,
   type WorldMaterialCatalog,
 } from '@/rendering/worldMaterialCatalog';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 export interface WorldMaterialCatalogState {
   catalog: WorldMaterialCatalog | null;
   status: 'unavailable' | 'loading' | 'ready' | 'error';
   message: string;
 }
-/** One owner per Studio document view; no browser store or published pin. */
+/** One consumer of generated provider identity; an explicit dev candidate may
+ * override it, but neither path owns a second document or browser store. */
 export function useWorldMaterialCatalog(): WorldMaterialCatalogState {
   const enabled =
     import.meta.env.MODE === 'development' &&
     import.meta.env.VITE_WORLD_MATERIAL_PREVIEW === '1';
+  const pinned = useMemo<WorldMaterialCatalogState>(() => {
+    const catalog = createPinnedWorldMaterialCatalog({
+      provider: GENERATED_WORLD_MATERIAL_PROVIDER,
+      materials: GENERATED_WORLD_MATERIALS,
+      assets: GENERATED_WORLD_ASSETS,
+    });
+    return catalog
+      ? {
+          catalog,
+          status: 'ready',
+          message: 'Wall finishes from pinned assets.',
+        }
+      : {
+          catalog: null,
+          status: 'unavailable',
+          message: 'No published wall-finish catalog is installed.',
+        };
+  }, []);
   const [state, setState] = useState<WorldMaterialCatalogState>({
     catalog: null,
     status: enabled ? 'loading' : 'unavailable',
@@ -34,8 +59,7 @@ export function useWorldMaterialCatalog(): WorldMaterialCatalogState {
           setState({
             catalog,
             status: 'ready',
-            message:
-              'Candidate preview — physical scale and appearance await acceptance.',
+            message: 'Candidate preview — not a published material release.',
           });
       })
       .catch((error: unknown) => {
@@ -50,5 +74,5 @@ export function useWorldMaterialCatalog(): WorldMaterialCatalogState {
       current = false;
     };
   }, [enabled]);
-  return state;
+  return enabled ? state : pinned;
 }

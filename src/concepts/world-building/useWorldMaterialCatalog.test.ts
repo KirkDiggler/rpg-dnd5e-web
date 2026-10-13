@@ -1,7 +1,16 @@
 import { GENERATED_WORLD_ASSETS } from '@/generated/worldAssetCatalog';
+import type { WorldSurfaceMaterial } from '@/rendering/worldMaterialTypes';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useWorldMaterialCatalog } from './useWorldMaterialCatalog';
+const pinned = vi.hoisted(() => ({
+  provider: { commit: 'c'.repeat(40), catalogSha256: null as string | null },
+  materials: [] as WorldSurfaceMaterial[],
+}));
+vi.mock('@/generated/worldMaterialCatalog', () => ({
+  GENERATED_WORLD_MATERIAL_PROVIDER: pinned.provider,
+  GENERATED_WORLD_MATERIALS: pinned.materials,
+}));
 const ref = 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01';
 const image = {
   url: `/world-material-preview/images/${'a'.repeat(64)}.png?v=${'a'.repeat(64)}`,
@@ -48,8 +57,40 @@ afterEach(() => {
   cleanup();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  pinned.provider.catalogSha256 = null;
+  pinned.materials.length = 0;
 });
 describe('explicit development material catalog loader', () => {
+  it('uses pinned material records in production without fetching or enrolling undeclared faces', () => {
+    vi.stubEnv('MODE', 'production');
+    vi.stubEnv('VITE_WORLD_MATERIAL_PREVIEW', '0');
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    pinned.provider.catalogSha256 = 'd'.repeat(64);
+    const source = candidate().materials[0];
+    pinned.materials.push({
+      ...source,
+      repeatMeters: [3.3, 3.3],
+      normalScale: [1, 1],
+      baseColor: {
+        ...source.baseColor,
+        url: `/models/synty/world-materials/images/${source.baseColor.sha256}.png?v=${source.baseColor.sha256}`,
+      },
+      normal: {
+        ...source.normal,
+        url: `/models/synty/world-materials/images/${source.normal.sha256}.png?v=${source.normal.sha256}`,
+      },
+    });
+    const { result } = renderHook(useWorldMaterialCatalog);
+    expect(result.current.status).toBe('ready');
+    expect(result.current.catalog?.kind).toBe('pinned');
+    expect(result.current.catalog?.providerCommit).toBe(pinned.provider.commit);
+    expect(result.current.catalog?.materials[0].normal.url).toMatch(
+      /^\/models\/synty\/world-materials\//
+    );
+    expect(result.current.catalog?.surfaces).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(['production', 'test'])(
     'does not fetch private candidates in %s even with the flag present',
     (mode) => {
@@ -72,7 +113,7 @@ describe('explicit development material catalog loader', () => {
     const { result } = renderHook(useWorldMaterialCatalog);
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.catalog?.kind).toBe('candidate');
-    expect(result.current.message).toMatch(/await acceptance/);
+    expect(result.current.message).toMatch(/not a published/);
     expect(fetch).toHaveBeenCalledWith('/world-material-preview/catalog.json', {
       cache: 'no-store',
     });

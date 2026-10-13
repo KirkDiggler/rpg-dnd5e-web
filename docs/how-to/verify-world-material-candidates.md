@@ -32,6 +32,40 @@ decoding. Other runtime subtrees are not inspected or changed. The returned
 records contain only consumer URLs, hashes, dimensions and material parameters.
 Physical repeats stay in meters; scene-unit conversion belongs to mapping.
 
+## Adopt and reproduce a production provider pin
+
+From a clean, deliberately selected provider checkout, use:
+
+```sh
+RPG_GAME_ASSETS_PATH="$PROVIDER" npm run world-materials:sync
+RPG_GAME_ASSETS_PATH="$PROVIDER" npm run world-materials:check
+```
+
+This produces `src/generated/worldMaterialCatalog.ts` from the real provider
+commit and verified v1 catalog. A provider with no material catalog produces an
+explicit null catalog digest and empty records; orphan resources still refuse.
+The material-only mode touches only `public/models/synty/world-materials/` and
+its generated metadata. It cannot enroll a wall, alter geometry or move another
+catalog's pin. Adopt approved surface declarations with the existing
+`world-assets:sync` workflow separately.
+
+Normal Studio consumes the committed material records and the world catalog's
+explicit surface declarations without a preview flag or HTTP candidate catalog.
+A Git pin establishes identity; it does not itself assert a provider branch was
+merged. Use reviewed, released pins for a merge-ready consumer.
+
+`assets:sync:pinned` reproduces the material subtree from its own pin, including
+pinned absence, and checks the assembled and installed resources against the
+catalog in that exact Git object. Ordinary customization/NPC adoption likewise
+preserves the separately selected material pin. The explicit `--runtime-assets`
+HEAD mirror is not the production packaging path.
+
+Docker packaging enumerates the four generated owners with
+`scripts/asset-provider-pins.mjs`, fetches only those exact commits and uses the
+pinned runtime union. It does not regenerate tracked catalogs in CI or take
+material resources from an unrelated provider HEAD. `ASSETS_READ_TOKEN` remains
+required for private binary access.
+
 ## Stage an explicit Studio preview
 
 After the ordinary pinned runtime asset sync, stage a verified private bundle
@@ -66,8 +100,9 @@ state explicitly. Unknown or incompatible saved settings report an unapplied
 finish rather than changing the user's choice.
 
 Selections and source-identified anchors use scene6 and survive the existing local
-save/history and JSON/YAML paths. This is not Play delivery. Final material repeat,
-normal appearance and publication still need the operator/provider acceptance.
+save/history and JSON/YAML paths. This is not Play delivery. Candidate acceptance
+and publication remain evidence-bound provider gates; a successful local stage is
+not approval. After restaging a candidate, reload Studio to read its new metadata.
 
 ## Surface bindings and runtime resource ownership
 

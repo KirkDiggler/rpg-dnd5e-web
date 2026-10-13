@@ -225,6 +225,12 @@ side UVs/materials change. Caps and door artwork retain authored appearance.
 The existing document transaction/selection/epoch gates own finish changes, undo,
 JSON/YAML and reload. Accepted no-ops add no history.
 
+The normal material registry consumes committed, independently pinned material
+resources and world surface declarations. Catalog absence is explicit and cannot
+be filled by a miter tag, provider HEAD or a development fixture. Generated pins
+and the scoped runtime mirror own delivery; Studio does not fetch asset policy
+from the game API or author publication records.
+
 Private candidate previews require explicit development opt-in and verified local
 staging. Their resources live outside `public/` and are served by development-only
 middleware, never a production build. Candidate geometry must match the pinned

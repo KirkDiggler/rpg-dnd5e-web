@@ -8,12 +8,47 @@ export interface WorldSurfaceAsset {
   glbSha256: string;
   bindings: NonNullable<GeneratedWorldAsset['surfaces']>;
 }
-/** Explicit preview projection, never a claimed release pin. */
+/** Provider metadata for one material source. A Git pin is identity, not a
+ * claim that an unmerged provider branch has been released. */
 export interface WorldMaterialCatalog {
-  kind: 'candidate';
+  kind: 'candidate' | 'pinned';
+  providerCommit?: string;
   catalogSha256: string;
   materials: readonly WorldSurfaceMaterial[];
   surfaces: readonly WorldSurfaceAsset[];
+}
+
+/** Join independently pinned material resources and world surface declarations.
+ * An asset tag alone never enrolls a face. Catalog absence remains unavailable,
+ * not a silently substituted candidate/default material set. */
+export function createPinnedWorldMaterialCatalog(input: {
+  provider: { readonly commit: string; readonly catalogSha256: string | null };
+  materials: readonly WorldSurfaceMaterial[];
+  assets: Readonly<Record<string, GeneratedWorldAsset>>;
+}): WorldMaterialCatalog | null {
+  const { provider, materials, assets } = input;
+  if (!/^[a-f0-9]{40}$/.test(provider.commit))
+    throw new Error('Invalid material provider pin.');
+  if (provider.catalogSha256 === null) {
+    if (materials.length)
+      throw new Error('Absent material catalog cannot carry resources.');
+    return null;
+  }
+  if (!/^[a-f0-9]{64}$/.test(provider.catalogSha256))
+    throw new Error('Invalid material catalog digest.');
+  return {
+    kind: 'pinned',
+    providerCommit: provider.commit,
+    catalogSha256: provider.catalogSha256,
+    materials,
+    surfaces: Object.values(assets)
+      .filter((asset) => asset.surfaces)
+      .map((asset) => ({
+        assetRef: asset.ref,
+        glbSha256: asset.glbSha256,
+        bindings: asset.surfaces!,
+      })),
+  };
 }
 
 /** Defense at the dev HTTP boundary; publication/resource validation belongs to
