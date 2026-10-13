@@ -716,8 +716,9 @@ A hand-written name this site does not declare keeps its own option in the
 picker rather than being silently rewritten. Semantic authority is the server's.
 
 The entry editor inside a table is the **one** `AnswerEntryRow` a faction's
-table already used, over the one vocabulary declaration — so a root table keeps
-the `at:` cell selector, which is refused only on a placement.
+table already used, over the one vocabulary declaration. It offers no `at:`
+cell and no `path:` route: the single-room dialect has no frame for either, and
+the engine refuses both (rpg-toolkit#2044).
 
 ## Destinations — the site is the document (#1152, corrected model)
 
