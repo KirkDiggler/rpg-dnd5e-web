@@ -55,9 +55,9 @@ import {
 } from './declarationFootprint';
 import {
   concealmentReferrers,
+  exitReferrers,
+  renameExitReferences,
   renameRevealReferences,
-  renameScenarioReferences,
-  scenarioReferrers,
   stillNamedRefusal,
 } from './documentReferences';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
@@ -4871,7 +4871,7 @@ export function WorldBuildingConcept({
                   );
                 const previous = exitAt(current.scope.exits, cell)?.id;
                 if (previous !== undefined && id === null) {
-                  const referrers = scenarioReferrers(current.scope, previous);
+                  const referrers = exitReferrers(current, previous);
                   if (referrers.length)
                     return rejectEdit(
                       new Error(
@@ -4884,11 +4884,7 @@ export function WorldBuildingConcept({
                   const scope =
                     previous !== undefined && id !== null && id !== previous
                       ? {
-                          ...renameScenarioReferences(
-                            current.scope,
-                            previous,
-                            id
-                          ),
+                          ...renameExitReferences(current, previous, id),
                         }
                       : { ...current.scope };
                   if (exits.length === 0) delete scope.exits;
@@ -4972,12 +4968,8 @@ export function WorldBuildingConcept({
                   new Error(`There is already a concealment ${to}.`)
                 );
               try {
-                const scope = renameScenarioReferences(
-                  renameRevealReferences(
-                    renameConcealment(current.scope, from, to),
-                    from,
-                    to
-                  ),
+                const scope = renameRevealReferences(
+                  renameConcealment(current.scope, from, to),
                   from,
                   to
                 );

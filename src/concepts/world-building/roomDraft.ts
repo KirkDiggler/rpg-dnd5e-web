@@ -1429,9 +1429,19 @@ function validateDraft(value: unknown): RoomDraft {
 }
 
 /** Normalize once: full shape, scope and rectangle content have one canonical gate. */
-function normalizeRoomDocument(document: RoomDraftDocument): RoomDraftDocument {
+/** The editing gate, for reading a stored draft back (rpg-project#578):
+ * an incomplete concealment opens to be finished; it still cannot be
+ * saved. */
+export interface RoomDocumentGate {
+  requireMembers?: boolean;
+}
+
+function normalizeRoomDocument(
+  document: RoomDraftDocument,
+  gate: RoomDocumentGate = {}
+): RoomDraftDocument {
   const draft = validateDraft(document.draft);
-  const scope = validateSiteScope(document.scope);
+  const scope = validateSiteScope(document.scope, gate);
   validateWorkspaceContent(draft, scope);
   return { draft, scope };
 }
@@ -1484,9 +1494,10 @@ export function assertRoomDocumentSize(document: RoomDraftDocument): void {
 
 /** Complete normalized gate for explicit resize/label intents and persistence. */
 export function validateRoomDocument(
-  document: RoomDraftDocument
+  document: RoomDraftDocument,
+  gate: RoomDocumentGate = {}
 ): RoomDraftDocument {
-  const normalized = normalizeRoomDocument(document);
+  const normalized = normalizeRoomDocument(document, gate);
   assertRoomDocumentSize(normalized);
   return normalized;
 }
@@ -1533,7 +1544,10 @@ export function resizeRoomWorkspace(
  * refused rather than silently dropped — losing authored policies on reload is
  * the trap this half of the slice exists to remove.
  */
-export function parseRoomDocumentJson(json: string): RoomDraftDocument {
+export function parseRoomDocumentJson(
+  json: string,
+  gate: RoomDocumentGate = {}
+): RoomDraftDocument {
   if (json.length > MAX_JSON_LENGTH)
     throw new Error(
       `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
@@ -1612,10 +1626,13 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
         'so its creatures store a bare `cell` this build no longer reads. ' +
         'Rebuild the room rather than migrating it.'
     );
-  return validateRoomDocument({
-    draft: envelope.draft as unknown as RoomDraft,
-    scope: validateSiteScope(envelope.scope ?? {}),
-  });
+  return validateRoomDocument(
+    {
+      draft: envelope.draft as unknown as RoomDraft,
+      scope: validateSiteScope(envelope.scope ?? {}, gate),
+    },
+    gate
+  );
 }
 
 /** The room draft alone. A DRAFT-ONLY reader deliberately refuses an envelope
@@ -1699,7 +1716,11 @@ export function loadRoomDraft(
     // autosave. Recovery requires an explicit valid save/import action.
     if (current !== null) {
       const migrated = stripLegacyLifetime(current);
-      const document = parseRoomDocumentJson(migrated.json);
+      // The editing gate: a concealment that hides nothing opens, flagged
+      // on its form, and stays unsavable until it hides something.
+      const document = parseRoomDocumentJson(migrated.json, {
+        requireMembers: false,
+      });
       return {
         value: document.draft,
         scope: document.scope,

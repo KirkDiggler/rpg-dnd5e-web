@@ -703,7 +703,13 @@ function validateSiteCell(value: unknown, path: string): SiteRoomCell {
  * (`roomDraft.ts`'s storage envelope, `singleRoomDungeon.ts`'s canonical YAML),
  * so a scope that cannot be represented is refused before it is written rather
  * than corrupting state (rpg-dnd5e-web#1160). */
-export function validateSiteScope(value: unknown): SiteScope {
+/** `requireMembers: false` is the editing gate (rpg-project#578): a stored
+ * draft whose concealment hides nothing still opens, so the form can flag
+ * it. Saving, exporting and importing keep the default. */
+export function validateSiteScope(
+  value: unknown,
+  { requireMembers = true }: { requireMembers?: boolean } = {}
+): SiteScope {
   const raw = objectShape(value, 'Site scope');
   rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
   const scope: SiteScope = {};
@@ -743,7 +749,9 @@ export function validateSiteScope(value: unknown): SiteScope {
     if (Object.keys(scenarios).length > 0) scope.scenarios = scenarios;
   }
   if (Object.hasOwn(raw, 'concealments')) {
-    const concealments = validateSiteConcealments(raw.concealments);
+    const concealments = validateSiteConcealments(raw.concealments, {
+      requireMembers,
+    });
     if (Object.keys(concealments).length > 0) scope.concealments = concealments;
   }
   return scope;

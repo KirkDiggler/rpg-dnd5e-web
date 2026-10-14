@@ -7,32 +7,52 @@
  * A dangling name is a file the toolkit refuses (`intel[i].reveals
  * .concealment`, `scenarios.<id>.<field>`), so the studio never writes one.
  *
- * What can name them: an intel record's `reveals.concealment`, and any
- * scenario binding's value. A door's Hidden by is the concealment's own
- * `props`, so it travels with the concealment; no predicate form names a
- * concealment or an exit, so endings never do.
+ * What can name them. A concealment is named by an intel record's
+ * `reveals.concealment` only: a scenario binding resolves against
+ * monsters, declared props, exits and factions (rpg-toolkit `grammar.go`
+ * `scenarios`), never a concealment. An exit is named by a scenario
+ * binding, but a binding carries no kind, so a value names the exit only
+ * when nothing else in the document has that id: a monster, a declared prop
+ * or a faction sharing it is what the binding may mean, and is left alone.
+ * A door's Hidden by is the concealment's own `props`, so it travels with
+ * the concealment; no predicate form names a concealment or an exit, so
+ * endings never do.
  */
+import type { RoomDraftDocument } from './roomDraft';
 import type { SiteScope } from './siteScope';
 
 /** Each thing in the draft that names this concealment, in words. */
 export function concealmentReferrers(scope: SiteScope, id: string): string[] {
-  return [
-    ...(scope.intel ?? [])
-      .filter(
-        (record) =>
-          'concealment' in record.reveals && record.reveals.concealment === id
-      )
-      .map((record) => `intel ${record.id}`),
-    ...scenarioReferrers(scope, id),
-  ];
+  return (scope.intel ?? [])
+    .filter(
+      (record) =>
+        'concealment' in record.reveals && record.reveals.concealment === id
+    )
+    .map((record) => `intel ${record.id}`);
 }
 
-/** Each scenario binding whose value is this id: "scenario hold-out exit". */
-export function scenarioReferrers(scope: SiteScope, id: string): string[] {
-  return Object.entries(scope.scenarios ?? {}).flatMap(([scenario, fields]) =>
-    Object.entries(fields)
-      .filter(([, value]) => value === id)
-      .map(([field]) => `scenario ${scenario} ${field}`)
+/** Whether a scenario value equal to this exit's id can only mean the exit:
+ * no monster, declared prop or faction shares the id. */
+function bindingNamesExit(document: RoomDraftDocument, id: string): boolean {
+  const room = document.draft.room;
+  return (
+    !room.monsterDeclarations.some((monster) => monster.id === id) &&
+    !Object.hasOwn(room.propDeclarations, id) &&
+    !(document.scope.factions ?? []).some((faction) => faction.id === id)
+  );
+}
+
+/** Each scenario binding that names this exit: "scenario hold-out exit". */
+export function exitReferrers(
+  document: RoomDraftDocument,
+  id: string
+): string[] {
+  if (!bindingNamesExit(document, id)) return [];
+  return Object.entries(document.scope.scenarios ?? {}).flatMap(
+    ([scenario, fields]) =>
+      Object.entries(fields)
+        .filter(([, value]) => value === id)
+        .map(([field]) => `scenario ${scenario} ${field}`)
   );
 }
 
@@ -44,13 +64,15 @@ export function stillNamedRefusal(
   return `${noun} is still named by ${referrers.join(', ')}. Change or remove those first.`;
 }
 
-/** Every scenario binding naming `from` names `to` instead. */
-export function renameScenarioReferences(
-  scope: SiteScope,
+/** Every scenario binding that names exit `from` names `to` instead. A
+ * value another kind of noun shares is not the exit's, and is kept. */
+export function renameExitReferences(
+  document: RoomDraftDocument,
   from: string,
   to: string
 ): SiteScope {
-  if (!scope.scenarios) return scope;
+  const scope = document.scope;
+  if (!scope.scenarios || !bindingNamesExit(document, from)) return scope;
   return {
     ...scope,
     scenarios: Object.fromEntries(

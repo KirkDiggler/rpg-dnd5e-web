@@ -5503,12 +5503,14 @@ describe('S4 renames rewrite references; removes are refused while named (rpg-pr
       return session;
     },
   };
-  const mountStudio = (): typeof owner => {
+  const mountStudio = (
+    document: RoomDraftDocument = createCastleS4Document()
+  ): typeof owner => {
     render(
       <WorldBuildingConcept
         roomMode
         compositionSource={source}
-        storage={new MemoryStorage(createCastleS4Document())}
+        storage={new MemoryStorage(document)}
         studioPresentation={{
           home: 'build',
           view: '3d',
@@ -5522,7 +5524,7 @@ describe('S4 renames rewrite references; removes are refused while named (rpg-pr
     return owner;
   };
 
-  it('renaming a concealment rewrites its intel, its door Hidden by and its scenarios in one step', () => {
+  it('renaming a concealment rewrites its intel and its door Hidden by in one step', () => {
     const owner = mountStudio();
     const before = owner.session.document;
     act(() => {
@@ -5590,6 +5592,149 @@ describe('S4 renames rewrite references; removes are refused while named (rpg-pr
     expect(owner.session.document.scope.exits?.map((exit) => exit.id)).toEqual([
       'studio-exit',
     ]);
+  });
+});
+
+describe('S4 scenario bindings follow the exit, not a namesake (rpg-project#578 review)', () => {
+  let session!: EncounterStudioSession;
+  const mountCastle = (document: RoomDraftDocument): void => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={new MemoryStorage(document)}
+        studioPresentation={{
+          home: 'build',
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+  };
+
+  it('an exit and a concealment that share an id: each rename moves only its own references', () => {
+    const castle = createCastleS4Document();
+    const postern = castle.scope.exits!.find((exit) => exit.id === 'postern')!;
+    castle.scope.concealments!.postern = {
+      checks: [{ ability: 'investigation', dc: 12 }],
+      cells: [castle.draft.room.walkableHexes[7]!],
+    };
+    castle.scope.scenarios = {
+      ...castle.scope.scenarios,
+      escape: { exit: 'postern' },
+    };
+    mountCastle(castle);
+    act(() => {
+      expect(session.exits.set(postern.cell, 'sally-port')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.escape).toEqual({
+      exit: 'sally-port',
+    });
+    expect(session.document.scope.concealments?.postern).toBeTruthy();
+    act(() => {
+      expect(session.concealments.rename('postern', 'cache')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.escape).toEqual({
+      exit: 'sally-port',
+    });
+    expect(session.document.scope.concealments?.cache).toBeTruthy();
+  });
+
+  it('a binding an exit shares with a creature is left to the creature', () => {
+    const castle = createCastleS4Document();
+    const postern = castle.scope.exits!.find((exit) => exit.id === 'postern')!;
+    postern.id = 'captain';
+    castle.scope.scenarios = {
+      ...castle.scope.scenarios,
+      regicide: { target: 'captain' },
+    };
+    mountCastle(castle);
+    act(() => {
+      expect(session.exits.set(postern.cell, 'gate')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.regicide).toEqual({
+      target: 'captain',
+    });
+    act(() => {
+      expect(session.exits.set(postern.cell, null)).toBe(true);
+    });
+  });
+});
+
+describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+
+  it('opens with the refusal on the form and cannot be saved until a member is picked', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(castle);
+    const envelope = JSON.parse(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)!);
+    envelope.scope.concealments.empty = {
+      checks: [{ ability: 'investigation', dc: 12 }],
+    };
+    const stored = JSON.stringify(envelope);
+    storage.bytes.set(ROOM_DRAFT_STORAGE_KEY, stored);
+    mount(storage);
+    await settled();
+    expect(
+      screen.getByRole('button', {
+        name: `Rename encounter ${castle.draft.name}`,
+      })
+    ).toBeTruthy();
+    expect(screen.queryByText(/Room draft load failed/)).toBeNull();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'empty' }));
+    const form = within(
+      screen.getByRole('group', { name: 'Concealment empty' })
+    );
+    expect(form.getByRole('heading', { name: 'Members (0)' })).toBeTruthy();
+    expect(form.getByRole('alert').textContent).toContain(
+      'this concealment hides nothing'
+    );
+    fireEvent.change(form.getByLabelText('DC for check 1 of empty search'), {
+      target: { value: '13' },
+    });
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(stored);
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((node) =>
+          node.textContent?.includes(
+            'Site concealment empty: this concealment hides nothing'
+          )
+        )
+    ).toBe(true);
+    fireEvent.click(
+      form.getByRole('button', {
+        name: 'Add members on the map',
+        exact: true,
+      } as never)
+    );
+    const cell = castle.draft.room.walkableHexes.find(
+      (hex) =>
+        Math.abs(hex.q) <= 2 &&
+        hex.r === 1 &&
+        !Object.values(castle.scope.concealments ?? {}).some((spec) =>
+          spec.cells?.some((c) => c.q === hex.q && c.r === hex.r)
+        )
+    )!;
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    // The castle frames differently from the test frame, so the clicked
+    // hex is whichever walkable hex lies under the point; any one member
+    // makes the concealment savable.
+    const saved = storage.document().scope.concealments!.empty;
+    expect(saved.checks).toEqual([{ ability: 'investigation', dc: 13 }]);
+    expect(saved.cells).toHaveLength(1);
   });
 });
 
