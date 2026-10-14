@@ -3,22 +3,24 @@ import {
   npcAppearanceOptions,
 } from '@/npc-appearances/npcAppearanceChoices';
 import { useState } from 'react';
-import type { CreaturePaletteEntry } from '../world-building/creaturePalette';
+import { castOf, type CastMember } from '../world-building/cast';
 import type { EncounterStudioSession } from './studioSession';
 
 function PlacementChoice({
-  recipe,
+  member,
   session,
   onPlace,
 }: {
-  recipe: CreaturePaletteEntry;
+  member: CastMember;
   session: EncounterStudioSession;
-  onPlace(id: string, appearanceRef: string): boolean;
+  onPlace(ref: string, appearanceRef: string): boolean;
 }): React.JSX.Element {
-  const [appearanceRef, setAppearanceRef] = useState(recipe.modelRef);
+  const modelRef = member.defaults?.modelRef ?? '';
+  const [appearanceRef, setAppearanceRef] = useState(modelRef);
   const [error, setError] = useState<string | null>(null);
   const look = npcAppearanceOptions(appearanceRef);
-  const available = !!look.current && look.family?.ref === recipe.modelRef;
+  const available =
+    !!modelRef && !!look.current && look.family?.ref === modelRef;
   const change = (control: 'style' | 'skinPalette', value: string): void => {
     session.cancelTransients();
     try {
@@ -32,9 +34,9 @@ function PlacementChoice({
   };
   return (
     <section aria-label="Placement appearance">
-      <h3>{recipe.name}</h3>
-      <p className="es-help">{recipe.ref}</p>
-      <p>{look.family?.defaultLook.displayName ?? recipe.modelRef}</p>
+      <h3>{member.name}</h3>
+      <p className="es-help">{member.ref}</p>
+      {modelRef && <p>{look.family?.defaultLook.displayName ?? modelRef}</p>}
       {available && look.current?.look ? (
         <>
           <label>
@@ -64,16 +66,18 @@ function PlacementChoice({
         </>
       ) : (
         <p role="status">
-          {available
-            ? 'This model has one published look.'
-            : 'Model unavailable. Edit this creature in Encounter to choose a published model.'}
+          {!modelRef
+            ? 'Choose a default look in the cast to place it.'
+            : available
+              ? 'This model has one published look.'
+              : 'Model unavailable. Choose a published default look in the cast.'}
         </p>
       )}
       <button
         type="button"
         disabled={!available}
         onClick={() => {
-          if (!onPlace(recipe.id, appearanceRef))
+          if (!onPlace(member.ref, appearanceRef))
             setError(
               'Placement could not start. Select the creature and look again.'
             );
@@ -91,7 +95,8 @@ function PlacementChoice({
   );
 }
 
-/** Reads the saved recipes. Only picker state is local; placement stays owner-controlled. */
+/** Lists the cast. Only picker state is local; placement stays
+ * owner-controlled and writes a ref to the stat block, never its fields. */
 export function StudioCreaturePalette({
   session,
   onConfigure,
@@ -99,39 +104,35 @@ export function StudioCreaturePalette({
 }: {
   session: EncounterStudioSession;
   onConfigure(): void;
-  onPlace(id: string, appearanceRef: string): boolean;
+  onPlace(ref: string, appearanceRef: string): boolean;
 }): React.JSX.Element {
-  const [selectedId, setSelectedId] = useState('');
-  const recipes = session.document.draft.scene.creaturePalette ?? [];
-  const selected =
-    recipes.find((entry) => entry.id === selectedId) ?? recipes[0];
+  const [selectedRef, setSelectedRef] = useState('');
+  const cast = castOf(session.document);
+  const selected = cast.find((member) => member.ref === selectedRef) ?? cast[0];
   return (
     <section
       aria-label="Monsters and NPCs palette"
       className="es-creature-palette"
     >
       <h2>Monsters &amp; NPCs</h2>
-      {!recipes.length && (
-        <p>
-          No named creatures yet. Create them in Encounter, then place them
-          here.
-        </p>
+      {!cast.length && (
+        <p>No cast yet. Add one in Encounter, then place it here.</p>
       )}
       <button type="button" onClick={onConfigure}>
         Configure creatures
       </button>
-      <ul aria-label="Named creatures">
-        {recipes.map((entry) => (
-          <li key={entry.id}>
+      <ul aria-label="Cast">
+        {cast.map((member) => (
+          <li key={member.ref}>
             <button
               type="button"
-              aria-pressed={selected?.id === entry.id}
+              aria-pressed={selected?.ref === member.ref}
               onClick={() => {
                 session.cancelTransients();
-                setSelectedId(entry.id);
+                setSelectedRef(member.ref);
               }}
             >
-              {entry.name}
+              {member.name}
             </button>
           </li>
         ))}
@@ -140,11 +141,10 @@ export function StudioCreaturePalette({
         <PlacementChoice
           key={JSON.stringify([
             session.document.draft.id,
-            selected.id,
             selected.ref,
-            selected.modelRef,
+            selected.defaults?.modelRef,
           ])}
-          recipe={selected}
+          member={selected}
           session={session}
           onPlace={onPlace}
         />

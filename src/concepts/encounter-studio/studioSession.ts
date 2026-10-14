@@ -294,7 +294,10 @@ export interface EncounterStudioSession {
   };
   creatures: {
     select(id: string): boolean;
-    armPlacement(id: string, appearanceRef: string): boolean;
+    /** Arm one placement of a cast member, keyed by its monster ref, with a
+     * look from its default family. Refused for a ref not in the cast, a
+     * member without a default look, or a look outside its family. */
+    armPlacement(ref: string, appearanceRef: string): boolean;
     readonly placement: { name: string; appearanceRef: string } | null;
     setDefinition(id: string, ref: string): boolean;
   };

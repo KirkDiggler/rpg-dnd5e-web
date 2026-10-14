@@ -25,6 +25,7 @@ import type {
 import {
   adoptCastMember,
   applyCastEdit,
+  castMemberOf,
   removeCastMember,
   removeUnusedLook,
   renameCastMember,
@@ -444,8 +445,9 @@ export function WorldBuildingConcept({
    * a selected actor is a monster id or 'start', never a WorldProp id, and
    * actor operations never touch scenery selections. */
   const [armedMonsterRef, setArmedMonsterRef] = useState<string | null>(null);
+  /** The armed cast member, by its monster ref, and the chosen look. */
   const [armedCreature, setArmedCreature] = useState<{
-    id: string;
+    ref: string;
     appearanceRef: string;
   } | null>(null);
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
@@ -1081,32 +1083,53 @@ export function WorldBuildingConcept({
       return;
     }
     try {
-      const recipe = armedCreature
-        ? roomDraft.scene.creaturePalette?.find(
-            (entry) => entry.id === armedCreature.id
-          )
+      const current = roomHistoryRef.current.present;
+      const member = armedCreature
+        ? castMemberOf(current, armedCreature.ref)
         : undefined;
       if (
         armedCreature &&
-        (!recipe ||
+        (!member ||
+          !member.defaults ||
           npcAppearanceOptions(armedCreature.appearanceRef).family?.ref !==
-            recipe.modelRef)
+            member.defaults.modelRef)
       )
-        throw new Error('This creature recipe or look is no longer available.');
+        throw new Error('This cast member or look is no longer available.');
+      const faction = member?.defaults?.faction;
+      if (
+        faction !== undefined &&
+        !(current.scope.factions ?? []).some((entry) => entry.id === faction)
+      )
+        throw new Error(
+          `${member!.name}'s default faction ${faction} no longer exists. Choose another in the cast.`
+        );
       const id = idFactory();
       const next = placeRoomMonster(roomDraft, {
         id,
-        ref: recipe?.ref ?? armedMonsterRef,
+        ref: member?.ref ?? armedMonsterRef,
         ...(armedCreature
           ? { appearanceRef: armedCreature.appearanceRef }
           : {}),
         startingCell: { location: { ...cell } },
       });
+      // The defaults are stamped once: a later default change reaches no
+      // placed creature. The stat block is followed by id, never copied.
+      const room =
+        faction === undefined
+          ? next.room
+          : {
+              ...next.room,
+              monsterBindings: withBinding(
+                next.room.monsterBindings,
+                id,
+                changeMonsterFaction(next.room.monsterBindings?.[id], faction)
+              ),
+            };
       if (
         !commit(
-          recipe ? setActorName(scene, id, recipe.name) : scene,
+          member ? setActorName(scene, id, member.name) : scene,
           selectedIds,
-          next.room
+          room
         )
       )
         return;
@@ -4215,9 +4238,7 @@ export function WorldBuildingConcept({
           partyStart: roomDraft.room.partyStart ?? null,
           armedMonsterRef: armedMonsterRef,
           armedMonsterName: armedCreature
-            ? roomDraft.scene.creaturePalette?.find(
-                (entry) => entry.id === armedCreature.id
-              )?.name
+            ? castMemberOf(roomHistory.present, armedCreature.ref)?.name
             : undefined,
           selectedActorId: selectedActorId,
           ...(studioPresentation
@@ -4608,32 +4629,36 @@ export function WorldBuildingConcept({
               roomTool === 'monster' && armedCreature
                 ? {
                     name:
-                      roomDraft.scene.creaturePalette?.find(
-                        (entry) => entry.id === armedCreature.id
-                      )?.name ?? 'Creature',
+                      castMemberOf(roomHistory.present, armedCreature.ref)
+                        ?.name ?? 'Creature',
                     appearanceRef: armedCreature.appearanceRef,
                   }
                 : null,
             armPlacement: guardSnapshotIntent(
-              (id: string, appearanceRef: string): boolean => {
+              (ref: string, appearanceRef: string): boolean => {
                 if (refuseWhilePublishing()) return false;
-                const entry =
-                  roomHistoryRef.current.present.draft.scene.creaturePalette?.find(
-                    (item) => item.id === id
+                const member = castMemberOf(
+                  roomHistoryRef.current.present,
+                  ref
+                );
+                if (!member)
+                  return rejectEdit(new Error(`${ref} is not in the cast.`));
+                if (!member.defaults)
+                  return rejectEdit(
+                    new Error('Choose a default look in the cast to place it.')
                   );
                 if (
-                  !entry ||
                   npcAppearanceOptions(appearanceRef).family?.ref !==
-                    entry.modelRef
+                  member.defaults.modelRef
                 )
                   return rejectEdit(
                     new Error(
-                      'Choose an available model/look for this creature.'
+                      `Choose a look from ${member.name}'s default look family.`
                     )
                   );
                 cancelTransients();
-                setArmedMonsterRef(entry.ref);
-                setArmedCreature({ id, appearanceRef });
+                setArmedMonsterRef(member.ref);
+                setArmedCreature({ ref: member.ref, appearanceRef });
                 setRoomTool('monster');
                 setTool('select');
                 setSelectedActorId(null);
