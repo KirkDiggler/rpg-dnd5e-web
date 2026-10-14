@@ -145,7 +145,9 @@ describe('material editor lab', () => {
       name: new RegExp(FIXTURE_OBJECT_NAME),
     });
     expect(slotButtons.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/SM_Bld_Wall_L_Curve_01 · slot 0/i)).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /SM_Bld_Wall_L_Curve_01 · slot 0/i })
+    ).toBeVisible();
     expect(screen.getAllByText(/Stone_01/).length).toBeGreaterThan(0);
   });
 

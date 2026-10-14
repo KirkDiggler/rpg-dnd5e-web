@@ -57,6 +57,7 @@ import {
   type MaterialEditorManifest,
 } from './materialRecipe';
 import type { AssetReviewLoadStatus } from './model';
+import { TexturePackPanel } from './TexturePackPanel';
 
 const MANIFEST_URL = '/models/synty/asset-review-editor/manifest.json';
 /** Batch-specific browser convenience draft; the exported JSON is durable. */
@@ -1207,6 +1208,17 @@ export function MaterialEditorLab() {
             ) : (
               <p>Select a rendered material slot to edit its channels.</p>
             )}
+            <TexturePackPanel
+              key={`${manifest.profile.packSlug}:${manifest.profile.packVersion}`}
+              manifest={manifest}
+              currentTarget={
+                selected && selectedTarget?.rendered
+                  ? { sourcePath: source.sourcePath, ...selected }
+                  : undefined
+              }
+              currentDefinition={selectedDefinition}
+              onPreview={updateDefinition}
+            />
           </div>
           <div className="material-editor-preview">
             <MaterialEditorScene
