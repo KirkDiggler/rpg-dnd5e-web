@@ -55,6 +55,8 @@ function fixture(): EncounterStudioSession {
       cancelPreview: vi.fn(),
     },
     commitArrange: vi.fn(() => true),
+    selectHex: vi.fn(() => true),
+    clearSelection: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitTemplates: vi.fn(() => true),
     creatures: {

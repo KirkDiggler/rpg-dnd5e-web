@@ -664,6 +664,16 @@ function StudioSurface({
                 onExitDoorTool={exitDoor}
                 intentEpoch={session.intentEpoch}
                 onExitWallTool={exitWall}
+                onSelectHex={
+                  home === 'build'
+                    ? (cell) => void session.selectHex(cell)
+                    : undefined
+                }
+                onClearSelection={
+                  home === 'build'
+                    ? () => void session.clearSelection()
+                    : undefined
+                }
               />
             </div>
           ) : (

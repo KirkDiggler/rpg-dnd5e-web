@@ -47,6 +47,7 @@ import { snapPerpendicularCorner } from '../world-building/wallCornerJoins';
 import {
   containsWorkspacePoint,
   workspaceBounds,
+  workspaceCellAtPoint,
 } from '../world-building/workspaceGeometry';
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
@@ -204,6 +205,8 @@ export function LayoutViewport({
   onExitDoorTool,
   intentEpoch,
   onExitWallTool,
+  onSelectHex,
+  onClearSelection,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -728,6 +731,10 @@ export function LayoutViewport({
         wallEditing?.select(null);
         labelEditing?.onSelect(null);
         doorEditing?.select(null);
+        // Bare floor selects that hex; off the floor selects nothing.
+        const cell = workspaceCellAtPoint(draft.workspace, anchor);
+        if (cell) onSelectHex?.(cell);
+        else onClearSelection?.();
         return;
       }
       if (labelMode && !label && !placing) return;

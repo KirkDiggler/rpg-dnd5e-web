@@ -4879,6 +4879,46 @@ describe('Studio owner facade', () => {
     return storage;
   }
 
+  it('Escape clears a studio wall selection to nothing', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => {
+      expect(owner.session.wallEditing.select('studio-wall')).toBe(true);
+    });
+    expect(owner.session.arrange?.kind).toBe('wall');
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(owner.session.arrange).toBeNull();
+    expect(owner.session.wallEditing.selectedId).toBeNull();
+  });
+
+  it('selectHex refuses a cell outside the workspace without a history entry', () => {
+    const storage = populatedStorage();
+    const owner = mountStudio(storage);
+    const writes = storage.writes;
+    const canUndo = owner.session.canUndo;
+    let accepted: boolean | undefined;
+    act(() => {
+      accepted = owner.session.selectHex({ q: 40, r: 0 });
+    });
+    expect(accepted).toBe(false);
+    expect(owner.session.arrange).toBeNull();
+    act(() => {
+      accepted = owner.session.selectHex({ q: 1, r: 1 });
+    });
+    expect(accepted).toBe(true);
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'hex',
+      cell: { q: 1, r: 1 },
+    });
+    expect(owner.session.canUndo).toBe(canUndo);
+    expect(storage.writes).toBe(writes);
+    act(() => {
+      expect(owner.session.clearSelection()).toBe(true);
+    });
+    expect(owner.session.arrange).toBeNull();
+  });
+
   it('reserves scene3 region identities in transient door placement without changing author intent', () => {
     const document = createPopulatedStudioDocument();
     document.draft.scene.version = 3;

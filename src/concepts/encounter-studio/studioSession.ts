@@ -224,6 +224,10 @@ export interface LayoutViewportProps {
   /** Optional complete-owner snapshot identity: scope-only navigation also
    * retires previews. Absent retains existing draft-identity cancellation. */
   documentContext?: Readonly<RoomDraftDocument>;
+  /** Select-tool click on a bare workspace cell selects that hex. */
+  onSelectHex?(cell: RoomHexCell): void;
+  /** Select-tool click off the workspace floor selects nothing. */
+  onClearSelection?(): void;
 }
 
 /** Definitions belong to the one document owner. Area commits replace region
@@ -262,6 +266,11 @@ export interface EncounterStudioSession {
   readonly intentEpoch: number;
   readonly arrange: StudioArrangeSelection | null;
   commitArrange(intent: StudioArrangeIntent): boolean;
+  /** Select one floor hex. False, with no history entry, outside the
+   * workspace, while publishing, or from a retired snapshot. */
+  selectHex(cell: RoomHexCell | null): boolean;
+  /** Select nothing: the inspector answers for the room. */
+  clearSelection(): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;

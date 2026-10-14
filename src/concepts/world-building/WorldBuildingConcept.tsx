@@ -81,6 +81,7 @@ import {
   FOOTPRINT_MAXIMUM_EXTENT,
   FOOTPRINT_MAXIMUM_OFFSET,
   FOOTPRINT_MINIMUM_EXTENT,
+  isCellWithinWorkspace,
   loadRoomDraft,
   moveRoomMonster,
   parseRoomDocumentJson,
@@ -452,6 +453,18 @@ export function WorldBuildingConcept({
   );
   const [previewScene, setPreviewScene] = useState<WorldScene | null>(null);
   const [previewWall, setPreviewWall] = useState<StructuralWall | null>(null);
+  /** Studio: select nothing, so the inspector answers for the room. Every
+   * noun owner's id is cleared with the arbiter; none is a second store. */
+  const clearStudioSelection = useCallback((): void => {
+    setPreviewScene(null);
+    setPreviewWall(null);
+    setPreviewDoor(null);
+    setSelectedIds([]);
+    setSelectedWallId(null);
+    setSelectedLabelId(null);
+    setSelectedActorId(null);
+    activateStudioTarget(null);
+  }, [activateStudioTarget]);
   const [search, setSearch] = useState('');
   const [arrangementName, setArrangementName] = useState('New arrangement');
   const [portableJson, setPortableJson] = useState('');
@@ -1533,6 +1546,13 @@ export function WorldBuildingConcept({
         setPreviewScene(null);
         setActiveDrag(null);
         if (roomMode) setSelectedActorId(null);
+        // Build only: the Regions home keeps its label selection (S3).
+        if (
+          studioPresentation &&
+          (studioHomeRef.current ?? 'build') === 'build' &&
+          !publishBusyRef.current
+        )
+          clearStudioSelection();
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -1540,6 +1560,7 @@ export function WorldBuildingConcept({
   }, [
     activeConcealmentId,
     applyToSelection,
+    clearStudioSelection,
     duplicate,
     redo,
     remove,
@@ -1550,6 +1571,7 @@ export function WorldBuildingConcept({
     roomTool,
     selectedActorId,
     selectedIds,
+    studioPresentation,
     undo,
   ]);
 
@@ -3642,6 +3664,17 @@ export function WorldBuildingConcept({
     );
     activateStudioTarget(target);
   };
+  const selectStudioHex = (cell: RoomHexCell | null): boolean => {
+    if (refuseWhilePublishing()) return false;
+    if (cell === null) {
+      clearStudioSelection();
+      return true;
+    }
+    if (!isCellWithinWorkspace(cell, roomDraft.workspace)) return false;
+    clearStudioSelection();
+    activateStudioTarget({ kind: 'hex', cell: { q: cell.q, r: cell.r } });
+    return true;
+  };
   // Document retirement is not an explicit selection revision. Mask absent
   // nouns during this render, before any effects or renderer cleanup run.
   if (
@@ -4463,6 +4496,13 @@ export function WorldBuildingConcept({
             onSelectActor:
               viewportInputs.roomAuthoring.onSelectActor &&
               guardViewportCallback(viewportInputs.roomAuthoring.onSelectActor),
+            ...(studioPresentation
+              ? {
+                  onSelectHex: guardViewportCallback((cell: RoomHexCell) => {
+                    selectStudioHex(cell);
+                  }),
+                }
+              : {}),
             onConcealmentCellPick:
               viewportInputs.roomAuthoring.onConcealmentCellPick &&
               guardViewportCallback(
@@ -4506,6 +4546,12 @@ export function WorldBuildingConcept({
           arrange,
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
+          selectHex: guardSnapshotIntent(selectStudioHex),
+          clearSelection: guardSnapshotIntent((): boolean => {
+            if (refuseWhilePublishing()) return false;
+            clearStudioSelection();
+            return true;
+          }),
           commitTemplates: guardSnapshotIntent((templates): boolean => {
             try {
               const valid = validateMonsterTemplates(templates);

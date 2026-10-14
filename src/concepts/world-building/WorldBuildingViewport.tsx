@@ -133,6 +133,9 @@ export interface WorldBuildingViewportProps {
       | 'wall'
       | 'door';
     doorEditing?: StudioDoorEditing;
+    /** Studio only: a select-tool click on a workspace floor cell selects
+     * that hex. Absent keeps the legacy clear-the-scene-selection click. */
+    onSelectHex?(cell: RoomHexCell): void;
     intentEpoch?: number;
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
@@ -1000,7 +1003,18 @@ export function WorldSceneContents(
           if (event.button !== 0 || isGizmoPointer()) return;
           if (floorGesture.current) return;
           const cell = pickGroundCell(event.point);
-          if (rectangular && !cell) return;
+          const selectingHex =
+            !!props.roomAuthoring?.onSelectHex &&
+            (props.roomAuthoring.tool ?? 'select') === 'select' &&
+            !props.roomAuthoring.activeConcealmentId;
+          if (rectangular && !cell) {
+            // Studio: a click off the workspace floor selects nothing.
+            if (selectingHex && !event.shiftKey) {
+              event.stopPropagation();
+              onSelect([]);
+            }
+            return;
+          }
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
           if (roomTool === 'door') {
@@ -1159,7 +1173,11 @@ export function WorldSceneContents(
             setWallPreview({ start, end: start });
             return;
           }
-          if (!event.shiftKey) onSelect([]);
+          // Shift extends the scene pick (it feeds Group selection) and
+          // leaves the current selection alone.
+          if (event.shiftKey) return;
+          if (selectingHex && cell) props.roomAuthoring!.onSelectHex!(cell);
+          else onSelect([]);
         }}
         onPointerMove={(event) => {
           const roomTool = props.roomAuthoring?.tool;
