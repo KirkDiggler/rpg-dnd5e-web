@@ -4527,8 +4527,8 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     expect(areaCount()).toBe(2);
     expect(
       surface()
-        .querySelector(`[data-region-id="${pair[0].id}"] polygon`)
-        ?.getAttribute('points')
+        .querySelector(`[data-region-fill="${pair[0].id}"]`)
+        ?.getAttribute('d')
     ).toMatch(/5,0/);
     // Removing the logical divider cannot adopt the larger outer enclosure.
     fireEvent.click(button('Remove wall'));

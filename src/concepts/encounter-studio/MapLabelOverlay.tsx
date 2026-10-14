@@ -11,6 +11,8 @@ interface MapLabelOverlayProps {
   onSelect(id: string): void;
   regions?: readonly AuthoringRegion[];
   resolutions?: readonly RegionResolution[];
+  /** Derived region colours: a region's label is drawn in its colour. */
+  colours?: ReadonlyMap<string, string>;
 }
 
 /** Root-SVG pixel overlay: text stays screen-sized while its world anchor pans
@@ -23,6 +25,7 @@ export function MapLabelOverlay({
   onSelect,
   regions,
   resolutions,
+  colours,
 }: MapLabelOverlayProps): React.JSX.Element {
   return (
     <g className="es-map-labels">
@@ -36,6 +39,11 @@ export function MapLabelOverlay({
         const resolution = resolutions?.find(
           (resolution) => resolution.id === region?.id
         );
+        const selected = selectedId === label.id;
+        const colour =
+          region && resolution?.status === 'resolved'
+            ? colours?.get(region.id)
+            : undefined;
         return (
           <text
             key={label.id}
@@ -45,12 +53,14 @@ export function MapLabelOverlay({
             role="button"
             tabIndex={0}
             aria-label={`Select map label ${label.text}`}
-            aria-pressed={selectedId === label.id}
+            aria-pressed={selected}
+            data-label-colour={colour}
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={14}
-            fontWeight={650}
-            fill={selectedId === label.id ? '#a7ffeb' : '#fff4d8'}
+            fontWeight={colour && selected ? 800 : 650}
+            fill={colour ?? (selected ? '#a7ffeb' : '#fff4d8')}
+            textDecoration={colour && selected ? 'underline' : undefined}
             stroke="#101923"
             strokeWidth={4}
             paintOrder="stroke"

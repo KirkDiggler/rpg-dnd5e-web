@@ -53,6 +53,7 @@ import {
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
+import { regionOverview } from './overviewColours';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
@@ -382,6 +383,11 @@ export function LayoutViewport({
   const committed = useMemo(
     () => new Set(draft.room.walkableHexes.map(cellKey)),
     [draft.room.walkableHexes]
+  );
+  const resolutions = regionEditing?.resolutions;
+  const overview = useMemo(
+    () => (resolutions ? regionOverview(draft, resolutions) : null),
+    [resolutions, draft]
   );
 
   // Read live bounds for picking: scrolling/reflow may translate the surface
@@ -1056,6 +1062,7 @@ export function LayoutViewport({
       {transform && regionEditing && (
         <RegionBoundaryOverlay
           resolutions={regionEditing.resolutions}
+          colours={overview?.colours}
           selectedId={selectedRegion?.id}
           transform={worldTransform}
         />
@@ -1123,6 +1130,7 @@ export function LayoutViewport({
           preview={labelPreview}
           regions={draft.scene.authoringRegions}
           resolutions={regionEditing?.resolutions}
+          colours={overview?.colours}
           onSelect={(id): void => {
             labelEditing.onSelect(id);
             wallEditing?.select(null);
