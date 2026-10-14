@@ -42,12 +42,14 @@ describe('Layout region boundary projection', () => {
       </svg>
     );
     expect(
-      container
-        .querySelector('[data-region-id="room"] polygon')
-        ?.getAttribute('points')
-    ).toBe('0,0 4,0 4,4');
+      container.querySelector('[data-region-fill="room"]')?.getAttribute('d')
+    ).toBe('M0,0L4,0L4,4Z');
+    // One hexagon per counted cell in the union's one fill path.
     expect(
-      container.querySelectorAll('[data-region-id="forest"] polygon')
+      container
+        .querySelector('[data-region-fill="forest"]')
+        ?.getAttribute('d')
+        ?.match(/Z/g)
     ).toHaveLength(2);
     expect(container.querySelector('[data-region-id="broken"]')).toBeNull();
     expect(
@@ -62,7 +64,71 @@ describe('Layout region boundary projection', () => {
         />
       </svg>
     );
-    expect(container.querySelectorAll('polygon')).toHaveLength(0);
+    expect(container.querySelectorAll('path')).toHaveLength(0);
+  });
+  it('a resolved region renders a fill in its colour', () => {
+    const { container } = render(
+      <svg>
+        <RegionBoundaryOverlay
+          resolutions={[
+            {
+              id: 'hall',
+              status: 'resolved',
+              area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+            },
+          ]}
+          colours={new Map([['hall', '#5cc98a']])}
+          selectedId="hall"
+        />
+      </svg>
+    );
+    const fill = container.querySelector('[data-region-fill="hall"]')!;
+    expect(fill.getAttribute('fill')).toBe('#5cc98a');
+    expect(Number(fill.getAttribute('fill-opacity'))).toBeGreaterThan(0);
+    const outline = container.querySelector('[data-region-outline="hall"]')!;
+    expect(outline.getAttribute('stroke')).toBe('#5cc98a');
+    // Six outer edges of one hexagon; the selected outline is the thick one.
+    expect(outline.getAttribute('d')?.match(/M/g)).toHaveLength(6);
+    expect(Number(outline.getAttribute('stroke-width'))).toBeGreaterThan(2);
+  });
+  it('an unresolved region renders no fill', () => {
+    const { container } = render(
+      <svg>
+        <RegionBoundaryOverlay
+          resolutions={[{ id: 'hall', status: 'unresolved', reason: 'open' }]}
+          colours={new Map([['hall', '#5cc98a']])}
+        />
+      </svg>
+    );
+    expect(container.querySelector('[data-region-fill="hall"]')).toBeNull();
+    expect(container.querySelector('[data-region-id="hall"]')).toBeNull();
+  });
+  it('two cells of one union share an edge that is not stroked', () => {
+    const { container } = render(
+      <svg>
+        <RegionBoundaryOverlay
+          resolutions={[
+            {
+              id: 'pair',
+              status: 'resolved',
+              area: {
+                kind: 'hex-union',
+                cells: [
+                  { q: 0, r: 0 },
+                  { q: 1, r: 0 },
+                ],
+              },
+            },
+          ]}
+        />
+      </svg>
+    );
+    expect(
+      container
+        .querySelector('[data-region-outline="pair"]')
+        ?.getAttribute('d')
+        ?.match(/M/g)
+    ).toHaveLength(10);
   });
   it('names automatic/explicit modes and actionable unresolved reasons without a conflict winner', () => {
     expect(

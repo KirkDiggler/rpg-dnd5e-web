@@ -39,6 +39,7 @@ import {
   compositionGuideBounds,
   type MeasuredWorldPropBounds,
 } from './placementGuides';
+import { RegionLabels3D, type RegionLabel3D } from './RegionLabels3D';
 import type { RegionLightingProjection } from './regionLighting';
 import { layoutRepeatedProps } from './repeatPlacement';
 import { RepeatPlacementPreview } from './RepeatPlacementPreview';
@@ -96,6 +97,9 @@ import { WorldPropModel } from './WorldPropModel';
 export interface WorldBuildingViewportProps {
   /** Last committed scene. Transform previews never replace this value. */
   scene: WorldScene;
+  /** The studio's resolved regions, named in their derived colours
+   * (rpg-project#577 S3-T7). Display-only; absent draws none. */
+  regionLabels?: readonly RegionLabel3D[];
   previewScene: WorldScene | null;
   selectedIds: readonly string[];
   tool: WorldBuildingTool;
@@ -1346,6 +1350,7 @@ export function WorldSceneContents(
           rectanglePreview={rectanglePreview}
         />
       )}
+      {props.regionLabels && <RegionLabels3D labels={props.regionLabels} />}
       {props.roomAuthoring && (
         <RoomActorMarkers
           actorNames={scene.actorNames}

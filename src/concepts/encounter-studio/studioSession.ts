@@ -235,6 +235,19 @@ export interface LayoutViewportProps {
   onSelectHex?(cell: RoomHexCell): void;
   /** Select-tool click off the workspace floor selects nothing. */
   onClearSelection?(): void;
+  /** Placed creatures, props and the party start, drawn and selectable
+   * through the S0 contract (rpg-project#577). Absent draws none. */
+  placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
+  /** A request to frame these world bounds: the viewport fits them to its
+   * own size and reports the frame through onFrameChange. A new nonce is a
+   * new request; the request itself is never document state. */
+  frameTarget?: {
+    bounds: import('../world-building/workspaceGeometry').WorkspaceBounds;
+    nonce: number;
+    /** Client-pixel spans of overlays over the surface, such as the open
+     * inspector, read when the surface applies the request. */
+    occluders?(): readonly { left: number; right: number }[];
+  };
 }
 
 /** Definitions belong to the one document owner. Area commits replace region
@@ -278,6 +291,12 @@ export interface EncounterStudioSession {
   selectHex(cell: RoomHexCell | null): boolean;
   /** Select nothing: the inspector answers for the room. */
   clearSelection(): boolean;
+  /** Select scene roots by id from any view, as a 3D click does: one id is
+   * one prop or group, two or more are the Shift-pick. Refused for an
+   * unknown id, while publishing, or from a retired snapshot. */
+  selectScene(ids: readonly string[]): boolean;
+  /** Select the party start from any view. Refused when none is placed. */
+  selectPartyStart(): boolean;
   /** Arm the party-start gesture: the next 3D floor click places or moves
    * it. Refused while publishing or from a retired snapshot. */
   armPartyStart(): boolean;
@@ -369,11 +388,14 @@ export interface EncounterStudioSession {
   dismissNotice(): void;
 }
 
-export type StudioHome = 'build' | 'regions' | 'encounter';
+export type StudioHome = 'build' | 'encounter';
 
 export interface EncounterStudioPresentation {
   /** Presentation context fences hidden map input; old callers default to Build. */
   home?: StudioHome;
   view: EncounterStudioView;
+  /** Escape retires an armed tool that edits the selection (the region
+   * tool, on a region's label) instead of selecting nothing. */
+  escapeKeepsSelection?: boolean;
   render(session: EncounterStudioSession): ReactNode;
 }

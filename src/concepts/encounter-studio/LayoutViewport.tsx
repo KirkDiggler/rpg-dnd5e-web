@@ -51,8 +51,11 @@ import {
   workspaceCellAtPoint,
 } from '../world-building/workspaceGeometry';
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
+import { regionOverview } from './overviewColours';
+import { frameOf } from './overviewFrame';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
@@ -208,6 +211,8 @@ export function LayoutViewport({
   onExitWallTool,
   onSelectHex,
   onClearSelection,
+  placedEditing,
+  frameTarget,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -372,6 +377,32 @@ export function LayoutViewport({
     };
   }, [frame, onFrameChange, fitExtent]);
 
+  // Frame a requested region or the whole content, at this surface's size.
+  const frameRequestRef = useRef({ onFrameChange, fitExtent });
+  frameRequestRef.current = { onFrameChange, fitExtent };
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current;
+    if (!frameTarget || !surface) return;
+    const rect = surface.getBoundingClientRect();
+    // An overlay over one side of the surface narrows the part a frame fits.
+    const inset = { left: 0, right: 0 };
+    for (const o of frameTarget.occluders?.() ?? []) {
+      if (Math.min(o.right, rect.right) - Math.max(o.left, rect.left) <= 0)
+        continue;
+      if (o.left + o.right > rect.left + rect.right)
+        inset.right = Math.max(inset.right, rect.right - o.left);
+      else inset.left = Math.max(inset.left, o.right - rect.left);
+    }
+    const next = frameOf(
+      frameTarget.bounds,
+      rect,
+      frameRequestRef.current.fitExtent,
+      undefined,
+      inset
+    );
+    if (next) frameRequestRef.current.onFrameChange(next);
+  }, [frameTarget]);
+
   const transform = bounds
     ? createLayoutTransform(bounds, frame, fitExtent)
     : null;
@@ -382,6 +413,11 @@ export function LayoutViewport({
   const committed = useMemo(
     () => new Set(draft.room.walkableHexes.map(cellKey)),
     [draft.room.walkableHexes]
+  );
+  const resolutions = regionEditing?.resolutions;
+  const overview = useMemo(
+    () => (resolutions ? regionOverview(draft, resolutions) : null),
+    [resolutions, draft]
   );
 
   // Read live bounds for picking: scrolling/reflow may translate the surface
@@ -1056,6 +1092,7 @@ export function LayoutViewport({
       {transform && regionEditing && (
         <RegionBoundaryOverlay
           resolutions={regionEditing.resolutions}
+          colours={overview?.colours}
           selectedId={selectedRegion?.id}
           transform={worldTransform}
         />
@@ -1123,10 +1160,25 @@ export function LayoutViewport({
           preview={labelPreview}
           regions={draft.scene.authoringRegions}
           resolutions={regionEditing?.resolutions}
+          colours={overview?.colours}
           onSelect={(id): void => {
             labelEditing.onSelect(id);
             wallEditing?.select(null);
           }}
+        />
+      )}
+      {/* Placed nouns draw over the map labels: a room's label covers its
+          centre, where a creature often stands, and must not take its click. */}
+      {transform && placedEditing && (
+        <LayoutPlacedOverlay
+          monsters={draft.room.monsterDeclarations}
+          items={draft.scene.items}
+          declarations={draft.room.propDeclarations}
+          partyStart={draft.room.partyStart}
+          editing={placedEditing}
+          interactive={tool === 'select'}
+          worldTransform={worldTransform}
+          transform={transform}
         />
       )}
       {transform && (

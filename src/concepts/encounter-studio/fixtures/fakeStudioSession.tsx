@@ -39,6 +39,8 @@ export function createFakeStudioSession(
     commitArrange: vi.fn(() => true),
     selectHex: vi.fn(() => true),
     clearSelection: vi.fn(() => true),
+    selectScene: vi.fn(() => true),
+    selectPartyStart: vi.fn(() => true),
     armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     cast: {

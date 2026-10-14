@@ -116,3 +116,48 @@ it('keeps unresolved labels selectable with a visible warning and actionable tit
       .getAttribute('aria-pressed')
   ).toBe('true');
 });
+it("a region label is drawn in its region's colour; a note is not", () => {
+  const { container } = render(
+    <svg>
+      <MapLabelOverlay
+        labels={[
+          { id: 'hall-label', text: 'Hall', location: { x: 0, z: 0 } },
+          { id: 'note', text: 'Note', location: { x: 1, z: 0 } },
+        ]}
+        transform={
+          createLayoutTransform(
+            { left: 0, top: 0, width: 600, height: 600 },
+            { center: { x: 0, z: 0 }, zoom: 1 },
+            12
+          )!
+        }
+        selectedId={null}
+        preview={null}
+        onSelect={() => undefined}
+        regions={[
+          {
+            id: 'hall',
+            labelId: 'hall-label',
+            boundary: { kind: 'explicit', cells: [{ q: 0, r: 0 }] },
+          },
+        ]}
+        resolutions={[
+          {
+            id: 'hall',
+            status: 'resolved',
+            area: { kind: 'hex-union', cells: [{ q: 0, r: 0 }] },
+          },
+        ]}
+        colours={new Map([['hall', '#5cc98a']])}
+      />
+    </svg>
+  );
+  expect(
+    container
+      .querySelector('[data-label-id="hall-label"]')
+      ?.getAttribute('fill')
+  ).toBe('#5cc98a');
+  expect(
+    container.querySelector('[data-label-id="note"]')?.getAttribute('fill')
+  ).toBe('#fff4d8');
+});

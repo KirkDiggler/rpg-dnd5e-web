@@ -233,7 +233,7 @@ demotes scene6. Unknown but shape-valid material/anchor refs stay editable.
 First selection chooses one certified corner. Material changes preserve that
 choice; moving a label never moves the chart. A missing/reversed/ambiguous corner,
 unresolved boundary, incompatible wall or missing resource leaves intent intact
-and names an unapplied finish in Regions and the viewport. Repair selects a
+and names an unapplied finish in the region label's inspector view and the viewport. Repair selects a
 current offered corner explicitly. Painted areas do not infer wall ownership.
 
 The geometry owner provides clipped, oriented wall-side spans. The mapping owner
