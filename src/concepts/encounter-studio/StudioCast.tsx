@@ -2,6 +2,7 @@ import { ABILITIES, APPROACH_ABILITIES } from '@/author/types';
 import { useEffect, useState } from 'react';
 import {
   applyCastEdit,
+  castMemberOf,
   castOf,
   removeCastMember,
   RULEBOOK_MONSTER_REFS,
@@ -26,6 +27,17 @@ export const SKILL_IDS: readonly string[] = APPROACH_ABILITIES.filter(
 const MONSTER_PREFIX = 'dnd5e:monsters:';
 const SHADOW_WARNING =
   'This id also names a rulebook monster; the rulebook decides which is used.';
+
+/** A new stat block on an id that bare placements already use takes those
+ * placements over: they follow the new stat block by id. Say which, in the
+ * same count-and-ids form as a refused delete. */
+function takeoverWarning(member: CastMember): string {
+  const [first, ...rest] = member.placements;
+  const who = rest.length
+    ? `${first} and ${rest.length} other${rest.length === 1 ? '' : 's'} are`
+    : `${first} is`;
+  return `${who} placed as the rulebook ${member.name} and will follow this stat block.`;
+}
 
 /** Staged values: present keys are the author's edits, absent keys show the
  * document. Nothing here is document state. */
@@ -209,6 +221,16 @@ export function CastMemberForm({
   const skills = stage.skills ?? [...(template?.skills ?? [])];
   const factions = session.document.scope.factions ?? [];
   const faction = stage.faction ?? member?.defaults?.faction ?? '';
+  // Only a new member can land on an id bare placements already use; a
+  // rename or an adoption onto one is refused by the cast model.
+  const takenOver =
+    !member && stage.id?.trim()
+      ? castMemberOf(session.document, `${MONSTER_PREFIX}${stage.id.trim()}`)
+      : undefined;
+  const takeover =
+    takenOver?.source === 'rulebook' && takenOver.placements.length > 0
+      ? takeoverWarning(takenOver)
+      : null;
   const shadows =
     (stage.id !== undefined
       ? RULEBOOK_MONSTER_REFS.includes(`${MONSTER_PREFIX}${stage.id.trim()}`)
@@ -289,9 +311,9 @@ export function CastMemberForm({
           and defaults move to the new id.
         </p>
       )}
-      {shadows && (
+      {(shadows || takeover) && (
         <p role="status" className="es-warning">
-          {SHADOW_WARNING}
+          {takeover ?? SHADOW_WARNING}
         </p>
       )}
       <label>

@@ -391,4 +391,70 @@ describe('StudioCast', () => {
     );
     expect(history).toHaveLength(1);
   });
+
+  it('a new id that bare placements already use names the placements that will follow it', () => {
+    let document = placeCastMember(
+      createEmptyCastDocument(),
+      'goblin-1',
+      'dnd5e:monsters:goblin',
+      0
+    );
+    document = placeCastMember(
+      document,
+      'goblin-2',
+      'dnd5e:monsters:goblin',
+      1
+    );
+    document = placeCastMember(
+      document,
+      'goblin-3',
+      'dnd5e:monsters:goblin',
+      2
+    );
+    const { latest } = harness(document);
+    fireEvent.click(button('Add a cast member'));
+    change('Cast member id', 'goblin');
+    expect(screen.getByRole('status').textContent).toBe(
+      'goblin-1 and 2 others are placed as the rulebook Goblin and will follow this stat block.'
+    );
+    fireEvent.click(button('Apply'));
+    expect(latest().scope.templates?.goblin).toEqual({
+      base: 'dnd5e:monsters:human',
+    });
+    expect(member('Goblin').textContent).toBe(
+      'Goblin · stat block · 3 placements'
+    );
+  });
+
+  it('one bare placement is named alone', () => {
+    harness(
+      placeCastMember(
+        createEmptyCastDocument(),
+        'goblin-1',
+        'dnd5e:monsters:goblin',
+        0
+      )
+    );
+    fireEvent.click(button('Add a cast member'));
+    change('Cast member id', 'goblin');
+    expect(screen.getByRole('status').textContent).toBe(
+      'goblin-1 is placed as the rulebook Goblin and will follow this stat block.'
+    );
+  });
+
+  it('a rulebook id with no placements keeps the generic shadow warning', () => {
+    harness(
+      placeCastMember(
+        createEmptyCastDocument(),
+        'goblin-1',
+        'dnd5e:monsters:goblin',
+        0
+      )
+    );
+    fireEvent.click(button('Add a cast member'));
+    change('Cast member id', 'skeleton');
+    expect(screen.getByRole('status').textContent).toBe(
+      'This id also names a rulebook monster; the rulebook decides which is used.'
+    );
+  });
 });
