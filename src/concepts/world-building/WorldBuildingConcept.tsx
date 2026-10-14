@@ -4595,6 +4595,32 @@ export function WorldBuildingConcept({
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
           selectHex: guardSnapshotIntent(selectStudioHex),
+          selectScene: guardSnapshotIntent(
+            (ids: readonly string[]): boolean => {
+              const present = roomHistoryRef.current.present.draft.scene;
+              if (
+                refuseWhilePublishing() ||
+                ids.length === 0 ||
+                !ids.every((id) =>
+                  [...present.items, ...present.groups].some(
+                    (entity) => entity.id === id
+                  )
+                )
+              )
+                return false;
+              selectInScene([...ids]);
+              return true;
+            }
+          ),
+          selectPartyStart: guardSnapshotIntent((): boolean => {
+            if (
+              refuseWhilePublishing() ||
+              !roomHistoryRef.current.present.draft.room.partyStart
+            )
+              return false;
+            selectStudioActor({ kind: 'start' });
+            return true;
+          }),
           armPartyStart: guardSnapshotIntent((): boolean => {
             if (refuseWhilePublishing()) return false;
             armStartPlacement();

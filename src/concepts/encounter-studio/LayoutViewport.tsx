@@ -51,6 +51,7 @@ import {
   workspaceCellAtPoint,
 } from '../world-building/workspaceGeometry';
 import { createWorkspaceRectangleSelection } from '../world-building/workspaceRectangleSelection';
+import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { regionOverview } from './overviewColours';
@@ -209,6 +210,7 @@ export function LayoutViewport({
   onExitWallTool,
   onSelectHex,
   onClearSelection,
+  placedEditing,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -1120,6 +1122,18 @@ export function LayoutViewport({
           interactive={(tool === 'select' || tool === 'door') && !!wallEditing}
           preview={wallPreview}
           layer="body"
+        />
+      )}
+      {transform && placedEditing && (
+        <LayoutPlacedOverlay
+          monsters={draft.room.monsterDeclarations}
+          items={draft.scene.items}
+          declarations={draft.room.propDeclarations}
+          partyStart={draft.room.partyStart}
+          editing={placedEditing}
+          interactive={tool === 'select'}
+          worldTransform={worldTransform}
+          transform={transform}
         />
       )}
       {transform && labelEditing && (

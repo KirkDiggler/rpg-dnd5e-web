@@ -5493,3 +5493,38 @@ describe('the studio 3D canvas stays mounted across view switches (#1271)', () =
     ).toBeNull();
   });
 });
+
+describe('S3 the overview through the real owner', () => {
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  const glyph = (selector: string): Element =>
+    screen
+      .getByRole('application', { name: 'Layout floor surface' })
+      .querySelector(selector)!;
+
+  it('clicking a drawn creature, prop or party start in Layout opens its inspector view', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.pointerDown(glyph('[data-placed-creature="cook"] circle'), {
+      button: 0,
+    });
+    expect(
+      inspector().getByRole('region', { name: 'Read back' }).textContent
+    ).toContain('cook, a Commoner of the kitchen');
+    fireEvent.pointerDown(glyph('[data-placed-prop="altar"]'), { button: 0 });
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Altar'
+    );
+    fireEvent.pointerDown(glyph('[data-placed-prop="ledger"]'), {
+      button: 0,
+      shiftKey: true,
+    });
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      '2 props picked'
+    );
+    fireEvent.pointerDown(glyph('[data-placed-start] polygon'), { button: 0 });
+    expect(
+      inspector().getByRole('button', { name: 'Move party start' })
+    ).toBeTruthy();
+  });
+});

@@ -3,6 +3,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -15,6 +16,7 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
+import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioCast } from './StudioCast';
@@ -257,6 +259,23 @@ function StudioSurface({
     session.arrange,
     session.document.draft.scene
   );
+  const placementNames = useMemo(
+    () => documentPlacementNames(session.document),
+    [session.document]
+  );
+  const placedEditing: LayoutPlacedEditing = {
+    selected: inspection.selection,
+    picked: inspection.pick ?? undefined,
+    names: placementNames,
+    selectCreature: (id) => session.creatures.select(id),
+    selectProp: (id, extend) => {
+      const current = session.viewportProps.selectedIds;
+      session.selectScene(
+        extend ? (current.includes(id) ? current : [...current, id]) : [id]
+      );
+    },
+    selectPartyStart: () => session.selectPartyStart(),
+  };
   const armedTool =
     home !== 'build' || view !== 'layout' ? null : layoutTool === 'wall' ? (
       <StudioWallControls
@@ -739,6 +758,7 @@ function StudioSurface({
                     ? () => void session.clearSelection()
                     : undefined
                 }
+                placedEditing={home === 'build' ? placedEditing : undefined}
               />
             </div>
           )}
@@ -909,7 +929,7 @@ function StudioSurface({
               key={session.document.draft.id}
               scope={session.document.scope}
               room={session.document.draft.room}
-              placementNames={documentPlacementNames(session.document)}
+              placementNames={placementNames}
               collapsedEntries
               explicitRename
               onChange={(scope) => session.commitTables(scope.tables)}
