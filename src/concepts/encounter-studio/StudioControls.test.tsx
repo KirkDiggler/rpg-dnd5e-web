@@ -248,7 +248,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(second.text).toBe('Kitchen');
     expect(second.id).not.toBe(first.id);
     change('Existing label', second.id);
-    click('Arrange');
+    click('Inspector');
     change('Rename label', 'Courtyard');
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Kitchen');
     submit('Arrange selected noun');
@@ -300,7 +300,7 @@ describe('Task 5 controls through the real owner', () => {
     expect(storage.document().draft.scene.mapLabels![1].text).toBe('Courtyard');
     click('Label');
     change('Existing label', second.id);
-    click('Arrange');
+    click('Inspector');
     click('Delete label');
     expect(storage.document().draft.scene.mapLabels).toEqual([first]);
     click('Undo');
@@ -624,7 +624,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(
       (screen.getByLabelText('Wall midpoint X') as HTMLInputElement).value
     ).toBe('9999');
-    expect(screen.getByText(/Arrange edit refused/)).toBeTruthy();
+    expect(screen.getByText(/Edit refused/)).toBeTruthy();
     change('Wall midpoint X', '0.5');
     change('Y facing (degrees)', '-90');
     submit('Arrange selected noun');

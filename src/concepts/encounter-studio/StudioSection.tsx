@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { AboutPanel } from './FieldHelp';
 
 /** One titled part of a studio panel. The inspector's selection name is its
  * h2; a section is an h3 and a sub-section an h4, so every part of a panel
@@ -28,7 +29,9 @@ export function StudioSection({
       <Heading id={id} className="es-section-heading">
         {title}
       </Heading>
-      {about}
+      {about !== undefined && about !== null && about !== false && (
+        <AboutPanel>{about}</AboutPanel>
+      )}
       {children}
     </section>
   );

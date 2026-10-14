@@ -317,7 +317,7 @@
   color: var(--wb-muted);
 }
 
-/* Arrange is compact independently of the wider creation palettes. The
+/* The selection form is compact independently of the wider creation palettes. The
  * context layer stays pointer-transparent outside its right-aligned panels. */
 .es-arrange {
   align-self: flex-end;
@@ -903,4 +903,50 @@
   font-weight: 650;
   letter-spacing: normal;
   text-transform: none;
+}
+
+/* Help off the main flow (S5-T4): a field's "?" and a panel's "About this
+ * panel". Status and refusal lines stay inline. */
+.es-field-help {
+  display: contents;
+}
+.encounter-studio .es-help-toggle {
+  align-self: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-weight: var(--es-weight-label);
+  line-height: 1;
+}
+.encounter-studio .es-help-toggle[aria-expanded='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent);
+}
+.es-field-help-text {
+  display: block;
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+}
+.es-field-help-text[hidden] {
+  display: none;
+}
+.es-about > summary {
+  cursor: pointer;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.es-about > .es-help {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.es-arrange-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
 }

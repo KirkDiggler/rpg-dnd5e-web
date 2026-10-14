@@ -136,7 +136,7 @@ export function StudioWallFinishes({
         </button>
       )}
       {(draft.finishA !== undefined || draft.finishB !== undefined) && (
-        <p role="status">Wall finish staged · Apply Arrange to save.</p>
+        <p role="status">Wall finish staged · Apply to save.</p>
       )}
       {problems.map((problem) => (
         <p key={problem.side} role="alert">

@@ -12,6 +12,7 @@ import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
+import { AboutPanel } from './FieldHelp';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioCast } from './StudioCast';
@@ -844,22 +845,26 @@ function StudioSurface({
                 className="es-social-panel"
               >
                 <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
-                <p>
-                  {encounterSection === 'intel'
-                    ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
-                    : encounterSection === 'factions'
-                      ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
-                      : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
-                </p>
+                <AboutPanel>
+                  <p>
+                    {encounterSection === 'intel'
+                      ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
+                      : encounterSection === 'factions'
+                        ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
+                        : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
+                  </p>
+                </AboutPanel>
                 {session.socialControls[encounterSection]}
               </section>
             )}
           <div hidden={encounterSection !== 'tables'}>
             <h2>Tables</h2>
-            <p className="es-help">
-              Shared monster behavior. Define a table once; creatures and
-              factions can reference it by name.
-            </p>
+            <AboutPanel>
+              <p>
+                Shared monster behavior. Define a table once; creatures and
+                factions can reference it by name.
+              </p>
+            </AboutPanel>
             <TablesPanel
               key={session.document.draft.id}
               scope={session.document.scope}

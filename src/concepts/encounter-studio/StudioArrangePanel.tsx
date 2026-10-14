@@ -1,12 +1,13 @@
 import { paletteNameForRef } from '@/author/paletteData';
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { castMemberOf } from '../world-building/cast';
 import {
   deriveWallCornerFits,
   wallFitAsset,
 } from '../world-building/wallCornerFits';
+import { FieldHelp } from './FieldHelp';
 import {
   arrangeFields,
   arrangeIntent,
@@ -35,7 +36,7 @@ function StudioArrangeField({
   draft: ArrangeDraft;
   onChange(key: ArrangeFieldKey, value: string): void;
 }): React.JSX.Element {
-  return (
+  const row = (
     <label className="es-arrange-row">
       <span>{field.label}</span>
       {field.choices ? (
@@ -61,6 +62,14 @@ function StudioArrangeField({
         />
       )}
     </label>
+  );
+  return field.help ? (
+    <div className="es-arrange-field">
+      {row}
+      <FieldHelp field={field.label}>{field.help}</FieldHelp>
+    </div>
+  ) : (
+    row
   );
 }
 
@@ -114,10 +123,37 @@ function SelectedArrange({
     setDraft({});
     setError(null);
   };
+  /** Set while this form's own picker commits: the document it produces
+   * keeps the other staged fields rather than discarding them. */
+  const pickerCommit = useRef(false);
   useEffect(() => {
+    if (pickerCommit.current) {
+      pickerCommit.current = false;
+      return;
+    }
     setDraft({});
     setError(null);
   }, [session.document, session.intentEpoch]);
+  /** A self-contained picker applies on change, as its own history entry
+   * (S5-Q1). Text and number fields stay staged behind Apply. */
+  const commitPicker = (patch: ArrangeDraft): void => {
+    let intent;
+    try {
+      intent = arrangeIntent(selection, patch);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      return;
+    }
+    if (!intent) return;
+    pickerCommit.current = true;
+    if (session.commitArrange(intent)) setError(null);
+    else {
+      pickerCommit.current = false;
+      setError(
+        'Edit refused. Review the document notice; your inputs are unchanged.'
+      );
+    }
+  };
   const cornerInfo = useMemo(
     () => deriveWallCornerFits(session.document.draft.room.walls ?? []),
     [session.document.draft.room.walls]
@@ -141,8 +177,7 @@ function SelectedArrange({
         ) {
           try {
             const appearanceRef = chooseNpcAppearance({
-              currentRef:
-                draft.appearanceRef ?? selection.monster.appearanceRef,
+              currentRef: selection.monster.appearanceRef,
               control:
                 key === 'appearanceFamily'
                   ? 'family'
@@ -151,11 +186,14 @@ function SelectedArrange({
                     : 'skinPalette',
               value,
             });
-            setDraft((previous) => ({ ...previous, appearanceRef }));
-            setError(null);
+            commitPicker({ appearanceRef });
           } catch (error) {
             setError(error instanceof Error ? error.message : String(error));
           }
+          return;
+        }
+        if (field.applyOnChange) {
+          commitPicker({ [key]: value });
           return;
         }
         setDraft((previous) => {
@@ -174,35 +212,46 @@ function SelectedArrange({
       className="es-context-panel es-arrange"
       aria-label="Arrange selection"
     >
-      {heading && <h2>Arrange · {selectionName(selection, session)}</h2>}
-      <StudioSection title="Placement" level="section">
+      {heading && <h2>{selectionName(selection, session)}</h2>}
+      <StudioSection
+        title="Placement"
+        level="section"
+        about={
+          <>
+            {selection.kind === 'wall' && (
+              <p>
+                Heading is Start → End: 0° and −180° can be parallel. Hover an
+                endpoint in Layout for X/Z.
+              </p>
+            )}
+            <p>
+              {selection.kind === 'scene'
+                ? selection.rootCount === 1
+                  ? 'World position · world units'
+                  : 'Selection pivot · world units'
+                : selection.kind === 'wall'
+                  ? 'Wall line endpoints · world X/Z units'
+                  : selection.kind === 'door'
+                    ? 'Along owning wall · world units'
+                    : selection.kind === 'label'
+                      ? 'World position · world units'
+                      : 'Starting hex · q / r'}
+            </p>
+          </>
+        }
+      >
         {lead}
         {selection.kind === 'wall' && (
           <StudioWallConstraints editing={session.wallEditing} />
         )}
         {selection.kind === 'wall' && (
           <p className="es-help">
-            Heading is Start → End: 0° and −180° can be parallel. Hover an
-            endpoint in Layout for X/Z.{' '}
             {!wallFitAsset(selection.wall.appearance.assetRef)
               ? 'This appearance has no verified miter fit. Choose Castle Wall Fit 01 on both walls for automatic flush corners.'
               : (cornerInfo.reasons.get(selection.wall.id) ??
                 'Supported joined corners fit automatically.')}
           </p>
         )}
-        <p className="es-help">
-          {selection.kind === 'scene'
-            ? selection.rootCount === 1
-              ? 'World position · world units'
-              : 'Selection pivot · world units'
-            : selection.kind === 'wall'
-              ? 'Wall line endpoints · world X/Z units'
-              : selection.kind === 'door'
-                ? 'Along owning wall · world units'
-                : selection.kind === 'label'
-                  ? 'World position · world units'
-                  : 'Starting hex · q / r'}
-        </p>
         {preview && (
           <p role="status">
             Preview · Finish or cancel the canvas gesture before applying.
@@ -219,9 +268,6 @@ function SelectedArrange({
                 </dd>
               </div>
             </dl>
-            <p className="es-help">
-              Map name is an authoring label, not a stat-block change.
-            </p>
             {onMoveCreature && (
               <button type="button" onClick={onMoveCreature}>
                 Move creature
@@ -270,7 +316,7 @@ function SelectedArrange({
               if (session.commitArrange(intent)) reset();
               else
                 setError(
-                  'Arrange edit refused. Review the document notice; your inputs are unchanged.'
+                  'Edit refused. Review the document notice; your inputs are unchanged.'
                 );
             } catch (caught) {
               setError(
@@ -380,10 +426,10 @@ function SelectedArrange({
           )}
           <div className="es-buttons">
             <button type="submit" disabled={preview}>
-              Apply Arrange
+              Apply
             </button>
             <button type="button" onClick={reset}>
-              Cancel Arrange
+              Cancel
             </button>
             {(selection.kind === 'wall' ||
               selection.kind === 'label' ||

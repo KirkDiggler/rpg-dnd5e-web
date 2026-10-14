@@ -480,8 +480,9 @@ describe('StudioInspector', () => {
     /** The value a cast summary gives one term. */
     const fact = (term: string): string =>
       castSection()
-        .getByText(term, { selector: 'dt' })
-        .nextElementSibling?.textContent?.trim() ?? '';
+        .getAllByRole('term')
+        .find((dt) => dt.firstChild?.textContent?.trim() === term)
+        ?.nextElementSibling?.textContent?.trim() ?? '';
 
     it('the creature view names its cast member and links to it', () => {
       const onOpenCastMember = vi.fn();
@@ -521,9 +522,7 @@ describe('StudioInspector', () => {
       fireEvent.change(within(region()).getByLabelText('Style'), {
         target: { value: '02' },
       });
-      fireEvent.click(
-        within(region()).getByRole('button', { name: 'Apply Arrange' })
-      );
+      fireEvent.click(within(region()).getByRole('button', { name: 'Apply' }));
       expect(session.commitArrange).toHaveBeenCalledTimes(1);
       const intent = vi.mocked(session.commitArrange).mock
         .calls[0]![0] as Extract<StudioArrangeIntent, { kind: 'actor-start' }>;
@@ -791,6 +790,105 @@ describe('StudioInspector', () => {
       expect(kind.textContent).toBe('Goblin');
       expect(kind.getAttribute('title')).toBe('dnd5e:monsters:goblin');
       expect(region().textContent).not.toContain('Rules:');
+    });
+  });
+
+  describe('S5 Apply, Cancel and help off the flow', () => {
+    function goblin(): EncounterStudioSession {
+      const session = createFakeStudioSession();
+      const draft = placeRoomMonster(session.document.draft, {
+        id: 'guard',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 0, r: 0 } },
+      });
+      return selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'actor', id: 'guard' }
+      );
+    }
+
+    it('no button, status or message in the studio contains Arrange', () => {
+      const views: EncounterStudioSession[] = [
+        createFakeStudioSession(),
+        goblin(),
+        selected(populated(), { kind: 'wall', id: 'studio-wall' }),
+        selected(populated(), {
+          kind: 'door',
+          wallId: 'studio-wall',
+          openingId: 'studio-opening',
+          doorId: 'studio-door',
+        }),
+        selected(withScene(), { kind: 'scene', ids: ['barrel'] }),
+        selected(withScene(), { kind: 'scene', ids: ['barrel', 'shelf'] }),
+        selected(populated(), { kind: 'start' }),
+      ];
+      for (const session of views) {
+        inspector(session);
+        const visible = [
+          ...within(region()).queryAllByRole('button'),
+          ...within(region()).queryAllByRole('status'),
+          ...within(region()).queryAllByRole('alert'),
+          ...region().querySelectorAll('h2, h3, h4, p, label, dt, dd'),
+        ].map((element) => element.textContent ?? '');
+        expect(visible.filter((text) => /Arrange/.test(text))).toEqual([]);
+        cleanup();
+      }
+    });
+
+    it('Map name has a help affordance and no inline sentence', () => {
+      inspector(goblin());
+      const sentence =
+        'Map name is an authoring label, not a stat-block change.';
+      const help = within(region()).getByRole('button', {
+        name: 'About Map name',
+      });
+      expect(help.getAttribute('aria-expanded')).toBe('false');
+      const text = within(region()).getByText(sentence);
+      // Hidden until asked for, and not a paragraph in the form's flow.
+      expect(text.hidden).toBe(true);
+      expect(text.closest('p')).toBeNull();
+      fireEvent.click(help);
+      expect(help.getAttribute('aria-expanded')).toBe('true');
+      expect(text.hidden).toBe(false);
+    });
+
+    it('the About this panel disclosure is collapsed by default', () => {
+      inspector(selected(populated(), { kind: 'wall', id: 'studio-wall' }));
+      const about = within(region())
+        .getByText('About this panel')
+        .closest('details')!;
+      expect(about.open).toBe(false);
+      expect(about.textContent).toContain('Heading is Start → End');
+    });
+
+    it('changing facing commits one intent without Apply', () => {
+      const session = goblin();
+      inspector(session);
+      fireEvent.change(within(region()).getByLabelText('Starting facing'), {
+        target: { value: 'ne' },
+      });
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
+      expect(session.commitArrange).toHaveBeenCalledWith({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'guard' },
+        facing: { kind: 'compass', value: 'ne' },
+      });
+    });
+
+    it('typing a map name commits only on Apply', () => {
+      const session = goblin();
+      inspector(session);
+      fireEvent.change(within(region()).getByLabelText('Map name'), {
+        target: { value: 'Gatekeeper' },
+      });
+      expect(session.commitArrange).not.toHaveBeenCalled();
+      fireEvent.click(within(region()).getByRole('button', { name: 'Apply' }));
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
+      expect(session.commitArrange).toHaveBeenCalledWith({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'guard' },
+        mapName: 'Gatekeeper',
+      });
     });
   });
 });

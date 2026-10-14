@@ -18,6 +18,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
   StudioWallAppearanceOption,
@@ -5011,13 +5012,17 @@ export function WorldBuildingConcept({
                         setMonsterOrders(arrange.monster.id, next)
                     )}
                   />
-                  <section aria-label="Authored disposition context">
-                    <h4>Authored dispositions</h4>
-                    <p>
-                      These are authored relationships, not a live stance
-                      calculation. Conditions and knowledge are evaluated by the
-                      engine.
-                    </p>
+                  <StudioSection
+                    title="Authored dispositions"
+                    level="subsection"
+                    about={
+                      <p>
+                        These are authored relationships, not a live stance
+                        calculation. Conditions and knowledge are evaluated by
+                        the engine.
+                      </p>
+                    }
+                  >
                     <ul>
                       {(siteScope.dispositions ?? [])
                         .filter((entry) => {
@@ -5044,7 +5049,7 @@ export function WorldBuildingConcept({
                           </li>
                         ))}
                     </ul>
-                  </section>
+                  </StudioSection>
                 </>
               ) : arrange?.kind === 'scene' ? (
                 selectedProp && optionSections.single ? (

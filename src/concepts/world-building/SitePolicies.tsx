@@ -48,6 +48,7 @@ import {
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
 import { CopyId } from '../encounter-studio/CopyId';
+import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
@@ -1757,7 +1758,10 @@ function CreatureWeaponEditor({
   const usable = WEAPON_REF_RE.test(draft.trim());
   return (
     <div className="wb-policy-table-editor" data-testid="creature-weapons">
-      <p className="wb-help">What it fights with, in order.</p>
+      <p className="wb-help">
+        Weapons{' '}
+        <FieldHelp field="Weapons">What it fights with, in order.</FieldHelp>
+      </p>
       {actions.length === 0 ? (
         <p className="wb-help" data-testid="creature-weapons-none">
           No weapons authored — this creature keeps its kind’s default.
@@ -2161,6 +2165,17 @@ export function CreatureOrders({
     binding?.table !== undefined ? scope.tables?.[binding.table] : undefined;
   return (
     <div className="wb-creature-orders" aria-label="Selected creature">
+      <AboutPanel>
+        <p data-testid="faction-layer-rule">
+          A faction’s `on:` is layered nearest key wins WHOLESALE: a placement
+          that writes its own `time` replaces the faction’s `time` entirely —
+          the entry lists are never merged.
+        </p>
+        <p data-testid="temper-asymmetry">
+          A faction’s `temper` is a word or a mix; a placement’s is one word,
+          and the placement’s word wins — the mix is not dealt for it.
+        </p>
+      </AboutPanel>
       {titled && (
         <>
           <h4>Selected creature</h4>
@@ -2439,16 +2454,6 @@ export function CreatureOrders({
           </p>
         )}
       </StudioSection>
-
-      <p className="wb-help" data-testid="faction-layer-rule">
-        A faction’s `on:` is layered nearest key wins WHOLESALE: a placement
-        that writes its own `time` replaces the faction’s `time` entirely — the
-        entry lists are never merged.
-      </p>
-      <p className="wb-help" data-testid="temper-asymmetry">
-        A faction’s `temper` is a word or a mix; a placement’s is one word, and
-        the placement’s word wins — the mix is not dealt for it.
-      </p>
     </div>
   );
 }

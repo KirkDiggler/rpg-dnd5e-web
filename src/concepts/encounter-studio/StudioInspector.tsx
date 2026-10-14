@@ -8,6 +8,7 @@ import {
 } from '../world-building/cast';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
+import { FieldHelp } from './FieldHelp';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -375,7 +376,12 @@ function CreatureCast({
     <section aria-label="Cast member" className="es-cast-summary">
       <dl className="es-facts">
         <div>
-          <dt>Cast member</dt>
+          <dt>
+            Cast member{' '}
+            <FieldHelp field="Cast member">
+              Changes to {member.name} reach every placement.
+            </FieldHelp>
+          </dt>
           <dd>
             <button
               type="button"
@@ -406,17 +412,16 @@ function CreatureCast({
           </dd>
         </div>
         <div>
-          <dt>Faction</dt>
-          <dd>
-            {faction ?? 'none'}.{' '}
-            <span className="es-help">
+          <dt>
+            Faction{' '}
+            <FieldHelp field="Faction">
               Stamped at placement. Changing {member.name}&apos;s default
               faction does not change this.
-            </span>
-          </dd>
+            </FieldHelp>
+          </dt>
+          <dd>{faction ?? 'none'}</dd>
         </div>
       </dl>
-      <p className="es-help">Changes to {member.name} reach every placement.</p>
     </section>
   );
 }
@@ -480,7 +485,22 @@ function HexView({
     labels.find((label) => label.id === id)?.text ?? id;
   return (
     <div className="es-context-panel es-hex-view">
-      <StudioSection title="Cell" level="section">
+      <StudioSection
+        title="Cell"
+        level="section"
+        about={
+          <>
+            <p>
+              A drawn region names this hex for authoring. It is not membership
+              for a rule.
+            </p>
+            <p>
+              The play values are the only ones the encounter document accepts.
+              Editing them is a toolkit change.
+            </p>
+          </>
+        }
+      >
         <p>
           Cell q {arrange.cell.q}, r {arrange.cell.r}
         </p>
@@ -515,19 +535,11 @@ function HexView({
           ) : (
             <p className="es-help">No region is drawn here.</p>
           )}
-          <p className="es-help">
-            A drawn region names this hex for authoring. It is not membership
-            for a rule.
-          </p>
         </StudioSection>
         <StudioSection title="Play" level="subsection">
           <p>
             Void: {PLAY_CONTRACT.void} · Lighting: {PLAY_CONTRACT.lighting} ·
             Standing: {PLAY_CONTRACT.standing}
-          </p>
-          <p className="es-help">
-            The encounter document accepts only these values. Editing them is a
-            toolkit change.
           </p>
         </StudioSection>
       </StudioSection>
@@ -573,7 +585,9 @@ function PartyStartView({
           <button type="button" onClick={onPlacePartyStart}>
             Move party start
           </button>
-          <span className="es-help">The next floor click in 3D places it.</span>
+          <FieldHelp field="Move party start">
+            The next floor click in 3D places it.
+          </FieldHelp>
         </div>
       }
     />

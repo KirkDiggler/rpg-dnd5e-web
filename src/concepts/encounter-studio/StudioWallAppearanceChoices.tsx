@@ -42,7 +42,7 @@ export function StudioWallAppearanceChoices({
           onChange={(event) => setSearch(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              // A filter is presentation-only even inside the Arrange form:
+              // A filter is presentation-only even inside the selection form:
               // block native implicit submit AND the form's Enter handler.
               event.preventDefault();
               event.stopPropagation();
