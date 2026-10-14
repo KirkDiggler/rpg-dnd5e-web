@@ -36,6 +36,11 @@ export function FieldHelp({
 export const STUDIO_ONLY_HELP =
   'Play does not render this yet; it stays in the studio until the look catalog.';
 
+/** Region lighting does not reach play, and whether it should is open
+ * (R19): its field says so without naming the look catalog. */
+export const LIGHTING_STUDIO_ONLY_HELP =
+  'Play does not render this yet; whether it should is undecided.';
+
 /** A panel's own help, behind one disclosure that starts closed. */
 export function AboutPanel({
   children,

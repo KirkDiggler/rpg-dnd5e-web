@@ -6491,7 +6491,7 @@ describe('Save and Play through the real owner (S6)', () => {
     expect(helpText('Wall finish')).toBe(STUDIO_ONLY);
   });
 
-  it("a region's wall finish and lighting fields carry the studio-only help line", async () => {
+  it("a region's wall finish says studio-only and its lighting says undecided", async () => {
     installFinishPreview();
     mount(new MemoryStorage({ draft: finishRoomFixture(true), scope: {} }));
     await settled();
@@ -6502,6 +6502,8 @@ describe('Save and Play through the real owner (S6)', () => {
       )
     );
     expect(helpText('Region wall finish')).toBe(STUDIO_ONLY);
-    expect(helpText('Background light (%)')).toBe(STUDIO_ONLY);
+    expect(helpText('Background light (%)')).toBe(
+      'Play does not render this yet; whether it should is undecided.'
+    );
   });
 });

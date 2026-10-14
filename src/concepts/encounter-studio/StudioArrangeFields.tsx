@@ -5,7 +5,7 @@ import {
   npcAppearanceOptions,
 } from '@/npc-appearances/npcAppearanceChoices';
 import { documentPlacementNames } from '../world-building/placementNames';
-import { STUDIO_ONLY_HELP } from './FieldHelp';
+import { LIGHTING_STUDIO_ONLY_HELP } from './FieldHelp';
 import type {
   AuthoringRegion,
   EncounterStudioSession,
@@ -185,7 +185,7 @@ export function arrangeFields(
                 key: 'background' as const,
                 label: 'Background light (%)',
                 numeric: true,
-                help: STUDIO_ONLY_HELP,
+                help: LIGHTING_STUDIO_ONLY_HELP,
                 value: selection.region.lighting
                   ? display(selection.region.lighting.background * 100)
                   : '',
