@@ -259,6 +259,9 @@ export function arrangeFields(
         numeric('q', 'Starting hex q', selection.cell.q),
         numeric('r', 'Starting hex r', selection.cell.r),
       ];
+    case 'hex':
+      // Read-only in S0: the play contract is the dialect's, not the form's.
+      return [];
   }
 }
 
@@ -450,6 +453,8 @@ export function arrangeIntent(
         target: selection.target,
         location: cell(selection.cell),
       };
+    case 'hex':
+      return null;
   }
 }
 

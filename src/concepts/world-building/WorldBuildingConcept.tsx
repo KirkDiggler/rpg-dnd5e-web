@@ -236,9 +236,11 @@ function studioTargetKey(target: StudioArrangeTarget | null): string {
           }
         : target?.kind === 'start'
           ? { kind: 'start' }
-          : target
-            ? { kind: target.kind, id: target.id }
-            : null
+          : target?.kind === 'hex'
+            ? { kind: 'hex', q: target.cell.q, r: target.cell.r }
+            : target
+              ? { kind: target.kind, id: target.id }
+              : null
   );
 }
 

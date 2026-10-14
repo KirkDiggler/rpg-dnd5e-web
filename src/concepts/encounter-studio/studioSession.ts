@@ -16,8 +16,11 @@ import type {
   StudioArrangeIntent,
   StudioArrangeSelection,
 } from '../world-building/studioArrange';
-import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
-import type { WorldPoint } from '../world-building/types';
+import type {
+  StudioDoorEditing,
+  StudioDoorTarget,
+} from '../world-building/studioDoorEditing';
+import type { WorldPoint, WorldScene } from '../world-building/types';
 import type { WallCornerJoin } from '../world-building/wallCornerJoins';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
@@ -60,6 +63,72 @@ export type {
 export type { WorldPoint } from '../world-building/types';
 
 export type EncounterStudioView = 'layout' | '3d';
+
+/** The inspector's key: one thing, derived from the owner's arbiter on every
+ * render and never stored. Nine kinds; `nothing` is the room. */
+export type StudioSelection =
+  | { readonly kind: 'nothing' }
+  | { readonly kind: 'wall'; readonly id: string }
+  | { readonly kind: 'door'; readonly target: StudioDoorTarget }
+  /** monsterDeclarations[].id */
+  | { readonly kind: 'creature'; readonly id: string }
+  /** One scene root that is an item. */
+  | { readonly kind: 'prop'; readonly id: string }
+  /** One scene root that is a group. */
+  | { readonly kind: 'group'; readonly id: string }
+  | { readonly kind: 'hex'; readonly cell: RoomHexCell }
+  /** A map label, with or without a region. */
+  | { readonly kind: 'label'; readonly id: string }
+  | { readonly kind: 'partyStart' };
+
+/** The scene multi-pick that feeds Group selection is a PICK, not a
+ * selection: while two or more roots are picked, nothing is inspected. */
+export interface StudioInspection {
+  readonly selection: StudioSelection;
+  /** Scene root ids when two or more are picked, else null. */
+  readonly pick: readonly string[] | null;
+}
+
+const NOTHING: StudioInspection = {
+  selection: { kind: 'nothing' },
+  pick: null,
+};
+
+export function studioInspectionOf(
+  arrange: StudioArrangeSelection | null,
+  scene: Readonly<WorldScene>
+): StudioInspection {
+  if (!arrange) return NOTHING;
+  const one = (selection: StudioSelection): StudioInspection => ({
+    selection,
+    pick: null,
+  });
+  switch (arrange.kind) {
+    case 'scene': {
+      if (arrange.rootIds.length >= 2)
+        return { selection: { kind: 'nothing' }, pick: [...arrange.rootIds] };
+      const id = arrange.rootIds[0];
+      if (id === undefined) return NOTHING;
+      if (scene.groups.some((group) => group.id === id))
+        return one({ kind: 'group', id });
+      if (scene.items.some((item) => item.id === id))
+        return one({ kind: 'prop', id });
+      return NOTHING;
+    }
+    case 'wall':
+      return one({ kind: 'wall', id: arrange.wall.id });
+    case 'door':
+      return one({ kind: 'door', target: arrange.target });
+    case 'actor':
+      return one({ kind: 'creature', id: arrange.monster.id });
+    case 'start':
+      return one({ kind: 'partyStart' });
+    case 'label':
+      return one({ kind: 'label', id: arrange.label.id });
+    case 'hex':
+      return one({ kind: 'hex', cell: { ...arrange.cell } });
+  }
+}
 export type StudioSocialSection =
   | 'intel'
   | 'factions'

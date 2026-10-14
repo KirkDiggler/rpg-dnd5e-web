@@ -84,6 +84,8 @@ function selectionName(
       return selection.mapName ?? selection.monster.id;
     case 'start':
       return 'Party start';
+    case 'hex':
+      return `Hex ${selection.cell.q}, ${selection.cell.r}`;
   }
 }
 

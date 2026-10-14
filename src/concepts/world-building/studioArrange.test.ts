@@ -9,6 +9,7 @@ import {
   createRoomDraft,
   placeRoomMonster,
   setRoomPartyStart,
+  updateWalkableHexes,
   type RoomDraft,
 } from './roomDraft';
 import {
@@ -33,6 +34,7 @@ import {
   type StudioArrangeSelection,
   type StudioArrangeTarget,
 } from './studioArrange';
+import { centeredRoomWorkspace } from './workspaceGeometry';
 
 describe('linked label Arrange projection', () => {
   it('projects real definitions/resolution without a separate region target or render write', () => {
@@ -814,4 +816,75 @@ it('linked label Arrange carries canonical authored lighting even when unresolve
   expect(value.scene.authoringRegions![0].boundary).not.toHaveProperty(
     'witness'
   );
+});
+
+describe('hex Arrange projection', () => {
+  const hall = (): RoomDraft => {
+    const base = updateWalkableHexes(
+      {
+        ...createRoomDraft(createEmptyScene('scene'), 'room'),
+        workspace: centeredRoomWorkspace(6, 6),
+      },
+      [{ q: 1, r: 1 }],
+      'paint'
+    );
+    return {
+      ...base,
+      scene: {
+        ...base.scene,
+        authoringRegions: [
+          {
+            id: 'hall',
+            labelId: 'hall-label',
+            boundary: { kind: 'explicit', cells: [{ q: 1, r: 1 }] },
+          },
+        ],
+      },
+    };
+  };
+  const target = (q: number, r: number) =>
+    ({ kind: 'hex', cell: { q, r } }) as const;
+
+  it('projects a hex inside the workspace with walkable and regions', () => {
+    const value = hall();
+    const projection = projectStudioArrange({
+      draft: value,
+      target: target(1, 1),
+      selectionRevision: 3,
+      regionResolutions: [
+        {
+          id: 'hall',
+          status: 'resolved',
+          area: { kind: 'hex-union', cells: [{ q: 1, r: 1 }] },
+        },
+      ],
+    });
+    expect(projection?.kind).toBe('hex');
+    if (projection?.kind !== 'hex') return;
+    expect(projection.walkable).toBe(true);
+    expect(projection.regions[0]?.id).toBe('hall');
+    expect(projection.cell).toEqual({ q: 1, r: 1 });
+    expect(projection.selectionKey).toBe(
+      JSON.stringify({ kind: 'hex', q: 1, r: 1 })
+    );
+  });
+
+  it('masks a hex outside the workspace', () => {
+    expect(
+      projectStudioArrange({
+        draft: hall(),
+        target: target(40, 0),
+        selectionRevision: 1,
+      })
+    ).toBeNull();
+  });
+
+  it('projects a non-walkable hex', () => {
+    const projection = projectStudioArrange({
+      draft: hall(),
+      target: target(0, 0),
+      selectionRevision: 1,
+    });
+    expect(projection).toMatchObject({ kind: 'hex', walkable: false });
+  });
 });
