@@ -385,11 +385,14 @@ export interface EncounterStudioSession {
   dismissNotice(): void;
 }
 
-export type StudioHome = 'build' | 'regions' | 'encounter';
+export type StudioHome = 'build' | 'encounter';
 
 export interface EncounterStudioPresentation {
   /** Presentation context fences hidden map input; old callers default to Build. */
   home?: StudioHome;
   view: EncounterStudioView;
+  /** Escape retires an armed tool that edits the selection (the region
+   * tool, on a region's label) instead of selecting nothing. */
+  escapeKeepsSelection?: boolean;
   render(session: EncounterStudioSession): ReactNode;
 }

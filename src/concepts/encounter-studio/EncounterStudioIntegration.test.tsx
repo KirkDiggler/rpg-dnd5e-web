@@ -1073,7 +1073,7 @@ describe('Studio authoring homes through the real owner', () => {
   it('fences hidden 3D mutations and old callbacks across homes while table commits still use shared history', () => {
     const storage = new MemoryStorage(seed());
     let session!: EncounterStudioSession;
-    const owner = (home: 'build' | 'regions' | 'encounter') => (
+    const owner = (home: 'build' | 'encounter') => (
       <WorldBuildingConcept
         roomMode
         compositionSource={source}
@@ -1345,31 +1345,31 @@ describe('Studio authoring homes through the real owner', () => {
     expect(storage.document().draft.scene.version).toBe(7);
   });
 
-  it('Regions list selects the canonical room and applies background without changing geometry or policies', () => {
+  it("a region label's view edits background light through one intent", () => {
     const storage = new MemoryStorage(createRegionLightingDocument(false));
     mount(storage);
     const before = storage.document();
+    const writes = storage.roomWrites();
     expect(button('Select').getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(button('Regions'));
     fireEvent.click(button('Edit region left'));
-    fireEvent.change(screen.getByLabelText('Background light (%)'), {
+    const inspector = within(screen.getByRole('region', { name: 'Inspector' }));
+    expect(inspector.getByRole('region', { name: 'Region' })).toBeTruthy();
+    fireEvent.change(inspector.getByLabelText('Background light (%)'), {
       target: { value: '25' },
     });
-    fireEvent.click(button('Apply'));
+    fireEvent.click(inspector.getByRole('button', { name: 'Apply' }));
     expect(
       storage.document().draft.scene.authoringRegions![0].lighting
     ).toEqual({ background: 0.25 });
     expect(storage.document().draft.room).toEqual(before.draft.room);
     expect(storage.document().scope).toEqual(before.scope);
-    fireEvent.click(button('Build'));
+    expect(storage.roomWrites()).toBe(writes + 1);
     expect(
-      screen.queryByRole('button', { name: 'Use baseline appearance' })
-    ).toBeNull();
-    expect(button('Edit region settings')).toBeTruthy();
-    fireEvent.click(button('Edit region settings'));
-    expect(
-      (screen.getByLabelText('Background light (%)') as HTMLInputElement).value
+      (inspector.getByLabelText('Background light (%)') as HTMLInputElement)
+        .value
     ).toBe('25');
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
   });
 });
 
@@ -5600,5 +5600,106 @@ describe('S3 the overview through the real owner', () => {
     expect(
       screen.getByRole('contentinfo', { name: 'Layout counts' }).textContent
     ).toBe('8 areas · 9 creatures · 3504 hexes · 6 doors');
+  });
+
+  const row = (name: string): HTMLElement =>
+    within(screen.getByRole('list', { name: 'Room list' })).getByRole(
+      'button',
+      { name: new RegExp(`^Room ${name},`) }
+    );
+  const pressed = (name: string): string | null =>
+    within(screen.getByRole('navigation', { name: 'Studio home' }))
+      .getByRole('button', { name })
+      .getAttribute('aria-pressed');
+
+  it('Define explicit area arms the region tool in Layout', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    fireEvent.click(row('Chapel'));
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Define explicit area' })
+    );
+    const armed = within(
+      screen.getByLabelText('Explicit region area controls')
+    );
+    expect(
+      armed.getAllByRole('button').map((node) => node.textContent)
+    ).toEqual([
+      'Paint region',
+      'Erase region',
+      'Rectangle region',
+      'Done area editing',
+    ]);
+    expect(
+      armed
+        .getByRole('button', { name: 'Paint region' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(surface().querySelector('desc')?.textContent).toMatch(
+      /Drag to paint region membership only/
+    );
+    expect(pressed('Build')).toBe('true');
+    // Escape retires the tool and keeps the region's label selected.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByLabelText('Explicit region area controls')).toBeNull();
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Chapel'
+    );
+  });
+
+  it("the hex view's Edit region selects the label without changing home", async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    // A bare floor click in the courtyard selects that hex.
+    const courtyard = KEEP_ROOMS.find((room) => room.id === 'courtyard')!;
+    const cell = keepRoomCells(courtyard)[40];
+    const point = onSurface(layoutCellCenter(cell));
+    fireEvent.pointerDown(surface(), {
+      clientX: bounds.left + point.x,
+      clientY: bounds.top + point.y,
+      button: 0,
+      pointerId: 3,
+    });
+    expect(inspector().getByText(`Cell q ${cell.q}, r ${cell.r}`)).toBeTruthy();
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Edit region Courtyard' })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Courtyard'
+    );
+    expect(inspector().getByRole('region', { name: 'Region' })).toBeTruthy();
+    expect(pressed('Build')).toBe('true');
+    expect(row('Courtyard').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('Remove region removes the region and its label', async () => {
+    const storage = new MemoryStorage(createCastleKeepDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    fireEvent.click(row('Armoury'));
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Delete region and label' })
+    );
+    const after = storage.document();
+    expect(
+      after.draft.scene.authoringRegions!.map((region) => region.id)
+    ).not.toContain('region-armoury');
+    expect(
+      after.draft.scene.mapLabels!.some((label) => label.id === 'label-armoury')
+    ).toBe(false);
+    expect(after.draft.scene.authoringRegions).toHaveLength(
+      before.draft.scene.authoringRegions!.length - 1
+    );
+    expect(after.draft.room).toEqual(before.draft.room);
+    expect(
+      within(screen.getByRole('list', { name: 'Room list' })).queryByRole(
+        'button',
+        { name: /^Room Armoury,/ }
+      )
+    ).toBeNull();
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(before);
   });
 });

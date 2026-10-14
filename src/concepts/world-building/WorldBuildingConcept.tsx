@@ -580,6 +580,11 @@ export function WorldBuildingConcept({
       ? (studioPresentation.home ?? 'build')
       : undefined;
   const studioHomeRef = useRef(studioHome);
+  /** Escape retires the presentation's armed region tool, not the label
+   * selection that tool edits. */
+  const escapeKeepsSelectionRef = useRef(false);
+  escapeKeepsSelectionRef.current =
+    studioPresentation?.escapeKeepsSelection ?? false;
   const viewportGenerationRef = useRef(0);
   const [, refreshViewportGeneration] = useState(0);
   // Retire callbacks synchronously before renderer cleanup/effects. Returning
@@ -1581,10 +1586,12 @@ export function WorldBuildingConcept({
         setPreviewScene(null);
         setActiveDrag(null);
         if (roomMode) setSelectedActorId(null);
-        // Build only: the Regions home keeps its label selection (S3).
+        // Escape selects nothing, except while an armed tool edits the
+        // selection: the region tool retires and its label stays selected.
         if (
           studioPresentation &&
           (studioHomeRef.current ?? 'build') === 'build' &&
+          !escapeKeepsSelectionRef.current &&
           !publishBusyRef.current
         )
           clearStudioSelection();

@@ -18,6 +18,7 @@ import {
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
 import { StudioDimensions } from './StudioDimensions';
+import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
 import type {
   EncounterStudioSession,
@@ -44,8 +45,11 @@ export interface StudioInspectorProps {
   onMoveCreature(): void;
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
-  /** Open the Regions home on the region linked to this label. */
+  /** Select the region's label: its label view holds the region. */
   onOpenRegion(labelId: string): void;
+  /** Arm the region tool in Layout for the selected region label. Absent
+   * outside Layout. */
+  onDefineRegion?(): void;
   /** Arm the party-start gesture; the next 3D floor click places it. */
   onPlacePartyStart(): void;
   /** Open one cast member, by its monster ref (rpg-project#575). */
@@ -135,15 +139,21 @@ function CastMemberView({
   );
 }
 
-/** The one-transaction form for the selected noun, without the Regions
- * home's heading. */
+/** The one-transaction form for the selected noun, under the inspector's
+ * own heading. */
 function Form({
   session,
   onConfigure,
   onMoveCreature,
+  onDefineRegion,
   ...composition
 }: Pick<StudioInspectorProps, 'session'> &
-  Partial<Pick<StudioInspectorProps, 'onConfigure' | 'onMoveCreature'>> &
+  Partial<
+    Pick<
+      StudioInspectorProps,
+      'onConfigure' | 'onMoveCreature' | 'onDefineRegion'
+    >
+  > &
   ArrangeComposition): React.JSX.Element | null {
   return (
     <StudioArrangePanel
@@ -152,6 +162,7 @@ function Form({
       heading={false}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
+      onDefineRegion={onDefineRegion}
       {...composition}
     />
   );
@@ -593,29 +604,41 @@ function HexView({
   );
 }
 
+/** A map label. A region's label also holds the region: boundary mode
+ * with Use enclosing walls, Define explicit area, Clear explicit area,
+ * background light, the room wall finish and Remove region. */
 function LabelView({
   session,
   arrange,
-  onOpenRegion,
+  onDefineRegion,
 }: StudioInspectorProps & {
   arrange: StudioArrangeSelection;
 }): React.JSX.Element {
   const region = arrange.kind === 'label' ? arrange.region : undefined;
+  if (!region) return <Form session={session} regionControls={false} />;
   return (
-    <>
-      <Form session={session} regionControls={false} />
-      {region && arrange.kind === 'label' && (
-        <div className="es-context-panel">
-          <p>
-            This selection is a region. Its boundary and lighting settings live
-            in Regions.
-          </p>
-          <button type="button" onClick={() => onOpenRegion(arrange.label.id)}>
-            Edit region settings
-          </button>
-        </div>
-      )}
-    </>
+    <Form
+      session={session}
+      sectionTitle="Region"
+      onDefineRegion={onDefineRegion}
+      extras={
+        <>
+          {region.boundary.kind === 'explicit' && (
+            <div className="es-buttons">
+              <button
+                type="button"
+                onClick={() =>
+                  session.regionEditing.setExplicitRegionArea(region.id, [])
+                }
+              >
+                Clear explicit area
+              </button>
+            </div>
+          )}
+          <StudioRegionFinishes region={region} session={session} />
+        </>
+      }
+    />
   );
 }
 

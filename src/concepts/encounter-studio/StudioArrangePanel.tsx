@@ -73,13 +73,12 @@ function StudioArrangeField({
   );
 }
 
-/** How an inspector view composes the one-transaction form. Defaults keep
- * the Regions home's form exactly as it was. */
+/** How an inspector view composes the one-transaction form. */
 export interface ArrangeComposition {
-  /** The Regions home's "Arrange · name" heading; the inspector names the
-   * selection in its own heading. */
+  /** An "Arrange · name" heading; the inspector names the selection in its
+   * own heading. */
   heading?: boolean;
-  /** Region boundary and lighting controls. Build leaves them to Regions. */
+  /** Region boundary and lighting controls, for a region label. */
   regionControls?: boolean;
   /** The owner's configuration forms and the definition links. */
   configuration?: boolean;
@@ -88,6 +87,8 @@ export interface ArrangeComposition {
   /** Leads the Placement section, above the form: the creature's cast
    * member summary. */
   lead?: ReactNode;
+  /** The form section's title; Placement unless the view names it. */
+  sectionTitle?: string;
 }
 
 /** Local form tokens only; all canonical updates cross the atomic owner seam. */
@@ -103,6 +104,7 @@ function SelectedArrange({
   configuration = true,
   extras,
   lead,
+  sectionTitle = 'Placement',
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
@@ -214,7 +216,7 @@ function SelectedArrange({
     >
       {heading && <h2>{selectionName(selection, session)}</h2>}
       <StudioSection
-        title="Placement"
+        title={sectionTitle}
         level="section"
         about={
           <>

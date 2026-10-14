@@ -28,9 +28,19 @@ export function studioButton(name: string): HTMLElement {
   }
   if (name === 'Inspector' || name === 'Size') {
     options();
-    if (button('Regions').getAttribute('aria-pressed') === 'true')
-      return button('Regions & lighting');
     return screen.getByRole('region', { name: 'Inspector' });
+  }
+  // The Regions home retired (rpg-project#577): regions are on Build, listed
+  // beside Layout, and a region's settings are its label's inspector view.
+  if (name === 'Regions') return button('Build');
+  if (name === 'Regions & lighting') return toggle();
+  const room = /^Edit region (.+)$/.exec(name);
+  const list = screen.queryByRole('list', { name: 'Room list' });
+  if (room && list) {
+    const text = room[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return within(list).getByRole('button', {
+      name: new RegExp(`^Room ${text},`),
+    });
   }
   return button(name);
 }

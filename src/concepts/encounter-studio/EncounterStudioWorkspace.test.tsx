@@ -748,21 +748,23 @@ describe('shared Arrange context lifecycle', () => {
     expect(
       screen.queryByRole('complementary', { name: 'Studio options' })
     ).toBeNull();
-    click('Regions');
+    click('Build');
     expect(
       screen.getByRole('button', { name: '3D' }).getAttribute('aria-pressed')
     ).toBe('true');
-    expect(
-      screen.getByRole('region', { name: 'Encounter regions' })
-    ).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: 'New region' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
-    click('Build');
+    // The room list and New region live beside Layout, not over 3D.
+    expect(screen.queryByRole('button', { name: 'New region' })).toBeNull();
     expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
     expect(observed.viewportUnmounts).toBe(0);
     expect(observed.ownerMounts).toBe(1);
+  });
+  it('the home nav shows Build and Encounter only', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(
+      within(screen.getByRole('navigation', { name: 'Studio home' }))
+        .getAllByRole('button')
+        .map((node) => node.textContent)
+    ).toEqual(['Build', 'Encounter']);
   });
   it('keeps exactly one sidebar section, name drafts and the canvas across section switches and N', () => {
     observed.session!.document.scope.tables = { patrol: {} };
