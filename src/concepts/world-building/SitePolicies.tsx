@@ -74,6 +74,7 @@ import {
   wordShorthand,
 } from './answerVocabulary';
 import { CheckApproachRows } from './CheckApproachRows';
+import { turnsTo } from './engineLaws';
 import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
@@ -103,7 +104,6 @@ import {
   dispositionLine,
   pairMindNameIn,
   predicateSentence,
-  turnsTo,
 } from './predicateSentence';
 import type {
   RoomDraftDocument,

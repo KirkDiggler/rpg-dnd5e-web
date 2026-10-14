@@ -13,12 +13,8 @@
  * knowing counts (the truth grain), and the sentence says the fact "is
  * known".
  */
-import {
-  MONSTERS,
-  PARTY,
-  type PredicateDoc,
-  type Stance,
-} from '@/author/factionVocabulary';
+import { MONSTERS, PARTY, type PredicateDoc } from '@/author/factionVocabulary';
+import { turnsTo } from './engineLaws';
 import { documentPlacementNames } from './placementNames';
 import type { RoomDraftDocument } from './roomDraft';
 import type { SiteDisposition, SiteScope } from './siteScope';
@@ -92,16 +88,6 @@ export function pairMindNameIn(
   });
   if (minds.length === 0) return undefined;
   return minds.join(', or ');
-}
-
-/** The stance a declared one turns to when its `until` holds: the other of
- * hostile and neutral (rpg-toolkit `rulebooks/dnd5e/encounter/dungeonspec/
- * factions.go` `turnsTo`). An allied pair carries no `until`; the decoder
- * refuses one. */
-export function turnsTo(stance: Stance): Stance {
-  if (stance === 'hostile') return 'neutral';
-  if (stance === 'neutral') return 'hostile';
-  return stance;
 }
 
 const capitalized = (word: string) =>
