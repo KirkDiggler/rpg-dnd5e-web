@@ -366,8 +366,12 @@ describe('StudioInspector', () => {
       '2'
     );
     expect(
-      view.getByText(/Model: dnd5e:env:dark-fortress:wall_door_double_01/)
+      view.getByRole('heading', { level: 2, name: 'Door · Double Door' })
     ).toBeTruthy();
+    expect(view.queryByText(/dnd5e:env:dark-fortress/)).toBeNull();
+    expect(
+      view.getByRole('button', { name: /Copy model id/ }).getAttribute('title')
+    ).toContain('dnd5e:env:dark-fortress:wall_door_double_01');
     fireEvent.click(view.getByRole('button', { name: 'Delete doorway' }));
     expect(live.commitArrange).toHaveBeenCalledExactlyOnceWith({
       kind: 'door-remove',

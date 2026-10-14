@@ -95,6 +95,9 @@ export function StudioInspector(
           session.arrange?.kind === 'actor' && (
             <CopyId id={session.arrange.monster.id} label="placement" />
           )}
+        {inspection.pick === null && session.arrange?.kind === 'door' && (
+          <CopyId id={session.arrange.door.assetRef} label="model" />
+        )}
       </div>
       <InspectorBody {...props} />
     </section>
@@ -300,7 +303,6 @@ function DoorView({
     <>
       {arrange.kind === 'door' && (
         <div className="es-context-panel es-door-view">
-          <p className="es-help">Model: {arrange.door.assetRef}</p>
           <DoorState session={session} doorId={arrange.door.id} />
         </div>
       )}
