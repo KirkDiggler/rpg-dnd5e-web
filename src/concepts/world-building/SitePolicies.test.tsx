@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AnswerTableShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
+import { placementDisplayNames } from './placementNames';
 import { PropOrders } from './PropOrders';
 import type { RoomMonsterBinding, RoomPropBinding } from './roomDraft';
 import {
@@ -903,5 +904,76 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
       'examine',
       'line-1',
     ]);
+  });
+});
+
+describe('placements read as words (rpg-project#579)', () => {
+  it('the mind picker shows map names and keeps ids as values', () => {
+    const names = placementDisplayNames({
+      declarations: fixture.draft.room.monsterDeclarations,
+      actorNames: { 'skeleton-a': 'Guard', 'skeleton-b': 'Guard' },
+      castName: (ref) => (ref.endsWith(':goblin') ? 'Goblin' : 'Skeleton'),
+    });
+    render(
+      <FactionsPanel
+        scope={siteScope}
+        room={fixture.draft.room}
+        placementNames={names}
+        onChange={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Faction goblins'));
+    const list = document.getElementById('faction-mind-goblins')!;
+    const options = [...list.querySelectorAll('option')].map((option) => [
+      option.value,
+      option.textContent,
+    ]);
+    expect(options).toEqual([
+      ['goblin-1', 'Goblin'],
+      ['skeleton-a', 'Guard'],
+      ['skeleton-b', 'Guard (2)'],
+    ]);
+  });
+});
+
+describe('an option line wraps by word (rpg-project#579)', () => {
+  it('the option line is a textarea and keeps its text on commit', () => {
+    const LONG =
+      'Where is the cellar, and do not pretend you have never heard of it, because the cook told me the barrels hide a door and the door hides a stair that goes down past the old well to the crypt';
+    const onOrdersChange = vi.fn();
+    const binding: RoomMonsterBinding = {
+      options: [{ id: 'ask', say: 'Where?', check: [] }],
+    };
+    render(
+      <CreatureOrders
+        scope={{}}
+        room={fixture.draft.room}
+        monster={goblin}
+        binding={binding}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    const line = screen.getByLabelText(`Line 1 for ${goblin.id}`);
+    expect(line.tagName.toLowerCase()).toBe('textarea');
+    fireEvent.change(line, { target: { value: LONG } });
+    const next = onOrdersChange.mock.calls.at(-1)![0] as RoomMonsterBinding;
+    expect(next.options?.[0]?.say).toBe(LONG);
+  });
+});
+
+describe('the Options sub-section has one heading (rpg-project#579)', () => {
+  it('creature orders title Options once and keep the sentence behind About', () => {
+    render(
+      <CreatureOrders
+        scope={{}}
+        room={fixture.draft.room}
+        monster={goblin}
+        binding={undefined}
+        onOrdersChange={() => {}}
+      />
+    );
+    const options = screen.getByRole('region', { name: 'Options' });
+    expect(within(options).queryByText(/what a character can say/)).toBeNull();
+    expect(within(options).getByText('About this panel')).toBeTruthy();
   });
 });

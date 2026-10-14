@@ -47,6 +47,9 @@ import {
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
+import { CopyId } from '../encounter-studio/CopyId';
+import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
+import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
   OPTION_VERDICTS,
@@ -85,6 +88,7 @@ import {
   removeOptionApproach,
   removeOptionRow,
 } from './optionEdits';
+import { placementDisplayNames } from './placementNames';
 import type {
   RoomGameplayData,
   RoomMonsterBinding,
@@ -114,6 +118,23 @@ import type {
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
  * it deals one from per member. */
+/** Placement id to the words it is shown by. The studio passes the names it
+ * reads from the document (map names, cast names); without them a placement
+ * reads as its kind (rpg-project#579). */
+type PlacementNames = ReadonlyMap<string, string>;
+function namesFor(
+  room: RoomGameplayData,
+  given: PlacementNames | undefined
+): PlacementNames {
+  return (
+    given ??
+    placementDisplayNames({
+      declarations: room.monsterDeclarations,
+      castName: paletteNameForRef,
+    })
+  );
+}
+
 function factionTemperText(temper: SiteTemper): string {
   if (typeof temper === 'string') return temper;
   return Object.entries(temper)
@@ -701,7 +722,11 @@ export function AnswerEntryRow({
   label = trigger,
   excludeWords = [],
   allowNoWord = false,
+  collapsed = false,
 }: {
+  /** Start as one summary line with Edit and Remove; Edit opens today's
+   * controls (rpg-project#579). Opening one row closes none of the others. */
+  collapsed?: boolean;
   trigger: string;
   entry: AnswerEntryShape;
   onCommit: (entry: AnswerEntryShape) => void;
@@ -718,6 +743,7 @@ export function AnswerEntryRow({
    * are mostly this: what the creature SAYS back. */
   allowNoWord?: boolean;
 }) {
+  const [open, setOpen] = useState(!collapsed);
   const words = answerWordsForTrigger(trigger).filter(
     (candidate) => !excludeWords.includes(candidate.key)
   );
@@ -774,6 +800,28 @@ export function AnswerEntryRow({
     onCommit(next);
   };
 
+  if (!open)
+    return (
+      <li className="wb-policy-entry wb-entry-collapsed" data-entry-word={word}>
+        <span className="wb-entry-summary">{entryText(entry, trigger)}</span>
+        <button
+          type="button"
+          aria-label={`Edit ${label} entry`}
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Remove ${label} entry`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </li>
+    );
   return (
     <li
       className="wb-policy-entry wb-entry-sentence-card"
@@ -893,6 +941,15 @@ export function AnswerEntryRow({
         order.
       </p>
       <p className="wb-help">{entryText(entry, trigger)}</p>
+      {collapsed && (
+        <button
+          type="button"
+          aria-label={`Done editing ${label} entry`}
+          onClick={() => setOpen(false)}
+        >
+          Done
+        </button>
+      )}
     </li>
   );
 }
@@ -1146,9 +1203,11 @@ function FactionRow({
   faction,
   onChange,
   onNotice,
+  placementNames,
 }: {
   scope: SiteScope;
   room?: RoomGameplayData;
+  placementNames?: PlacementNames;
   faction: SiteFaction;
   onChange: (nextScope: SiteScope) => void;
   onNotice?: (message: string) => void;
@@ -1222,8 +1281,13 @@ function FactionRow({
           {room && (
             <datalist id={`faction-mind-${faction.id}`}>
               {room.monsterDeclarations.map((monster) => (
-                <option key={monster.id} value={monster.id}>
-                  {paletteNameForRef(monster.ref)} · {monster.id}
+                <option
+                  key={monster.id}
+                  value={monster.id}
+                  label={namesFor(room, placementNames).get(monster.id)}
+                  title={monster.id}
+                >
+                  {namesFor(room, placementNames).get(monster.id)}
                 </option>
               ))}
             </datalist>
@@ -1338,9 +1402,11 @@ function UntilEditor({
   room,
   disposition,
   onCommit,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   disposition: SiteDisposition;
   onCommit: (until: PredicateDoc | undefined) => void;
 }) {
@@ -1406,8 +1472,8 @@ function UntilEditor({
           >
             <option value="">(choose a placement)</option>
             {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id}>
-                {monster.id} · {paletteNameForRef(monster.ref)}
+              <option key={monster.id} value={monster.id} title={monster.id}>
+                {namesFor(room, placementNames).get(monster.id)}
               </option>
             ))}
           </select>
@@ -1497,9 +1563,11 @@ function DispositionRow({
   index,
   disposition,
   onChange,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   index: number;
   disposition: SiteDisposition;
   onChange: (nextScope: SiteScope) => void;
@@ -1568,6 +1636,7 @@ function DispositionRow({
           <UntilEditor
             scope={scope}
             room={room}
+            placementNames={placementNames}
             disposition={disposition}
             onCommit={(until) =>
               onChange(updateSiteDisposition(scope, index, { until }))
@@ -1601,6 +1670,8 @@ export interface SitePoliciesProps {
   /** Reports an edit that the server will have to judge, so it is never
    * silent. */
   onNotice?: (message: string) => void;
+  /** Placement id to its shown name; the kind's name when absent. */
+  placementNames?: PlacementNames;
 }
 
 /** The site's FACTIONS: who fights as one side, each with its temperament
@@ -1612,6 +1683,7 @@ export function FactionsPanel({
   room,
   onChange,
   onNotice,
+  placementNames,
 }: Omit<SitePoliciesProps, 'room'> & { room?: RoomGameplayData }) {
   const factions = scope.factions ?? [];
   return (
@@ -1634,6 +1706,7 @@ export function FactionsPanel({
               key={faction.id}
               scope={scope}
               room={room}
+              placementNames={placementNames}
               faction={faction}
               onChange={onChange}
               onNotice={onNotice}
@@ -1653,6 +1726,7 @@ export function DispositionsPanel({
   scope,
   room,
   onChange,
+  placementNames,
 }: Omit<SitePoliciesProps, 'onNotice'>) {
   const dispositions = scope.dispositions ?? [];
   return (
@@ -1678,6 +1752,7 @@ export function DispositionsPanel({
               key={index}
               scope={scope}
               room={room}
+              placementNames={placementNames}
               index={index}
               disposition={disposition}
               onChange={onChange}
@@ -1719,7 +1794,10 @@ function CreatureWeaponEditor({
   const usable = WEAPON_REF_RE.test(draft.trim());
   return (
     <div className="wb-policy-table-editor" data-testid="creature-weapons">
-      <p className="wb-help">What it fights with, in order.</p>
+      <p className="wb-help">
+        Weapons{' '}
+        <FieldHelp field="Weapons">What it fights with, in order.</FieldHelp>
+      </p>
       {actions.length === 0 ? (
         <p className="wb-help" data-testid="creature-weapons-none">
           No weapons authored — this creature keeps its kind’s default.
@@ -1844,6 +1922,11 @@ export interface CreatureOrdersProps {
    * `monsterOrderEdits.withBinding` — which is where an emptied creature
    * becomes a deleted entry rather than an empty block the encoder refuses. */
   onOrdersChange?: (next: RoomMonsterBinding | undefined) => void;
+  /** Placement id to its shown name; the kind's name when absent. */
+  placementNames?: PlacementNames;
+  /** The "Selected creature" heading and name line. The studio's inspector
+   * already names the selection, so it leaves them out. */
+  titled?: boolean;
 }
 
 /** The `arrives:` predicate — the SAME four forms as a disposition's `until`,
@@ -1860,9 +1943,11 @@ export function ArrivesEditor({
   room,
   arrives,
   onCommit,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   arrives: PredicateDoc | undefined;
   onCommit: (next: PredicateDoc | undefined) => void;
 }) {
@@ -1927,8 +2012,8 @@ export function ArrivesEditor({
           >
             <option value="">(choose a placement)</option>
             {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id}>
-                {monster.id} · {paletteNameForRef(monster.ref)}
+              <option key={monster.id} value={monster.id} title={monster.id}>
+                {namesFor(room, placementNames).get(monster.id)}
               </option>
             ))}
           </select>
@@ -2100,6 +2185,8 @@ export function CreatureOrders({
   binding,
   onFactionChange,
   onOrdersChange,
+  placementNames,
+  titled = true,
 }: CreatureOrdersProps) {
   const faction = binding?.faction
     ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
@@ -2114,10 +2201,27 @@ export function CreatureOrders({
     binding?.table !== undefined ? scope.tables?.[binding.table] : undefined;
   return (
     <div className="wb-creature-orders" aria-label="Selected creature">
-      <h4>Selected creature</h4>
-      <p className="wb-help">
-        {paletteNameForRef(monster.ref)} · {monster.id}
-      </p>
+      <AboutPanel>
+        <p data-testid="faction-layer-rule">
+          A faction’s `on:` is layered nearest key wins WHOLESALE: a placement
+          that writes its own `time` replaces the faction’s `time` entirely —
+          the entry lists are never merged.
+        </p>
+        <p data-testid="temper-asymmetry">
+          A faction’s `temper` is a word or a mix; a placement’s is one word,
+          and the placement’s word wins — the mix is not dealt for it.
+        </p>
+      </AboutPanel>
+      {titled && (
+        <>
+          <h4>Selected creature</h4>
+          <p className="wb-help">
+            {namesFor(room, placementNames).get(monster.id) ??
+              paletteNameForRef(monster.ref)}{' '}
+            <CopyId id={monster.id} label="placement" />
+          </p>
+        </>
+      )}
       <dl className="wb-creature-orders-grid">
         <div>
           <dt>Faction</dt>
@@ -2152,8 +2256,11 @@ export function CreatureOrders({
         </div>
       </dl>
 
-      <div className="wb-policy-block">
-        <h5>Inherits</h5>
+      <StudioSection
+        title="Inherits"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {binding?.faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-none">
             Nothing authored here — its kind’s default supplies the table.
@@ -2176,10 +2283,13 @@ export function CreatureOrders({
             )}
           </>
         )}
-      </div>
+      </StudioSection>
 
-      <div className="wb-policy-block">
-        <h5>Overrides</h5>
+      <StudioSection
+        title="Overrides"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <CreatureWeaponEditor
@@ -2251,17 +2361,22 @@ export function CreatureOrders({
             )}
           </>
         )}
-      </div>
+      </StudioSection>
 
       {/* WHAT A CHARACTER CAN SAY TO IT (rpg-project#569). The priced checks
           that were here (and left in rpg-dnd5e-web#1201) came back where they
           belong: on the LINE that rolls them, with what the creature answers
           on either verdict. Neither inherited nor overridden — a faction never
           supplies a line — so this is its own block. */}
-      <div className="wb-policy-block">
-        <h5>Options</h5>
+      <StudioSection
+        title="Options"
+        level="subsection"
+        className="wb-policy-block"
+        about={<p>The lines a character can say to this creature.</p>}
+      >
         {onOrdersChange !== undefined ? (
           <OptionsEditor
+            titled={false}
             owner={monster.id}
             options={binding?.options ?? []}
             room={room}
@@ -2287,13 +2402,16 @@ export function CreatureOrders({
             ))}
           </ul>
         )}
-      </div>
+      </StudioSection>
 
       {/* The creature's reserve and holdings facts (web#1176). They are
           neither inherited nor overridden — a faction never supplies them — so
           they are their own block rather than a row in Overrides. */}
-      <div className="wb-policy-block">
-        <h5>Reserve and holdings</h5>
+      <StudioSection
+        title="Reserve and holdings"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <CreatureHoldsEditor
@@ -2305,6 +2423,7 @@ export function CreatureOrders({
             <ArrivesEditor
               scope={scope}
               room={room}
+              placementNames={placementNames}
               arrives={binding?.arrives}
               onCommit={(next) =>
                 onOrdersChange(setMonsterArrives(binding, next))
@@ -2317,10 +2436,13 @@ export function CreatureOrders({
             creature’s own panel.
           </p>
         )}
-      </div>
+      </StudioSection>
 
-      <div className="wb-policy-block">
-        <h5>Answers with</h5>
+      <StudioSection
+        title="Answers with"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <label>
@@ -2369,17 +2491,7 @@ export function CreatureOrders({
             faction supply.
           </p>
         )}
-      </div>
-
-      <p className="wb-help" data-testid="faction-layer-rule">
-        A faction’s `on:` is layered nearest key wins WHOLESALE: a placement
-        that writes its own `time` replaces the faction’s `time` entirely — the
-        entry lists are never merged.
-      </p>
-      <p className="wb-help" data-testid="temper-asymmetry">
-        A faction’s `temper` is a word or a mix; a placement’s is one word, and
-        the placement’s word wins — the mix is not dealt for it.
-      </p>
+      </StudioSection>
     </div>
   );
 }
@@ -2414,6 +2526,7 @@ const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
  */
 export function OptionsEditor({
   owner,
+  titled = true,
   options,
   room,
   isProp,
@@ -2423,6 +2536,8 @@ export function OptionsEditor({
 }: {
   /** The binding's id — what every control here is named for. */
   owner: string;
+  /** The "Options" heading; CreatureOrders titles its own sub-section. */
+  titled?: boolean;
   options: readonly OptionShape[];
   room: RoomGameplayData;
   /** A prop's lines: its rows may not `flee`. */
@@ -2434,7 +2549,7 @@ export function OptionsEditor({
   const holdable = holdablePropIds(room);
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
-      <h6>Options — what a character can say</h6>
+      {titled && <h6>Options — what a character can say</h6>}
       {options.length === 0 && (
         <p className="wb-help" data-testid={`options-none-${owner}`}>
           {isProp
@@ -2474,9 +2589,10 @@ export function OptionsEditor({
             </label>
             <label>
               <span>Says</span>
-              <input
+              <textarea
                 aria-label={`Line ${n} for ${owner}`}
                 placeholder="What the character says"
+                rows={Math.max(2, Math.ceil(option.say.length / 36))}
                 value={option.say}
                 onChange={(event) =>
                   commit(patchOption(option, { say: event.target.value }))

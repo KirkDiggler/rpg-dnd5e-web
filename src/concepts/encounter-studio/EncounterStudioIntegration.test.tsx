@@ -502,7 +502,7 @@ it('the palette lists every cast member, including a rulebook member, and opens 
   expect(storage.document()).toEqual(before);
 });
 
-it('authors social definitions in Encounter and attaches records to selected creatures and props in Arrange', () => {
+it('authors social definitions in Encounter and attaches records to selected creatures and props in the inspector', () => {
   const storage = new MemoryStorage(seed());
   const original = storage.document();
   const recordId = nextIntelId(original.scope);
@@ -590,8 +590,7 @@ it('authors social definitions in Encounter and attaches records to selected cre
     original.draft.room.monsterDeclarations
   );
   expect(
-    screen.getByRole('region', { name: 'Authored disposition context' })
-      .textContent
+    screen.getByRole('region', { name: 'Authored dispositions' }).textContent
   ).toContain('orders-authentic');
   fireEvent.click(
     screen.getByRole('button', { name: 'Edit intel definitions' })
@@ -768,7 +767,7 @@ it('names an older creature and moves it once without changing its rules, looks 
   fireEvent.change(screen.getByLabelText('Map name'), {
     target: { value: 'Standard Guard' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply Arrange' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(storage.document().draft.scene.actorNames?.[id]).toBe(
     'Standard Guard'
   );
@@ -1203,7 +1202,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.click(
       within(form).getByTitle('dnd5e:env:dark-fortress:45_wall_01')
     );
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     // This must reach compatibility refusal, not an unrelated schema/asset guard.
     expect(
       screen.getByText(/has no compatible A face for this finish/)
@@ -1214,7 +1213,7 @@ describe('Studio authoring homes through the real owner', () => {
       (screen.getByLabelText('Appearance height') as HTMLInputElement).value
     ).toBe('4');
     fireEvent.click(within(form).getByTitle(FIT_WALL_REF));
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(storage.roomWrites()).toBe(writes + 1);
     expect(storage.document().draft.room.walls![0].appearance.height).toBe(4);
     expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
@@ -1247,7 +1246,7 @@ describe('Studio authoring homes through the real owner', () => {
     });
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
-    fireEvent.click(button('Cancel Arrange'));
+    fireEvent.click(button('Cancel'));
     expect(storage.document()).toEqual(before);
     fireEvent.change(screen.getByLabelText('Wall finish (both sides)'), {
       target: { value: GRAY_REF },
@@ -1255,7 +1254,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Appearance height'), {
       target: { value: '4' },
     });
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     const both = storage.document();
     expect(storage.roomWrites()).toBe(writes + 1);
     expect(both.draft.scene.version).toBe(7);
@@ -1288,7 +1287,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Side B finish'), {
       target: { value: smallRef },
     });
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     const split = storage.document();
     expect(split.draft.scene.wallFinishes!.north).toEqual({
       'positive-z': GRAY_REF,
@@ -1300,14 +1299,14 @@ describe('Studio authoring homes through the real owner', () => {
       (screen.getByLabelText('Wall finish (both sides)') as HTMLSelectElement)
         .value
     ).toBe('__mixed__');
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(storage.document()).toEqual(split);
     expect(storage.roomWrites()).toBe(splitWrites);
     fireEvent.click(mode());
     fireEvent.change(screen.getByLabelText('Side B finish'), {
       target: { value: '' },
     });
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(storage.document().draft.scene.wallFinishes!.north).toEqual({
       'positive-z': GRAY_REF,
     });
@@ -1334,7 +1333,7 @@ describe('Studio authoring homes through the real owner', () => {
     ).toBe(smallRef);
     fireEvent.click(button('Use region / authored defaults'));
     expect(storage.document()).toEqual(split);
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(storage.document().draft.scene.wallFinishes).toBeUndefined();
     expect(storage.document().draft.scene.version).toBe(7);
   });
@@ -1349,7 +1348,7 @@ describe('Studio authoring homes through the real owner', () => {
     fireEvent.change(screen.getByLabelText('Background light (%)'), {
       target: { value: '25' },
     });
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(
       storage.document().draft.scene.authoringRegions![0].lighting
     ).toEqual({ background: 0.25 });
@@ -1966,7 +1965,7 @@ describe('Task 6 populated workspace/label integration', () => {
     resize(73, 48); // no-op dimensions
     fireEvent.click(button('Label'));
     changeField('Existing label', kitchenId);
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Inspector'));
     changeField('Rename label', 'Staged only');
     changeField('Rename label', 'Kitchen');
     submitForm('Arrange selected noun'); // explicit same text
@@ -4238,7 +4237,7 @@ describe('Arrange joined presentation and canonical document receipts', () => {
     act(() => viewport().onTransformPreview(gestureScene));
     expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(beforePreview);
     expect(screen.getByText(/^Preview ·/)).not.toBeNull();
-    expect((button('Apply Arrange') as HTMLButtonElement).disabled).toBe(true);
+    expect((button('Apply') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
       String(Number((group.transform.x + 0.75).toFixed(6)))
     ); // display rounding only; full canonical equality is checked below
@@ -4389,7 +4388,7 @@ describe('Arrange joined presentation and canonical document receipts', () => {
     expect(screen.getByRole('alert').textContent).toContain('finite numeric');
     fireEvent.keyDown(screen.getByLabelText('Wall length'), { key: 'Escape' });
     changeField('Wall midpoint X', '1');
-    fireEvent.click(button('Cancel Arrange'));
+    fireEvent.click(button('Cancel'));
     switchTo('3D');
     act(() => viewport().onSelect(['studio-decoration']));
     changeField('Height scale (%)', '100');
@@ -4459,7 +4458,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
   function place(name: string, x: number, z: number, kind = 'room'): void {
     if (kind === 'room') {
       fireEvent.click(button('Regions'));
-      fireEvent.click(button('Arrange')); // region list/settings in this home
+      fireEvent.click(button('Inspector')); // region list/settings in this home
       fireEvent.click(button('New region'));
     } else fireEvent.click(button('Label'));
     fireEvent.change(screen.getByLabelText('Label name'), {
@@ -4484,7 +4483,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
       screen.getByRole('button', { name: `Select map label ${name}` }),
       { key: 'Enter' }
     );
-    fireEvent.click(button('Arrange'));
+    fireEvent.click(button('Inspector'));
   }
   function areaCount(): number {
     return surface().querySelectorAll('[data-region-id]').length;
@@ -4521,7 +4520,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
       pointerId: 7,
     });
     change('Wall midpoint X', '5');
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(storage.roomWrites()).toBe(writes + 1);
     expect(storage.document().draft.scene.authoringRegions).toEqual(pair);
     expect(areaCount()).toBe(2);
@@ -4706,7 +4705,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     fireEvent.pointerDown(north, { ...at(zero), button: 0, pointerId: 7 });
     fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
     change('Wall length', '7.999999');
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     const broken = storage.document();
     expect(broken.draft.room.walls![0].line.end.x).toBe(7.999999);
     expect(broken.draft.scene.authoringRegions).toEqual(intent);
@@ -4738,7 +4737,7 @@ describe('Layout room/explicit area controls joined to the real owner', () => {
     });
     fireEvent.pointerUp(surface(), { ...at(zero), button: 0, pointerId: 7 });
     change('Wall length', '8');
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(areaCount()).toBe(1);
     expect(storage.document().draft.scene.authoringRegions).toEqual(intent);
     expect(storage.document().draft.room).toEqual(original.draft.room);
@@ -4931,7 +4930,7 @@ describe('Studio staged region lighting integrated presentation', () => {
     ).toBe('15');
     fireEvent.click(button('Use baseline appearance'));
     expect(storage.document()).toEqual(after);
-    fireEvent.click(button('Apply Arrange'));
+    fireEvent.click(button('Apply'));
     expect(
       storage.document().draft.scene.authoringRegions![0]
     ).not.toHaveProperty('lighting');
@@ -5168,9 +5167,12 @@ describe('S1 the cast through the real owner', () => {
     );
     expect(highlighted()).toEqual([]);
     expect(inspector().getByLabelText('Map name')).toBeTruthy();
-    expect(inspector().getByText(/^Cast member:/).textContent).toBe(
-      'Cast member: Guard · stat block guard'
-    );
+    expect(
+      inspector()
+        .getAllByRole('term')
+        .find((dt) => dt.firstChild?.textContent?.trim() === 'Cast member')
+        ?.nextElementSibling?.textContent?.trim()
+    ).toBe('Guard · stat block guard');
     // The member link in a creature view selects the member again.
     fireEvent.click(
       inspector().getByRole('button', { name: 'Open cast member Guard' })

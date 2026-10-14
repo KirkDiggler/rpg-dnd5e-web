@@ -15,6 +15,7 @@ import {
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import { addProp, groupSelection } from '../world-building/sceneState';
+import { CreatureOrders } from '../world-building/SitePolicies';
 import {
   applyStudioActorArrange,
   projectStudioArrange,
@@ -195,9 +196,7 @@ describe('StudioInspector', () => {
     ).toBeTruthy();
     fireEvent.click(view.getByRole('button', { name: 'Ungroup' }));
     expect(ungroup).toHaveBeenCalledTimes(1);
-    expect(
-      view.queryByRole('region', { name: 'Selection configuration' })
-    ).toBeNull();
+    expect(view.queryByRole('region', { name: 'Behaviour' })).toBeNull();
   });
 
   it('label view shows text and cell and renames through one intent', () => {
@@ -274,7 +273,7 @@ describe('StudioInspector', () => {
     expect(
       view.getByRole('heading', { level: 2, name: '2 props picked' })
     ).toBeTruthy();
-    expect(view.queryByRole('region', { name: 'Room size' })).toBeNull();
+    expect(view.queryByRole('region', { name: 'Size' })).toBeNull();
     expect(view.getByLabelText('World X')).toBeTruthy();
     fireEvent.click(view.getByRole('button', { name: 'Group selection' }));
     expect(group).toHaveBeenCalledTimes(1);
@@ -478,21 +477,23 @@ describe('StudioInspector', () => {
     }
     const castSection = () =>
       within(within(region()).getByRole('region', { name: 'Cast member' }));
+    /** The value a cast summary gives one term. */
+    const fact = (term: string): string =>
+      castSection()
+        .getAllByRole('term')
+        .find((dt) => dt.firstChild?.textContent?.trim() === term)
+        ?.nextElementSibling?.textContent?.trim() ?? '';
 
     it('the creature view names its cast member and links to it', () => {
       const onOpenCastMember = vi.fn();
       inspector(castSession(createGuardCastDocument(), 'gate-1'), {
         onOpenCastMember,
       });
-      expect(castSection().getByText(/^Cast member:/).textContent).toBe(
-        'Cast member: Guard · stat block guard'
-      );
+      expect(fact('Cast member')).toBe('Guard · stat block guard');
       expect(
         castSection().getByText('Changes to Guard reach every placement.')
       ).toBeTruthy();
-      expect(castSection().getByText(/^Stat block:/).textContent).toBe(
-        'Stat block: base Human'
-      );
+      expect(fact('Stat block')).toBe('base Human');
       expect(
         castSection().getByText(
           "Stamped at placement. Changing Guard's default faction does not change this."
@@ -508,14 +509,10 @@ describe('StudioInspector', () => {
       const document = createGuardCastDocument();
       const stamped = placeCastMember(document, 'gate-3', GUARD, 2, LOOK);
       inspector(castSession(stamped, 'gate-1'));
-      expect(castSection().getByText(/^Look:/).textContent).toBe(
-        "Look: Cast member's default"
-      );
+      expect(fact('Look')).toBe("Cast member's default");
       cleanup();
       inspector(castSession(stamped, 'gate-3'));
-      expect(castSection().getByText(/^Look:/).textContent).toBe(
-        'Look: Stamped at placement'
-      );
+      expect(fact('Look')).toBe('Stamped at placement');
     });
 
     it("changing one placement's look leaves its sibling unchanged", () => {
@@ -525,9 +522,7 @@ describe('StudioInspector', () => {
       fireEvent.change(within(region()).getByLabelText('Style'), {
         target: { value: '02' },
       });
-      fireEvent.click(
-        within(region()).getByRole('button', { name: 'Apply Arrange' })
-      );
+      fireEvent.click(within(region()).getByRole('button', { name: 'Apply' }));
       expect(session.commitArrange).toHaveBeenCalledTimes(1);
       const intent = vi.mocked(session.commitArrange).mock
         .calls[0]![0] as Extract<StudioArrangeIntent, { kind: 'actor-start' }>;
@@ -624,6 +619,276 @@ describe('StudioInspector', () => {
           selectionRevision: 1,
         })
       ).toBeNull();
+    });
+  });
+
+  describe('S5 type scale and grouping', () => {
+    function creatureSession(): EncounterStudioSession {
+      const session = createFakeStudioSession();
+      const draft = placeRoomMonster(session.document.draft, {
+        id: 'guard',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 0, r: 0 } },
+      });
+      const monster = draft.room.monsterDeclarations[0]!;
+      return selected(
+        {
+          ...session,
+          document: { ...session.document, draft },
+          socialControls: {
+            ...session.socialControls,
+            selection: (
+              <CreatureOrders
+                scope={{ factions: [{ id: 'garrison' }] }}
+                room={draft.room}
+                monster={monster}
+                binding={{ faction: 'garrison' }}
+                onFactionChange={vi.fn()}
+                onOrdersChange={vi.fn()}
+              />
+            ),
+          },
+        },
+        { kind: 'actor', id: 'guard' }
+      );
+    }
+    const sectionTitles = (level: number): string[] =>
+      within(region())
+        .getAllByRole('heading', { level })
+        .map((heading) => heading.textContent ?? '');
+
+    it('a creature view has a Placement and a Behaviour section in that order', () => {
+      inspector(creatureSession());
+      expect(sectionTitles(3)).toEqual(['Placement', 'Behaviour']);
+      const placement = within(region()).getByRole('region', {
+        name: 'Placement',
+      });
+      expect(within(placement).getByLabelText('Map name')).toBeTruthy();
+      expect(within(placement).getByLabelText('Starting facing')).toBeTruthy();
+      expect(
+        within(placement).getByRole('button', { name: 'Move creature' })
+      ).toBeTruthy();
+      const behaviour = within(region()).getByRole('region', {
+        name: 'Behaviour',
+      });
+      expect(within(behaviour).getByLabelText('Creature faction')).toBeTruthy();
+      expect(within(placement).queryByLabelText('Creature faction')).toBeNull();
+    });
+
+    it('Inherits and Overrides are subsection headings', () => {
+      inspector(creatureSession());
+      const behaviour = within(region()).getByRole('region', {
+        name: 'Behaviour',
+      });
+      const titles = within(behaviour)
+        .getAllByRole('heading', { level: 4 })
+        .map((heading) => heading.textContent);
+      expect(titles).toContain('Inherits');
+      expect(titles).toContain('Overrides');
+      expect(
+        within(behaviour).getByRole('region', { name: 'Inherits' })
+      ).toBeTruthy();
+      expect(
+        within(behaviour).getByRole('region', { name: 'Overrides' })
+      ).toBeTruthy();
+    });
+
+    it('a prop view has Placement and Behaviour', () => {
+      const session = selected(withScene(), { kind: 'scene', ids: ['barrel'] });
+      inspector({
+        ...session,
+        socialControls: {
+          ...session.socialControls,
+          selection: <form aria-label="Prop orders" />,
+        },
+      });
+      expect(sectionTitles(3)).toEqual(['Placement', 'Behaviour']);
+      const placement = within(region()).getByRole('region', {
+        name: 'Placement',
+      });
+      expect(within(placement).getByLabelText('World X')).toBeTruthy();
+      const behaviour = within(region()).getByRole('region', {
+        name: 'Behaviour',
+      });
+      expect(
+        within(behaviour).getByRole('form', { name: 'Prop orders' })
+      ).toBeTruthy();
+    });
+
+    it('a wall view has one section', () => {
+      inspector(selected(populated(), { kind: 'wall', id: 'studio-wall' }));
+      expect(sectionTitles(3)).toEqual(['Placement']);
+      expect(
+        within(
+          within(region()).getByRole('region', { name: 'Placement' })
+        ).getByLabelText('Start X')
+      ).toBeTruthy();
+    });
+  });
+
+  describe('S5 words, not ids', () => {
+    const ID = '4cbfe6a7-d24c-4ef5-a0cc-a188b902d921';
+    function unnamed(): EncounterStudioSession {
+      const session = createFakeStudioSession();
+      const draft = placeRoomMonster(session.document.draft, {
+        id: ID,
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 0, r: 0 } },
+      });
+      const monster = draft.room.monsterDeclarations[0]!;
+      return selected(
+        {
+          ...session,
+          document: { ...session.document, draft },
+          socialControls: {
+            ...session.socialControls,
+            selection: (
+              <CreatureOrders
+                scope={{}}
+                room={draft.room}
+                monster={monster}
+                binding={undefined}
+                onFactionChange={vi.fn()}
+                onOrdersChange={vi.fn()}
+                titled={false}
+              />
+            ),
+          },
+        },
+        { kind: 'actor', id: ID }
+      );
+    }
+
+    it('the creature view never prints the placement id as text', () => {
+      inspector(unnamed());
+      expect(region().textContent).not.toContain(ID);
+      expect(
+        within(region()).getByRole('heading', { level: 2, name: 'Goblin' })
+      ).toBeTruthy();
+    });
+
+    it('Copy id copies the placement id', async () => {
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+      inspector(unnamed());
+      const copy = within(region()).getByRole('button', {
+        name: 'Copy placement id',
+      });
+      expect(copy.getAttribute('title')).toBe(ID);
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenCalledWith(ID);
+      expect(await within(region()).findByText('Copied')).toBeTruthy();
+    });
+
+    it('the kind shows its name with the ref on hover', () => {
+      inspector(unnamed());
+      const kind = within(region()).getByText('Kind', { selector: 'dt' })
+        .nextElementSibling as HTMLElement;
+      expect(kind.textContent).toBe('Goblin');
+      expect(kind.getAttribute('title')).toBe('dnd5e:monsters:goblin');
+      expect(region().textContent).not.toContain('Rules:');
+    });
+  });
+
+  describe('S5 Apply, Cancel and help off the flow', () => {
+    function goblin(): EncounterStudioSession {
+      const session = createFakeStudioSession();
+      const draft = placeRoomMonster(session.document.draft, {
+        id: 'guard',
+        ref: 'dnd5e:monsters:skeleton',
+        startingCell: { location: { q: 0, r: 0 } },
+      });
+      return selected(
+        { ...session, document: { ...session.document, draft } },
+        { kind: 'actor', id: 'guard' }
+      );
+    }
+
+    it('no button, status or message in the studio contains Arrange', () => {
+      const views: EncounterStudioSession[] = [
+        createFakeStudioSession(),
+        goblin(),
+        selected(populated(), { kind: 'wall', id: 'studio-wall' }),
+        selected(populated(), {
+          kind: 'door',
+          wallId: 'studio-wall',
+          openingId: 'studio-opening',
+          doorId: 'studio-door',
+        }),
+        selected(withScene(), { kind: 'scene', ids: ['barrel'] }),
+        selected(withScene(), { kind: 'scene', ids: ['barrel', 'shelf'] }),
+        selected(populated(), { kind: 'start' }),
+      ];
+      for (const session of views) {
+        inspector(session);
+        const visible = [
+          ...within(region()).queryAllByRole('button'),
+          ...within(region()).queryAllByRole('status'),
+          ...within(region()).queryAllByRole('alert'),
+          ...region().querySelectorAll('h2, h3, h4, p, label, dt, dd'),
+        ].map((element) => element.textContent ?? '');
+        expect(visible.filter((text) => /Arrange/.test(text))).toEqual([]);
+        cleanup();
+      }
+    });
+
+    it('Map name has a help affordance and no inline sentence', () => {
+      inspector(goblin());
+      const sentence =
+        'Map name is an authoring label, not a stat-block change.';
+      const help = within(region()).getByRole('button', {
+        name: 'About Map name',
+      });
+      expect(help.getAttribute('aria-expanded')).toBe('false');
+      const text = within(region()).getByText(sentence);
+      // Hidden until asked for, and not a paragraph in the form's flow.
+      expect(text.hidden).toBe(true);
+      expect(text.closest('p')).toBeNull();
+      fireEvent.click(help);
+      expect(help.getAttribute('aria-expanded')).toBe('true');
+      expect(text.hidden).toBe(false);
+    });
+
+    it('the About this panel disclosure is collapsed by default', () => {
+      inspector(selected(populated(), { kind: 'wall', id: 'studio-wall' }));
+      const about = within(region())
+        .getByText('About this panel')
+        .closest('details')!;
+      expect(about.open).toBe(false);
+      expect(about.textContent).toContain('Heading is Start → End');
+    });
+
+    it('changing facing commits one intent without Apply', () => {
+      const session = goblin();
+      inspector(session);
+      fireEvent.change(within(region()).getByLabelText('Starting facing'), {
+        target: { value: 'ne' },
+      });
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
+      expect(session.commitArrange).toHaveBeenCalledWith({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'guard' },
+        facing: { kind: 'compass', value: 'ne' },
+      });
+    });
+
+    it('typing a map name commits only on Apply', () => {
+      const session = goblin();
+      inspector(session);
+      fireEvent.change(within(region()).getByLabelText('Map name'), {
+        target: { value: 'Gatekeeper' },
+      });
+      expect(session.commitArrange).not.toHaveBeenCalled();
+      fireEvent.click(within(region()).getByRole('button', { name: 'Apply' }));
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
+      expect(session.commitArrange).toHaveBeenCalledWith({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'guard' },
+        mapName: 'Gatekeeper',
+      });
     });
   });
 });

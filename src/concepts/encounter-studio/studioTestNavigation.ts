@@ -26,7 +26,7 @@ export function studioButton(name: string): HTMLElement {
     fireEvent.click(button('Build'));
     return button(name === 'Label' ? 'Note' : name);
   }
-  if (name === 'Arrange' || name === 'Size') {
+  if (name === 'Inspector' || name === 'Size') {
     options();
     if (button('Regions').getAttribute('aria-pressed') === 'true')
       return button('Regions & lighting');

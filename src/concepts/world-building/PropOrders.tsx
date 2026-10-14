@@ -1,3 +1,4 @@
+import { CopyId } from '../encounter-studio/CopyId';
 /**
  * The Props panel: one placed prop's ORDERS — whether it can be taken, what it
  * carries, whether it is here yet (rpg-project#488 R1, rpg-toolkit#1855), and
@@ -60,6 +61,8 @@ export interface PropOrdersProps {
   scope: SiteScope;
   room: RoomGameplayData;
   onChange: (id: string, next: RoomPropBinding | undefined) => void;
+  /** Placement id to its shown name, for the arrives picker. */
+  placementNames?: ReadonlyMap<string, string>;
 }
 
 export function PropOrders({
@@ -71,6 +74,7 @@ export function PropOrders({
   scope,
   room,
   onChange,
+  placementNames,
 }: PropOrdersProps) {
   const candidates = propBindingCandidateIds(
     items,
@@ -105,7 +109,7 @@ export function PropOrders({
             data-testid={`prop-orders-${id}`}
           >
             <h5>
-              {name} · {id}
+              {name} <CopyId id={id} label={`${name}`} />
             </h5>
             <label>
               <span>Holdable</span>
@@ -160,6 +164,7 @@ export function PropOrders({
             <ArrivesEditor
               scope={scope}
               room={room}
+              placementNames={placementNames}
               arrives={binding?.arrives}
               onCommit={(next) => onChange(id, setPropArrives(binding, next))}
             />

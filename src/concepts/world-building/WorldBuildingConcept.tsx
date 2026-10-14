@@ -18,6 +18,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { StudioSection } from '../encounter-studio/StudioSection';
 import type {
   EncounterStudioPresentation,
   StudioWallAppearanceOption,
@@ -57,6 +58,7 @@ import {
   withBinding,
 } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
+import { documentPlacementNames } from './placementNames';
 import { withPropBinding } from './propBindingEdits';
 import {
   selectedSceneItems,
@@ -565,6 +567,11 @@ export function WorldBuildingConcept({
     if (roomTool !== 'select') setPaintingConcealmentId(null);
   }, [roomTool]);
   const isStudio = Boolean(studioPresentation);
+  /** Placement id to its map or cast name, for every placement picker. */
+  const placementNames = useMemo(
+    () => documentPlacementNames(roomHistory.present),
+    [roomHistory.present]
+  );
   const studioView = roomMode ? studioPresentation?.view : undefined;
   const studioViewRef = useRef(studioView);
   const studioHome =
@@ -4960,6 +4967,7 @@ export function WorldBuildingConcept({
               <FactionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={guardSnapshotIntent(commitPolicies)}
                 onNotice={guardSnapshotIntent((message: string) => {
                   setNotice(message);
@@ -4971,6 +4979,7 @@ export function WorldBuildingConcept({
               <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={guardSnapshotIntent(commitPolicies)}
               />
             ),
@@ -4989,6 +4998,8 @@ export function WorldBuildingConcept({
                     scope={siteScope}
                     room={roomDraft.room}
                     monster={arrange.monster}
+                    placementNames={placementNames}
+                    titled={false}
                     binding={
                       roomDraft.room.monsterBindings?.[arrange.monster.id]
                     }
@@ -5001,13 +5012,17 @@ export function WorldBuildingConcept({
                         setMonsterOrders(arrange.monster.id, next)
                     )}
                   />
-                  <section aria-label="Authored disposition context">
-                    <h4>Authored dispositions</h4>
-                    <p>
-                      These are authored relationships, not a live stance
-                      calculation. Conditions and knowledge are evaluated by the
-                      engine.
-                    </p>
+                  <StudioSection
+                    title="Authored dispositions"
+                    level="subsection"
+                    about={
+                      <p>
+                        These are authored relationships, not a live stance
+                        calculation. Conditions and knowledge are evaluated by
+                        the engine.
+                      </p>
+                    }
+                  >
                     <ul>
                       {(siteScope.dispositions ?? [])
                         .filter((entry) => {
@@ -5034,7 +5049,7 @@ export function WorldBuildingConcept({
                           </li>
                         ))}
                     </ul>
-                  </section>
+                  </StudioSection>
                 </>
               ) : arrange?.kind === 'scene' ? (
                 selectedProp && optionSections.single ? (
@@ -5057,6 +5072,7 @@ export function WorldBuildingConcept({
                         )}
                         scope={siteScope}
                         room={roomDraft.room}
+                        placementNames={placementNames}
                         onChange={guardBindingIntent(
                           (id: string, next: RoomPropBinding | undefined) =>
                             id === selectedProp.id
@@ -5568,6 +5584,7 @@ export function WorldBuildingConcept({
               <FactionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={commitPolicies}
                 onNotice={setNotice}
               />
@@ -5581,6 +5598,7 @@ export function WorldBuildingConcept({
               <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={commitPolicies}
               />
             </details>
@@ -5646,7 +5664,12 @@ export function WorldBuildingConcept({
                 disposition and others." */}
             <details className="wb-collapse" data-inspector-section="tables">
               <summary aria-label="Tables">Tables</summary>
-              <TablesPanel scope={siteScope} onChange={commitPolicies} />
+              <TablesPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                placementNames={placementNames}
+                onChange={commitPolicies}
+              />
             </details>
 
             {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the
@@ -5732,6 +5755,7 @@ export function WorldBuildingConcept({
                       scope={siteScope}
                       monster={selectedMonster}
                       room={roomDraft.room}
+                      placementNames={placementNames}
                       binding={
                         roomDraft.room.monsterBindings?.[selectedMonster.id]
                       }

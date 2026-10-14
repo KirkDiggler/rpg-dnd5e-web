@@ -471,8 +471,7 @@ export function projectStudioArrange(
 }
 
 function finite(value: number, field: string): void {
-  if (!Number.isFinite(value))
-    throw new Error(`Arrange ${field} must be finite.`);
+  if (!Number.isFinite(value)) throw new Error(`The ${field} must be finite.`);
 }
 
 /** Throws on refusal. No partial candidate escapes; the owner alone validates
@@ -483,9 +482,9 @@ export function applyStudioSceneArrange(
 ): WorldScene {
   const ids = intent.target.ids;
   if (!validSceneTarget(scene, ids))
-    throw new Error('Arrange scene target no longer exists.');
+    throw new Error('The selected scenery no longer exists.');
   const roots = topLevelSelectedIds(scene, ids);
-  if (!roots.length) throw new Error('Arrange scene target has no roots.');
+  if (!roots.length) throw new Error('The selected scenery has no roots.');
   const values = sceneValues(scene, ids);
   let next = scene;
   if (intent.position) {
@@ -506,7 +505,7 @@ export function applyStudioSceneArrange(
     const absolute = intent.rotation.kind === 'absolute';
     if (absolute !== (roots.length === 1))
       throw new Error(
-        'Arrange single roots require absolute yaw; multiple roots require relative rotation.'
+        'One root takes an absolute yaw; several roots take a relative rotation.'
       );
     const angle = absolute
       ? intent.rotation.radians - values.yaw!
@@ -516,7 +515,7 @@ export function applyStudioSceneArrange(
   if (intent.heightScale !== undefined) {
     finite(intent.heightScale, 'height scale');
     if (values.height.kind === 'absent')
-      throw new Error('Arrange selection has no height-scalable props.');
+      throw new Error('The selection has no height-scalable props.');
     next = setSelectionHeight(next, ids, intent.heightScale);
   }
   return next;
@@ -532,7 +531,7 @@ export function applyStudioWallArrange(
   const wall = draft.room.walls?.find(
     (candidate) => candidate.id === intent.target.id
   );
-  if (!wall) throw new Error('Arrange wall target no longer exists.');
+  if (!wall) throw new Error('The selected wall no longer exists.');
   let next = wall;
   if (intent.start || intent.end) {
     if (intent.midpoint || intent.yaw !== undefined || intent.length)
@@ -549,7 +548,7 @@ export function applyStudioWallArrange(
   }
   if (intent.length) {
     if (intent.length.anchor !== 'start' && intent.length.anchor !== 'end')
-      throw new Error('Arrange wall anchor must be start or end.');
+      throw new Error('The wall anchor must be start or end.');
     if (intent.length.value !== wallLength(next))
       next = resizeWallLength({
         wall: next,
@@ -609,7 +608,7 @@ function requireCell(draft: Readonly<RoomDraft>, cell: RoomHexCell): void {
     !isCellWithinWorkspace(cell, draft.workspace)
   )
     throw new Error(
-      'Arrange location must be an integral hex within the authoring floor.'
+      'The location must be a whole hex within the authoring floor.'
     );
 }
 
@@ -619,14 +618,14 @@ export function applyStudioActorArrange(
 ): RoomDraft {
   if (intent.kind === 'start-position') {
     if (!draft.room.partyStart)
-      throw new Error('Arrange party start no longer exists.');
+      throw new Error('The party start no longer exists.');
     requireCell(draft, intent.location);
     return setRoomPartyStart(draft, intent.location);
   }
   const monster = draft.room.monsterDeclarations.find(
     (candidate) => candidate.id === intent.target.id
   );
-  if (!monster) throw new Error('Arrange actor target no longer exists.');
+  if (!monster) throw new Error('The selected creature no longer exists.');
   let next = draft;
   if (intent.mapName !== undefined) {
     const scene = setActorName(next.scene, monster.id, intent.mapName);

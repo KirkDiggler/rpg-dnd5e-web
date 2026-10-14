@@ -317,7 +317,7 @@
   color: var(--wb-muted);
 }
 
-/* Arrange is compact independently of the wider creation palettes. The
+/* The selection form is compact independently of the wider creation palettes. The
  * context layer stays pointer-transparent outside its right-aligned panels. */
 .es-arrange {
   align-self: flex-end;
@@ -674,4 +674,311 @@
   color: var(--wb-accent);
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* The studio type scale (rpg-project#579, S5). One scale for every panel:
+ * the inspector's title, a section, a sub-section, a field label, a value
+ * and help. Labels and values differ in weight; every part of a panel begins
+ * with a heading. Shared `wb-*` rules are overridden only under the studio. */
+.encounter-studio {
+  --es-text-title: 1.1rem;
+  --es-text-section: 0.95rem;
+  --es-text-subsection: 0.875rem;
+  --es-text-label: 0.78rem;
+  --es-text-value: 0.875rem;
+  --es-text-help: 0.78rem;
+  --es-weight-label: 600;
+  --es-weight-value: 400;
+  --es-space-section: 1rem;
+  --es-rule: #2e4655;
+}
+.es-inspector {
+  font-size: var(--es-text-value);
+}
+.es-inspector-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  padding: 0.6rem 0.85rem 0;
+}
+.es-inspector-title > h2 {
+  margin: 0;
+  font-size: var(--es-text-title);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.es-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.es-section:not(.es-subsection) + .es-section:not(.es-subsection) {
+  margin-top: calc(var(--es-space-section) - 0.65rem);
+  padding-top: var(--es-space-section);
+  border-top: 1px solid var(--wb-border);
+}
+.es-subsection + .es-subsection {
+  margin-top: 0.4rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--es-rule);
+}
+.encounter-studio .es-section-heading {
+  margin: 0;
+  line-height: 1.25;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.encounter-studio h3.es-section-heading {
+  color: var(--wb-accent);
+  font-size: var(--es-text-section);
+  font-weight: 700;
+}
+.encounter-studio h4.es-section-heading {
+  color: var(--wb-text);
+  font-size: var(--es-text-subsection);
+  font-weight: 650;
+}
+
+/* Labels and values. */
+.encounter-studio :is(#studio-sidebar, .es-encounter-home) label,
+.encounter-studio :is(#studio-sidebar, .es-encounter-home) dt,
+.encounter-studio .es-arrange .es-arrange-row > span {
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+}
+.encounter-studio :is(#studio-sidebar, .es-encounter-home) dd {
+  margin: 0;
+  color: var(--wb-text);
+  font-size: var(--es-text-value);
+  font-weight: var(--es-weight-value);
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(input, select, textarea) {
+  font-size: var(--es-text-value);
+  font-weight: var(--es-weight-value);
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(.es-help, .wb-help) {
+  font-size: var(--es-text-help);
+  font-weight: var(--es-weight-value);
+}
+.es-facts {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+.es-facts > div {
+  display: grid;
+  gap: 0.1rem;
+}
+.es-cast-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The shared creature orders, as sub-sections of Behaviour. */
+.encounter-studio .es-selection-configuration .wb-creature-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.encounter-studio .wb-creature-orders-grid dt,
+.encounter-studio .wb-creature-orders-grid dd {
+  font-size: inherit;
+}
+.encounter-studio .wb-policy-block + .wb-policy-block {
+  margin-top: 0.4rem;
+}
+.encounter-studio :is(.wb-creature-checks, .wb-creature-holds) h6,
+.encounter-studio .wb-options h6 {
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: var(--es-text-label);
+  font-weight: var(--es-weight-label);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.encounter-studio
+  :is(
+    .wb-policy-faction,
+    .wb-policy-disposition,
+    .wb-policy-entry,
+    .wb-policy-temper,
+    .wb-policy-until
+  )
+  label {
+  font-size: var(--es-text-label);
+}
+.encounter-studio
+  :is(
+    .wb-policy-faction,
+    .wb-policy-disposition,
+    .wb-policy-entry,
+    .wb-policy-temper,
+    .wb-policy-until
+  )
+  :is(input, select) {
+  font-size: var(--es-text-value);
+}
+.encounter-studio
+  :is(.wb-policy-list, .wb-policy-table, .wb-policy-row > summary) {
+  font-size: var(--es-text-value);
+}
+
+/* No horizontal scroll (rpg-project#579, S5-T2). The inspector keeps its
+ * width; what pushed past it is fixed where it starts: a value or an id that
+ * cannot break, a control wider than its row, and a flex or grid child that
+ * refuses to shrink below its content. Nothing hides an overflow. */
+.encounter-studio :is(#studio-sidebar, .es-encounter-home) {
+  overflow-wrap: break-word;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(dd, code, summary, .es-help, .wb-help, [role='status'], [role='alert']) {
+  overflow-wrap: anywhere;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(input, select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(
+    div,
+    section,
+    form,
+    label,
+    fieldset,
+    details,
+    ul,
+    ol,
+    li,
+    dl,
+    dd,
+    p,
+    span,
+    nav
+  ) {
+  min-width: 0;
+}
+/* A label keeps its words whole and its control takes the rest of the row.
+ * Stacked labels (a check approach, a table entry) align to the start. */
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  label
+  > span:first-child {
+  flex: none;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(.wb-approach-row, .wb-policy-entry)
+  label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.1rem;
+}
+
+/* An id kept behind a small copy button (S5-T3). */
+.encounter-studio .es-copy-id {
+  padding: 0.1rem 0.45rem;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-weight: var(--es-weight-value);
+}
+.encounter-studio .wb-policy-block h5 {
+  color: var(--wb-text);
+  font-size: var(--es-text-subsection);
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Help off the main flow (S5-T4): a field's "?" and a panel's "About this
+ * panel". Status and refusal lines stay inline. */
+.es-field-help {
+  display: contents;
+}
+.encounter-studio .es-help-toggle {
+  align-self: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-weight: var(--es-weight-label);
+  line-height: 1;
+}
+.encounter-studio .es-help-toggle[aria-expanded='true'] {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent);
+}
+.es-field-help-text {
+  display: block;
+  flex-basis: 100%;
+  grid-column: 1 / -1;
+}
+.es-field-help-text[hidden] {
+  display: none;
+}
+.es-about > summary {
+  cursor: pointer;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+}
+.es-about > .es-help {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.es-arrange-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
+}
+
+/* Table and option rows (S5-T5): a table entry is one sentence until opened,
+ * and an option's line wraps by word in a field that grows with it. */
+.encounter-studio .wb-entry-collapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+.encounter-studio .wb-entry-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.encounter-studio .wb-entry-collapsed button {
+  padding: 0.2rem 0.55rem;
+}
+.encounter-studio .wb-option > label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+.encounter-studio .wb-option textarea {
+  width: 100%;
+  resize: vertical;
+  field-sizing: content;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+.encounter-studio :is(.wb-option, .wb-option-check, .wb-policy-trigger) {
+  overflow-wrap: anywhere;
 }

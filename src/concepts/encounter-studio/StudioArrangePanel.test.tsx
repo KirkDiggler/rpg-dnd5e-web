@@ -549,7 +549,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       location: { x: 1, z: -1 },
     });
     change('Rename label', 'Never commit');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel Arrange' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(token('Rename label')).toBe('Renamed');
     change('Rename label', 'Never commit');
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
@@ -578,20 +578,26 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/integers/);
     change('Starting hex q', '0');
     change('Starting hex r', '1');
+    // Facing is a self-contained picker: it applies at once, alone, and the
+    // staged hex stays staged behind Apply (S5-Q1).
     change('Starting facing', 'ne');
-    apply();
     expect(joined.calls[0]).toEqual({
       kind: 'actor-start',
       target: { kind: 'actor', id: 'goblin-1' },
-      location: { q: 0, r: 1 },
       facing: { kind: 'compass', value: 'ne' },
+    });
+    expect(token('Starting hex r')).toBe('1');
+    apply();
+    expect(joined.calls[1]).toEqual({
+      kind: 'actor-start',
+      target: { kind: 'actor', id: 'goblin-1' },
+      location: { q: 0, r: 1 },
     });
     expect(actor().startingCell).toEqual({
       location: { q: 0, r: 1 },
       facing: 'ne',
     });
     change('Starting facing', '');
-    apply();
     expect(actor().startingCell).not.toHaveProperty('facing');
     act(() =>
       joined.session.viewportProps.roomAuthoring!.onSelectActorTarget!({
@@ -616,19 +622,24 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     const writes = joined.writes();
     const family = 'dnd5e:npcs:kingdom:merchant-01';
     const look = 'dnd5e:npcs:kingdom:merchant-01-style-03-b';
+    // Each look picker applies on change as its own transaction (S5-Q1).
     change('NPC appearance', family);
     change('Style', '03');
     change('Skin palette', 'B');
-    expect(joined.writes()).toBe(writes);
-    apply();
-    expect(joined.calls).toEqual([
-      {
-        kind: 'actor-start',
-        target: { kind: 'actor', id: 'goblin-1' },
-        appearanceRef: look,
-      },
-    ]);
-    expect(joined.writes()).toBe(writes + 1);
+    expect(joined.calls).toHaveLength(3);
+    expect(joined.calls.at(-1)).toEqual({
+      kind: 'actor-start',
+      target: { kind: 'actor', id: 'goblin-1' },
+      appearanceRef: look,
+    });
+    expect(
+      joined.calls.every(
+        (call) =>
+          call.kind === 'actor-start' &&
+          Object.keys(call).sort().join() === 'appearanceRef,kind,target'
+      )
+    ).toBe(true);
+    expect(joined.writes()).toBe(writes + 3);
     const chosen = joined.session.document.draft.room.monsterDeclarations.find(
       (actor) => actor.id === 'goblin-1'
     )!;
@@ -645,7 +656,11 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       )?.appearanceRef
     ).toBe(look);
     act(() => joined.session.undo());
+    act(() => joined.session.undo());
+    act(() => joined.session.undo());
     expect(joined.session.document).toEqual(before);
+    act(() => joined.session.redo());
+    act(() => joined.session.redo());
     act(() => joined.session.redo());
     expect(token('NPC appearance')).toBe(family);
     expect(token('Style')).toBe('03');
@@ -654,12 +669,31 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect((screen.getByLabelText('Style') as HTMLSelectElement).disabled).toBe(
       true
     );
-    apply();
     expect(
       joined.session.document.draft.room.monsterDeclarations.find(
         (actor) => actor.id === 'goblin-1'
       )
     ).not.toHaveProperty('appearanceRef');
+  });
+
+  it('each apply-on-change picker edit is its own history entry', () => {
+    const joined = owner();
+    joined.selectActor();
+    const before = joined.session.document;
+    change('Map name', 'Gatekeeper');
+    change('Starting facing', 'ne');
+    change('Starting facing', 'sw');
+    expect(joined.calls).toHaveLength(2);
+    // The staged map name survived both picks and is still staged.
+    expect(token('Map name')).toBe('Gatekeeper');
+    act(() => joined.session.undo());
+    expect(
+      joined.session.document.draft.room.monsterDeclarations.find(
+        (monster) => monster.id === 'goblin-1'
+      )!.startingCell.facing
+    ).toBe('ne');
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
   });
 
   it('keeps a valid unavailable appearance visible and unchanged until explicitly replaced', () => {
@@ -698,7 +732,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Apply Arrange',
+          name: 'Apply',
         }) as HTMLButtonElement
       ).disabled
     ).toBe(true);
@@ -737,7 +771,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(
       within(
         screen.getByRole('region', { name: 'Arrange selection' })
-      ).getByRole('heading').textContent
+      ).getByRole('heading', { level: 2 }).textContent
     ).toContain('Studio north wall');
   });
   it('explicit canonical defaults preserve missing fields, history, bytes and writes exactly', () => {
@@ -759,24 +793,27 @@ describe('Arrange staged fields joined to the actual document owner', () => {
       )
     ).not.toHaveProperty('heightScale');
     expect(joined.session.canUndo).toBe(false);
+    expect(joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
+    expect(joined.writes()).toBe(writes);
+    // Facing applies on change; choosing the asset default again writes
+    // absence, not an explicit default, and each pick is one undo step.
     joined.selectActor();
     change('Starting facing', 'ne');
     change('Starting facing', '');
-    apply();
     expect(joined.calls.at(-1)).toEqual({
       kind: 'actor-start',
       target: { kind: 'actor', id: 'goblin-1' },
       facing: { kind: 'default' },
     });
-    expect(joined.session.document).toBe(before);
-    expect(
+    const startingCell = () =>
       joined.session.document.draft.room.monsterDeclarations.find(
         (monster) => monster.id === 'goblin-1'
-      )!.startingCell
-    ).not.toHaveProperty('facing');
-    expect(joined.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
-    expect(joined.writes()).toBe(writes);
-    expect(joined.session.canUndo).toBe(false);
+      )!.startingCell;
+    expect(startingCell()).not.toHaveProperty('facing');
+    act(() => joined.session.undo());
+    expect(startingCell().facing).toBe('ne');
+    act(() => joined.session.undo());
+    expect(joined.session.document).toEqual(before);
   });
 
   it('an empty group has actual origin/yaw but no invented height or free tilt/XYZ scale', () => {
@@ -875,7 +912,7 @@ describe('linked label staged background joined to owner', () => {
     apply();
     expect(session!.document).toBe(unfinished);
     expect(screen.getByRole('alert').textContent).toMatch(/refused/);
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel Arrange' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     change('Background light (%)', '15');
     apply();
     expect(session!.document.draft.scene.authoringRegions![0].lighting).toEqual(
@@ -993,7 +1030,7 @@ describe('linked label staged background joined to owner', () => {
       );
     reset();
     expect(joined.session.document).toBe(before);
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel Arrange' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(token('Background light (%)')).toBe('15');
     reset();
     fireEvent.keyDown(screen.getByLabelText('Background light (%)'), {

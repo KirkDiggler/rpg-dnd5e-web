@@ -11,12 +11,13 @@ import {
   type CastEdit,
   type CastMember,
 } from '../world-building/cast';
-import { authoredActorName } from '../world-building/creaturePalette';
 import {
   TEMPLATE_ABILITIES,
   type MonsterTemplate,
   type TemplateAbility,
 } from '../world-building/monsterTemplates';
+import { documentPlacementNames } from '../world-building/placementNames';
+import { AboutPanel, FieldHelp } from './FieldHelp';
 import { NpcLookPicker } from './NpcLookPicker';
 import type { EncounterStudioSession } from './studioSession';
 
@@ -272,7 +273,7 @@ export function CastMemberForm({
     if (session.cast.remove(member.ref)) onSaved?.(null);
     else setError('The delete was refused. Check the document notice.');
   };
-  const names = session.document.draft.scene.actorNames;
+  const placementNames = documentPlacementNames(session.document);
   return (
     <form
       aria-label={member ? `Cast member ${member.name}` : 'New cast member'}
@@ -306,10 +307,10 @@ export function CastMemberForm({
         </button>
       )}
       {rulebook && idEditable && (
-        <p className="es-help">
+        <FieldHelp field="Id">
           An override gives {member?.name} its own stat block. Its placements
           and defaults move to the new id.
-        </p>
+        </FieldHelp>
       )}
       {(shadows || takeover) && (
         <p role="status" className="es-warning">
@@ -432,10 +433,10 @@ export function CastMemberForm({
         >
           Add a weapon
         </button>
-        <p className="es-help">
+        <FieldHelp field="Weapons and armor">
           Weapons and armor are typed references. A pick-list waits for the
           rulebook catalog.
-        </p>
+        </FieldHelp>
       </fieldset>
       <fieldset className="es-skill-fields">
         <legend>Skills</legend>
@@ -480,8 +481,11 @@ export function CastMemberForm({
         </select>
       </label>
       <p className="es-help">
-        The default look and faction are stamped onto each new placement.
-        Changing them later does not change a placed creature.
+        Defaults{' '}
+        <FieldHelp field="Defaults">
+          The default look and faction are stamped onto each new placement.
+          Changing them later does not change a placed creature.
+        </FieldHelp>
       </p>
       <div className="es-buttons">
         <button type="submit">Apply</button>
@@ -509,9 +513,10 @@ export function CastMemberForm({
                     <button
                       type="button"
                       aria-label={`Select placement ${id}`}
+                      title={id}
                       onClick={() => onShowPlacement?.(id)}
                     >
-                      {authoredActorName(names, id) ?? member.name} · {id}
+                      {placementNames.get(id) ?? member.name}
                     </button>
                   </li>
                 ))}
@@ -539,10 +544,10 @@ export function CastMemberForm({
               >
                 Shuffle looks
               </button>
-              <span className="es-help">
+              <FieldHelp field="Shuffle looks">
                 Gives each placement a different look from the default look
                 family.
-              </span>
+              </FieldHelp>
             </div>
           )}
           {member.unusedDefaults.length > 0 && (
@@ -608,11 +613,13 @@ export function StudioCast({
   return (
     <section aria-label="Cast" className="es-creature-panel">
       <h2>Cast</h2>
-      <p className="es-help">
-        A cast member is a stat block, or a rulebook monster as it is, plus the
-        look and faction new placements start with. Selecting one highlights its
-        placements on the map.
-      </p>
+      <AboutPanel>
+        <p>
+          A cast member is a stat block, or a rulebook monster as it is, plus
+          the look and faction new placements start with. Selecting one
+          highlights its placements on the map.
+        </p>
+      </AboutPanel>
       {cast.length ? (
         <ul aria-label="Cast members" className="es-inspector-list">
           {cast.map((entry) => (

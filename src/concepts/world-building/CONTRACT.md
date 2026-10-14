@@ -84,7 +84,7 @@ helpers. Dismiss hides settings without exiting drawing; Escape/right-click exit
 Wall and cancels the unfinished gesture without clearing appearance or snap.
 
 **Right angles** is an independent editor-only setting, initially off, shared by
-Walls and selected-wall Arrange controls. It constrains drawing and endpoint
+Walls and the selected wall's inspector controls. It constrains drawing and endpoint
 handles, not numeric fields or whole-wall translation. At gesture start, the
 accepted drawing start or the fixed opposite endpoint chooses a reference from
 other walls meeting that exact point. The gesture retains that reference. Free
@@ -108,7 +108,7 @@ rather than reconstructing it through trigonometry. Opening edges clamp drags;
 the preview displays the applied endpoint on the requested ray, never a false
 join to an unreachable target. Opening identities and attached doors are retained.
 
-Arrange leads with full-precision Start X/Z and End X/Z fields. Midpoint lives in
+The wall inspector leads with full-precision Start X/Z and End X/Z fields. Midpoint lives in
 collapsed **Position · whole wall** controls. Both endpoints can change in one
 atomic transaction without an intermediate zero-length wall. Start-only changes
 use the existing End-anchored opening offsets; otherwise local opening distances
@@ -201,7 +201,7 @@ A selected wall can choose one finish for both faces or separate choices for A
 and B. A identifies the wall's `positive-z` face and B its `negative-z` face;
 the map markers follow that source orientation, not camera-relative left/right. Both-side
 editing is the default affordance; changing the control mode alone writes no
-content. Choices stage beside the other Arrange fields and use the same atomic
+content. Choices stage beside the wall inspector's other fields and use the same atomic
 Apply/Cancel transaction, with the same selection/document/epoch fences.
 
 Scene7 optionally stores `wallFinishes` by structural wall ID, with independently
@@ -354,7 +354,7 @@ Existing scene3 label/resize edits do not downgrade. Empty region collections ar
 omitted without demotion; authored empty explicit areas retain their intent.
 
 Layout draws only current resolved areas. Linked labels remain selectable through
-the existing Arrange arbiter, with automatic/explicit mode, unresolved warning and
+the existing selection arbiter, with automatic/explicit mode, unresolved warning and
 reason. Full wall spans, including openings/doors in every state, are logical
 boundaries. Supported unambiguous wall motion follows the accepted oriented walk;
 breaks, seed moves outside it, duplicates/conflicts and unsupported or uncertain
@@ -386,7 +386,7 @@ without writes. 3D round trips preserve definitions/selection but retire region
 painting. There is no 3D boundary overlay, audio control or gameplay visibility
 authority.
 
-Linked-label Arrange stages **Background light (%)** (0..100) and **Use baseline
+The linked-label form stages **Background light (%)** (0..100) and **Use baseline
 appearance** in the same dirty-only label-edit as rename/move. An unset input is
 blank with a100 placeholder and **Baseline · no region light authored**; untouched
 fields do not enter the patch. Explicit100 authors `{background:1}`, distinct from
@@ -591,8 +591,8 @@ below, not the standalone composition interaction or ownership contract. See
 ## NPC appearance selection
 
 A placed monster may carry optional `appearanceRef` beside its existing rules
-`ref` and starting cell. Studio Arrange stages this choice with the actor's other
-dirty fields and commits one owner transaction. Clearing it deletes only the
+`ref` and starting cell. The studio inspector applies this choice on change as
+its own owner transaction; the actor's other staged fields stay staged. Clearing it deletes only the
 optional key; identity, rules/template, faction and position are unchanged unless
 explicitly edited in that same transaction. Appearance, Style and Skin palette
 controls resolve one complete look ref through provider-declared family metadata;
@@ -679,7 +679,7 @@ reveal targets and predicates are distinct from the record ids in holds. Faction
 minds reference placed individuals, not creature-palette recipes. Reserved sides
 remain available to disposition authoring without requiring a custom faction.
 
-Arrange exposes CreatureOrders for one selected actor and PropOrders for one
+The inspector's Behaviour section exposes CreatureOrders for one selected actor and PropOrders for one
 eligible selected prop, with navigation back to Encounter definitions. Authored
 disposition context is labelled as authored, not as the current effective stance.
 Unassigned creatures keep their kind default; the editor never writes a default
@@ -720,15 +720,15 @@ Label, region, lighting and resize edits retain scene5 and its palette.
 
 Scene5 optionally carries `actorNames`, a placement-id to authoring-label map.
 New recipe placements snapshot their name in the same transaction. Marker labels,
-hover previews and Arrange use that name without changing the rules ref or enriching
+hover previews and the inspector use that name without changing the rules ref or enriching
 runtime knowledge. Older instances keep their rules-based label until explicitly
 named with Map name; the editor does not guess their recipe. Removing a creature
 removes its label. Move creature arms the existing one-shot destination-hex action,
 with snapped hover feedback and explicit cancellation; names and other bindings
 remain unchanged.
 
-Roster selection alone never moves an actor. Existing instances reuse Arrange's
-staged single appearanceRef transaction; definition edits retain appearance,
+Roster selection alone never moves an actor. Existing instances reuse the
+inspector's single appearanceRef transaction; definition edits retain appearance,
 identity, location and bindings. Named stat blocks are shared by reference, never
 copied into instances. Their form applies only edited fields, keeps ids stable
 and preserves untouched optional values. Cancellation and document/intent retirement
@@ -778,7 +778,11 @@ The engine example is pinned to toolkit merge `6cbee563`.
 Build, Regions and Encounter are authoring homes, independent of the Layout/3D
 map view. Document identity, saving and history remain shared. Build starts in
 Select and offers Paint, Erase, Rectangle and Size in Layout. Its right-hand
-options contain Arrange, Walls, Doors and Notes. Regions owns the region list,
+sidebar is the inspector: one view for the one selected thing. The views are
+room (nothing selected), wall, door, creature, prop, group, hex, label and party
+start, plus a selected cast member's form; two or more picked roots show the
+pick strip instead. Wall, Door and Note are Layout tools whose options show in
+the inspector while armed. Regions owns the region list,
 room-label creation and the existing linked-label boundary/background-light form.
 Encounter gives Tables a full configuration workspace, not a map options tab.
 Future configuration sections are not represented by enabled placeholder controls.
@@ -794,9 +798,19 @@ callbacks are fenced. Undo/Redo remain document actions. Regions3D is inspection
 with existing lighting edits available; placement and boundary painting use Layout.
 
 Sections stay mounted when hidden. Local form drafts survive section changes and
-collapse; a canonical document/selection/intent replacement still retires Arrange
-staging. Selection changes update Arrange without forcing a different section or
-reopening the sidebar. Wall drawing remains a Layout tool; showing its options
+collapse; a canonical document/selection/intent replacement still retires the
+inspector's staged fields. Selection changes update the inspector without
+forcing a different section or reopening the sidebar.
+
+The inspector reads as a document (rpg-project#579). Its title names the
+selection by words: a placement by its map name, else its cast member's name,
+with "Guard (2)" for a second placement that reads alike; ids sit behind a Copy
+id button and in `title`. A creature or prop splits into a Placement section and
+a Behaviour section. Text and number fields stage behind Apply and Cancel; the
+self-contained pickers (look family, style, skin palette, starting facing,
+faction) apply on change, each as its own history entry, and keep the other
+staged fields. A field's help sits behind its "?"; panel help sits behind
+"About this panel". Status and refusal lines stay inline. Wall drawing remains a Layout tool; showing its options
 alone does not arm drawing. Pickers retain published static PNGs; no model-capture
 queue or thumbnail-demand mechanism is introduced.
 

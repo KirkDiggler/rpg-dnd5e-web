@@ -1,7 +1,9 @@
+import { paletteNameForRef } from '@/author/paletteData';
 import {
   NPC_APPEARANCE_FAMILIES,
   npcAppearanceOptions,
 } from '@/npc-appearances/npcAppearanceChoices';
+import { documentPlacementNames } from '../world-building/placementNames';
 import type {
   AuthoringRegion,
   EncounterStudioSession,
@@ -52,6 +54,11 @@ export interface ArrangeField {
   placeholder?: string;
   choices?: readonly { value: string; label: string }[];
   disabled?: boolean;
+  /** The field's help, behind its "?" (rpg-project#579). */
+  help?: string;
+  /** A self-contained picker: it commits on change as its own history entry,
+   * and Cancel does not cover it (S5-Q1). */
+  applyOnChange?: true;
 }
 const display = (value: number): string => String(Number(value.toFixed(6)));
 const degrees = (radians: number): number => (radians * 180) / Math.PI;
@@ -212,10 +219,12 @@ export function arrangeFields(
           label: 'Map name',
           value: selection.mapName ?? '',
           placeholder: 'Rules name when unset',
+          help: 'Map name is an authoring label, not a stat-block change.',
         },
         {
           key: 'appearanceFamily',
           label: 'NPC appearance',
+          applyOnChange: true,
           value: family?.ref ?? ref,
           choices: [
             { value: '', label: 'Use rules default appearance' },
@@ -231,6 +240,7 @@ export function arrangeFields(
         {
           key: 'appearanceStyle',
           label: 'Style',
+          applyOnChange: true,
           value: current?.look?.style ?? '',
           choices: choices('style'),
           disabled: !current?.look,
@@ -238,6 +248,7 @@ export function arrangeFields(
         {
           key: 'appearanceSkinPalette',
           label: 'Skin palette',
+          applyOnChange: true,
           value: current?.look?.skinPalette ?? '',
           choices: choices('skinPalette'),
           disabled: !current?.look,
@@ -247,6 +258,7 @@ export function arrangeFields(
         {
           key: 'facing',
           label: 'Starting facing',
+          applyOnChange: true,
           value: selection.startingCell.facing ?? '',
           choices: [
             { value: '', label: 'Asset default' },
@@ -518,7 +530,11 @@ export function selectionName(
     case 'label':
       return selection.label.text;
     case 'actor':
-      return selection.mapName ?? selection.monster.id;
+      return (
+        documentPlacementNames(session.document).get(selection.monster.id) ??
+        selection.mapName ??
+        paletteNameForRef(selection.monster.ref)
+      );
     case 'start':
       return 'Party start';
     case 'hex':

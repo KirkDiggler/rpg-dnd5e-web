@@ -85,7 +85,7 @@ export function deriveWallCornerFits(
     if (mismatch) {
       reject(
         ends,
-        `Corner fitting requires matching ${mismatch}: ${a.wall.appearance[mismatch]} versus ${b.wall.appearance[mismatch]}. Enter the same value on both walls in Arrange.`
+        `Corner fitting requires matching ${mismatch}: ${a.wall.appearance[mismatch]} versus ${b.wall.appearance[mismatch]}. Enter the same value on both walls.`
       );
       continue;
     }

@@ -643,7 +643,7 @@ describe('staged workspace dimensions and label controls', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
     click('Label');
     change('Existing label', 'kitchen-2');
-    click('Arrange');
+    click('Inspector');
     change('Rename label', 'Courtyard');
     expect(observed.session?.renameMapLabel).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByLabelText('Rename label'), { key: 'Escape' });
@@ -652,7 +652,7 @@ describe('staged workspace dimensions and label controls', () => {
     ).toBe('Kitchen');
     click('Label');
     change('Existing label', 'kitchen-2');
-    click('Arrange');
+    click('Inspector');
     expect(
       (screen.getByLabelText('Rename label') as HTMLInputElement).value
     ).toBe('Kitchen');

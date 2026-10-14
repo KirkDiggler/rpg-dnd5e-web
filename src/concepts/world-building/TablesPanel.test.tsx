@@ -10,9 +10,11 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { FactionsPanel, TableNameSelect } from './SitePolicies';
 import type { SiteScope } from './siteScope';
 import { TablesPanel } from './TablesPanel';
+import { tableUsers } from './tableUsers';
 
 /** A site with two tables: one carrying an entry, one declared and still
  * empty — the second is legal and is half of what these tests pin. */
@@ -101,7 +103,7 @@ describe('TablesPanel — the site’s shared tables, declared at the root', () 
   it('shows each table with its entry count, and an empty one as empty', () => {
     render(<TablesPanel scope={site} onChange={() => {}} />);
     expect(screen.getByLabelText('Table goblin-drill').textContent).toContain(
-      '1 trigger'
+      '2 entries'
     );
     expect(screen.getByLabelText('Table watch-drill').textContent).toContain(
       'empty'
@@ -488,5 +490,105 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
     mount({ when: { enemy: 'reach' }, attack: 'enemy' });
     expect(options('To for time entry')).not.toContain('sound');
     expect(options('To for time entry')).not.toContain('path');
+  });
+});
+
+describe('TablesPanel — rows that summarise until opened (rpg-project#579)', () => {
+  const room = decodeWorldBuilderV4Site().draft.room;
+  const names = new Map([
+    ['goblin-1', 'Goblin'],
+    ['skeleton-a', 'Guard'],
+    ['skeleton-b', 'Guard (2)'],
+  ]);
+  const used: SiteScope = {
+    ...site,
+    factions: [{ id: 'goblins', table: 'goblin-drill' }],
+  };
+  const usedRoom = {
+    ...room,
+    monsterBindings: {
+      'skeleton-a': { table: 'goblin-drill' },
+      'skeleton-b': { table: 'goblin-drill' },
+    },
+  };
+
+  it('the table summary counts entries, not triggers', () => {
+    render(<TablesPanel scope={site} onChange={() => {}} />);
+    const summary = screen.getByLabelText('Table goblin-drill').textContent;
+    expect(summary).toContain('2 entries');
+    expect(summary).not.toContain('trigger');
+  });
+
+  it('the summary names the factions and placements that use the table', () => {
+    render(
+      <TablesPanel
+        scope={used}
+        room={usedRoom}
+        placementNames={names}
+        onChange={() => {}}
+      />
+    );
+    expect(
+      screen.getByLabelText('Table goblin-drill').textContent?.trim()
+    ).toBe('goblin-drill · 2 entries · used by goblins, Guard, Guard (2)');
+    expect(tableUsers(used, usedRoom, 'goblin-drill')).toEqual({
+      factions: ['goblins'],
+      placements: ['skeleton-a', 'skeleton-b'],
+    });
+  });
+
+  it('an unused table says not used', () => {
+    render(
+      <TablesPanel
+        scope={used}
+        room={usedRoom}
+        placementNames={names}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByLabelText('Table watch-drill').textContent).toContain(
+      'not used'
+    );
+  });
+
+  it('a collapsed entry shows one sentence and opens on Edit', () => {
+    render(<TablesPanel scope={site} collapsedEntries onChange={() => {}} />);
+    fireEvent.click(screen.getByLabelText('Table goblin-drill'));
+    expect(screen.queryAllByLabelText('When for time entry')).toHaveLength(0);
+    const edits = screen.getAllByRole('button', { name: 'Edit time entry' });
+    expect(edits).toHaveLength(2);
+    const first = edits[0]!.closest('li')!;
+    expect(first.querySelector('.wb-entry-summary')?.textContent).toMatch(
+      /attack/
+    );
+    fireEvent.click(edits[0]!);
+    // One row opened; the other stays a line.
+    expect(screen.getAllByLabelText('When for time entry')).toHaveLength(1);
+    expect(
+      screen.getAllByRole('button', { name: 'Edit time entry' })
+    ).toHaveLength(1);
+  });
+
+  it('editing an opened entry commits exactly as before', () => {
+    const collapsed = vi.fn();
+    const open = vi.fn();
+    const first = render(
+      <TablesPanel scope={site} collapsedEntries onChange={collapsed} />
+    );
+    fireEvent.click(screen.getByLabelText('Table goblin-drill'));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Edit time entry' })[1]!
+    );
+    fireEvent.change(screen.getByLabelText('Weight for time entry'), {
+      target: { value: '3' },
+    });
+    first.unmount();
+    render(<TablesPanel scope={site} onChange={open} />);
+    fireEvent.click(screen.getByLabelText('Table goblin-drill'));
+    fireEvent.change(screen.getAllByLabelText('Weight for time entry')[1]!, {
+      target: { value: '3' },
+    });
+    expect(collapsed.mock.calls).toEqual(open.mock.calls);
+    expect(collapsed).toHaveBeenCalledTimes(1);
   });
 });
