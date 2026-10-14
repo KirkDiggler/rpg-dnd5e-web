@@ -54,13 +54,13 @@ export function StudioFacts({
               {' · read by '}
               <Uses uses={row.readers} onOpen={onOpen} />
               {row.readers.length === 0 && (
-                <span className="es-warning" data-mark="never-read">
+                <span className="es-fact-mark" data-mark="never-read">
                   {' '}
                   · written, never read
                 </span>
               )}
               {row.writers.length === 0 && (
-                <span className="es-warning" data-mark="never-written">
+                <span className="es-fact-mark" data-mark="never-written">
                   {' '}
                   · read, never written
                 </span>

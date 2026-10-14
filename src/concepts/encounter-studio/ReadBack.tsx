@@ -26,15 +26,17 @@ export function ReadBack({
 }: ReadBackProps): React.JSX.Element {
   const paragraphs = readBackOf(document, selection);
   return (
-    <StudioSection title="Read back" level="section" className="es-readback">
-      {paragraphs.map((paragraph) => (
-        <Paragraph
-          key={paragraph.heading}
-          paragraph={paragraph}
-          onRef={onRef}
-        />
-      ))}
-    </StudioSection>
+    <div className="es-context-panel">
+      <StudioSection title="Read back" level="section" className="es-readback">
+        {paragraphs.map((paragraph) => (
+          <Paragraph
+            key={paragraph.heading}
+            paragraph={paragraph}
+            onRef={onRef}
+          />
+        ))}
+      </StudioSection>
+    </div>
   );
 }
 

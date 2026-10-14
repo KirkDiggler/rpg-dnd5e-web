@@ -999,6 +999,9 @@
   font: inherit;
 }
 .encounter-studio .es-readback-law {
-  text-decoration: underline dotted;
-  text-underline-offset: 0.2em;
+  cursor: help;
+}
+.encounter-studio .es-fact-mark {
+  color: var(--wb-warning, #e7b45a);
+  font-weight: 600;
 }
