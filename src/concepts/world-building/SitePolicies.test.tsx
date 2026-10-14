@@ -20,6 +20,7 @@ import { placementDisplayNames } from './placementNames';
 import { PropOrders } from './PropOrders';
 import type { RoomMonsterBinding, RoomPropBinding } from './roomDraft';
 import {
+  AuthoredDispositions,
   CreatureOrders,
   DispositionsPanel,
   FactionsPanel,
@@ -132,7 +133,9 @@ describe('SitePolicies — the site’s own facts, editable', () => {
         .value
     ).toBe('hostile');
     expect(
-      within(dispositionsNode).getByText('fact goblin-cowed')
+      within(dispositionsNode).getByText(
+        'Until the goblins’ mind knows goblin-cowed; then neutral.'
+      )
     ).toBeTruthy();
 
     // It IS editable: the facts are controls now.
@@ -390,7 +393,7 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
     );
     expect(
       screen.getAllByTestId('creature-arrives-note')[1].textContent
-    ).toMatch(/Held in reserve until fact cellar-is-clear/);
+    ).toMatch(/Held in reserve until cellar-is-clear is known/);
   });
 
   it('reports the remaining facts read-only when no editor is given', () => {
@@ -416,7 +419,9 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
     const creature = screen.getByLabelText('Selected creature');
     expect(within(creature).getByText('holds cellar-lie')).toBeTruthy();
     expect(
-      within(creature).getByText(/held in reserve until fact cellar-is-clear/)
+      within(creature).getByText(
+        /held in reserve until cellar-is-clear is known/
+      )
     ).toBeTruthy();
     expect(
       within(creature).getByText(
@@ -1049,5 +1054,42 @@ describe('a faction reads back the table it names (rpg-project#576)', () => {
       '“gate-patrol”'
     );
     expect(screen.queryByText('No shared table is authored.')).toBeNull();
+  });
+});
+
+describe('predicates read as sentences (rpg-project#576)', () => {
+  it('the authored dispositions list renders no JSON', () => {
+    render(
+      <AuthoredDispositions
+        document={{
+          draft: fixture.draft,
+          scope: {
+            factions: [{ id: 'goblins', mind: 'goblin-1' }],
+            dispositions: [
+              {
+                between: ['goblins', 'party'],
+                stance: 'neutral',
+                until: { fact: 'goblin-cowed' },
+              },
+              {
+                between: ['goblins', 'party'],
+                stance: 'hostile',
+                until: { round: 3 },
+              },
+            ],
+          },
+        }}
+        faction="goblins"
+      />
+    );
+    const list = screen.getByTestId('authored-dispositions');
+    expect(list.textContent).not.toMatch(/[{}"]/);
+    expect(list.textContent).toContain(
+      'The goblins and the party are neutral until'
+    );
+    expect(list.textContent).toContain('knows goblin-cowed; then hostile.');
+    expect(list.textContent).toContain(
+      'are hostile until round 3 begins; then neutral.'
+    );
   });
 });

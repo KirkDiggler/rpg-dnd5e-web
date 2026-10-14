@@ -99,7 +99,14 @@ import {
   removeOptionRow,
 } from './optionEdits';
 import { placementDisplayNames } from './placementNames';
+import {
+  dispositionLine,
+  pairMindNameIn,
+  predicateSentence,
+  turnsTo,
+} from './predicateSentence';
 import type {
+  RoomDraftDocument,
   RoomGameplayData,
   RoomMonsterBinding,
   RoomMonsterPlacement,
@@ -181,19 +188,6 @@ function entryText(entry: AnswerEntryShape, trigger: string): string {
   const word = entryWord(entry);
   if (word !== undefined) parts.push(wordShorthand(entry, word));
   return parts.join(' · ');
-}
-
-/** A `until:` predicate, in the form names the vocabulary seals. */
-function predicateText(predicate: PredicateDoc): string {
-  const form = predicateForm(predicate);
-  if (form === 'round')
-    return `round ${(predicate as { round: number }).round}`;
-  if (form === 'down') return `down ${(predicate as { down: string }).down}`;
-  if (form === 'fact') return `fact ${(predicate as { fact: string }).fact}`;
-  const stance = (
-    predicate as { stance: { between: [string, string]; is: string } }
-  ).stance;
-  return `stance ${stance.between[0]} ↔ ${stance.between[1]} is ${stance.is}`;
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -1588,7 +1582,17 @@ function UntilEditor({
       <p className="wb-help">
         {until === undefined
           ? 'The hostility never ends.'
-          : predicateText(until)}
+          : `Until ${predicateSentence(until, {
+              names: namesFor(room, placementNames),
+              mindName:
+                'fact' in until
+                  ? pairMindNameIn(
+                      scope,
+                      namesFor(room, placementNames),
+                      disposition.between
+                    )
+                  : undefined,
+            })}; then ${turnsTo(disposition.stance)}.`}
       </p>
     </div>
   );
@@ -1690,6 +1694,30 @@ function DispositionRow({
         </div>
       </details>
     </li>
+  );
+}
+
+/** The dispositions that name one creature's faction, each as a sentence —
+ * the creature view's read-only list. No predicate is shown as JSON
+ * (rpg-project#576, B12). */
+export function AuthoredDispositions({
+  document,
+  faction,
+}: {
+  document: Readonly<RoomDraftDocument>;
+  faction: string | undefined;
+}) {
+  const named = (document.scope.dispositions ?? []).filter(
+    (entry) => faction !== undefined && entry.between.includes(faction)
+  );
+  if (named.length === 0)
+    return <p className="wb-help">No disposition names its faction.</p>;
+  return (
+    <ul data-testid="authored-dispositions">
+      {named.map((entry, index) => (
+        <li key={index}>{dispositionLine(entry, document)}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -2128,7 +2156,9 @@ export function ArrivesEditor({
       <p className="wb-help" data-testid="creature-arrives-note">
         {arrives === undefined
           ? 'This creature is in the run from the first frame.'
-          : `Held in reserve until ${predicateText(arrives)}.`}
+          : `Held in reserve until ${predicateSentence(arrives, {
+              names: namesFor(room, placementNames),
+            })}.`}
       </p>
     </div>
   );
@@ -2389,7 +2419,10 @@ export function CreatureOrders({
             )}
             {binding.arrives !== undefined && (
               <p className="wb-help">
-                held in reserve until {predicateText(binding.arrives)}
+                held in reserve until{' '}
+                {predicateSentence(binding.arrives, {
+                  names: namesFor(room, placementNames),
+                })}
               </p>
             )}
           </>
