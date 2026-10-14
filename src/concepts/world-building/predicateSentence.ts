@@ -16,7 +16,7 @@
 import { MONSTERS, PARTY, type PredicateDoc } from '@/author/factionVocabulary';
 import { turnsTo } from './engineLaws';
 import { documentPlacementNames } from './placementNames';
-import type { RoomDraftDocument } from './roomDraft';
+import type { RoomDraftDocument, RoomGameplayData } from './roomDraft';
 import type { SiteDisposition, SiteScope } from './siteScope';
 
 export interface PredicateContext {
@@ -57,34 +57,43 @@ export function predicateSentence(
 
 /** The minds of a pair, as the noun phrase a fact `until` waits on: each
  * declared faction of the two that names a mind, "captain, the garrison's
- * mind", or "the goblins’ mind" for a faction that names none. Undefined
- * when neither side is a declared faction. */
+ * mind". Undefined when neither side has a mind. */
 export function pairMindName(
   document: Readonly<RoomDraftDocument>,
   between: readonly [string, string]
 ): string | undefined {
   return pairMindNameIn(
     document.scope,
+    document.draft.room,
     documentPlacementNames(document),
     between
   );
 }
 
-/** [pairMindName] for a caller holding the scope and the shown names. */
+/** [pairMindName] for a caller holding the scope, the room and the shown
+ * names. */
 export function pairMindNameIn(
   scope: Readonly<SiteScope>,
+  room: Readonly<
+    Pick<RoomGameplayData, 'monsterDeclarations' | 'monsterBindings'>
+  >,
   names: ReadonlyMap<string, string>,
   between: readonly [string, string]
 ): string | undefined {
-  // THE PARTY HAS NO MIND, and a declared faction that names none still has
-  // the slot: the authoring compiler declares a faction of one's member as
-  // its mind (`world.go` `mindOf`), so the sentence names the role.
+  // THE PARTY HAS NO MIND. A declared faction's mind is the one it names,
+  // else — for a faction of one — its sole member, which the authoring
+  // compiler declares as its mind (`dungeonspec/compile.go`, the singleton
+  // default). A side with neither has no mind to know anything.
   const minds = between.flatMap((id) => {
     const faction = (scope.factions ?? []).find((f) => f.id === id);
     if (faction === undefined) return [];
-    const role = `${possessive(sideName(id))} mind`;
-    if (faction.mind === undefined) return [role];
-    return [`${names.get(faction.mind) ?? faction.mind}, ${role}`];
+    const members = room.monsterDeclarations.filter(
+      (m) => room.monsterBindings?.[m.id]?.faction === id
+    );
+    const mind =
+      faction.mind ?? (members.length === 1 ? members[0]!.id : undefined);
+    if (mind === undefined) return [];
+    return [`${names.get(mind) ?? mind}, ${possessive(sideName(id))} mind`];
   });
   if (minds.length === 0) return undefined;
   return minds.join(', or ');

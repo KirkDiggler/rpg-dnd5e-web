@@ -27,6 +27,7 @@ import {
   GUARD,
   placeCastMember,
 } from './fixtures/castDocument';
+import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import { StudioInspector, type StudioInspectorProps } from './StudioInspector';
@@ -659,7 +660,7 @@ describe('StudioInspector', () => {
 
     it('a creature view has a Placement and a Behaviour section in that order', () => {
       inspector(creatureSession());
-      expect(sectionTitles(3)).toEqual(['Placement', 'Behaviour']);
+      expect(sectionTitles(3)).toEqual(['Read back', 'Placement', 'Behaviour']);
       const placement = within(region()).getByRole('region', {
         name: 'Placement',
       });
@@ -702,7 +703,7 @@ describe('StudioInspector', () => {
           selection: <form aria-label="Prop orders" />,
         },
       });
-      expect(sectionTitles(3)).toEqual(['Placement', 'Behaviour']);
+      expect(sectionTitles(3)).toEqual(['Read back', 'Placement', 'Behaviour']);
       const placement = within(region()).getByRole('region', {
         name: 'Placement',
       });
@@ -889,6 +890,40 @@ describe('StudioInspector', () => {
         target: { kind: 'actor', id: 'guard' },
         mapName: 'Gatekeeper',
       });
+    });
+  });
+
+  describe('S2 read it back', () => {
+    it('the creature view opens with the read-back above Placement', () => {
+      const session = createFakeStudioSession();
+      const castle = createCastleReadBackDocument();
+      const onConfigure = vi.fn();
+      inspector(
+        selected(
+          { ...session, document: castle },
+          { kind: 'actor', id: 'gate-1' }
+        ),
+        { onConfigure }
+      );
+      const sections = within(region())
+        .getAllByRole('heading', { level: 3 })
+        .map((heading) => heading.textContent);
+      expect(sections.indexOf('Read back')).toBe(0);
+      expect(sections.indexOf('Read back')).toBeLessThan(
+        sections.indexOf('Placement')
+      );
+      const readBack = within(region()).getByRole('region', {
+        name: 'Read back',
+      });
+      expect(readBack.textContent).toContain(
+        'On its time it follows gate-patrol, shared with gate-2.'
+      );
+      fireEvent.click(
+        within(readBack).getAllByRole('button', {
+          name: 'Open table gate-patrol',
+        })[0]!
+      );
+      expect(onConfigure).toHaveBeenCalledWith('tables');
     });
   });
 });

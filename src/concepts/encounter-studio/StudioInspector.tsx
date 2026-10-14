@@ -6,9 +6,11 @@ import {
   statBlockIsKnown,
   type CastMember,
 } from '../world-building/cast';
+import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
 import { FieldHelp } from './FieldHelp';
+import { ReadBack } from './ReadBack';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -279,21 +281,45 @@ function DoorView({
   );
 }
 
+/** What a read-back ref opens: a definition on the Encounter home, or the
+ * placement it names. */
+function readBackRefHandler(
+  session: EncounterStudioSession,
+  onConfigure: StudioInspectorProps['onConfigure']
+): (target: ReadBackTarget) => void {
+  return (target) => {
+    if (target.kind === 'placement') session.creatures.select(target.id);
+    else if (target.kind === 'table') onConfigure('tables');
+    else if (target.kind === 'faction') onConfigure('factions');
+    else if (target.kind === 'intel') onConfigure('intel');
+  };
+}
+
 function CreatureView({
   session,
   onConfigure,
   onMoveCreature,
   onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
+  const arrange = session.arrange;
   return (
-    <Form
-      session={session}
-      onConfigure={onConfigure}
-      onMoveCreature={onMoveCreature}
-      lead={
-        <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
-      }
-    />
+    <>
+      {arrange?.kind === 'actor' && (
+        <ReadBack
+          document={session.document}
+          selection={{ kind: 'creature', id: arrange.monster.id }}
+          onRef={readBackRefHandler(session, onConfigure)}
+        />
+      )}
+      <Form
+        session={session}
+        onConfigure={onConfigure}
+        onMoveCreature={onMoveCreature}
+        lead={
+          <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
+        }
+      />
+    </>
   );
 }
 
@@ -429,8 +455,21 @@ function CreatureCast({
 function PropView({
   session,
   onConfigure,
+  inspection,
 }: StudioInspectorProps): React.JSX.Element {
-  return <Form session={session} onConfigure={onConfigure} />;
+  const selection = inspection.selection;
+  return (
+    <>
+      {selection.kind === 'prop' && (
+        <ReadBack
+          document={session.document}
+          selection={{ kind: 'prop', id: selection.id }}
+          onRef={readBackRefHandler(session, onConfigure)}
+        />
+      )}
+      <Form session={session} onConfigure={onConfigure} />
+    </>
+  );
 }
 
 function GroupView({

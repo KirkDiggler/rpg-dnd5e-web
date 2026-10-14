@@ -80,10 +80,14 @@ describe('dispositionSentence', () => {
     ).toBe('Neutral to the party, with nothing that turns it.');
   });
 
-  it('names an unnamed mind by its role, and the party has none', () => {
-    expect(pairMindName(document(), ['kitchen', 'party'])).toBe(
-      'the kitchen’s mind'
+  it('a faction of one has its member as its mind; the party has none', () => {
+    const d = document();
+    d.draft.room.monsterBindings = { 'gate-2': { faction: 'kitchen' } };
+    expect(pairMindName(d, ['kitchen', 'party'])).toBe(
+      'Guard, the kitchen’s mind'
     );
+    delete d.draft.room.monsterBindings;
+    expect(pairMindName(d, ['kitchen', 'party'])).toBeUndefined();
   });
 
   it('says the pair from neither side for the authored list', () => {

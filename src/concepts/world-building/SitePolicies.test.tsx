@@ -134,7 +134,7 @@ describe('SitePolicies — the site’s own facts, editable', () => {
     ).toBe('hostile');
     expect(
       within(dispositionsNode).getByText(
-        'Until the goblins’ mind knows goblin-cowed; then neutral.'
+        'Until Goblin, the goblins’ mind, knows goblin-cowed; then neutral.'
       )
     ).toBeTruthy();
 

@@ -1588,6 +1588,7 @@ function UntilEditor({
                 'fact' in until
                   ? pairMindNameIn(
                       scope,
+                      room,
                       namesFor(room, placementNames),
                       disposition.between
                     )

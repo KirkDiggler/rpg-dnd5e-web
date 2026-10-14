@@ -2714,7 +2714,7 @@ describe('WorldBuildingConcept room publishing', () => {
     ).toBe('hostile');
     expect(
       within(pair).getByText(
-        'Until the goblins’ mind knows goblin-cowed; then neutral.'
+        'Until Goblin, the goblins’ mind, knows goblin-cowed; then neutral.'
       )
     ).toBeTruthy();
     // Editable: the facts are controls now, not a readout.
