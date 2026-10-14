@@ -74,6 +74,7 @@ import {
   wordShorthand,
 } from './answerVocabulary';
 import { CheckApproachRows } from './CheckApproachRows';
+import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
   addMonsterHold,
@@ -217,6 +218,73 @@ export function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * What a faction hands its members, trigger by trigger, as the compiler
+ * layers it (`inheritedOrders`): its own rows over the table it names, the
+ * nearer winning each trigger wholesale (rpg-project#576, B11).
+ *
+ * THE HAZARD IT REMOVES is reading one layer as the answer: a readout of the
+ * faction's own rows alone reported "no shared table" for a faction that
+ * names one. `ownRows` is false where the own rows are the editor right
+ * above, so they are not listed twice.
+ */
+export function FactionInherits({
+  scope,
+  faction,
+  ownRows,
+}: {
+  scope: SiteScope;
+  faction: SiteFaction;
+  ownRows: boolean;
+}) {
+  const declared =
+    faction.table !== undefined && scope.tables?.[faction.table] !== undefined;
+  const layers = factionLayers(scope, faction);
+  const triggers = ANSWER_TRIGGERS.map((t) => t.key).filter(
+    (key) => layers[key] !== undefined
+  );
+  return (
+    <div
+      className="wb-policy-inherits"
+      data-testid={`faction-inherits-${faction.id}`}
+    >
+      {faction.table !== undefined &&
+        (declared ? (
+          <p className="wb-help">Inherits {faction.table}</p>
+        ) : (
+          <p className="wb-help" data-testid="faction-table-dangling">
+            This faction names the table “{faction.table}”, and this site
+            declares no table with that id. The server refuses it by name.
+          </p>
+        ))}
+      {triggers.length === 0 && faction.table === undefined && (
+        <p className="wb-help">No shared table is authored.</p>
+      )}
+      {triggers.map((trigger) => {
+        const layer = layers[trigger]!;
+        const fromTable = layer.source.kind === 'faction-table';
+        if (!fromTable && !ownRows && layer.overridden === undefined)
+          return null;
+        return (
+          <div key={trigger} className="wb-policy-trigger-block">
+            <p className="wb-policy-trigger" data-layer={layer.source.kind}>
+              <code>{trigger}</code>{' '}
+              {fromTable
+                ? `from ${faction.table}`
+                : layer.overridden !== undefined
+                  ? `from ${faction.id}’s own rows, which override ${faction.table}’s ${trigger} rows`
+                  : `from ${faction.id}’s own rows`}
+            </p>
+            {(fromTable || ownRows) && (
+              <AnswerTableReadout table={{ [trigger]: [...layer.rows] }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1008,9 +1076,6 @@ function FactionTableEditor({
   return (
     <div className="wb-policy-table-editor">
       <p className="wb-help">Shared table its members inherit.</p>
-      {authored.length === 0 && (
-        <p className="wb-help">No shared table is authored.</p>
-      )}
       {authored.map((trigger) => (
         <div key={trigger} className="wb-policy-trigger-block">
           <p className="wb-policy-trigger">
@@ -1044,6 +1109,7 @@ function FactionTableEditor({
           </ul>
         </div>
       ))}
+      <FactionInherits scope={scope} faction={faction} ownRows={false} />
       {available.length > 0 && (
         <div className="wb-actions">
           <select
@@ -2247,11 +2313,7 @@ export function CreatureOrders({
                 temper {factionTemperText(faction.temper)}
               </p>
             )}
-            {faction.on === undefined ? (
-              <p className="wb-help">No shared table is authored.</p>
-            ) : (
-              <AnswerTableReadout table={faction.on} />
-            )}
+            <FactionInherits scope={scope} faction={faction} ownRows />
           </>
         )}
       </StudioSection>

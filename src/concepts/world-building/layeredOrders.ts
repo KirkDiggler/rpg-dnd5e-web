@@ -30,7 +30,7 @@ import { MONSTERS } from '@/author/factionVocabulary';
 import type { AnswerEntryShape } from './answerTableShape';
 import { documentPlacementNames } from './placementNames';
 import type { RoomDraftDocument } from './roomDraft';
-import type { SiteFaction } from './siteScope';
+import type { SiteFaction, SiteScope } from './siteScope';
 
 /** Where one trigger's rows come from. */
 export type OrdersSource =
@@ -128,25 +128,26 @@ export function layeredOrders(
   return out;
 }
 
-/** The layer a FACTION's members inherit on each trigger, before any member
- * lays its own over it: its own rows, else the table it names. */
+/** One trigger a faction hands its members, before any member lays its own
+ * over it. */
+export interface FactionLayer {
+  source: Extract<OrdersSource, { kind: 'faction' | 'faction-table' }>;
+  rows: readonly AnswerEntryShape[];
+  /** The named table's rows on this trigger when the faction's own rows win
+   * it: shown as overridden, never as applying. */
+  overridden?: readonly AnswerEntryShape[];
+}
+
+/** What a FACTION's members inherit on each trigger, in `inheritedOrders`'
+ * order: its own rows over the table it names, nearest key winning
+ * wholesale. Undefined for a trigger neither names. */
 export function factionLayers(
-  document: Readonly<RoomDraftDocument>,
+  scope: Readonly<SiteScope>,
   faction: SiteFaction
-): Record<
-  string,
-  | {
-      source: Extract<OrdersSource, { kind: 'faction' | 'faction-table' }>;
-      rows: readonly AnswerEntryShape[];
-      /** The named table's rows on this trigger, shown under the faction's
-       * own when its own win (they do not apply). */
-      overridden?: readonly AnswerEntryShape[];
-    }
-  | undefined
-> {
-  const tables = document.scope.tables ?? {};
-  const named = faction.table !== undefined ? tables[faction.table] : undefined;
-  const out: ReturnType<typeof factionLayers> = {};
+): Record<string, FactionLayer | undefined> {
+  const named =
+    faction.table !== undefined ? scope.tables?.[faction.table] : undefined;
+  const out: Record<string, FactionLayer | undefined> = {};
   for (const trigger of ANSWER_TRIGGER_KEYS) {
     const own = faction.on?.[trigger];
     const fromTable = named?.[trigger];
@@ -154,7 +155,7 @@ export function factionLayers(
       out[trigger] = {
         source: { kind: 'faction', id: faction.id },
         rows: own,
-        overridden: fromTable,
+        ...(fromTable !== undefined ? { overridden: fromTable } : {}),
       };
     else if (fromTable !== undefined && faction.table !== undefined)
       out[trigger] = {

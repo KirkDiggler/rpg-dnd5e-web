@@ -117,7 +117,7 @@ describe('layeredOrders', () => {
 describe('factionLayers', () => {
   it("labels the faction's own time rows as overriding its table's", () => {
     const document = guards(() => {});
-    const layers = factionLayers(document, {
+    const layers = factionLayers(document.scope, {
       id: 'garrison',
       table: 'gate-patrol',
       on: DRILL,
