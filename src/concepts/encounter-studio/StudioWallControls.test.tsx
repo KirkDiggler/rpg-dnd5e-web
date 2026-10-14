@@ -139,10 +139,9 @@ function fixture(): EncounterStudioSession {
   };
 }
 function props(
-  session: ReturnType<typeof fixture>,
-  drawing = true
+  session: ReturnType<typeof fixture>
 ): Parameters<typeof StudioWallControls>[0] {
-  return { session, drawing, onDismiss: vi.fn(), onExitWallTool: vi.fn() };
+  return { session, onDismiss: vi.fn(), onExitWallTool: vi.fn() };
 }
 
 function selectedPanel(session: EncounterStudioSession): React.JSX.Element {

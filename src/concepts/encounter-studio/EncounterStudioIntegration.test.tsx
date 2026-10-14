@@ -2692,7 +2692,6 @@ describe('joined structural walls in the populated Studio document', () => {
                 />
                 <StudioWallControls
                   session={next}
-                  drawing
                   onDismiss={() => {}}
                   onExitWallTool={() => {}}
                 />

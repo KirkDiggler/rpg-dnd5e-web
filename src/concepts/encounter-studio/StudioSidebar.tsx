@@ -1,8 +1,13 @@
 import { useEffect, type ReactNode } from 'react';
 
-/** A sidebar section id. Each home names its own; Build has one, the
- * inspector, so its sidebar renders no section nav. */
-export type StudioSidebarSection = string;
+/** The sidebar sections still in use. Build has one, the inspector, so its
+ * sidebar renders no section nav; Regions keeps its own (S3 retires it). */
+export type StudioSidebarSection =
+  | 'inspector'
+  | 'regions'
+  | 'region'
+  | 'labels'
+  | 'tables';
 
 /** One presentation slot, not another document or selection owner. Children
  * stay mounted while tucked away so navigation does not commit/discard forms. */

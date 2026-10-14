@@ -216,7 +216,6 @@ function StudioSurface({
     home !== 'build' || view !== 'layout' ? null : layoutTool === 'wall' ? (
       <StudioWallControls
         session={session}
-        drawing
         onDismiss={() => setSidebarOpen(false)}
         onExitWallTool={exitWall}
       />
@@ -816,9 +815,9 @@ function StudioSurface({
                 <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
                 <p>
                   {encounterSection === 'intel'
-                    ? 'Define records and what they reveal here. Select a creature or declared prop in Arrange to assign the records it holds. Record ids and revealed fact ids are different references.'
+                    ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
                     : encounterSection === 'factions'
-                      ? 'Define factions and shared policy here. Assign individual placed creatures in Arrange. A mind names a placed individual, not a reusable creature recipe.'
+                      ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
                       : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
                 </p>
                 {session.socialControls[encounterSection]}
