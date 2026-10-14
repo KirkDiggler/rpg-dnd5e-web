@@ -57,6 +57,7 @@ import {
   withBinding,
 } from './monsterOrderEdits';
 import type { MeasuredWorldPropBounds } from './placementGuides';
+import { documentPlacementNames } from './placementNames';
 import { withPropBinding } from './propBindingEdits';
 import {
   selectedSceneItems,
@@ -565,6 +566,11 @@ export function WorldBuildingConcept({
     if (roomTool !== 'select') setPaintingConcealmentId(null);
   }, [roomTool]);
   const isStudio = Boolean(studioPresentation);
+  /** Placement id to its map or cast name, for every placement picker. */
+  const placementNames = useMemo(
+    () => documentPlacementNames(roomHistory.present),
+    [roomHistory.present]
+  );
   const studioView = roomMode ? studioPresentation?.view : undefined;
   const studioViewRef = useRef(studioView);
   const studioHome =
@@ -4960,6 +4966,7 @@ export function WorldBuildingConcept({
               <FactionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={guardSnapshotIntent(commitPolicies)}
                 onNotice={guardSnapshotIntent((message: string) => {
                   setNotice(message);
@@ -4971,6 +4978,7 @@ export function WorldBuildingConcept({
               <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={guardSnapshotIntent(commitPolicies)}
               />
             ),
@@ -4989,6 +4997,8 @@ export function WorldBuildingConcept({
                     scope={siteScope}
                     room={roomDraft.room}
                     monster={arrange.monster}
+                    placementNames={placementNames}
+                    titled={false}
                     binding={
                       roomDraft.room.monsterBindings?.[arrange.monster.id]
                     }
@@ -5057,6 +5067,7 @@ export function WorldBuildingConcept({
                         )}
                         scope={siteScope}
                         room={roomDraft.room}
+                        placementNames={placementNames}
                         onChange={guardBindingIntent(
                           (id: string, next: RoomPropBinding | undefined) =>
                             id === selectedProp.id
@@ -5568,6 +5579,7 @@ export function WorldBuildingConcept({
               <FactionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={commitPolicies}
                 onNotice={setNotice}
               />
@@ -5581,6 +5593,7 @@ export function WorldBuildingConcept({
               <DispositionsPanel
                 scope={siteScope}
                 room={roomDraft.room}
+                placementNames={placementNames}
                 onChange={commitPolicies}
               />
             </details>
@@ -5732,6 +5745,7 @@ export function WorldBuildingConcept({
                       scope={siteScope}
                       monster={selectedMonster}
                       room={roomDraft.room}
+                      placementNames={placementNames}
                       binding={
                         roomDraft.room.monsterBindings?.[selectedMonster.id]
                       }

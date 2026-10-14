@@ -1,6 +1,8 @@
+import { paletteNameForRef } from '@/author/paletteData';
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { castMemberOf } from '../world-building/cast';
 import {
   deriveWallCornerFits,
   wallFitAsset,
@@ -208,9 +210,17 @@ function SelectedArrange({
         )}
         {selection.kind === 'actor' && (
           <>
+            <dl className="es-facts">
+              <div>
+                <dt>Kind</dt>
+                <dd title={selection.monster.ref}>
+                  {castMemberOf(session.document, selection.monster.ref)
+                    ?.name ?? paletteNameForRef(selection.monster.ref)}
+                </dd>
+              </div>
+            </dl>
             <p className="es-help">
-              Rules: {selection.monster.ref}. Map name is an authoring label,
-              not a stat-block change.
+              Map name is an authoring label, not a stat-block change.
             </p>
             {onMoveCreature && (
               <button type="button" onClick={onMoveCreature}>

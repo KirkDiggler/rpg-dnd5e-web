@@ -7,6 +7,7 @@ import {
   type CastMember,
 } from '../world-building/cast';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
+import { CopyId } from './CopyId';
 import { selectionName } from './StudioArrangeFields';
 import {
   StudioArrangePanel,
@@ -66,7 +67,14 @@ export function StudioInspector(
   return (
     <section aria-label="Inspector" className="es-inspector">
       {armedTool && <div className="es-inspector-tool">{armedTool}</div>}
-      <h2>{heading}</h2>
+      <div className="es-inspector-title">
+        <h2>{heading}</h2>
+        {inspection.pick === null &&
+          inspection.selection.kind === 'creature' &&
+          session.arrange?.kind === 'actor' && (
+            <CopyId id={session.arrange.monster.id} label="placement" />
+          )}
+      </div>
       <InspectorBody {...props} />
     </section>
   );

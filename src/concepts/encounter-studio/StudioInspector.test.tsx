@@ -726,4 +726,71 @@ describe('StudioInspector', () => {
       ).toBeTruthy();
     });
   });
+
+  describe('S5 words, not ids', () => {
+    const ID = '4cbfe6a7-d24c-4ef5-a0cc-a188b902d921';
+    function unnamed(): EncounterStudioSession {
+      const session = createFakeStudioSession();
+      const draft = placeRoomMonster(session.document.draft, {
+        id: ID,
+        ref: 'dnd5e:monsters:goblin',
+        startingCell: { location: { q: 0, r: 0 } },
+      });
+      const monster = draft.room.monsterDeclarations[0]!;
+      return selected(
+        {
+          ...session,
+          document: { ...session.document, draft },
+          socialControls: {
+            ...session.socialControls,
+            selection: (
+              <CreatureOrders
+                scope={{}}
+                room={draft.room}
+                monster={monster}
+                binding={undefined}
+                onFactionChange={vi.fn()}
+                onOrdersChange={vi.fn()}
+                titled={false}
+              />
+            ),
+          },
+        },
+        { kind: 'actor', id: ID }
+      );
+    }
+
+    it('the creature view never prints the placement id as text', () => {
+      inspector(unnamed());
+      expect(region().textContent).not.toContain(ID);
+      expect(
+        within(region()).getByRole('heading', { level: 2, name: 'Goblin' })
+      ).toBeTruthy();
+    });
+
+    it('Copy id copies the placement id', async () => {
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+      inspector(unnamed());
+      const copy = within(region()).getByRole('button', {
+        name: 'Copy placement id',
+      });
+      expect(copy.getAttribute('title')).toBe(ID);
+      fireEvent.click(copy);
+      expect(writeText).toHaveBeenCalledWith(ID);
+      expect(await within(region()).findByText('Copied')).toBeTruthy();
+    });
+
+    it('the kind shows its name with the ref on hover', () => {
+      inspector(unnamed());
+      const kind = within(region()).getByText('Kind', { selector: 'dt' })
+        .nextElementSibling as HTMLElement;
+      expect(kind.textContent).toBe('Goblin');
+      expect(kind.getAttribute('title')).toBe('dnd5e:monsters:goblin');
+      expect(region().textContent).not.toContain('Rules:');
+    });
+  });
 });

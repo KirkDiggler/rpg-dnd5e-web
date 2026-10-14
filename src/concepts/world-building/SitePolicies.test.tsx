@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AnswerTableShape } from './answerTableShape';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
+import { placementDisplayNames } from './placementNames';
 import { PropOrders } from './PropOrders';
 import type { RoomMonsterBinding, RoomPropBinding } from './roomDraft';
 import {
@@ -902,6 +903,35 @@ describe('Options — the lines a character can say (rpg-project#569)', () => {
     expect(latest?.options?.map((option) => option.id)).toEqual([
       'examine',
       'line-1',
+    ]);
+  });
+});
+
+describe('placements read as words (rpg-project#579)', () => {
+  it('the mind picker shows map names and keeps ids as values', () => {
+    const names = placementDisplayNames({
+      declarations: fixture.draft.room.monsterDeclarations,
+      actorNames: { 'skeleton-a': 'Guard', 'skeleton-b': 'Guard' },
+      castName: (ref) => (ref.endsWith(':goblin') ? 'Goblin' : 'Skeleton'),
+    });
+    render(
+      <FactionsPanel
+        scope={siteScope}
+        room={fixture.draft.room}
+        placementNames={names}
+        onChange={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Faction goblins'));
+    const list = document.getElementById('faction-mind-goblins')!;
+    const options = [...list.querySelectorAll('option')].map((option) => [
+      option.value,
+      option.textContent,
+    ]);
+    expect(options).toEqual([
+      ['goblin-1', 'Goblin'],
+      ['skeleton-a', 'Guard'],
+      ['skeleton-b', 'Guard (2)'],
     ]);
   });
 });

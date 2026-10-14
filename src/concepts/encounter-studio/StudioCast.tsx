@@ -11,12 +11,12 @@ import {
   type CastEdit,
   type CastMember,
 } from '../world-building/cast';
-import { authoredActorName } from '../world-building/creaturePalette';
 import {
   TEMPLATE_ABILITIES,
   type MonsterTemplate,
   type TemplateAbility,
 } from '../world-building/monsterTemplates';
+import { documentPlacementNames } from '../world-building/placementNames';
 import { NpcLookPicker } from './NpcLookPicker';
 import type { EncounterStudioSession } from './studioSession';
 
@@ -272,7 +272,7 @@ export function CastMemberForm({
     if (session.cast.remove(member.ref)) onSaved?.(null);
     else setError('The delete was refused. Check the document notice.');
   };
-  const names = session.document.draft.scene.actorNames;
+  const placementNames = documentPlacementNames(session.document);
   return (
     <form
       aria-label={member ? `Cast member ${member.name}` : 'New cast member'}
@@ -509,9 +509,10 @@ export function CastMemberForm({
                     <button
                       type="button"
                       aria-label={`Select placement ${id}`}
+                      title={id}
                       onClick={() => onShowPlacement?.(id)}
                     >
-                      {authoredActorName(names, id) ?? member.name} · {id}
+                      {placementNames.get(id) ?? member.name}
                     </button>
                   </li>
                 ))}

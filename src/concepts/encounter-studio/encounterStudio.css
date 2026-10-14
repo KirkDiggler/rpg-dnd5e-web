@@ -695,9 +695,15 @@
 .es-inspector {
   font-size: var(--es-text-value);
 }
-.es-inspector > h2 {
-  margin: 0;
+.es-inspector-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
   padding: 0.6rem 0.85rem 0;
+}
+.es-inspector-title > h2 {
+  margin: 0;
   font-size: var(--es-text-title);
   font-weight: 700;
   line-height: 1.25;
@@ -882,4 +888,19 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0.1rem;
+}
+
+/* An id kept behind a small copy button (S5-T3). */
+.encounter-studio .es-copy-id {
+  padding: 0.1rem 0.45rem;
+  color: var(--wb-muted);
+  font-size: var(--es-text-help);
+  font-weight: var(--es-weight-value);
+}
+.encounter-studio .wb-policy-block h5 {
+  color: var(--wb-text);
+  font-size: var(--es-text-subsection);
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
 }

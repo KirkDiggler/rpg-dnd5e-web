@@ -47,6 +47,7 @@ import {
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
+import { CopyId } from '../encounter-studio/CopyId';
 import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
@@ -86,6 +87,7 @@ import {
   removeOptionApproach,
   removeOptionRow,
 } from './optionEdits';
+import { placementDisplayNames } from './placementNames';
 import type {
   RoomGameplayData,
   RoomMonsterBinding,
@@ -115,6 +117,23 @@ import type {
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
  * it deals one from per member. */
+/** Placement id to the words it is shown by. The studio passes the names it
+ * reads from the document (map names, cast names); without them a placement
+ * reads as its kind (rpg-project#579). */
+type PlacementNames = ReadonlyMap<string, string>;
+function namesFor(
+  room: RoomGameplayData,
+  given: PlacementNames | undefined
+): PlacementNames {
+  return (
+    given ??
+    placementDisplayNames({
+      declarations: room.monsterDeclarations,
+      castName: paletteNameForRef,
+    })
+  );
+}
+
 function factionTemperText(temper: SiteTemper): string {
   if (typeof temper === 'string') return temper;
   return Object.entries(temper)
@@ -1147,9 +1166,11 @@ function FactionRow({
   faction,
   onChange,
   onNotice,
+  placementNames,
 }: {
   scope: SiteScope;
   room?: RoomGameplayData;
+  placementNames?: PlacementNames;
   faction: SiteFaction;
   onChange: (nextScope: SiteScope) => void;
   onNotice?: (message: string) => void;
@@ -1223,8 +1244,13 @@ function FactionRow({
           {room && (
             <datalist id={`faction-mind-${faction.id}`}>
               {room.monsterDeclarations.map((monster) => (
-                <option key={monster.id} value={monster.id}>
-                  {paletteNameForRef(monster.ref)} · {monster.id}
+                <option
+                  key={monster.id}
+                  value={monster.id}
+                  label={namesFor(room, placementNames).get(monster.id)}
+                  title={monster.id}
+                >
+                  {namesFor(room, placementNames).get(monster.id)}
                 </option>
               ))}
             </datalist>
@@ -1339,9 +1365,11 @@ function UntilEditor({
   room,
   disposition,
   onCommit,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   disposition: SiteDisposition;
   onCommit: (until: PredicateDoc | undefined) => void;
 }) {
@@ -1407,8 +1435,8 @@ function UntilEditor({
           >
             <option value="">(choose a placement)</option>
             {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id}>
-                {monster.id} · {paletteNameForRef(monster.ref)}
+              <option key={monster.id} value={monster.id} title={monster.id}>
+                {namesFor(room, placementNames).get(monster.id)}
               </option>
             ))}
           </select>
@@ -1498,9 +1526,11 @@ function DispositionRow({
   index,
   disposition,
   onChange,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   index: number;
   disposition: SiteDisposition;
   onChange: (nextScope: SiteScope) => void;
@@ -1569,6 +1599,7 @@ function DispositionRow({
           <UntilEditor
             scope={scope}
             room={room}
+            placementNames={placementNames}
             disposition={disposition}
             onCommit={(until) =>
               onChange(updateSiteDisposition(scope, index, { until }))
@@ -1602,6 +1633,8 @@ export interface SitePoliciesProps {
   /** Reports an edit that the server will have to judge, so it is never
    * silent. */
   onNotice?: (message: string) => void;
+  /** Placement id to its shown name; the kind's name when absent. */
+  placementNames?: PlacementNames;
 }
 
 /** The site's FACTIONS: who fights as one side, each with its temperament
@@ -1613,6 +1646,7 @@ export function FactionsPanel({
   room,
   onChange,
   onNotice,
+  placementNames,
 }: Omit<SitePoliciesProps, 'room'> & { room?: RoomGameplayData }) {
   const factions = scope.factions ?? [];
   return (
@@ -1635,6 +1669,7 @@ export function FactionsPanel({
               key={faction.id}
               scope={scope}
               room={room}
+              placementNames={placementNames}
               faction={faction}
               onChange={onChange}
               onNotice={onNotice}
@@ -1654,6 +1689,7 @@ export function DispositionsPanel({
   scope,
   room,
   onChange,
+  placementNames,
 }: Omit<SitePoliciesProps, 'onNotice'>) {
   const dispositions = scope.dispositions ?? [];
   return (
@@ -1679,6 +1715,7 @@ export function DispositionsPanel({
               key={index}
               scope={scope}
               room={room}
+              placementNames={placementNames}
               index={index}
               disposition={disposition}
               onChange={onChange}
@@ -1845,6 +1882,11 @@ export interface CreatureOrdersProps {
    * `monsterOrderEdits.withBinding` — which is where an emptied creature
    * becomes a deleted entry rather than an empty block the encoder refuses. */
   onOrdersChange?: (next: RoomMonsterBinding | undefined) => void;
+  /** Placement id to its shown name; the kind's name when absent. */
+  placementNames?: PlacementNames;
+  /** The "Selected creature" heading and name line. The studio's inspector
+   * already names the selection, so it leaves them out. */
+  titled?: boolean;
 }
 
 /** The `arrives:` predicate — the SAME four forms as a disposition's `until`,
@@ -1861,9 +1903,11 @@ export function ArrivesEditor({
   room,
   arrives,
   onCommit,
+  placementNames,
 }: {
   scope: SiteScope;
   room: RoomGameplayData;
+  placementNames?: PlacementNames;
   arrives: PredicateDoc | undefined;
   onCommit: (next: PredicateDoc | undefined) => void;
 }) {
@@ -1928,8 +1972,8 @@ export function ArrivesEditor({
           >
             <option value="">(choose a placement)</option>
             {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id}>
-                {monster.id} · {paletteNameForRef(monster.ref)}
+              <option key={monster.id} value={monster.id} title={monster.id}>
+                {namesFor(room, placementNames).get(monster.id)}
               </option>
             ))}
           </select>
@@ -2101,6 +2145,8 @@ export function CreatureOrders({
   binding,
   onFactionChange,
   onOrdersChange,
+  placementNames,
+  titled = true,
 }: CreatureOrdersProps) {
   const faction = binding?.faction
     ? (scope.factions ?? []).find((entry) => entry.id === binding.faction)
@@ -2115,10 +2161,16 @@ export function CreatureOrders({
     binding?.table !== undefined ? scope.tables?.[binding.table] : undefined;
   return (
     <div className="wb-creature-orders" aria-label="Selected creature">
-      <h4>Selected creature</h4>
-      <p className="wb-help">
-        {paletteNameForRef(monster.ref)} · {monster.id}
-      </p>
+      {titled && (
+        <>
+          <h4>Selected creature</h4>
+          <p className="wb-help">
+            {namesFor(room, placementNames).get(monster.id) ??
+              paletteNameForRef(monster.ref)}{' '}
+            <CopyId id={monster.id} label="placement" />
+          </p>
+        </>
+      )}
       <dl className="wb-creature-orders-grid">
         <div>
           <dt>Faction</dt>
@@ -2318,6 +2370,7 @@ export function CreatureOrders({
             <ArrivesEditor
               scope={scope}
               room={room}
+              placementNames={placementNames}
               arrives={binding?.arrives}
               onCommit={(next) =>
                 onOrdersChange(setMonsterArrives(binding, next))

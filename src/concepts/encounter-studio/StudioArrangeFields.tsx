@@ -1,7 +1,9 @@
+import { paletteNameForRef } from '@/author/paletteData';
 import {
   NPC_APPEARANCE_FAMILIES,
   npcAppearanceOptions,
 } from '@/npc-appearances/npcAppearanceChoices';
+import { documentPlacementNames } from '../world-building/placementNames';
 import type {
   AuthoringRegion,
   EncounterStudioSession,
@@ -518,7 +520,11 @@ export function selectionName(
     case 'label':
       return selection.label.text;
     case 'actor':
-      return selection.mapName ?? selection.monster.id;
+      return (
+        documentPlacementNames(session.document).get(selection.monster.id) ??
+        selection.mapName ??
+        paletteNameForRef(selection.monster.ref)
+      );
     case 'start':
       return 'Party start';
     case 'hex':

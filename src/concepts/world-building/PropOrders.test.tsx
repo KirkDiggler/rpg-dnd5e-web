@@ -126,6 +126,6 @@ describe('PropOrders — a placed prop’s orders, editable', () => {
       bindings: { 'vault-door': { holdable: true } },
     });
     const panel = screen.getByTestId('prop-orders-vault-door');
-    expect(within(panel).getByText(/vault-door/)).toBeTruthy();
+    expect(within(panel).getByTitle('vault-door')).toBeTruthy();
   });
 });
