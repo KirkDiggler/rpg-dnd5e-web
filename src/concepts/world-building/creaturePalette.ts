@@ -8,6 +8,10 @@ export interface CreaturePaletteEntry {
   name: string;
   ref: string;
   modelRef: string;
+  /** The cast member's default faction, stamped onto a new placement's
+   * binding (rpg-project#575 decision 1). Studio presentation only: the
+   * toolkit carries room.scene through unread. */
+  faction?: string;
 }
 export function validateCreaturePalette(
   value: unknown
@@ -18,8 +22,13 @@ export function validateCreaturePalette(
   return value.map((item, index) => {
     const path = `scene.creaturePalette[${index}]`;
     const entry = objectShape(item, path);
-    rejectUnknownKeys(entry, ['id', 'name', 'ref', 'modelRef'], path);
-    for (const key of ['id', 'name'] as const) {
+    rejectUnknownKeys(
+      entry,
+      ['id', 'name', 'ref', 'modelRef', 'faction'],
+      path
+    );
+    for (const key of ['id', 'name', 'faction'] as const) {
+      if (key === 'faction' && !Object.hasOwn(entry, key)) continue;
       if (
         typeof entry[key] !== 'string' ||
         !entry[key].trim() ||
@@ -44,6 +53,9 @@ export function validateCreaturePalette(
       name: entry.name as string,
       ref: entry.ref,
       modelRef: entry.modelRef,
+      ...(Object.hasOwn(entry, 'faction')
+        ? { faction: entry.faction as string }
+        : {}),
     };
   });
 }
