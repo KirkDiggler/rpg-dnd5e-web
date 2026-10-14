@@ -46,7 +46,7 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
@@ -64,7 +64,18 @@ import {
   type OptionShape,
   type OptionVerdict,
 } from './answerTableShape';
+import {
+  conditionShorthand,
+  deedLabel,
+  enemyBandPhrase,
+  factLabel,
+  heardLabel,
+  whenShorthand,
+  wordShorthand,
+} from './answerVocabulary';
 import { CheckApproachRows } from './CheckApproachRows';
+import { turnsTo } from './engineLaws';
+import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
   addMonsterHold,
@@ -89,7 +100,13 @@ import {
   removeOptionRow,
 } from './optionEdits';
 import { placementDisplayNames } from './placementNames';
+import {
+  dispositionLine,
+  pairMindNameIn,
+  predicateSentence,
+} from './predicateSentence';
 import type {
+  RoomDraftDocument,
   RoomGameplayData,
   RoomMonsterBinding,
   RoomMonsterPlacement,
@@ -115,6 +132,7 @@ import type {
   SiteScope,
   SiteTemper,
 } from './siteScope';
+import { useRowKeys } from './useRowKeys';
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
  * it deals one from per member. */
@@ -142,45 +160,6 @@ function factionTemperText(temper: SiteTemper): string {
     .join(' · ');
 }
 
-/** What the entry's word acts on, by the SHAPE the declaration gives the
- * word — `string` carries an opaque id, `selector` a sealed word or an
- * authored `at:` cell, and `none` carries nothing so it renders bare. */
-function entryWordText(entry: AnswerEntryShape, word: string): string {
-  const value = (entry as Record<string, unknown>)[word];
-  const shape = answerWord(word)?.value;
-  if (shape === 'string') return ` ${String(value)}`;
-  if (shape === 'selector') {
-    if (typeof value === 'string') return ` ${value}`;
-  }
-  return '';
-}
-
-/** A `when:` as written — its conditions joined by "and", since every one
- * must hold (rpg-project#569 R8). */
-function whenText(when: AnswerWhenShape): string {
-  return whenConditions(when).map(whenConditionText).join(' and ');
-}
-
-/** One condition — one key, so the key IS the condition. */
-function whenConditionText(when: AnswerWhenCondition): string {
-  if ('enemy' in when) return `enemy ${when.enemy}`;
-  if ('heard' in when)
-    return `heard ${when.heard.kind} within ${when.heard.within}`;
-  if ('fact' in when) return `fact ${when.fact}`;
-  if (isNotCondition(when)) return `not ${whenConditionText(when.not)}`;
-  const [deed, span] = Object.entries(when)[0] as [
-    string,
-    { within: number; on?: string; as?: string },
-  ];
-  // The scope and the span both come off the body, so the readout says whose
-  // deed the row reads and not merely which deed.
-  const whose =
-    span.on !== undefined ? 'an ally' : span.as !== undefined ? 'I' : undefined;
-  return whose === undefined
-    ? `${deed} within ${span.within}`
-    : `${whose} ${deed} within ${span.within}`;
-}
-
 /** One entry: its condition — WHEN it is on the table at all, said only where
  * a condition is a thing this grammar has — its weight (an omitted weight IS 1
  * to the engine), the `say` that goes with it, and the one word it does.
@@ -200,27 +179,16 @@ function entryText(entry: AnswerEntryShape, trigger: string): string {
   const parts: string[] = [];
   if (answerWhenLegalOn(trigger)) {
     parts.push(
-      entry.when === undefined ? 'any time' : `when ${whenText(entry.when)}`
+      entry.when === undefined
+        ? 'any time'
+        : `when ${whenShorthand(entry.when)}`
     );
   }
   parts.push(`weight ${entry.weight ?? 1}`);
   if (entry.say !== undefined) parts.push(`say “${entry.say}”`);
   const word = entryWord(entry);
-  if (word !== undefined) parts.push(`${word}${entryWordText(entry, word)}`);
+  if (word !== undefined) parts.push(wordShorthand(entry, word));
   return parts.join(' · ');
-}
-
-/** A `until:` predicate, in the form names the vocabulary seals. */
-function predicateText(predicate: PredicateDoc): string {
-  const form = predicateForm(predicate);
-  if (form === 'round')
-    return `round ${(predicate as { round: number }).round}`;
-  if (form === 'down') return `down ${(predicate as { down: string }).down}`;
-  if (form === 'fact') return `fact ${(predicate as { fact: string }).fact}`;
-  const stance = (
-    predicate as { stance: { between: [string, string]; is: string } }
-  ).stance;
-  return `stance ${stance.between[0]} ↔ ${stance.between[1]} is ${stance.is}`;
 }
 
 /** The read-only `on:` table a creature INHERITS or OVERRIDES — the slice-2
@@ -245,6 +213,77 @@ export function AnswerTableReadout({ table }: { table: AnswerTableShape }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * What a faction hands its members, trigger by trigger, as the compiler
+ * layers it (`inheritedOrders`): its own rows over the table it names, the
+ * nearer winning each trigger wholesale (rpg-project#576, B11).
+ *
+ * THE HAZARD IT REMOVES is reading one layer as the answer: a readout of the
+ * faction's own rows alone reported "no shared table" for a faction that
+ * names one. `ownRows` is false where the own rows are the editor right
+ * above, so they are not listed twice.
+ */
+export function FactionInherits({
+  scope,
+  faction,
+  ownRows,
+}: {
+  scope: SiteScope;
+  faction: SiteFaction;
+  ownRows: boolean;
+}) {
+  const declared =
+    faction.table !== undefined && scope.tables?.[faction.table] !== undefined;
+  const layers = factionLayers(scope, faction);
+  const triggers = ANSWER_TRIGGERS.map((t) => t.key).filter(
+    (key) => layers[key] !== undefined
+  );
+  return (
+    <div
+      className="wb-policy-inherits"
+      data-testid={`faction-inherits-${faction.id}`}
+    >
+      {faction.table !== undefined &&
+        (declared ? (
+          <p className="wb-help">Inherits {faction.table}</p>
+        ) : (
+          <p className="wb-help" data-testid="faction-table-dangling">
+            This faction names the table “{faction.table}”, and this site
+            declares no table with that id. The server refuses it by name.
+          </p>
+        ))}
+      {triggers.length === 0 && faction.table === undefined && (
+        <p className="wb-help">No shared table is authored.</p>
+      )}
+      {triggers.map((trigger) => {
+        const layer = layers[trigger]!;
+        const fromTable = layer.source.kind === 'faction-table';
+        if (!fromTable && !ownRows && layer.overridden === undefined)
+          return null;
+        return (
+          <div key={trigger} className="wb-policy-trigger-block">
+            <p className="wb-policy-trigger" data-layer={layer.source.kind}>
+              <code>{trigger}</code>{' '}
+              {fromTable
+                ? `from ${faction.table}`
+                : layer.overridden !== undefined
+                  ? `from ${faction.id}’s own rows, which override ${faction.table}’s ${trigger} rows`
+                  : `from ${faction.id}’s own rows`}
+            </p>
+            {(fromTable || ownRows) && (
+              <ul className="wb-policy-entries">
+                {layer.rows.map((entry, index) => (
+                  <li key={index}>{entryText(entry, trigger)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -457,7 +496,7 @@ function WhenConditionRow({
       )}
       {base?.kind === 'nested' ? (
         <span className="wb-help" data-testid="when-nested-not">
-          {whenConditionText(base.condition)} — a `not` inside a `not`, kept as
+          {conditionShorthand(base.condition)} — a `not` inside a `not`, kept as
           written
         </span>
       ) : (
@@ -475,25 +514,24 @@ function WhenConditionRow({
           )}
           {ANSWER_WHEN.enemyBands.map((band) => (
             <option key={`enemy:${band}`} value={`enemy:${band}`}>
-              {band === 'none'
-                ? 'no enemy is seen or remembered'
-                : `an enemy is ${band === 'reach' ? 'in reach' : band}`}
+              {enemyBandPhrase(band)}
             </option>
           ))}
           {ANSWER_WHEN.deeds.map((deed) => (
             <option key={`deed:${deed}`} value={`deed:${deed}`}>
-              {base?.kind === 'deed' && base.scope?.value === 'ally'
-                ? 'an ally'
-                : 'I'}{' '}
-              {deed !== 'fled' &&
-              !(base?.kind === 'deed' && base.scope?.value === 'actor')
-                ? 'was '
-                : ''}
-              {deed}
+              {deedLabel(
+                deed,
+                base?.kind === 'deed' && base.scope !== undefined
+                  ? ({ [base.scope.key]: base.scope.value } as {
+                      on?: 'ally';
+                      as?: 'actor';
+                    })
+                  : {}
+              )}
             </option>
           ))}
-          <option value="heard">I heard a sound</option>
-          <option value="fact">I know a fact</option>
+          <option value="heard">{heardLabel()}</option>
+          <option value="fact">{factLabel()}</option>
         </select>
       )}
       {base?.kind === 'deed' && (
@@ -954,6 +992,23 @@ export function AnswerEntryRow({
   );
 }
 
+/** A list of entry rows keyed so each row's editor follows it when a weight
+ * edit re-sorts the list (R12). */
+export function EntryList<T extends object>({
+  rows,
+  children,
+}: {
+  rows: readonly T[];
+  children: (row: T, index: number, key: string) => ReactNode;
+}) {
+  const keys = useRowKeys(rows);
+  return (
+    <ul className="wb-policy-entries">
+      {rows.map((row, index) => children(row, index, keys[index]!))}
+    </ul>
+  );
+}
+
 /** A NAMED ROOT TABLE, CHOSEN FROM WHAT THE SITE DECLARES (rpg-toolkit#1897,
  * rpg-dnd5e-web#1201).
  *
@@ -1037,19 +1092,16 @@ function FactionTableEditor({
   return (
     <div className="wb-policy-table-editor">
       <p className="wb-help">Shared table its members inherit.</p>
-      {authored.length === 0 && (
-        <p className="wb-help">No shared table is authored.</p>
-      )}
       {authored.map((trigger) => (
         <div key={trigger} className="wb-policy-trigger-block">
           <p className="wb-policy-trigger">
             <code>{trigger}</code>{' '}
             {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
           </p>
-          <ul className="wb-policy-entries">
-            {(table[trigger] ?? []).map((entry, index) => (
+          <EntryList rows={table[trigger] ?? []}>
+            {(entry, index, key) => (
               <AnswerEntryRow
-                key={index}
+                key={key}
                 trigger={trigger}
                 entry={entry}
                 onCommit={(next) =>
@@ -1069,10 +1121,11 @@ function FactionTableEditor({
                   )
                 }
               />
-            ))}
-          </ul>
+            )}
+          </EntryList>
         </div>
       ))}
+      <FactionInherits scope={scope} faction={faction} ownRows={false} />
       {available.length > 0 && (
         <div className="wb-actions">
           <select
@@ -1551,7 +1604,18 @@ function UntilEditor({
       <p className="wb-help">
         {until === undefined
           ? 'The hostility never ends.'
-          : predicateText(until)}
+          : `Until ${predicateSentence(until, {
+              names: namesFor(room, placementNames),
+              mindName:
+                'fact' in until
+                  ? pairMindNameIn(
+                      scope,
+                      room,
+                      namesFor(room, placementNames),
+                      disposition.between
+                    )
+                  : undefined,
+            })}; then ${turnsTo(disposition.stance)}.`}
       </p>
     </div>
   );
@@ -1653,6 +1717,30 @@ function DispositionRow({
         </div>
       </details>
     </li>
+  );
+}
+
+/** The dispositions that name one creature's faction, each as a sentence —
+ * the creature view's read-only list. No predicate is shown as JSON
+ * (rpg-project#576, B12). */
+export function AuthoredDispositions({
+  document,
+  faction,
+}: {
+  document: Readonly<RoomDraftDocument>;
+  faction: string | undefined;
+}) {
+  const named = (document.scope.dispositions ?? []).filter(
+    (entry) => faction !== undefined && entry.between.includes(faction)
+  );
+  if (named.length === 0)
+    return <p className="wb-help">No disposition names its faction.</p>;
+  return (
+    <ul data-testid="authored-dispositions">
+      {named.map((entry, index) => (
+        <li key={index}>{dispositionLine(entry, document)}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -2091,7 +2179,9 @@ export function ArrivesEditor({
       <p className="wb-help" data-testid="creature-arrives-note">
         {arrives === undefined
           ? 'This creature is in the run from the first frame.'
-          : `Held in reserve until ${predicateText(arrives)}.`}
+          : `Held in reserve until ${predicateSentence(arrives, {
+              names: namesFor(room, placementNames),
+            })}.`}
       </p>
     </div>
   );
@@ -2276,11 +2366,7 @@ export function CreatureOrders({
                 temper {factionTemperText(faction.temper)}
               </p>
             )}
-            {faction.on === undefined ? (
-              <p className="wb-help">No shared table is authored.</p>
-            ) : (
-              <AnswerTableReadout table={faction.on} />
-            )}
+            <FactionInherits scope={scope} faction={faction} ownRows />
           </>
         )}
       </StudioSection>
@@ -2356,7 +2442,10 @@ export function CreatureOrders({
             )}
             {binding.arrives !== undefined && (
               <p className="wb-help">
-                held in reserve until {predicateText(binding.arrives)}
+                held in reserve until{' '}
+                {predicateSentence(binding.arrives, {
+                  names: namesFor(room, placementNames),
+                })}
               </p>
             )}
           </>
@@ -2709,10 +2798,10 @@ export function OptionsEditor({
                 <p className="wb-policy-trigger">
                   <code>{verdict}</code> {VERDICT_HEADINGS[verdict]}
                 </p>
-                <ul className="wb-policy-entries">
-                  {(option[verdict] ?? []).map((row, rowIndex) => (
+                <EntryList rows={option[verdict] ?? []}>
+                  {(row, rowIndex, key) => (
                     <AnswerEntryRow
-                      key={rowIndex}
+                      key={key}
                       trigger={verdict}
                       label={`${of} ${verdict}`}
                       entry={row}
@@ -2725,8 +2814,8 @@ export function OptionsEditor({
                         commit(removeOptionRow(option, verdict, rowIndex))
                       }
                     />
-                  ))}
-                </ul>
+                  )}
+                </EntryList>
                 <button
                   type="button"
                   aria-label={`Add ${verdict} row to ${of}`}

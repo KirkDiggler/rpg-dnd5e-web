@@ -9,6 +9,7 @@
  * reference controls offer the site's own tables and nothing invented.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBuilderV4Site } from './fixtures/worldBuilderV4Site';
 import { FactionsPanel, TableNameSelect } from './SitePolicies';
@@ -590,5 +591,51 @@ describe('TablesPanel — rows that summarise until opened (rpg-project#579)', (
     });
     expect(collapsed.mock.calls).toEqual(open.mock.calls);
     expect(collapsed).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TablesPanel — rows heaviest first (rpg-project#576)', () => {
+  function Controlled({ initial }: { initial: SiteScope }) {
+    const [scope, setScope] = useState(initial);
+    // The owner clones the document on every commit; so does this.
+    return (
+      <TablesPanel
+        scope={scope}
+        onChange={(next) => setScope(structuredClone(next))}
+        collapsedEntries
+      />
+    );
+  }
+
+  it('a row given weight 5 moves to the top with its editor still open', () => {
+    render(
+      <Controlled
+        initial={{
+          tables: {
+            drill: {
+              time: [
+                { when: { enemy: 'none' }, hold: {} },
+                { when: { enemy: 'seen' }, toward: 'enemy' },
+                { when: { enemy: 'reach' }, attack: 'enemy' },
+              ],
+            },
+          },
+        }}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Table drill'));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Edit time entry' })[2]!
+    );
+    const weight = screen.getByLabelText('Weight for time entry');
+    fireEvent.change(weight, { target: { value: '5' } });
+    const rows = screen
+      .getByTestId('site-tables')
+      .querySelectorAll('.wb-policy-entries > li');
+    expect(rows[0]!.classList.contains('wb-entry-sentence-card')).toBe(true);
+    expect(
+      (screen.getByLabelText('Weight for time entry') as HTMLInputElement).value
+    ).toBe('5');
+    expect(rows[1]!.textContent).toContain('when enemy none');
   });
 });

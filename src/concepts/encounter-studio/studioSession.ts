@@ -139,7 +139,8 @@ export type StudioSocialSection =
   | 'intel'
   | 'factions'
   | 'dispositions'
-  | 'tables';
+  | 'tables'
+  | 'facts';
 export type LayoutFloorTool = 'paint' | 'erase' | 'rectangle';
 export type LayoutTool =
   | LayoutFloorTool

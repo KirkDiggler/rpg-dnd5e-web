@@ -145,6 +145,7 @@ import {
   validateScene,
 } from './serialization';
 import {
+  AuthoredDispositions,
   CreatureOrders,
   DispositionsPanel,
   FactionsPanel,
@@ -5023,32 +5024,13 @@ export function WorldBuildingConcept({
                       </p>
                     }
                   >
-                    <ul>
-                      {(siteScope.dispositions ?? [])
-                        .filter((entry) => {
-                          const faction =
-                            roomDraft.room.monsterBindings?.[arrange.monster.id]
-                              ?.faction;
-                          return (
-                            faction !== undefined &&
-                            entry.between.includes(faction)
-                          );
-                        })
-                        .map((entry, index) => (
-                          <li key={index}>
-                            {entry.between.join(' ↔ ')}: {entry.stance}
-                            {entry.until ? (
-                              <>
-                                {' '}
-                                · until{' '}
-                                <code>{JSON.stringify(entry.until)}</code>
-                              </>
-                            ) : (
-                              ' · no authored condition'
-                            )}
-                          </li>
-                        ))}
-                    </ul>
+                    <AuthoredDispositions
+                      document={{ draft: roomDraft, scope: siteScope }}
+                      faction={
+                        roomDraft.room.monsterBindings?.[arrange.monster.id]
+                          ?.faction
+                      }
+                    />
                   </StudioSection>
                 </>
               ) : arrange?.kind === 'scene' ? (

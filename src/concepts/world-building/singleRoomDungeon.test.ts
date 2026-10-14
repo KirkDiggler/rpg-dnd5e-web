@@ -956,6 +956,70 @@ describe('answer tables at the root', () => {
       )
     ).toThrow(/is not a trigger this build rolls/);
   });
+
+  it('an unsorted table encodes heaviest first', () => {
+    const draft = goldenDraft();
+    const emitted = encodeSingleRoomDungeon({
+      key: 'sorted-room',
+      draft,
+      tables: {
+        drill: {
+          time: [
+            { when: { enemy: 'none' }, hold: {} },
+            { when: { enemy: 'seen' }, toward: 'enemy', weight: 2 },
+            { when: { enemy: 'reach' }, attack: 'enemy', weight: 5 },
+          ],
+        },
+      },
+    });
+    const written = (
+      parse(emitted) as {
+        tables: { drill: { time: Array<{ weight?: number }> } };
+      }
+    ).tables.drill.time;
+    expect(written.map((row) => row.weight ?? 1)).toEqual([5, 2, 1]);
+  });
+
+  it('option success and failure rows sort heaviest first', () => {
+    const draft = goldenDraft();
+    draft.room.monsterBindings = {
+      'skeleton-a': {
+        options: [
+          {
+            id: 'gossip',
+            say: 'Busy night?',
+            check: [{ ability: 'persuasion', dc: 10 }],
+            success: [
+              { say: 'Feast tonight.' },
+              { fact: 'feast-tonight', weight: 3 },
+            ],
+            failure: [{ say: 'Out.' }, { say: 'Go away.', weight: 2 }],
+          },
+        ],
+      },
+    };
+    const emitted = encodeSingleRoomDungeon({ key: 'options-room', draft });
+    const option = (
+      parse(emitted) as {
+        room: {
+          room: {
+            monsterBindings: Record<
+              string,
+              { options: Array<Record<string, Array<Record<string, unknown>>>> }
+            >;
+          };
+        };
+      }
+    ).room.room.monsterBindings['skeleton-a'].options[0];
+    expect(option.success).toEqual([
+      { fact: 'feast-tonight', weight: 3 },
+      { say: 'Feast tonight.' },
+    ]);
+    expect(option.failure).toEqual([
+      { say: 'Go away.', weight: 2 },
+      { say: 'Out.' },
+    ]);
+  });
 });
 
 /**

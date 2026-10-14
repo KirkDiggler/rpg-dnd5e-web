@@ -7,13 +7,14 @@ const table = (on: unknown) => () => validateAnswerTable(on, 'on');
 
 describe('answer table shape', () => {
   it('carries the shipped grammar verbatim', () => {
+    // Written heaviest first (R12), so carrying it verbatim moves nothing.
     const authored = {
       time: [
-        { when: { enemy: 'reach' }, attack: 'enemy' },
+        { when: { fled: { within: 3 } }, away: 'actor', weight: 5 },
         { when: { attacked: { within: 3 } }, attack: 'attacker', weight: 3 },
+        { when: { enemy: 'reach' }, attack: 'enemy' },
         { when: { enemy: 'none' }, toward: 'attacker' },
         { hold: {} },
-        { when: { fled: { within: 3 } }, away: 'actor', weight: 5 },
         { when: { enemy: 'remembered' }, toward: 'enemy' },
         // The DEED of a beaten Intimidation line is still a deed a `when`
         // reads; only the table KEY retired.
@@ -266,5 +267,51 @@ describe('answer table shape', () => {
       ],
     };
     expect(validateAnswerTable(walk, 'on')).toEqual(walk);
+  });
+
+  it('rows sort heaviest first with ties in authored order', () => {
+    const table = validateAnswerTable(
+      {
+        time: [
+          { when: { enemy: 'seen' }, toward: 'enemy', weight: 2 },
+          { when: { enemy: 'reach' }, attack: 'enemy', weight: 5 },
+          { when: { enemy: 'none' }, hold: {}, weight: 2 },
+          { say: 'Halt!', weight: 5 },
+        ],
+      },
+      'on'
+    );
+    expect(table.time.map((row) => row.weight)).toEqual([5, 5, 2, 2]);
+    expect(table.time[0].attack).toBe('enemy');
+    expect(table.time[1].say).toBe('Halt!');
+    expect(table.time[2].toward).toBe('enemy');
+    expect(table.time[3].hold).toEqual({});
+  });
+
+  it('an absent weight counts as 1', () => {
+    const table = validateAnswerTable(
+      {
+        time: [
+          { when: { enemy: 'none' }, hold: {} },
+          { when: { enemy: 'reach' }, attack: 'enemy', weight: 1 },
+          { when: { enemy: 'seen' }, toward: 'enemy', weight: 3 },
+        ],
+      },
+      'on'
+    );
+    expect(table.time).toEqual([
+      { when: { enemy: 'seen' }, toward: 'enemy', weight: 3 },
+      { when: { enemy: 'none' }, hold: {} },
+      { when: { enemy: 'reach' }, attack: 'enemy', weight: 1 },
+    ]);
+  });
+
+  it('judges a row at its authored path before it moves', () => {
+    expect(() =>
+      validateAnswerTable(
+        { time: [{ hold: {} }, { hold: {}, weight: 0 }] },
+        'on'
+      )
+    ).toThrow('on.time[1].weight');
   });
 });

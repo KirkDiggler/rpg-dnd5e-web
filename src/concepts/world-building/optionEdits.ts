@@ -19,12 +19,13 @@
  * the honest answer until the author types the line — the same rule an intel
  * record with no fact yet follows.
  */
-import type {
-  AnswerApproachShape,
-  AnswerEntryShape,
-  OptionRequiresShape,
-  OptionShape,
-  OptionVerdict,
+import {
+  heaviestFirst,
+  type AnswerApproachShape,
+  type AnswerEntryShape,
+  type OptionRequiresShape,
+  type OptionShape,
+  type OptionVerdict,
 } from './answerTableShape';
 import type { RoomGameplayData } from './roomDraft';
 
@@ -181,7 +182,7 @@ export function patchOptionRow(
   const rows = [...(option[verdict] ?? [])];
   if (index < 0 || index >= rows.length) return option;
   rows[index] = row;
-  return normalizeOption({ ...option, [verdict]: rows });
+  return normalizeOption({ ...option, [verdict]: heaviestFirst(rows) });
 }
 
 /** Remove one verdict row. Removing the last drops the verdict: a verdict

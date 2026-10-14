@@ -44,7 +44,11 @@
  * orders must stay byte-identical to one written before bindings existed.
  */
 import type { PredicateDoc } from '@/author/factionVocabulary';
-import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
+import {
+  heaviestFirst,
+  type AnswerEntryShape,
+  type AnswerTableShape,
+} from './answerTableShape';
 import {
   addOption,
   normalizeOptions,
@@ -229,7 +233,7 @@ export function patchMonsterAnswerEntry(
   const entries = [...(table[trigger] ?? [])];
   if (index < 0 || index >= entries.length) return binding;
   entries[index] = entry;
-  table[trigger] = entries;
+  table[trigger] = heaviestFirst(entries);
   return normalizeBinding({ ...next, on: table });
 }
 

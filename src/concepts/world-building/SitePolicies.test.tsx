@@ -20,6 +20,7 @@ import { placementDisplayNames } from './placementNames';
 import { PropOrders } from './PropOrders';
 import type { RoomMonsterBinding, RoomPropBinding } from './roomDraft';
 import {
+  AuthoredDispositions,
   CreatureOrders,
   DispositionsPanel,
   FactionsPanel,
@@ -132,7 +133,9 @@ describe('SitePolicies — the site’s own facts, editable', () => {
         .value
     ).toBe('hostile');
     expect(
-      within(dispositionsNode).getByText('fact goblin-cowed')
+      within(dispositionsNode).getByText(
+        'Until Goblin, the goblins’ mind, knows goblin-cowed; then neutral.'
+      )
     ).toBeTruthy();
 
     // It IS editable: the facts are controls now.
@@ -390,7 +393,7 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
     );
     expect(
       screen.getAllByTestId('creature-arrives-note')[1].textContent
-    ).toMatch(/Held in reserve until fact cellar-is-clear/);
+    ).toMatch(/Held in reserve until cellar-is-clear is known/);
   });
 
   it('reports the remaining facts read-only when no editor is given', () => {
@@ -416,7 +419,9 @@ describe('CreatureOrders — the creature’s intel and reserve (web#1176)', () 
     const creature = screen.getByLabelText('Selected creature');
     expect(within(creature).getByText('holds cellar-lie')).toBeTruthy();
     expect(
-      within(creature).getByText(/held in reserve until fact cellar-is-clear/)
+      within(creature).getByText(
+        /held in reserve until cellar-is-clear is known/
+      )
     ).toBeTruthy();
     expect(
       within(creature).getByText(
@@ -975,5 +980,116 @@ describe('the Options sub-section has one heading (rpg-project#579)', () => {
     const options = screen.getByRole('region', { name: 'Options' });
     expect(within(options).queryByText(/what a character can say/)).toBeNull();
     expect(within(options).getByText('About this panel')).toBeTruthy();
+  });
+});
+
+describe('a faction reads back the table it names (rpg-project#576)', () => {
+  const PATROL: AnswerTableShape = {
+    time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+  };
+  const openFaction = (id: string) =>
+    fireEvent.click(screen.getByLabelText(`Faction ${id}`));
+
+  it('a faction naming a table and no rows shows that table, not "No shared table"', () => {
+    render(
+      <FactionsPanel
+        scope={{
+          tables: { 'gate-patrol': PATROL },
+          factions: [{ id: 'garrison', table: 'gate-patrol' }],
+        }}
+        onChange={() => {}}
+      />
+    );
+    openFaction('garrison');
+    const inherits = screen.getByTestId('faction-inherits-garrison');
+    expect(within(inherits).getByText('Inherits gate-patrol')).toBeTruthy();
+    expect(within(inherits).getByText('from gate-patrol')).toBeTruthy();
+    expect(
+      within(inherits).getByText('when enemy reach · weight 1 · attack enemy')
+    ).toBeTruthy();
+    expect(screen.queryByText('No shared table is authored.')).toBeNull();
+  });
+
+  it('a faction’s own time rows are labelled as overriding its table’s time rows', () => {
+    render(
+      <CreatureOrders
+        scope={{
+          tables: { 'gate-patrol': PATROL },
+          factions: [
+            {
+              id: 'garrison',
+              table: 'gate-patrol',
+              on: { time: [{ when: { enemy: 'none' }, hold: {} }] },
+            },
+          ],
+        }}
+        monster={goblin}
+        room={fixture.draft.room}
+        binding={{ faction: 'garrison' }}
+      />
+    );
+    const inherits = screen.getByTestId('faction-inherits-garrison');
+    expect(
+      within(inherits).getByText(
+        'from garrison’s own rows, which override gate-patrol’s time rows'
+      )
+    ).toBeTruthy();
+    expect(
+      within(inherits).getByText('when enemy none · weight 1 · hold')
+    ).toBeTruthy();
+    expect(
+      within(inherits).queryByText('when enemy reach · weight 1 · attack enemy')
+    ).toBeNull();
+  });
+
+  it('a faction naming an undeclared table says so by name', () => {
+    render(
+      <FactionsPanel
+        scope={{ factions: [{ id: 'garrison', table: 'gate-patrol' }] }}
+        onChange={() => {}}
+      />
+    );
+    openFaction('garrison');
+    expect(screen.getByTestId('faction-table-dangling').textContent).toContain(
+      '“gate-patrol”'
+    );
+    expect(screen.queryByText('No shared table is authored.')).toBeNull();
+  });
+});
+
+describe('predicates read as sentences (rpg-project#576)', () => {
+  it('the authored dispositions list renders no JSON', () => {
+    render(
+      <AuthoredDispositions
+        document={{
+          draft: fixture.draft,
+          scope: {
+            factions: [{ id: 'goblins', mind: 'goblin-1' }],
+            dispositions: [
+              {
+                between: ['goblins', 'party'],
+                stance: 'neutral',
+                until: { fact: 'goblin-cowed' },
+              },
+              {
+                between: ['goblins', 'party'],
+                stance: 'hostile',
+                until: { round: 3 },
+              },
+            ],
+          },
+        }}
+        faction="goblins"
+      />
+    );
+    const list = screen.getByTestId('authored-dispositions');
+    expect(list.textContent).not.toMatch(/[{}"]/);
+    expect(list.textContent).toContain(
+      'The goblins and the party are neutral until'
+    );
+    expect(list.textContent).toContain('knows goblin-cowed; then hostile.');
+    expect(list.textContent).toContain(
+      'are hostile until round 3 begins; then neutral.'
+    );
   });
 });

@@ -982,3 +982,26 @@
 .encounter-studio :is(.wb-option, .wb-option-check, .wb-policy-trigger) {
   overflow-wrap: anywhere;
 }
+/* The read-back prose (rpg-project#576): it reads as text, wraps by word,
+ * and its refs are inline links. */
+.encounter-studio .es-readback-paragraph p,
+.encounter-studio .es-readback-paragraph li {
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.encounter-studio .es-readback-paragraph ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-readback-ref {
+  display: inline;
+  padding: 0;
+  font: inherit;
+}
+.encounter-studio .es-readback-law {
+  cursor: help;
+}
+.encounter-studio .es-fact-mark {
+  color: var(--wb-warning, #e7b45a);
+  font-weight: 600;
+}

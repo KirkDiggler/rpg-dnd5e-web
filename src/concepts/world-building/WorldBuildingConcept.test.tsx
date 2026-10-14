@@ -2712,7 +2712,11 @@ describe('WorldBuildingConcept room publishing', () => {
     expect(
       (within(pair).getByLabelText('Stance') as HTMLSelectElement).value
     ).toBe('hostile');
-    expect(within(pair).getByText('fact goblin-cowed')).toBeTruthy();
+    expect(
+      within(pair).getByText(
+        'Until Goblin, the goblins’ mind, knows goblin-cowed; then neutral.'
+      )
+    ).toBeTruthy();
     // Editable: the facts are controls now, not a readout.
     expect(
       policies.querySelectorAll('input, select, button').length
@@ -3179,7 +3183,7 @@ describe('WorldBuildingConcept room publishing', () => {
     render(mount());
     fireEvent.click(screen.getByRole('button', { name: /^Move monster / }));
     expect(screen.getByTestId('creature-arrives-note').textContent).toMatch(
-      /Held in reserve until fact cellar-is-clear/
+      /Held in reserve until cellar-is-clear is known/
     );
     // And the removed control stays removed across a reload.
     expect(screen.queryByLabelText('Persuade dc 0')).toBeNull();
