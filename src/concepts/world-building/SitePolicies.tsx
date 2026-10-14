@@ -2372,9 +2372,11 @@ export function CreatureOrders({
         title="Options"
         level="subsection"
         className="wb-policy-block"
+        about={<p>The lines a character can say to this creature.</p>}
       >
         {onOrdersChange !== undefined ? (
           <OptionsEditor
+            titled={false}
             owner={monster.id}
             options={binding?.options ?? []}
             room={room}
@@ -2524,6 +2526,7 @@ const VERDICT_HEADINGS: Record<OptionVerdict, string> = {
  */
 export function OptionsEditor({
   owner,
+  titled = true,
   options,
   room,
   isProp,
@@ -2533,6 +2536,8 @@ export function OptionsEditor({
 }: {
   /** The binding's id — what every control here is named for. */
   owner: string;
+  /** The "Options" heading; CreatureOrders titles its own sub-section. */
+  titled?: boolean;
   options: readonly OptionShape[];
   room: RoomGameplayData;
   /** A prop's lines: its rows may not `flee`. */
@@ -2544,7 +2549,7 @@ export function OptionsEditor({
   const holdable = holdablePropIds(room);
   return (
     <div className="wb-options" data-testid={`options-${owner}`}>
-      <h6>Options — what a character can say</h6>
+      {titled && <h6>Options — what a character can say</h6>}
       {options.length === 0 && (
         <p className="wb-help" data-testid={`options-none-${owner}`}>
           {isProp

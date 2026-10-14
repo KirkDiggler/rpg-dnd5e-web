@@ -960,3 +960,20 @@ describe('an option line wraps by word (rpg-project#579)', () => {
     expect(next.options?.[0]?.say).toBe(LONG);
   });
 });
+
+describe('the Options sub-section has one heading (rpg-project#579)', () => {
+  it('creature orders title Options once and keep the sentence behind About', () => {
+    render(
+      <CreatureOrders
+        scope={{}}
+        room={fixture.draft.room}
+        monster={goblin}
+        binding={undefined}
+        onOrdersChange={() => {}}
+      />
+    );
+    const options = screen.getByRole('region', { name: 'Options' });
+    expect(within(options).queryByText(/what a character can say/)).toBeNull();
+    expect(within(options).getByText('About this panel')).toBeTruthy();
+  });
+});
