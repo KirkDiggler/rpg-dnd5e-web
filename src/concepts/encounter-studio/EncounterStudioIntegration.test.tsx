@@ -5773,4 +5773,52 @@ describe('S3 the overview through the real owner', () => {
       'Table'
     );
   });
+
+  it("a creature at a region's centre is selectable by click in Layout", async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    // The captain stands at the great hall's centre, under its label.
+    const label = surface().querySelector(
+      '[data-label-id="label-great-hall"]'
+    )!;
+    const ring = glyph('[data-placed-creature="captain"] circle');
+    // Later in the SVG is drawn on top and takes the pointer first.
+    expect(
+      label.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    fireEvent.pointerDown(ring, { button: 0 });
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Captain'
+    );
+  });
+
+  it('a room row flags a finish that is not applied while its boundary resolves', async () => {
+    installFinishPreview();
+    const storage = new MemoryStorage({
+      draft: finishRoomFixture(true),
+      scope: {},
+    });
+    const mounted = mount(storage);
+    await settled();
+    fireEvent.click(row('Left'));
+    fireEvent.change(inspector().getByLabelText('Room masonry'), {
+      target: { value: GRAY_REF },
+    });
+    expect(row('Left').textContent).not.toContain('finish unapplied');
+    mounted.unmount();
+    // The material's resources go missing: the boundary still resolves.
+    materialPreview.catalog = {
+      ...materialPreview.catalog!,
+      materials: materialPreview.catalog!.materials.filter(
+        (material) => material.ref !== GRAY_REF
+      ),
+    };
+    mount(storage);
+    await settled();
+    expect(row('Left').textContent).toMatch(/hexes · .* — finish unapplied$/);
+    expect(row('Left').getAttribute('aria-label')).toMatch(
+      /, finish unapplied$/
+    );
+    expect(row('Right').textContent).not.toContain('finish unapplied');
+  });
 });

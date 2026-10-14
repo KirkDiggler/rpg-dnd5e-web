@@ -210,6 +210,16 @@ function StudioSurface({
         : [];
     });
   }, [session.document.draft.scene, overview]);
+  const finishProjection = session.regionEditing.finishes?.projection;
+  const unappliedFinishes = useMemo(
+    () =>
+      new Set(
+        (finishProjection?.regions ?? [])
+          .filter((region) => region.status === 'unresolved')
+          .map((region) => region.id)
+      ),
+    [finishProjection]
+  );
   const changeSection = (next: StudioSidebarSection): void => {
     showSection(next);
   };
@@ -712,6 +722,7 @@ function StudioSurface({
                     if (bounds) frameBounds(bounds);
                   }}
                   onCreate={armRoomLabel}
+                  unappliedFinishes={unappliedFinishes}
                   onShowEntire={() =>
                     frameBounds(contentBounds(session.document.draft))
                   }
