@@ -680,7 +680,8 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
   const rest = { ...authored.draft.room.monsterBindings!['goblin-1'] };
   delete rest.options;
   expect(rest).toEqual(goblin);
-});
+  // ~13s alone at the base revision; the default 15s limit trips under full-suite load.
+}, 30000);
 
 it('requires explicit prop declaration before attaching intel and scopes controls to one selection', () => {
   const storage = new MemoryStorage(seed());
@@ -1748,14 +1749,23 @@ function pointInDocument(
   world: WorldPoint
 ): { clientX: number; clientY: number } {
   const workspace = storage.document().draft.workspace;
+  // Apply dimensions frames the workspace's centre (S0 T6).
+  const extent =
+    workspace.kind === undefined ? null : workspaceBounds(workspace);
   const client = worldToClient(
     world,
     createLayoutTransform(
       bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      workspace.kind === 'centered-odd-r'
-        ? workspaceBounds(workspace)
-        : workspace.horizontalLimit
+      {
+        center: extent
+          ? {
+              x: (extent.minX + extent.maxX) / 2,
+              z: (extent.minZ + extent.maxZ) / 2,
+            }
+          : { x: 0, z: 0 },
+        zoom: 1,
+      },
+      extent ?? workspace.horizontalLimit
     )
   )!;
   return { clientX: client.x, clientY: client.y };

@@ -301,21 +301,23 @@ describe('authoring region workspace coverage', () => {
     const document = validateRoomDocument({ draft: value, scope: {} });
     const before = JSON.stringify(document);
     expect(resizeRoomWorkspace(document, 7, 7)).toBe(document);
-    expect(() => resizeRoomWorkspace(document, 1, 1)).toThrow(
-      /authoringRegions.*workspace/
-    );
+    // Edges move only where the author chooses (R13): reach the origin cell
+    // by keeping columns 0..3 / rows -3..0, then trimming right and top.
+    const toQuarter = (d: typeof document) =>
+      resizeRoomWorkspace(d, 4, 4, { columns: 'left', rows: 'bottom' });
+    const toOrigin = (d: typeof document) =>
+      resizeRoomWorkspace(toQuarter(d), 1, 1);
+    expect(() => toOrigin(document)).toThrow(/authoringRegions.*workspace/);
     expect(JSON.stringify(document)).toBe(before);
     const tiny = { ...value, workspace: centeredRoomWorkspace(1, 1) };
     expect(() => validateWorkspaceContent(tiny, {})).toThrow(
       /authoringRegions/
     );
     value.scene.authoringRegions[0].boundary = { kind: 'automatic' };
-    expect(
-      resizeRoomWorkspace({ draft: value, scope: {} }, 1, 1).draft.scene.version
-    ).toBe(3);
+    expect(toOrigin({ draft: value, scope: {} }).draft.scene.version).toBe(3);
     value.scene.mapLabels[0].location = { x: 3, z: 0 };
-    expect(() =>
-      resizeRoomWorkspace({ draft: value, scope: {} }, 1, 1)
-    ).toThrow(/location.*workspace/);
+    expect(() => toOrigin({ draft: value, scope: {} })).toThrow(
+      /location.*workspace/
+    );
   });
 });

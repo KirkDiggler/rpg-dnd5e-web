@@ -5919,7 +5919,9 @@ describe('Studio owner facade', () => {
     const writes = owner.storage.writes;
     act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
     expect(owner.session.document).toBe(before);
-    act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(false));
+    // The right edge moves in (R13 default): columns -36..8 keep the
+    // populated room and cut only the label at x 18.
+    act(() => expect(owner.session.resizeWorkspace(45, 48)).toBe(false));
     expect(owner.session.notice).toContain(id);
     expect(owner.session.document).toBe(before);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);
