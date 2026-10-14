@@ -1005,3 +1005,76 @@
   color: var(--wb-warning, #e7b45a);
   font-weight: 600;
 }
+
+/* Layout overview (rpg-project#577): the room list beside the map, and the
+   footer's counts under it. */
+.es-layout {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 300px;
+}
+.es-layout > .es-layout-main:only-child {
+  grid-column: 1 / -1;
+}
+.es-layout-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.es-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.6rem;
+  border-right: 1px solid var(--wb-border);
+}
+.es-room-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.es-room-list-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.es-room-list .es-region-list button {
+  display: grid;
+  grid-template-columns: 0.9rem minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: center;
+}
+.es-room-swatch {
+  grid-row: 1 / span 2;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px dashed var(--wb-muted);
+}
+.es-room-size {
+  grid-column: 2;
+  color: var(--wb-muted);
+}
+.es-layout-footer {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--wb-muted);
+  border-top: 1px solid var(--wb-border);
+  background: var(--wb-panel);
+}
+@media (max-width: 800px) {
+  .es-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(300px, 1fr);
+  }
+  .es-room-list {
+    max-height: 30vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-border);
+  }
+}

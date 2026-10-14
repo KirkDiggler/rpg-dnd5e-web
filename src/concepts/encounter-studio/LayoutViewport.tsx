@@ -55,6 +55,7 @@ import { LayoutPlacedOverlay } from './LayoutPlacedOverlay';
 import { LayoutWallOverlay, type LayoutWallPreview } from './LayoutWallOverlay';
 import { MapLabelOverlay } from './MapLabelOverlay';
 import { regionOverview } from './overviewColours';
+import { frameOf } from './overviewFrame';
 import { RegionBoundaryOverlay } from './RegionBoundaryOverlay';
 
 type WallConstraint = { anchor: WorldPoint; reference: WallAngleReference };
@@ -211,6 +212,7 @@ export function LayoutViewport({
   onSelectHex,
   onClearSelection,
   placedEditing,
+  frameTarget,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -374,6 +376,20 @@ export function LayoutViewport({
       surface.removeEventListener('wheel', wheel);
     };
   }, [frame, onFrameChange, fitExtent]);
+
+  // Frame a requested region or the whole content, at this surface's size.
+  const frameRequestRef = useRef({ onFrameChange, fitExtent });
+  frameRequestRef.current = { onFrameChange, fitExtent };
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current;
+    if (!frameTarget || !surface) return;
+    const next = frameOf(
+      frameTarget.bounds,
+      surface.getBoundingClientRect(),
+      frameRequestRef.current.fitExtent
+    );
+    if (next) frameRequestRef.current.onFrameChange(next);
+  }, [frameTarget]);
 
   const transform = bounds
     ? createLayoutTransform(bounds, frame, fitExtent)

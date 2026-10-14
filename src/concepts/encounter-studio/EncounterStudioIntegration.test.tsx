@@ -85,6 +85,11 @@ import {
   GUARD,
   SOLDIER,
 } from './fixtures/castDocument';
+import {
+  createCastleKeepDocument,
+  KEEP_ROOMS,
+  keepRoomCells,
+} from './fixtures/castleKeep';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import {
   createCastleWorkspaceDocument,
@@ -99,6 +104,7 @@ import {
   worldToClient,
 } from './layoutGeometry';
 import { LayoutViewport } from './LayoutViewport';
+import { cellsBounds, contentBounds } from './overviewFrame';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 import { studioButton } from './studioTestNavigation';
 import { StudioWallControls } from './StudioWallControls';
@@ -5526,5 +5532,73 @@ describe('S3 the overview through the real owner', () => {
     expect(
       inspector().getByRole('button', { name: 'Move party start' })
     ).toBeTruthy();
+  });
+
+  /** Where a world point lands on the Layout surface, read from the drawn
+   * floor's transform. */
+  const onSurface = (point: { x: number; z: number }) => {
+    const [, tx, ty, scale] = surface()
+      .querySelector('.encounter-studio-layout-committed')!
+      .getAttribute('transform')!
+      .match(/translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/)!
+      .map(Number);
+    return { x: tx + point.x * scale, y: ty + point.z * scale, scale };
+  };
+  const centreOf = (b: {
+    minX: number;
+    maxX: number;
+    minZ: number;
+    maxZ: number;
+  }) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 });
+
+  it('selecting a room selects its label and frames it', async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    const before = onSurface({ x: 0, z: 0 }).scale;
+    const rooms = within(screen.getByRole('list', { name: 'Room list' }));
+    const gatehouse = KEEP_ROOMS.find((room) => room.id === 'gatehouse')!;
+    const cells = keepRoomCells(gatehouse);
+    const row = rooms.getByRole('button', { name: /^Room Gatehouse,/ });
+    expect(row.textContent).toContain(`${cells.length} hexes · 9 × 6`);
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Gatehouse'
+    );
+    const framed = onSurface(centreOf(cellsBounds(cells)!));
+    expect(framed.x).toBeCloseTo(bounds.width / 2, 3);
+    expect(framed.y).toBeCloseTo(bounds.height / 2, 3);
+    expect(framed.scale).toBeGreaterThan(before);
+  });
+
+  it('Show entire frames the content bounds', async () => {
+    const document = createCastleKeepDocument();
+    mount(new MemoryStorage(document));
+    await settled();
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Room list' })).getByRole(
+        'button',
+        { name: /^Room Chapel,/ }
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show entire' }));
+    const content = contentBounds(document.draft);
+    const centre = onSurface(centreOf(content));
+    expect(centre.x).toBeCloseTo(bounds.width / 2, 3);
+    expect(centre.y).toBeCloseTo(bounds.height / 2, 3);
+    // The whole floor fits on the surface.
+    const corner = onSurface({ x: content.maxX, z: content.maxZ });
+    expect(corner.x).toBeLessThanOrEqual(bounds.width + 1e-6);
+    expect(corner.y).toBeLessThanOrEqual(bounds.height + 1e-6);
+  });
+
+  it('the footer counts areas, creatures, hexes and doors', async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    // Eight rooms; the castle cast's six placements and the front room's
+    // three; 73 × 48 floor; the studio door and five keep doors.
+    expect(
+      screen.getByRole('contentinfo', { name: 'Layout counts' }).textContent
+    ).toBe('8 areas · 9 creatures · 3504 hexes · 6 doors');
   });
 });

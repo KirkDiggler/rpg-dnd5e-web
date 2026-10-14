@@ -12,12 +12,16 @@ import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
+import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
+import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
+import { regionOverview } from './overviewColours';
+import { contentBounds } from './overviewFrame';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioCast } from './StudioCast';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
@@ -125,6 +129,9 @@ function StudioSurface({
     onLayoutToolChange(next);
   };
   const defaultSection = home === 'regions' ? 'regions' : 'inspector';
+  /** Which label the Build home's label tool places: New region arms a
+   * room, Note and Add a note arm a note. */
+  const [labelKind, setLabelKind] = useState<'note' | 'room'>('note');
   const labels = useStudioLabels(
     session,
     view,
@@ -134,7 +141,7 @@ function StudioSurface({
       changeTool('select');
       showSection(defaultSection);
     },
-    home === 'regions' ? 'room' : 'note'
+    home === 'regions' ? 'room' : labelKind
   );
   const startLabel = (): void => {
     if (session.doorEditing.active) session.doorEditing.setActive(false);
@@ -147,6 +154,7 @@ function StudioSurface({
    * the inspector while armed. */
   const armTool = (next: 'wall' | 'door' | 'label'): void => {
     if (next === 'label') {
+      setLabelKind('note');
       startLabel();
       return;
     }
@@ -157,6 +165,23 @@ function StudioSurface({
     } else if (session.doorEditing.setActive(true)) onLayoutToolChange('door');
     setSidebarOpen(true);
   };
+  /** New region: the room-label tool, as the Regions home arms it. */
+  const armRoomLabel = (): void => {
+    setLabelKind('room');
+    startLabel();
+  };
+  /** A request the Layout surface fits to its own size. */
+  const [frameTarget, setFrameTarget] = useState<{
+    bounds: WorkspaceBounds;
+    nonce: number;
+  }>();
+  const frameBounds = (bounds: WorkspaceBounds): void =>
+    setFrameTarget((current) => ({ bounds, nonce: (current?.nonce ?? 0) + 1 }));
+  const overview = useMemo(
+    () =>
+      regionOverview(session.document.draft, session.regionEditing.resolutions),
+    [session.document.draft, session.regionEditing.resolutions]
+  );
   const changeSection = (next: StudioSidebarSection): void => {
     if (next === 'labels') labels.show();
     showSection(next);
@@ -725,41 +750,67 @@ function StudioSurface({
           style={!spatial ? { visibility: 'hidden' } : undefined}
         >
           {view === 'layout' && (
-            <div className="es-canvas">
-              <LayoutViewport
-                draft={session.document.draft}
-                tool={layoutTool}
-                frame={frame}
-                onFrameChange={onFrameChange}
-                onCommit={session.commitFloor}
-                labelEditing={labels.editing}
-                documentContext={session.document}
-                wallEditing={home === 'build' ? session.wallEditing : undefined}
-                doorEditing={home === 'build' ? session.doorEditing : undefined}
-                regionEditing={session.regionEditing}
-                selectedRegion={selectedRegion}
-                patternStart={
-                  session.regionEditing.finishes?.projection.regions.find(
-                    (r) => r.id === selectedRegion?.id
-                  )?.marker
-                }
-                regionTool={regionTool}
-                onExitRegionTool={exitRegion}
-                onExitDoorTool={exitDoor}
-                intentEpoch={session.intentEpoch}
-                onExitWallTool={exitWall}
-                onSelectHex={
-                  home === 'build'
-                    ? (cell) => void session.selectHex(cell)
-                    : undefined
-                }
-                onClearSelection={
-                  home === 'build'
-                    ? () => void session.clearSelection()
-                    : undefined
-                }
-                placedEditing={home === 'build' ? placedEditing : undefined}
-              />
+            <div className="es-layout">
+              {home === 'build' && (
+                <LayoutRoomList
+                  draft={session.document.draft}
+                  overview={overview}
+                  selectedLabelId={session.mapLabelSelection.selectedId}
+                  onSelect={(labelId, bounds) => {
+                    if (!session.mapLabelSelection.select(labelId)) return;
+                    setSidebarOpen(true);
+                    if (bounds) frameBounds(bounds);
+                  }}
+                  onCreate={armRoomLabel}
+                  onShowEntire={() =>
+                    frameBounds(contentBounds(session.document.draft))
+                  }
+                />
+              )}
+              <div className="es-layout-main">
+                <div className="es-canvas">
+                  <LayoutViewport
+                    draft={session.document.draft}
+                    tool={layoutTool}
+                    frame={frame}
+                    onFrameChange={onFrameChange}
+                    onCommit={session.commitFloor}
+                    labelEditing={labels.editing}
+                    documentContext={session.document}
+                    wallEditing={
+                      home === 'build' ? session.wallEditing : undefined
+                    }
+                    doorEditing={
+                      home === 'build' ? session.doorEditing : undefined
+                    }
+                    regionEditing={session.regionEditing}
+                    selectedRegion={selectedRegion}
+                    patternStart={
+                      session.regionEditing.finishes?.projection.regions.find(
+                        (r) => r.id === selectedRegion?.id
+                      )?.marker
+                    }
+                    regionTool={regionTool}
+                    onExitRegionTool={exitRegion}
+                    onExitDoorTool={exitDoor}
+                    intentEpoch={session.intentEpoch}
+                    onExitWallTool={exitWall}
+                    onSelectHex={
+                      home === 'build'
+                        ? (cell) => void session.selectHex(cell)
+                        : undefined
+                    }
+                    onClearSelection={
+                      home === 'build'
+                        ? () => void session.clearSelection()
+                        : undefined
+                    }
+                    placedEditing={home === 'build' ? placedEditing : undefined}
+                    frameTarget={frameTarget}
+                  />
+                </div>
+                <LayoutFooter draft={session.document.draft} />
+              </div>
             </div>
           )}
           {/* The 3D canvas mounts on the first visit to 3D and then stays

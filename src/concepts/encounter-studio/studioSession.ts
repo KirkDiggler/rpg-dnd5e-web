@@ -238,6 +238,13 @@ export interface LayoutViewportProps {
   /** Placed creatures, props and the party start, drawn and selectable
    * through the S0 contract (rpg-project#577). Absent draws none. */
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
+  /** A request to frame these world bounds: the viewport fits them to its
+   * own size and reports the frame through onFrameChange. A new nonce is a
+   * new request; the request itself is never document state. */
+  frameTarget?: {
+    bounds: import('../world-building/workspaceGeometry').WorkspaceBounds;
+    nonce: number;
+  };
 }
 
 /** Definitions belong to the one document owner. Area commits replace region
