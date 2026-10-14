@@ -23,6 +23,13 @@
   max-width: 100rem;
   margin: 1rem auto;
 }
+.material-editor-layout > aside {
+  min-width: 0;
+}
+.material-editor-layout > aside select {
+  min-width: 0;
+  width: 100%;
+}
 .material-editor nav {
   display: grid;
   gap: 0.4rem;
@@ -72,6 +79,8 @@
 }
 .material-editor label {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 0.35rem;
   margin: 0.6rem 0;
 }
