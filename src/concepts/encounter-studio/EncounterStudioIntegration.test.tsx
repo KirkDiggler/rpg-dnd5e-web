@@ -5734,4 +5734,43 @@ describe('S3 the overview through the real owner', () => {
     expect(ids).not.toContain('lighting-empty');
     expect(ids.length).toBeGreaterThan(0);
   });
+
+  it('a prop writer in Facts selects the prop from Layout', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Facts' })
+    );
+    const facts = screen.getByRole('region', { name: 'Facts' });
+    const row = facts.querySelector(
+      '[data-fact="king-is-cultist"]'
+    ) as HTMLElement;
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+    expect(pressed('Build')).toBe('true');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Altar'
+    );
+  });
+
+  it("the group view's Select member selects the member from Layout", async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    // Select the group in 3D, then come back to Layout with it selected.
+    switchTo('3D');
+    act(() => viewport().onSelect(['furniture']));
+    switchTo('Layout');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Furniture'
+    );
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Select member Table' })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Table'
+    );
+  });
 });

@@ -27,7 +27,7 @@ export interface LayoutPlacedEditing {
   readonly names: ReadonlyMap<string, string>;
   /** session.creatures.select */
   selectCreature(id: string): boolean;
-  /** viewportProps.onSelect([id]), or extend the current pick. */
+  /** session.selectScene([id]), or extend the current pick. */
   selectProp(id: string, extend: boolean): void;
   /** The existing party-start target. */
   selectPartyStart(): boolean;

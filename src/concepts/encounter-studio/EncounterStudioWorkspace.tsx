@@ -280,7 +280,7 @@ function StudioSurface({
     const selected =
       target.kind === 'creature'
         ? session.creatures.select(target.id)
-        : (session.viewportProps.onSelect([target.id]), true);
+        : session.selectScene([target.id]);
     if (!selected) return;
     changeHome('build');
     setSidebarOpen(true);
