@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { castMemberOf, castOf, statBlockIsKnown } from '../world-building/cast';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { selectionName } from './StudioArrangeFields';
 import {
@@ -33,6 +34,8 @@ export interface StudioInspectorProps {
   onOpenRegion(labelId: string): void;
   /** Arm the party-start gesture; the next 3D floor click places it. */
   onPlacePartyStart(): void;
+  /** Open one cast member, by its monster ref (rpg-project#575). */
+  onOpenCastMember?(ref: string): void;
 }
 
 /** The Build home's only sidebar content: one view for the one selected
@@ -241,13 +244,114 @@ function CreatureView({
   session,
   onConfigure,
   onMoveCreature,
+  onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
   return (
-    <Form
-      session={session}
-      onConfigure={onConfigure}
-      onMoveCreature={onMoveCreature}
-    />
+    <>
+      <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
+      <Form
+        session={session}
+        onConfigure={onConfigure}
+        onMoveCreature={onMoveCreature}
+      />
+    </>
+  );
+}
+
+/** Which cast member a placement belongs to, and which of its values were
+ * stamped at placement. The stat block is followed by id; the look and the
+ * faction are this placement's own. */
+function CreatureCast({
+  session,
+  onOpenCastMember,
+}: Pick<
+  StudioInspectorProps,
+  'session' | 'onOpenCastMember'
+>): React.JSX.Element | null {
+  const arrange = session.arrange;
+  const [reassign, setReassign] = useState('');
+  if (arrange?.kind !== 'actor') return null;
+  const { monster } = arrange;
+  const document = session.document;
+  if (!statBlockIsKnown(document, monster.ref)) {
+    const choices = castOf(document).filter((member) =>
+      statBlockIsKnown(document, member.ref)
+    );
+    return (
+      <section aria-label="Cast member" className="es-context-panel">
+        <p role="alert" className="es-warning">
+          This placement&apos;s stat block, {monster.ref}, is not in the cast.
+        </p>
+        <label>
+          Cast member
+          <select
+            aria-label="Reassign to cast member"
+            value={reassign}
+            onChange={(event) => setReassign(event.target.value)}
+          >
+            <option value="" disabled>
+              Choose a cast member
+            </option>
+            {choices.map((member) => (
+              <option key={member.ref} value={member.ref}>
+                {member.name} · {member.id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={!reassign}
+          onClick={() => session.creatures.setDefinition(monster.id, reassign)}
+        >
+          Reassign
+        </button>
+        <p className="es-help">
+          The local draft still saves. Save &amp; Play reports the
+          rulebook&apos;s refusal if the stat block resolves to nothing.
+        </p>
+      </section>
+    );
+  }
+  const member = castMemberOf(document, monster.ref);
+  if (!member) return null;
+  const faction = document.draft.room.monsterBindings?.[monster.id]?.faction;
+  const look = monster.appearanceRef;
+  const defaultLook = member.defaults?.modelRef;
+  return (
+    <section aria-label="Cast member" className="es-context-panel">
+      <p>
+        Cast member:{' '}
+        <button
+          type="button"
+          className="es-link"
+          aria-label={`Open cast member ${member.name}`}
+          onClick={() => onOpenCastMember?.(member.ref)}
+        >
+          {member.name}
+        </button>{' '}
+        ·{' '}
+        {member.source === 'template'
+          ? `stat block ${member.id}`
+          : `rulebook ${member.id}`}
+      </p>
+      <p className="es-help">Changes to {member.name} reach every placement.</p>
+      <p>
+        Look:{' '}
+        {!look
+          ? 'Rules default appearance'
+          : look === defaultLook
+            ? "Cast member's default"
+            : 'Stamped at placement'}
+      </p>
+      <p>
+        Faction: {faction ?? 'none'}.{' '}
+        <span className="es-help">
+          Stamped at placement. Changing {member.name}&apos;s default faction
+          does not change this.
+        </span>
+      </p>
+    </section>
   );
 }
 

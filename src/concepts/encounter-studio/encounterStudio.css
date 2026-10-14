@@ -667,3 +667,11 @@
 .es-creature-panel .es-skill-fields input {
   width: auto;
 }
+.es-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
