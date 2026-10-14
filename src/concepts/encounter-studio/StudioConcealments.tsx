@@ -292,7 +292,10 @@ function ConcealmentForm({
       </StudioSection>
       <StudioSection title="Members" level="subsection">
         {(spec.cells ?? []).length === 0 && (spec.props ?? []).length === 0 ? (
-          <p className="es-help">Nothing is hidden yet.</p>
+          <p className="es-help">
+            Nothing is hidden yet. The engine refuses a concealment that hides
+            nothing.
+          </p>
         ) : (
           <ul className="es-inspector-list" aria-label={`Members of ${id}`}>
             {(spec.cells ?? []).map((cell) => (

@@ -5355,12 +5355,15 @@ describe('S4 concealments through the real owner', () => {
 });
 
 describe('S4 the draft as a file through the real owner', () => {
-  const fileInput = (): HTMLInputElement =>
-    screen.getByLabelText('Draft file to import') as HTMLInputElement;
+  const fileInput = (): HTMLInputElement => {
+    if (!screen.queryByLabelText('Draft file to import'))
+      fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    return screen.getByLabelText('Draft file to import') as HTMLInputElement;
+  };
   const choose = async (name: string, text: string): Promise<void> => {
     const answered = () =>
       document.querySelector(
-        '.es-draft-file > [role="alertdialog"], .es-draft-file > [role="alert"]'
+        '.es-draft-file-panel > [role="alertdialog"], .es-draft-file-panel > [role="alert"]'
       );
     const previous = answered()?.textContent ?? null;
     fireEvent.change(fileInput(), {
@@ -5409,7 +5412,7 @@ describe('S4 the draft as a file through the real owner', () => {
     const storage = new MemoryStorage(createCastleS4Document());
     mount(storage);
     await settled();
-    fireEvent.click(screen.getByRole('button', { name: 'Export draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
     const key = screen.getByLabelText('File key') as HTMLInputElement;
     expect(key.value).toBe(defaultDraftKey(storage.document()));
     fireEvent.change(key, { target: { value: 'mad-king' } });
@@ -5448,7 +5451,11 @@ describe('S4 the draft as a file through the real owner', () => {
       exportDraftYaml(createCastleS4Document(), 'mad-king')
     );
     fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Export draft' }));
+    expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
+      'mad-king'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close draft file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
     expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
       'mad-king'
     );

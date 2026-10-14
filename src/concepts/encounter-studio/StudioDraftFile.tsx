@@ -27,25 +27,28 @@ export interface DraftFileKey {
 }
 
 /** Export and import the draft as the file the decoder reads
- * (rpg-project#578, H7, H8), beside the local save. Export downloads the
- * encoder's bytes as `{key}.yaml`. Import reads a file, shows the decoder's
+ * (rpg-project#578, H7, H8): the panel the header's "Draft file" control
+ * opens under the header. Export downloads the encoder's bytes as
+ * `{key}.yaml`. Import reads a file, shows the decoder's
  * first refusal and changes nothing, or asks to replace the draft and then
  * replaces it in one undoable step. */
 export function StudioDraftFile({
   session,
   fileKey,
   onFileKey,
+  onClose,
 }: {
   session: EncounterStudioSession;
   fileKey: DraftFileKey | null;
   onFileKey(next: DraftFileKey): void;
+  onClose(): void;
 }): React.JSX.Element {
   const document = session.document;
   const suggested =
     fileKey && fileKey.roomId === document.draft.id
       ? fileKey.key
       : defaultDraftKey(document);
-  const [exporting, setExporting] = useState<string | null>(null);
+  const [key, setKey] = useState(suggested);
   const [pending, setPending] = useState<{
     file: string;
     read: Extract<DraftFileRead, { ok: true }>;
@@ -57,10 +60,10 @@ export function StudioDraftFile({
   const input = useRef<HTMLInputElement>(null);
 
   const download = (): void => {
-    const key = (exporting ?? '').trim();
+    const name = key.trim();
     let yaml: string;
     try {
-      yaml = exportDraftYaml(document, key);
+      yaml = exportDraftYaml(document, name);
     } catch (error) {
       setMessage({
         text: `Could not export: ${error instanceof Error ? error.message : String(error)}`,
@@ -73,11 +76,10 @@ export function StudioDraftFile({
     );
     const link = window.document.createElement('a');
     link.href = url;
-    link.download = `${key}.yaml`;
+    link.download = `${name}.yaml`;
     link.click();
     URL.revokeObjectURL(url);
-    setExporting(null);
-    setMessage({ text: `Exported ${key}.yaml`, refusal: false });
+    setMessage({ text: `Exported ${name}.yaml`, refusal: false });
   };
 
   const choose = async (file: File): Promise<void> => {
@@ -97,6 +99,7 @@ export function StudioDraftFile({
     setPending(null);
     if (session.importDocument(read.draft, read.scope)) {
       onFileKey({ key: read.key, roomId: read.draft.id });
+      setKey(read.key);
       setMessage({ text: `Imported ${file}`, refusal: false });
     } else
       setMessage({
@@ -106,64 +109,54 @@ export function StudioDraftFile({
   };
 
   return (
-    <div className="es-draft-file" role="group" aria-label="Draft file">
-      <button
-        type="button"
-        aria-expanded={exporting !== null}
-        onClick={() => {
-          setMessage(null);
-          setExporting(exporting === null ? suggested : null);
+    <section className="es-draft-file-panel" aria-label="Draft file">
+      <form
+        aria-label="Export draft"
+        className="es-buttons"
+        onSubmit={(event) => {
+          event.preventDefault();
+          download();
         }}
       >
-        Export draft
-      </button>
-      <button type="button" onClick={() => input.current?.click()}>
-        Import draft
-      </button>
-      <input
-        ref={input}
-        type="file"
-        accept=".yaml,.yml,text/yaml"
-        aria-label="Draft file to import"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = '';
-          if (file) void choose(file);
-        }}
-      />
-      {exporting !== null && (
-        <form
-          className="es-buttons"
-          aria-label="Export draft"
-          onSubmit={(event) => {
-            event.preventDefault();
-            download();
+        <label className="es-field">
+          <span>
+            File key{' '}
+            <FieldHelp field="File key">
+              The dungeon key written into the file and its name. An imported
+              file&apos;s key is kept for its draft.
+            </FieldHelp>
+          </span>
+          <input
+            aria-label="File key"
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+          />
+        </label>
+        <button type="submit">Download {key.trim() || '…'}.yaml</button>
+      </form>
+      <div className="es-buttons">
+        <button type="button" onClick={() => input.current?.click()}>
+          Import draft
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept=".yaml,.yml,text/yaml"
+          aria-label="Draft file to import"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) void choose(file);
           }}
-        >
-          <label className="es-field">
-            <span>
-              File key{' '}
-              <FieldHelp field="File key">
-                The dungeon key written into the file and its name. An imported
-                file&apos;s key is kept for its draft.
-              </FieldHelp>
-            </span>
-            <input
-              aria-label="File key"
-              value={exporting}
-              onChange={(event) => setExporting(event.target.value)}
-            />
-          </label>
-          <button type="submit">Download {exporting.trim() || '…'}.yaml</button>
-          <button type="button" onClick={() => setExporting(null)}>
-            Cancel
-          </button>
-        </form>
-      )}
+        />
+        <button type="button" onClick={onClose}>
+          Close draft file
+        </button>
+      </div>
       {pending && (
         <div
-          className="es-warning"
+          className="es-buttons"
           role="alertdialog"
           aria-label="Confirm import"
         >
@@ -171,14 +164,12 @@ export function StudioDraftFile({
             Replace the current draft with “{pending.read.draft.name}” from{' '}
             {pending.file}? Undo restores the current draft.
           </span>
-          <span className="es-buttons">
-            <button type="button" onClick={replace}>
-              Replace draft
-            </button>
-            <button type="button" onClick={() => setPending(null)}>
-              Keep current draft
-            </button>
-          </span>
+          <button type="button" onClick={replace}>
+            Replace draft
+          </button>
+          <button type="button" onClick={() => setPending(null)}>
+            Keep current draft
+          </button>
         </div>
       )}
       {message && (
@@ -189,6 +180,6 @@ export function StudioDraftFile({
           {message.text}
         </p>
       )}
-    </div>
+    </section>
   );
 }

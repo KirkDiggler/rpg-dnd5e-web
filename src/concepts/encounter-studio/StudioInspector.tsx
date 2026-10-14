@@ -299,10 +299,10 @@ function DoorView({
   return (
     <>
       {arrange.kind === 'door' && (
-        <>
+        <div className="es-context-panel es-door-view">
           <p className="es-help">Model: {arrange.door.assetRef}</p>
           <DoorState session={session} doorId={arrange.door.id} />
-        </>
+        </div>
       )}
       <Form session={session} />
     </>

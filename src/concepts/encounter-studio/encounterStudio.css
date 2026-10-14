@@ -1129,33 +1129,22 @@
   max-width: 100%;
 }
 
-/* Export and import beside the local save (rpg-project#578): the key form,
- * the replace confirmation and the result open under the buttons, so the
- * header keeps its one line. */
-.encounter-studio .es-draft-file {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.encounter-studio .es-draft-file > form,
-.encounter-studio .es-draft-file > [role='alertdialog'],
-.encounter-studio .es-draft-file > p {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  right: 0;
-  z-index: 40;
+/* Export and import (rpg-project#578): the header's Draft file control
+ * opens this row under the header, as the leave confirmation does. */
+.encounter-studio .es-draft-file-panel {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem 0.5rem;
-  width: max-content;
-  max-width: min(28rem, 90vw);
-  margin: 0;
-  padding: 0.5rem 0.65rem;
-  white-space: normal;
+  gap: 0.4rem 1rem;
+  padding: 0.45rem 1rem;
   background: var(--wb-panel);
-  border: 1px solid var(--wb-border);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  border-bottom: 1px solid var(--wb-border);
+}
+.encounter-studio .es-draft-file-panel > form,
+.encounter-studio .es-draft-file-panel > .es-buttons {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.encounter-studio .es-draft-file-panel > p {
+  margin: 0;
 }

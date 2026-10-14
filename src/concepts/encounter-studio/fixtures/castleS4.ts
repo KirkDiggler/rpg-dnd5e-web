@@ -11,14 +11,49 @@ import {
   type RoomHexCell,
 } from '../../world-building/roomDraft';
 import { createCastleKeepDocument } from './castleKeep';
-import { CASTLE_SCOPE } from './castleReadBack';
+import { createCastleReadBackDocument } from './castleReadBack';
 
-/** The keep with the read-back castle's scope: the S4 walk's seed. */
+/** The keep with the read-back castle's scope and bindings: the S4 walk's
+ * seed. Lists are joined and maps merged, so the keep's own goblins, intel
+ * and site nouns stay beside the castle's. The read-back's purse is placed
+ * in the kitchen, and the ledger and purse are declared, because their
+ * bindings need a footprint. */
 export function createCastleWalkDocument(): RoomDraftDocument {
   const keep = createCastleKeepDocument();
+  const castle = createCastleReadBackDocument();
+  const draft = structuredClone(keep.draft);
+  const ledger = draft.scene.items.find((item) => item.id === 'ledger')!;
+  draft.scene.items.push({
+    ...structuredClone(ledger),
+    id: 'purse',
+    assetRef: 'dnd5e:props:fantasy-kingdom:bag_explorer_01',
+    label: 'Purse',
+    transform: { ...ledger.transform, x: ledger.transform.x + 1.5 },
+  });
+  for (const id of ['ledger', 'purse'])
+    draft.room.propDeclarations[id] = structuredClone(
+      castle.draft.room.propDeclarations[id]!
+    );
+  draft.room.monsterBindings = {
+    ...draft.room.monsterBindings,
+    ...structuredClone(castle.draft.room.monsterBindings),
+  };
+  draft.room.propBindings = {
+    ...draft.room.propBindings,
+    ...structuredClone(castle.draft.room.propBindings),
+  };
+  const a = keep.scope;
+  const b = structuredClone(castle.scope);
   return validateRoomDocument({
-    draft: keep.draft,
-    scope: { ...keep.scope, ...structuredClone(CASTLE_SCOPE) },
+    draft,
+    scope: {
+      ...a,
+      templates: { ...a.templates, ...b.templates },
+      tables: { ...a.tables, ...b.tables },
+      factions: [...(a.factions ?? []), ...(b.factions ?? [])],
+      dispositions: [...(a.dispositions ?? []), ...(b.dispositions ?? [])],
+      intel: [...(a.intel ?? []), ...(b.intel ?? [])],
+    },
   });
 }
 
@@ -34,12 +69,14 @@ export function createCastleS4Document(): RoomDraftDocument {
   };
   document.scope = {
     ...document.scope,
-    exits: [{ id: 'postern', cell: at(40) }],
+    exits: [...(document.scope.exits ?? []), { id: 'postern', cell: at(40) }],
     endings: [
+      ...(document.scope.endings ?? []),
       { id: 'king-slain', when: { down: 'captain' } },
       { id: 'king-deposed', when: { fact: 'king-deposed' } },
     ],
     concealments: {
+      ...document.scope.concealments,
       stash: {
         notice: [{ ability: 'perception', dc: 12 }],
         checks: [{ ability: 'investigation', dc: 14 }],

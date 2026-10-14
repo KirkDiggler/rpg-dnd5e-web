@@ -315,6 +315,7 @@ function StudioSurface({
   };
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
+  const [draftFileOpen, setDraftFileOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -539,11 +540,14 @@ function StudioSurface({
               ? 'Replace unreadable local draft'
               : 'Save local draft'}
           </button>
-          <StudioDraftFile
-            session={session}
-            fileKey={fileKey}
-            onFileKey={setFileKey}
-          />
+          <button
+            type="button"
+            aria-expanded={draftFileOpen}
+            aria-controls="studio-draft-file"
+            onClick={() => setDraftFileOpen(!draftFileOpen)}
+          >
+            Draft file
+          </button>
         </div>
       </header>
       {session.autosaveBlocked && (
@@ -552,6 +556,16 @@ function StudioSurface({
           unreadable local draft” overwrites the unreadable stored data with
           this draft.
         </p>
+      )}
+      {draftFileOpen && (
+        <div id="studio-draft-file">
+          <StudioDraftFile
+            session={session}
+            fileKey={fileKey}
+            onFileKey={setFileKey}
+            onClose={() => setDraftFileOpen(false)}
+          />
+        </div>
       )}
       {session.notice !== null && (
         <div className="es-warning" role="alert">
