@@ -13,16 +13,19 @@ export function placementDisplayNames(input: {
   castName(ref: string): string;
 }): ReadonlyMap<string, string> {
   const names = new Map<string, string>();
-  const seen = new Map<string, number>();
+  const used = new Set<string>();
   for (const placement of input.declarations) {
     const authored =
       input.actorNames && Object.hasOwn(input.actorNames, placement.id)
         ? input.actorNames[placement.id]
         : undefined;
     const base = authored?.trim() || input.castName(placement.ref);
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    names.set(placement.id, count === 1 ? base : `${base} (${count})`);
+    // An authored "Guard (2)" is a name too: take the first unused suffix,
+    // so no two placements ever read alike.
+    let name = base;
+    for (let n = 2; used.has(name); n += 1) name = `${base} (${n})`;
+    used.add(name);
+    names.set(placement.id, name);
   }
   return names;
 }

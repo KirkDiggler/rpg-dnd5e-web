@@ -49,4 +49,25 @@ describe('placementDisplayNames', () => {
     });
     expect(names.get('4cbfe6a7-d24c')).toBe('Guard');
   });
+
+  it('an authored name that looks like a suffix never repeats', () => {
+    const guards = ['a', 'b', 'c'].map((id) => at(id, 'dnd5e:monsters:guard'));
+    const shown = (actorNames: Record<string, string>): string[] => [
+      ...placementDisplayNames({
+        declarations: guards,
+        actorNames,
+        castName,
+      }).values(),
+    ];
+    expect(shown({ a: 'Guard', b: 'Guard', c: 'Guard (2)' })).toEqual([
+      'Guard',
+      'Guard (2)',
+      'Guard (2) (2)',
+    ]);
+    expect(shown({ a: 'Guard', b: 'Guard (2)', c: 'Guard' })).toEqual([
+      'Guard',
+      'Guard (2)',
+      'Guard (3)',
+    ]);
+  });
 });

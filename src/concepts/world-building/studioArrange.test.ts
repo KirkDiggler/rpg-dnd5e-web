@@ -438,7 +438,7 @@ describe('Arrange atomic scenery candidates', () => {
         target: { kind: 'scene', ids: ['table', 'gone'] },
         position: { x: 8 },
       })
-    ).toThrow(/target/);
+    ).toThrow(/no longer exists/);
     for (const invalid of [NaN, Infinity, -Infinity]) {
       expect(() =>
         applyStudioSceneArrange(scene, {
@@ -670,7 +670,7 @@ describe('Arrange atomic wall candidates', () => {
         kind: 'wall-edit',
         target: { kind: 'wall', id: 'gone' },
       })
-    ).toThrow(/target/);
+    ).toThrow(/no longer exists/);
     expect(value).toEqual(before);
   });
 });
@@ -767,21 +767,21 @@ describe('Arrange atomic actor/start candidates', () => {
           target,
           location,
         })
-      ).toThrow(/integral hex/);
+      ).toThrow(/whole hex/);
       expect(() =>
         applyStudioActorArrange(value, {
           kind: 'start-position',
           target: { kind: 'start' },
           location,
         })
-      ).toThrow(/integral hex/);
+      ).toThrow(/whole hex/);
     }
     expect(() =>
       applyStudioActorArrange(value, {
         kind: 'actor-start',
         target: { kind: 'actor', id: 'gone' },
       })
-    ).toThrow(/target/);
+    ).toThrow(/no longer exists/);
     expect(value).toEqual(before);
     delete value.room.partyStart;
     expect(() =>
