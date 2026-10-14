@@ -23,10 +23,14 @@ import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
 import { StudioCast } from './StudioCast';
+import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
+import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
+import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
   type EncounterStudioSession,
@@ -34,8 +38,10 @@ import {
   type LayoutFloorTool,
   type LayoutFrame,
   type LayoutTool,
+  type StudioDoorEditing,
   type StudioHome,
   type StudioSocialSection,
+  type StudioWallEditing,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioWallControls } from './StudioWallControls';
@@ -47,6 +53,9 @@ const ENCOUNTER_SECTIONS = {
   factions: 'Factions',
   dispositions: 'Dispositions',
   intel: 'Intel',
+  endings: 'Endings',
+  concealments: 'Concealments',
+  scenarios: 'Scenarios',
   facts: 'Facts',
 } as const;
 
@@ -252,6 +261,13 @@ function StudioSurface({
     onHomeChange(next);
     setSidebarOpen(true);
   };
+  /** Add members on the map: Build, in the view last used, with the
+   * concealment armed; map clicks then toggle membership until Done or
+   * Escape. A view switch disarms, as every armed gesture does. */
+  const armConcealment = (id: string): void => {
+    changeHome('build');
+    session.concealments.armMembers(id);
+  };
   const moveSelectedCreature = (): void => {
     if (session.arrange?.kind !== 'actor') return;
     changeHome('build');
@@ -282,8 +298,10 @@ function StudioSurface({
   };
   /** A writer or reader in the fact index: select the placed thing on the
    * map, or open the home section that holds it. */
+  const [focusEnding, setFocusEnding] = useState<{ id: string } | null>(null);
   const openFactUse = (target: FactUseTarget): void => {
     if ('home' in target) {
+      if (target.home === 'endings') setFocusEnding({ id: target.id });
       setEncounterSection(target.home);
       return;
     }
@@ -295,6 +313,9 @@ function StudioSurface({
     changeHome('build');
     setSidebarOpen(true);
   };
+  /** The last imported file's key, for its draft (S4-Q2). */
+  const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
+  const [draftFileOpen, setDraftFileOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -325,19 +346,54 @@ function StudioSurface({
     () => documentPlacementNames(session.document),
     [session.document]
   );
-  const placedEditing: LayoutPlacedEditing = {
-    selected: inspection.selection,
-    picked: inspection.pick ?? undefined,
-    names: placementNames,
-    selectCreature: (id) => session.creatures.select(id),
-    selectProp: (id, extend) => {
-      const current = session.viewportProps.selectedIds;
-      session.selectScene(
-        extend ? (current.includes(id) ? current : [...current, id]) : [id]
-      );
-    },
-    selectPartyStart: () => session.selectPartyStart(),
-  };
+  const armedConcealment = session.concealments.armedId;
+  /** While a concealment is armed, a Layout click on a hex, prop, door or
+   * wall toggles membership instead of selecting it (rpg-project#578). */
+  const pickMember = armedConcealment !== null;
+  const layoutWallEditing: StudioWallEditing = pickMember
+    ? {
+        ...session.wallEditing,
+        select: (id) => {
+          if (id !== null) session.concealments.pick({ kind: 'prop', id });
+          return false;
+        },
+      }
+    : session.wallEditing;
+  const layoutDoorEditing: StudioDoorEditing = pickMember
+    ? {
+        ...session.doorEditing,
+        select: (target) => {
+          if (target !== null)
+            session.concealments.pick({ kind: 'prop', id: target.doorId });
+          return false;
+        },
+      }
+    : session.doorEditing;
+  const concealedCells = armedConcealment
+    ? session.document.scope.concealments?.[armedConcealment]?.cells
+    : undefined;
+  const placedEditing: LayoutPlacedEditing = pickMember
+    ? {
+        selected: { kind: 'nothing' },
+        names: placementNames,
+        selectCreature: () => false,
+        selectProp: (id) =>
+          void session.concealments.pick({ kind: 'prop', id }),
+        selectPartyStart: () => false,
+      }
+    : {
+        selected: inspection.selection,
+        picked: inspection.pick ?? undefined,
+        names: placementNames,
+        selectCreature: (id) => session.creatures.select(id),
+        selectProp: (id, extend) => {
+          const current = session.viewportProps.selectedIds;
+          session.selectScene(
+            extend ? (current.includes(id) ? current : [...current, id]) : [id]
+          );
+        },
+        selectPartyStart: () => session.selectPartyStart(),
+      };
   const armedTool =
     home !== 'build' || view !== 'layout' ? null : layoutTool === 'wall' ? (
       <StudioWallControls
@@ -484,6 +540,14 @@ function StudioSurface({
               ? 'Replace unreadable local draft'
               : 'Save local draft'}
           </button>
+          <button
+            type="button"
+            aria-expanded={draftFileOpen}
+            aria-controls="studio-draft-file"
+            onClick={() => setDraftFileOpen(!draftFileOpen)}
+          >
+            Draft file
+          </button>
         </div>
       </header>
       {session.autosaveBlocked && (
@@ -492,6 +556,16 @@ function StudioSurface({
           unreadable local draft” overwrites the unreadable stored data with
           this draft.
         </p>
+      )}
+      {draftFileOpen && (
+        <div id="studio-draft-file">
+          <StudioDraftFile
+            session={session}
+            fileKey={fileKey}
+            onFileKey={setFileKey}
+            onClose={() => setDraftFileOpen(false)}
+          />
+        </div>
       )}
       {session.notice !== null && (
         <div className="es-warning" role="alert">
@@ -559,6 +633,20 @@ function StudioSurface({
                 </button>
               </div>
             )}
+          {home === 'build' && armedConcealment && (
+            <div className="es-buttons" role="status">
+              <strong>
+                Adding members to {armedConcealment} · click hexes, props, doors
+                and walls
+              </strong>
+              <button
+                type="button"
+                onClick={() => session.concealments.disarm()}
+              >
+                Done adding members
+              </button>
+            </div>
+          )}
           {session.creatures.placement && (
             <div className="es-buttons" role="status">
               <strong>
@@ -738,8 +826,8 @@ function StudioSurface({
                     onCommit={session.commitFloor}
                     labelEditing={labels.editing}
                     documentContext={session.document}
-                    wallEditing={session.wallEditing}
-                    doorEditing={session.doorEditing}
+                    wallEditing={layoutWallEditing}
+                    doorEditing={layoutDoorEditing}
                     regionEditing={session.regionEditing}
                     selectedRegion={selectedRegion}
                     patternStart={
@@ -752,9 +840,15 @@ function StudioSurface({
                     onExitDoorTool={exitDoor}
                     intentEpoch={session.intentEpoch}
                     onExitWallTool={exitWall}
-                    onSelectHex={(cell) => void session.selectHex(cell)}
+                    onSelectHex={(cell) =>
+                      void (pickMember
+                        ? session.concealments.pick({ kind: 'cell', cell })
+                        : session.selectHex(cell))
+                    }
                     onClearSelection={() => void session.clearSelection()}
                     placedEditing={placedEditing}
+                    exits={session.document.scope.exits}
+                    concealedCells={concealedCells}
                     frameTarget={frameTarget}
                   />
                 </div>
@@ -865,6 +959,9 @@ function StudioSurface({
                 'factions',
                 'dispositions',
                 'intel',
+                'endings',
+                'concealments',
+                'scenarios',
                 'facts',
               ] as const
             ).map((section) => (
@@ -872,7 +969,10 @@ function StudioSurface({
                 key={section}
                 type="button"
                 aria-pressed={encounterSection === section}
-                onClick={() => setEncounterSection(section)}
+                onClick={() => {
+                  setFocusEnding(null);
+                  setEncounterSection(section);
+                }}
               >
                 {ENCOUNTER_SECTIONS[section]}
               </button>
@@ -911,6 +1011,19 @@ function StudioSurface({
                 {session.socialControls[encounterSection]}
               </section>
             )}
+          {home === 'encounter' && encounterSection === 'endings' && (
+            <StudioEndings session={session} focus={focusEnding?.id} />
+          )}
+          {home === 'encounter' && encounterSection === 'concealments' && (
+            <StudioConcealments
+              session={session}
+              onArmMembers={armConcealment}
+              onOpenIntel={() => setEncounterSection('intel')}
+            />
+          )}
+          {home === 'encounter' && encounterSection === 'scenarios' && (
+            <StudioScenarios document={session.document} />
+          )}
           {home === 'encounter' && encounterSection === 'facts' && (
             <StudioFacts
               document={session.document}

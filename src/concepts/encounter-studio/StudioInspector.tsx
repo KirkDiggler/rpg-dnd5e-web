@@ -6,6 +6,16 @@ import {
   statBlockIsKnown,
   type CastMember,
 } from '../world-building/cast';
+import { concealmentHiding } from '../world-building/concealmentEdits';
+import {
+  addDoorApproach,
+  doorBindingState,
+  patchDoorApproach,
+  removeDoorApproach,
+  setDoorBindingState,
+  type DoorBindingState,
+} from '../world-building/doorBindingEdits';
+import { exitAt, setExitAt } from '../world-building/exitEdits';
 import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
@@ -17,6 +27,7 @@ import {
   type ArrangeComposition,
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
+import { StudioCheckRows } from './StudioCheckRows';
 import { StudioDimensions } from './StudioDimensions';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
@@ -25,6 +36,7 @@ import type {
   EncounterStudioView,
   LayoutFrame,
   LayoutTool,
+  RoomHexCell,
   StudioArrangeSelection,
   StudioInspection,
   StudioSelection,
@@ -83,6 +95,9 @@ export function StudioInspector(
           session.arrange?.kind === 'actor' && (
             <CopyId id={session.arrange.monster.id} label="placement" />
           )}
+        {inspection.pick === null && session.arrange?.kind === 'door' && (
+          <CopyId id={session.arrange.door.assetRef} label="model" />
+        )}
       </div>
       <InspectorBody {...props} />
     </section>
@@ -287,10 +302,128 @@ function DoorView({
   return (
     <>
       {arrange.kind === 'door' && (
-        <p className="es-help">Model: {arrange.door.assetRef}</p>
+        <div className="es-context-panel es-door-view">
+          <DoorState session={session} doorId={arrange.door.id} />
+        </div>
       )}
       <Form session={session} />
     </>
+  );
+}
+
+const DOOR_STATES: ReadonlyArray<{ value: DoorBindingState; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'locked', label: 'Locked' },
+];
+
+/** A wall door's state, its lock and the concealment that hides it
+ * (rpg-project#578, H1, H2). Each pick applies at once; the fields are
+ * `doorBindingEdits`' and `concealmentEdits`'. */
+function DoorState({
+  session,
+  doorId,
+}: {
+  session: EncounterStudioSession;
+  doorId: string;
+}): React.JSX.Element {
+  const binding = session.document.draft.room.doorBindings?.[doorId];
+  const state = doorBindingState(binding);
+  const rows = binding?.locked ?? [];
+  const concealments = Object.keys(session.document.scope.concealments ?? {});
+  const hiddenBy = concealmentHiding(session.document.scope, doorId);
+  return (
+    <StudioSection title="Door" level="section">
+      <label className="es-field">
+        <span>State</span>
+        <select
+          aria-label="Door state"
+          value={state === 'none' ? '' : state}
+          onChange={(event) =>
+            session.doors.setBinding(
+              doorId,
+              setDoorBindingState(
+                binding,
+                event.target.value as DoorBindingState
+              )
+            )
+          }
+        >
+          {state === 'none' && (
+            <option value="" disabled>
+              No state
+            </option>
+          )}
+          {DOOR_STATES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {state === 'locked' && (
+        <StudioSection title="Lock" level="subsection">
+          <p className="es-help">
+            Any one of these beats the lock. A locked door is shut.{' '}
+            <FieldHelp field="Lock">
+              Removing the last check leaves the door closed and unlocked.
+            </FieldHelp>
+          </p>
+          <StudioCheckRows
+            owner="the lock"
+            rows={rows}
+            onPatch={(index, patch) =>
+              session.doors.setBinding(
+                doorId,
+                patchDoorApproach(binding, index, patch)
+              )
+            }
+            onRemove={(index) =>
+              session.doors.setBinding(
+                doorId,
+                rows.length <= 1
+                  ? setDoorBindingState(binding, 'closed')
+                  : removeDoorApproach(binding, index)
+              )
+            }
+            onAdd={() =>
+              session.doors.setBinding(doorId, addDoorApproach(binding))
+            }
+          />
+        </StudioSection>
+      )}
+      <label className="es-field">
+        <span>
+          Hidden by{' '}
+          <FieldHelp field="Hidden by">
+            Hiding a door hides only the door. Its wall and the floor stay in
+            view.
+          </FieldHelp>
+        </span>
+        <select
+          aria-label="Hidden by"
+          value={hiddenBy ?? ''}
+          onChange={(event) =>
+            session.concealments.setDoorHiddenBy(
+              doorId,
+              event.target.value || null
+            )
+          }
+        >
+          <option value="">Not hidden</option>
+          {concealments.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {concealments.length === 0 && (
+        <p className="es-help">
+          Add a concealment in Encounter, Concealments to hide this door.
+        </p>
+      )}
+    </StudioSection>
   );
 }
 
@@ -593,6 +726,12 @@ function HexView({
             <p className="es-help">No region is drawn here.</p>
           )}
         </StudioSection>
+        <HexExit
+          key={`${arrange.cell.q},${arrange.cell.r}`}
+          session={session}
+          cell={arrange.cell}
+          walkable={arrange.walkable}
+        />
         <StudioSection title="Play" level="subsection">
           <p>
             Void: {PLAY_CONTRACT.void} · Lighting: {PLAY_CONTRACT.lighting} ·
@@ -601,6 +740,98 @@ function HexView({
         </StudioSection>
       </StudioSection>
     </div>
+  );
+}
+
+/** The hex's exit (rpg-project#578, H3): add one with an id, rename it,
+ * remove it. Offered on walkable floor only; whether the hex is standable
+ * is the toolkit's call when the encounter is played (S4-Q6). */
+function HexExit({
+  session,
+  cell,
+  walkable,
+}: {
+  session: EncounterStudioSession;
+  cell: RoomHexCell;
+  walkable: boolean;
+}): React.JSX.Element {
+  const exit = exitAt(session.document.scope.exits, cell);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const close = (): void => {
+    setEditing(null);
+    setRefusal(null);
+  };
+  const apply = (): void => {
+    if (editing === null) return;
+    const id = editing.trim();
+    try {
+      setExitAt(session.document.scope.exits, cell, id);
+    } catch (error) {
+      setRefusal(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (session.exits.set(cell, id)) close();
+    else setRefusal('The exit was refused; the notice says why.');
+  };
+  return (
+    <StudioSection title="Exit" level="subsection">
+      <p className="es-help">
+        {exit ? `Exit ${exit.id}` : 'No exit here.'}{' '}
+        <FieldHelp field="Exit">
+          An exit under a blocking prop is refused when the encounter is played.
+        </FieldHelp>
+      </p>
+      {editing !== null ? (
+        <form
+          className="es-buttons"
+          aria-label={exit ? 'Rename exit' : 'Add exit'}
+          onSubmit={(event) => {
+            event.preventDefault();
+            apply();
+          }}
+        >
+          <label className="es-field">
+            <span>Exit id</span>
+            <input
+              aria-label="Exit id"
+              value={editing}
+              autoFocus
+              onChange={(event) => {
+                setEditing(event.target.value);
+                setRefusal(null);
+              }}
+            />
+          </label>
+          <button type="submit">{exit ? 'Apply rename' : 'Apply exit'}</button>
+          <button type="button" onClick={close}>
+            Cancel
+          </button>
+          {refusal && (
+            <p role="alert" className="es-warning">
+              {refusal}
+            </p>
+          )}
+        </form>
+      ) : exit ? (
+        <div className="es-buttons">
+          <button type="button" onClick={() => setEditing(exit.id)}>
+            Rename exit
+          </button>
+          <button type="button" onClick={() => session.exits.set(cell, null)}>
+            Remove exit
+          </button>
+        </div>
+      ) : walkable ? (
+        <div className="es-buttons">
+          <button type="button" onClick={() => setEditing('')}>
+            Add exit
+          </button>
+        </div>
+      ) : (
+        <p className="es-help">An exit needs walkable floor.</p>
+      )}
+    </StudioSection>
   );
 }
 

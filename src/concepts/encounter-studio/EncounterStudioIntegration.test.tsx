@@ -19,7 +19,9 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import { concealmentHiding } from '../world-building/concealmentEdits';
 import frontGoblinOptionsYaml from '../world-building/fixtures/frontGoblinOptions.yaml?raw';
 import { nextIntelId } from '../world-building/intelEdits';
 import { createRoomLabel } from '../world-building/regionEdits';
@@ -79,6 +81,7 @@ import {
 import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+import { defaultDraftKey, exportDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import {
   createGuardCastDocument,
@@ -91,6 +94,7 @@ import {
   keepRoomCells,
 } from './fixtures/castleKeep';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
+import { createCastleS4Document } from './fixtures/castleS4';
 import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
@@ -5122,7 +5126,17 @@ describe('S0 one selection across the homes', () => {
       within(screen.getByRole('navigation', { name: 'Encounter tools' }))
         .getAllByRole('button')
         .map((node) => node.textContent)
-    ).toEqual(['Cast', 'Tables', 'Factions', 'Dispositions', 'Intel', 'Facts']);
+    ).toEqual([
+      'Cast',
+      'Tables',
+      'Factions',
+      'Dispositions',
+      'Intel',
+      'Endings',
+      'Concealments',
+      'Scenarios',
+      'Facts',
+    ]);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
@@ -5149,6 +5163,578 @@ describe('S2 the fact index through the real owner', () => {
     expect(
       within(inspector).getByRole('region', { name: 'Read back' }).textContent
     ).toContain('cook, a Commoner of the kitchen, and the kitchen’s mind.');
+  });
+});
+
+describe('S4 the hidden nouns through the real owner', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+
+  it('the fact index opens the ending it names', async () => {
+    const document = createCastleReadBackDocument();
+    document.scope.endings = [
+      { id: 'king-deposed', when: { fact: 'king-deposed' } },
+    ];
+    mount(new MemoryStorage(document));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Facts');
+    const facts = screen.getByRole('region', { name: 'Facts' });
+    fireEvent.click(
+      within(
+        facts.querySelector('[data-fact="king-deposed"]') as HTMLElement
+      ).getByRole('button', { name: 'ending king-deposed' })
+    );
+    const endings = within(screen.getByRole('region', { name: 'Endings' }));
+    expect(
+      (endings.getByLabelText('Ending id') as HTMLInputElement).value
+    ).toBe('king-deposed');
+  });
+
+  it('an ending added on the home is one history entry', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Endings');
+    const endings = () =>
+      within(screen.getByRole('region', { name: 'Endings' }));
+    fireEvent.click(endings().getByRole('button', { name: 'Add ending' }));
+    fireEvent.change(endings().getByLabelText('Ending id'), {
+      target: { value: 'king-slain' },
+    });
+    fireEvent.change(endings().getByLabelText('Ending when form'), {
+      target: { value: 'down' },
+    });
+    fireEvent.change(endings().getByLabelText('Ending when placement'), {
+      target: { value: 'captain' },
+    });
+    fireEvent.click(endings().getByRole('button', { name: 'Apply ending' }));
+    expect(
+      within(endings().getByRole('list', { name: 'Authored endings' }))
+        .getAllByRole('listitem')
+        .map((item) => item.firstChild?.textContent)
+    ).toEqual([expect.stringMatching(/^king-slain: when .+ is down$/)]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(endings().getByText('No ending yet.')).toBeTruthy();
+  });
+});
+
+describe('S4 concealments through the real owner', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+  const withStash = (): RoomDraftDocument => {
+    const document = createPopulatedStudioDocument();
+    document.scope.concealments = {
+      ...document.scope.concealments,
+      stash: {
+        checks: [{ ability: 'investigation', dc: 14 }],
+        props: ['studio-wall'],
+      },
+    };
+    return document;
+  };
+
+  it('members picked on the map toggle in one step each', async () => {
+    const storage = new MemoryStorage(withStash());
+    mount(storage);
+    await settled();
+    const cell = storage
+      .document()
+      .draft.room.walkableHexes.find(
+        (hex) => Math.abs(hex.q) <= 2 && hex.r === 1
+      )!;
+    expect(cell).toBeTruthy();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add members on the map' })
+    );
+    expect(
+      screen.getByText(/Adding members to stash/, { selector: 'strong' })
+    ).toBeTruthy();
+    const writes = storage.roomWrites();
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    expect(storage.document().scope.concealments!.stash.cells).toEqual([cell]);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(
+      document.querySelector(`[data-concealed-cell="${cell.q},${cell.r}"]`)
+    ).toBeTruthy();
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    expect(storage.document().scope.concealments!.stash.cells).toBeUndefined();
+    expect(storage.roomWrites()).toBe(writes + 2);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Done adding members' })
+    );
+    expect(screen.queryByText(/Adding members to stash/)).toBeNull();
+    expect(document.querySelector('[data-concealed-cell]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(storage.document().scope.concealments!.stash.cells).toEqual([cell]);
+  });
+
+  it('a member already in another concealment is refused at the click, naming it', async () => {
+    const storage = new MemoryStorage(withStash());
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add members on the map' })
+    );
+    const writes = storage.roomWrites();
+    const taken = { q: 1, r: 0 };
+    fireEvent.pointerDown(surface(), { ...at(taken), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(taken), button: 0, pointerId: 7 });
+    expect(storage.roomWrites()).toBe(writes);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Hex q 1, r 0 is already hidden by studio-secret.'
+    );
+  });
+
+  it('a stored draft with lifetime opens stripped and shows the notice naming the concealment', async () => {
+    const document = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(document);
+    const envelope = JSON.parse(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)!);
+    envelope.scope.concealments['studio-secret'].attempts = {
+      max: 2,
+      lifetime: 'run',
+    };
+    storage.bytes.set(ROOM_DRAFT_STORAGE_KEY, JSON.stringify(envelope));
+    mount(storage);
+    await settled();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'lifetime is not read by the engine; removed from studio-secret, attempts keep max and reset_hexes'
+    );
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    expect(
+      (
+        screen.getByLabelText(
+          'Max attempts for studio-secret'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('2');
+    fireEvent.change(screen.getByLabelText('Reset hexes for studio-secret'), {
+      target: { value: '3' },
+    });
+    expect(
+      storage.document().scope.concealments!['studio-secret'].attempts
+    ).toEqual({ max: 2, reset_hexes: 3 });
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).not.toContain('lifetime');
+  });
+
+  it("removing a concealment clears its door's Hidden by", async () => {
+    const unnamed = createPopulatedStudioDocument();
+    unnamed.scope.intel = [];
+    delete unnamed.draft.room.propBindings!.table;
+    const storage = new MemoryStorage(unnamed);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove concealment' }));
+    expect(storage.document().scope.concealments).toBeUndefined();
+    fireEvent.click(button('Build'));
+    const door = document.querySelector('[data-door-id="studio-door"]')!;
+    fireEvent.pointerDown(door, { ...at(zero), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(door, { ...at(zero), button: 0, pointerId: 7 });
+    const hidden = within(
+      screen.getByRole('region', { name: 'Inspector' })
+    ).getByLabelText('Hidden by') as HTMLSelectElement;
+    expect(hidden.value).toBe('');
+    expect([...hidden.options].map((option) => option.text)).toEqual([
+      'Not hidden',
+    ]);
+  });
+});
+
+describe('S4 the draft as a file through the real owner', () => {
+  const fileInput = (): HTMLInputElement => {
+    if (!screen.queryByLabelText('Draft file to import'))
+      fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    return screen.getByLabelText('Draft file to import') as HTMLInputElement;
+  };
+  const choose = async (name: string, text: string): Promise<void> => {
+    const answered = () =>
+      document.querySelector(
+        '.es-draft-file-panel > [role="alertdialog"], .es-draft-file-panel > [role="alert"]'
+      );
+    const previous = answered()?.textContent ?? null;
+    fireEvent.change(fileInput(), {
+      target: { files: [new File([text], name, { type: 'text/yaml' })] },
+    });
+    await waitFor(() => {
+      const now = answered()?.textContent ?? null;
+      expect(now).not.toBeNull();
+      expect(now).not.toBe(previous);
+    });
+  };
+  const exported = async (): Promise<{
+    name: string;
+    text: string;
+    type: string;
+  }> => {
+    let blob: Blob | undefined;
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation((value) => {
+        blob = value as Blob;
+        return 'blob:draft';
+      });
+    const revoke = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => {});
+    let name = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        name = this.download;
+      });
+    fireEvent.click(screen.getByRole('button', { name: /^Download / }));
+    create.mockRestore();
+    revoke.mockRestore();
+    click.mockRestore();
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blob!);
+    });
+    return { name, text, type: blob!.type };
+  };
+
+  it('export downloads the encoder bytes as {key}.yaml', async () => {
+    const storage = new MemoryStorage(createCastleS4Document());
+    mount(storage);
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    const key = screen.getByLabelText('File key') as HTMLInputElement;
+    expect(key.value).toBe(defaultDraftKey(storage.document()));
+    fireEvent.change(key, { target: { value: 'mad-king' } });
+    const file = await exported();
+    expect(file.name).toBe('mad-king.yaml');
+    expect(file.type).toBe('text/yaml;charset=utf-8');
+    expect(file.text).toBe(exportDraftYaml(storage.document(), 'mad-king'));
+  });
+
+  it('an accepted import is one history entry and undo restores the previous draft', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+    const confirm = screen.getByRole('alertdialog', { name: 'Confirm import' });
+    expect(confirm.textContent).toContain(castle.draft.name);
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(
+      within(confirm).getByRole('button', { name: 'Replace draft' })
+    );
+    expect(storage.document()).toEqual(castle);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(storage.document()).toEqual(castle);
+  });
+
+  it('the next export defaults to the imported key', async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    await choose(
+      'mad-king.yaml',
+      exportDraftYaml(createCastleS4Document(), 'mad-king')
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+    expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
+      'mad-king'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close draft file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
+      'mad-king'
+    );
+  });
+
+  it('a v2 file and a typo are refused, naming the dialect and the field, and change nothing', async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    const writes = storage.roomWrites();
+    await choose('reference-tomb.yaml', referenceTombYaml);
+    expect(screen.getByRole('alert').textContent).toBe(
+      'This file is a version 2 dungeon, the multi-room dialect. The studio opens single-room files, version 3 or 4.'
+    );
+    await choose(
+      'typo.yaml',
+      exportDraftYaml(createCastleS4Document(), 'castle').replace(
+        /^endings:/m,
+        'endngs:'
+      )
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Could not import: Unsupported single-room field: endngs.'
+    );
+    expect(
+      screen.queryByRole('alertdialog', { name: 'Confirm import' })
+    ).toBeNull();
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
+  });
+});
+
+describe('S4 renames rewrite references; removes are refused while named (rpg-project#578)', () => {
+  let session!: EncounterStudioSession;
+  const owner = {
+    get session() {
+      return session;
+    },
+  };
+  const mountStudio = (
+    document: RoomDraftDocument = createCastleS4Document()
+  ): typeof owner => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={new MemoryStorage(document)}
+        studioPresentation={{
+          home: 'build',
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    return owner;
+  };
+
+  it('renaming a concealment rewrites its intel and its door Hidden by in one step', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.concealments.rename('studio-secret', 'cellar')).toBe(
+        true
+      );
+    });
+    const scope = owner.session.document.scope;
+    expect(Object.keys(scope.concealments!)).toContain('cellar');
+    expect(scope.concealments!['studio-secret']).toBeUndefined();
+    expect(scope.intel).toContainEqual({
+      id: 'studio-map',
+      reveals: { concealment: 'cellar' },
+    });
+    expect(concealmentHiding(scope, 'studio-door')).toBe('cellar');
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('removing a concealment that intel names is refused, naming the intel', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(
+        owner.session.concealments.update('studio-secret', undefined)
+      ).toBe(false);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.notice).toContain(
+      'Concealment studio-secret is still named by intel studio-map. Change or remove those first.'
+    );
+    act(() => {
+      expect(owner.session.concealments.update('stash', undefined)).toBe(true);
+    });
+    expect(owner.session.document.scope.concealments!.stash).toBeUndefined();
+  });
+
+  it('renaming an exit rewrites the scenario that binds it in one step', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.exits.set({ q: 2, r: 0 }, 'gate')).toBe(true);
+    });
+    const scope = owner.session.document.scope;
+    expect(scope.exits?.[0]).toEqual({ id: 'gate', cell: { q: 2, r: 0 } });
+    expect(scope.scenarios?.['studio-scenario']?.exit).toBe('gate');
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('removing an exit a scenario binds is refused, naming the binding', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.exits.set({ q: 2, r: 0 }, null)).toBe(false);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.notice).toContain(
+      'Exit studio-exit is still named by scenario studio-scenario exit. Change or remove those first.'
+    );
+    const postern = before.scope.exits!.find((exit) => exit.id === 'postern')!;
+    act(() => {
+      expect(owner.session.exits.set(postern.cell, null)).toBe(true);
+    });
+    expect(owner.session.document.scope.exits?.map((exit) => exit.id)).toEqual([
+      'studio-exit',
+    ]);
+  });
+});
+
+describe('S4 scenario bindings follow the exit, not a namesake (rpg-project#578 review)', () => {
+  let session!: EncounterStudioSession;
+  const mountCastle = (document: RoomDraftDocument): void => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={new MemoryStorage(document)}
+        studioPresentation={{
+          home: 'build',
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+  };
+
+  it('an exit and a concealment that share an id: each rename moves only its own references', () => {
+    const castle = createCastleS4Document();
+    const postern = castle.scope.exits!.find((exit) => exit.id === 'postern')!;
+    castle.scope.concealments!.postern = {
+      checks: [{ ability: 'investigation', dc: 12 }],
+      cells: [castle.draft.room.walkableHexes[7]!],
+    };
+    castle.scope.scenarios = {
+      ...castle.scope.scenarios,
+      escape: { exit: 'postern' },
+    };
+    mountCastle(castle);
+    act(() => {
+      expect(session.exits.set(postern.cell, 'sally-port')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.escape).toEqual({
+      exit: 'sally-port',
+    });
+    expect(session.document.scope.concealments?.postern).toBeTruthy();
+    act(() => {
+      expect(session.concealments.rename('postern', 'cache')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.escape).toEqual({
+      exit: 'sally-port',
+    });
+    expect(session.document.scope.concealments?.cache).toBeTruthy();
+  });
+
+  it('a binding an exit shares with a creature is left to the creature', () => {
+    const castle = createCastleS4Document();
+    const postern = castle.scope.exits!.find((exit) => exit.id === 'postern')!;
+    postern.id = 'captain';
+    castle.scope.scenarios = {
+      ...castle.scope.scenarios,
+      regicide: { target: 'captain' },
+    };
+    mountCastle(castle);
+    act(() => {
+      expect(session.exits.set(postern.cell, 'gate')).toBe(true);
+    });
+    expect(session.document.scope.scenarios?.regicide).toEqual({
+      target: 'captain',
+    });
+    act(() => {
+      expect(session.exits.set(postern.cell, null)).toBe(true);
+    });
+  });
+});
+
+describe('S4 a stored concealment that hides nothing (rpg-project#578 review)', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+
+  it('opens with the refusal on the form and cannot be saved until a member is picked', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(castle);
+    const envelope = JSON.parse(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)!);
+    envelope.scope.concealments.empty = {
+      checks: [{ ability: 'investigation', dc: 12 }],
+    };
+    const stored = JSON.stringify(envelope);
+    storage.bytes.set(ROOM_DRAFT_STORAGE_KEY, stored);
+    mount(storage);
+    await settled();
+    expect(
+      screen.getByRole('button', {
+        name: `Rename encounter ${castle.draft.name}`,
+      })
+    ).toBeTruthy();
+    expect(screen.queryByText(/Room draft load failed/)).toBeNull();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'empty' }));
+    const form = within(
+      screen.getByRole('group', { name: 'Concealment empty' })
+    );
+    expect(form.getByRole('heading', { name: 'Members (0)' })).toBeTruthy();
+    expect(form.getByRole('alert').textContent).toContain(
+      'this concealment hides nothing'
+    );
+    fireEvent.change(form.getByLabelText('DC for check 1 of empty search'), {
+      target: { value: '13' },
+    });
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).toBe(stored);
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((node) =>
+          node.textContent?.includes(
+            'Site concealment empty: this concealment hides nothing'
+          )
+        )
+    ).toBe(true);
+    fireEvent.click(
+      form.getByRole('button', {
+        name: 'Add members on the map',
+        exact: true,
+      } as never)
+    );
+    const cell = castle.draft.room.walkableHexes.find(
+      (hex) =>
+        Math.abs(hex.q) <= 2 &&
+        hex.r === 1 &&
+        !Object.values(castle.scope.concealments ?? {}).some((spec) =>
+          spec.cells?.some((c) => c.q === hex.q && c.r === hex.r)
+        )
+    )!;
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    // The castle frames differently from the test frame, so the clicked
+    // hex is whichever walkable hex lies under the point; any one member
+    // makes the concealment savable.
+    const saved = storage.document().scope.concealments!.empty;
+    expect(saved.checks).toEqual([{ ability: 'investigation', dc: 13 }]);
+    expect(saved.cells).toHaveLength(1);
   });
 });
 

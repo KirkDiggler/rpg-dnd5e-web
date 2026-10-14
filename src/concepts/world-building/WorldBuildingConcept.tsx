@@ -37,15 +37,32 @@ import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
 } from './catalog';
-import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
+import {
+  addConcealment,
+  paintConcealmentCells,
+  renameConcealment,
+  setConcealment,
+  setConcealmentProp,
+  setPropHiddenBy,
+  toggleConcealmentMember,
+  type ConcealmentMember,
+} from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
 import { setActorName } from './creaturePalette';
 import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
+import {
+  concealmentReferrers,
+  exitReferrers,
+  renameExitReferences,
+  renameRevealReferences,
+  stillNamedRefusal,
+} from './documentReferences';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
+import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import {
   createMapLabel,
@@ -86,6 +103,7 @@ import {
   FOOTPRINT_MAXIMUM_OFFSET,
   FOOTPRINT_MINIMUM_EXTENT,
   isCellWithinWorkspace,
+  lifetimeNotice,
   loadRoomDraft,
   moveRoomMonster,
   parseRoomDocumentJson,
@@ -150,7 +168,13 @@ import {
   DispositionsPanel,
   FactionsPanel,
 } from './SitePolicies';
-import type { SiteScope } from './siteScope';
+import {
+  validateSiteConcealments,
+  validateSiteEndings,
+  type SiteConcealmentSpec,
+  type SiteEnding,
+  type SiteScope,
+} from './siteScope';
 import {
   attachableDoorAssetRefs,
   attachDoorToOpening,
@@ -516,7 +540,15 @@ export function WorldBuildingConcept({
     []
   );
   const [notice, setNotice] = useState(
-    [initial.error, initialRoom.error].filter(Boolean).join(' ')
+    [
+      initial.error,
+      initialRoom.error,
+      'strippedLifetime' in initialRoom && initialRoom.strippedLifetime
+        ? lifetimeNotice(initialRoom.strippedLifetime)
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ')
   );
   const roomAutosaveBlockedRef = useRef(Boolean(initialRoom.error));
   /** Autosave is paused while the stored bytes cannot be read. The ref is the
@@ -2249,7 +2281,9 @@ export function WorldBuildingConcept({
       setTool('select');
       setRoomTool('select');
       setActiveDrag(null);
-      setNotice('');
+      setNotice(
+        result.strippedLifetime ? lifetimeNotice(result.strippedLifetime) : ''
+      );
       setSaveStatus('Reopened local room authoring draft');
       return;
     }
@@ -4210,6 +4244,10 @@ export function WorldBuildingConcept({
           activeConcealmentId,
           onConcealmentCellPick: (cell) => {
             if (!activeConcealmentId) return;
+            if (isStudio) {
+              pickConcealmentMember({ kind: 'cell', cell });
+              return;
+            }
             commitPolicies(
               paintConcealmentCells(
                 siteScope,
@@ -4221,6 +4259,10 @@ export function WorldBuildingConcept({
           },
           onConcealmentPropPick: (id) => {
             if (!activeConcealmentId) return;
+            if (isStudio) {
+              pickConcealmentMember({ kind: 'prop', id });
+              return;
+            }
             const structure = walls.some(
               (wall) =>
                 wall.id === id ||
@@ -4354,6 +4396,21 @@ export function WorldBuildingConcept({
         current[id] === state ? current : { ...current, [id]: state }
       ),
     onMeasuredBounds: handleMeasuredBounds,
+  };
+  /** Studio member picking (rpg-project#578, S4-Q5): one toggle per click,
+   * through `toggleConcealmentMember`; a refusal is the notice, naming the
+   * concealment that already hides the member. */
+  const pickConcealmentMember = (member: ConcealmentMember): boolean => {
+    if (refuseWhilePublishing() || !activeConcealmentId) return false;
+    const current = roomHistoryRef.current.present;
+    let scope: SiteScope;
+    try {
+      scope = toggleConcealmentMember(current, activeConcealmentId, member);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+    return commitRoomDocument({ ...current, scope });
   };
   const viewportGeneration = viewportGenerationRef.current;
   const viewportDocument = roomHistory.present;
@@ -4763,6 +4820,205 @@ export function WorldBuildingConcept({
               }
             ),
           },
+          doors: {
+            setBinding: guardSnapshotIntent(
+              (doorId: string, next: RoomDoorBinding | undefined): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                const attached = (current.draft.room.walls ?? []).some((wall) =>
+                  wall.openings.some((opening) => opening.door?.id === doorId)
+                );
+                if (!attached)
+                  return rejectEdit(new Error(`There is no door ${doorId}.`));
+                if (next === undefined)
+                  return rejectEdit(
+                    new Error(
+                      'A door on a wall always has a state. Delete the doorway to remove it.'
+                    )
+                  );
+                const bindings = withDoorBinding(
+                  current.draft.room.doorBindings,
+                  doorId,
+                  next
+                );
+                const room: RoomGameplayData = { ...current.draft.room };
+                if (bindings === undefined) delete room.doorBindings;
+                else room.doorBindings = bindings;
+                return commitRoomDocument({
+                  ...current,
+                  draft: { ...current.draft, room },
+                });
+              }
+            ),
+          },
+          exits: {
+            set: guardSnapshotIntent(
+              (cell: RoomHexCell, id: string | null): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                const walkable = current.draft.room.walkableHexes.some(
+                  (hex) => hex.q === cell.q && hex.r === cell.r
+                );
+                if (
+                  id !== null &&
+                  !walkable &&
+                  !exitAt(current.scope.exits, cell)
+                )
+                  return rejectEdit(
+                    new Error(
+                      `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
+                    )
+                  );
+                const previous = exitAt(current.scope.exits, cell)?.id;
+                if (previous !== undefined && id === null) {
+                  const referrers = exitReferrers(current, previous);
+                  if (referrers.length)
+                    return rejectEdit(
+                      new Error(
+                        stillNamedRefusal(`Exit ${previous}`, referrers)
+                      )
+                    );
+                }
+                try {
+                  const exits = setExitAt(current.scope.exits, cell, id);
+                  const scope =
+                    previous !== undefined && id !== null && id !== previous
+                      ? {
+                          ...renameExitReferences(current, previous, id),
+                        }
+                      : { ...current.scope };
+                  if (exits.length === 0) delete scope.exits;
+                  else scope.exits = exits;
+                  return commitRoomDocument({ ...current, scope });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+          },
+          endings: {
+            set: guardSnapshotIntent((next: readonly SiteEnding[]): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              try {
+                const endings = validateSiteEndings([...next]);
+                const scope = { ...current.scope };
+                if (endings.length === 0) delete scope.endings;
+                else scope.endings = endings;
+                return commitRoomDocument({ ...current, scope });
+              } catch (error) {
+                return rejectEdit(error);
+              }
+            }),
+          },
+          concealments: {
+            add: guardSnapshotIntent((): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              return commitRoomDocument({
+                ...current,
+                scope: addConcealment(current.scope),
+              });
+            }),
+            update: guardSnapshotIntent(
+              (id: string, spec: SiteConcealmentSpec | undefined): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                if (!Object.hasOwn(current.scope.concealments ?? {}, id))
+                  return rejectEdit(
+                    new Error(`There is no concealment ${id}.`)
+                  );
+                if (spec === undefined) {
+                  const referrers = concealmentReferrers(current.scope, id);
+                  if (referrers.length)
+                    return rejectEdit(
+                      new Error(
+                        stillNamedRefusal(`Concealment ${id}`, referrers)
+                      )
+                    );
+                }
+                try {
+                  if (spec !== undefined)
+                    validateSiteConcealments(
+                      { [id]: spec },
+                      { requireMembers: false }
+                    );
+                  if (spec === undefined && paintingConcealmentId === id)
+                    setPaintingConcealmentId(null);
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setConcealment(current.scope, id, spec),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            rename: guardSnapshotIntent((from: string, to: string): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              const concealments = current.scope.concealments ?? {};
+              if (!Object.hasOwn(concealments, from))
+                return rejectEdit(
+                  new Error(`There is no concealment ${from}.`)
+                );
+              if (from === to) return true;
+              if (Object.hasOwn(concealments, to))
+                return rejectEdit(
+                  new Error(`There is already a concealment ${to}.`)
+                );
+              try {
+                const scope = renameRevealReferences(
+                  renameConcealment(current.scope, from, to),
+                  from,
+                  to
+                );
+                validateSiteConcealments(scope.concealments, {
+                  requireMembers: false,
+                });
+                if (paintingConcealmentId === from)
+                  setPaintingConcealmentId(to);
+                return commitRoomDocument({ ...current, scope });
+              } catch (error) {
+                return rejectEdit(error);
+              }
+            }),
+            armedId: activeConcealmentId,
+            armMembers: (id: string): boolean => {
+              if (!mountedRef.current || refuseWhilePublishing()) return false;
+              if (
+                !Object.hasOwn(
+                  roomHistoryRef.current.present.scope.concealments ?? {},
+                  id
+                )
+              )
+                return false;
+              setRoomTool('select');
+              setTool('select');
+              setPaintingConcealmentId(id);
+              return true;
+            },
+            disarm: () => setPaintingConcealmentId(null),
+            pick: guardSnapshotIntent(pickConcealmentMember),
+            setDoorHiddenBy: guardSnapshotIntent(
+              (doorId: string, concealmentId: string | null): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setPropHiddenBy(
+                      current.scope,
+                      doorId,
+                      concealmentId
+                    ),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+          },
           commitTables: guardSnapshotIntent(
             (tables: SiteScope['tables']): boolean => {
               const current = roomHistoryRef.current.present;
@@ -4857,6 +5113,7 @@ export function WorldBuildingConcept({
             ),
           },
           renameDocument: guardSnapshotIntent(renameDocument),
+          importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
           wallEditing: {
             finishes: {
               catalog: materialCatalog,

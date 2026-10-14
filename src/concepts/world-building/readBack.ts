@@ -19,6 +19,7 @@
 import { ANSWER_TRIGGER_KEYS } from '@/author/answerVocabulary';
 import type { AnswerEntryShape, OptionShape } from './answerTableShape';
 import {
+  abilityPhrase,
   joinAnd,
   triggerPhrase,
   whenPhrase,
@@ -328,13 +329,6 @@ function endSentence(text: string): string {
   return /[.!?…]”$/.test(text) ? text : `${text}.`;
 }
 
-/** "Persuasion", "STR". */
-function abilityName(ability: string): string {
-  return ability.length <= 3
-    ? ability.toUpperCase()
-    : capitalized(ability.replace(/-/g, ' '));
-}
-
 function propName(document: Readonly<RoomDraftDocument>, id: string): string {
   const label = document.draft.scene.items.find((i) => i.id === id)?.label;
   return label?.trim() ? label : id;
@@ -384,7 +378,7 @@ function optionSentence(
   }
   parts.push(
     `${option.check
-      .map((a) => `${abilityName(a.ability)} DC ${a.dc}`)
+      .map((a) => `${abilityPhrase(a.ability)} DC ${a.dc}`)
       .join(' or ')}.`
   );
   for (const verdict of ['success', 'failure'] as const) {

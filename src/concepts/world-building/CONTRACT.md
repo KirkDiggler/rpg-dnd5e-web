@@ -481,8 +481,9 @@ Discoveries and attempt history belong to the encounter. A new playthrough start
 fresh; reload/rejoin of that encounter preserves its state. The character sharing
 preference may persist, but must not restore learned secrets into another run.
 The attempt editor therefore offers count and retry distance, not cross-run memory.
-Legacy `attempts.lifetime` values still round-trip on import; editing a policy emits
-`run`. They do not override the game's fresh-encounter boundary.
+The toolkit reads `attempts.max` and `attempts.reset_hexes` only, so `attempts.lifetime`
+is refused with the toolkit's sentence (rpg-project#578). A stored draft that still
+carries it opens with the key removed and a notice naming the concealment.
 
 ## Structural wall editor
 

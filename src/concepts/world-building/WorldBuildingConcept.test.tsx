@@ -4067,8 +4067,13 @@ describe('structural wall authoring (Task 3)', () => {
     expect(stored().scope.concealments['secret-1'].props).toEqual([
       'wall-seeded',
     ]);
+    // Undoing the last member leaves a concealment that hides nothing,
+    // which the validator refuses (rpg-project#578): the history moves,
+    // and the stored draft keeps its last savable bytes.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(stored().scope.concealments['secret-1'].props).toBeUndefined();
+    expect(stored().scope.concealments['secret-1'].props).toEqual([
+      'wall-seeded',
+    ]);
   });
 
   // Mocked viewport R3F, then the real concept commit/history/storage path:
@@ -4952,6 +4957,161 @@ describe('Studio owner facade', () => {
       expect(owner.session.clearSelection()).toBe(true);
     });
     expect(owner.session.arrange).toBeNull();
+  });
+
+  describe('exits on the hex view (rpg-project#578)', () => {
+    it('adding an exit writes exits[] with its cell', () => {
+      const owner = mountStudio(populatedStorage());
+      const cell = owner.session.document.draft.room.walkableHexes.find(
+        (hex) => !(hex.q === 2 && hex.r === 0)
+      )!;
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.exits.set(cell, 'postern')).toBe(true);
+      });
+      expect(owner.session.document.scope.exits).toEqual([
+        { id: 'studio-exit', cell: { q: 2, r: 0 } },
+        { id: 'postern', cell: { q: cell.q, r: cell.r } },
+      ]);
+      act(() => {
+        expect(owner.session.exits.set(cell, 'postern-gate')).toBe(true);
+      });
+      expect(owner.session.document.scope.exits?.[1]?.id).toBe('postern-gate');
+      act(() => owner.session.undo());
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+    });
+
+    it('a duplicate id and an unwalkable hex are refused without history', () => {
+      const owner = mountStudio(populatedStorage());
+      const walkable = owner.session.document.draft.room.walkableHexes;
+      const cell = walkable.find((hex) => !(hex.q === 2 && hex.r === 0))!;
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.exits.set(cell, 'studio-exit')).toBe(false);
+      });
+      expect(owner.session.notice).toMatch(/duplicate exit id: studio-exit/);
+      let floorless = { q: 0, r: 0 };
+      for (let q = -8; q <= 8; q++)
+        if (!walkable.some((hex) => hex.q === q && hex.r === 1)) {
+          floorless = { q, r: 1 };
+          break;
+        }
+      act(() => {
+        expect(owner.session.exits.set(floorless, 'nowhere')).toBe(false);
+      });
+      expect(owner.session.document).toBe(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+  });
+
+  describe('the door state and Hidden by (rpg-project#578)', () => {
+    it('setting locked writes a lock check and one history entry', () => {
+      const owner = mountStudio(populatedStorage());
+      const before = owner.session.document;
+      act(() => {
+        expect(
+          owner.session.doors.setBinding('studio-door', {
+            locked: [{ ability: 'dex', dc: 15, tool: 'thieves-tools' }],
+          })
+        ).toBe(true);
+      });
+      expect(
+        owner.session.document.draft.room.doorBindings?.['studio-door']
+      ).toEqual({
+        locked: [{ ability: 'dex', dc: 15, tool: 'thieves-tools' }],
+      });
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+
+    it('removing the last lock check returns the door to closed', () => {
+      const owner = mountStudio(populatedStorage());
+      act(() => {
+        owner.session.doors.setBinding('studio-door', {
+          locked: [{ ability: 'dex', dc: 15 }],
+        });
+      });
+      act(() => {
+        owner.session.doors.setBinding('studio-door', { closed: true });
+      });
+      expect(
+        owner.session.document.draft.room.doorBindings?.['studio-door']
+      ).toEqual({ closed: true });
+    });
+
+    it('a door on a wall cannot be made not a door, and an unknown door is refused', () => {
+      const owner = mountStudio(populatedStorage());
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.doors.setBinding('studio-door', undefined)).toBe(
+          false
+        );
+        expect(owner.session.doors.setBinding('no-door', {})).toBe(false);
+      });
+      expect(owner.session.document).toBe(before);
+      expect(owner.session.notice).toMatch(/Delete the doorway|no door/);
+    });
+
+    it('Hidden by moves the door between concealments in one step', () => {
+      const document = createPopulatedStudioDocument();
+      document.scope.concealments = {
+        ...document.scope.concealments,
+        vault: {
+          checks: [{ ability: 'investigation', dc: 14 }],
+          cells: [{ q: 2, r: 0 }],
+        },
+      };
+      const storage = new MemoryStorage();
+      storage.setItem(
+        ROOM_DRAFT_STORAGE_KEY,
+        stringifyRoomDraft(document.draft, document.scope)
+      );
+      const owner = mountStudio(storage);
+      const before = owner.session.document;
+      act(() => {
+        expect(
+          owner.session.concealments.setDoorHiddenBy('studio-door', 'vault')
+        ).toBe(true);
+      });
+      const concealments = owner.session.document.scope.concealments!;
+      expect(concealments.vault.props).toEqual(['studio-door']);
+      expect(concealments['studio-secret'].props).toBeUndefined();
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+
+    it('hiding a door leaves its wall out of the concealment', () => {
+      const document = createPopulatedStudioDocument();
+      document.scope.intel = [];
+      document.scope.concealments = {
+        vault: {
+          checks: [{ ability: 'investigation', dc: 14 }],
+          cells: [{ q: 2, r: 0 }],
+        },
+      };
+      const storage = new MemoryStorage();
+      storage.setItem(
+        ROOM_DRAFT_STORAGE_KEY,
+        stringifyRoomDraft(document.draft, document.scope)
+      );
+      const owner = mountStudio(storage);
+      act(() => {
+        owner.session.concealments.setDoorHiddenBy('studio-door', 'vault');
+      });
+      const vault = owner.session.document.scope.concealments!.vault;
+      expect(vault.props).toEqual(['studio-door']);
+      expect(vault.props).not.toContain('studio-wall');
+      expect(vault.cells).toEqual([{ q: 2, r: 0 }]);
+      act(() => {
+        owner.session.concealments.setDoorHiddenBy('studio-door', null);
+      });
+      expect(
+        owner.session.document.scope.concealments!.vault.props
+      ).toBeUndefined();
+    });
   });
 
   it('reserves scene3 region identities in transient door placement without changing author intent', () => {

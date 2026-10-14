@@ -366,8 +366,12 @@ describe('StudioInspector', () => {
       '2'
     );
     expect(
-      view.getByText(/Model: dnd5e:env:dark-fortress:wall_door_double_01/)
+      view.getByRole('heading', { level: 2, name: 'Door · Double Door' })
     ).toBeTruthy();
+    expect(view.queryByText(/dnd5e:env:dark-fortress/)).toBeNull();
+    expect(
+      view.getByRole('button', { name: /Copy model id/ }).getAttribute('title')
+    ).toContain('dnd5e:env:dark-fortress:wall_door_double_01');
     fireEvent.click(view.getByRole('button', { name: 'Delete doorway' }));
     expect(live.commitArrange).toHaveBeenCalledExactlyOnceWith({
       kind: 'door-remove',
@@ -377,6 +381,182 @@ describe('StudioInspector', () => {
         openingId: 'studio-opening',
         doorId: 'studio-door',
       },
+    });
+  });
+
+  describe('the hex exit (rpg-project#578)', () => {
+    function hexSession(cell: { q: number; r: number }) {
+      const base = populated();
+      const document = structuredClone(base.document);
+      document.draft.room.walkableHexes = [
+        { q: 2, r: 0 },
+        { q: 3, r: 0 },
+      ];
+      return selected({ ...base, document }, { kind: 'hex', cell });
+    }
+
+    it('a walkable hex with no exit offers Add exit, which writes the id at the hex', () => {
+      const live = hexSession({ q: 3, r: 0 });
+      inspector(live);
+      const view = within(region());
+      expect(view.getByText(/No exit here/)).toBeTruthy();
+      fireEvent.click(view.getByRole('button', { name: 'Add exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'postern' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply exit' }));
+      expect(live.exits.set).toHaveBeenCalledExactlyOnceWith(
+        { q: 3, r: 0 },
+        'postern'
+      );
+    });
+
+    it('a duplicate exit id is refused at the field', () => {
+      const live = hexSession({ q: 3, r: 0 });
+      inspector(live);
+      const view = within(region());
+      fireEvent.click(view.getByRole('button', { name: 'Add exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'studio-exit' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply exit' }));
+      expect(view.getByRole('alert').textContent).toBe(
+        'Site exit at index 1: duplicate exit id: studio-exit'
+      );
+      expect(live.exits.set).not.toHaveBeenCalled();
+    });
+
+    it('a hex with an exit shows its id, with rename and Remove', () => {
+      const live = hexSession({ q: 2, r: 0 });
+      inspector(live);
+      const view = within(region());
+      expect(view.getByText(/Exit studio-exit/)).toBeTruthy();
+      fireEvent.click(view.getByRole('button', { name: 'Rename exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'gate' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply rename' }));
+      expect(live.exits.set).toHaveBeenLastCalledWith({ q: 2, r: 0 }, 'gate');
+      fireEvent.click(view.getByRole('button', { name: 'Remove exit' }));
+      expect(live.exits.set).toHaveBeenLastCalledWith({ q: 2, r: 0 }, null);
+    });
+
+    it('an unwalkable hex offers no exit', () => {
+      inspector(hexSession({ q: 0, r: 0 }));
+      const view = within(region());
+      expect(view.queryByRole('button', { name: 'Add exit' })).toBeNull();
+      expect(view.getByText('An exit needs walkable floor.')).toBeTruthy();
+    });
+
+    it("the exit form's help names the blocking-prop refusal", () => {
+      inspector(hexSession({ q: 3, r: 0 }));
+      const view = within(region());
+      fireEvent.click(view.getByRole('button', { name: 'About Exit' }));
+      expect(
+        view.getByText(
+          'An exit under a blocking prop is refused when the encounter is played.'
+        )
+      ).toBeTruthy();
+    });
+  });
+
+  describe('the door state (rpg-project#578)', () => {
+    const DOOR = {
+      kind: 'door',
+      wallId: 'studio-wall',
+      openingId: 'studio-opening',
+      doorId: 'studio-door',
+    } as const;
+    function doorSession(
+      binding: NonNullable<
+        RoomDraftDocument['draft']['room']['doorBindings']
+      >[string]
+    ): EncounterStudioSession {
+      const base = populated();
+      const document = structuredClone(base.document);
+      document.draft.room.doorBindings = {
+        ...document.draft.room.doorBindings,
+        'studio-door': binding,
+      };
+      return selected({ ...base, document }, DOOR);
+    }
+
+    it('state is a pick-list of open, closed and locked that applies on change', () => {
+      const live = doorSession({ closed: true });
+      inspector(live);
+      const state = within(region()).getByLabelText(
+        'Door state'
+      ) as HTMLSelectElement;
+      expect(state.value).toBe('closed');
+      expect([...state.options].map((option) => option.text)).toEqual([
+        'Open',
+        'Closed',
+        'Locked',
+      ]);
+      fireEvent.change(state, { target: { value: 'locked' } });
+      expect(live.doors.setBinding).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        { locked: [{ ability: 'str', dc: 15 }] }
+      );
+    });
+
+    it('a lock row edits ability, tool and DC through the door edits', () => {
+      const live = doorSession({ locked: [{ ability: 'str', dc: 15 }] });
+      inspector(live);
+      const view = within(region());
+      fireEvent.change(view.getByLabelText('Ability for check 1 of the lock'), {
+        target: { value: 'dex' },
+      });
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [{ ability: 'dex', dc: 15 }],
+      });
+      fireEvent.change(view.getByLabelText('Tool for check 1 of the lock'), {
+        target: { value: 'thieves-tools' },
+      });
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [{ ability: 'str', dc: 15, tool: 'thieves-tools' }],
+      });
+      fireEvent.click(
+        view.getByRole('button', { name: 'Add check to the lock' })
+      );
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [
+          { ability: 'str', dc: 15 },
+          { ability: 'str', dc: 15 },
+        ],
+      });
+    });
+
+    it('removing the last lock check returns the door to closed', () => {
+      const live = doorSession({ locked: [{ ability: 'dex', dc: 15 }] });
+      inspector(live);
+      fireEvent.click(
+        within(region()).getByRole('button', {
+          name: 'Remove check 1 from the lock',
+        })
+      );
+      expect(live.doors.setBinding).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        { closed: true }
+      );
+    });
+
+    it('Hidden by names the concealment that lists the door, or Not hidden', () => {
+      const live = doorSession({ closed: true });
+      inspector(live);
+      const hidden = within(region()).getByLabelText(
+        'Hidden by'
+      ) as HTMLSelectElement;
+      expect(hidden.value).toBe('studio-secret');
+      expect([...hidden.options].map((option) => option.text)).toEqual([
+        'Not hidden',
+        'studio-secret',
+      ]);
+      fireEvent.change(hidden, { target: { value: '' } });
+      expect(live.concealments.setDoorHiddenBy).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        null
+      );
     });
   });
 

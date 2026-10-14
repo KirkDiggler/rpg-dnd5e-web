@@ -190,10 +190,12 @@ export interface SiteConcealmentCheck {
 export interface SiteDiscoveryAttempts {
   max?: number;
   reset_hexes?: number;
-  /** Legacy source values round-trip; the game owns discoveries in the
-   * encounter regardless. New policy edits emit 'run', not cross-run memory. */
-  lifetime?: 'character' | 'run';
 }
+
+/** The toolkit's `DiscoveryAttemptsSpec` reads `max` and `reset_hexes` only
+ * (rpg-project#578, S4-Q1); `lifetime` is refused in its words. */
+export const LIFETIME_REFUSAL =
+  '"lifetime" is not a key this build reads: they are max, reset_hexes';
 
 export interface SiteConcealmentSpec {
   attempts?: SiteDiscoveryAttempts;
@@ -581,7 +583,18 @@ export function validateSiteTables(value: unknown): SiteTables {
   return tables;
 }
 
-export function validateSiteConcealments(value: unknown): SiteConcealments {
+/** The toolkit's refusal of a concealment with no members
+ * (`single_room_concealments.go`), in its words (rpg-project#578). */
+export const EMPTY_CONCEALMENT_REFUSAL =
+  'this concealment hides nothing: list the hexes under `cells`, the placed things under `props`, or both';
+
+/** `requireMembers: false` is the editing gate only: a concealment the
+ * author has just added may be edited before its first member is picked.
+ * Every save, export and decode uses the default. */
+export function validateSiteConcealments(
+  value: unknown,
+  { requireMembers = true }: { requireMembers?: boolean } = {}
+): SiteConcealments {
   if (!isMapping(value)) fail('Site concealments', 'must be a map');
   const concealments: SiteConcealments = {};
   for (const [id, body] of Object.entries(value)) {
@@ -594,11 +607,9 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
     };
     if (Object.hasOwn(raw, 'attempts')) {
       const attempts = objectShape(raw.attempts, `${path} attempts`);
-      rejectUnknownKeys(
-        attempts,
-        ['max', 'reset_hexes', 'lifetime'],
-        `${path} attempts`
-      );
+      if (Object.hasOwn(attempts, 'lifetime'))
+        fail(`${path} attempts.lifetime`, LIFETIME_REFUSAL);
+      rejectUnknownKeys(attempts, ['max', 'reset_hexes'], `${path} attempts`);
       const policy: SiteDiscoveryAttempts = {};
       for (const key of ['max', 'reset_hexes'] as const) {
         if (Object.hasOwn(attempts, key)) {
@@ -607,11 +618,6 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
             fail(`${path} attempts.${key}`, 'must be an integer');
           policy[key] = number as number;
         }
-      }
-      if (Object.hasOwn(attempts, 'lifetime')) {
-        if (attempts.lifetime !== 'character' && attempts.lifetime !== 'run')
-          fail(`${path} attempts.lifetime`, 'must be character or run');
-        policy.lifetime = attempts.lifetime as 'character' | 'run';
       }
       spec.attempts = policy;
     }
@@ -633,6 +639,12 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
         return prop;
       });
     }
+    if (
+      requireMembers &&
+      (spec.cells?.length ?? 0) === 0 &&
+      (spec.props?.length ?? 0) === 0
+    )
+      fail(path, EMPTY_CONCEALMENT_REFUSAL);
     concealments[id] = spec;
   }
   return concealments;
@@ -691,7 +703,13 @@ function validateSiteCell(value: unknown, path: string): SiteRoomCell {
  * (`roomDraft.ts`'s storage envelope, `singleRoomDungeon.ts`'s canonical YAML),
  * so a scope that cannot be represented is refused before it is written rather
  * than corrupting state (rpg-dnd5e-web#1160). */
-export function validateSiteScope(value: unknown): SiteScope {
+/** `requireMembers: false` is the editing gate (rpg-project#578): a stored
+ * draft whose concealment hides nothing still opens, so the form can flag
+ * it. Saving, exporting and importing keep the default. */
+export function validateSiteScope(
+  value: unknown,
+  { requireMembers = true }: { requireMembers?: boolean } = {}
+): SiteScope {
   const raw = objectShape(value, 'Site scope');
   rejectUnknownKeys(raw, SCOPE_KEYS, 'Site scope');
   const scope: SiteScope = {};
@@ -731,7 +749,9 @@ export function validateSiteScope(value: unknown): SiteScope {
     if (Object.keys(scenarios).length > 0) scope.scenarios = scenarios;
   }
   if (Object.hasOwn(raw, 'concealments')) {
-    const concealments = validateSiteConcealments(raw.concealments);
+    const concealments = validateSiteConcealments(raw.concealments, {
+      requireMembers,
+    });
     if (Object.keys(concealments).length > 0) scope.concealments = concealments;
   }
   return scope;

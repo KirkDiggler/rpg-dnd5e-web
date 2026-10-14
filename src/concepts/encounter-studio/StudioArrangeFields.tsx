@@ -1,4 +1,5 @@
 import { paletteNameForRef } from '@/author/paletteData';
+import { resolveWorldAsset } from '@/generated/worldAssetCatalog';
 import {
   NPC_APPEARANCE_FAMILIES,
   npcAppearanceOptions,
@@ -526,7 +527,9 @@ export function selectionName(
     case 'wall':
       return selection.wall.label || selection.wall.id;
     case 'door':
-      return `Door · ${selection.door.assetRef}`;
+      // Names, not ids (rpg-project#579): the catalog's display name; the
+      // ref is one click away behind Copy model id.
+      return `Door · ${resolveWorldAsset(selection.door.assetRef)?.displayName ?? 'unknown model'}`;
     case 'label':
       return selection.label.text;
     case 'actor':

@@ -8,7 +8,7 @@ describe('encounter-owned discovery policy', () => {
     render(
       <DiscoveryCheckPolicy
         id="secret"
-        value={{ lifetime: 'character', max: 2 }}
+        value={{ max: 2 }}
         onChange={onChange}
       />
     );
@@ -20,7 +20,7 @@ describe('encounter-owned discovery policy', () => {
     fireEvent.change(screen.getByLabelText('Attempts for secret'), {
       target: { value: '3' },
     });
-    expect(onChange).toHaveBeenCalledWith({ lifetime: 'run', max: 3 });
+    expect(onChange).toHaveBeenCalledWith({ max: 3 });
   });
 
   it('preserves the retry policy while authoring it for this run', () => {
@@ -38,7 +38,6 @@ describe('encounter-owned discovery policy', () => {
     expect(onChange).toHaveBeenCalledWith({
       max: 2,
       reset_hexes: 5,
-      lifetime: 'run',
     });
   });
 });

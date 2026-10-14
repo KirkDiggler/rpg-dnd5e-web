@@ -1429,9 +1429,19 @@ function validateDraft(value: unknown): RoomDraft {
 }
 
 /** Normalize once: full shape, scope and rectangle content have one canonical gate. */
-function normalizeRoomDocument(document: RoomDraftDocument): RoomDraftDocument {
+/** The editing gate, for reading a stored draft back (rpg-project#578):
+ * an incomplete concealment opens to be finished; it still cannot be
+ * saved. */
+export interface RoomDocumentGate {
+  requireMembers?: boolean;
+}
+
+function normalizeRoomDocument(
+  document: RoomDraftDocument,
+  gate: RoomDocumentGate = {}
+): RoomDraftDocument {
   const draft = validateDraft(document.draft);
-  const scope = validateSiteScope(document.scope);
+  const scope = validateSiteScope(document.scope, gate);
   validateWorkspaceContent(draft, scope);
   return { draft, scope };
 }
@@ -1484,9 +1494,10 @@ export function assertRoomDocumentSize(document: RoomDraftDocument): void {
 
 /** Complete normalized gate for explicit resize/label intents and persistence. */
 export function validateRoomDocument(
-  document: RoomDraftDocument
+  document: RoomDraftDocument,
+  gate: RoomDocumentGate = {}
 ): RoomDraftDocument {
-  const normalized = normalizeRoomDocument(document);
+  const normalized = normalizeRoomDocument(document, gate);
   assertRoomDocumentSize(normalized);
   return normalized;
 }
@@ -1533,7 +1544,10 @@ export function resizeRoomWorkspace(
  * refused rather than silently dropped — losing authored policies on reload is
  * the trap this half of the slice exists to remove.
  */
-export function parseRoomDocumentJson(json: string): RoomDraftDocument {
+export function parseRoomDocumentJson(
+  json: string,
+  gate: RoomDocumentGate = {}
+): RoomDraftDocument {
   if (json.length > MAX_JSON_LENGTH)
     throw new Error(
       `Room draft is too large (maximum ${MAX_JSON_LENGTH} characters).`
@@ -1612,10 +1626,13 @@ export function parseRoomDocumentJson(json: string): RoomDraftDocument {
         'so its creatures store a bare `cell` this build no longer reads. ' +
         'Rebuild the room rather than migrating it.'
     );
-  return validateRoomDocument({
-    draft: envelope.draft as unknown as RoomDraft,
-    scope: validateSiteScope(envelope.scope ?? {}),
-  });
+  return validateRoomDocument(
+    {
+      draft: envelope.draft as unknown as RoomDraft,
+      scope: validateSiteScope(envelope.scope ?? {}, gate),
+    },
+    gate
+  );
 }
 
 /** The room draft alone. A DRAFT-ONLY reader deliberately refuses an envelope
@@ -1641,18 +1658,76 @@ export function saveRoomDraft(
     return error instanceof Error ? error.message : String(error);
   }
 }
+/** THE `lifetime` LOAD MIGRATION (rpg-project#578, S4-Q1). The toolkit's
+ * attempts read `max` and `reset_hexes` only, and the validator now refuses
+ * `lifetime`, so a stored draft written before that would never open. Its
+ * key is removed from each concealment before the envelope is parsed, and
+ * the ids it was removed from are returned for one notice. It is a load
+ * migration, not an undoable edit: a document carrying `lifetime` can pass
+ * no commit or save gate, so there is no state to undo to. A string that is
+ * not a JSON object is returned unchanged for the parser to refuse. */
+export function stripLegacyLifetime(json: string): {
+  json: string;
+  strippedFrom: string[];
+} {
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(json);
+  } catch {
+    return { json, strippedFrom: [] };
+  }
+  const object = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const scope = object(envelope) ? envelope.scope : undefined;
+  const concealments = object(scope) ? scope.concealments : undefined;
+  if (!object(concealments)) return { json, strippedFrom: [] };
+  const strippedFrom: string[] = [];
+  for (const [id, spec] of Object.entries(concealments)) {
+    const attempts = object(spec) ? spec.attempts : undefined;
+    if (object(attempts) && Object.hasOwn(attempts, 'lifetime')) {
+      delete attempts.lifetime;
+      strippedFrom.push(id);
+    }
+  }
+  return strippedFrom.length
+    ? { json: JSON.stringify(envelope), strippedFrom }
+    : { json, strippedFrom };
+}
+
+/** The one notice a stripped `lifetime` shows when the draft opens. */
+export function lifetimeNotice(ids: readonly string[]): string {
+  return `lifetime is not read by the engine; removed from ${ids.join(', ')}, attempts keep max and reset_hexes`;
+}
+
 export function loadRoomDraft(
   storage: KeyValueStorage,
   fallback: RoomDraft
-): { value: RoomDraft; scope: SiteScope; error?: string } {
+): {
+  value: RoomDraft;
+  scope: SiteScope;
+  error?: string;
+  /** Concealments whose `lifetime` the load migration removed. */
+  strippedLifetime?: string[];
+} {
   try {
     const current = storage.getItem(ROOM_DRAFT_STORAGE_KEY);
     // A present-but-empty or malformed current draft is never "absent": it
     // must not recover older keys and must not be silently overwritten by
     // autosave. Recovery requires an explicit valid save/import action.
     if (current !== null) {
-      const document = parseRoomDocumentJson(current);
-      return { value: document.draft, scope: document.scope };
+      const migrated = stripLegacyLifetime(current);
+      // The editing gate: a concealment that hides nothing opens, flagged
+      // on its form, and stays unsavable until it hides something.
+      const document = parseRoomDocumentJson(migrated.json, {
+        requireMembers: false,
+      });
+      return {
+        value: document.draft,
+        scope: document.scope,
+        ...(migrated.strippedFrom.length
+          ? { strippedLifetime: migrated.strippedFrom }
+          : {}),
+      };
     }
     const legacyV2 = storage.getItem(LEGACY_ROOM_DRAFT_STORAGE_KEY);
     if (legacyV2 !== null) {

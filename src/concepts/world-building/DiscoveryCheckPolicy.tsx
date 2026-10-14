@@ -25,7 +25,6 @@ export function DiscoveryCheckPolicy({
             if (event.target.value !== '')
               onChange({
                 ...value,
-                lifetime: 'run',
                 max: Number(event.target.value),
               });
           }}
@@ -48,7 +47,6 @@ export function DiscoveryCheckPolicy({
             if (event.target.value !== '')
               onChange({
                 ...value,
-                lifetime: 'run',
                 reset_hexes: Number(event.target.value),
               });
           }}

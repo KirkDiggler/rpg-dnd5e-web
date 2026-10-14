@@ -5,6 +5,7 @@ import type {
 } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type {
+  RoomDoorBinding,
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
@@ -238,6 +239,10 @@ export interface LayoutViewportProps {
   /** Placed creatures, props and the party start, drawn and selectable
    * through the S0 contract (rpg-project#577). Absent draws none. */
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
+  /** The root `exits`, drawn with the placed nouns (rpg-project#578). */
+  exits?: readonly import('../world-building/siteScope').SiteExit[];
+  /** The armed concealment's cells, hatched (rpg-project#578). */
+  concealedCells?: readonly RoomHexCell[];
   /** A request to frame these world bounds: the viewport fits them to its
    * own size and reports the frame through onFrameChange. A new nonce is a
    * new request; the request itself is never document state. */
@@ -338,8 +343,66 @@ export interface EncounterStudioSession {
     select(id: string | null): boolean;
   };
   doorEditing: StudioDoorEditing;
+  /** A wall door's state (rpg-project#578). One transaction through
+   * `normalizeDoorBinding` and `withDoorBinding`. A door on a wall always
+   * has a state, so `undefined` is refused; deleting the doorway removes
+   * it. Refused for an id that is no wall's door. */
+  doors: {
+    setBinding(doorId: string, next: RoomDoorBinding | undefined): boolean;
+  };
+  /** The root `exits` (rpg-project#578, H3). `set` writes the hex's exit:
+   * an id adds or renames it, null removes it. Adding is refused on a hex
+   * that is not walkable floor; an id the validator refuses is refused with
+   * its sentence. Standability is the toolkit's, at compile. */
+  exits: {
+    set(cell: RoomHexCell, id: string | null): boolean;
+  };
+  /** The root `endings` (rpg-project#578, H4): the whole list, in authored
+   * order, read through `validateSiteEndings`. An ending needs a `when`; a
+   * refusal returns false with the validator's sentence as the notice. */
+  endings: {
+    set(
+      next: readonly import('../world-building/siteScope').SiteEnding[]
+    ): boolean;
+  };
+  /** The root `concealments` (rpg-project#578). Each intent is one
+   * transaction; a refusal returns false with its sentence as the notice. */
+  concealments: {
+    /** The door id leaves every concealment's `props` and joins the chosen
+     * one, or none. The door's wall and floor are never added. */
+    setDoorHiddenBy(doorId: string, concealmentId: string | null): boolean;
+    /** Add a concealment under the next free `secret-<n>` id, with one
+     * search check, as `addConcealment` writes it. */
+    add(): boolean;
+    /** Replace one concealment's spec, read through
+     * `validateSiteConcealments`; undefined removes it, and with it every
+     * door's Hidden by that named it. */
+    update(
+      id: string,
+      spec:
+        | import('../world-building/siteScope').SiteConcealmentSpec
+        | undefined
+    ): boolean;
+    /** Refused for an id the validator refuses or one already in use. */
+    rename(from: string, to: string): boolean;
+    /** The concealment whose members the map is picking, else null. */
+    readonly armedId: string | null;
+    /** Arm member picking on the map for one concealment. Not fenced by
+     * the view epoch, so it can follow a home switch in the same event. */
+    armMembers(id: string): boolean;
+    disarm(): void;
+    /** While armed: toggle a walkable cell, a declared prop, a wall door
+     * or a wall. A member another concealment hides is refused, named. */
+    pick(
+      member: import('../world-building/concealmentEdits').ConcealmentMember
+    ): boolean;
+  };
   wallEditing: StudioWallEditing;
   regionEditing: StudioRegionEditing;
+  /** Replace the draft with an imported file's document, through the
+   * owner's `importCanonicalRoomYaml`: one undoable step, saved locally.
+   * Refused while publishing or for a document the gate refuses. */
+  importDocument(draft: RoomDraft, scope: SiteScope): boolean;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
   canUndo: boolean;

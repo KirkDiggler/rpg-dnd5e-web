@@ -817,7 +817,7 @@ ${ROOM_BLOCK}
     const onlyExit = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nexits:\n  - {id: way-out, cell: {q: 0, r: 0}}\n`;
     const onlyEnding = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nendings:\n  - {id: done, when: {down: goblin-1}}\n`;
     const onlyScenario = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nscenarios:\n  hold-out: {convince: goblins}\n`;
-    const onlyConcealment = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nconcealments:\n  vault:\n    checks: [{ability: perception, dc: 15}]\n`;
+    const onlyConcealment = `version: 3\nkey: crypt\n${PLAY_BLOCK}\n${ROOM_BLOCK}\nconcealments:\n  vault:\n    checks: [{ability: perception, dc: 15}]\n    cells: [{q: 0, r: 0}]\n`;
     for (const source of [
       onlyExit,
       onlyEnding,
@@ -1154,7 +1154,7 @@ describe('promoted canonical room JSON/YAML seam', () => {
           checks: [{ ability: 'wis', dc: 12 }],
           cells: [{ q: 1, r: 0 }],
           props: ['door'],
-          attempts: { max: 3, reset_hexes: 2, lifetime: 'run' },
+          attempts: { max: 3, reset_hexes: 2 },
         },
       },
     };
