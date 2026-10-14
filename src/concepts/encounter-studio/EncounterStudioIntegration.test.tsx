@@ -85,6 +85,7 @@ import {
   GUARD,
   SOLDIER,
 } from './fixtures/castDocument';
+import { createCastleReadBackDocument } from './fixtures/castleReadBack';
 import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
@@ -5104,7 +5105,7 @@ describe('S0 one selection across the homes', () => {
     ).toBeTruthy();
   });
 
-  it('the home lists Cast, Tables, Factions, Dispositions and Intel, and no Creatures or Stat blocks', async () => {
+  it('the home lists Cast, Tables, Factions, Dispositions, Intel and Facts, and no Creatures or Stat blocks', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
@@ -5112,10 +5113,33 @@ describe('S0 one selection across the homes', () => {
       within(screen.getByRole('navigation', { name: 'Encounter tools' }))
         .getAllByRole('button')
         .map((node) => node.textContent)
-    ).toEqual(['Cast', 'Tables', 'Factions', 'Dispositions', 'Intel']);
+    ).toEqual(['Cast', 'Tables', 'Factions', 'Dispositions', 'Intel', 'Facts']);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+});
+
+describe('S2 the fact index through the real owner', () => {
+  it('clicking a writer in Facts selects the cook in the inspector', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Facts' })
+    );
+    const facts = screen.getByRole('region', { name: 'Facts' });
+    fireEvent.click(
+      within(
+        facts.querySelector('[data-fact="feast-tonight"]') as HTMLElement
+      ).getByRole('button', { name: 'cook: gossip' })
+    );
+    const inspector = screen.getByRole('region', { name: 'Inspector' });
+    expect(
+      within(inspector).getByRole('region', { name: 'Read back' }).textContent
+    ).toContain('cook, a Commoner of the kitchen, and the kitchen’s mind.');
   });
 });
 

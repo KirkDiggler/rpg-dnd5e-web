@@ -12,7 +12,7 @@ import { StudioSection } from './StudioSection';
 export interface ReadBackProps {
   document: Readonly<RoomDraftDocument>;
   selection: { kind: 'creature' | 'prop'; id: string };
-  /** Select or open what a ref names. Facts read as emphasis. */
+  /** Select or open what a ref names; a fact opens the fact index on it. */
   onRef?(target: ReadBackTarget): void;
 }
 
@@ -107,7 +107,7 @@ function Sentence({
     const fact = ref.target.kind === 'fact';
     const inner = fact ? <em>{label}</em> : label;
     pieces.push(
-      onRef && !fact ? (
+      onRef ? (
         <button
           key={`r${index}`}
           type="button"

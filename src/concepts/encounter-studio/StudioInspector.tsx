@@ -39,6 +39,8 @@ export interface StudioInspectorProps {
   /** The armed Wall, Door or Note tool's options; transient, not document. */
   armedTool: ReactNode | null;
   onConfigure(section: StudioSocialSection): void;
+  /** Open the Facts section on one fact, from a read-back ref. */
+  onOpenFact?(fact: string): void;
   onMoveCreature(): void;
   onFrameChange(frame: LayoutFrame): void;
   onArmTool(tool: 'wall' | 'door' | 'label'): void;
@@ -285,19 +287,23 @@ function DoorView({
  * placement it names. */
 function readBackRefHandler(
   session: EncounterStudioSession,
-  onConfigure: StudioInspectorProps['onConfigure']
+  onConfigure: StudioInspectorProps['onConfigure'],
+  onOpenFact: StudioInspectorProps['onOpenFact']
 ): (target: ReadBackTarget) => void {
   return (target) => {
     if (target.kind === 'placement') session.creatures.select(target.id);
     else if (target.kind === 'table') onConfigure('tables');
     else if (target.kind === 'faction') onConfigure('factions');
     else if (target.kind === 'intel') onConfigure('intel');
+    else if (onOpenFact) onOpenFact(target.id);
+    else onConfigure('facts');
   };
 }
 
 function CreatureView({
   session,
   onConfigure,
+  onOpenFact,
   onMoveCreature,
   onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
@@ -308,7 +314,7 @@ function CreatureView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'creature', id: arrange.monster.id }}
-          onRef={readBackRefHandler(session, onConfigure)}
+          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
         />
       )}
       <Form
@@ -455,6 +461,7 @@ function CreatureCast({
 function PropView({
   session,
   onConfigure,
+  onOpenFact,
   inspection,
 }: StudioInspectorProps): React.JSX.Element {
   const selection = inspection.selection;
@@ -464,7 +471,7 @@ function PropView({
         <ReadBack
           document={session.document}
           selection={{ kind: 'prop', id: selection.id }}
-          onRef={readBackRefHandler(session, onConfigure)}
+          onRef={readBackRefHandler(session, onConfigure, onOpenFact)}
         />
       )}
       <Form session={session} onConfigure={onConfigure} />

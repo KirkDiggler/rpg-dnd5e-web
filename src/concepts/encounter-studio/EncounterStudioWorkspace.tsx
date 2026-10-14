@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
@@ -19,6 +20,7 @@ import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioCast } from './StudioCast';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
+import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
 import { StudioRegions } from './StudioRegions';
 import {
@@ -41,6 +43,7 @@ const ENCOUNTER_SECTIONS = {
   factions: 'Factions',
   dispositions: 'Dispositions',
   intel: 'Intel',
+  facts: 'Facts',
 } as const;
 
 /** Holds a hidden subtree still: while it stays inactive React skips it, so
@@ -199,6 +202,27 @@ function StudioSurface({
   const openDefinitions = (section: StudioSocialSection): void => {
     changeHome('encounter');
     setEncounterSection(section);
+  };
+  /** A fact a read-back ref named; the Facts section brings it into view. */
+  const [focusFact, setFocusFact] = useState<string | null>(null);
+  const openFact = (fact: string): void => {
+    setFocusFact(fact);
+    openDefinitions('facts');
+  };
+  /** A writer or reader in the fact index: select the placed thing on the
+   * map, or open the home section that holds it. */
+  const openFactUse = (target: FactUseTarget): void => {
+    if ('home' in target) {
+      setEncounterSection(target.home);
+      return;
+    }
+    const selected =
+      target.kind === 'creature'
+        ? session.creatures.select(target.id)
+        : (session.viewportProps.onSelect([target.id]), true);
+    if (!selected) return;
+    changeHome('build');
+    setSidebarOpen(true);
   };
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
@@ -565,6 +589,7 @@ function StudioSurface({
                 layoutTool={layoutTool}
                 armedTool={armedTool}
                 onConfigure={openDefinitions}
+                onOpenFact={openFact}
                 onMoveCreature={moveSelectedCreature}
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
@@ -813,7 +838,14 @@ function StudioSurface({
         >
           <nav className="es-buttons" aria-label="Encounter tools">
             {(
-              ['cast', 'tables', 'factions', 'dispositions', 'intel'] as const
+              [
+                'cast',
+                'tables',
+                'factions',
+                'dispositions',
+                'intel',
+                'facts',
+              ] as const
             ).map((section) => (
               <button
                 key={section}
@@ -858,6 +890,13 @@ function StudioSurface({
                 {session.socialControls[encounterSection]}
               </section>
             )}
+          {home === 'encounter' && encounterSection === 'facts' && (
+            <StudioFacts
+              document={session.document}
+              focus={focusFact}
+              onOpen={openFactUse}
+            />
+          )}
           <div hidden={encounterSection !== 'tables'}>
             <h2>Tables</h2>
             <AboutPanel>
