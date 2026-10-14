@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   DEFAULT_RESIZE_EDGES,
-  growRoomWorkspace,
   rectangleOf,
   workspaceBounds,
   type ResizeEdges,
+  type RoomWorkspace,
 } from '../world-building/workspaceGeometry';
 import type {
   EncounterStudioSession,
@@ -37,6 +37,23 @@ export function StudioDimensions({
     setHeightDraft(height);
     setError(null);
   }, [width, height, session.document, view]);
+  // An accepted resize frames the workspace the owner committed, read from
+  // the committed document once it arrives, never re-derived here.
+  const framing = useRef<RoomWorkspace | null>(null);
+  useEffect(() => {
+    const before = framing.current;
+    if (!before) return;
+    framing.current = null;
+    if (workspace === before) return;
+    const bounds = workspaceBounds(workspace);
+    onFrameChange({
+      center: {
+        x: (bounds.minX + bounds.maxX) / 2,
+        z: (bounds.minZ + bounds.maxZ) / 2,
+      },
+      zoom: 1,
+    });
+  }, [session.document, workspace, onFrameChange]);
   const cancel = (): void => {
     setWidthDraft(width);
     setHeightDraft(height);
@@ -65,27 +82,12 @@ export function StudioDimensions({
           return;
         }
         // Do not cancel first: that retires this render's owner intent.
-        const accepted =
-          edges.columns === DEFAULT_RESIZE_EDGES.columns &&
-          edges.rows === DEFAULT_RESIZE_EDGES.rows
-            ? session.resizeWorkspace(w, h)
-            : session.resizeWorkspace(w, h, edges);
-        if (accepted) {
+        framing.current = workspace;
+        if (session.resizeWorkspace(w, h, edges)) {
           setError(null);
-          // Frame what the author now has, wherever its edges went. The
-          // owner committed exactly this workspace on this event.
-          const bounds = workspaceBounds(
-            growRoomWorkspace(workspace, w, h, edges)
-          );
-          onFrameChange({
-            center: {
-              x: (bounds.minX + bounds.maxX) / 2,
-              z: (bounds.minZ + bounds.maxZ) / 2,
-            },
-            zoom: 1,
-          });
           onDismiss?.();
         } else {
+          framing.current = null;
           setError(
             'Resize refused. Keep these inputs; review the document notice, then fix the content or choose larger dimensions.'
           );

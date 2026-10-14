@@ -7,6 +7,7 @@ import {
   centeredRoomWorkspace,
   growRoomWorkspace,
   workspaceBounds,
+  type RoomWorkspace,
 } from '../world-building/workspaceGeometry';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
@@ -417,8 +418,26 @@ describe('staged workspace dimensions and label controls', () => {
   const submit = (name: string): void => {
     fireEvent.submit(screen.getByRole('form', { name }));
   };
+  /** The fake owner commits the resize: the next render carries the
+   * committed workspace, as the real owner's does. */
+  const committing = (workspace: RoomWorkspace): void => {
+    observed.session!.resizeWorkspace = vi.fn(() => {
+      const current = observed.session!;
+      observed.session = {
+        ...current,
+        document: {
+          ...current.document,
+          draft: { ...current.document.draft, workspace },
+        },
+      };
+      return true;
+    });
+  };
   it('identifies legacy shape, stages hex counts and applies one exact intent without self-retiring', () => {
-    render(<EncounterStudioWorkspace compositionSource={source} />);
+    committing(centeredRoomWorkspace(73, 48));
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
     click('Size');
     expect(screen.getByText(/legacy hex-radius.*not a rectangle/)).toBeTruthy();
     expect(
@@ -427,12 +446,14 @@ describe('staged workspace dimensions and label controls', () => {
     change('Width (hexes)', '73');
     change('Height (hexes)', '48');
     expect(observed.session?.resizeWorkspace).not.toHaveBeenCalled();
+    const resize = observed.session!.resizeWorkspace;
     submit('Workspace dimensions');
-    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
-      73,
-      48
-    );
+    expect(resize).toHaveBeenCalledExactlyOnceWith(73, 48, {
+      columns: 'right',
+      rows: 'top',
+    });
     expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
     // The room view keeps the form open after Apply.
     expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
     const bounds = workspaceBounds(centeredRoomWorkspace(73, 48));
@@ -456,17 +477,24 @@ describe('staged workspace dimensions and label controls', () => {
         },
       },
     };
-    render(<EncounterStudioWorkspace compositionSource={source} />);
+    const committed = growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22);
+    committing(committed);
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
+    const before = observed.layoutProps?.frame;
     change('Width (hexes)', '24');
     change('Height (hexes)', '22');
+    const resize = observed.session!.resizeWorkspace;
     submit('Workspace dimensions');
-    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
-      24,
-      22
-    );
-    const bounds = workspaceBounds(
-      growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22)
-    );
+    expect(resize).toHaveBeenCalledExactlyOnceWith(24, 22, {
+      columns: 'right',
+      rows: 'top',
+    });
+    // Framing waits for the committed document; it is never re-derived.
+    expect(observed.layoutProps?.frame).toEqual(before);
+    mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
+    const bounds = workspaceBounds(committed);
     expect(observed.layoutProps?.frame).toEqual({
       center: {
         x: (bounds.minX + bounds.maxX) / 2,
