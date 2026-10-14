@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { castMemberOf, castOf, statBlockIsKnown } from '../world-building/cast';
+import {
+  castMemberOf,
+  castOf,
+  rulebookMonsterName,
+  statBlockIsKnown,
+  type CastMember,
+} from '../world-building/cast';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { selectionName } from './StudioArrangeFields';
 import {
@@ -285,6 +291,21 @@ function CreatureView({
   );
 }
 
+/** The stat block this placement follows, as one line of its authored
+ * fields. Derived numbers are the rulebook's and are not shown. */
+function statBlockSummary(member: CastMember): string {
+  const template = member.template;
+  if (!template) return `the rulebook's ${member.id}`;
+  const parts = [`base ${rulebookMonsterName(template.base)}`];
+  if (template.armor) parts.push(`armor ${template.armor}`);
+  if (template.hitDice) parts.push(`hit dice ${template.hitDice}`);
+  for (const [key, score] of Object.entries(template.abilities ?? {}))
+    parts.push(`${key.toUpperCase()} ${score}`);
+  if (template.actions?.length)
+    parts.push(`weapons ${template.actions.join(', ')}`);
+  return parts.join(' · ');
+}
+
 /** Which cast member a placement belongs to, and which of its values were
  * stamped at placement. The stat block is followed by id; the look and the
  * faction are this placement's own. */
@@ -363,6 +384,7 @@ function CreatureCast({
           : `rulebook ${member.id}`}
       </p>
       <p className="es-help">Changes to {member.name} reach every placement.</p>
+      <p>Stat block: {statBlockSummary(member)}</p>
       <p>
         Look:{' '}
         {!look

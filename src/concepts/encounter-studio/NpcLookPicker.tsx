@@ -63,13 +63,24 @@ export function NpcLookPicker({
               className="es-look-option"
               onClick={() => onChange(family.ref)}
             >
-              <AssetThumbnailImage
-                url={
-                  thumbnail?.status === 'ready' ? thumbnail.image : undefined
-                }
-                label={name}
-                fallbackClassName="es-look-thumbnail-fallback"
-              />
+              {thumbnail ? (
+                <AssetThumbnailImage
+                  url={
+                    thumbnail.status === 'ready' ? thumbnail.image : undefined
+                  }
+                  label={name}
+                  fallbackClassName="es-look-thumbnail-fallback"
+                />
+              ) : (
+                <span
+                  className="es-look-thumbnail-fallback"
+                  role="img"
+                  aria-label={`Preview loading for ${name}`}
+                  data-thumbnail-state="loading"
+                >
+                  Loading preview
+                </span>
+              )}
               <span>{name}</span>
             </button>
           );

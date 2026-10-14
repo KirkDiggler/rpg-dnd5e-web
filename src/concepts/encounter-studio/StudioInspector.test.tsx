@@ -490,6 +490,9 @@ describe('StudioInspector', () => {
       expect(
         castSection().getByText('Changes to Guard reach every placement.')
       ).toBeTruthy();
+      expect(castSection().getByText(/^Stat block:/).textContent).toBe(
+        'Stat block: base Human'
+      );
       expect(
         castSection().getByText(
           "Stamped at placement. Changing Guard's default faction does not change this."
