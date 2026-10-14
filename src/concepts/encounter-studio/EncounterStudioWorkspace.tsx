@@ -171,6 +171,15 @@ function StudioSurface({
     session.setPropTool('move');
     setSidebarOpen(true);
   };
+  /** Party start is placed on the 3D floor: the gesture is armed there. */
+  const placePartyStart = (): void => {
+    if (session.doorEditing.active) session.doorEditing.setActive(false);
+    labels.editing.onCancel();
+    onLayoutToolChange('select');
+    onViewChange('3d');
+    session.armPartyStart();
+    setSidebarOpen(true);
+  };
   const openDefinitions = (section: StudioSocialSection): void => {
     changeHome('encounter');
     setEncounterSection(section);
@@ -377,6 +386,18 @@ function StudioSurface({
               </button>
             </div>
           )}
+          {home === 'build' &&
+            session.viewportProps.roomAuthoring?.tool === 'start' && (
+              <div className="es-buttons" role="status">
+                <strong>Placing party start · click the floor</strong>
+                <button
+                  type="button"
+                  onClick={() => session.setPropTool('select')}
+                >
+                  Cancel party start
+                </button>
+              </div>
+            )}
           {session.creatures.placement && (
             <div className="es-buttons" role="status">
               <strong>
@@ -527,6 +548,7 @@ function StudioSurface({
                 onMoveCreature={moveSelectedCreature}
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
+                onPlacePartyStart={placePartyStart}
                 onOpenRegion={(labelId) => {
                   session.mapLabelSelection.select(labelId);
                   changeHome('regions');

@@ -4547,6 +4547,12 @@ export function WorldBuildingConcept({
           doorEditing,
           commitArrange: guardSnapshotIntent(commitArrange),
           selectHex: guardSnapshotIntent(selectStudioHex),
+          armPartyStart: guardSnapshotIntent((): boolean => {
+            if (refuseWhilePublishing()) return false;
+            armStartPlacement();
+            setTool('select');
+            return true;
+          }),
           clearSelection: guardSnapshotIntent((): boolean => {
             if (refuseWhilePublishing()) return false;
             clearStudioSelection();
@@ -5029,10 +5035,11 @@ export function WorldBuildingConcept({
               activeStudioTarget?.kind === 'scene' ? (
                 <>
                   <div className="wb-actions">{duplicateDeleteButtons}</div>
-                  {groupUngroupActions}
                   {pointLightEditor}
                 </>
               ) : null,
+            groupActions:
+              activeStudioTarget?.kind === 'scene' ? groupUngroupActions : null,
           },
           saveStatus,
           notice: notice || null,

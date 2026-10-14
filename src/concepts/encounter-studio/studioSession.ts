@@ -271,6 +271,9 @@ export interface EncounterStudioSession {
   selectHex(cell: RoomHexCell | null): boolean;
   /** Select nothing: the inspector answers for the room. */
   clearSelection(): boolean;
+  /** Arm the party-start gesture: the next 3D floor click places or moves
+   * it. Refused while publishing or from a retired snapshot. */
+  armPartyStart(): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
@@ -323,7 +326,11 @@ export interface EncounterStudioSession {
     palette: ReactNode;
     tree: ReactNode;
     selection: ReactNode;
+    /** Duplicate, delete and the light editor for the scene selection. */
     arrangeExtras: ReactNode;
+    /** Group selection and Ungroup, split out so the group view and the
+     * pick strip each mount the half they need. */
+    groupActions: ReactNode;
   };
   saveStatus: string;
   notice: string | null;

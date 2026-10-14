@@ -311,6 +311,7 @@ function createAppStudioSession(): EncounterStudioSession {
     commitArrange: vi.fn(() => true),
     selectHex: vi.fn(() => true),
     clearSelection: vi.fn(() => true),
+    armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitTemplates: vi.fn(() => true),
     creatures: {
@@ -377,6 +378,7 @@ function createAppStudioSession(): EncounterStudioSession {
       tree: null,
       selection: null,
       arrangeExtras: null,
+      groupActions: null,
     },
     saveStatus: 'Saved locally',
     notice: null,

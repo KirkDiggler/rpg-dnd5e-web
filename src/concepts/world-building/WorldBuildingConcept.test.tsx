@@ -15,9 +15,10 @@ import {
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
-import type {
-  EncounterStudioSession,
-  EncounterStudioView,
+import {
+  studioInspectionOf,
+  type EncounterStudioSession,
+  type EncounterStudioView,
 } from '../encounter-studio/studioSession';
 import {
   decodeWorldBuilderV4Site,
@@ -4878,6 +4879,36 @@ describe('Studio owner facade', () => {
     );
     return storage;
   }
+
+  it('Group selection makes one group from a pick and selects it', () => {
+    const owner = mountStudio(populatedStorage());
+    const scene = owner.session.document.draft.scene;
+    const roots = [...scene.items, ...scene.groups]
+      .filter((entity) => !entity.parentId)
+      .map((entity) => entity.id)
+      .slice(0, 2);
+    expect(roots).toHaveLength(2);
+    act(() => owner.session.viewportProps.onSelect(roots));
+    expect(
+      studioInspectionOf(
+        owner.session.arrange,
+        owner.session.document.draft.scene
+      ).pick
+    ).toEqual([...roots].sort());
+    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
+    const inspection = studioInspectionOf(
+      owner.session.arrange,
+      owner.session.document.draft.scene
+    );
+    expect(inspection.pick).toBeNull();
+    expect(inspection.selection.kind).toBe('group');
+    const group = owner.session.document.draft.scene.groups.find(
+      (candidate) =>
+        inspection.selection.kind === 'group' &&
+        candidate.id === inspection.selection.id
+    );
+    expect(group).toBeTruthy();
+  });
 
   it('Escape clears a studio wall selection to nothing', () => {
     const owner = mountStudio(populatedStorage());

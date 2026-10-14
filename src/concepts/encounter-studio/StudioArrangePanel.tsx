@@ -1,6 +1,6 @@
 import { FACING_NAMES } from '@/components/hex-grid/facingYaw';
 import { chooseNpcAppearance } from '@/npc-appearances/npcAppearanceChoices';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   deriveWallCornerFits,
   wallFitAsset,
@@ -61,6 +61,20 @@ function StudioArrangeField({
   );
 }
 
+/** How an inspector view composes the one-transaction form. Defaults keep
+ * the Regions home's form exactly as it was. */
+export interface ArrangeComposition {
+  /** The Regions home's "Arrange · name" heading; the inspector names the
+   * selection in its own heading. */
+  heading?: boolean;
+  /** Region boundary and lighting controls. Build leaves them to Regions. */
+  regionControls?: boolean;
+  /** The owner's configuration forms and the definition links. */
+  configuration?: boolean;
+  /** Replaces the scene's arrange extras below the form. */
+  extras?: ReactNode;
+}
+
 /** Local form tokens only; all canonical updates cross the atomic owner seam. */
 function SelectedArrange({
   session,
@@ -69,6 +83,10 @@ function SelectedArrange({
   onDefineRegion,
   onConfigure,
   onMoveCreature,
+  heading = true,
+  regionControls = true,
+  configuration = true,
+  extras,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
@@ -76,7 +94,7 @@ function SelectedArrange({
   expanded: boolean;
   onDefineRegion?(): void;
   onConfigure?(section: StudioSocialSection): void;
-}): React.JSX.Element {
+} & ArrangeComposition): React.JSX.Element {
   const [draft, setDraft] = useState<ArrangeDraft>({});
   const [error, setError] = useState<string | null>(null);
   const [appearanceVisible, setAppearanceVisible] = useState(false);
@@ -97,7 +115,11 @@ function SelectedArrange({
     () => deriveWallCornerFits(session.document.draft.room.walls ?? []),
     [session.document.draft.room.walls]
   );
-  const fields = arrangeFields(selection, FACING_NAMES, draft);
+  const fields = arrangeFields(selection, FACING_NAMES, draft).filter(
+    (field) => regionControls || field.key !== 'background'
+  );
+  const region =
+    regionControls && selection.kind === 'label' ? selection.region : undefined;
   const renderField = (field: ArrangeField): React.JSX.Element => (
     <StudioArrangeField
       key={field.key}
@@ -145,7 +167,7 @@ function SelectedArrange({
       className="es-context-panel es-arrange"
       aria-label="Arrange selection"
     >
-      <h2>Arrange · {selectionName(selection, session)}</h2>
+      {heading && <h2>Arrange · {selectionName(selection, session)}</h2>}
       {selection.kind === 'wall' && (
         <StudioWallConstraints editing={session.wallEditing} />
       )}
@@ -190,11 +212,9 @@ function SelectedArrange({
           )}
         </>
       )}
-      {selection.kind === 'label' && selection.region && (
+      {selection.kind === 'label' && region && (
         <div className="es-region-controls" aria-label="Room boundary">
-          <p role="status">
-            {regionStatus(selection.region, selection.resolution)}
-          </p>
+          <p role="status">{regionStatus(region, selection.resolution)}</p>
           {onDefineRegion && (
             <div className="es-buttons">
               <button
@@ -204,7 +224,7 @@ function SelectedArrange({
                     !session.commitArrange({
                       kind: 'region-bind',
                       target: selection.target,
-                      regionId: selection.region!.id,
+                      regionId: region.id,
                     })
                   )
                     setError(
@@ -275,10 +295,10 @@ function SelectedArrange({
             </details>
           )}
         </div>
-        {selection.kind === 'label' && selection.region && (
+        {selection.kind === 'label' && region && (
           <div className="es-region-controls" aria-label="Region lighting">
             <p className="es-help">
-              {selection.region.lighting
+              {region.lighting
                 ? selection.resolution?.status === 'resolved'
                   ? 'Background lighting only · placed lights stay independent. Not gameplay visibility.'
                   : 'Lighting saved · not applied until boundary resolves'
@@ -392,56 +412,68 @@ function SelectedArrange({
           </p>
         )}
       </form>
-      {selection.kind === 'scene' && session.propControls.arrangeExtras}
-      {(selection.kind === 'actor' || selection.kind === 'scene') && (
-        <section
-          aria-label="Selection configuration"
-          className="es-selection-configuration"
-        >
-          <h3>Configuration</h3>
-          {session.socialControls.selection}
-          {onConfigure && (
-            <nav className="es-buttons" aria-label="Open encounter definitions">
-              <button type="button" onClick={() => onConfigure('intel')}>
-                Edit intel definitions
-              </button>
-              {selection.kind === 'actor' && (
-                <>
-                  <button type="button" onClick={() => onConfigure('factions')}>
-                    Edit factions
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onConfigure('dispositions')}
-                  >
-                    Edit dispositions
-                  </button>
-                  <button type="button" onClick={() => onConfigure('tables')}>
-                    Edit behavior tables
-                  </button>
-                </>
-              )}
-            </nav>
-          )}
-        </section>
-      )}
+      {extras !== undefined
+        ? extras
+        : selection.kind === 'scene' && session.propControls.arrangeExtras}
+      {configuration &&
+        (selection.kind === 'actor' || selection.kind === 'scene') && (
+          <section
+            aria-label="Selection configuration"
+            className="es-selection-configuration"
+          >
+            <h3>Configuration</h3>
+            {session.socialControls.selection}
+            {onConfigure && (
+              <nav
+                className="es-buttons"
+                aria-label="Open encounter definitions"
+              >
+                <button type="button" onClick={() => onConfigure('intel')}>
+                  Edit intel definitions
+                </button>
+                {selection.kind === 'actor' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onConfigure('factions')}
+                    >
+                      Edit factions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onConfigure('dispositions')}
+                    >
+                      Edit dispositions
+                    </button>
+                    <button type="button" onClick={() => onConfigure('tables')}>
+                      Edit behavior tables
+                    </button>
+                  </>
+                )}
+              </nav>
+            )}
+          </section>
+        )}
     </section>
   );
 }
 
+/** The selected noun's one-transaction form, or nothing: the room view is
+ * the inspector's, not this form's. */
 export function StudioArrangePanel({
   session,
   expanded,
   onDefineRegion,
   onConfigure,
   onMoveCreature,
+  ...composition
 }: {
   session: EncounterStudioSession;
   onMoveCreature?(): void;
   expanded: boolean;
   onDefineRegion?(): void;
   onConfigure?(section: StudioSocialSection): void;
-}): React.JSX.Element {
+} & ArrangeComposition): React.JSX.Element | null {
   return session.arrange ? (
     <SelectedArrange
       key={`${session.arrange.selectionKey}:${session.arrange.selectionRevision}`}
@@ -451,18 +483,7 @@ export function StudioArrangePanel({
       onDefineRegion={onDefineRegion}
       onConfigure={onConfigure}
       onMoveCreature={onMoveCreature}
+      {...composition}
     />
-  ) : (
-    <section
-      hidden={!expanded}
-      id="studio-arrange-panel"
-      className="es-context-panel es-arrange"
-      aria-label="Arrange selection"
-    >
-      <h2>Arrange</h2>
-      <p className="es-help">
-        Select an object to arrange its supported values.
-      </p>
-    </section>
-  );
+  ) : null;
 }

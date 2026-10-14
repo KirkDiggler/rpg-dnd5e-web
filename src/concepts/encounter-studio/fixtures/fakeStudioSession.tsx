@@ -39,6 +39,7 @@ export function createFakeStudioSession(
     commitArrange: vi.fn(() => true),
     selectHex: vi.fn(() => true),
     clearSelection: vi.fn(() => true),
+    armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitTemplates: vi.fn(() => true),
     creatures: {
@@ -115,6 +116,7 @@ export function createFakeStudioSession(
         </div>
       ),
       arrangeExtras: <div>Reused actions and light controls</div>,
+      groupActions: <div>Reused group actions</div>,
       tree: <div>Reused scene tree</div>,
       selection: <div>Reused selection visuals</div>,
     },
