@@ -29,6 +29,13 @@ import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
+import {
+  browserPublicationStorage,
+  clearPublication,
+  readPublication,
+  writePublication,
+  type PublicationRecord,
+} from './publicationMemory';
 import { refusalJumps, type RefusalTarget } from './refusalJump';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
@@ -114,6 +121,8 @@ interface StudioSurfaceProps {
   onBack?: () => void;
   characterId: string | null;
   onPlay?: (encounterId: string, characterId: string) => void;
+  /** Where the studio remembers this draft's last saved key (S6-T7). */
+  storage: KeyValueStorage;
 }
 
 /** Presentation homes share the same mounted owner and canonical selection. */
@@ -130,6 +139,7 @@ function StudioSurface({
   onBack,
   characterId,
   onPlay,
+  storage,
 }: StudioSurfaceProps): React.JSX.Element {
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
@@ -355,6 +365,18 @@ function StudioSurface({
     [characterId, onPlay]
   );
   const playCharacter = capability.characterId;
+  /** The key this draft was last saved under, across mounts (R16, S6-T7):
+   * a reopened studio neither re-asks before overwriting it nor forgets it. */
+  const [remembered, setRemembered] = useState<PublicationRecord | null>(() => {
+    const record = readPublication(storage);
+    return record && record.roomId === session.document.draft.id
+      ? record
+      : null;
+  });
+  const rememberedKey =
+    remembered && remembered.roomId === session.document.draft.id
+      ? remembered.key
+      : null;
   const publishing = useRoomPublishing({
     draft: session.document.draft,
     scope: session.document.scope,
@@ -362,6 +384,7 @@ function StudioSurface({
     onImportDraft: session.importDocument,
     onBusyChange: session.publishing.setBusy,
     previewEnabled: gate.state === 'live',
+    rememberedSavedKey: rememberedKey,
   });
   /** One key per draft (R16): seeded once per draft id from the imported
    * file's key for that draft, else the slug of the room name. */
@@ -374,7 +397,9 @@ function StudioSurface({
     setPublishKey(
       fileKey?.roomId === draftId
         ? fileKey.key
-        : defaultDraftKey(session.document)
+        : remembered?.roomId === draftId
+          ? remembered.key
+          : defaultDraftKey(session.document)
     );
     // Seeded once per draft id; later name edits never rename the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -382,7 +407,23 @@ function StudioSurface({
   const adoptFileKey = (next: DraftFileKey): void => {
     setFileKey(next);
     setPublishKey(next.key);
+    // A different file is not the file this draft saved: forget the save.
+    clearPublication(storage);
+    setRemembered(null);
   };
+  /** Every successful save is remembered for the draft, once: the hook
+   * hands each save a new `savedFor`, so a forget (an import) is never
+   * undone by the save it forgot. */
+  const { saver: publishSaver, savedFor } = publishing;
+  const rememberedSave = useRef(savedFor);
+  useEffect(() => {
+    if (savedFor === rememberedSave.current) return;
+    rememberedSave.current = savedFor;
+    if (publishSaver.status !== 'saved' || !savedFor) return;
+    const record = { roomId: savedFor.roomId, key: savedFor.key };
+    writePublication(storage, record);
+    setRemembered(record);
+  }, [publishSaver.status, savedFor, storage]);
   const keyRefusal = keyRefusalOf(publishing);
   const jumps = refusalJumps(
     currentRefusals(publishing, gate.state),
@@ -1249,6 +1290,7 @@ export function EncounterStudioWorkspace({
         : undefined,
     [onBack]
   );
+  const publicationStorage = storage ?? browserPublicationStorage;
   const renderPresentation = useCallback(
     (session: EncounterStudioSession): ReactNode => (
       <StudioSurface
@@ -1264,9 +1306,19 @@ export function EncounterStudioWorkspace({
         onBack={leave}
         characterId={characterId}
         onPlay={onPlay}
+        storage={publicationStorage}
       />
     ),
-    [home, view, layoutTool, frame, leave, characterId, onPlay]
+    [
+      home,
+      view,
+      layoutTool,
+      frame,
+      leave,
+      characterId,
+      onPlay,
+      publicationStorage,
+    ]
   );
   return (
     <WorldBuildingConcept

@@ -33,6 +33,7 @@ import { defaultDraftKey, exportDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
+import { PUBLICATION_STORAGE_KEY } from './publicationMemory';
 
 const sink = vi.hoisted(
   (): FakeAuthoringSink => ({
@@ -192,9 +193,10 @@ function mount(
   props: {
     characterId?: string | null;
     onPlay?: (encounterId: string, characterId: string) => void;
+    storage?: MemoryStorage;
   } = {}
 ) {
-  const storage = new MemoryStorage(document);
+  const storage = props.storage ?? new MemoryStorage(document);
   const onPlay = props.onPlay ?? vi.fn();
   const view = render(
     <EncounterStudioWorkspace
@@ -666,5 +668,98 @@ describe('S6 Save & Play', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Encounter' }));
     fireEvent.click(screen.getByRole('button', { name: 'Build' }));
     expect(storage.document().draft.name).toBe(captured.draft.name);
+  });
+});
+
+describe('S6 the saved key outlives the studio mount (T7)', () => {
+  /** Save & Play on a fresh key all the way into play. */
+  async function playFresh(getIndex = 0, saveIndex = 0): Promise<void> {
+    fireEvent.click(play());
+    await answerGet(getIndex, notFound());
+    await answerSave(saveIndex, { errors: [] });
+    await answerLaunch();
+  }
+
+  it('reopening the studio after a save does not ask before overwriting the same key', async () => {
+    const first = mount();
+    await settled();
+    const key = defaultDraftKey(first.storage.document());
+    await playFresh();
+    await waitFor(() => expect(first.onPlay).toHaveBeenCalledTimes(1));
+    first.view.unmount();
+    lobby.createLobby.length = 0;
+    lobby.setReady.length = 0;
+    lobby.startEncounter.length = 0;
+    const again = mount(undefined, { storage: first.storage });
+    await settled();
+    fireEvent.click(play());
+    await waitFor(() => expect(savePuts()).toHaveLength(2));
+    expect(sink.gets).toHaveLength(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(savePuts()[1]!.request.key).toBe(key);
+    await answerSave(1, { errors: [] });
+    await answerLaunch();
+    await waitFor(() => expect(again.onPlay).toHaveBeenCalledTimes(1));
+  });
+
+  it('a different draft id asks', async () => {
+    const first = mount();
+    await settled();
+    await playFresh();
+    await waitFor(() => expect(first.onPlay).toHaveBeenCalledTimes(1));
+    first.view.unmount();
+    // Another draft under the same storage: the record names the old one.
+    const other = first.storage.document();
+    other.draft.id = 'another-room';
+    first.storage.bytes.set(
+      ROOM_DRAFT_STORAGE_KEY,
+      stringifyRoomDraft(other.draft, other.scope)
+    );
+    mount(undefined, { storage: first.storage });
+    await settled();
+    fireEvent.click(play());
+    await waitFor(() => expect(sink.gets).toHaveLength(2));
+    expect(savePuts()).toHaveLength(1);
+  });
+
+  it('an import clears the remembered save', async () => {
+    const document = createCastleS4Document();
+    const first = mount(document);
+    await settled();
+    const key = defaultDraftKey(first.storage.document());
+    await playFresh();
+    await waitFor(() => expect(first.onPlay).toHaveBeenCalledTimes(1));
+    // The same room id and the same key, but a file from outside.
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    fireEvent.change(screen.getByLabelText('Draft file to import'), {
+      target: {
+        files: [
+          new File([exportDraftYaml(document, key)], `${key}.yaml`, {
+            type: 'text/yaml',
+          }),
+        ],
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Replace draft' })
+    );
+    expect(keyIn(draftPanel()).value).toBe(key);
+    fireEvent.click(play());
+    await waitFor(() => expect(sink.gets).toHaveLength(2));
+    expect(savePuts()).toHaveLength(1);
+    expect(first.storage.bytes.get(PUBLICATION_STORAGE_KEY)).toBe('null');
+  });
+
+  it('a malformed record is ignored', async () => {
+    const document = createCastleS4Document();
+    const storage = new MemoryStorage(document);
+    storage.bytes.set(PUBLICATION_STORAGE_KEY, '{"roomId": 7, "key"');
+    mount(document, { storage });
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    expect(keyIn(draftPanel()).value).toBe(defaultDraftKey(document));
+    fireEvent.click(play());
+    await waitFor(() => expect(sink.gets).toHaveLength(1));
+    expect(savePuts()).toHaveLength(0);
   });
 });

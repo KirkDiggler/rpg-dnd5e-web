@@ -98,6 +98,13 @@ export interface UseRoomPublishingInput {
    * server that refuses authoring is not asked on every edit (S6-Q3). The
    * transactions do not read it. */
   previewEnabled?: boolean;
+  /** A key the caller remembers this room was already saved under, outside
+   * this mount (the studio's per-draft memory, S6-T7). While set, the hook
+   * treats it as a save that succeeded here: a save to that key for this
+   * room does not ask before overwriting. Null forgets it; undefined (every
+   * other caller) leaves the hook's own memory alone. The transactions are
+   * unchanged. */
+  rememberedSavedKey?: string | null;
 }
 
 export interface UseRoomPublishingResult {
@@ -177,6 +184,7 @@ export function useRoomPublishing({
   onImportDraft,
   onBusyChange,
   previewEnabled = true,
+  rememberedSavedKey,
 }: UseRoomPublishingInput): UseRoomPublishingResult {
   const mounted = useRef(true);
   useEffect(() => {
@@ -214,9 +222,19 @@ export function useRoomPublishing({
 
   const busyRef = useRef(false);
   const ownerRef = useRef<PublishOwner | null>(null);
-  const savedRef = useRef<{ key: string; roomId: string } | null>(null);
+  const savedRef = useRef<{ key: string; roomId: string } | null>(
+    rememberedSavedKey ? { key: rememberedSavedKey, roomId: draft.id } : null
+  );
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  /** The caller's remembered save follows its value: set seeds the memory
+   * for the current room as a save here would, null forgets it. */
+  useEffect(() => {
+    if (rememberedSavedKey === undefined) return;
+    savedRef.current = rememberedSavedKey
+      ? { key: rememberedSavedKey, roomId: draftRef.current.id }
+      : null;
+  }, [rememberedSavedKey]);
   /** The scope is part of the request identity through the emitted YAML: a
    * transaction captures the exact `yaml` a scope produced, and a scope
    * change produces different bytes. This mirror keeps the transactional
