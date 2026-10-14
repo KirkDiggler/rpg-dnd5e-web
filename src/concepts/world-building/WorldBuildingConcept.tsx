@@ -53,6 +53,13 @@ import {
   declarationMapForSelection,
   seedDeclarations,
 } from './declarationFootprint';
+import {
+  concealmentReferrers,
+  renameRevealReferences,
+  renameScenarioReferences,
+  scenarioReferrers,
+  stillNamedRefusal,
+} from './documentReferences';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
 import { exitAt, setExitAt } from './exitEdits';
@@ -4862,9 +4869,28 @@ export function WorldBuildingConcept({
                       `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
                     )
                   );
+                const previous = exitAt(current.scope.exits, cell)?.id;
+                if (previous !== undefined && id === null) {
+                  const referrers = scenarioReferrers(current.scope, previous);
+                  if (referrers.length)
+                    return rejectEdit(
+                      new Error(
+                        stillNamedRefusal(`Exit ${previous}`, referrers)
+                      )
+                    );
+                }
                 try {
                   const exits = setExitAt(current.scope.exits, cell, id);
-                  const scope = { ...current.scope };
+                  const scope =
+                    previous !== undefined && id !== null && id !== previous
+                      ? {
+                          ...renameScenarioReferences(
+                            current.scope,
+                            previous,
+                            id
+                          ),
+                        }
+                      : { ...current.scope };
                   if (exits.length === 0) delete scope.exits;
                   else scope.exits = exits;
                   return commitRoomDocument({ ...current, scope });
@@ -4906,9 +4932,21 @@ export function WorldBuildingConcept({
                   return rejectEdit(
                     new Error(`There is no concealment ${id}.`)
                   );
+                if (spec === undefined) {
+                  const referrers = concealmentReferrers(current.scope, id);
+                  if (referrers.length)
+                    return rejectEdit(
+                      new Error(
+                        stillNamedRefusal(`Concealment ${id}`, referrers)
+                      )
+                    );
+                }
                 try {
                   if (spec !== undefined)
-                    validateSiteConcealments({ [id]: spec });
+                    validateSiteConcealments(
+                      { [id]: spec },
+                      { requireMembers: false }
+                    );
                   if (spec === undefined && paintingConcealmentId === id)
                     setPaintingConcealmentId(null);
                   return commitRoomDocument({
@@ -4934,8 +4972,18 @@ export function WorldBuildingConcept({
                   new Error(`There is already a concealment ${to}.`)
                 );
               try {
-                const scope = renameConcealment(current.scope, from, to);
-                validateSiteConcealments(scope.concealments);
+                const scope = renameScenarioReferences(
+                  renameRevealReferences(
+                    renameConcealment(current.scope, from, to),
+                    from,
+                    to
+                  ),
+                  from,
+                  to
+                );
+                validateSiteConcealments(scope.concealments, {
+                  requireMembers: false,
+                });
                 if (paintingConcealmentId === from)
                   setPaintingConcealmentId(to);
                 return commitRoomDocument({ ...current, scope });

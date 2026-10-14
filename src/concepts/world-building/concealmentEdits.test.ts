@@ -176,6 +176,7 @@ describe('attempts.lifetime (rpg-project#578, S4-Q1)', () => {
         vault: {
           checks: [{ ability: 'investigation', dc: 14 }],
           attempts: { max: 2, reset_hexes: 3 },
+          cells: [{ q: 0, r: 0 }],
         },
       }).vault.attempts
     ).toEqual({ max: 2, reset_hexes: 3 });
@@ -206,5 +207,23 @@ describe('attempts.lifetime (rpg-project#578, S4-Q1)', () => {
       json: 'not json',
       strippedFrom: [],
     });
+  });
+});
+
+describe('an empty concealment (rpg-project#578)', () => {
+  it("validateSiteConcealments refuses a concealment that hides nothing with the toolkit's sentence", () => {
+    expect(() =>
+      validateSiteConcealments({
+        vault: { checks: [{ ability: 'investigation', dc: 14 }] },
+      })
+    ).toThrow(
+      'Site concealment vault: this concealment hides nothing: list the hexes under `cells`, the placed things under `props`, or both'
+    );
+    expect(
+      validateSiteConcealments(
+        { vault: { checks: [{ ability: 'investigation', dc: 14 }] } },
+        { requireMembers: false }
+      ).vault
+    ).toEqual({ checks: [{ ability: 'investigation', dc: 14 }] });
   });
 });

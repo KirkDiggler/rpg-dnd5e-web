@@ -583,7 +583,18 @@ export function validateSiteTables(value: unknown): SiteTables {
   return tables;
 }
 
-export function validateSiteConcealments(value: unknown): SiteConcealments {
+/** The toolkit's refusal of a concealment with no members
+ * (`single_room_concealments.go`), in its words (rpg-project#578). */
+export const EMPTY_CONCEALMENT_REFUSAL =
+  'this concealment hides nothing: list the hexes under `cells`, the placed things under `props`, or both';
+
+/** `requireMembers: false` is the editing gate only: a concealment the
+ * author has just added may be edited before its first member is picked.
+ * Every save, export and decode uses the default. */
+export function validateSiteConcealments(
+  value: unknown,
+  { requireMembers = true }: { requireMembers?: boolean } = {}
+): SiteConcealments {
   if (!isMapping(value)) fail('Site concealments', 'must be a map');
   const concealments: SiteConcealments = {};
   for (const [id, body] of Object.entries(value)) {
@@ -628,6 +639,12 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
         return prop;
       });
     }
+    if (
+      requireMembers &&
+      (spec.cells?.length ?? 0) === 0 &&
+      (spec.props?.length ?? 0) === 0
+    )
+      fail(path, EMPTY_CONCEALMENT_REFUSAL);
     concealments[id] = spec;
   }
   return concealments;

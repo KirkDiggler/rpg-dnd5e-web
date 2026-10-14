@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
+import { concealmentHiding } from '../world-building/concealmentEdits';
 import frontGoblinOptionsYaml from '../world-building/fixtures/frontGoblinOptions.yaml?raw';
 import { nextIntelId } from '../world-building/intelEdits';
 import { createRoomLabel } from '../world-building/regionEdits';
@@ -5235,7 +5236,10 @@ describe('S4 concealments through the real owner', () => {
     const document = createPopulatedStudioDocument();
     document.scope.concealments = {
       ...document.scope.concealments,
-      stash: { checks: [{ ability: 'investigation', dc: 14 }] },
+      stash: {
+        checks: [{ ability: 'investigation', dc: 14 }],
+        props: ['studio-wall'],
+      },
     };
     return document;
   };
@@ -5333,7 +5337,10 @@ describe('S4 concealments through the real owner', () => {
   });
 
   it("removing a concealment clears its door's Hidden by", async () => {
-    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    const unnamed = createPopulatedStudioDocument();
+    unnamed.scope.intel = [];
+    delete unnamed.draft.room.propBindings!.table;
+    const storage = new MemoryStorage(unnamed);
     mount(storage);
     await settled();
     fireEvent.click(button('Encounter'));
@@ -5486,6 +5493,103 @@ describe('S4 the draft as a file through the real owner', () => {
     ).toBeNull();
     expect(storage.document()).toEqual(before);
     expect(storage.roomWrites()).toBe(writes);
+  });
+});
+
+describe('S4 renames rewrite references; removes are refused while named (rpg-project#578)', () => {
+  let session!: EncounterStudioSession;
+  const owner = {
+    get session() {
+      return session;
+    },
+  };
+  const mountStudio = (): typeof owner => {
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={new MemoryStorage(createCastleS4Document())}
+        studioPresentation={{
+          home: 'build',
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    return owner;
+  };
+
+  it('renaming a concealment rewrites its intel, its door Hidden by and its scenarios in one step', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.concealments.rename('studio-secret', 'cellar')).toBe(
+        true
+      );
+    });
+    const scope = owner.session.document.scope;
+    expect(Object.keys(scope.concealments!)).toContain('cellar');
+    expect(scope.concealments!['studio-secret']).toBeUndefined();
+    expect(scope.intel).toContainEqual({
+      id: 'studio-map',
+      reveals: { concealment: 'cellar' },
+    });
+    expect(concealmentHiding(scope, 'studio-door')).toBe('cellar');
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('removing a concealment that intel names is refused, naming the intel', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(
+        owner.session.concealments.update('studio-secret', undefined)
+      ).toBe(false);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.notice).toContain(
+      'Concealment studio-secret is still named by intel studio-map. Change or remove those first.'
+    );
+    act(() => {
+      expect(owner.session.concealments.update('stash', undefined)).toBe(true);
+    });
+    expect(owner.session.document.scope.concealments!.stash).toBeUndefined();
+  });
+
+  it('renaming an exit rewrites the scenario that binds it in one step', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.exits.set({ q: 2, r: 0 }, 'gate')).toBe(true);
+    });
+    const scope = owner.session.document.scope;
+    expect(scope.exits?.[0]).toEqual({ id: 'gate', cell: { q: 2, r: 0 } });
+    expect(scope.scenarios?.['studio-scenario']?.exit).toBe('gate');
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('removing an exit a scenario binds is refused, naming the binding', () => {
+    const owner = mountStudio();
+    const before = owner.session.document;
+    act(() => {
+      expect(owner.session.exits.set({ q: 2, r: 0 }, null)).toBe(false);
+    });
+    expect(owner.session.document).toBe(before);
+    expect(owner.session.notice).toContain(
+      'Exit studio-exit is still named by scenario studio-scenario exit. Change or remove those first.'
+    );
+    const postern = before.scope.exits!.find((exit) => exit.id === 'postern')!;
+    act(() => {
+      expect(owner.session.exits.set(postern.cell, null)).toBe(true);
+    });
+    expect(owner.session.document.scope.exits?.map((exit) => exit.id)).toEqual([
+      'studio-exit',
+    ]);
   });
 });
 

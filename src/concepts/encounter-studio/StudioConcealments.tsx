@@ -4,9 +4,10 @@ import {
   concealmentMemberName,
   nextConcealmentId,
 } from '../world-building/concealmentEdits';
-import type {
-  SiteConcealmentCheck,
-  SiteConcealmentSpec,
+import {
+  EMPTY_CONCEALMENT_REFUSAL,
+  type SiteConcealmentCheck,
+  type SiteConcealmentSpec,
 } from '../world-building/siteScope';
 import { AboutPanel, FieldHelp } from './FieldHelp';
 import { StudioCheckRows, type StudioCheck } from './StudioCheckRows';
@@ -158,6 +159,7 @@ function ConcealmentForm({
     if (cells.length === 0) delete next.cells;
     update(next);
   };
+  const memberCount = (spec.cells?.length ?? 0) + (spec.props?.length ?? 0);
   const revealedBy = (document.scope.intel ?? []).filter(
     (record) =>
       'concealment' in record.reveals && record.reveals.concealment === id
@@ -290,11 +292,11 @@ function ConcealmentForm({
           />
         </label>
       </StudioSection>
-      <StudioSection title="Members" level="subsection">
-        {(spec.cells ?? []).length === 0 && (spec.props ?? []).length === 0 ? (
-          <p className="es-help">
-            Nothing is hidden yet. The engine refuses a concealment that hides
-            nothing.
+      <StudioSection title={`Members (${memberCount})`} level="subsection">
+        {memberCount === 0 ? (
+          <p role="alert" className="es-warning">
+            {EMPTY_CONCEALMENT_REFUSAL}. The draft cannot be saved or exported
+            until it hides something.
           </p>
         ) : (
           <ul className="es-inspector-list" aria-label={`Members of ${id}`}>

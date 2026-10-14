@@ -116,6 +116,34 @@ describe('StudioConcealments (rpg-project#578)', () => {
     );
   });
 
+  it('the form keeps its member count and surfaces the empty refusal', () => {
+    const session = populated();
+    render(
+      <StudioConcealments
+        session={session}
+        onArmMembers={vi.fn()}
+        onOpenIntel={vi.fn()}
+      />
+    );
+    expect(panel().getByRole('heading', { name: 'Members (2)' })).toBeTruthy();
+    cleanup();
+    const empty = populated();
+    empty.document.scope.concealments!['studio-secret'] = {
+      checks: [{ ability: 'perception', dc: 15 }],
+    };
+    render(
+      <StudioConcealments
+        session={empty}
+        onArmMembers={vi.fn()}
+        onOpenIntel={vi.fn()}
+      />
+    );
+    expect(panel().getByRole('heading', { name: 'Members (0)' })).toBeTruthy();
+    expect(panel().getByRole('alert').textContent).toContain(
+      'this concealment hides nothing: list the hexes under `cells`, the placed things under `props`, or both'
+    );
+  });
+
   it('revealed by lists the intel that names it', () => {
     const onOpenIntel = vi.fn();
     render(

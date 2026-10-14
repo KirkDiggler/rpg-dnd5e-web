@@ -4067,8 +4067,13 @@ describe('structural wall authoring (Task 3)', () => {
     expect(stored().scope.concealments['secret-1'].props).toEqual([
       'wall-seeded',
     ]);
+    // Undoing the last member leaves a concealment that hides nothing,
+    // which the validator refuses (rpg-project#578): the history moves,
+    // and the stored draft keeps its last savable bytes.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(stored().scope.concealments['secret-1'].props).toBeUndefined();
+    expect(stored().scope.concealments['secret-1'].props).toEqual([
+      'wall-seeded',
+    ]);
   });
 
   // Mocked viewport R3F, then the real concept commit/history/storage path:
@@ -5053,7 +5058,10 @@ describe('Studio owner facade', () => {
       const document = createPopulatedStudioDocument();
       document.scope.concealments = {
         ...document.scope.concealments,
-        vault: { checks: [{ ability: 'investigation', dc: 14 }] },
+        vault: {
+          checks: [{ ability: 'investigation', dc: 14 }],
+          cells: [{ q: 2, r: 0 }],
+        },
       };
       const storage = new MemoryStorage();
       storage.setItem(
@@ -5077,8 +5085,12 @@ describe('Studio owner facade', () => {
 
     it('hiding a door leaves its wall out of the concealment', () => {
       const document = createPopulatedStudioDocument();
+      document.scope.intel = [];
       document.scope.concealments = {
-        vault: { checks: [{ ability: 'investigation', dc: 14 }] },
+        vault: {
+          checks: [{ ability: 'investigation', dc: 14 }],
+          cells: [{ q: 2, r: 0 }],
+        },
       };
       const storage = new MemoryStorage();
       storage.setItem(
@@ -5092,7 +5104,7 @@ describe('Studio owner facade', () => {
       const vault = owner.session.document.scope.concealments!.vault;
       expect(vault.props).toEqual(['studio-door']);
       expect(vault.props).not.toContain('studio-wall');
-      expect(vault.cells).toBeUndefined();
+      expect(vault.cells).toEqual([{ q: 2, r: 0 }]);
       act(() => {
         owner.session.concealments.setDoorHiddenBy('studio-door', null);
       });
