@@ -737,7 +737,7 @@ describe('Arrange staged fields joined to the actual document owner', () => {
     expect(
       within(
         screen.getByRole('region', { name: 'Arrange selection' })
-      ).getByRole('heading').textContent
+      ).getByRole('heading', { level: 2 }).textContent
     ).toContain('Studio north wall');
   });
   it('explicit canonical defaults preserve missing fields, history, bytes and writes exactly', () => {

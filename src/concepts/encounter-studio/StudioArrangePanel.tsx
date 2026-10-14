@@ -14,6 +14,7 @@ import {
   type ArrangeField,
   type ArrangeFieldKey,
 } from './StudioArrangeFields';
+import { StudioSection } from './StudioSection';
 import type {
   EncounterStudioSession,
   StudioArrangeSelection,
@@ -73,6 +74,9 @@ export interface ArrangeComposition {
   configuration?: boolean;
   /** Replaces the scene's arrange extras below the form. */
   extras?: ReactNode;
+  /** Leads the Placement section, above the form: the creature's cast
+   * member summary. */
+  lead?: ReactNode;
 }
 
 /** Local form tokens only; all canonical updates cross the atomic owner seam. */
@@ -87,6 +91,7 @@ function SelectedArrange({
   regionControls = true,
   configuration = true,
   extras,
+  lead,
 }: {
   session: EncounterStudioSession;
   selection: StudioArrangeSelection;
@@ -168,260 +173,267 @@ function SelectedArrange({
       aria-label="Arrange selection"
     >
       {heading && <h2>Arrange · {selectionName(selection, session)}</h2>}
-      {selection.kind === 'wall' && (
-        <StudioWallConstraints editing={session.wallEditing} />
-      )}
-      {selection.kind === 'wall' && (
-        <p className="es-help">
-          Heading is Start → End: 0° and −180° can be parallel. Hover an
-          endpoint in Layout for X/Z.{' '}
-          {!wallFitAsset(selection.wall.appearance.assetRef)
-            ? 'This appearance has no verified miter fit. Choose Castle Wall Fit 01 on both walls for automatic flush corners.'
-            : (cornerInfo.reasons.get(selection.wall.id) ??
-              'Supported joined corners fit automatically.')}
-        </p>
-      )}
-      <p className="es-help">
-        {selection.kind === 'scene'
-          ? selection.rootCount === 1
-            ? 'World position · world units'
-            : 'Selection pivot · world units'
-          : selection.kind === 'wall'
-            ? 'Wall line endpoints · world X/Z units'
-            : selection.kind === 'door'
-              ? 'Along owning wall · world units'
-              : selection.kind === 'label'
-                ? 'World position · world units'
-                : 'Starting hex · q / r'}
-      </p>
-      {preview && (
-        <p role="status">
-          Preview · Finish or cancel the canvas gesture before applying.
-        </p>
-      )}
-      {selection.kind === 'actor' && (
-        <>
+      <StudioSection title="Placement" level="section">
+        {lead}
+        {selection.kind === 'wall' && (
+          <StudioWallConstraints editing={session.wallEditing} />
+        )}
+        {selection.kind === 'wall' && (
           <p className="es-help">
-            Rules: {selection.monster.ref}. Map name is an authoring label, not
-            a stat-block change.
+            Heading is Start → End: 0° and −180° can be parallel. Hover an
+            endpoint in Layout for X/Z.{' '}
+            {!wallFitAsset(selection.wall.appearance.assetRef)
+              ? 'This appearance has no verified miter fit. Choose Castle Wall Fit 01 on both walls for automatic flush corners.'
+              : (cornerInfo.reasons.get(selection.wall.id) ??
+                'Supported joined corners fit automatically.')}
           </p>
-          {onMoveCreature && (
-            <button type="button" onClick={onMoveCreature}>
-              Move creature
-            </button>
-          )}
-        </>
-      )}
-      {selection.kind === 'label' && region && (
-        <div className="es-region-controls" aria-label="Room boundary">
-          <p role="status">{regionStatus(region, selection.resolution)}</p>
-          {onDefineRegion && (
-            <div className="es-buttons">
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    !session.commitArrange({
-                      kind: 'region-bind',
-                      target: selection.target,
-                      regionId: region.id,
-                    })
-                  )
-                    setError(
-                      'Binding refused. No supported enclosure at this label; define an explicit area or repair the walls.'
-                    );
-                }}
-              >
-                Use enclosing walls
-              </button>
-              <button type="button" onClick={onDefineRegion}>
-                Define explicit area
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      <form
-        aria-label="Arrange selected noun"
-        aria-describedby={error ? 'arrange-error' : undefined}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (preview) return;
-          try {
-            const intent = arrangeIntent(selection, draft);
-            if (!intent) return;
-            if (session.commitArrange(intent)) reset();
-            else
-              setError(
-                'Arrange edit refused. Review the document notice; your inputs are unchanged.'
-              );
-          } catch (caught) {
-            setError(caught instanceof Error ? caught.message : String(caught));
-          }
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.key === 'Enter' &&
-            event.target instanceof HTMLInputElement &&
-            !event.nativeEvent.isComposing
-          ) {
-            event.preventDefault();
-            event.currentTarget.requestSubmit();
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            reset();
-          }
-        }}
-      >
-        {selection.kind === 'wall' && (
-          <StudioWallFinishes
-            session={session}
-            wall={selection.wall}
-            draft={draft}
-            onChange={(patch) => {
-              setDraft((previous) => ({ ...previous, ...patch }));
-              setError(null);
-            }}
-          />
         )}
-        <div className="es-arrange-fields">
-          {fields.filter((field) => !field.secondary).map(renderField)}
-          {fields.some((field) => field.secondary) && (
-            <details>
-              <summary>Position · whole wall</summary>
-              {fields.filter((field) => field.secondary).map(renderField)}
-            </details>
-          )}
-        </div>
-        {selection.kind === 'label' && region && (
-          <div className="es-region-controls" aria-label="Region lighting">
-            <p className="es-help">
-              {region.lighting
-                ? selection.resolution?.status === 'resolved'
-                  ? 'Background lighting only · placed lights stay independent. Not gameplay visibility.'
-                  : 'Lighting saved · not applied until boundary resolves'
-                : 'Baseline · no region light authored'}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setDraft((previous) => ({
-                  ...previous,
-                  background: '',
-                  baseline: 'reset',
-                }));
-                setError(null);
-              }}
-            >
-              Use baseline appearance
-            </button>
-            {draft.baseline === 'reset' && (
-              <p role="status">Baseline appearance staged · Apply to reset.</p>
-            )}
-          </div>
+        <p className="es-help">
+          {selection.kind === 'scene'
+            ? selection.rootCount === 1
+              ? 'World position · world units'
+              : 'Selection pivot · world units'
+            : selection.kind === 'wall'
+              ? 'Wall line endpoints · world X/Z units'
+              : selection.kind === 'door'
+                ? 'Along owning wall · world units'
+                : selection.kind === 'label'
+                  ? 'World position · world units'
+                  : 'Starting hex · q / r'}
+        </p>
+        {preview && (
+          <p role="status">
+            Preview · Finish or cancel the canvas gesture before applying.
+          </p>
         )}
-        {selection.kind === 'wall' && (
+        {selection.kind === 'actor' && (
           <>
-            {!appearanceVisible && (
-              <p className="es-help">
-                {session.wallEditing.options.some(
-                  (option) => option.ref === selection.appearance.assetRef
-                )
-                  ? `Appearance: ${selection.appearance.assetRef}`
-                  : `Unsupported imported appearance: ${selection.appearance.assetRef}. Preserved until you explicitly choose a replacement.`}
-              </p>
-            )}
-            <button
-              type="button"
-              aria-expanded={appearanceVisible}
-              aria-controls="arrange-wall-choices"
-              onClick={() => setAppearanceVisible(!appearanceVisible)}
-            >
-              Change wall appearance
-            </button>
-            {appearanceVisible && (
-              <div id="arrange-wall-choices">
-                <StudioWallAppearanceChoices
-                  options={session.wallEditing.options}
-                  assetRef={draft.assetRef ?? selection.appearance.assetRef}
-                  onChoose={(ref) =>
-                    setDraft((previous) => ({ ...previous, assetRef: ref }))
-                  }
-                />
-              </div>
-            )}
-            {draft.assetRef !== undefined && (
-              <p className="es-help">Appearance staged · Apply to replace.</p>
+            <p className="es-help">
+              Rules: {selection.monster.ref}. Map name is an authoring label,
+              not a stat-block change.
+            </p>
+            {onMoveCreature && (
+              <button type="button" onClick={onMoveCreature}>
+                Move creature
+              </button>
             )}
           </>
         )}
-        <div className="es-buttons">
-          <button type="submit" disabled={preview}>
-            Apply Arrange
-          </button>
-          <button type="button" onClick={reset}>
-            Cancel Arrange
-          </button>
-          {(selection.kind === 'wall' ||
-            selection.kind === 'label' ||
-            selection.kind === 'door') && (
-            <button
-              type="button"
-              disabled={preview}
-              onClick={() => {
-                const accepted =
-                  selection.kind === 'wall'
-                    ? session.commitArrange({
-                        kind: 'wall-remove',
+        {selection.kind === 'label' && region && (
+          <div className="es-region-controls" aria-label="Room boundary">
+            <p role="status">{regionStatus(region, selection.resolution)}</p>
+            {onDefineRegion && (
+              <div className="es-buttons">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      !session.commitArrange({
+                        kind: 'region-bind',
                         target: selection.target,
+                        regionId: region.id,
                       })
-                    : selection.kind === 'door'
+                    )
+                      setError(
+                        'Binding refused. No supported enclosure at this label; define an explicit area or repair the walls.'
+                      );
+                  }}
+                >
+                  Use enclosing walls
+                </button>
+                <button type="button" onClick={onDefineRegion}>
+                  Define explicit area
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <form
+          aria-label="Arrange selected noun"
+          aria-describedby={error ? 'arrange-error' : undefined}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (preview) return;
+            try {
+              const intent = arrangeIntent(selection, draft);
+              if (!intent) return;
+              if (session.commitArrange(intent)) reset();
+              else
+                setError(
+                  'Arrange edit refused. Review the document notice; your inputs are unchanged.'
+                );
+            } catch (caught) {
+              setError(
+                caught instanceof Error ? caught.message : String(caught)
+              );
+            }
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter' &&
+              event.target instanceof HTMLInputElement &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              event.currentTarget.requestSubmit();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              reset();
+            }
+          }}
+        >
+          {selection.kind === 'wall' && (
+            <StudioWallFinishes
+              session={session}
+              wall={selection.wall}
+              draft={draft}
+              onChange={(patch) => {
+                setDraft((previous) => ({ ...previous, ...patch }));
+                setError(null);
+              }}
+            />
+          )}
+          <div className="es-arrange-fields">
+            {fields.filter((field) => !field.secondary).map(renderField)}
+            {fields.some((field) => field.secondary) && (
+              <details>
+                <summary>Position · whole wall</summary>
+                {fields.filter((field) => field.secondary).map(renderField)}
+              </details>
+            )}
+          </div>
+          {selection.kind === 'label' && region && (
+            <div className="es-region-controls" aria-label="Region lighting">
+              <p className="es-help">
+                {region.lighting
+                  ? selection.resolution?.status === 'resolved'
+                    ? 'Background lighting only · placed lights stay independent. Not gameplay visibility.'
+                    : 'Lighting saved · not applied until boundary resolves'
+                  : 'Baseline · no region light authored'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft((previous) => ({
+                    ...previous,
+                    background: '',
+                    baseline: 'reset',
+                  }));
+                  setError(null);
+                }}
+              >
+                Use baseline appearance
+              </button>
+              {draft.baseline === 'reset' && (
+                <p role="status">
+                  Baseline appearance staged · Apply to reset.
+                </p>
+              )}
+            </div>
+          )}
+          {selection.kind === 'wall' && (
+            <>
+              {!appearanceVisible && (
+                <p className="es-help">
+                  {session.wallEditing.options.some(
+                    (option) => option.ref === selection.appearance.assetRef
+                  )
+                    ? `Appearance: ${selection.appearance.assetRef}`
+                    : `Unsupported imported appearance: ${selection.appearance.assetRef}. Preserved until you explicitly choose a replacement.`}
+                </p>
+              )}
+              <button
+                type="button"
+                aria-expanded={appearanceVisible}
+                aria-controls="arrange-wall-choices"
+                onClick={() => setAppearanceVisible(!appearanceVisible)}
+              >
+                Change wall appearance
+              </button>
+              {appearanceVisible && (
+                <div id="arrange-wall-choices">
+                  <StudioWallAppearanceChoices
+                    options={session.wallEditing.options}
+                    assetRef={draft.assetRef ?? selection.appearance.assetRef}
+                    onChoose={(ref) =>
+                      setDraft((previous) => ({ ...previous, assetRef: ref }))
+                    }
+                  />
+                </div>
+              )}
+              {draft.assetRef !== undefined && (
+                <p className="es-help">Appearance staged · Apply to replace.</p>
+              )}
+            </>
+          )}
+          <div className="es-buttons">
+            <button type="submit" disabled={preview}>
+              Apply Arrange
+            </button>
+            <button type="button" onClick={reset}>
+              Cancel Arrange
+            </button>
+            {(selection.kind === 'wall' ||
+              selection.kind === 'label' ||
+              selection.kind === 'door') && (
+              <button
+                type="button"
+                disabled={preview}
+                onClick={() => {
+                  const accepted =
+                    selection.kind === 'wall'
                       ? session.commitArrange({
-                          kind: 'door-remove',
+                          kind: 'wall-remove',
                           target: selection.target,
                         })
-                      : selection.region
+                      : selection.kind === 'door'
                         ? session.commitArrange({
-                            kind: 'region-remove',
+                            kind: 'door-remove',
                             target: selection.target,
-                            regionId: selection.region.id,
                           })
-                        : session.commitArrange({
-                            kind: 'label-remove',
-                            target: selection.target,
-                          });
-                if (!accepted)
-                  setError('Removal refused. Review the document notice.');
-              }}
-            >
-              {selection.kind === 'wall'
-                ? 'Remove wall'
-                : selection.kind === 'door'
-                  ? 'Delete doorway'
-                  : selection.region
-                    ? 'Delete region and label'
-                    : 'Delete label'}
-            </button>
+                        : selection.region
+                          ? session.commitArrange({
+                              kind: 'region-remove',
+                              target: selection.target,
+                              regionId: selection.region.id,
+                            })
+                          : session.commitArrange({
+                              kind: 'label-remove',
+                              target: selection.target,
+                            });
+                  if (!accepted)
+                    setError('Removal refused. Review the document notice.');
+                }}
+              >
+                {selection.kind === 'wall'
+                  ? 'Remove wall'
+                  : selection.kind === 'door'
+                    ? 'Delete doorway'
+                    : selection.region
+                      ? 'Delete region and label'
+                      : 'Delete label'}
+              </button>
+            )}
+          </div>
+          {error && (
+            <p role="alert" id="arrange-error">
+              {error}
+            </p>
           )}
-        </div>
-        {error && (
-          <p role="alert" id="arrange-error">
-            {error}
-          </p>
-        )}
-      </form>
-      {extras !== undefined
-        ? extras
-        : selection.kind === 'scene' && session.propControls.arrangeExtras}
+        </form>
+        {extras !== undefined
+          ? extras
+          : selection.kind === 'scene' && session.propControls.arrangeExtras}
+      </StudioSection>
       {configuration &&
         (selection.kind === 'actor' || selection.kind === 'scene') && (
-          <section
-            aria-label="Selection configuration"
+          <StudioSection
+            title="Behaviour"
+            level="section"
             className="es-selection-configuration"
           >
-            <h3>Configuration</h3>
             {session.socialControls.selection}
             {onConfigure && (
               <nav
@@ -452,7 +464,7 @@ function SelectedArrange({
                 )}
               </nav>
             )}
-          </section>
+          </StudioSection>
         )}
     </section>
   );

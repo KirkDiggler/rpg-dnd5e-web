@@ -47,6 +47,7 @@ import {
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
 import { useEffect, useState } from 'react';
+import { StudioSection } from '../encounter-studio/StudioSection';
 import {
   isNotCondition,
   OPTION_VERDICTS,
@@ -2152,8 +2153,11 @@ export function CreatureOrders({
         </div>
       </dl>
 
-      <div className="wb-policy-block">
-        <h5>Inherits</h5>
+      <StudioSection
+        title="Inherits"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {binding?.faction === undefined ? (
           <p className="wb-help" data-testid="creature-inherits-none">
             Nothing authored here — its kind’s default supplies the table.
@@ -2176,10 +2180,13 @@ export function CreatureOrders({
             )}
           </>
         )}
-      </div>
+      </StudioSection>
 
-      <div className="wb-policy-block">
-        <h5>Overrides</h5>
+      <StudioSection
+        title="Overrides"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <CreatureWeaponEditor
@@ -2251,15 +2258,18 @@ export function CreatureOrders({
             )}
           </>
         )}
-      </div>
+      </StudioSection>
 
       {/* WHAT A CHARACTER CAN SAY TO IT (rpg-project#569). The priced checks
           that were here (and left in rpg-dnd5e-web#1201) came back where they
           belong: on the LINE that rolls them, with what the creature answers
           on either verdict. Neither inherited nor overridden — a faction never
           supplies a line — so this is its own block. */}
-      <div className="wb-policy-block">
-        <h5>Options</h5>
+      <StudioSection
+        title="Options"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <OptionsEditor
             owner={monster.id}
@@ -2287,13 +2297,16 @@ export function CreatureOrders({
             ))}
           </ul>
         )}
-      </div>
+      </StudioSection>
 
       {/* The creature's reserve and holdings facts (web#1176). They are
           neither inherited nor overridden — a faction never supplies them — so
           they are their own block rather than a row in Overrides. */}
-      <div className="wb-policy-block">
-        <h5>Reserve and holdings</h5>
+      <StudioSection
+        title="Reserve and holdings"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <CreatureHoldsEditor
@@ -2317,10 +2330,13 @@ export function CreatureOrders({
             creature’s own panel.
           </p>
         )}
-      </div>
+      </StudioSection>
 
-      <div className="wb-policy-block">
-        <h5>Answers with</h5>
+      <StudioSection
+        title="Answers with"
+        level="subsection"
+        className="wb-policy-block"
+      >
         {onOrdersChange !== undefined ? (
           <>
             <label>
@@ -2369,7 +2385,7 @@ export function CreatureOrders({
             faction supply.
           </p>
         )}
-      </div>
+      </StudioSection>
 
       <p className="wb-help" data-testid="faction-layer-rule">
         A faction’s `on:` is layered nearest key wins WHOLESALE: a placement

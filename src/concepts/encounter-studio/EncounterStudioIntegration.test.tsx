@@ -5168,9 +5168,11 @@ describe('S1 the cast through the real owner', () => {
     );
     expect(highlighted()).toEqual([]);
     expect(inspector().getByLabelText('Map name')).toBeTruthy();
-    expect(inspector().getByText(/^Cast member:/).textContent).toBe(
-      'Cast member: Guard · stat block guard'
-    );
+    expect(
+      inspector()
+        .getByText('Cast member', { selector: 'dt' })
+        .nextElementSibling?.textContent?.trim()
+    ).toBe('Guard · stat block guard');
     // The member link in a creature view selects the member again.
     fireEvent.click(
       inspector().getByRole('button', { name: 'Open cast member Guard' })

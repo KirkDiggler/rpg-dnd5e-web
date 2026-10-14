@@ -14,6 +14,7 @@ import {
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
 import { StudioDimensions } from './StudioDimensions';
+import { StudioSection } from './StudioSection';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
@@ -164,16 +165,14 @@ function RoomView({
   const start = draft.room.partyStart;
   return (
     <div className="es-context-panel es-room-view">
-      <section aria-label="Room size">
-        <h3>Size</h3>
+      <StudioSection title="Size" level="section">
         <StudioDimensions
           session={session}
           view={view}
           onFrameChange={onFrameChange}
         />
-      </section>
-      <section aria-label="Notes">
-        <h3>Notes</h3>
+      </StudioSection>
+      <StudioSection title="Notes" level="section">
         {notes.length ? (
           <ul className="es-inspector-list">
             {notes.map((note) => (
@@ -198,16 +197,14 @@ function RoomView({
         ) : (
           <p className="es-help">Switch to Layout to add notes.</p>
         )}
-      </section>
-      <section aria-label="Party start">
-        <h3>Party start</h3>
+      </StudioSection>
+      <StudioSection title="Party start" level="section">
         <p>{start ? `Hex ${start.q}, ${start.r}` : 'Not placed'}</p>
         <button type="button" onClick={onPlacePartyStart}>
           {start ? 'Move party start' : 'Place party start'}
         </button>
-      </section>
-      <section aria-label="Room-default wall finishes">
-        <h3>Room-default wall finishes</h3>
+      </StudioSection>
+      <StudioSection title="Room-default wall finishes" level="section">
         {finishes.length ? (
           <ul className="es-inspector-list">
             {finishes.map((region) => {
@@ -234,7 +231,7 @@ function RoomView({
         ) : (
           <p className="es-help">No region sets a room-default wall finish.</p>
         )}
-      </section>
+      </StudioSection>
     </div>
   );
 }
@@ -280,14 +277,14 @@ function CreatureView({
   onOpenCastMember,
 }: StudioInspectorProps): React.JSX.Element {
   return (
-    <>
-      <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
-      <Form
-        session={session}
-        onConfigure={onConfigure}
-        onMoveCreature={onMoveCreature}
-      />
-    </>
+    <Form
+      session={session}
+      onConfigure={onConfigure}
+      onMoveCreature={onMoveCreature}
+      lead={
+        <CreatureCast session={session} onOpenCastMember={onOpenCastMember} />
+      }
+    />
   );
 }
 
@@ -326,7 +323,7 @@ function CreatureCast({
       statBlockIsKnown(document, member.ref)
     );
     return (
-      <section aria-label="Cast member" className="es-context-panel">
+      <section aria-label="Cast member" className="es-cast-summary">
         <p role="alert" className="es-warning">
           This placement&apos;s stat block, {monster.ref}, is not in the cast.
         </p>
@@ -367,39 +364,51 @@ function CreatureCast({
   const look = monster.appearanceRef;
   const defaultLook = member.defaults?.modelRef;
   return (
-    <section aria-label="Cast member" className="es-context-panel">
-      <p>
-        Cast member:{' '}
-        <button
-          type="button"
-          className="es-link"
-          aria-label={`Open cast member ${member.name}`}
-          onClick={() => onOpenCastMember?.(member.ref)}
-        >
-          {member.name}
-        </button>{' '}
-        ·{' '}
-        {member.source === 'template'
-          ? `stat block ${member.id}`
-          : `rulebook ${member.id}`}
-      </p>
+    <section aria-label="Cast member" className="es-cast-summary">
+      <dl className="es-facts">
+        <div>
+          <dt>Cast member</dt>
+          <dd>
+            <button
+              type="button"
+              className="es-link"
+              aria-label={`Open cast member ${member.name}`}
+              onClick={() => onOpenCastMember?.(member.ref)}
+            >
+              {member.name}
+            </button>{' '}
+            ·{' '}
+            {member.source === 'template'
+              ? `stat block ${member.id}`
+              : `rulebook ${member.id}`}
+          </dd>
+        </div>
+        <div>
+          <dt>Stat block</dt>
+          <dd>{statBlockSummary(member)}</dd>
+        </div>
+        <div>
+          <dt>Look</dt>
+          <dd>
+            {!look
+              ? 'Rules default appearance'
+              : look === defaultLook
+                ? "Cast member's default"
+                : 'Stamped at placement'}
+          </dd>
+        </div>
+        <div>
+          <dt>Faction</dt>
+          <dd>
+            {faction ?? 'none'}.{' '}
+            <span className="es-help">
+              Stamped at placement. Changing {member.name}&apos;s default
+              faction does not change this.
+            </span>
+          </dd>
+        </div>
+      </dl>
       <p className="es-help">Changes to {member.name} reach every placement.</p>
-      <p>Stat block: {statBlockSummary(member)}</p>
-      <p>
-        Look:{' '}
-        {!look
-          ? 'Rules default appearance'
-          : look === defaultLook
-            ? "Cast member's default"
-            : 'Stamped at placement'}
-      </p>
-      <p>
-        Faction: {faction ?? 'none'}.{' '}
-        <span className="es-help">
-          Stamped at placement. Changing {member.name}&apos;s default faction
-          does not change this.
-        </span>
-      </p>
     </section>
   );
 }
@@ -427,8 +436,7 @@ function GroupView({
       configuration={false}
       extras={
         <>
-          <section aria-label="Group members">
-            <h3>Members</h3>
+          <StudioSection title="Members" level="subsection">
             <ul className="es-inspector-list">
               {members.map((member) => (
                 <li key={member.id}>
@@ -442,7 +450,7 @@ function GroupView({
                 </li>
               ))}
             </ul>
-          </section>
+          </StudioSection>
           {session.propControls.groupActions}
           {session.propControls.arrangeExtras}
         </>
@@ -464,57 +472,57 @@ function HexView({
     labels.find((label) => label.id === id)?.text ?? id;
   return (
     <div className="es-context-panel es-hex-view">
-      <p>
-        Cell q {arrange.cell.q}, r {arrange.cell.r}
-      </p>
-      <p>
-        {arrange.walkable
-          ? 'Walkable floor.'
-          : 'Not walkable: no floor is painted here.'}
-      </p>
-      <section aria-label="Regions at this hex">
-        <h3>Region</h3>
-        {arrange.regions.length ? (
-          <ul className="es-inspector-list">
-            {arrange.regions.map((region) => {
-              const text = labelText(region.labelId);
-              return (
-                <li key={region.id}>
-                  <span>
-                    {text} · Lighting:{' '}
-                    {region.lighting
-                      ? `background ${Math.round(region.lighting.background * 100)}%`
-                      : 'baseline'}
-                  </span>{' '}
-                  <button
-                    type="button"
-                    onClick={() => onOpenRegion(region.labelId)}
-                  >
-                    Edit region {text}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="es-help">No region is drawn here.</p>
-        )}
-        <p className="es-help">
-          A drawn region names this hex for authoring. It is not membership for
-          a rule.
-        </p>
-      </section>
-      <section aria-label="Play">
-        <h3>Play</h3>
+      <StudioSection title="Cell" level="section">
         <p>
-          Void: {PLAY_CONTRACT.void} · Lighting: {PLAY_CONTRACT.lighting} ·
-          Standing: {PLAY_CONTRACT.standing}
+          Cell q {arrange.cell.q}, r {arrange.cell.r}
         </p>
-        <p className="es-help">
-          The encounter document accepts only these values. Editing them is a
-          toolkit change.
+        <p>
+          {arrange.walkable
+            ? 'Walkable floor.'
+            : 'Not walkable: no floor is painted here.'}
         </p>
-      </section>
+        <StudioSection title="Region" level="subsection">
+          {arrange.regions.length ? (
+            <ul className="es-inspector-list">
+              {arrange.regions.map((region) => {
+                const text = labelText(region.labelId);
+                return (
+                  <li key={region.id}>
+                    <span>
+                      {text} · Lighting:{' '}
+                      {region.lighting
+                        ? `background ${Math.round(region.lighting.background * 100)}%`
+                        : 'baseline'}
+                    </span>{' '}
+                    <button
+                      type="button"
+                      onClick={() => onOpenRegion(region.labelId)}
+                    >
+                      Edit region {text}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="es-help">No region is drawn here.</p>
+          )}
+          <p className="es-help">
+            A drawn region names this hex for authoring. It is not membership
+            for a rule.
+          </p>
+        </StudioSection>
+        <StudioSection title="Play" level="subsection">
+          <p>
+            Void: {PLAY_CONTRACT.void} · Lighting: {PLAY_CONTRACT.lighting} ·
+            Standing: {PLAY_CONTRACT.standing}
+          </p>
+          <p className="es-help">
+            The encounter document accepts only these values. Editing them is a
+            toolkit change.
+          </p>
+        </StudioSection>
+      </StudioSection>
     </div>
   );
 }
