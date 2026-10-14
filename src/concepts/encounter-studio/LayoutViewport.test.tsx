@@ -6,7 +6,15 @@ import {
   screen,
 } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { walkableCellsInWorldRectangle } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
@@ -2200,15 +2208,15 @@ describe('Layout hex selection', () => {
     overrides: Partial<LayoutViewportProps> = {}
   ): LayoutViewportProps & {
     wallEditing: StudioWallEditing;
-    onSelectHex: ReturnType<typeof vi.fn>;
-    onClearSelection: ReturnType<typeof vi.fn>;
+    onSelectHex: Mock<(cell: RoomHexCell) => void>;
+    onClearSelection: Mock<() => void>;
   } {
     const input = props({ tool: 'select', ...overrides });
     return {
       ...input,
       intentEpoch: 1,
-      onSelectHex: vi.fn(),
-      onClearSelection: vi.fn(),
+      onSelectHex: vi.fn<(cell: RoomHexCell) => void>(),
+      onClearSelection: vi.fn<() => void>(),
       labelEditing: {
         active: false,
         selectedId: null,

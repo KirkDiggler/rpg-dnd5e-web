@@ -2463,8 +2463,8 @@ describe('Studio 3D hex selection', () => {
     onAssetState: vi.fn(),
     showCompositionBounds: false,
   };
-  async function ground(onSelect: ReturnType<typeof vi.fn>) {
-    const onSelectHex = vi.fn();
+  async function ground(onSelect: (ids: string[]) => void) {
+    const onSelectHex = vi.fn<(cell: { q: number; r: number }) => void>();
     const view = await ReactThreeTestRenderer.create(
       <WorldSceneContents
         {...base}
@@ -2498,7 +2498,7 @@ describe('Studio 3D hex selection', () => {
   }
 
   it('ground click in select mode selects the hex under the pointer', async () => {
-    const onSelect = vi.fn();
+    const onSelect = vi.fn<(ids: string[]) => void>();
     const { view, click, onSelectHex } = await ground(onSelect);
     await click(1, 1);
     expect(onSelectHex).toHaveBeenCalledExactlyOnceWith({ q: 1, r: 1 });
@@ -2507,7 +2507,7 @@ describe('Studio 3D hex selection', () => {
   });
 
   it('click off the workspace floor selects nothing', async () => {
-    const onSelect = vi.fn();
+    const onSelect = vi.fn<(ids: string[]) => void>();
     const { view, click, onSelectHex } = await ground(onSelect);
     await click(20, 0);
     expect(onSelectHex).not.toHaveBeenCalled();
@@ -2516,7 +2516,7 @@ describe('Studio 3D hex selection', () => {
   });
 
   it('shift ground click keeps the current pick', async () => {
-    const onSelect = vi.fn();
+    const onSelect = vi.fn<(ids: string[]) => void>();
     const { view, click, onSelectHex } = await ground(onSelect);
     await click(1, 1, true);
     await click(20, 0, true);
