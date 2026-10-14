@@ -827,3 +827,59 @@
   :is(.wb-policy-list, .wb-policy-table, .wb-policy-row > summary) {
   font-size: var(--es-text-value);
 }
+
+/* No horizontal scroll (rpg-project#579, S5-T2). The inspector keeps its
+ * width; what pushed past it is fixed where it starts: a value or an id that
+ * cannot break, a control wider than its row, and a flex or grid child that
+ * refuses to shrink below its content. Nothing hides an overflow. */
+.encounter-studio :is(#studio-sidebar, .es-encounter-home) {
+  overflow-wrap: break-word;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(dd, code, summary, .es-help, .wb-help, [role='status'], [role='alert']) {
+  overflow-wrap: anywhere;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(input, select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(
+    div,
+    section,
+    form,
+    label,
+    fieldset,
+    details,
+    ul,
+    ol,
+    li,
+    dl,
+    dd,
+    p,
+    span,
+    nav
+  ) {
+  min-width: 0;
+}
+/* A label keeps its words whole and its control takes the rest of the row.
+ * Stacked labels (a check approach, a table entry) align to the start. */
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  label
+  > span:first-child {
+  flex: none;
+}
+.encounter-studio
+  :is(#studio-sidebar, .es-encounter-home)
+  :is(.wb-approach-row, .wb-policy-entry)
+  label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.1rem;
+}
