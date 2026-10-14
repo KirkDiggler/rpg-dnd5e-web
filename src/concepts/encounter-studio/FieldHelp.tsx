@@ -31,6 +31,11 @@ export function FieldHelp({
   );
 }
 
+/** What play does not render is said (R19): wall and region finishes and
+ * region lighting stay in the studio's presentation block. */
+export const STUDIO_ONLY_HELP =
+  'Play does not render this yet; it stays in the studio until the look catalog.';
+
 /** A panel's own help, behind one disclosure that starts closed. */
 export function AboutPanel({
   children,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { wallFinishFor } from '../world-building/wallFinishEdits';
 import type { WallFinishSide } from '../world-building/wallFinishTypes';
+import { FieldHelp, STUDIO_ONLY_HELP } from './FieldHelp';
 import type { ArrangeDraft } from './StudioArrangeFields';
 import type { EncounterStudioSession, StructuralWall } from './studioSession';
 
@@ -82,7 +83,10 @@ export function StudioWallFinishes({
   );
   return (
     <fieldset className="es-wall-finish">
-      <legend>Wall finish</legend>
+      <legend>
+        Wall finish{' '}
+        <FieldHelp field="Wall finish">{STUDIO_ONLY_HELP}</FieldHelp>
+      </legend>
       {(owner.catalog.status !== 'ready' || catalog?.kind === 'candidate') && (
         <p className="es-help">{owner.catalog.message}</p>
       )}

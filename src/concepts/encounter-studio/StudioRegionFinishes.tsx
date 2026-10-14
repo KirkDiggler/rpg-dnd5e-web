@@ -1,3 +1,4 @@
+import { FieldHelp, STUDIO_ONLY_HELP } from './FieldHelp';
 import type { AuthoringRegion, EncounterStudioSession } from './studioSession';
 export function StudioRegionFinishes({
   region,
@@ -21,7 +22,10 @@ export function StudioRegionFinishes({
     ) ?? -1;
   return (
     <fieldset className="es-region-finish">
-      <legend>Wall finish</legend>
+      <legend>
+        Wall finish{' '}
+        <FieldHelp field="Region wall finish">{STUDIO_ONLY_HELP}</FieldHelp>
+      </legend>
       <p className="es-help">{owner.catalog.message}</p>
       <label>
         Room masonry
