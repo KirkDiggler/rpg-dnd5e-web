@@ -1148,3 +1148,19 @@
 .encounter-studio .es-draft-file-panel > p {
   margin: 0;
 }
+
+/* Save and Play (#1236): the panel the header's Save & Play opens sits beside
+ * the Draft file panel and shares its row styling. */
+.encounter-studio .es-publish-panel > [role='group'] {
+  flex-basis: 100%;
+}
+.encounter-studio .es-refusals {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.encounter-studio .es-refusals small {
+  opacity: 0.7;
+}
+.encounter-studio .es-publish-status:empty {
+  display: none;
+}

@@ -93,6 +93,11 @@ export interface UseRoomPublishingInput {
   /** Reports the mutating-transaction boundary upward: while busy, the
    * editor must refuse Back, mode switches and document changes. */
   onBusyChange?: (busy: boolean) => void;
+  /** Whether the live validate-only preview may run. Default true keeps
+   * every existing caller; the studio passes its authoring gate, so a
+   * server that refuses authoring is not asked on every edit (S6-Q3). The
+   * transactions do not read it. */
+  previewEnabled?: boolean;
 }
 
 export interface UseRoomPublishingResult {
@@ -171,6 +176,7 @@ export function useRoomPublishing({
   client = defaultAuthoringClient,
   onImportDraft,
   onBusyChange,
+  previewEnabled = true,
 }: UseRoomPublishingInput): UseRoomPublishingResult {
   const mounted = useRef(true);
   useEffect(() => {
@@ -305,7 +311,7 @@ export function useRoomPublishing({
 
   const preview = usePutDungeonPreview(trimmedKey, yaml ?? '', {
     client,
-    enabled: yaml !== null,
+    enabled: previewEnabled && yaml !== null,
     nonce: validateNonce,
   });
   const validate = useCallback(() => {

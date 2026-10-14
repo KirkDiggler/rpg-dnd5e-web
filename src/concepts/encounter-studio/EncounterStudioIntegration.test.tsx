@@ -192,6 +192,15 @@ vi.mock('@/author/authoringRpc', async (importOriginal) => ({
     listScenarios: services.listScenarios,
   },
 }));
+/** The authoring gate answers what each test sets; off by default, so a
+ * test that is not about Save and Play sends no validate-only preview. */
+const gate = vi.hoisted(() => ({
+  state: 'gate-off' as 'probing' | 'live' | 'gate-off' | 'unreachable',
+  retry: vi.fn(),
+}));
+vi.mock('@/author/useAuthoringGate', () => ({
+  useAuthoringGate: () => ({ state: gate.state, retry: gate.retry }),
+}));
 vi.mock('@/api/useCreateLobby', () => ({
   useCreateLobby: () => ({
     createLobby: services.createLobby,
@@ -256,6 +265,7 @@ class TestPointerEvent extends MouseEvent {
 let source: CompositionSource;
 beforeEach(() => {
   vi.clearAllMocks();
+  gate.state = 'gate-off';
   boundary.latest = null;
   boundary.mounts = 0;
   boundary.frameloop = undefined;
@@ -1688,9 +1698,12 @@ describe('Encounter Studio joined document boundary', () => {
     fireEvent.click(button('Save local draft'));
     expect(
       screen.queryByRole('button', {
-        name: /Save & Play|Publish|Validate with server/,
+        name: /Publish|Validate with server/,
       })
     ).toBeNull();
+    // Save & Play is the studio's one publishing control (S6); switching
+    // views never presses it.
+    expect(screen.getByRole('button', { name: 'Save & Play' })).toBeTruthy();
     for (const call of Object.values(services))
       expect(call).not.toHaveBeenCalled();
     expect(source.writer!.createComposition).not.toHaveBeenCalled();
@@ -6406,5 +6419,89 @@ describe('S3 the overview through the real owner', () => {
       /, finish unapplied$/
     );
     expect(row('Right').textContent).not.toContain('finish unapplied');
+  });
+});
+
+describe('Save and Play through the real owner (S6)', () => {
+  it('publishing.setBusy(true) makes an edit a refusal and canUndo false; setBusy(false) releases', () => {
+    const storage = new MemoryStorage(seed());
+    let session!: EncounterStudioSession;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        compositionSource={source}
+        storage={storage}
+        studioPresentation={{
+          home: 'build',
+          view: 'layout',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    act(() => expect(session.renameDocument('Before the lock')).toBe(true));
+    expect(session.canUndo).toBe(true);
+    expect(session.publishing.busy).toBe(false);
+    const writes = storage.roomWrites();
+    act(() => session.publishing.setBusy(true));
+    expect(session.publishing.busy).toBe(true);
+    expect(session.canUndo).toBe(false);
+    expect(session.canRedo).toBe(false);
+    let accepted = true;
+    act(() => {
+      accepted = session.renameDocument('During the lock');
+    });
+    expect(accepted).toBe(false);
+    expect(session.notice).toMatch(/^Save & Play is running/);
+    act(() => {
+      accepted = session.selectHex(seed().draft.room.walkableHexes[0]!);
+    });
+    expect(accepted).toBe(false);
+    act(() => session.undo());
+    expect(session.document.draft.name).toBe('Before the lock');
+    act(() => session.saveLocalDraft());
+    expect(storage.roomWrites()).toBe(writes);
+    act(() => session.publishing.setBusy(false));
+    expect(session.publishing.busy).toBe(false);
+    expect(session.notice).toBeNull();
+    expect(session.canUndo).toBe(true);
+    act(() => expect(session.renameDocument('After the lock')).toBe(true));
+  });
+
+  const STUDIO_ONLY =
+    'Play does not render this yet; it stays in the studio until the look catalog.';
+  const helpText = (field: string): string => {
+    const toggle = screen.getByRole('button', { name: `About ${field}` });
+    fireEvent.click(toggle);
+    return document.getElementById(toggle.getAttribute('aria-controls')!)!
+      .textContent!;
+  };
+
+  it('the wall finish field carries the studio-only help line', () => {
+    installFinishPreview();
+    const draft = finishRoomFixture();
+    delete draft.scene.authoringRegions;
+    delete draft.scene.mapLabels;
+    draft.room.walls = [draft.room.walls![0]];
+    const storage = new MemoryStorage({ draft, scope: {} });
+    mount(storage);
+    selectWall(storage, storage.document().draft.room.walls![0]);
+    expect(helpText('Wall finish')).toBe(STUDIO_ONLY);
+  });
+
+  it("a region's wall finish and lighting fields carry the studio-only help line", async () => {
+    installFinishPreview();
+    mount(new MemoryStorage({ draft: finishRoomFixture(true), scope: {} }));
+    await settled();
+    fireEvent.click(
+      within(screen.getByRole('list', { name: 'Room list' })).getByRole(
+        'button',
+        { name: /^Room Left,/ }
+      )
+    );
+    expect(helpText('Region wall finish')).toBe(STUDIO_ONLY);
+    expect(helpText('Background light (%)')).toBe(STUDIO_ONLY);
   });
 });

@@ -105,6 +105,9 @@ vi.mock('./author/AuthorView', () => ({
 }));
 
 // A visible sentinel makes retirement fail if App mounts the old entry again.
+vi.mock('./author/useAuthoringGate', () => ({
+  useAuthoringGate: () => ({ state: 'gate-off', retry: vi.fn() }),
+}));
 vi.mock('./author/DungeonBuilderHomeButton', () => ({
   DungeonBuilderHomeButton: () => (
     <button type="button">Open Dungeon Builder</button>
@@ -408,6 +411,7 @@ function createAppStudioSession(): EncounterStudioSession {
     autosaveBlocked: false,
     saveLocalDraft: vi.fn(),
     dismissNotice: vi.fn(),
+    publishing: { busy: false, setBusy: vi.fn() },
   };
 }
 
@@ -813,7 +817,7 @@ describe('App Encounter Studio current-world entry', () => {
     expect(hoisted.studioOwnerProps).toHaveProperty('roomMode', true);
   });
 
-  it('reader-only source can enter Studio without publishing controls', async () => {
+  it('reader-only source can enter Studio without World Builder publishing controls', async () => {
     vi.stubEnv('MODE', 'development');
     hoisted.readerOnlySource = true;
     render(<App />);
@@ -829,7 +833,14 @@ describe('App Encounter Studio current-world entry', () => {
     expect(hoisted.studioOwnerProps?.compositionSource).not.toHaveProperty(
       'writer'
     );
-    expect(screen.queryByText(/Save & Play|Publish/i)).toBeNull();
+    expect(screen.queryByText(/Publish/i)).toBeNull();
+    // The studio's own Save & Play (S6) is present and says why it cannot
+    // run: this test's server answers that authoring is off.
+    const play = screen.getByRole('button', { name: 'Save & Play' });
+    expect((play as HTMLButtonElement).disabled).toBe(true);
+    expect(play.getAttribute('title')).toBe(
+      'The server is not accepting authored encounters.'
+    );
   });
 
   it('missing Discord guild and production Dev do not invent Studio access', async () => {

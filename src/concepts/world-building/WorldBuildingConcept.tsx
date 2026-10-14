@@ -5389,6 +5389,10 @@ export function WorldBuildingConcept({
           autosaveBlocked,
           saveLocalDraft: saveNow,
           dismissNotice: () => setNotice(''),
+          publishing: {
+            busy: publishBusy,
+            setBusy: handlePublishBusy,
+          },
         })}
       </>
     );

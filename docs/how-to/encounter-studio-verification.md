@@ -50,8 +50,9 @@ This slice does not offer room-management/focus tools, discovery simulation,
 new opening/door creation tools, asset labels/markings, gameplay camera presets or
 policy editors. Existing supported declarations and policies are carried, not removed.
 The absence of room-navigation tools is not a statement about multi-room gameplay
-support. There is no Studio Save & Play, Publish, world-snapshot/import/reset flow
-or API/proto change. Visual lights are not gameplay illumination calculations.
+support. Studio Save & Play (#1236) reuses World Builder's publishing and
+launch hooks against the API's existing authoring and lobby services; there is
+no Studio world-snapshot/reset flow or API/proto change. Visual lights are not gameplay illumination calculations.
 
 ## Safe setup
 

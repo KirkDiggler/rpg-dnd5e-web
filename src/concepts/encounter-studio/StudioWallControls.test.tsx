@@ -123,6 +123,7 @@ function fixture(): EncounterStudioSession {
     autosaveBlocked: false,
     saveLocalDraft: vi.fn(),
     dismissNotice: vi.fn(),
+    publishing: { busy: false, setBusy: vi.fn() },
     wallEditing: {
       selectedId: null,
       assetRef: null,
