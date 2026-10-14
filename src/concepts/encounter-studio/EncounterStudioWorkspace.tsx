@@ -798,8 +798,9 @@ function StudioSurface({
                 setMapPalette('creatures');
               }}
               onShowMap={() => {
+                // The one arbiter already holds the creature; Build opens
+                // the inspector on it, in the view the author last used.
                 changeHome('build');
-                onViewChange('3d');
                 setSidebarOpen(true);
               }}
             />

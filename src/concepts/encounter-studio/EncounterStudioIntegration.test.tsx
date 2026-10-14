@@ -4981,3 +4981,84 @@ describe('S0 inspector through the real owner', () => {
     expect(inspector().getByLabelText('World X')).toBeTruthy();
   });
 });
+
+describe('S0 one selection across the homes', () => {
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  const placed = (id: string): HTMLElement =>
+    screen.getByRole('button', { name: new RegExp(`· ${id}$`) });
+  const openCreatures = (): void => {
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Creatures' })
+    );
+  };
+
+  it('a placed instance selected on the home is the map selection with the inspector open', async () => {
+    const original = createPopulatedStudioDocument();
+    const id = original.draft.room.monsterDeclarations[0]!.id;
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.keyDown(window, { key: 'n' });
+    openCreatures();
+    fireEvent.click(placed(id));
+    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Show creature on map'));
+    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
+    // The view the author last used: Layout.
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('true');
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(storage.document()).toEqual(original);
+  });
+
+  it("a creature selected on the map is pressed in the home's placed list", async () => {
+    const original = createPopulatedStudioDocument();
+    const id = original.draft.room.monsterDeclarations[0]!.id;
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'actor', id })
+    );
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    openCreatures();
+    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('switching homes keeps a wall selection', async () => {
+    const original = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    selectWall(storage, original.draft.room.walls![0]);
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Build'));
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
+    ).toBeTruthy();
+  });
+
+  it('the Encounter home lists Creatures, Stat blocks, Tables, Factions, Dispositions and Intel', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    expect(
+      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
+        .getAllByRole('button')
+        .map((node) => node.textContent)
+    ).toEqual([
+      'Creatures',
+      'Stat blocks',
+      'Tables',
+      'Factions',
+      'Dispositions',
+      'Intel',
+    ]);
+  });
+});

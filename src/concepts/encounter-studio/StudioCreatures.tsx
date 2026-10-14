@@ -196,9 +196,7 @@ export function StudioCreatures({
           <li key={actor.id}>
             <button
               type="button"
-              aria-pressed={
-                showPlacedEditor && selected?.monster.id === actor.id
-              }
+              aria-pressed={selected?.monster.id === actor.id}
               onClick={() => {
                 if (!session.creatures.select(actor.id))
                   setError('Creature selection is no longer available.');
