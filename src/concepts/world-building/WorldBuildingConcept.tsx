@@ -155,7 +155,11 @@ import {
   DispositionsPanel,
   FactionsPanel,
 } from './SitePolicies';
-import type { SiteScope } from './siteScope';
+import {
+  validateSiteEndings,
+  type SiteEnding,
+  type SiteScope,
+} from './siteScope';
 import {
   attachableDoorAssetRefs,
   attachDoorToOpening,
@@ -4828,6 +4832,21 @@ export function WorldBuildingConcept({
                 }
               }
             ),
+          },
+          endings: {
+            set: guardSnapshotIntent((next: readonly SiteEnding[]): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              try {
+                const endings = validateSiteEndings([...next]);
+                const scope = { ...current.scope };
+                if (endings.length === 0) delete scope.endings;
+                else scope.endings = endings;
+                return commitRoomDocument({ ...current, scope });
+              } catch (error) {
+                return rejectEdit(error);
+              }
+            }),
           },
           concealments: {
             setDoorHiddenBy: guardSnapshotIntent(

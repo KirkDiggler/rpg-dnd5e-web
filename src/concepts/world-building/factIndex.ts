@@ -23,7 +23,10 @@ import type { RoomDraftDocument } from './roomDraft';
 export type FactUseTarget =
   | { kind: 'creature'; id: string }
   | { kind: 'prop'; id: string }
-  | { home: 'tables' | 'factions' | 'dispositions' | 'intel'; id: string };
+  | {
+      home: 'tables' | 'factions' | 'dispositions' | 'intel' | 'endings';
+      id: string;
+    };
 
 export interface FactUse {
   kind:
@@ -35,7 +38,7 @@ export interface FactUse {
     | 'ending'
     | 'requires';
   label: string;
-  /** Absent for a noun with no studio view yet (an ending, S4). */
+  /** Absent for a noun with no studio view. */
   target?: FactUseTarget;
 }
 
@@ -124,7 +127,11 @@ export function factIndexOf(
         target: { home: 'intel', id: record.id },
       });
   for (const ending of scope.endings ?? [])
-    predicate(ending.when, { kind: 'ending', label: `ending ${ending.id}` });
+    predicate(ending.when, {
+      kind: 'ending',
+      label: `ending ${ending.id}`,
+      target: { home: 'endings', id: ending.id },
+    });
 
   const names = documentPlacementNames(document);
   const room = document.draft.room;

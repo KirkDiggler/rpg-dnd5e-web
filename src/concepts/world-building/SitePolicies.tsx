@@ -37,10 +37,7 @@ import {
   selectorWordLegalOn,
 } from '@/author/answerVocabulary';
 import {
-  MONSTERS,
-  PARTY,
   PREDICATE_FORMS,
-  predicateForm,
   STANCES,
   type PredicateDoc,
   type Stance,
@@ -75,6 +72,7 @@ import {
 } from './answerVocabulary';
 import { CheckApproachRows } from './CheckApproachRows';
 import { turnsTo } from './engineLaws';
+import { factionNameOptions } from './factionNameOptions';
 import { factionLayers } from './layeredOrders';
 import {
   addMonsterAction,
@@ -100,6 +98,7 @@ import {
   removeOptionRow,
 } from './optionEdits';
 import { placementDisplayNames } from './placementNames';
+import { FactionNameSelect, PredicateEditor } from './PredicateEditor';
 import {
   dispositionLine,
   pairMindNameIn,
@@ -1404,50 +1403,6 @@ function FactionRow({
 // Dispositions
 // ---------------------------------------------------------------------------
 
-/** The ids a `between` may name: the reserved `party` and `monsters` always
- * (they are words, not declarations), plus every declared faction, plus any
- * name this document already carries so a hand-written file is shown as
- * written rather than silently rewritten. */
-function factionNameOptions(
-  scope: SiteScope,
-  ...values: Array<string | undefined>
-): string[] {
-  const options = [PARTY, MONSTERS, ...(scope.factions ?? []).map((f) => f.id)];
-  for (const value of values) {
-    if (value && !options.includes(value)) options.push(value);
-  }
-  return options;
-}
-
-function FactionNameSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (next: string) => void;
-}) {
-  return (
-    <label>
-      <span>{label}</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 /** The `until:` predicate editor. Four forms, exactly one key; the value is
  * written as typed and the server judges whether the pair may carry it. */
 function UntilEditor({
@@ -1464,143 +1419,19 @@ function UntilEditor({
   onCommit: (until: PredicateDoc | undefined) => void;
 }) {
   const until = disposition.until;
-  const form = until === undefined ? 'none' : predicateForm(until);
-  const shown = until as unknown as Record<string, unknown> | undefined;
-  const stance = shown?.stance as
-    | { between: [string, string]; is: Stance }
-    | undefined;
   return (
     <div className="wb-policy-until">
-      <label>
-        <span>Until</span>
-        <select
-          aria-label="Until form"
-          value={form}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === 'none') onCommit(undefined);
-            else if (next === 'round') onCommit({ round: 1 });
-            else if (next === 'down')
-              onCommit({ down: room.monsterDeclarations[0]?.id ?? '' });
-            else if (next === 'fact')
-              onCommit({ fact: (shown?.fact as string) ?? '' });
-            else
-              onCommit({
-                stance: {
-                  between: stance?.between ?? [PARTY, PARTY],
-                  is: stance?.is ?? 'hostile',
-                },
-              });
-          }}
-        >
-          <option value="none">No authored condition</option>
-          {PREDICATE_FORMS.map((candidate) => (
-            <option key={candidate} value={candidate}>
-              {candidate}
-            </option>
-          ))}
-        </select>
-      </label>
-      {form === 'round' && (
-        <label>
-          <span>Round</span>
-          <input
-            type="number"
-            step={1}
-            aria-label="Until round"
-            value={String(shown?.round ?? 1)}
-            onChange={(event) =>
-              onCommit({ round: Number(event.target.value) })
-            }
-          />
-        </label>
-      )}
-      {form === 'down' && (
-        <label>
-          <span>Placement</span>
-          <select
-            aria-label="Until placement"
-            value={(shown?.down as string) ?? ''}
-            onChange={(event) => onCommit({ down: event.target.value })}
-          >
-            <option value="">(choose a placement)</option>
-            {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id} title={monster.id}>
-                {namesFor(room, placementNames).get(monster.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {form === 'fact' && (
-        <label>
-          <span>Fact</span>
-          <input
-            aria-label="Until fact"
-            value={(shown?.fact as string) ?? ''}
-            onChange={(event) => onCommit({ fact: event.target.value })}
-          />
-        </label>
-      )}
-      {form === 'stance' && (
-        <div className="wb-policy-until-stance">
-          <FactionNameSelect
-            label="Until stance first faction"
-            value={stance?.between[0] ?? PARTY}
-            options={factionNameOptions(
-              scope,
-              stance?.between[0],
-              stance?.between[1]
-            )}
-            onChange={(next) =>
-              onCommit({
-                stance: {
-                  between: [next, stance?.between[1] ?? PARTY],
-                  is: stance?.is ?? 'hostile',
-                },
-              })
-            }
-          />
-          <FactionNameSelect
-            label="Until stance second faction"
-            value={stance?.between[1] ?? PARTY}
-            options={factionNameOptions(
-              scope,
-              stance?.between[0],
-              stance?.between[1]
-            )}
-            onChange={(next) =>
-              onCommit({
-                stance: {
-                  between: [stance?.between[0] ?? PARTY, next],
-                  is: stance?.is ?? 'hostile',
-                },
-              })
-            }
-          />
-          <label>
-            <span>Is</span>
-            <select
-              aria-label="Until stance is"
-              value={stance?.is ?? 'hostile'}
-              onChange={(event) =>
-                onCommit({
-                  stance: {
-                    between: stance?.between ?? [PARTY, PARTY],
-                    is: event.target.value as Stance,
-                  },
-                })
-              }
-            >
-              {STANCES.map((word) => (
-                <option key={word} value={word}>
-                  {word}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
+      <PredicateEditor
+        value={until}
+        onChange={onCommit}
+        forms={PREDICATE_FORMS}
+        name="Until"
+        label="Until"
+        none="No authored condition"
+        scope={scope}
+        room={room}
+        names={namesFor(room, placementNames)}
+      />
       <p className="wb-help">
         {until === undefined
           ? 'The hostility never ends.'
@@ -2039,143 +1870,19 @@ export function ArrivesEditor({
   arrives: PredicateDoc | undefined;
   onCommit: (next: PredicateDoc | undefined) => void;
 }) {
-  const form = arrives === undefined ? 'none' : predicateForm(arrives);
-  const shown = arrives as unknown as Record<string, unknown> | undefined;
-  const stance = shown?.stance as
-    | { between: [string, string]; is: Stance }
-    | undefined;
   return (
     <div className="wb-creature-arrives" data-testid="creature-arrives">
-      <label>
-        <span>In reserve until</span>
-        <select
-          aria-label="Arrives form"
-          value={form}
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next === 'none') onCommit(undefined);
-            else if (next === 'round') onCommit({ round: 1 });
-            else if (next === 'down')
-              onCommit({ down: room.monsterDeclarations[0]?.id ?? '' });
-            else if (next === 'fact')
-              onCommit({ fact: (shown?.fact as string) ?? '' });
-            else
-              onCommit({
-                stance: {
-                  between: stance?.between ?? [PARTY, PARTY],
-                  is: stance?.is ?? 'hostile',
-                },
-              });
-          }}
-        >
-          <option value="none">Standing here from the first frame</option>
-          {PREDICATE_FORMS.map((candidate) => (
-            <option key={candidate} value={candidate}>
-              {candidate}
-            </option>
-          ))}
-        </select>
-      </label>
-      {form === 'round' && (
-        <label>
-          <span>Round</span>
-          <input
-            type="number"
-            step={1}
-            aria-label="Arrives round"
-            value={String(shown?.round ?? 1)}
-            onChange={(event) =>
-              onCommit({ round: Number(event.target.value) })
-            }
-          />
-        </label>
-      )}
-      {form === 'down' && (
-        <label>
-          <span>Placement</span>
-          <select
-            aria-label="Arrives placement"
-            value={(shown?.down as string) ?? ''}
-            onChange={(event) => onCommit({ down: event.target.value })}
-          >
-            <option value="">(choose a placement)</option>
-            {room.monsterDeclarations.map((monster) => (
-              <option key={monster.id} value={monster.id} title={monster.id}>
-                {namesFor(room, placementNames).get(monster.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {form === 'fact' && (
-        <label>
-          <span>Fact</span>
-          <input
-            aria-label="Arrives fact"
-            value={(shown?.fact as string) ?? ''}
-            onChange={(event) => onCommit({ fact: event.target.value })}
-          />
-        </label>
-      )}
-      {form === 'stance' && (
-        <div className="wb-policy-until-stance">
-          <FactionNameSelect
-            label="Arrives stance first faction"
-            value={stance?.between[0] ?? PARTY}
-            options={factionNameOptions(
-              scope,
-              stance?.between[0],
-              stance?.between[1]
-            )}
-            onChange={(next) =>
-              onCommit({
-                stance: {
-                  between: [next, stance?.between[1] ?? PARTY],
-                  is: stance?.is ?? 'hostile',
-                },
-              })
-            }
-          />
-          <FactionNameSelect
-            label="Arrives stance second faction"
-            value={stance?.between[1] ?? PARTY}
-            options={factionNameOptions(
-              scope,
-              stance?.between[0],
-              stance?.between[1]
-            )}
-            onChange={(next) =>
-              onCommit({
-                stance: {
-                  between: [stance?.between[0] ?? PARTY, next],
-                  is: stance?.is ?? 'hostile',
-                },
-              })
-            }
-          />
-          <label>
-            <span>Is</span>
-            <select
-              aria-label="Arrives stance is"
-              value={stance?.is ?? 'hostile'}
-              onChange={(event) =>
-                onCommit({
-                  stance: {
-                    between: stance?.between ?? [PARTY, PARTY],
-                    is: event.target.value as Stance,
-                  },
-                })
-              }
-            >
-              {STANCES.map((word) => (
-                <option key={word} value={word}>
-                  {word}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
+      <PredicateEditor
+        value={arrives}
+        onChange={onCommit}
+        forms={PREDICATE_FORMS}
+        name="Arrives"
+        label="In reserve until"
+        none="Standing here from the first frame"
+        scope={scope}
+        room={room}
+        names={namesFor(room, placementNames)}
+      />
       <p className="wb-help" data-testid="creature-arrives-note">
         {arrives === undefined
           ? 'This creature is in the run from the first frame.'

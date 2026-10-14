@@ -355,6 +355,14 @@ export interface EncounterStudioSession {
   exits: {
     set(cell: RoomHexCell, id: string | null): boolean;
   };
+  /** The root `endings` (rpg-project#578, H4): the whole list, in authored
+   * order, read through `validateSiteEndings`. An ending needs a `when`; a
+   * refusal returns false with the validator's sentence as the notice. */
+  endings: {
+    set(
+      next: readonly import('../world-building/siteScope').SiteEnding[]
+    ): boolean;
+  };
   /** The root `concealments` (rpg-project#578). Each intent is one
    * transaction; a refusal returns false with its sentence as the notice. */
   concealments: {

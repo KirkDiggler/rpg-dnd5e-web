@@ -5122,7 +5122,15 @@ describe('S0 one selection across the homes', () => {
       within(screen.getByRole('navigation', { name: 'Encounter tools' }))
         .getAllByRole('button')
         .map((node) => node.textContent)
-    ).toEqual(['Cast', 'Tables', 'Factions', 'Dispositions', 'Intel', 'Facts']);
+    ).toEqual([
+      'Cast',
+      'Tables',
+      'Factions',
+      'Dispositions',
+      'Intel',
+      'Endings',
+      'Facts',
+    ]);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
@@ -5149,6 +5157,64 @@ describe('S2 the fact index through the real owner', () => {
     expect(
       within(inspector).getByRole('region', { name: 'Read back' }).textContent
     ).toContain('cook, a Commoner of the kitchen, and the kitchen’s mind.');
+  });
+});
+
+describe('S4 the hidden nouns through the real owner', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+
+  it('the fact index opens the ending it names', async () => {
+    const document = createCastleReadBackDocument();
+    document.scope.endings = [
+      { id: 'king-deposed', when: { fact: 'king-deposed' } },
+    ];
+    mount(new MemoryStorage(document));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Facts');
+    const facts = screen.getByRole('region', { name: 'Facts' });
+    fireEvent.click(
+      within(
+        facts.querySelector('[data-fact="king-deposed"]') as HTMLElement
+      ).getByRole('button', { name: 'ending king-deposed' })
+    );
+    const endings = within(screen.getByRole('region', { name: 'Endings' }));
+    expect(
+      (endings.getByLabelText('Ending id') as HTMLInputElement).value
+    ).toBe('king-deposed');
+  });
+
+  it('an ending added on the home is one history entry', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Endings');
+    const endings = () =>
+      within(screen.getByRole('region', { name: 'Endings' }));
+    fireEvent.click(endings().getByRole('button', { name: 'Add ending' }));
+    fireEvent.change(endings().getByLabelText('Ending id'), {
+      target: { value: 'king-slain' },
+    });
+    fireEvent.change(endings().getByLabelText('Ending when form'), {
+      target: { value: 'down' },
+    });
+    fireEvent.change(endings().getByLabelText('Ending when placement'), {
+      target: { value: 'captain' },
+    });
+    fireEvent.click(endings().getByRole('button', { name: 'Apply ending' }));
+    expect(
+      within(endings().getByRole('list', { name: 'Authored endings' }))
+        .getAllByRole('listitem')
+        .map((item) => item.firstChild?.textContent)
+    ).toEqual([expect.stringMatching(/^king-slain: when .+ is down$/)]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(endings().getByText('No ending yet.')).toBeTruthy();
   });
 });
 

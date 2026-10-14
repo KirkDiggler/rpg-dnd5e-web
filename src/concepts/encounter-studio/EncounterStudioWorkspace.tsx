@@ -25,6 +25,7 @@ import { contentBounds } from './overviewFrame';
 import { StudioCast } from './StudioCast';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
+import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
 import {
@@ -47,6 +48,7 @@ const ENCOUNTER_SECTIONS = {
   factions: 'Factions',
   dispositions: 'Dispositions',
   intel: 'Intel',
+  endings: 'Endings',
   facts: 'Facts',
 } as const;
 
@@ -272,8 +274,10 @@ function StudioSurface({
   };
   /** A writer or reader in the fact index: select the placed thing on the
    * map, or open the home section that holds it. */
+  const [focusEnding, setFocusEnding] = useState<{ id: string } | null>(null);
   const openFactUse = (target: FactUseTarget): void => {
     if ('home' in target) {
+      if (target.home === 'endings') setFocusEnding({ id: target.id });
       setEncounterSection(target.home);
       return;
     }
@@ -855,6 +859,7 @@ function StudioSurface({
                 'factions',
                 'dispositions',
                 'intel',
+                'endings',
                 'facts',
               ] as const
             ).map((section) => (
@@ -862,7 +867,10 @@ function StudioSurface({
                 key={section}
                 type="button"
                 aria-pressed={encounterSection === section}
-                onClick={() => setEncounterSection(section)}
+                onClick={() => {
+                  setFocusEnding(null);
+                  setEncounterSection(section);
+                }}
               >
                 {ENCOUNTER_SECTIONS[section]}
               </button>
@@ -901,6 +909,9 @@ function StudioSurface({
                 {session.socialControls[encounterSection]}
               </section>
             )}
+          {home === 'encounter' && encounterSection === 'endings' && (
+            <StudioEndings session={session} focus={focusEnding?.id} />
+          )}
           {home === 'encounter' && encounterSection === 'facts' && (
             <StudioFacts
               document={session.document}
