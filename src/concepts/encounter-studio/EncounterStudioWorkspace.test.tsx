@@ -274,6 +274,8 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     click('3D');
     expect(observed.viewportProps).toEqual({
       ...observed.session?.viewportProps,
+      // The studio's own presentation: no region, so no 3D region label.
+      regionLabels: [],
       active: true,
       studioCanvas: true,
     });

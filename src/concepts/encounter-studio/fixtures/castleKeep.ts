@@ -14,6 +14,8 @@ import type { WorldPoint } from '../../world-building/types';
 import { layoutCellCenter } from '../layoutGeometry';
 import { createCastleWorkspaceDocument } from './castleWorkspace';
 
+const GUARD = 'dnd5e:monsters:guard';
+
 /** One keep room as an odd-r rectangle: columns and rows, inclusive. */
 interface KeepRoom {
   id: string;
@@ -130,18 +132,36 @@ export function createCastleKeepDocument(): RoomDraftDocument {
     q: col - Math.floor(r / 2) || 0,
     r,
   });
-  const placements: Array<{ id: string; ref: string; cell: RoomHexCell }> = [
-    { id: 'gate-1', ref: 'dnd5e:monsters:guard', cell: at(-2, 14) },
-    { id: 'gate-2', ref: 'dnd5e:monsters:guard', cell: at(2, 14) },
-    { id: 'captain', ref: 'dnd5e:monsters:captain', cell: at(0, -12) },
-    { id: 'reserve-1', ref: 'dnd5e:monsters:guard', cell: at(-20, 0) },
-    { id: 'reserve-2', ref: 'dnd5e:monsters:guard', cell: at(-18, 4) },
-    { id: 'cook', ref: 'dnd5e:monsters:commoner', cell: at(-20, -12) },
+  const soldier = 'dnd5e:npcs:kingdom:soldier-male-01';
+  const soldierF = 'dnd5e:npcs:kingdom:soldier-female-01';
+  const placements: Array<{
+    id: string;
+    ref: string;
+    look: string;
+    cell: RoomHexCell;
+  }> = [
+    { id: 'gate-1', ref: GUARD, look: soldier, cell: at(-2, 14) },
+    { id: 'gate-2', ref: GUARD, look: soldierF, cell: at(2, 14) },
+    {
+      id: 'captain',
+      ref: 'dnd5e:monsters:captain',
+      look: 'dnd5e:npcs:kingdom:prince-01',
+      cell: at(0, -12),
+    },
+    { id: 'reserve-1', ref: GUARD, look: soldier, cell: at(-20, 0) },
+    { id: 'reserve-2', ref: GUARD, look: soldierF, cell: at(-18, 4) },
+    {
+      id: 'cook',
+      ref: 'dnd5e:monsters:commoner',
+      look: 'dnd5e:npcs:kingdom:peasant-male-01',
+      cell: at(-20, -12),
+    },
   ];
   for (const placement of placements)
     draft = placeRoomMonster(draft, {
       id: placement.id,
       ref: placement.ref,
+      appearanceRef: placement.look,
       startingCell: { location: placement.cell },
     });
   draft = setRoomPartyStart(draft, at(0, 15));
