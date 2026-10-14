@@ -29,6 +29,7 @@ import { StudioDoorControls } from './StudioDoorControls';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
   type EncounterStudioSession,
@@ -53,6 +54,7 @@ const ENCOUNTER_SECTIONS = {
   intel: 'Intel',
   endings: 'Endings',
   concealments: 'Concealments',
+  scenarios: 'Scenarios',
   facts: 'Facts',
 } as const;
 
@@ -926,6 +928,7 @@ function StudioSurface({
                 'intel',
                 'endings',
                 'concealments',
+                'scenarios',
                 'facts',
               ] as const
             ).map((section) => (
@@ -984,6 +987,9 @@ function StudioSurface({
               onArmMembers={armConcealment}
               onOpenIntel={() => setEncounterSection('intel')}
             />
+          )}
+          {home === 'encounter' && encounterSection === 'scenarios' && (
+            <StudioScenarios document={session.document} />
           )}
           {home === 'encounter' && encounterSection === 'facts' && (
             <StudioFacts

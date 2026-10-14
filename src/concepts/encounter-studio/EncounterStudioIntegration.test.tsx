@@ -5130,6 +5130,7 @@ describe('S0 one selection across the homes', () => {
       'Intel',
       'Endings',
       'Concealments',
+      'Scenarios',
       'Facts',
     ]);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
