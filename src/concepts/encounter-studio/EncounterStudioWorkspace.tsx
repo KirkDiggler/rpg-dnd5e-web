@@ -1,5 +1,6 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -41,6 +42,21 @@ const ENCOUNTER_SECTIONS = {
   dispositions: 'Dispositions',
   intel: 'Intel',
 } as const;
+
+/** Holds a hidden subtree still: while it stays inactive React skips it, so
+ * Layout gestures never re-render the mounted 3D block. Becoming active (or
+ * the render that turns it inactive) renders it with current props. */
+const FrozenWhileHidden = memo(
+  function FrozenWhileHidden({
+    children,
+  }: {
+    active: boolean;
+    children: ReactNode;
+  }): React.JSX.Element {
+    return <>{children}</>;
+  },
+  (previous, next) => !previous.active && !next.active
+);
 
 interface EncounterStudioWorkspaceProps {
   compositionSource: CompositionSource;
@@ -203,6 +219,11 @@ function StudioSurface({
     onViewChange(next);
   };
   const spatial = home !== 'encounter';
+  // Once per studio session: the first visit to 3D mounts the viewport.
+  const [visited3d, setVisited3d] = useState(view === '3d');
+  useEffect(() => {
+    if (view === '3d') setVisited3d(true);
+  }, [view]);
   const arrangeVisible =
     sidebarOpen &&
     home === 'regions' &&
@@ -658,7 +679,7 @@ function StudioSurface({
           inert={!spatial}
           style={!spatial ? { visibility: 'hidden' } : undefined}
         >
-          {view === 'layout' ? (
+          {view === 'layout' && (
             <div className="es-canvas">
               <LayoutViewport
                 draft={session.document.draft}
@@ -694,70 +715,94 @@ function StudioSurface({
                 }
               />
             </div>
-          ) : (
-            <div
-              className={`es-3d ${home !== 'build' ? 'es-3d-inspection' : ''}`}
-            >
-              <aside
-                hidden={home !== 'build'}
-                className="es-props es-palette wb-panel"
-                aria-label="Placement palettes"
+          )}
+          {/* The 3D canvas mounts on the first visit to 3D and then stays
+              mounted, hidden while Layout is active, so a view switch is a
+              visibility change, not a renderer and texture rebuild
+              (rpg-dnd5e-web#1271). Hidden, its render loop is paused and the
+              block is frozen; the palette and scene tree are ordinary DOM
+              and render only while 3D is shown. */}
+          {visited3d && (
+            <FrozenWhileHidden active={view === '3d' && spatial}>
+              <div
+                className={`es-3d ${home !== 'build' ? 'es-3d-inspection' : ''}`}
+                style={view === '3d' ? undefined : { display: 'none' }}
+                aria-hidden={view !== '3d'}
+                inert={view !== '3d'}
               >
-                <nav className="es-buttons" aria-label="Placement palette">
-                  <button
-                    type="button"
-                    aria-pressed={mapPalette === 'props'}
-                    onClick={() => {
-                      if (mapPalette !== 'props') session.cancelTransients();
-                      setMapPalette('props');
-                    }}
+                {view === '3d' && (
+                  <aside
+                    hidden={home !== 'build'}
+                    className="es-props es-palette wb-panel"
+                    aria-label="Placement palettes"
                   >
-                    Props
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={mapPalette === 'creatures'}
-                    onClick={() => {
-                      if (mapPalette !== 'creatures')
-                        session.cancelTransients();
-                      setMapPalette('creatures');
-                    }}
-                  >
-                    Monsters &amp; NPCs
-                  </button>
-                </nav>
-                <div hidden={mapPalette !== 'props'} aria-label="Prop palette">
-                  {session.propControls.palette}
-                </div>
-                {home === 'build' && mapPalette === 'creatures' && (
-                  <StudioCreaturePalette
-                    session={session}
-                    onConfigure={() => {
-                      changeHome('encounter');
-                      setEncounterSection('creatures');
-                    }}
-                    onPlace={(id, appearanceRef) => {
-                      const accepted = session.creatures.armPlacement(
-                        id,
-                        appearanceRef
-                      );
-                      if (accepted) setSidebarOpen(true);
-                      return accepted;
-                    }}
-                  />
+                    <nav className="es-buttons" aria-label="Placement palette">
+                      <button
+                        type="button"
+                        aria-pressed={mapPalette === 'props'}
+                        onClick={() => {
+                          if (mapPalette !== 'props')
+                            session.cancelTransients();
+                          setMapPalette('props');
+                        }}
+                      >
+                        Props
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={mapPalette === 'creatures'}
+                        onClick={() => {
+                          if (mapPalette !== 'creatures')
+                            session.cancelTransients();
+                          setMapPalette('creatures');
+                        }}
+                      >
+                        Monsters &amp; NPCs
+                      </button>
+                    </nav>
+                    <div
+                      hidden={mapPalette !== 'props'}
+                      aria-label="Prop palette"
+                    >
+                      {session.propControls.palette}
+                    </div>
+                    {home === 'build' && mapPalette === 'creatures' && (
+                      <StudioCreaturePalette
+                        session={session}
+                        onConfigure={() => {
+                          changeHome('encounter');
+                          setEncounterSection('creatures');
+                        }}
+                        onPlace={(id, appearanceRef) => {
+                          const accepted = session.creatures.armPlacement(
+                            id,
+                            appearanceRef
+                          );
+                          if (accepted) setSidebarOpen(true);
+                          return accepted;
+                        }}
+                      />
+                    )}
+                  </aside>
                 )}
-              </aside>
-              <div className="es-canvas">
-                <WorldBuildingViewport {...session.viewportProps} />
+                <div className="es-canvas">
+                  <WorldBuildingViewport
+                    {...session.viewportProps}
+                    active={view === '3d' && spatial}
+                    studioCanvas
+                  />
+                </div>
+                {view === '3d' && (
+                  <aside
+                    hidden={home !== 'build'}
+                    className="es-props wb-panel"
+                    aria-label="Scene and selected props"
+                  >
+                    {session.propControls.tree}
+                  </aside>
+                )}
               </div>
-              <aside
-                hidden={home !== 'build'}
-                className="es-props wb-panel"
-                aria-label="Scene and selected props"
-              >
-                {session.propControls.tree}
-              </aside>
-            </div>
+            </FrozenWhileHidden>
           )}
         </div>
         <section

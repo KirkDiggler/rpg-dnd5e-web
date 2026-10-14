@@ -109,6 +109,12 @@ vi.mock('../world-building/useWorldMaterialCatalog', () => ({
 }));
 const boundary = vi.hoisted(() => ({
   latest: null as WorldBuildingViewportProps | null,
+  /** Canvas mounts stand in for WebGL context creations. */
+  mounts: 0,
+  frameloop: undefined as string | undefined,
+  dpr: undefined as unknown,
+  shadows: undefined as unknown,
+  element: null as HTMLCanvasElement | null,
 }));
 const services = vi.hoisted(() => ({
   putDungeon: vi.fn(),
@@ -123,17 +129,39 @@ const services = vi.hoisted(() => ({
 // Canvas: observe the controlled WorldSceneContents inputs, without rendering
 // its Three/model subtree. Callback invocations below exercise the actual owner
 // commands, NOT real raycasts, loaded meshes, or TransformControls gestures.
-vi.mock('@react-three/fiber', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@react-three/fiber')>()),
-  Canvas: ({
-    children,
-  }: {
-    children: ReactElement<WorldBuildingViewportProps>;
-  }) => {
-    boundary.latest = children.props;
-    return <div data-testid="webgl-boundary" />;
-  },
-}));
+vi.mock('@react-three/fiber', async (importOriginal) => {
+  const { useEffect, useRef } = await import('react');
+  return {
+    ...(await importOriginal<typeof import('@react-three/fiber')>()),
+    Canvas: ({
+      children,
+      frameloop,
+      dpr,
+      shadows,
+      onCreated,
+    }: {
+      children: ReactElement<WorldBuildingViewportProps>;
+      frameloop?: string;
+      dpr?: unknown;
+      shadows?: unknown;
+      onCreated?: (state: { gl: { domElement: HTMLCanvasElement } }) => void;
+    }) => {
+      boundary.latest = children.props;
+      boundary.frameloop = frameloop;
+      boundary.dpr = dpr;
+      boundary.shadows = shadows;
+      const element = useRef<HTMLCanvasElement>(null);
+      useEffect(() => {
+        boundary.mounts++;
+        boundary.element = element.current;
+        onCreated?.({ gl: { domElement: element.current! } });
+        // Mount-only, like a real renderer's creation.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return <canvas ref={element} data-testid="webgl-boundary" />;
+    },
+  };
+});
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => null,
 }));
@@ -210,6 +238,9 @@ let source: CompositionSource;
 beforeEach(() => {
   vi.clearAllMocks();
   boundary.latest = null;
+  boundary.mounts = 0;
+  boundary.frameloop = undefined;
+  boundary.element = null;
   materialPreview.catalog = null;
   captured = new Set();
   source = {
@@ -5069,5 +5100,73 @@ describe('S0 one selection across the homes', () => {
       'Dispositions',
       'Intel',
     ]);
+  });
+});
+
+describe('the studio 3D canvas stays mounted across view switches (#1271)', () => {
+  it('Layout → 3D → Layout → 3D creates one Canvas and pauses rendering while hidden', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    expect(boundary.mounts).toBe(0);
+    switchTo('3D');
+    expect(boundary.mounts).toBe(1);
+    expect(boundary.frameloop).toBe('always');
+    const canvas = screen.getByTestId('webgl-boundary');
+    switchTo('Layout');
+    expect(screen.getByTestId('webgl-boundary')).toBe(canvas);
+    expect(boundary.frameloop).toBe('never');
+    switchTo('3D');
+    expect(boundary.mounts).toBe(1);
+    expect(boundary.frameloop).toBe('always');
+    for (let cycle = 0; cycle < 4; cycle++) {
+      switchTo('Layout');
+      switchTo('3D');
+    }
+    expect(boundary.mounts).toBe(1);
+    expect(screen.getByTestId('webgl-boundary')).toBe(canvas);
+    // The encounter home hides the map: rendering pauses there too.
+    fireEvent.click(button('Encounter'));
+    expect(boundary.frameloop).toBe('never');
+    fireEvent.click(button('Build'));
+    expect(boundary.frameloop).toBe('always');
+    // Studio profile: capped pixel ratio, no shadow pass.
+    expect(boundary.dpr).toEqual([1, 1.25]);
+    expect(boundary.shadows).toBe(false);
+  });
+
+  it('a lost WebGL context shows a restore action that remounts the canvas', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    switchTo('3D');
+    const lost = new Event('webglcontextlost', { cancelable: true });
+    act(() => {
+      boundary.element!.dispatchEvent(lost);
+    });
+    expect(lost.defaultPrevented).toBe(true);
+    const restore = screen.getByRole('button', {
+      name: '3D view lost its graphics context, click to restore',
+    });
+    fireEvent.click(restore);
+    expect(boundary.mounts).toBe(2);
+    expect(
+      screen.queryByRole('button', {
+        name: '3D view lost its graphics context, click to restore',
+      })
+    ).toBeNull();
+    // The new canvas is watched too, and a browser restore clears it.
+    act(() => {
+      boundary.element!.dispatchEvent(
+        new Event('webglcontextlost', { cancelable: true })
+      );
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(/lost its graphics/);
+    act(() => {
+      boundary.element!.dispatchEvent(new Event('webglcontextrestored'));
+    });
+    expect(
+      screen.queryByRole('button', {
+        name: '3D view lost its graphics context, click to restore',
+      })
+    ).toBeNull();
   });
 });

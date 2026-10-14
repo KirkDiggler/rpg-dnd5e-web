@@ -1519,8 +1519,47 @@ export function WorldBuildingFog({
   return roomAuthoring ? null : <fog attach="fog" args={['#071113', 15, 31]} />;
 }
 
-export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
+/** Presentation-only mount options. Absent keeps the legacy builder exactly
+ * as it was. */
+export interface WorldBuildingCanvasOptions {
+  /** False while the viewport is mounted but hidden: the render loop stops,
+   * so a hidden canvas costs nothing. Default true. */
+  active?: boolean;
+  /** The Encounter Studio's canvas: a lower pixel-ratio ceiling, no shadow
+   * pass (no authoring mesh casts a shadow), and a visible restore action if
+   * the browser loses the WebGL context. */
+  studioCanvas?: boolean;
+}
+
+/** Studio pixel-ratio ceiling. The legacy builder keeps 1.6. */
+const STUDIO_CANVAS_DPR: [number, number] = [1, 1.25];
+
+export function WorldBuildingViewport({
+  active = true,
+  studioCanvas = false,
+  ...props
+}: WorldBuildingViewportProps & WorldBuildingCanvasOptions) {
   const [showCompositionBounds, setShowCompositionBounds] = useState(true);
+  const [contextLost, setContextLost] = useState(false);
+  // A restore remounts the Canvas: a fresh renderer and context.
+  const [canvasGeneration, setCanvasGeneration] = useState(0);
+  const detachContextWatch = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachContextWatch.current?.(), []);
+  const watchContext = (element: HTMLCanvasElement): void => {
+    detachContextWatch.current?.();
+    const lost = (event: Event): void => {
+      // Keep the page eligible for restoration instead of a dead canvas.
+      event.preventDefault();
+      setContextLost(true);
+    };
+    const restored = (): void => setContextLost(false);
+    element.addEventListener('webglcontextlost', lost);
+    element.addEventListener('webglcontextrestored', restored);
+    detachContextWatch.current = () => {
+      element.removeEventListener('webglcontextlost', lost);
+      element.removeEventListener('webglcontextrestored', restored);
+    };
+  };
   const [lightingDiagnostics, setLightingDiagnostics] = useState<
     readonly RegionLightingDiagnostic[]
   >([]);
@@ -1532,9 +1571,14 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
   return (
     <>
       <Canvas
+        key={canvasGeneration}
         camera={{ position: [8, 9, 8], fov: 48, near: 0.1, far: 100 }}
-        dpr={[1, 1.6]}
-        shadows
+        dpr={studioCanvas ? STUDIO_CANVAS_DPR : [1, 1.6]}
+        shadows={!studioCanvas}
+        frameloop={active ? 'always' : 'never'}
+        onCreated={
+          studioCanvas ? ({ gl }) => watchContext(gl.domElement) : undefined
+        }
         data-testid="world-building-canvas"
         aria-label={
           compositionGuides
@@ -1548,6 +1592,19 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
           onLightingDiagnosticsChange={setLightingDiagnostics}
         />
       </Canvas>
+      {studioCanvas && contextLost && (
+        <div role="alert" className="wb-context-lost">
+          <button
+            type="button"
+            onClick={() => {
+              setContextLost(false);
+              setCanvasGeneration((generation) => generation + 1);
+            }}
+          >
+            3D view lost its graphics context, click to restore
+          </button>
+        </div>
+      )}
       {lightingDiagnostics.length > 0 && (
         <div role="status" aria-label="Region lighting diagnostics">
           {lightingDiagnostics.map((diagnostic, index) => (
