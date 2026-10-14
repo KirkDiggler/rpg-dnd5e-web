@@ -37,7 +37,11 @@ import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
 } from './catalog';
-import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
+import {
+  paintConcealmentCells,
+  setConcealmentProp,
+  setPropHiddenBy,
+} from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
 import { setActorName } from './creaturePalette';
 import {
@@ -4756,6 +4760,57 @@ export function WorldBuildingConcept({
                   return commitRoomDocument({
                     ...current,
                     draft: setRoomMonsterDefinition(current.draft, id, ref),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+          },
+          doors: {
+            setBinding: guardSnapshotIntent(
+              (doorId: string, next: RoomDoorBinding | undefined): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                const attached = (current.draft.room.walls ?? []).some((wall) =>
+                  wall.openings.some((opening) => opening.door?.id === doorId)
+                );
+                if (!attached)
+                  return rejectEdit(new Error(`There is no door ${doorId}.`));
+                if (next === undefined)
+                  return rejectEdit(
+                    new Error(
+                      'A door on a wall always has a state. Delete the doorway to remove it.'
+                    )
+                  );
+                const bindings = withDoorBinding(
+                  current.draft.room.doorBindings,
+                  doorId,
+                  next
+                );
+                const room: RoomGameplayData = { ...current.draft.room };
+                if (bindings === undefined) delete room.doorBindings;
+                else room.doorBindings = bindings;
+                return commitRoomDocument({
+                  ...current,
+                  draft: { ...current.draft, room },
+                });
+              }
+            ),
+          },
+          concealments: {
+            setDoorHiddenBy: guardSnapshotIntent(
+              (doorId: string, concealmentId: string | null): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                try {
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setPropHiddenBy(
+                      current.scope,
+                      doorId,
+                      concealmentId
+                    ),
                   });
                 } catch (error) {
                   return rejectEdit(error);

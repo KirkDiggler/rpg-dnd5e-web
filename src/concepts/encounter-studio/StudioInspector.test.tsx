@@ -380,6 +380,106 @@ describe('StudioInspector', () => {
     });
   });
 
+  describe('the door state (rpg-project#578)', () => {
+    const DOOR = {
+      kind: 'door',
+      wallId: 'studio-wall',
+      openingId: 'studio-opening',
+      doorId: 'studio-door',
+    } as const;
+    function doorSession(
+      binding: NonNullable<
+        RoomDraftDocument['draft']['room']['doorBindings']
+      >[string]
+    ): EncounterStudioSession {
+      const base = populated();
+      const document = structuredClone(base.document);
+      document.draft.room.doorBindings = {
+        ...document.draft.room.doorBindings,
+        'studio-door': binding,
+      };
+      return selected({ ...base, document }, DOOR);
+    }
+
+    it('state is a pick-list of open, closed and locked that applies on change', () => {
+      const live = doorSession({ closed: true });
+      inspector(live);
+      const state = within(region()).getByLabelText(
+        'Door state'
+      ) as HTMLSelectElement;
+      expect(state.value).toBe('closed');
+      expect([...state.options].map((option) => option.text)).toEqual([
+        'Open',
+        'Closed',
+        'Locked',
+      ]);
+      fireEvent.change(state, { target: { value: 'locked' } });
+      expect(live.doors.setBinding).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        { locked: [{ ability: 'str', dc: 15 }] }
+      );
+    });
+
+    it('a lock row edits ability, tool and DC through the door edits', () => {
+      const live = doorSession({ locked: [{ ability: 'str', dc: 15 }] });
+      inspector(live);
+      const view = within(region());
+      fireEvent.change(view.getByLabelText('Ability for check 1 of the lock'), {
+        target: { value: 'dex' },
+      });
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [{ ability: 'dex', dc: 15 }],
+      });
+      fireEvent.change(view.getByLabelText('Tool for check 1 of the lock'), {
+        target: { value: 'thieves-tools' },
+      });
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [{ ability: 'str', dc: 15, tool: 'thieves-tools' }],
+      });
+      fireEvent.click(
+        view.getByRole('button', { name: 'Add check to the lock' })
+      );
+      expect(live.doors.setBinding).toHaveBeenLastCalledWith('studio-door', {
+        locked: [
+          { ability: 'str', dc: 15 },
+          { ability: 'str', dc: 15 },
+        ],
+      });
+    });
+
+    it('removing the last lock check returns the door to closed', () => {
+      const live = doorSession({ locked: [{ ability: 'dex', dc: 15 }] });
+      inspector(live);
+      fireEvent.click(
+        within(region()).getByRole('button', {
+          name: 'Remove check 1 from the lock',
+        })
+      );
+      expect(live.doors.setBinding).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        { closed: true }
+      );
+    });
+
+    it('Hidden by names the concealment that lists the door, or Not hidden', () => {
+      const live = doorSession({ closed: true });
+      inspector(live);
+      const hidden = within(region()).getByLabelText(
+        'Hidden by'
+      ) as HTMLSelectElement;
+      expect(hidden.value).toBe('studio-secret');
+      expect([...hidden.options].map((option) => option.text)).toEqual([
+        'Not hidden',
+        'studio-secret',
+      ]);
+      fireEvent.change(hidden, { target: { value: '' } });
+      expect(live.concealments.setDoorHiddenBy).toHaveBeenCalledExactlyOnceWith(
+        'studio-door',
+        null
+      );
+    });
+  });
+
   it('creature view shows look, facing and the creature orders form', () => {
     const session = createFakeStudioSession();
     const draft = placeRoomMonster(session.document.draft, {

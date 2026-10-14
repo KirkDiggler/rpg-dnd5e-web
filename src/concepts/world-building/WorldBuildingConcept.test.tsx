@@ -4954,6 +4954,108 @@ describe('Studio owner facade', () => {
     expect(owner.session.arrange).toBeNull();
   });
 
+  describe('the door state and Hidden by (rpg-project#578)', () => {
+    it('setting locked writes a lock check and one history entry', () => {
+      const owner = mountStudio(populatedStorage());
+      const before = owner.session.document;
+      act(() => {
+        expect(
+          owner.session.doors.setBinding('studio-door', {
+            locked: [{ ability: 'dex', dc: 15, tool: 'thieves-tools' }],
+          })
+        ).toBe(true);
+      });
+      expect(
+        owner.session.document.draft.room.doorBindings?.['studio-door']
+      ).toEqual({
+        locked: [{ ability: 'dex', dc: 15, tool: 'thieves-tools' }],
+      });
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+
+    it('removing the last lock check returns the door to closed', () => {
+      const owner = mountStudio(populatedStorage());
+      act(() => {
+        owner.session.doors.setBinding('studio-door', {
+          locked: [{ ability: 'dex', dc: 15 }],
+        });
+      });
+      act(() => {
+        owner.session.doors.setBinding('studio-door', { closed: true });
+      });
+      expect(
+        owner.session.document.draft.room.doorBindings?.['studio-door']
+      ).toEqual({ closed: true });
+    });
+
+    it('a door on a wall cannot be made not a door, and an unknown door is refused', () => {
+      const owner = mountStudio(populatedStorage());
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.doors.setBinding('studio-door', undefined)).toBe(
+          false
+        );
+        expect(owner.session.doors.setBinding('no-door', {})).toBe(false);
+      });
+      expect(owner.session.document).toBe(before);
+      expect(owner.session.notice).toMatch(/Delete the doorway|no door/);
+    });
+
+    it('Hidden by moves the door between concealments in one step', () => {
+      const document = createPopulatedStudioDocument();
+      document.scope.concealments = {
+        ...document.scope.concealments,
+        vault: { checks: [{ ability: 'investigation', dc: 14 }] },
+      };
+      const storage = new MemoryStorage();
+      storage.setItem(
+        ROOM_DRAFT_STORAGE_KEY,
+        stringifyRoomDraft(document.draft, document.scope)
+      );
+      const owner = mountStudio(storage);
+      const before = owner.session.document;
+      act(() => {
+        expect(
+          owner.session.concealments.setDoorHiddenBy('studio-door', 'vault')
+        ).toBe(true);
+      });
+      const concealments = owner.session.document.scope.concealments!;
+      expect(concealments.vault.props).toEqual(['studio-door']);
+      expect(concealments['studio-secret'].props).toBeUndefined();
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+
+    it('hiding a door leaves its wall out of the concealment', () => {
+      const document = createPopulatedStudioDocument();
+      document.scope.concealments = {
+        vault: { checks: [{ ability: 'investigation', dc: 14 }] },
+      };
+      const storage = new MemoryStorage();
+      storage.setItem(
+        ROOM_DRAFT_STORAGE_KEY,
+        stringifyRoomDraft(document.draft, document.scope)
+      );
+      const owner = mountStudio(storage);
+      act(() => {
+        owner.session.concealments.setDoorHiddenBy('studio-door', 'vault');
+      });
+      const vault = owner.session.document.scope.concealments!.vault;
+      expect(vault.props).toEqual(['studio-door']);
+      expect(vault.props).not.toContain('studio-wall');
+      expect(vault.cells).toBeUndefined();
+      act(() => {
+        owner.session.concealments.setDoorHiddenBy('studio-door', null);
+      });
+      expect(
+        owner.session.document.scope.concealments!.vault.props
+      ).toBeUndefined();
+    });
+  });
+
   it('reserves scene3 region identities in transient door placement without changing author intent', () => {
     const document = createPopulatedStudioDocument();
     document.draft.scene.version = 3;

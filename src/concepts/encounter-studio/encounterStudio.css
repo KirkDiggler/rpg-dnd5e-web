@@ -1091,3 +1091,40 @@
   white-space: nowrap;
   user-select: none;
 }
+
+/* The hidden nouns (rpg-project#578): a labelled field, and a check's routes
+ * as one wrapping row each, so a narrow inspector never scrolls sideways. */
+.encounter-studio .es-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0.25rem 0;
+}
+.encounter-studio .es-field > span:first-child {
+  min-width: 6rem;
+}
+.encounter-studio .es-check-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.encounter-studio .es-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.25rem 0.5rem;
+}
+.encounter-studio .es-check-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.encounter-studio .es-check-row input[type='number'] {
+  width: 4.5rem;
+}
+.encounter-studio .es-check-row input:not([type]) {
+  width: 9rem;
+  max-width: 100%;
+}

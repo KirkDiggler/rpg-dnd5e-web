@@ -285,6 +285,8 @@ function createAppStudioSession(): EncounterStudioSession {
   return {
     document: { draft, scope: {} },
     intentEpoch: 0,
+    doors: { setBinding: vi.fn(() => true) },
+    concealments: { setDoorHiddenBy: vi.fn(() => true) },
     regionEditing: {
       resolutions: [],
       createRoomLabel: vi.fn(() => true),

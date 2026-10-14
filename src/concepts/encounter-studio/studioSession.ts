@@ -5,6 +5,7 @@ import type {
 } from '../world-building/authoringRegions';
 import type { CastEdit } from '../world-building/cast';
 import type {
+  RoomDoorBinding,
   RoomDraft,
   RoomDraftDocument,
   RoomHexCell,
@@ -338,6 +339,20 @@ export interface EncounterStudioSession {
     select(id: string | null): boolean;
   };
   doorEditing: StudioDoorEditing;
+  /** A wall door's state (rpg-project#578). One transaction through
+   * `normalizeDoorBinding` and `withDoorBinding`. A door on a wall always
+   * has a state, so `undefined` is refused; deleting the doorway removes
+   * it. Refused for an id that is no wall's door. */
+  doors: {
+    setBinding(doorId: string, next: RoomDoorBinding | undefined): boolean;
+  };
+  /** The root `concealments` (rpg-project#578). Each intent is one
+   * transaction; a refusal returns false with its sentence as the notice. */
+  concealments: {
+    /** The door id leaves every concealment's `props` and joins the chosen
+     * one, or none. The door's wall and floor are never added. */
+    setDoorHiddenBy(doorId: string, concealmentId: string | null): boolean;
+  };
   wallEditing: StudioWallEditing;
   regionEditing: StudioRegionEditing;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */

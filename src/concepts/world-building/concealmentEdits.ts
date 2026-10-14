@@ -91,3 +91,35 @@ export function paintConcealmentCells(
   if (byCell.size === 0) delete next.cells;
   return setConcealment(scope, id, next);
 }
+
+/** The concealment whose `props` list this id, if any. A prop, door or wall
+ * is in at most one concealment, so the first is the only one. */
+export function concealmentHiding(
+  scope: SiteScope,
+  propId: string
+): string | null {
+  for (const [id, spec] of Object.entries(scope.concealments ?? {}))
+    if (spec.props?.includes(propId)) return id;
+  return null;
+}
+
+/** A door's Hidden by (rpg-project#578): the id leaves every concealment's
+ * `props` and joins the chosen one, or none. Only the id moves; the door's
+ * wall and the floor under it are never added. */
+export function setPropHiddenBy(
+  scope: SiteScope,
+  propId: string,
+  concealmentId: string | null
+): SiteScope {
+  if (
+    concealmentId !== null &&
+    !Object.hasOwn(scope.concealments ?? {}, concealmentId)
+  )
+    throw new Error(`There is no concealment ${concealmentId}.`);
+  let next = scope;
+  for (const id of Object.keys(scope.concealments ?? {}))
+    next = setConcealmentProp(next, id, propId, false);
+  return concealmentId === null
+    ? next
+    : setConcealmentProp(next, concealmentId, propId, true);
+}

@@ -260,3 +260,22 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
     return `${word} ${value}`;
   return word;
 }
+
+/** An ability or skill a check rolls, as a word: "STR", "Persuasion",
+ * "Sleight of hand". One home for the lock rows, the concealment checks and
+ * the read-back (rpg-project#578). */
+export function abilityPhrase(ability: string): string {
+  if (ability.length <= 3) return ability.toUpperCase();
+  const words = ability.replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** One check route: "Investigation DC 14", "DEX DC 15 with thieves-tools". */
+export function checkPhrase(check: {
+  ability: string;
+  dc: number;
+  tool?: string;
+}): string {
+  const head = `${abilityPhrase(check.ability)} DC ${check.dc}`;
+  return check.tool ? `${head} with ${check.tool}` : head;
+}

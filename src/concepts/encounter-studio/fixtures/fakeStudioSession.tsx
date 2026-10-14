@@ -35,6 +35,8 @@ export function createFakeStudioSession(
       move: vi.fn(() => true),
       cancelPreview: vi.fn(),
     },
+    doors: { setBinding: vi.fn(() => true) },
+    concealments: { setDoorHiddenBy: vi.fn(() => true) },
     arrange: null,
     commitArrange: vi.fn(() => true),
     selectHex: vi.fn(() => true),

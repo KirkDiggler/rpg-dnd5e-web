@@ -6,6 +6,15 @@ import {
   statBlockIsKnown,
   type CastMember,
 } from '../world-building/cast';
+import { concealmentHiding } from '../world-building/concealmentEdits';
+import {
+  addDoorApproach,
+  doorBindingState,
+  patchDoorApproach,
+  removeDoorApproach,
+  setDoorBindingState,
+  type DoorBindingState,
+} from '../world-building/doorBindingEdits';
 import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
@@ -17,6 +26,7 @@ import {
   type ArrangeComposition,
 } from './StudioArrangePanel';
 import { CastMemberForm } from './StudioCast';
+import { StudioCheckRows } from './StudioCheckRows';
 import { StudioDimensions } from './StudioDimensions';
 import { StudioRegionFinishes } from './StudioRegionFinishes';
 import { StudioSection } from './StudioSection';
@@ -287,10 +297,129 @@ function DoorView({
   return (
     <>
       {arrange.kind === 'door' && (
-        <p className="es-help">Model: {arrange.door.assetRef}</p>
+        <>
+          <p className="es-help">Model: {arrange.door.assetRef}</p>
+          <DoorState session={session} doorId={arrange.door.id} />
+        </>
       )}
       <Form session={session} />
     </>
+  );
+}
+
+const DOOR_STATES: ReadonlyArray<{ value: DoorBindingState; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'locked', label: 'Locked' },
+];
+
+/** A wall door's state, its lock and the concealment that hides it
+ * (rpg-project#578, H1, H2). Each pick applies at once; the fields are
+ * `doorBindingEdits`' and `concealmentEdits`'. */
+function DoorState({
+  session,
+  doorId,
+}: {
+  session: EncounterStudioSession;
+  doorId: string;
+}): React.JSX.Element {
+  const binding = session.document.draft.room.doorBindings?.[doorId];
+  const state = doorBindingState(binding);
+  const rows = binding?.locked ?? [];
+  const concealments = Object.keys(session.document.scope.concealments ?? {});
+  const hiddenBy = concealmentHiding(session.document.scope, doorId);
+  return (
+    <StudioSection title="Door" level="section">
+      <label className="es-field">
+        <span>State</span>
+        <select
+          aria-label="Door state"
+          value={state === 'none' ? '' : state}
+          onChange={(event) =>
+            session.doors.setBinding(
+              doorId,
+              setDoorBindingState(
+                binding,
+                event.target.value as DoorBindingState
+              )
+            )
+          }
+        >
+          {state === 'none' && (
+            <option value="" disabled>
+              No state
+            </option>
+          )}
+          {DOOR_STATES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {state === 'locked' && (
+        <StudioSection title="Lock" level="subsection">
+          <p className="es-help">
+            Any one of these beats the lock. A locked door is shut.{' '}
+            <FieldHelp field="Lock">
+              Removing the last check leaves the door closed and unlocked.
+            </FieldHelp>
+          </p>
+          <StudioCheckRows
+            owner="the lock"
+            rows={rows}
+            onPatch={(index, patch) =>
+              session.doors.setBinding(
+                doorId,
+                patchDoorApproach(binding, index, patch)
+              )
+            }
+            onRemove={(index) =>
+              session.doors.setBinding(
+                doorId,
+                rows.length <= 1
+                  ? setDoorBindingState(binding, 'closed')
+                  : removeDoorApproach(binding, index)
+              )
+            }
+            onAdd={() =>
+              session.doors.setBinding(doorId, addDoorApproach(binding))
+            }
+          />
+        </StudioSection>
+      )}
+      <label className="es-field">
+        <span>
+          Hidden by{' '}
+          <FieldHelp field="Hidden by">
+            Hiding a door hides only the door. Its wall and the floor stay in
+            view.
+          </FieldHelp>
+        </span>
+        <select
+          aria-label="Hidden by"
+          value={hiddenBy ?? ''}
+          onChange={(event) =>
+            session.concealments.setDoorHiddenBy(
+              doorId,
+              event.target.value || null
+            )
+          }
+        >
+          <option value="">Not hidden</option>
+          {concealments.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {concealments.length === 0 && (
+        <p className="es-help">
+          Add a concealment in Encounter, Concealments to hide this door.
+        </p>
+      )}
+    </StudioSection>
   );
 }
 
