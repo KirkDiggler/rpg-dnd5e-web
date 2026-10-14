@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetReviewLab } from './AssetReviewLab';
@@ -111,6 +117,7 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 });
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -118,6 +125,10 @@ afterEach(() => {
 async function renderReadyLab() {
   render(<MaterialEditorLab />);
   await screen.findByRole('button', { name: 'Scene GLB loaded' });
+  // A DOM button may exist before React flushes passive effects under suite
+  // contention. The real loader starts inside its effect, so its completion
+  // cannot precede the loading event. Honor that order in this test adapter.
+  await waitFor(() => expect(sceneLifecycle.starts).toBe(1));
   fireEvent.click(screen.getByRole('button', { name: 'Scene GLB loaded' }));
   expect(
     await screen.findByText('Prepared editor geometry loaded.')
