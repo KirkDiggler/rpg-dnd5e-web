@@ -46,7 +46,7 @@ import {
   type Stance,
 } from '@/author/factionVocabulary';
 import { paletteNameForRef } from '@/author/paletteData';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CopyId } from '../encounter-studio/CopyId';
 import { AboutPanel, FieldHelp } from '../encounter-studio/FieldHelp';
 import { StudioSection } from '../encounter-studio/StudioSection';
@@ -132,6 +132,7 @@ import type {
   SiteScope,
   SiteTemper,
 } from './siteScope';
+import { useRowKeys } from './useRowKeys';
 
 /** A faction's `temper:` as written — one sealed word, or the word→share mix
  * it deals one from per member. */
@@ -987,6 +988,23 @@ export function AnswerEntryRow({
   );
 }
 
+/** A list of entry rows keyed so each row's editor follows it when a weight
+ * edit re-sorts the list (R12). */
+export function EntryList<T extends object>({
+  rows,
+  children,
+}: {
+  rows: readonly T[];
+  children: (row: T, index: number, key: string) => ReactNode;
+}) {
+  const keys = useRowKeys(rows);
+  return (
+    <ul className="wb-policy-entries">
+      {rows.map((row, index) => children(row, index, keys[index]!))}
+    </ul>
+  );
+}
+
 /** A NAMED ROOT TABLE, CHOSEN FROM WHAT THE SITE DECLARES (rpg-toolkit#1897,
  * rpg-dnd5e-web#1201).
  *
@@ -1076,10 +1094,10 @@ function FactionTableEditor({
             <code>{trigger}</code>{' '}
             {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
           </p>
-          <ul className="wb-policy-entries">
-            {(table[trigger] ?? []).map((entry, index) => (
+          <EntryList rows={table[trigger] ?? []}>
+            {(entry, index, key) => (
               <AnswerEntryRow
-                key={index}
+                key={key}
                 trigger={trigger}
                 entry={entry}
                 onCommit={(next) =>
@@ -1099,8 +1117,8 @@ function FactionTableEditor({
                   )
                 }
               />
-            ))}
-          </ul>
+            )}
+          </EntryList>
         </div>
       ))}
       <FactionInherits scope={scope} faction={faction} ownRows={false} />
@@ -2776,10 +2794,10 @@ export function OptionsEditor({
                 <p className="wb-policy-trigger">
                   <code>{verdict}</code> {VERDICT_HEADINGS[verdict]}
                 </p>
-                <ul className="wb-policy-entries">
-                  {(option[verdict] ?? []).map((row, rowIndex) => (
+                <EntryList rows={option[verdict] ?? []}>
+                  {(row, rowIndex, key) => (
                     <AnswerEntryRow
-                      key={rowIndex}
+                      key={key}
                       trigger={verdict}
                       label={`${of} ${verdict}`}
                       entry={row}
@@ -2792,8 +2810,8 @@ export function OptionsEditor({
                         commit(removeOptionRow(option, verdict, rowIndex))
                       }
                     />
-                  ))}
-                </ul>
+                  )}
+                </EntryList>
                 <button
                   type="button"
                   aria-label={`Add ${verdict} row to ${of}`}

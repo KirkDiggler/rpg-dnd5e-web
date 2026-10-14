@@ -34,7 +34,7 @@ import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
 import { useState } from 'react';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
 import type { RoomGameplayData } from './roomDraft';
-import { AnswerEntryRow } from './SitePolicies';
+import { AnswerEntryRow, EntryList } from './SitePolicies';
 import {
   addSiteTable,
   addSiteTableAnswerEntry,
@@ -209,10 +209,10 @@ function TableRow({
                   <code>{trigger}</code>{' '}
                   {answerTrigger(trigger)?.label ?? 'Unknown trigger'}
                 </p>
-                <ul className="wb-policy-entries">
-                  {(table[trigger] ?? []).map((entry, index) => (
+                <EntryList rows={table[trigger] ?? []}>
+                  {(entry, index, key) => (
                     <AnswerEntryRow
-                      key={index}
+                      key={key}
                       collapsed={collapsedEntries}
                       trigger={trigger}
                       entry={entry}
@@ -233,8 +233,8 @@ function TableRow({
                         )
                       }
                     />
-                  ))}
-                </ul>
+                  )}
+                </EntryList>
                 <button
                   type="button"
                   aria-label={`Add entry on ${trigger} to ${id}`}
