@@ -24,7 +24,11 @@ import {
   type AnswerWordSpec,
 } from '@/author/answerVocabulary';
 import { MONSTERS, PARTY } from '@/author/factionVocabulary';
-import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
+import {
+  heaviestFirst,
+  type AnswerEntryShape,
+  type AnswerTableShape,
+} from './answerTableShape';
 import type { SiteDisposition, SiteFaction, SiteScope } from './siteScope';
 
 /** A fresh faction id nobody has taken. */
@@ -212,7 +216,7 @@ export function patchSiteAnswerEntry(
   const entries = [...(table[trigger] ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
-  table[trigger] = entries;
+  table[trigger] = heaviestFirst(entries);
   return patchSiteFaction(scope, factionId, { on: table });
 }
 
@@ -339,7 +343,10 @@ export function patchSiteTableAnswerEntry(
   const entries = [...(table[trigger] ?? [])];
   if (index < 0 || index >= entries.length) return scope;
   entries[index] = entry;
-  return patchSiteTable(scope, id, { ...table, [trigger]: entries });
+  return patchSiteTable(scope, id, {
+    ...table,
+    [trigger]: heaviestFirst(entries),
+  });
 }
 
 /** Remove one entry of a root table by index. A trigger left with no entries

@@ -237,11 +237,36 @@ export function validateAnswerTable(
       fail(`${path}.${trigger}`, 'expected a list of entries');
     if (rawEntries.length === 0)
       fail(`${path}.${trigger}`, EMPTY_TRIGGER_REFUSAL);
-    table[trigger] = rawEntries.map((entry, index) =>
-      validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, trigger)
+    // Judged in the AUTHORED order, so a refusal names the row the author
+    // wrote; carried HEAVIEST FIRST (R12).
+    table[trigger] = heaviestFirst(
+      rawEntries.map((entry, index) =>
+        validateAnswerEntry(entry, `${path}.${trigger}[${index}]`, trigger)
+      )
     );
   }
   return table;
+}
+
+/**
+ * The rows HEAVIEST FIRST, equal weights in authored order (rpg-project#576,
+ * R12). An absent weight is the engine's 1.
+ *
+ * ORDER CARRIES NO MEANING IN THE ROLL. The engine weighs every eligible row
+ * whatever its position (`mind/behavior` `Pick`), so the sort changes no
+ * outcome; it exists because a heavy row in the middle of a list is misread.
+ * The beat's entry index is a position in the file as SAVED, which is this
+ * order. Weights are never touched.
+ */
+export function heaviestFirst<T extends { weight?: number }>(
+  rows: readonly T[]
+): T[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort(
+      (a, b) => (b.row.weight ?? 1) - (a.row.weight ?? 1) || a.index - b.index
+    )
+    .map(({ row }) => row);
 }
 
 /**
@@ -809,13 +834,15 @@ export function validateOptions(
       if (!Array.isArray(rows)) fail(verdictAt, 'expected a list of entries');
       if (rows.length === 0)
         fail(verdictAt, optionEmptyVerdictRefusal(verdict));
-      option[verdict] = rows.map((row, rowIndex) => {
-        const rowAt = `${verdictAt}[${rowIndex}]`;
-        const entry = validateAnswerEntry(row, rowAt, verdict);
-        if (isProp && entry.flee !== undefined)
-          fail(`${rowAt}.flee`, OPTION_PROP_FLEES_REFUSAL);
-        return entry;
-      });
+      option[verdict] = heaviestFirst(
+        rows.map((row, rowIndex) => {
+          const rowAt = `${verdictAt}[${rowIndex}]`;
+          const entry = validateAnswerEntry(row, rowAt, verdict);
+          if (isProp && entry.flee !== undefined)
+            fail(`${rowAt}.flee`, OPTION_PROP_FLEES_REFUSAL);
+          return entry;
+        })
+      );
     }
     return option;
   });
