@@ -14,7 +14,8 @@ describe('useRowKeys', () => {
     });
     const [ka, kb, kc] = result.current;
     const heavier = { ...c, weight: 5 };
-    rerender({ rows: heaviestFirst([a, b, heavier]) });
+    // The owner clones the document on every commit: no row object survives.
+    rerender({ rows: structuredClone(heaviestFirst([a, b, heavier])) });
     expect(result.current).toEqual([kc, ka, kb]);
   });
 

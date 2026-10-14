@@ -6,29 +6,40 @@ import { useRef } from 'react';
  *
  * A weight edit moves its row, so an index key would hand the open editor
  * — and the input being typed in — to whichever row slid into its place.
- * The edits replace only the edited row's object and keep every other
- * row's, so a row is known by its object: a row seen before keeps its key,
- * and a new object takes the key of the row that vanished, which is the
- * row it replaced. A row added with nothing vanished gets a fresh key.
+ *
+ * A ROW IS KNOWN BY ITS CONTENT, NOT ITS OBJECT: the document owner clones
+ * the whole draft on every commit, so no row object survives one. An edit
+ * changes one row's content and leaves the others' alone, so a row whose
+ * content was seen before keeps its key, and a row with new content takes
+ * the key of the row whose content vanished — the row it replaced. A row
+ * added with nothing vanished gets a fresh key. Equal rows are matched in
+ * order.
  */
-export function useRowKeys(rows: readonly object[]): string[] {
+export function useRowKeys(rows: readonly unknown[]): string[] {
   const state = useRef<{
-    keys: WeakMap<object, string>;
-    previous: readonly object[];
+    previous: ReadonlyArray<{ content: string; key: string }>;
     next: number;
-  }>({ keys: new WeakMap(), previous: [], next: 0 });
+  }>({ previous: [], next: 0 });
   const s = state.current;
-  const known = rows.map((row) => s.keys.get(row));
-  const live = new Set(known.filter((key) => key !== undefined));
-  const freed = s.previous
-    .map((row) => s.keys.get(row))
-    .filter((key): key is string => key !== undefined && !live.has(key));
-  const out = rows.map((row, index) => {
-    const key =
-      known[index] ?? freed.shift() ?? `row-${(s.next += 1).toString(36)}`;
-    s.keys.set(row, key);
-    return key;
+  const contents = rows.map((row) => JSON.stringify(row));
+  const used = new Set<number>();
+  const keys: (string | undefined)[] = contents.map((content) => {
+    const at = s.previous.findIndex(
+      (entry, index) => !used.has(index) && entry.content === content
+    );
+    if (at < 0) return undefined;
+    used.add(at);
+    return s.previous[at]!.key;
   });
-  s.previous = rows;
+  const freed = s.previous
+    .filter((_, index) => !used.has(index))
+    .map((entry) => entry.key);
+  const out = keys.map(
+    (key) => key ?? freed.shift() ?? `row-${(s.next += 1).toString(36)}`
+  );
+  s.previous = contents.map((content, index) => ({
+    content,
+    key: out[index]!,
+  }));
   return out;
 }

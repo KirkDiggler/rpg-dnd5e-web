@@ -597,7 +597,14 @@ describe('TablesPanel — rows that summarise until opened (rpg-project#579)', (
 describe('TablesPanel — rows heaviest first (rpg-project#576)', () => {
   function Controlled({ initial }: { initial: SiteScope }) {
     const [scope, setScope] = useState(initial);
-    return <TablesPanel scope={scope} onChange={setScope} collapsedEntries />;
+    // The owner clones the document on every commit; so does this.
+    return (
+      <TablesPanel
+        scope={scope}
+        onChange={(next) => setScope(structuredClone(next))}
+        collapsedEntries
+      />
+    );
   }
 
   it('a row given weight 5 moves to the top with its editor still open', () => {

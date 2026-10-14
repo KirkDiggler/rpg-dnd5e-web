@@ -274,7 +274,11 @@ export function FactionInherits({
                   : `from ${faction.id}’s own rows`}
             </p>
             {(fromTable || ownRows) && (
-              <AnswerTableReadout table={{ [trigger]: [...layer.rows] }} />
+              <ul className="wb-policy-entries">
+                {layer.rows.map((entry, index) => (
+                  <li key={index}>{entryText(entry, trigger)}</li>
+                ))}
+              </ul>
             )}
           </div>
         );
