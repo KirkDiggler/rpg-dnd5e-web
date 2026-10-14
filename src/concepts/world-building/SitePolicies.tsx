@@ -722,7 +722,11 @@ export function AnswerEntryRow({
   label = trigger,
   excludeWords = [],
   allowNoWord = false,
+  collapsed = false,
 }: {
+  /** Start as one summary line with Edit and Remove; Edit opens today's
+   * controls (rpg-project#579). Opening one row closes none of the others. */
+  collapsed?: boolean;
   trigger: string;
   entry: AnswerEntryShape;
   onCommit: (entry: AnswerEntryShape) => void;
@@ -739,6 +743,7 @@ export function AnswerEntryRow({
    * are mostly this: what the creature SAYS back. */
   allowNoWord?: boolean;
 }) {
+  const [open, setOpen] = useState(!collapsed);
   const words = answerWordsForTrigger(trigger).filter(
     (candidate) => !excludeWords.includes(candidate.key)
   );
@@ -795,6 +800,28 @@ export function AnswerEntryRow({
     onCommit(next);
   };
 
+  if (!open)
+    return (
+      <li className="wb-policy-entry wb-entry-collapsed" data-entry-word={word}>
+        <span className="wb-entry-summary">{entryText(entry, trigger)}</span>
+        <button
+          type="button"
+          aria-label={`Edit ${label} entry`}
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="wb-danger"
+          aria-label={`Remove ${label} entry`}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </li>
+    );
   return (
     <li
       className="wb-policy-entry wb-entry-sentence-card"
@@ -914,6 +941,15 @@ export function AnswerEntryRow({
         order.
       </p>
       <p className="wb-help">{entryText(entry, trigger)}</p>
+      {collapsed && (
+        <button
+          type="button"
+          aria-label={`Done editing ${label} entry`}
+          onClick={() => setOpen(false)}
+        >
+          Done
+        </button>
+      )}
     </li>
   );
 }
@@ -2548,9 +2584,10 @@ export function OptionsEditor({
             </label>
             <label>
               <span>Says</span>
-              <input
+              <textarea
                 aria-label={`Line ${n} for ${owner}`}
                 placeholder="What the character says"
+                rows={Math.max(2, Math.ceil(option.say.length / 36))}
                 value={option.say}
                 onChange={(event) =>
                   commit(patchOption(option, { say: event.target.value }))

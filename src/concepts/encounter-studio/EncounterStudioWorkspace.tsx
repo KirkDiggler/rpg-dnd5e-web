@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { documentPlacementNames } from '../world-building/placementNames';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
@@ -868,6 +869,9 @@ function StudioSurface({
             <TablesPanel
               key={session.document.draft.id}
               scope={session.document.scope}
+              room={session.document.draft.room}
+              placementNames={documentPlacementNames(session.document)}
+              collapsedEntries
               explicitRename
               onChange={(scope) => session.commitTables(scope.tables)}
             />

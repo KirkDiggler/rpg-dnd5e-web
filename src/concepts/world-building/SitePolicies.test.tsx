@@ -935,3 +935,28 @@ describe('placements read as words (rpg-project#579)', () => {
     ]);
   });
 });
+
+describe('an option line wraps by word (rpg-project#579)', () => {
+  it('the option line is a textarea and keeps its text on commit', () => {
+    const LONG =
+      'Where is the cellar, and do not pretend you have never heard of it, because the cook told me the barrels hide a door and the door hides a stair that goes down past the old well to the crypt';
+    const onOrdersChange = vi.fn();
+    const binding: RoomMonsterBinding = {
+      options: [{ id: 'ask', say: 'Where?', check: [] }],
+    };
+    render(
+      <CreatureOrders
+        scope={{}}
+        room={fixture.draft.room}
+        monster={goblin}
+        binding={binding}
+        onOrdersChange={onOrdersChange}
+      />
+    );
+    const line = screen.getByLabelText(`Line 1 for ${goblin.id}`);
+    expect(line.tagName.toLowerCase()).toBe('textarea');
+    fireEvent.change(line, { target: { value: LONG } });
+    const next = onOrdersChange.mock.calls.at(-1)![0] as RoomMonsterBinding;
+    expect(next.options?.[0]?.say).toBe(LONG);
+  });
+});

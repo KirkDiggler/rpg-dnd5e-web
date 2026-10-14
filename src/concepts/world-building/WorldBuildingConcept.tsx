@@ -5664,7 +5664,12 @@ export function WorldBuildingConcept({
                 disposition and others." */}
             <details className="wb-collapse" data-inspector-section="tables">
               <summary aria-label="Tables">Tables</summary>
-              <TablesPanel scope={siteScope} onChange={commitPolicies} />
+              <TablesPanel
+                scope={siteScope}
+                room={roomDraft.room}
+                placementNames={placementNames}
+                onChange={commitPolicies}
+              />
             </details>
 
             {/* THE SELECTION SCOPE (web#1178). Everything here belongs to the

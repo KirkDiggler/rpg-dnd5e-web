@@ -33,6 +33,7 @@
 import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
 import { useState } from 'react';
 import type { AnswerEntryShape, AnswerTableShape } from './answerTableShape';
+import type { RoomGameplayData } from './roomDraft';
 import { AnswerEntryRow } from './SitePolicies';
 import {
   addSiteTable,
@@ -43,6 +44,7 @@ import {
   renameSiteTable,
 } from './sitePolicyEdits';
 import type { SiteScope } from './siteScope';
+import { tableUsers } from './tableUsers';
 
 export interface TablesPanelProps {
   scope: SiteScope;
@@ -52,6 +54,12 @@ export interface TablesPanelProps {
   onChange: (nextScope: SiteScope) => void;
   /** Studio section navigation must not implicitly commit a typed name. */
   explicitRename?: boolean;
+  /** The open room: which placements name a table, for its summary. */
+  room?: RoomGameplayData;
+  /** Placement id to its shown name; the id when absent. */
+  placementNames?: ReadonlyMap<string, string>;
+  /** Each entry starts as one summary line until opened (the studio). */
+  collapsedEntries?: boolean;
 }
 
 /** One root table's triggers and entries. Its own component so the id's
@@ -63,12 +71,18 @@ function TableRow({
   table,
   onChange,
   explicitRename,
+  room,
+  placementNames,
+  collapsedEntries,
 }: {
   scope: SiteScope;
   id: string;
   table: AnswerTableShape;
   onChange: (next: SiteScope) => void;
   explicitRename: boolean;
+  room?: RoomGameplayData;
+  placementNames?: ReadonlyMap<string, string>;
+  collapsedEntries: boolean;
 }) {
   const authored = ANSWER_TRIGGERS.map((trigger) => trigger.key).filter(
     (key) => table[key] !== undefined
@@ -90,6 +104,17 @@ function TableRow({
    * half-typed name never becomes a table's id mid-keystroke — `FactionRow`
    * already keeps this rule for the same reason. */
   const [typedId, setTypedId] = useState(id);
+  const entries = authored.reduce(
+    (count, key) => count + (table[key]?.length ?? 0),
+    0
+  );
+  const users = tableUsers(scope, room, id);
+  const usedBy = [
+    ...users.factions,
+    ...users.placements.map(
+      (placement) => placementNames?.get(placement) ?? placement
+    ),
+  ];
 
   /** A rename onto a name that is already taken is REFUSED here rather than
    * silently replacing the other declaration. The edit helper returns the scope
@@ -116,9 +141,10 @@ function TableRow({
           <span className="wb-policy-summary-note">
             {' '}
             ·{' '}
-            {authored.length === 0
+            {entries === 0
               ? 'empty'
-              : `${authored.length} trigger${authored.length === 1 ? '' : 's'}`}
+              : `${entries} ${entries === 1 ? 'entry' : 'entries'}`}{' '}
+            · {usedBy.length ? `used by ${usedBy.join(', ')}` : 'not used'}
           </span>
         </summary>
         <div className="wb-policy-form">
@@ -187,6 +213,7 @@ function TableRow({
                   {(table[trigger] ?? []).map((entry, index) => (
                     <AnswerEntryRow
                       key={index}
+                      collapsed={collapsedEntries}
                       trigger={trigger}
                       entry={entry}
                       onCommit={(next: AnswerEntryShape) =>
@@ -264,6 +291,9 @@ export function TablesPanel({
   scope,
   onChange,
   explicitRename = false,
+  room,
+  placementNames,
+  collapsedEntries = false,
 }: TablesPanelProps) {
   const tables = scope.tables ?? {};
   const ids = Object.keys(tables);
@@ -291,6 +321,9 @@ export function TablesPanel({
               table={tables[id] ?? {}}
               onChange={onChange}
               explicitRename={explicitRename}
+              room={room}
+              placementNames={placementNames}
+              collapsedEntries={collapsedEntries}
             />
           ))}
         </ul>

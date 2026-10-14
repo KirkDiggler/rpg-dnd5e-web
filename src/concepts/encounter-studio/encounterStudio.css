@@ -950,3 +950,35 @@
   align-items: center;
   gap: 0.25rem 0.35rem;
 }
+
+/* Table and option rows (S5-T5): a table entry is one sentence until opened,
+ * and an option's line wraps by word in a field that grows with it. */
+.encounter-studio .wb-entry-collapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+.encounter-studio .wb-entry-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.encounter-studio .wb-entry-collapsed button {
+  padding: 0.2rem 0.55rem;
+}
+.encounter-studio .wb-option > label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+.encounter-studio .wb-option textarea {
+  width: 100%;
+  resize: vertical;
+  field-sizing: content;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+.encounter-studio :is(.wb-option, .wb-option-check, .wb-policy-trigger) {
+  overflow-wrap: anywhere;
+}
