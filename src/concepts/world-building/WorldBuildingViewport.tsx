@@ -71,6 +71,7 @@ import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import {
+  rectangleOf,
   workspaceBounds,
   workspaceCellAtPoint,
   workspaceCells,
@@ -133,6 +134,9 @@ export interface WorldBuildingViewportProps {
       | 'wall'
       | 'door';
     doorEditing?: StudioDoorEditing;
+    /** Studio only: a select-tool click on a workspace floor cell selects
+     * that hex. Absent keeps the legacy clear-the-scene-selection click. */
+    onSelectHex?(cell: RoomHexCell): void;
     intentEpoch?: number;
     walkableHexes: readonly RoomHexCell[];
     concealments?: SiteConcealments;
@@ -406,7 +410,7 @@ function WorldBuildingCameraControls({
   useEffect(recordCamera, [recordCamera]);
   const extent = useMemo(
     () =>
-      workspace?.kind === 'centered-odd-r' ? workspaceBounds(workspace) : null,
+      workspace && rectangleOf(workspace) ? workspaceBounds(workspace) : null,
     [workspace]
   );
   const fittedRectangle = useRef(false);
@@ -490,7 +494,7 @@ function RoomAuthoringDeclarations({
 }) {
   const fillGeometry = useMemo(() => createWalkableHexFillGeometry(), []);
   useEffect(() => () => fillGeometry.dispose(), [fillGeometry]);
-  const rectangular = authoring.workspace.kind === 'centered-odd-r';
+  const rectangular = rectangleOf(authoring.workspace) !== null;
   return (
     <group name="room-authored-declarations">
       {rectangular ? (
@@ -692,7 +696,7 @@ export function WorldSceneContents(
   const displayScene = previewScene ?? scene;
   const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspace = usePresentationWorkspace(props.roomAuthoring?.workspace);
-  const rectangular = workspace?.kind === 'centered-odd-r';
+  const rectangular = !!workspace && rectangleOf(workspace) !== null;
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(workspace ?? 6),
     [workspace]
@@ -1000,7 +1004,18 @@ export function WorldSceneContents(
           if (event.button !== 0 || isGizmoPointer()) return;
           if (floorGesture.current) return;
           const cell = pickGroundCell(event.point);
-          if (rectangular && !cell) return;
+          const selectingHex =
+            !!props.roomAuthoring?.onSelectHex &&
+            (props.roomAuthoring.tool ?? 'select') === 'select' &&
+            !props.roomAuthoring.activeConcealmentId;
+          if (rectangular && !cell) {
+            // Studio: a click off the workspace floor selects nothing.
+            if (selectingHex && !event.shiftKey) {
+              event.stopPropagation();
+              onSelect([]);
+            }
+            return;
+          }
           event.stopPropagation();
           const roomTool = props.roomAuthoring?.tool;
           if (roomTool === 'door') {
@@ -1159,7 +1174,11 @@ export function WorldSceneContents(
             setWallPreview({ start, end: start });
             return;
           }
-          if (!event.shiftKey) onSelect([]);
+          // Shift extends the scene pick (it feeds Group selection) and
+          // leaves the current selection alone.
+          if (event.shiftKey) return;
+          if (selectingHex && cell) props.roomAuthoring!.onSelectHex!(cell);
+          else onSelect([]);
         }}
         onPointerMove={(event) => {
           const roomTool = props.roomAuthoring?.tool;

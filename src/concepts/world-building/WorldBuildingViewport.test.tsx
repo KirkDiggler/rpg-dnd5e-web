@@ -2441,3 +2441,87 @@ it('applies the committed field to real surfaces while preserving guides, actor 
   expect(diagnostic).not.toHaveBeenCalled();
   await view.unmount();
 });
+
+describe('Studio 3D hex selection', () => {
+  const base = {
+    scene: {
+      version: 2 as const,
+      id: 'hexes',
+      name: 'Hexes',
+      items: [],
+      groups: [],
+    },
+    previewScene: null,
+    selectedIds: [],
+    tool: 'select' as const,
+    activeDrag: null,
+    onDrop: vi.fn(),
+    onDragFinished: vi.fn(),
+    onTransformPreview: vi.fn(),
+    onTransformCommit: vi.fn(),
+    onTransformReject: vi.fn(),
+    onAssetState: vi.fn(),
+    showCompositionBounds: false,
+  };
+  async function ground(onSelect: (ids: string[]) => void) {
+    const onSelectHex = vi.fn<(cell: { q: number; r: number }) => void>();
+    const view = await ReactThreeTestRenderer.create(
+      <WorldSceneContents
+        {...base}
+        onSelect={onSelect}
+        roomAuthoring={{
+          workspace: centeredRoomWorkspace(6, 6),
+          tool: 'select',
+          walkableHexes: [],
+          propDeclarations: {},
+          onWalkableGesture: vi.fn(),
+          onSelectHex,
+        }}
+      />
+    );
+    const mesh = view.scene.findByProps({
+      name: 'world-building-finite-ground',
+    });
+    const click = async (q: number, r: number, shiftKey = false) => {
+      const p = cubeToWorld({ x: q, y: -q - r, z: r }, HEX_SIZE);
+      await view.fireEvent(mesh, 'pointerDown', {
+        button: 0,
+        buttons: 1,
+        pointerId: 7,
+        shiftKey,
+        point: new THREE.Vector3(p.x, 0, p.z),
+        target: { setPointerCapture: vi.fn() },
+        stopPropagation: vi.fn(),
+      });
+    };
+    return { view, click, onSelectHex };
+  }
+
+  it('ground click in select mode selects the hex under the pointer', async () => {
+    const onSelect = vi.fn<(ids: string[]) => void>();
+    const { view, click, onSelectHex } = await ground(onSelect);
+    await click(1, 1);
+    expect(onSelectHex).toHaveBeenCalledExactlyOnceWith({ q: 1, r: 1 });
+    expect(onSelect).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('click off the workspace floor selects nothing', async () => {
+    const onSelect = vi.fn<(ids: string[]) => void>();
+    const { view, click, onSelectHex } = await ground(onSelect);
+    await click(20, 0);
+    expect(onSelectHex).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith([]);
+    await view.unmount();
+  });
+
+  it('shift ground click keeps the current pick', async () => {
+    const onSelect = vi.fn<(ids: string[]) => void>();
+    const { view, click, onSelectHex } = await ground(onSelect);
+    await click(1, 1, true);
+    await click(20, 0, true);
+    expect(onSelectHex).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});

@@ -1,14 +1,13 @@
 import { useEffect, type ReactNode } from 'react';
 
+/** The sidebar sections still in use. Build has one, the inspector, so its
+ * sidebar renders no section nav; Regions keeps its own (S3 retires it). */
 export type StudioSidebarSection =
-  | 'arrange'
-  | 'walls'
-  | 'tables'
-  | 'size'
-  | 'doors'
-  | 'labels'
+  | 'inspector'
+  | 'regions'
   | 'region'
-  | 'regions';
+  | 'labels'
+  | 'tables';
 
 /** One presentation slot, not another document or selection owner. Children
  * stay mounted while tucked away so navigation does not commit/discard forms. */
@@ -18,21 +17,19 @@ export function StudioSidebar({
   onSectionChange,
   onToggle,
   children,
-  sections = [
-    { id: 'arrange', label: 'Arrange' },
-    { id: 'walls', label: 'Walls' },
-    { id: 'doors', label: 'Doors' },
-    { id: 'labels', label: 'Notes' },
-  ],
+  sections = [],
   keyboardEnabled = true,
+  compact = false,
 }: {
   open: boolean;
   section: StudioSidebarSection;
   onSectionChange(section: StudioSidebarSection): void;
   onToggle(): void;
   children: ReactNode;
+  /** Absent or empty: no section nav (the Build inspector). */
   sections?: readonly { id: StudioSidebarSection; label: string }[];
   keyboardEnabled?: boolean;
+  compact?: boolean;
 }): React.JSX.Element {
   useEffect(() => {
     if (!keyboardEnabled) return;
@@ -67,21 +64,23 @@ export function StudioSidebar({
       id="studio-sidebar"
       aria-label="Studio options"
       hidden={!open}
-      className={`es-sidebar ${section === 'arrange' ? 'es-sidebar-compact' : ''}`}
+      className={`es-sidebar ${compact ? 'es-sidebar-compact' : ''}`}
     >
       <div className="es-sidebar-header">
-        <nav className="es-buttons" aria-label="Sidebar sections">
-          {sections.map(({ id, label }) => (
-            <button
-              type="button"
-              key={id}
-              aria-pressed={section === id}
-              onClick={() => onSectionChange(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        {sections.length > 0 && (
+          <nav className="es-buttons" aria-label="Sidebar sections">
+            {sections.map(({ id, label }) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={section === id}
+                onClick={() => onSectionChange(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
         <button
           type="button"
           onClick={onToggle}

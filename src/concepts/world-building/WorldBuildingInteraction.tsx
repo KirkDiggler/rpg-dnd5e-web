@@ -20,6 +20,7 @@ import {
 import type { WorldScene } from './types';
 import {
   containsWorkspacePoint,
+  rectangleOf,
   type RoomWorkspace,
 } from './workspaceGeometry';
 import {
@@ -37,7 +38,7 @@ function assertSceneAnchors(
   scene: WorldScene,
   workspace?: RoomWorkspace
 ): void {
-  if (workspace?.kind !== 'centered-odd-r') return;
+  if (!workspace || !rectangleOf(workspace)) return;
   for (const entry of [...scene.items, ...scene.groups]) {
     if (!containsWorkspacePoint(workspace, entry.transform))
       throw new Error(

@@ -75,7 +75,7 @@ export interface DecodeSingleRoomDungeonResult {
 /** The fixed play contract of this first playable slice. Keys and values are
  * validated structurally so an equivalent YAML mapping order never matters
  * and unknown/unsupported fields are refused instead of accepted silently. */
-const PLAY_CONTRACT = {
+export const PLAY_CONTRACT = {
   void: 'transparent',
   lighting: 'bright',
   standing: 'centre-covered',

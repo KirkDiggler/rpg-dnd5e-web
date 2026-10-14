@@ -711,7 +711,8 @@ it('authors the front room goblin’s two lines, and emits the engine’s own op
   const rest = { ...authored.draft.room.monsterBindings!['goblin-1'] };
   delete rest.options;
   expect(rest).toEqual(goblin);
-});
+  // ~13s alone at the base revision; the default 15s limit trips under full-suite load.
+}, 30000);
 
 it('requires explicit prop declaration before attaching intel and scopes controls to one selection', () => {
   const storage = new MemoryStorage(seed());
@@ -755,7 +756,10 @@ it('names an older creature and moves it once without changing its rules, looks 
     'Standard Guard'
   );
   expect(
-    screen.getByRole('heading', { name: 'Arrange · Standard Guard' })
+    within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+      'heading',
+      { level: 2, name: 'Standard Guard' }
+    )
   ).toBeTruthy();
   const named = storage.document();
   fireEvent.click(screen.getByRole('button', { name: 'Move creature' }));
@@ -1776,14 +1780,23 @@ function pointInDocument(
   world: WorldPoint
 ): { clientX: number; clientY: number } {
   const workspace = storage.document().draft.workspace;
+  // Apply dimensions frames the workspace's centre (S0 T6).
+  const extent =
+    workspace.kind === undefined ? null : workspaceBounds(workspace);
   const client = worldToClient(
     world,
     createLayoutTransform(
       bounds,
-      { center: { x: 0, z: 0 }, zoom: 1 },
-      workspace.kind === 'centered-odd-r'
-        ? workspaceBounds(workspace)
-        : workspace.horizontalLimit
+      {
+        center: extent
+          ? {
+              x: (extent.minX + extent.maxX) / 2,
+              z: (extent.minZ + extent.maxZ) / 2,
+            }
+          : { x: 0, z: 0 },
+        zoom: 1,
+      },
+      extent ?? workspace.horizontalLimit
     )
   )!;
   return { clientX: client.x, clientY: client.y };
@@ -2368,7 +2381,12 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    // Size lives in the room view: nothing selected is the room.
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByLabelText(
+        'Width (hexes)'
+      )
+    ).toBeTruthy();
     gesture(zero);
     const floor = storage.document();
     expectPreserved(floor, original);
@@ -2705,7 +2723,6 @@ describe('joined structural walls in the populated Studio document', () => {
                 />
                 <StudioWallControls
                   session={next}
-                  drawing
                   onDismiss={() => {}}
                   onExitWallTool={() => {}}
                 />
@@ -4901,6 +4918,188 @@ describe('Studio staged region lighting integrated presentation', () => {
       storage.document().draft.scene.authoringRegions![0]
     ).not.toHaveProperty('lighting');
     expect(storage.document().draft.scene.version).toBe(4);
+  });
+});
+
+describe('S0 inspector through the real owner', () => {
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  it('wall height edited in the inspector is one history entry and undo restores it with the wall still selected', async () => {
+    const original = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    const wall = original.draft.room.walls![0];
+    selectWall(storage, wall);
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
+    ).toBeTruthy();
+    const writes = storage.roomWrites();
+    fireEvent.change(inspector().getByLabelText('Appearance height'), {
+      target: { value: '4' },
+    });
+    fireEvent.submit(
+      inspector().getByRole('form', { name: 'Arrange selected noun' })
+    );
+    expect(storage.document().draft.room.walls![0].appearance.height).toBe(4);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    fireEvent.click(button('Undo'));
+    expect(storage.document().draft.room.walls![0].appearance.height).toBe(
+      wall.appearance.height
+    );
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
+    ).toBeTruthy();
+    expect(
+      (inspector().getByLabelText('Appearance height') as HTMLInputElement)
+        .value
+    ).toBe(String(wall.appearance.height));
+  });
+
+  it('undo of a creature placement falls back to the room view', async () => {
+    const original = createPopulatedStudioDocument();
+    original.draft.scene.version = Math.max(
+      original.draft.scene.version,
+      5
+    ) as typeof original.draft.scene.version;
+    original.draft.scene.creaturePalette = [
+      {
+        id: 'guard-look',
+        name: 'Gate guard',
+        ref: 'dnd5e:monsters:human',
+        modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+      },
+    ];
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    fireEvent.click(button('Monsters & NPCs'));
+    fireEvent.click(button('Place on map'));
+    act(() => viewport().roomAuthoring!.onPlaceMonster!({ q: -1, r: 1 }));
+    expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
+      original.draft.room.monsterDeclarations.length + 1
+    );
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Gate guard' })
+    ).toBeTruthy();
+    fireEvent.click(button('Undo'));
+    expect(storage.document().draft.room.monsterDeclarations).toEqual(
+      original.draft.room.monsterDeclarations
+    );
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Room' })
+    ).toBeTruthy();
+  });
+
+  it('a prop dropped in 3D becomes the selection and opens the prop view', async () => {
+    const original = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('false');
+    act(() =>
+      viewport().onDrop(
+        { kind: 'prop', id: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+        { kind: 'ground', point: { x: 1, z: 1 } }
+      )
+    );
+    const before = new Set(original.draft.scene.items.map((item) => item.id));
+    const dropped = storage
+      .document()
+      .draft.scene.items.find((item) => !before.has(item.id))!;
+    expect(dropped).toBeTruthy();
+    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('true');
+    expect(
+      inspector().getByRole('heading', {
+        level: 2,
+        name: dropped.label || dropped.id,
+      })
+    ).toBeTruthy();
+    expect(inspector().getByLabelText('World X')).toBeTruthy();
+  });
+});
+
+describe('S0 one selection across the homes', () => {
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  const placed = (id: string): HTMLElement =>
+    screen.getByRole('button', { name: new RegExp(`· ${id}$`) });
+  const openCreatures = (): void => {
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Creatures' })
+    );
+  };
+
+  it('a placed instance selected on the home is the map selection with the inspector open', async () => {
+    const original = createPopulatedStudioDocument();
+    const id = original.draft.room.monsterDeclarations[0]!.id;
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.keyDown(window, { key: 'n' });
+    openCreatures();
+    fireEvent.click(placed(id));
+    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Show creature on map'));
+    expect(button('Build').getAttribute('aria-pressed')).toBe('true');
+    // The view the author last used: Layout.
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Inspector (N)').getAttribute('aria-expanded')).toBe('true');
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(storage.document()).toEqual(original);
+  });
+
+  it("a creature selected on the map is pressed in the home's placed list", async () => {
+    const original = createPopulatedStudioDocument();
+    const id = original.draft.room.monsterDeclarations[0]!.id;
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'actor', id })
+    );
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    openCreatures();
+    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('switching homes keeps a wall selection', async () => {
+    const original = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    selectWall(storage, original.draft.room.walls![0]);
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(button('Regions'));
+    fireEvent.click(button('Build'));
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Studio north wall' })
+    ).toBeTruthy();
+  });
+
+  it('the Encounter home lists Creatures, Stat blocks, Tables, Factions, Dispositions and Intel', async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    fireEvent.click(button('Encounter'));
+    expect(
+      within(screen.getByRole('navigation', { name: 'Encounter tools' }))
+        .getAllByRole('button')
+        .map((node) => node.textContent)
+    ).toEqual([
+      'Creatures',
+      'Stat blocks',
+      'Tables',
+      'Factions',
+      'Dispositions',
+      'Intel',
+    ]);
   });
 });
 

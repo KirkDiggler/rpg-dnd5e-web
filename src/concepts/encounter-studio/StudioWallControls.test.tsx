@@ -55,6 +55,9 @@ function fixture(): EncounterStudioSession {
       cancelPreview: vi.fn(),
     },
     commitArrange: vi.fn(() => true),
+    selectHex: vi.fn(() => true),
+    clearSelection: vi.fn(() => true),
+    armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
     commitTemplates: vi.fn(() => true),
     creatures: {
@@ -90,6 +93,7 @@ function fixture(): EncounterStudioSession {
       tree: null,
       selection: null,
       arrangeExtras: null,
+      groupActions: null,
     },
     saveStatus: '',
     notice: null,
@@ -135,10 +139,9 @@ function fixture(): EncounterStudioSession {
   };
 }
 function props(
-  session: ReturnType<typeof fixture>,
-  drawing = true
+  session: ReturnType<typeof fixture>
 ): Parameters<typeof StudioWallControls>[0] {
-  return { session, drawing, onDismiss: vi.fn(), onExitWallTool: vi.fn() };
+  return { session, onDismiss: vi.fn(), onExitWallTool: vi.fn() };
 }
 
 function selectedPanel(session: EncounterStudioSession): React.JSX.Element {

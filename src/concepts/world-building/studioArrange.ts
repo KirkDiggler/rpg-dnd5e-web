@@ -4,6 +4,7 @@ import type {
   RegionResolution,
 } from './authoringRegions';
 import { authoredActorName, setActorName } from './creaturePalette';
+import { regionsAtCell } from './regionAtCell';
 import { resolveAuthoringRegions } from './regionBoundaryGeometry';
 import {
   isCellWithinWorkspace,
@@ -46,6 +47,7 @@ export type StudioArrangeTarget =
   | { readonly kind: 'label'; readonly id: string }
   | { readonly kind: 'actor'; readonly id: string }
   | { readonly kind: 'start' }
+  | { readonly kind: 'hex'; readonly cell: RoomHexCell }
   | StudioDoorTarget;
 
 export type StudioArrangeHeight =
@@ -124,6 +126,16 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'start';
         readonly target: Extract<StudioArrangeTarget, { kind: 'start' }>;
         readonly cell: Readonly<RoomHexCell>;
+      }
+    | {
+        readonly kind: 'hex';
+        readonly target: Extract<StudioArrangeTarget, { kind: 'hex' }>;
+        readonly cell: Readonly<RoomHexCell>;
+        /** The cell is in room.walkableHexes. */
+        readonly walkable: boolean;
+        /** Drawn at this cell, authored order. An annotation, never
+         * membership for a rule. */
+        readonly regions: readonly Readonly<AuthoringRegion>[];
       }
   );
 
@@ -336,6 +348,25 @@ export function projectStudioArrange(
       preview.target.doorId === target.doorId
         ? { preview: { position: preview.position, width: preview.width } }
         : {}),
+    };
+  }
+  if (target.kind === 'hex') {
+    const { q, r } = target.cell;
+    if (!isCellWithinWorkspace(target.cell, draft.workspace)) return null;
+    return {
+      kind: 'hex',
+      target: { kind: 'hex', cell: { q, r } },
+      selectionKey: JSON.stringify({ kind: 'hex', q, r }),
+      selectionRevision,
+      cell: { q, r },
+      walkable: draft.room.walkableHexes.some(
+        (cell) => cell.q === q && cell.r === r
+      ),
+      regions: regionsAtCell({
+        draft,
+        resolutions: input.regionResolutions ?? resolveAuthoringRegions(draft),
+        cell: { q, r },
+      }),
     };
   }
   const identity = {

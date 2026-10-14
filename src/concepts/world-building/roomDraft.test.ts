@@ -2044,3 +2044,59 @@ describe('options on a binding (rpg-project#569)', () => {
     ).toThrow('field intimidate not found in type dungeonspec.OptionSpec');
   });
 });
+
+describe('resize grows on chosen edges without moving content (R13)', () => {
+  function furnished() {
+    const base = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      20,
+      20
+    );
+    let draft = updateWalkableHexes(
+      base.draft,
+      [
+        { q: 0, r: 0 },
+        { q: 3, r: -2 },
+        { q: -4, r: 5 },
+      ],
+      'paint'
+    );
+    draft = placeRoomMonster(draft, {
+      id: 'guard',
+      ref: 'dnd5e:monsters:skeleton',
+      startingCell: { location: { q: 2, r: 1 } },
+    });
+    draft = setRoomPartyStart(draft, { q: -1, r: 0 });
+    return { draft, scope: base.scope };
+  }
+
+  it("resize keeps a monster's starting cell, the party start and every walkable cell", () => {
+    const original = furnished();
+    for (const edges of [
+      undefined,
+      { columns: 'left', rows: 'bottom' },
+    ] as const) {
+      const grown = resizeRoomWorkspace(original, 24, 22, edges);
+      expect(grown.draft.workspace.kind).toBe('odd-r-rect');
+      expect(grown.draft.room).toEqual(original.draft.room);
+      expect(grown.draft.scene).toEqual(original.draft.scene);
+      for (const cell of original.draft.room.walkableHexes)
+        expect(isCellWithinWorkspace(cell, grown.draft.workspace)).toBe(true);
+      expect(parseRoomDocumentJson(stringifyRoomDraft(grown.draft))).toEqual(
+        grown
+      );
+    }
+  });
+
+  it('a shrink that cuts a wall is refused with no history entry', () => {
+    const populated = createPopulatedStudioDocument();
+    const document = resizeRoomWorkspace(populated, 20, 20);
+    const before = JSON.stringify(document);
+    // The wall spans x -4..4; keeping only the four leftmost columns cuts it.
+    expect(() => resizeRoomWorkspace(document, 4, 20)).toThrow(/outside/);
+    expect(() =>
+      resizeRoomWorkspace(document, 4, 20, { columns: 'left', rows: 'top' })
+    ).toThrow(/outside/);
+    expect(JSON.stringify(document)).toBe(before);
+  });
+});

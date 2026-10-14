@@ -461,38 +461,31 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    // Size lives in the room view, open whenever nothing is selected.
+    const width = (): HTMLInputElement =>
+      screen.getByRole('textbox', { name: 'Width (hexes)' });
+    expect(width().value).toBe('');
     expect(screen.queryByLabelText('Label name')).toBeNull();
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
-    click('Size');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     click('Cancel dimensions');
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    expect(width().value).toBe('');
     expect(storage.document()).toEqual(original);
-    click('Size');
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
-    fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
-      key: 'Escape',
-    });
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    fireEvent.keyDown(width(), { key: 'Escape' });
+    expect(width().value).toBe('');
     expect(storage.document()).toEqual(original);
-    click('Size');
     change('Width (hexes)', '9');
     change('Height (hexes)', '7');
     submit('Workspace dimensions');
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    expect(width().value).toBe('9');
     const committed = storage.document();
     const writes = storage.writes();
-    click('Size');
-    expect(
-      (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
-    ).toBe('9');
-    click('Size'); // hiding alone never reframes/resizes/history
+    fireEvent.keyDown(window, { key: 'n' }); // hiding alone never reframes/resizes/history
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(width().value).toBe('9');
     expect(storage.writes()).toBe(writes);
     expect(storage.document()).toEqual(committed);
     click('Undo');
@@ -518,7 +511,7 @@ describe('compact Studio wall UI through the actual owner and Layout', () => {
     expect(screen.queryByTestId('thumbnail-worker')).toBeNull();
     expect(
       screen
-        .getByRole('button', { name: 'Options (N)' })
+        .getByRole('button', { name: 'Inspector (N)' })
         .getAttribute('aria-expanded')
     ).toBe('false');
     drawWall(storage, { x: -3, z: -2 }, { x: -1, z: -2 });

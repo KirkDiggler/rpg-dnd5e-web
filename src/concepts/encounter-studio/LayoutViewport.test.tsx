@@ -6,7 +6,15 @@ import {
   screen,
 } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { walkableCellsInWorldRectangle } from '../world-building/roomDraft';
 import {
   reshapeWallEndpoint,
@@ -2193,4 +2201,96 @@ it('selecting a linked room label preserves the initiating drag when its region 
   expect(move).toHaveBeenCalledOnce();
   expect(move.mock.calls[0][0]).toBe('label');
   expect(move.mock.calls[0][1].x).toBeCloseTo(1, 12);
+});
+
+describe('Layout hex selection', () => {
+  function selecting(
+    overrides: Partial<LayoutViewportProps> = {}
+  ): LayoutViewportProps & {
+    wallEditing: StudioWallEditing;
+    onSelectHex: Mock<(cell: RoomHexCell) => void>;
+    onClearSelection: Mock<() => void>;
+  } {
+    const input = props({ tool: 'select', ...overrides });
+    return {
+      ...input,
+      intentEpoch: 1,
+      onSelectHex: vi.fn<(cell: RoomHexCell) => void>(),
+      onClearSelection: vi.fn<() => void>(),
+      labelEditing: {
+        active: false,
+        selectedId: null,
+        placementText: null,
+        onSelect: vi.fn(),
+        onMove: vi.fn(() => true),
+        onCreate: vi.fn(() => true),
+        onCancel: vi.fn(),
+      },
+      wallEditing: {
+        selectedId: null,
+        assetRef: input.draft.room.walls![0].appearance.assetRef,
+        snapEnabled: false,
+        endpointSnapEnabled: false,
+        rightAngleEnabled: false,
+        setRightAngle: vi.fn(() => true),
+        setEndpointSnap: vi.fn(() => true),
+        options: [],
+        select: vi.fn(() => true),
+        setAsset: vi.fn(() => true),
+        setSnap: vi.fn(() => true),
+        create: vi.fn(() => true),
+        edit: vi.fn(() => true),
+        remove: vi.fn(() => true),
+        reportRefusal: vi.fn(),
+      },
+    };
+  }
+  const floor = { q: 1, r: 1 };
+
+  it('select click on bare floor selects that hex', () => {
+    const input = selecting();
+    render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
+    expect(input.onSelectHex).toHaveBeenCalledExactlyOnceWith(floor);
+    expect(input.wallEditing.select).toHaveBeenCalledWith(null);
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledWith(null);
+    expect(input.onClearSelection).not.toHaveBeenCalled();
+    expect(input.onCommit).not.toHaveBeenCalled();
+  });
+
+  it('select click on a wall selects the wall, not a hex', () => {
+    const input = selecting();
+    render(<LayoutViewport {...input} />);
+    const wall = surface().querySelector('line[data-wall-id="studio-wall"]')!;
+    fireEvent.pointerDown(wall, {
+      ...position({ x: 0, z: -3 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.wallEditing.select).toHaveBeenLastCalledWith('studio-wall');
+    expect(input.onSelectHex).not.toHaveBeenCalled();
+  });
+
+  it('click outside the workspace selects nothing', () => {
+    const input = selecting();
+    render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), {
+      ...position({ x: 30, z: 0 }),
+      pointerId: 7,
+      button: 0,
+    });
+    expect(input.onSelectHex).not.toHaveBeenCalled();
+    expect(input.onClearSelection).toHaveBeenCalledTimes(1);
+    expect(input.wallEditing.select).toHaveBeenCalledWith(null);
+    expect(input.labelEditing!.onSelect).toHaveBeenCalledWith(null);
+  });
+
+  it('paint tool on bare floor never selects a hex', () => {
+    const input = selecting({ tool: 'paint' });
+    render(<LayoutViewport {...input} />);
+    fireEvent.pointerDown(surface(), { ...at(floor), pointerId: 7, button: 0 });
+    fireEvent.pointerUp(surface(), { ...at(floor), pointerId: 7, button: 0 });
+    expect(input.onSelectHex).not.toHaveBeenCalled();
+    expect(input.onCommit).toHaveBeenCalledWith([floor], 'paint');
+  });
 });

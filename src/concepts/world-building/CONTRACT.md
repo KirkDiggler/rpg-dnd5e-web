@@ -284,6 +284,21 @@ one shared cell union, boundary and world AABB. The derived enclosing hex radius
 and scalar horizontal limit remain saved for existing consumers, are checked on
 read, and are not independent membership authorities or editable controls.
 
+**Growing up and to the right (S0, R13).** A resize moves only the edges the
+author chooses: **Columns change on** Right (default) or Left, and **Rows change
+on** Top (default; the smallest `r`, which is screen-up in Layout) or Bottom. No
+cell's `{q, r}` changes on any side, so walls, props, labels, regions and
+creatures are never rewritten and there is no shift warning. The first resize of
+a rectangle saves `{kind:"odd-r-rect", minCol, minRow, widthHexes, heightHexes,
+hexRadius, horizontalLimit}`: columns `minCol..minCol+width-1`, rows
+`minRow..minRow+height-1`. A `centered-odd-r` document reads as the rectangle
+`minCol=-floor(width/2)`, `minRow=-floor(height/2)` and saves byte-identical until
+it is resized. A legacy radius workspace has no edges to keep, so its first
+resize still produces the centred rectangle. `hexRadius` and `horizontalLimit`
+are derived from the cells exactly as for the centred kind and checked on read;
+`hexRadius` is the only field the toolkit reads, as the cube-distance bound on
+walkable cells. Shrinking moves the chosen edges inward.
+
 A shrink protects floor, actors/start, exit/concealment cells, prop/group anchors,
 labels, authored prop footprints, wall line/thickness/blocker and derived
 opening/door poses. Protected extent AABBs must fit wholly in the closed union

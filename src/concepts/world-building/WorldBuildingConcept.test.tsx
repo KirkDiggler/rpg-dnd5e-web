@@ -15,9 +15,10 @@ import {
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
-import type {
-  EncounterStudioSession,
-  EncounterStudioView,
+import {
+  studioInspectionOf,
+  type EncounterStudioSession,
+  type EncounterStudioView,
 } from '../encounter-studio/studioSession';
 import {
   decodeWorldBuilderV4Site,
@@ -4879,6 +4880,76 @@ describe('Studio owner facade', () => {
     return storage;
   }
 
+  it('Group selection makes one group from a pick and selects it', () => {
+    const owner = mountStudio(populatedStorage());
+    const scene = owner.session.document.draft.scene;
+    const roots = [...scene.items, ...scene.groups]
+      .filter((entity) => !entity.parentId)
+      .map((entity) => entity.id)
+      .slice(0, 2);
+    expect(roots).toHaveLength(2);
+    act(() => owner.session.viewportProps.onSelect(roots));
+    expect(
+      studioInspectionOf(
+        owner.session.arrange,
+        owner.session.document.draft.scene
+      ).pick
+    ).toEqual([...roots].sort());
+    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
+    const inspection = studioInspectionOf(
+      owner.session.arrange,
+      owner.session.document.draft.scene
+    );
+    expect(inspection.pick).toBeNull();
+    expect(inspection.selection.kind).toBe('group');
+    const group = owner.session.document.draft.scene.groups.find(
+      (candidate) =>
+        inspection.selection.kind === 'group' &&
+        candidate.id === inspection.selection.id
+    );
+    expect(group).toBeTruthy();
+  });
+
+  it('Escape clears a studio wall selection to nothing', () => {
+    const owner = mountStudio(populatedStorage());
+    act(() => {
+      expect(owner.session.wallEditing.select('studio-wall')).toBe(true);
+    });
+    expect(owner.session.arrange?.kind).toBe('wall');
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(owner.session.arrange).toBeNull();
+    expect(owner.session.wallEditing.selectedId).toBeNull();
+  });
+
+  it('selectHex refuses a cell outside the workspace without a history entry', () => {
+    const storage = populatedStorage();
+    const owner = mountStudio(storage);
+    const writes = storage.writes;
+    const canUndo = owner.session.canUndo;
+    let accepted: boolean | undefined;
+    act(() => {
+      accepted = owner.session.selectHex({ q: 40, r: 0 });
+    });
+    expect(accepted).toBe(false);
+    expect(owner.session.arrange).toBeNull();
+    act(() => {
+      accepted = owner.session.selectHex({ q: 1, r: 1 });
+    });
+    expect(accepted).toBe(true);
+    expect(owner.session.arrange).toMatchObject({
+      kind: 'hex',
+      cell: { q: 1, r: 1 },
+    });
+    expect(owner.session.canUndo).toBe(canUndo);
+    expect(storage.writes).toBe(writes);
+    act(() => {
+      expect(owner.session.clearSelection()).toBe(true);
+    });
+    expect(owner.session.arrange).toBeNull();
+  });
+
   it('reserves scene3 region identities in transient door placement without changing author intent', () => {
     const document = createPopulatedStudioDocument();
     document.draft.scene.version = 3;
@@ -5848,7 +5919,9 @@ describe('Studio owner facade', () => {
     const writes = owner.storage.writes;
     act(() => expect(owner.session.resizeWorkspace(73, 48)).toBe(true));
     expect(owner.session.document).toBe(before);
-    act(() => expect(owner.session.resizeWorkspace(20, 20)).toBe(false));
+    // The right edge moves in (R13 default): columns -36..8 keep the
+    // populated room and cut only the label at x 18.
+    act(() => expect(owner.session.resizeWorkspace(45, 48)).toBe(false));
     expect(owner.session.notice).toContain(id);
     expect(owner.session.document).toBe(before);
     expect(owner.storage.getItem(ROOM_DRAFT_STORAGE_KEY)).toBe(bytes);

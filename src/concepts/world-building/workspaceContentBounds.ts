@@ -6,6 +6,7 @@ import {
   containsWorkspaceAabb,
   containsWorkspaceCell,
   containsWorkspacePoint,
+  rectangleOf,
   type WorkspaceBounds,
 } from './workspaceGeometry';
 
@@ -38,10 +39,10 @@ export function validateWorkspaceContent(
   scope: SiteScope
 ): void {
   const workspace = draft.workspace;
-  if (workspace.kind !== 'centered-odd-r') return;
+  if (!rectangleOf(workspace)) return;
   const refuse = (path: string): never => {
     throw new Error(
-      `${path}: outside the centered authoring workspace; resize would not preserve authored content (conservative AABB coverage).`
+      `${path}: outside the authoring workspace; resize would not preserve authored content (conservative AABB coverage).`
     );
   };
   const point = (p: WorldPoint, path: string): void => {

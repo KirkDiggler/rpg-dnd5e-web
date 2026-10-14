@@ -1,5 +1,12 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
-import { memo, useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
@@ -9,17 +16,18 @@ import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioCreatures } from './StudioCreatures';
-import { StudioDimensions } from './StudioDimensions';
 import { StudioDoorControls } from './StudioDoorControls';
+import { StudioInspector } from './StudioInspector';
 import { StudioRegions } from './StudioRegions';
-import type {
-  EncounterStudioSession,
-  EncounterStudioView,
-  LayoutFloorTool,
-  LayoutFrame,
-  LayoutTool,
-  StudioHome,
-  StudioSocialSection,
+import {
+  studioInspectionOf,
+  type EncounterStudioSession,
+  type EncounterStudioView,
+  type LayoutFloorTool,
+  type LayoutFrame,
+  type LayoutTool,
+  type StudioHome,
+  type StudioSocialSection,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
 import { StudioStatBlocks } from './StudioStatBlocks';
@@ -92,21 +100,26 @@ function StudioSurface({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sections, setSections] = useState<
     Record<StudioHome, StudioSidebarSection>
-  >({ build: 'arrange', regions: 'regions', encounter: 'tables' });
+  >({ build: 'inspector', regions: 'regions', encounter: 'tables' });
   const section = sections[home];
-  const [visited, setVisited] = useState<ReadonlySet<string>>(
-    () => new Set(['build:arrange'])
-  );
   const showSection = (next: StudioSidebarSection): void => {
     setSections((current) => ({ ...current, [home]: next }));
-    setVisited((current) => new Set([...current, `${home}:${next}`]));
     setSidebarOpen(true);
   };
+  // Clicking a thing opens the inspector, even when the author hid it. A
+  // key that stays the same (a preview rerender) never reopens it.
+  const selectionKey = session.arrange?.selectionKey ?? null;
+  const shownKey = useRef(selectionKey);
+  useEffect(() => {
+    if (selectionKey !== null && selectionKey !== shownKey.current)
+      setSidebarOpen(true);
+    shownKey.current = selectionKey;
+  }, [selectionKey]);
   const changeTool = (next: LayoutTool): void => {
     if (next !== layoutTool) session.cancelTransients();
     onLayoutToolChange(next);
   };
-  const defaultSection = home === 'regions' ? 'regions' : 'arrange';
+  const defaultSection = home === 'regions' ? 'regions' : 'inspector';
   const labels = useStudioLabels(
     session,
     view,
@@ -122,7 +135,22 @@ function StudioSurface({
     if (session.doorEditing.active) session.doorEditing.setActive(false);
     changeTool('label');
     labels.activate();
-    showSection('labels');
+    if (home === 'regions') showSection('labels');
+    else setSidebarOpen(true);
+  };
+  /** Wall, Door and Note are Layout tools; their options show at the top of
+   * the inspector while armed. */
+  const armTool = (next: 'wall' | 'door' | 'label'): void => {
+    if (next === 'label') {
+      startLabel();
+      return;
+    }
+    labels.editing.onCancel();
+    if (next === 'wall') {
+      if (session.doorEditing.active) session.doorEditing.setActive(false);
+      changeTool('wall');
+    } else if (session.doorEditing.setActive(true)) onLayoutToolChange('door');
+    setSidebarOpen(true);
   };
   const changeSection = (next: StudioSidebarSection): void => {
     if (next === 'labels') labels.show();
@@ -131,11 +159,9 @@ function StudioSurface({
   const exitDoor = (): void => {
     session.doorEditing.setActive(false);
     onLayoutToolChange('select');
-    showSection('arrange');
   };
   const exitWall = (): void => {
     changeTool('select');
-    showSection('arrange');
   };
   const exitRegion = (): void => {
     changeTool('select');
@@ -159,7 +185,15 @@ function StudioSurface({
     onLayoutToolChange('select');
     onViewChange('3d');
     session.setPropTool('move');
-    setSections((current) => ({ ...current, build: 'arrange' }));
+    setSidebarOpen(true);
+  };
+  /** Party start is placed on the 3D floor: the gesture is armed there. */
+  const placePartyStart = (): void => {
+    if (session.doorEditing.active) session.doorEditing.setActive(false);
+    labels.editing.onCancel();
+    onLayoutToolChange('select');
+    onViewChange('3d');
+    session.armPartyStart();
     setSidebarOpen(true);
   };
   const openDefinitions = (section: StudioSocialSection): void => {
@@ -179,7 +213,7 @@ function StudioSurface({
     if (layoutTool === 'door' || layoutTool === 'region')
       onLayoutToolChange('select');
     session.cancelTransients();
-    if (['doors', 'labels', 'region', 'size'].includes(section))
+    if (home === 'regions' && ['labels', 'region'].includes(section))
       setSections((current) => ({ ...current, [home]: defaultSection }));
     setRenaming(false);
     onViewChange(next);
@@ -192,8 +226,25 @@ function StudioSurface({
   }, [view]);
   const arrangeVisible =
     sidebarOpen &&
-    ((home === 'build' && section === 'arrange' && !selectedRegion) ||
-      (home === 'regions' && section === 'regions' && !!selectedRegion));
+    home === 'regions' &&
+    section === 'regions' &&
+    !!selectedRegion;
+  const inspection = studioInspectionOf(
+    session.arrange,
+    session.document.draft.scene
+  );
+  const armedTool =
+    home !== 'build' || view !== 'layout' ? null : layoutTool === 'wall' ? (
+      <StudioWallControls
+        session={session}
+        onDismiss={() => setSidebarOpen(false)}
+        onExitWallTool={exitWall}
+      />
+    ) : layoutTool === 'door' ? (
+      <StudioDoorControls editing={session.doorEditing} onExit={exitDoor} />
+    ) : layoutTool === 'label' ? (
+      labels.controls
+    ) : null;
 
   return (
     <section
@@ -355,6 +406,18 @@ function StudioSurface({
               </button>
             </div>
           )}
+          {home === 'build' &&
+            session.viewportProps.roomAuthoring?.tool === 'start' && (
+              <div className="es-buttons" role="status">
+                <strong>Placing party start · click the floor</strong>
+                <button
+                  type="button"
+                  onClick={() => session.setPropTool('select')}
+                >
+                  Cancel party start
+                </button>
+              </div>
+            )}
           {session.creatures.placement && (
             <div className="es-buttons" role="status">
               <strong>
@@ -383,13 +446,28 @@ function StudioSurface({
                           session.doorEditing.setActive(false);
                         labels.editing.onCancel();
                         changeTool(tool);
-                        showSection('arrange');
                       }}
                     >
                       {tool[0].toUpperCase() + tool.slice(1)}
                     </button>
                   )
                 )}
+                {(
+                  [
+                    ['wall', 'Wall'],
+                    ['door', 'Door'],
+                    ['label', 'Note'],
+                  ] as const
+                ).map(([tool, label]) => (
+                  <button
+                    type="button"
+                    key={tool}
+                    aria-pressed={layoutTool === tool}
+                    onClick={() => armTool(tool)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="es-buttons" role="group" aria-label="Prop tools">
@@ -407,18 +485,6 @@ function StudioSurface({
                 ))}
               </div>
             ))}
-          {home === 'build' && (
-            <button
-              type="button"
-              aria-expanded={sidebarOpen && section === 'size'}
-              onClick={() => {
-                if (sidebarOpen && section === 'size') setSidebarOpen(false);
-                else showSection('size');
-              }}
-            >
-              Size
-            </button>
-          )}
           {home === 'regions' && (
             <>
               <button
@@ -446,7 +512,7 @@ function StudioSurface({
               aria-keyshortcuts="N"
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
-              Options (N)
+              {home === 'build' ? 'Inspector (N)' : 'Options (N)'}
             </button>
           )}
           <div
@@ -484,12 +550,31 @@ function StudioSurface({
             onSectionChange={changeSection}
             onToggle={() => setSidebarOpen((open) => !open)}
             keyboardEnabled={spatial}
+            compact={home === 'build'}
             sections={
               home === 'regions'
                 ? [{ id: 'regions', label: 'Regions & lighting' }]
                 : undefined
             }
           >
+            {home === 'build' && (
+              <StudioInspector
+                session={session}
+                inspection={inspection}
+                view={view}
+                layoutTool={layoutTool}
+                armedTool={armedTool}
+                onConfigure={openDefinitions}
+                onMoveCreature={moveSelectedCreature}
+                onFrameChange={onFrameChange}
+                onArmTool={armTool}
+                onPlacePartyStart={placePartyStart}
+                onOpenRegion={(labelId) => {
+                  session.mapLabelSelection.select(labelId);
+                  changeHome('regions');
+                }}
+              />
+            )}
             <div hidden={home !== 'regions' || section !== 'regions'}>
               <StudioRegions
                 session={session}
@@ -501,19 +586,7 @@ function StudioSurface({
                 canCreate={view === 'layout'}
               />
             </div>
-            <div hidden={home !== 'build' || section !== 'size'}>
-              {visited.has('build:size') && (
-                <div className="es-context-panel">
-                  <StudioDimensions
-                    session={session}
-                    view={view}
-                    onFrameChange={onFrameChange}
-                    onDismiss={() => setSidebarOpen(false)}
-                  />
-                </div>
-              )}
-            </div>
-            {spatial && (
+            {home === 'regions' && (
               <StudioArrangePanel
                 session={session}
                 expanded={arrangeVisible}
@@ -531,62 +604,8 @@ function StudioSurface({
                 }
               />
             )}
-            {home === 'build' && section === 'arrange' && selectedRegion && (
-              <div className="es-context-panel">
-                <p>
-                  This selection is a region. Its boundary and lighting settings
-                  live in Regions.
-                </p>
-                <button type="button" onClick={() => changeHome('regions')}>
-                  Edit region settings
-                </button>
-              </div>
-            )}
-            <div hidden={home !== 'build' || section !== 'walls'}>
-              {visited.has('build:walls') && (
-                <StudioWallControls
-                  session={session}
-                  drawing={view === 'layout' && layoutTool === 'wall'}
-                  onDismiss={() => setSidebarOpen(false)}
-                  onExitWallTool={exitWall}
-                  onStartDrawing={
-                    view === 'layout'
-                      ? () => {
-                          if (session.doorEditing.active)
-                            session.doorEditing.setActive(false);
-                          changeTool('wall');
-                        }
-                      : undefined
-                  }
-                />
-              )}
-            </div>
-            <div hidden={home !== 'build' || section !== 'doors'}>
-              {!session.doorEditing.active && (
-                <div className="es-context-panel">
-                  <h2>Doors</h2>
-                  <p className="es-help">
-                    Place a complete door onto a wall. Select an existing door
-                    to change its placement in Arrange.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (session.doorEditing.setActive(true))
-                        onLayoutToolChange('door');
-                    }}
-                  >
-                    Place door
-                  </button>
-                </div>
-              )}
-              <StudioDoorControls
-                editing={session.doorEditing}
-                onExit={exitDoor}
-              />
-            </div>
-            <div hidden={!spatial || section !== 'labels'}>
-              {labels.controls}
+            <div hidden={home !== 'regions' || section !== 'labels'}>
+              {home === 'regions' && labels.controls}
               {view !== 'layout' && (
                 <p className="es-context-panel">
                   Switch to Layout to add notes.
@@ -684,6 +703,16 @@ function StudioSurface({
                 onExitDoorTool={exitDoor}
                 intentEpoch={session.intentEpoch}
                 onExitWallTool={exitWall}
+                onSelectHex={
+                  home === 'build'
+                    ? (cell) => void session.selectHex(cell)
+                    : undefined
+                }
+                onClearSelection={
+                  home === 'build'
+                    ? () => void session.clearSelection()
+                    : undefined
+                }
               />
             </div>
           )}
@@ -749,7 +778,7 @@ function StudioSurface({
                             id,
                             appearanceRef
                           );
-                          if (accepted) showSection('arrange');
+                          if (accepted) setSidebarOpen(true);
                           return accepted;
                         }}
                       />
@@ -813,9 +842,10 @@ function StudioSurface({
                 setMapPalette('creatures');
               }}
               onShowMap={() => {
+                // The one arbiter already holds the creature; Build opens
+                // the inspector on it, in the view the author last used.
                 changeHome('build');
-                onViewChange('3d');
-                setSections((current) => ({ ...current, build: 'arrange' }));
+                setSidebarOpen(true);
               }}
             />
           )}
@@ -830,9 +860,9 @@ function StudioSurface({
                 <h2>{ENCOUNTER_SECTIONS[encounterSection]}</h2>
                 <p>
                   {encounterSection === 'intel'
-                    ? 'Define records and what they reveal here. Select a creature or declared prop in Arrange to assign the records it holds. Record ids and revealed fact ids are different references.'
+                    ? 'Define records and what they reveal here. Select a creature or declared prop on the map to assign the records it holds in its inspector. Record ids and revealed fact ids are different references.'
                     : encounterSection === 'factions'
-                      ? 'Define factions and shared policy here. Assign individual placed creatures in Arrange. A mind names a placed individual, not a reusable creature recipe.'
+                      ? 'Define factions and shared policy here. Assign individual placed creatures in their inspector on the map. A mind names a placed individual, not a reusable creature recipe.'
                       : 'Author faction relationships and conditions here. Intel can reveal named facts; whose knowledge matters and what changes are evaluated by the engine, not by this form.'}
                 </p>
                 {session.socialControls[encounterSection]}

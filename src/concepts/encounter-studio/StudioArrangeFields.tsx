@@ -4,6 +4,7 @@ import {
 } from '@/npc-appearances/npcAppearanceChoices';
 import type {
   AuthoringRegion,
+  EncounterStudioSession,
   RegionResolution,
   StructuralWall,
   StudioArrangeIntent,
@@ -259,6 +260,9 @@ export function arrangeFields(
         numeric('q', 'Starting hex q', selection.cell.q),
         numeric('r', 'Starting hex r', selection.cell.r),
       ];
+    case 'hex':
+      // Read-only in S0: the play contract is the dialect's, not the form's.
+      return [];
   }
 }
 
@@ -450,6 +454,8 @@ export function arrangeIntent(
         target: selection.target,
         location: cell(selection.cell),
       };
+    case 'hex':
+      return null;
   }
 }
 
@@ -484,4 +490,34 @@ export function regionStatus(
   return resolution?.status === 'resolved'
     ? `${mode} · Resolved`
     : `${mode} · Unresolved · ${resolution?.status === 'unresolved' ? reasons[resolution.reason] : 'Boundary unavailable.'}`;
+}
+
+/** The name an inspector heading gives one selected thing. */
+export function selectionName(
+  selection: StudioArrangeSelection,
+  session: EncounterStudioSession
+): string {
+  switch (selection.kind) {
+    case 'scene': {
+      const scene = session.document.draft.scene;
+      const root = [...scene.items, ...scene.groups].find(
+        (entity) => entity.id === selection.rootIds[0]
+      );
+      return selection.rootCount === 1
+        ? root?.label || root?.id || 'Scenery'
+        : `${selection.rootCount} scenery roots`;
+    }
+    case 'wall':
+      return selection.wall.label || selection.wall.id;
+    case 'door':
+      return `Door · ${selection.door.assetRef}`;
+    case 'label':
+      return selection.label.text;
+    case 'actor':
+      return selection.mapName ?? selection.monster.id;
+    case 'start':
+      return 'Party start';
+    case 'hex':
+      return `Hex ${selection.cell.q}, ${selection.cell.r}`;
+  }
 }

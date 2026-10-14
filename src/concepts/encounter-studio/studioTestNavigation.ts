@@ -5,25 +5,25 @@ import { fireEvent, screen } from '@testing-library/react';
 export function studioButton(name: string): HTMLElement {
   const button = (label: string): HTMLElement =>
     screen.getByRole('button', { name: label });
+  const toggle = (): HTMLElement =>
+    screen.queryByRole('button', { name: 'Inspector (N)' }) ??
+    button('Options (N)');
   const options = (): void => {
-    if (button('Options (N)').getAttribute('aria-expanded') !== 'true')
-      fireEvent.click(button('Options (N)'));
+    if (toggle().getAttribute('aria-expanded') !== 'true')
+      fireEvent.click(toggle());
   };
   if (name === 'Tables') return button('Encounter');
+  if (name === 'Options (N)' || name === 'Inspector (N)') return toggle();
+  // Wall, Door and Note are Layout tools; their options show in the inspector.
   if (name === 'Wall' || name === 'Door' || name === 'Label') {
     fireEvent.click(button('Build'));
-    options();
-    if (name === 'Label') return button('Notes');
-    fireEvent.click(button(name === 'Wall' ? 'Walls' : 'Doors'));
-    return button(name === 'Wall' ? 'Draw walls' : 'Place door');
+    return button(name === 'Label' ? 'Note' : name);
   }
-  if (name === 'Arrange') {
+  if (name === 'Arrange' || name === 'Size') {
     options();
-    return button(
-      button('Regions').getAttribute('aria-pressed') === 'true'
-        ? 'Regions & lighting'
-        : 'Arrange'
-    );
+    if (button('Regions').getAttribute('aria-pressed') === 'true')
+      return button('Regions & lighting');
+    return screen.getByRole('region', { name: 'Inspector' });
   }
   return button(name);
 }

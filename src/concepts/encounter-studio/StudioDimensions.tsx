@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  DEFAULT_RESIZE_EDGES,
+  rectangleOf,
+  workspaceBounds,
+  type ResizeEdges,
+  type RoomWorkspace,
+} from '../world-building/workspaceGeometry';
 import type {
   EncounterStudioSession,
   EncounterStudioView,
@@ -14,26 +21,44 @@ export function StudioDimensions({
   session: EncounterStudioSession;
   view: EncounterStudioView;
   onFrameChange(frame: LayoutFrame): void;
-  onDismiss(): void;
+  /** Absent: the form stays open after Apply (the room view). */
+  onDismiss?(): void;
 }): React.JSX.Element {
   const workspace = session.document.draft.workspace;
-  const width =
-    workspace.kind === 'centered-odd-r' ? String(workspace.widthHexes) : '';
-  const height =
-    workspace.kind === 'centered-odd-r' ? String(workspace.heightHexes) : '';
+  const rect = rectangleOf(workspace);
+  const width = rect ? String(rect.widthHexes) : '';
+  const height = rect ? String(rect.heightHexes) : '';
   const [widthDraft, setWidthDraft] = useState(width);
   const [heightDraft, setHeightDraft] = useState(height);
+  const [edges, setEdges] = useState<ResizeEdges>(DEFAULT_RESIZE_EDGES);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     setWidthDraft(width);
     setHeightDraft(height);
     setError(null);
   }, [width, height, session.document, view]);
+  // An accepted resize frames the workspace the owner committed, read from
+  // the committed document once it arrives, never re-derived here.
+  const framing = useRef<RoomWorkspace | null>(null);
+  useEffect(() => {
+    const before = framing.current;
+    if (!before) return;
+    framing.current = null;
+    if (workspace === before) return;
+    const bounds = workspaceBounds(workspace);
+    onFrameChange({
+      center: {
+        x: (bounds.minX + bounds.maxX) / 2,
+        z: (bounds.minZ + bounds.maxZ) / 2,
+      },
+      zoom: 1,
+    });
+  }, [session.document, workspace, onFrameChange]);
   const cancel = (): void => {
     setWidthDraft(width);
     setHeightDraft(height);
     setError(null);
-    onDismiss();
+    onDismiss?.();
   };
   return (
     <form
@@ -57,11 +82,12 @@ export function StudioDimensions({
           return;
         }
         // Do not cancel first: that retires this render's owner intent.
-        if (session.resizeWorkspace(w, h)) {
+        framing.current = workspace;
+        if (session.resizeWorkspace(w, h, edges)) {
           setError(null);
-          onFrameChange({ center: { x: 0, z: 0 }, zoom: 1 });
-          onDismiss();
+          onDismiss?.();
         } else {
+          framing.current = null;
           setError(
             'Resize refused. Keep these inputs; review the document notice, then fix the content or choose larger dimensions.'
           );
@@ -76,7 +102,7 @@ export function StudioDimensions({
       }}
     >
       <span className="es-help">
-        {workspace.kind === 'centered-odd-r'
+        {rect
           ? `Current: ${width} × ${height} hexes`
           : `Current: legacy hex-radius ${workspace.hexRadius} workspace (not a rectangle)`}
       </span>
@@ -101,6 +127,45 @@ export function StudioDimensions({
           onChange={(event) => setHeightDraft(event.target.value)}
         />
       </label>
+      {rect && (
+        <>
+          <label>
+            Columns change on
+            <select
+              aria-label="Columns change on"
+              value={edges.columns}
+              onChange={(event) =>
+                setEdges((current) => ({
+                  ...current,
+                  columns: event.target.value as ResizeEdges['columns'],
+                }))
+              }
+            >
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+            </select>
+          </label>
+          <label>
+            Rows change on
+            <select
+              aria-label="Rows change on"
+              value={edges.rows}
+              onChange={(event) =>
+                setEdges((current) => ({
+                  ...current,
+                  rows: event.target.value as ResizeEdges['rows'],
+                }))
+              }
+            >
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </label>
+          <span className="es-help">
+            No cell moves, whichever side changes.
+          </span>
+        </>
+      )}
       <button type="submit">Apply dimensions</button>
       <button type="button" onClick={cancel}>
         Cancel dimensions

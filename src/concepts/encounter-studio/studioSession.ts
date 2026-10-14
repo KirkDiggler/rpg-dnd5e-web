@@ -16,9 +16,13 @@ import type {
   StudioArrangeIntent,
   StudioArrangeSelection,
 } from '../world-building/studioArrange';
-import type { StudioDoorEditing } from '../world-building/studioDoorEditing';
-import type { WorldPoint } from '../world-building/types';
+import type {
+  StudioDoorEditing,
+  StudioDoorTarget,
+} from '../world-building/studioDoorEditing';
+import type { WorldPoint, WorldScene } from '../world-building/types';
 import type { WallCornerJoin } from '../world-building/wallCornerJoins';
+import type { ResizeEdges } from '../world-building/workspaceGeometry';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 export type {
@@ -58,8 +62,75 @@ export type {
   StudioWallArrangeValues,
 } from '../world-building/studioArrange';
 export type { WorldPoint } from '../world-building/types';
+export type { ResizeEdges } from '../world-building/workspaceGeometry';
 
 export type EncounterStudioView = 'layout' | '3d';
+
+/** The inspector's key: one thing, derived from the owner's arbiter on every
+ * render and never stored. Nine kinds; `nothing` is the room. */
+export type StudioSelection =
+  | { readonly kind: 'nothing' }
+  | { readonly kind: 'wall'; readonly id: string }
+  | { readonly kind: 'door'; readonly target: StudioDoorTarget }
+  /** monsterDeclarations[].id */
+  | { readonly kind: 'creature'; readonly id: string }
+  /** One scene root that is an item. */
+  | { readonly kind: 'prop'; readonly id: string }
+  /** One scene root that is a group. */
+  | { readonly kind: 'group'; readonly id: string }
+  | { readonly kind: 'hex'; readonly cell: RoomHexCell }
+  /** A map label, with or without a region. */
+  | { readonly kind: 'label'; readonly id: string }
+  | { readonly kind: 'partyStart' };
+
+/** The scene multi-pick that feeds Group selection is a PICK, not a
+ * selection: while two or more roots are picked, nothing is inspected. */
+export interface StudioInspection {
+  readonly selection: StudioSelection;
+  /** Scene root ids when two or more are picked, else null. */
+  readonly pick: readonly string[] | null;
+}
+
+const NOTHING: StudioInspection = {
+  selection: { kind: 'nothing' },
+  pick: null,
+};
+
+export function studioInspectionOf(
+  arrange: StudioArrangeSelection | null,
+  scene: Readonly<WorldScene>
+): StudioInspection {
+  if (!arrange) return NOTHING;
+  const one = (selection: StudioSelection): StudioInspection => ({
+    selection,
+    pick: null,
+  });
+  switch (arrange.kind) {
+    case 'scene': {
+      if (arrange.rootIds.length >= 2)
+        return { selection: { kind: 'nothing' }, pick: [...arrange.rootIds] };
+      const id = arrange.rootIds[0];
+      if (id === undefined) return NOTHING;
+      if (scene.groups.some((group) => group.id === id))
+        return one({ kind: 'group', id });
+      if (scene.items.some((item) => item.id === id))
+        return one({ kind: 'prop', id });
+      return NOTHING;
+    }
+    case 'wall':
+      return one({ kind: 'wall', id: arrange.wall.id });
+    case 'door':
+      return one({ kind: 'door', target: arrange.target });
+    case 'actor':
+      return one({ kind: 'creature', id: arrange.monster.id });
+    case 'start':
+      return one({ kind: 'partyStart' });
+    case 'label':
+      return one({ kind: 'label', id: arrange.label.id });
+    case 'hex':
+      return one({ kind: 'hex', cell: { ...arrange.cell } });
+  }
+}
 export type StudioSocialSection =
   | 'intel'
   | 'factions'
@@ -155,6 +226,10 @@ export interface LayoutViewportProps {
   /** Optional complete-owner snapshot identity: scope-only navigation also
    * retires previews. Absent retains existing draft-identity cancellation. */
   documentContext?: Readonly<RoomDraftDocument>;
+  /** Select-tool click on a bare workspace cell selects that hex. */
+  onSelectHex?(cell: RoomHexCell): void;
+  /** Select-tool click off the workspace floor selects nothing. */
+  onClearSelection?(): void;
 }
 
 /** Definitions belong to the one document owner. Area commits replace region
@@ -193,6 +268,14 @@ export interface EncounterStudioSession {
   readonly intentEpoch: number;
   readonly arrange: StudioArrangeSelection | null;
   commitArrange(intent: StudioArrangeIntent): boolean;
+  /** Select one floor hex. False, with no history entry, outside the
+   * workspace, while publishing, or from a retired snapshot. */
+  selectHex(cell: RoomHexCell | null): boolean;
+  /** Select nothing: the inspector answers for the room. */
+  clearSelection(): boolean;
+  /** Arm the party-start gesture: the next 3D floor click places or moves
+   * it. Refused while publishing or from a retired snapshot. */
+  armPartyStart(): boolean;
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
@@ -223,9 +306,11 @@ export interface EncounterStudioSession {
   /** Shape/bounds/size-checked transaction preserving editable policies;
    * a successful no-op adds no history. */
   commitFloor(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
-  /** Explicit centered resize; labels never resize implicitly. Refusals and
-   * retired-context callbacks return false without history/storage changes. */
-  resizeWorkspace(width: number, height: number): boolean;
+  /** Explicit resize that moves only the chosen edges; absent edges means
+   * right and top, so no cell moves. Labels never resize implicitly.
+   * Refusals and retired-context callbacks return false without
+   * history/storage changes. */
+  resizeWorkspace(width: number, height: number, edges?: ResizeEdges): boolean;
   createMapLabel(text: string, location: WorldPoint): boolean;
   moveMapLabel(id: string, location: WorldPoint): boolean;
   renameMapLabel(id: string, text: string): boolean;
@@ -245,7 +330,11 @@ export interface EncounterStudioSession {
     palette: ReactNode;
     tree: ReactNode;
     selection: ReactNode;
+    /** Duplicate, delete and the light editor for the scene selection. */
     arrangeExtras: ReactNode;
+    /** Group selection and Ungroup, split out so the group view and the
+     * pick strip each mount the half they need. */
+    groupActions: ReactNode;
   };
   saveStatus: string;
   notice: string | null;
