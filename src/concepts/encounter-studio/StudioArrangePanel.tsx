@@ -9,6 +9,7 @@ import {
   arrangeFields,
   arrangeIntent,
   regionStatus,
+  selectionName,
   type ArrangeDraft,
   type ArrangeField,
   type ArrangeFieldKey,
@@ -58,35 +59,6 @@ function StudioArrangeField({
       )}
     </label>
   );
-}
-
-function selectionName(
-  selection: StudioArrangeSelection,
-  session: EncounterStudioSession
-): string {
-  switch (selection.kind) {
-    case 'scene': {
-      const scene = session.document.draft.scene;
-      const root = [...scene.items, ...scene.groups].find(
-        (entity) => entity.id === selection.rootIds[0]
-      );
-      return selection.rootCount === 1
-        ? root?.label || root?.id || 'Scenery'
-        : `${selection.rootCount} scenery roots`;
-    }
-    case 'wall':
-      return selection.wall.label || selection.wall.id;
-    case 'door':
-      return `Door · ${selection.door.assetRef}`;
-    case 'label':
-      return selection.label.text;
-    case 'actor':
-      return selection.mapName ?? selection.monster.id;
-    case 'start':
-      return 'Party start';
-    case 'hex':
-      return `Hex ${selection.cell.q}, ${selection.cell.r}`;
-  }
 }
 
 /** Local form tokens only; all canonical updates cross the atomic owner seam. */

@@ -2,10 +2,11 @@ import type { CompositionSource } from '@/compositions/compositionSource';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRoomDraft } from '../world-building/roomDraft';
 import { projectStudioArrange } from '../world-building/studioArrange';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
+import { createFakeStudioSession } from './fixtures/fakeStudioSession';
+import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import type {
   EncounterStudioPresentation,
   EncounterStudioSession,
@@ -124,126 +125,9 @@ const source: CompositionSource = {
 };
 
 function createSession(): EncounterStudioSession {
-  const draft = createRoomDraft(
-    { version: 1, id: 'scene-1', name: 'Studio scene', items: [], groups: [] },
-    'room-1'
-  );
-  return {
-    document: { draft, scope: {} },
-    intentEpoch: 0,
-    regionEditing: {
-      resolutions: [],
-      createRoomLabel: vi.fn(() => true),
-      useEnclosingWalls: vi.fn(() => true),
-      setExplicitRegionArea: vi.fn(() => true),
-      removeRegionAndLabel: vi.fn(() => true),
-    },
-    doorEditing: {
-      assetRef: null,
-      active: false,
-      options: [],
-      selectedTarget: null,
-      preview: null,
-      setAsset: vi.fn(() => true),
-      setActive: vi.fn(() => true),
-      select: vi.fn(() => true),
-      previewPlacement: vi.fn(() => true),
-      create: vi.fn(() => true),
-      previewMove: vi.fn(() => true),
-      move: vi.fn(() => true),
-      cancelPreview: vi.fn(),
-    },
-    arrange: null,
-    commitArrange: vi.fn(() => true),
-    selectHex: vi.fn(() => true),
-    clearSelection: vi.fn(() => true),
-    commitTables: vi.fn(() => true),
-    commitTemplates: vi.fn(() => true),
-    creatures: {
-      select: vi.fn(() => true),
-      savePaletteEntry: vi.fn(() => true),
-      armPlacement: vi.fn(() => true),
-      placement: null,
-      setDefinition: vi.fn(() => true),
-    },
-    mapLabelSelection: { selectedId: null, select: vi.fn(() => true) },
-    renameDocument: vi.fn(() => true),
-    wallEditing: {
-      selectedId: null,
-      assetRef: null,
-      snapEnabled: false,
-      endpointSnapEnabled: true,
-      rightAngleEnabled: false,
-      setRightAngle: vi.fn(() => true),
-      setEndpointSnap: vi.fn(() => true),
-      options: [],
-      select: vi.fn(() => true),
-      setAsset: vi.fn(() => true),
-      setSnap: vi.fn(() => true),
-      create: vi.fn(() => true),
-      edit: vi.fn(() => true),
-      remove: vi.fn(() => true),
-      reportRefusal: vi.fn(),
-    },
-    viewportProps: {
-      scene: draft.scene,
-      previewScene: null,
-      selectedIds: ['selected-prop'],
-      tool: 'select',
-      activeDrag: null,
-      roomAuthoring: {
-        tool: 'select',
-        workspace: draft.workspace,
-        walkableHexes: draft.room.walkableHexes,
-        propDeclarations: draft.room.propDeclarations,
-        onWalkableGesture: vi.fn(),
-      },
-      onSelect: vi.fn(),
-      onDrop: vi.fn(),
-      onDragFinished: vi.fn(),
-      onTransformPreview: vi.fn(),
-      onTransformCommit: vi.fn(),
-      onTransformReject: vi.fn(),
-      onAssetState: vi.fn(),
-    },
-    canUndo: true,
-    canRedo: false,
-    undo: vi.fn(),
-    redo: vi.fn(),
-    commitFloor: vi.fn(() => true),
-    resizeWorkspace: vi.fn(() => true),
-    createMapLabel: vi.fn(() => true),
-    moveMapLabel: vi.fn(() => true),
-    renameMapLabel: vi.fn(() => true),
-    deleteMapLabel: vi.fn(() => true),
-    cancelTransients: vi.fn(() => {
-      observed.events.push('cancel');
-    }),
-    propTool: 'select',
-    setPropTool: vi.fn(),
-    socialControls: {
-      intel: null,
-      factions: null,
-      dispositions: null,
-      selection: null,
-    },
-    propControls: {
-      palette: (
-        <div>
-          <input aria-label="Search reused assets" defaultValue="" />
-          <button>Repeat existing piece</button>
-        </div>
-      ),
-      arrangeExtras: <div>Reused actions and light controls</div>,
-      tree: <div>Reused scene tree</div>,
-      selection: <div>Reused selection visuals</div>,
-    },
-    saveStatus: 'Room authoring draft saved locally',
-    notice: null,
-    autosaveBlocked: false,
-    saveLocalDraft: vi.fn(),
-    dismissNotice: vi.fn(),
-  };
+  return createFakeStudioSession(() => {
+    observed.events.push('cancel');
+  });
 }
 
 beforeEach(() => {
@@ -278,7 +162,14 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    // Nothing selected: the inspector answers for the room, size included.
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { name: 'Room' }
+      )
+    ).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
     expect(screen.queryByLabelText('Label name')).toBeNull();
     expect(
       screen.queryByRole('searchbox', { name: 'Search wall appearances' })
@@ -537,7 +428,8 @@ describe('staged workspace dimensions and label controls', () => {
       48
     );
     expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
+    // The room view keeps the form open after Apply.
+    expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
     expect(observed.layoutProps?.frame).toEqual({
       center: { x: 0, z: 0 },
       zoom: 1,
@@ -575,8 +467,7 @@ describe('staged workspace dimensions and label controls', () => {
     fireEvent.keyDown(screen.getByLabelText('Width (hexes)'), {
       key: 'Escape',
     });
-    expect(screen.queryByRole('textbox', { name: 'Width (hexes)' })).toBeNull();
-    click('Size');
+    // Escape discards the staged values; the room view's form stays.
     expect(
       (screen.getByLabelText('Width (hexes)') as HTMLInputElement).value
     ).toBe('');
@@ -708,8 +599,10 @@ describe('shared Arrange context lifecycle', () => {
       'Paint',
       'Erase',
       'Rectangle',
-      'Size',
-      'Options (N)',
+      'Wall',
+      'Door',
+      'Note',
+      'Inspector (N)',
       'Undo',
       'Redo',
     ]);
@@ -764,8 +657,7 @@ describe('shared Arrange context lifecycle', () => {
     fireEvent.change(name, { target: { value: 'Night watch' } });
     fireEvent.blur(name);
     expect(screen.queryByRole('button', { name: 'Options (N)' })).toBeNull();
-    click('Build');
-    click('Walls');
+    click('Wall');
     expect(screen.queryByRole('button', { name: 'Add table' })).toBeNull();
     expect(
       screen.getByRole('region', { name: 'New wall palette' })
@@ -805,7 +697,7 @@ describe('shared Arrange context lifecycle', () => {
 
   it('N ignores text fields, selects, contenteditable, modifiers, repeats and composition', () => {
     render(<EncounterStudioWorkspace compositionSource={source} />);
-    click('Walls');
+    click('Wall');
     const search = screen.getByRole('searchbox');
     fireEvent.keyDown(search, { key: 'n' });
     for (const flag of [
@@ -827,12 +719,17 @@ describe('shared Arrange context lifecycle', () => {
     }
     expect(
       screen
-        .getByRole('button', { name: 'Options (N)' })
+        .getByRole('button', { name: 'Inspector (N)' })
         .getAttribute('aria-expanded')
     ).toBe('true');
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(
+      screen
+        .getByRole('button', { name: 'Inspector (N)' })
+        .getAttribute('aria-expanded')
+    ).toBe('false');
   });
-  it('collapse and preview/thumbnail rerenders preserve canvas, tool and selection; selection does not reopen options', () => {
-    const session = observed.session!;
+  function propSelection(session: EncounterStudioSession) {
     session.document.draft.scene.items.push({
       id: 'prop',
       kind: 'prop',
@@ -840,11 +737,15 @@ describe('shared Arrange context lifecycle', () => {
       label: 'Test prop',
       transform: { x: 1.25, y: 0, z: 2.5, rotationY: 0.123 },
     });
-    const selection = projectStudioArrange({
+    return projectStudioArrange({
       draft: session.document.draft,
       target: { kind: 'scene', ids: ['prop'] },
       selectionRevision: 1,
     })!;
+  }
+  it('a preview rerender of the same selection does not reopen a hidden inspector', () => {
+    const session = observed.session!;
+    const selection = propSelection(session);
     observed.session = { ...session, arrange: selection };
     const mounted = render(
       <EncounterStudioWorkspace compositionSource={source} />
@@ -854,25 +755,13 @@ describe('shared Arrange context lifecycle', () => {
     const epoch = observed.session!.intentEpoch;
     const originalSelection = observed.session!.arrange;
     const tool = observed.session!.propTool;
-    const toggle = screen.getByRole('button', { name: 'Options (N)' });
+    const toggle = screen.getByRole('button', { name: 'Inspector (N)' });
     expect(toggle.getAttribute('aria-controls')).toBe('studio-sidebar');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.change(screen.getByLabelText('World X'), {
       target: { value: '1.75' },
     });
-    click('Doors');
-    expect(
-      screen.queryByRole('form', { name: 'Arrange selected noun' })
-    ).toBeNull();
-    click('Walls');
-    fireEvent.change(screen.getByRole('searchbox'), {
-      target: { value: 'castle' },
-    });
-    click('Arrange');
-    expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
-      '1.75'
-    );
-    click('Options (N)');
+    fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(
       screen.queryByRole('form', { name: 'Arrange selected noun' })
@@ -892,56 +781,85 @@ describe('shared Arrange context lifecycle', () => {
           height: selection.height,
         },
       },
-      wallEditing: {
-        ...observed.session!.wallEditing,
-        options: [
-          {
-            ref: 'wall',
-            label: 'Wall',
-            wallMatch: true,
-            thumbnail: {
-              status: 'ready',
-              image: 'data:image/png;base64,preview',
-            },
-          },
-        ],
-      },
     };
     mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
     expect(observed.viewportUnmounts).toBe(0);
     expect(observed.ownerMounts).toBe(1);
-    click('Options (N)');
-    click('Walls');
-    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
-      'castle'
-    );
-    click('Arrange');
+    fireEvent.click(toggle);
     expect((screen.getByLabelText('World X') as HTMLInputElement).value).toBe(
       '1.75'
     );
     expect((screen.getByLabelText('World Y') as HTMLInputElement).value).toBe(
       '0.5'
     );
-    click('Options (N)');
-    observed.session!.document.draft.scene.mapLabels = [
-      { id: 'label', text: 'New label', location: { x: 0, z: 1 } },
-    ];
+    expect(observed.session!.commitArrange).not.toHaveBeenCalled();
+  });
+  it('selecting a different thing reopens a hidden inspector', () => {
+    const session = observed.session!;
+    observed.session = { ...session, arrange: propSelection(session) };
+    const mounted = render(
+      <EncounterStudioWorkspace compositionSource={source} />
+    );
+    const toggle = screen.getByRole('button', { name: 'Inspector (N)' });
+    fireEvent.keyDown(window, { key: 'n' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    observed.session!.document.draft.room.walls = structuredClone(
+      createPopulatedStudioDocument().draft.room.walls!
+    );
     observed.session = {
       ...observed.session!,
       arrange: projectStudioArrange({
         draft: observed.session!.document.draft,
-        target: { kind: 'label', id: 'label' },
+        target: { kind: 'wall', id: 'studio-wall' },
         selectionRevision: 2,
       }),
     };
     mounted.rerender(<EncounterStudioWorkspace compositionSource={source} />);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    click('Options (N)');
-    expect(screen.getByLabelText('Rename label')).toBeTruthy();
-    expect(observed.session!.commitArrange).not.toHaveBeenCalled();
-    expect(observed.session!.intentEpoch).toBe(epoch);
-    expect(screen.getByLabelText('Controlled 3D surface')).toBe(canvas);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByRole(
+        'heading',
+        { name: 'Studio north wall' }
+      )
+    ).toBeTruthy();
+  });
+  it('Build has no Arrange, Walls, Doors or Notes buttons and no Size button', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    for (const name of ['Arrange', 'Walls', 'Doors', 'Notes', 'Size'])
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    click('3D');
+    for (const name of ['Arrange', 'Walls', 'Doors', 'Notes', 'Size'])
+      expect(screen.queryByRole('button', { name })).toBeNull();
+  });
+  it('Wall, Door and Note are Layout tools whose options show in the inspector while armed', () => {
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    const inspector = (): HTMLElement =>
+      screen.getByRole('region', { name: 'Inspector' });
+    click('Wall');
+    expect(observed.layoutProps?.tool).toBe('wall');
+    expect(
+      within(inspector()).getByRole('region', { name: 'New wall palette' })
+    ).toBeTruthy();
+    fireEvent.keyDown(within(inspector()).getByRole('searchbox'), {
+      key: 'Escape',
+    });
+    expect(observed.layoutProps?.tool).toBe('select');
+    expect(
+      within(inspector()).queryByRole('region', { name: 'New wall palette' })
+    ).toBeNull();
+    click('Door');
+    expect(observed.session?.doorEditing.setActive).toHaveBeenLastCalledWith(
+      true
+    );
+    click('Label');
+    expect(observed.layoutProps?.tool).toBe('label');
+    expect(within(inspector()).getByLabelText('Label name')).toBeTruthy();
+    click('Select');
+    expect(within(inspector()).queryByLabelText('Label name')).toBeNull();
+    expect(
+      within(inspector()).getByRole('heading', { name: 'Room' })
+    ).toBeTruthy();
   });
 });

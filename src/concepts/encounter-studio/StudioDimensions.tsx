@@ -14,7 +14,8 @@ export function StudioDimensions({
   session: EncounterStudioSession;
   view: EncounterStudioView;
   onFrameChange(frame: LayoutFrame): void;
-  onDismiss(): void;
+  /** Absent: the form stays open after Apply (the room view). */
+  onDismiss?(): void;
 }): React.JSX.Element {
   const workspace = session.document.draft.workspace;
   const width =
@@ -33,7 +34,7 @@ export function StudioDimensions({
     setWidthDraft(width);
     setHeightDraft(height);
     setError(null);
-    onDismiss();
+    onDismiss?.();
   };
   return (
     <form
@@ -60,7 +61,7 @@ export function StudioDimensions({
         if (session.resizeWorkspace(w, h)) {
           setError(null);
           onFrameChange({ center: { x: 0, z: 0 }, zoom: 1 });
-          onDismiss();
+          onDismiss?.();
         } else {
           setError(
             'Resize refused. Keep these inputs; review the document notice, then fix the content or choose larger dimensions.'

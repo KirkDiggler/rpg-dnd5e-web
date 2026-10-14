@@ -4,6 +4,7 @@ import {
 } from '@/npc-appearances/npcAppearanceChoices';
 import type {
   AuthoringRegion,
+  EncounterStudioSession,
   RegionResolution,
   StructuralWall,
   StudioArrangeIntent,
@@ -489,4 +490,34 @@ export function regionStatus(
   return resolution?.status === 'resolved'
     ? `${mode} · Resolved`
     : `${mode} · Unresolved · ${resolution?.status === 'unresolved' ? reasons[resolution.reason] : 'Boundary unavailable.'}`;
+}
+
+/** The name an inspector heading gives one selected thing. */
+export function selectionName(
+  selection: StudioArrangeSelection,
+  session: EncounterStudioSession
+): string {
+  switch (selection.kind) {
+    case 'scene': {
+      const scene = session.document.draft.scene;
+      const root = [...scene.items, ...scene.groups].find(
+        (entity) => entity.id === selection.rootIds[0]
+      );
+      return selection.rootCount === 1
+        ? root?.label || root?.id || 'Scenery'
+        : `${selection.rootCount} scenery roots`;
+    }
+    case 'wall':
+      return selection.wall.label || selection.wall.id;
+    case 'door':
+      return `Door · ${selection.door.assetRef}`;
+    case 'label':
+      return selection.label.text;
+    case 'actor':
+      return selection.mapName ?? selection.monster.id;
+    case 'start':
+      return 'Party start';
+    case 'hex':
+      return `Hex ${selection.cell.q}, ${selection.cell.r}`;
+  }
 }

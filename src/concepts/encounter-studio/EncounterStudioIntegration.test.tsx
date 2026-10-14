@@ -2337,7 +2337,12 @@ describe('joined structural walls in the populated Studio document', () => {
     expect(document.querySelectorAll('.es-header, .es-toolbar')).toHaveLength(
       2
     );
-    expect(screen.queryByLabelText('Width (hexes)')).toBeNull();
+    // Size lives in the room view: nothing selected is the room.
+    expect(
+      within(screen.getByRole('region', { name: 'Inspector' })).getByLabelText(
+        'Width (hexes)'
+      )
+    ).toBeTruthy();
     gesture(zero);
     const floor = storage.document();
     expectPreserved(floor, original);
