@@ -9,10 +9,7 @@ import {
   encodeRoomDocument,
   isRoomDocument,
 } from '@/compositions/roomDocument';
-import {
-  NPC_APPEARANCE_FAMILIES,
-  npcAppearanceOptions,
-} from '@/npc-appearances/npcAppearanceChoices';
+import { npcAppearanceOptions } from '@/npc-appearances/npcAppearanceChoices';
 import {
   useCallback,
   useEffect,
@@ -26,16 +23,20 @@ import type {
   StudioWallAppearanceOption,
 } from '../encounter-studio/studioSession';
 import {
+  adoptCastMember,
+  applyCastEdit,
+  removeCastMember,
+  removeUnusedLook,
+  renameCastMember,
+  type CastEdit,
+} from './cast';
+import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
 } from './catalog';
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
-import {
-  setActorName,
-  setCreaturePalette,
-  type CreaturePaletteEntry,
-} from './creaturePalette';
+import { setActorName } from './creaturePalette';
 import {
   declarationMapForSelection,
   seedDeclarations,
@@ -53,7 +54,6 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
-import { validateMonsterTemplates } from './monsterTemplates';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
 import {
@@ -4559,18 +4559,39 @@ export function WorldBuildingConcept({
             clearStudioSelection();
             return true;
           }),
-          commitTemplates: guardSnapshotIntent((templates): boolean => {
-            try {
-              const valid = validateMonsterTemplates(templates);
-              const current = roomHistoryRef.current.present;
-              const scope = { ...current.scope };
-              if (Object.keys(valid).length) scope.templates = valid;
-              else delete scope.templates;
-              return commitRoomDocument({ ...current, scope });
-            } catch (error) {
-              return rejectEdit(error);
-            }
-          }),
+          cast: (() => {
+            const castIntent = <Args extends unknown[]>(
+              edit: (current: RoomDocument, ...args: Args) => RoomDocument
+            ): ((...args: Args) => boolean) =>
+              guardSnapshotIntent((...args: Args): boolean => {
+                if (refuseWhilePublishing()) return false;
+                try {
+                  return commitRoomDocument(
+                    edit(roomHistoryRef.current.present, ...args)
+                  );
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              });
+            return {
+              save: castIntent((current, edit: CastEdit) =>
+                applyCastEdit(current, edit, idFactory)
+              ),
+              rename: castIntent((current, ref: string, toId: string) =>
+                renameCastMember(current, ref, toId)
+              ),
+              adopt: castIntent((current, ref: string, templateId: string) =>
+                adoptCastMember(current, ref, templateId)
+              ),
+              remove: castIntent((current, ref: string) =>
+                removeCastMember(current, ref)
+              ),
+              removeUnusedLook: castIntent(
+                (current, ref: string, entryId: string) =>
+                  removeUnusedLook(current, ref, entryId)
+              ),
+            };
+          })(),
           creatures: {
             select: guardSnapshotIntent((id: string): boolean => {
               if (
@@ -4593,38 +4614,6 @@ export function WorldBuildingConcept({
                     appearanceRef: armedCreature.appearanceRef,
                   }
                 : null,
-            savePaletteEntry: guardSnapshotIntent(
-              (
-                entry: Omit<CreaturePaletteEntry, 'id'>,
-                id?: string
-              ): boolean => {
-                try {
-                  const current = roomHistoryRef.current.present;
-                  const entries = current.draft.scene.creaturePalette ?? [];
-                  if (id && !entries.some((item) => item.id === id))
-                    throw new Error('Creature recipe no longer exists.');
-                  if (
-                    !NPC_APPEARANCE_FAMILIES.some(
-                      (family) => family.ref === entry.modelRef
-                    )
-                  )
-                    throw new Error('Choose a published NPC model.');
-                  const next = { ...entry, id: id ?? idFactory() };
-                  const palette = id
-                    ? entries.map((item) => (item.id === id ? next : item))
-                    : [...entries, next];
-                  return commitRoomDocument({
-                    ...current,
-                    draft: {
-                      ...current.draft,
-                      scene: setCreaturePalette(current.draft.scene, palette),
-                    },
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
             armPlacement: guardSnapshotIntent(
               (id: string, appearanceRef: string): boolean => {
                 if (refuseWhilePublishing()) return false;

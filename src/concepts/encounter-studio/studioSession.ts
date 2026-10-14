@@ -3,7 +3,7 @@ import type {
   AuthoringRegion,
   RegionResolution,
 } from '../world-building/authoringRegions';
-import type { CreaturePaletteEntry } from '../world-building/creaturePalette';
+import type { CastEdit } from '../world-building/cast';
 import type {
   RoomDraft,
   RoomDraftDocument,
@@ -279,13 +279,21 @@ export interface EncounterStudioSession {
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
-  commitTemplates(templates: NonNullable<SiteScope['templates']>): boolean;
+  /** The cast (rpg-project#575): each intent is one document transaction
+   * over the pure edits in world-building/cast.ts. A refusal returns false
+   * with no history entry; the form shows the edit's own sentence. */
+  cast: {
+    /** One staged form: an id change, the stat block and the defaults. */
+    save(edit: CastEdit): boolean;
+    rename(ref: string, toId: string): boolean;
+    adopt(ref: string, templateId: string): boolean;
+    /** Refused while the member has placements. */
+    remove(ref: string): boolean;
+    /** Remove a later recipe on the member's ref (an unused look). */
+    removeUnusedLook(ref: string, entryId: string): boolean;
+  };
   creatures: {
     select(id: string): boolean;
-    savePaletteEntry(
-      entry: Omit<CreaturePaletteEntry, 'id'>,
-      id?: string
-    ): boolean;
     armPlacement(id: string, appearanceRef: string): boolean;
     readonly placement: { name: string; appearanceRef: string } | null;
     setDefinition(id: string, ref: string): boolean;

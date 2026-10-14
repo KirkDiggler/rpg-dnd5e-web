@@ -41,10 +41,15 @@ export function createFakeStudioSession(
     clearSelection: vi.fn(() => true),
     armPartyStart: vi.fn(() => true),
     commitTables: vi.fn(() => true),
-    commitTemplates: vi.fn(() => true),
+    cast: {
+      save: vi.fn(() => true),
+      rename: vi.fn(() => true),
+      adopt: vi.fn(() => true),
+      remove: vi.fn(() => true),
+      removeUnusedLook: vi.fn(() => true),
+    },
     creatures: {
       select: vi.fn(() => true),
-      savePaletteEntry: vi.fn(() => true),
       armPlacement: vi.fn(() => true),
       placement: null,
       setDefinition: vi.fn(() => true),

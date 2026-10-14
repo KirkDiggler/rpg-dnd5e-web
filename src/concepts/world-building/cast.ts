@@ -369,3 +369,43 @@ export function defaultLookFamily(
     ? undefined
     : families.find((family) => family.ref === modelRef);
 }
+
+/** One staged cast form, applied as one document: an id change first (a
+ * rename for a template member, an adoption for a rulebook member), then the
+ * stat block and the defaults on the resulting ref. */
+export interface CastEdit {
+  readonly ref: string;
+  /** A new template id: rename (template) or adopt (rulebook). */
+  readonly id?: string;
+  readonly template?: MonsterTemplate;
+  readonly defaults?: Omit<CreaturePaletteEntry, 'id' | 'ref'>;
+}
+
+export function applyCastEdit(
+  document: Readonly<RoomDraftDocument>,
+  edit: CastEdit,
+  idFactory: IdFactory
+): RoomDraftDocument {
+  let next = document as RoomDraftDocument;
+  let ref = edit.ref;
+  const member = castMemberOf(next, ref);
+  if (edit.id !== undefined && edit.id !== member?.id) {
+    if (!member) ref = `${MONSTER_PREFIX}${edit.id}`;
+    else {
+      next =
+        member.source === 'template'
+          ? renameCastMember(next, ref, edit.id)
+          : adoptCastMember(next, ref, edit.id);
+      ref = `${MONSTER_PREFIX}${edit.id}`;
+    }
+  }
+  return saveCastMember(
+    next,
+    {
+      ref,
+      ...(edit.template ? { template: edit.template } : {}),
+      ...(edit.defaults ? { defaults: edit.defaults } : {}),
+    },
+    idFactory
+  );
+}

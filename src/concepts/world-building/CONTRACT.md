@@ -696,11 +696,15 @@ no client-side stance fold or knowledge propagation is introduced.
 
 ## Authored stat-block carriage
 
-Encounter exposes Creatures, Stat blocks and Tables. Scene5 optionally carries
-`creaturePalette`: editor recipes with exact id, name, ref and modelRef fields.
-The name labels the reusable editor recipe; ref names an existing rulebook monster
-or root template, and modelRef names a declared appearance family. Recipes carry
-no scores, coordinates, factions or skin overrides and never instantiate actors.
+Encounter exposes Cast and Tables (rpg-project#575). The cast is derived, never
+a second list: one member per monster ref used by a root template, a palette
+recipe or a placement (`world-building/cast.ts`). Scene5 optionally carries
+`creaturePalette`: editor recipes with exact id, name, ref, modelRef and an
+optional faction. The first recipe on a ref is that member's defaults; later ones
+are unused looks. ref names an existing rulebook monster or root template,
+modelRef names a declared appearance family, and faction names a declared
+faction. Recipes carry no scores, coordinates or skin overrides and never
+instantiate actors. The toolkit carries `room.scene` through unread.
 They round-trip with the editor's scene metadata without adding gameplay grammar;
 runtime knowledge never resolves actor appearance or names from this palette.
 
