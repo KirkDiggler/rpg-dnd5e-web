@@ -95,7 +95,10 @@ import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
 } from './fixtures/castleWorkspace';
-import { createRegionLightingDocument } from './fixtures/regionLighting';
+import {
+  createRegionLightingDocument,
+  createUnresolvedRegionLightingDocument,
+} from './fixtures/regionLighting';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import {
   clientToWorld,
@@ -5701,5 +5704,34 @@ describe('S3 the overview through the real owner', () => {
     ).toBeNull();
     fireEvent.click(button('Undo'));
     expect(storage.document()).toEqual(before);
+  });
+
+  it('3D names each resolved region once, in its overview colour', async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    const colours = new Map(
+      [...surface().querySelectorAll('[data-region-id]')].map((node) => [
+        node.getAttribute('data-region-id'),
+        node.getAttribute('data-region-colour'),
+      ])
+    );
+    switchTo('3D');
+    const labels = viewport().regionLabels!;
+    expect(labels.map((label) => label.text)).toEqual(
+      KEEP_ROOMS.map((room) => room.text)
+    );
+    for (const label of labels)
+      expect(label.colour).toBe(colours.get(label.id));
+  });
+
+  it('an unresolved region has no 3D label', async () => {
+    const document = createUnresolvedRegionLightingDocument();
+    mount(new MemoryStorage(document));
+    await settled();
+    switchTo('3D');
+    const ids = viewport().regionLabels!.map((label) => label.id);
+    expect(ids).not.toContain('lighting-unbound');
+    expect(ids).not.toContain('lighting-empty');
+    expect(ids.length).toBeGreaterThan(0);
   });
 });

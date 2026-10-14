@@ -190,6 +190,26 @@ function StudioSurface({
       regionOverview(session.document.draft, session.regionEditing.resolutions),
     [session.document.draft, session.regionEditing.resolutions]
   );
+  /** One 3D label per resolved region, in its overview colour (S3-T7). */
+  const regionLabels = useMemo(() => {
+    const scene = session.document.draft.scene;
+    return (scene.authoringRegions ?? []).flatMap((region) => {
+      const colour = overview.sizes.get(region.id)
+        ? overview.colours.get(region.id)
+        : undefined;
+      const label = scene.mapLabels?.find((l) => l.id === region.labelId);
+      return colour && label
+        ? [
+            {
+              id: region.id,
+              text: label.text,
+              location: label.location,
+              colour,
+            },
+          ]
+        : [];
+    });
+  }, [session.document.draft.scene, overview]);
   const changeSection = (next: StudioSidebarSection): void => {
     showSection(next);
   };
@@ -803,6 +823,7 @@ function StudioSurface({
                 <div className="es-canvas">
                   <WorldBuildingViewport
                     {...session.viewportProps}
+                    regionLabels={regionLabels}
                     active={view === '3d' && spatial}
                     studioCanvas
                   />

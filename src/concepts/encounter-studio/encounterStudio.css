@@ -1078,3 +1078,16 @@
     border-bottom: 1px solid var(--wb-border);
   }
 }
+
+/* S3-T7: a region's name over the 3D floor, in its overview colour. */
+.wb-region-label {
+  display: block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid;
+  border-radius: 999px;
+  background: rgba(16, 25, 35, 0.78);
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+  user-select: none;
+}
