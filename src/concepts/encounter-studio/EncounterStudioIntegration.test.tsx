@@ -5597,9 +5597,9 @@ describe('S3 the overview through the real owner', () => {
     await settled();
     // Eight rooms; the castle cast's six placements and the front room's
     // three; 73 × 48 floor; the studio door and five keep doors.
-    expect(
-      screen.getByRole('contentinfo', { name: 'Layout counts' }).textContent
-    ).toBe('8 areas · 9 creatures · 3504 hexes · 6 doors');
+    expect(screen.getByLabelText('Layout counts').textContent).toBe(
+      '8 areas · 9 creatures · 3504 hexes · 6 doors'
+    );
   });
 
   const row = (name: string): HTMLElement =>

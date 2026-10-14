@@ -383,10 +383,22 @@ export function LayoutViewport({
   useLayoutEffect(() => {
     const surface = surfaceRef.current;
     if (!frameTarget || !surface) return;
+    const rect = surface.getBoundingClientRect();
+    // An overlay over one side of the surface narrows the part a frame fits.
+    const inset = { left: 0, right: 0 };
+    for (const o of frameTarget.occluders?.() ?? []) {
+      if (Math.min(o.right, rect.right) - Math.max(o.left, rect.left) <= 0)
+        continue;
+      if (o.left + o.right > rect.left + rect.right)
+        inset.right = Math.max(inset.right, rect.right - o.left);
+      else inset.left = Math.max(inset.left, o.right - rect.left);
+    }
     const next = frameOf(
       frameTarget.bounds,
-      surface.getBoundingClientRect(),
-      frameRequestRef.current.fitExtent
+      rect,
+      frameRequestRef.current.fitExtent,
+      undefined,
+      inset
     );
     if (next) frameRequestRef.current.onFrameChange(next);
   }, [frameTarget]);

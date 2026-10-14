@@ -170,9 +170,21 @@ function StudioSurface({
   const [frameTarget, setFrameTarget] = useState<{
     bounds: WorkspaceBounds;
     nonce: number;
+    occluders(): readonly { left: number; right: number }[];
   }>();
+  /** Frame world bounds in the part of the map the open inspector leaves,
+   * measured when Layout applies the request, after the inspector opens. */
   const frameBounds = (bounds: WorkspaceBounds): void =>
-    setFrameTarget((current) => ({ bounds, nonce: (current?.nonce ?? 0) + 1 }));
+    setFrameTarget((current) => ({
+      bounds,
+      nonce: (current?.nonce ?? 0) + 1,
+      occluders: () => {
+        const sidebar = document.getElementById('studio-sidebar');
+        const rect =
+          sidebar && !sidebar.hidden ? sidebar.getBoundingClientRect() : null;
+        return rect && rect.width > 0 ? [rect] : [];
+      },
+    }));
   const overview = useMemo(
     () =>
       regionOverview(session.document.draft, session.regionEditing.resolutions),

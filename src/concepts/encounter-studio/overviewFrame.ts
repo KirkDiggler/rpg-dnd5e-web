@@ -49,14 +49,23 @@ export function contentBounds(draft: Readonly<RoomDraft>): WorkspaceBounds {
   return boundsOf(points) ?? workspaceBounds(draft.workspace);
 }
 
+/** Surface pixels covered by an overlay on each side, such as the open
+ * inspector: a frame fits the uncovered part. */
+export interface FrameInset {
+  left: number;
+  right: number;
+}
+
 /** The frame that fits `target` in a surface of `viewport`'s size, using
  * the same fit-relative zoom the Layout transform uses: zoom 1 is the
- * workspace extent fitted. A margin keeps the edges off the frame. */
+ * workspace extent fitted. A margin keeps the edges off the frame; an inset
+ * fits and centres the target in the part no overlay covers. */
 export function frameOf(
   target: WorkspaceBounds,
   viewport: Pick<LayoutBounds, 'width' | 'height'>,
   extent: number | WorkspaceBounds,
-  margin = 0.9
+  margin = 0.9,
+  inset: FrameInset = { left: 0, right: 0 }
 ): LayoutFrame | null {
   const halfWidth =
     typeof extent === 'number'
@@ -79,14 +88,21 @@ export function frameOf(
     viewport.width / (2 * halfWidth),
     viewport.height / (2 * halfHeight)
   );
-  const wanted =
-    Math.min(viewport.width / width, viewport.height / height) * margin;
+  const left = Math.max(0, inset.left);
+  const right = Math.max(0, inset.right);
+  // An overlay that leaves too little uncovered is ignored.
+  const covered = viewport.width - left - right < viewport.width * 0.3;
+  const visible = covered ? viewport.width : viewport.width - left - right;
+  const shift = covered ? 0 : (right - left) / 2;
+  const wanted = Math.min(visible / width, viewport.height / height) * margin;
   const zoom = Math.min(
     MAX_LAYOUT_ZOOM,
     Math.max(MIN_LAYOUT_ZOOM, wanted / fit)
   );
+  // The frame centre sits at the surface centre: move it so the target's
+  // centre lands at the centre of the uncovered part.
   const center = {
-    x: (target.minX + target.maxX) / 2,
+    x: (target.minX + target.maxX) / 2 + shift / (fit * zoom),
     z: (target.minZ + target.maxZ) / 2,
   };
   return Number.isFinite(zoom) && Number.isFinite(center.x + center.z)

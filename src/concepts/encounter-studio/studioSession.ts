@@ -244,6 +244,9 @@ export interface LayoutViewportProps {
   frameTarget?: {
     bounds: import('../world-building/workspaceGeometry').WorkspaceBounds;
     nonce: number;
+    /** Client-pixel spans of overlays over the surface, such as the open
+     * inspector, read when the surface applies the request. */
+    occluders?(): readonly { left: number; right: number }[];
   };
 }
 
