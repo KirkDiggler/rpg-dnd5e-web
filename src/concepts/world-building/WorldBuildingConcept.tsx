@@ -29,6 +29,7 @@ import {
   removeCastMember,
   removeUnusedLook,
   renameCastMember,
+  shuffleCastLooks,
   type CastEdit,
 } from './cast';
 import {
@@ -4646,6 +4647,9 @@ export function WorldBuildingConcept({
                   removeUnusedLook(current, ref, entryId)
               ),
               select: guardSnapshotIntent(selectStudioCastMember),
+              shuffle: castIntent((current, ref: string) =>
+                shuffleCastLooks(current, ref, Math.random)
+              ),
             };
           })(),
           creatures: {

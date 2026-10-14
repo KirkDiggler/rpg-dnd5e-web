@@ -13,6 +13,7 @@ import {
   removeCastMember,
   removeUnusedLook,
   renameCastMember,
+  shuffleCastLooks,
 } from '../world-building/cast';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
 import { projectStudioArrange } from '../world-building/studioArrange';
@@ -81,6 +82,9 @@ function harness(initial: RoomDraftDocument) {
         adopt: intent(adoptCastMember),
         remove: intent(removeCastMember),
         removeUnusedLook: intent(removeUnusedLook),
+        shuffle: intent((current, ref: string) =>
+          shuffleCastLooks(current, ref, () => 0.5)
+        ),
         select: (ref) => {
           setTarget(ref);
           return true;
@@ -356,5 +360,35 @@ describe('StudioCast', () => {
     expect(member('Goblin').getAttribute('aria-pressed')).toBe('false');
     // Pressing a row is the member's selection, never a placement's.
     expect(screen.queryByRole('form')).toBeNull();
+  });
+
+  it('Shuffle looks gives two placements different looks from the default family in one transaction', () => {
+    const { history, latest } = harness(createGuardCastDocument());
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Shuffle looks'));
+    expect(history).toHaveLength(2);
+    const looks = latest().draft.room.monsterDeclarations.map(
+      (monster) => monster.appearanceRef
+    );
+    expect(new Set(looks).size).toBe(2);
+    for (const look of looks)
+      expect(look).toMatch(/^dnd5e:npcs:kingdom:soldier-male-01/);
+  });
+
+  it('a member without a default look refuses the shuffle at the form', () => {
+    const { history } = harness(
+      placeCastMember(
+        createEmptyCastDocument(),
+        'goblin-1',
+        'dnd5e:monsters:goblin',
+        0
+      )
+    );
+    fireEvent.click(member('Goblin'));
+    fireEvent.click(button('Shuffle looks'));
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Goblin has no default look. Choose one in the cast.'
+    );
+    expect(history).toHaveLength(1);
   });
 });

@@ -1,3 +1,5 @@
+import { NPC_APPEARANCE_CATALOG } from '@/generated/npcAppearanceCatalog';
+import { buildNpcAppearanceFamilies } from '@/npc-appearances/npcAppearanceChoices';
 import { describe, expect, it } from 'vitest';
 import { createPopulatedStudioDocument } from '../encounter-studio/fixtures/studioDocument';
 import {
@@ -7,6 +9,7 @@ import {
   removeCastMember,
   renameCastMember,
   saveCastMember,
+  shuffleCastLooks,
 } from './cast';
 import { validateCreaturePalette } from './creaturePalette';
 import {
@@ -60,6 +63,30 @@ function guardCast(): RoomDraftDocument {
   );
   document = place(document, 'gate-1', GUARD, 0);
   return place(document, 'gate-2', GUARD, 1);
+}
+
+/** A family of five looks, cut from a published family. */
+const soldierFamily = NPC_APPEARANCE_CATALOG.filter(
+  (look) => (look.look?.familyRef ?? look.assetRef) === SOLDIER
+);
+const FIVE = buildNpcAppearanceFamilies([
+  soldierFamily.find((look) => look.assetRef === SOLDIER)!,
+  ...soldierFamily.filter((look) => look.assetRef !== SOLDIER).slice(0, 4),
+]);
+const ONE = buildNpcAppearanceFamilies([
+  soldierFamily.find((look) => look.assetRef === SOLDIER)!,
+]);
+function seeded(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+function looksOf(document: RoomDraftDocument): (string | undefined)[] {
+  return document.draft.room.monsterDeclarations.map(
+    (monster) => monster.appearanceRef
+  );
 }
 
 describe('the cast', () => {
@@ -270,5 +297,58 @@ describe('the cast', () => {
       'skeleton',
       'goblin',
     ]);
+  });
+});
+
+describe('the shuffle', () => {
+  function withPlacements(count: number): RoomDraftDocument {
+    let document = saveCastMember(
+      emptyCast(),
+      {
+        ref: GUARD,
+        template: { base: 'dnd5e:monsters:human' },
+        defaults: { name: 'Guard', modelRef: SOLDIER },
+      },
+      idFactory
+    );
+    for (let index = 0; index < count; index += 1)
+      document = place(document, `gate-${index}`, GUARD, index - 3);
+    return document;
+  }
+
+  it('three placements of a five-look family get three different looks', () => {
+    const looks = looksOf(
+      shuffleCastLooks(withPlacements(3), GUARD, seeded(7), FIVE)
+    );
+    expect(new Set(looks).size).toBe(3);
+    const family = FIVE[0]!.looks.map((look) => look.assetRef);
+    for (const look of looks) expect(family).toContain(look);
+  });
+
+  it('six placements of a five-look family repeat only after all five', () => {
+    const looks = looksOf(
+      shuffleCastLooks(withPlacements(6), GUARD, seeded(11), FIVE)
+    );
+    expect(new Set(looks.slice(0, 5)).size).toBe(5);
+    expect(looks.slice(0, 5)).toContain(looks[5]);
+  });
+
+  it('a one-look family refuses', () => {
+    expect(() =>
+      shuffleCastLooks(withPlacements(2), GUARD, seeded(3), ONE)
+    ).toThrow("Guard's look family has one look.");
+  });
+
+  it('the shuffle changes only appearanceRef', () => {
+    const before = withPlacements(3);
+    const after = shuffleCastLooks(before, GUARD, seeded(5), FIVE);
+    const withoutLook = (document: RoomDraftDocument) =>
+      document.draft.room.monsterDeclarations.map((monster) => {
+        const rest: Partial<typeof monster> = { ...monster };
+        delete rest.appearanceRef;
+        return rest;
+      });
+    expect(withoutLook(after)).toEqual(withoutLook(before));
+    expect(after.scope).toEqual(before.scope);
   });
 });

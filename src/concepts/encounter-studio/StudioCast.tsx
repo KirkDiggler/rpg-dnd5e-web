@@ -6,6 +6,7 @@ import {
   removeCastMember,
   RULEBOOK_MONSTER_REFS,
   rulebookMonsterName,
+  shuffleCastLooks,
   type CastEdit,
   type CastMember,
 } from '../world-building/cast';
@@ -497,6 +498,31 @@ export function CastMemberForm({
               <p className="es-help">Not placed yet.</p>
             )}
           </section>
+          {member.placements.length > 0 && (
+            <div className="es-buttons">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    shuffleCastLooks(session.document, member.ref, Math.random);
+                  } catch (caught) {
+                    setError(message(caught));
+                    return;
+                  }
+                  if (!session.cast.shuffle(member.ref))
+                    setError(
+                      'The shuffle was refused. Check the document notice.'
+                    );
+                }}
+              >
+                Shuffle looks
+              </button>
+              <span className="es-help">
+                Gives each placement a different look from the default look
+                family.
+              </span>
+            </div>
+          )}
           {member.unusedDefaults.length > 0 && (
             <section aria-label="Unused looks">
               <h4>Unused looks</h4>

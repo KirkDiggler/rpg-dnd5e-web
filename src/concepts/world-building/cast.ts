@@ -27,7 +27,7 @@ import {
   type MonsterTemplate,
   type SiteTemplates,
 } from './monsterTemplates';
-import type { RoomDraftDocument } from './roomDraft';
+import { setRoomMonsterAppearance, type RoomDraftDocument } from './roomDraft';
 import type { IdFactory } from './types';
 
 const MONSTER_PREFIX = 'dnd5e:monsters:';
@@ -408,4 +408,39 @@ export function applyCastEdit(
     },
     idFactory
   );
+}
+
+/** Deal each placement of a member a look from its default family. Looks are
+ * dealt without repeats until the family runs out, in an order drawn from
+ * `random`; then a fresh deck is dealt. Only appearanceRef changes. */
+export function shuffleCastLooks(
+  document: Readonly<RoomDraftDocument>,
+  ref: string,
+  random: () => number,
+  families: readonly NpcAppearanceFamily[] = NPC_APPEARANCE_FAMILIES
+): RoomDraftDocument {
+  const member = requireMember(document, ref);
+  const family = defaultLookFamily(member, families);
+  if (!family)
+    throw new Error(
+      `${member.name} has no default look. Choose one in the cast.`
+    );
+  const looks = family.looks.map((look) => look.assetRef);
+  if (looks.length < 2)
+    throw new Error(`${member.name}'s look family has one look.`);
+  let deck: string[] = [];
+  let draft = document.draft;
+  for (const id of member.placements) {
+    if (!deck.length) {
+      deck = [...looks];
+      for (let index = deck.length - 1; index > 0; index -= 1) {
+        const pick = Math.floor(random() * (index + 1));
+        [deck[index], deck[pick]] = [deck[pick]!, deck[index]!];
+      }
+    }
+    draft = setRoomMonsterAppearance(draft, id, deck.shift()!);
+  }
+  return draft === document.draft
+    ? (document as RoomDraftDocument)
+    : { scope: document.scope, draft };
 }

@@ -299,6 +299,10 @@ export interface EncounterStudioSession {
      * placements are highlighted on the map. One selection, not a set (R9).
      * Refused for a ref that is not in the cast. */
     select(ref: string): boolean;
+    /** Deal the member's placements looks from its default look family,
+     * without repeats until the family runs out. One transaction; undo
+     * restores every look. Refused for a family of one look. */
+    shuffle(ref: string): boolean;
   };
   creatures: {
     select(id: string): boolean;

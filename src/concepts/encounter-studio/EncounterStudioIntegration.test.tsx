@@ -80,7 +80,11 @@ import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
-import { createGuardCastDocument, GUARD } from './fixtures/castDocument';
+import {
+  createGuardCastDocument,
+  GUARD,
+  SOLDIER,
+} from './fixtures/castDocument';
 import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
@@ -5190,6 +5194,26 @@ describe('S1 the cast through the real owner', () => {
     ).toBeTruthy();
     switchTo('3D');
     expect(highlighted()).toEqual([]);
+  });
+
+  it('undo after a shuffle restores every look', async () => {
+    const original = createGuardCastDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Shuffle looks'));
+    const looks = (): (string | undefined)[] =>
+      storage
+        .document()
+        .draft.room.monsterDeclarations.map((monster) => monster.appearanceRef);
+    const shuffled = looks();
+    expect(new Set(shuffled).size).toBe(2);
+    expect(shuffled).not.toEqual([SOLDIER, SOLDIER]);
+    fireEvent.click(button('Undo'));
+    expect(looks()).toEqual([SOLDIER, SOLDIER]);
+    expect(storage.document()).toEqual(original);
   });
 
   it('undo after a cast rename restores the old id on every placement', async () => {

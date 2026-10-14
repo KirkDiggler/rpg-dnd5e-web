@@ -65,6 +65,7 @@ function fixture(): EncounterStudioSession {
       adopt: vi.fn(() => true),
       remove: vi.fn(() => true),
       removeUnusedLook: vi.fn(() => true),
+      shuffle: vi.fn(() => true),
       select: vi.fn(() => true),
     },
     creatures: {
