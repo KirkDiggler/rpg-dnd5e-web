@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { RoomWorkspace } from './workspaceGeometry';
+import { rectangleOf, type RoomWorkspace } from './workspaceGeometry';
 
 /** Value-stable presentation input, not a document cache. Owner normalization
  * may replace the workspace object during unrelated commits; geometry/camera
@@ -9,15 +9,32 @@ export function usePresentationWorkspace(
 ): RoomWorkspace | undefined {
   const hexRadius = workspace?.hexRadius;
   const horizontalLimit = workspace?.horizontalLimit;
-  const widthHexes =
-    workspace?.kind === 'centered-odd-r' ? workspace.widthHexes : undefined;
-  const heightHexes =
-    workspace?.kind === 'centered-odd-r' ? workspace.heightHexes : undefined;
-  return useMemo(() => {
+  const kind = workspace?.kind;
+  const rect = workspace ? rectangleOf(workspace) : null;
+  const widthHexes = rect?.widthHexes;
+  const heightHexes = rect?.heightHexes;
+  const minCol = rect?.minCol;
+  const minRow = rect?.minRow;
+  return useMemo((): RoomWorkspace | undefined => {
     if (hexRadius === undefined || horizontalLimit === undefined)
       return undefined;
-    return widthHexes === undefined || heightHexes === undefined
-      ? { hexRadius, horizontalLimit }
+    if (
+      widthHexes === undefined ||
+      heightHexes === undefined ||
+      minCol === undefined ||
+      minRow === undefined
+    )
+      return { hexRadius, horizontalLimit };
+    return kind === 'odd-r-rect'
+      ? {
+          kind,
+          minCol,
+          minRow,
+          widthHexes,
+          heightHexes,
+          hexRadius,
+          horizontalLimit,
+        }
       : {
           kind: 'centered-odd-r',
           widthHexes,
@@ -25,5 +42,13 @@ export function usePresentationWorkspace(
           hexRadius,
           horizontalLimit,
         };
-  }, [hexRadius, horizontalLimit, widthHexes, heightHexes]);
+  }, [
+    kind,
+    hexRadius,
+    horizontalLimit,
+    widthHexes,
+    heightHexes,
+    minCol,
+    minRow,
+  ]);
 }

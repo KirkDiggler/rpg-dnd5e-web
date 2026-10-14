@@ -1,12 +1,16 @@
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import * as THREE from 'three';
-import { workspaceBoundary, type RoomWorkspace } from './workspaceGeometry';
+import {
+  rectangleOf,
+  workspaceBoundary,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 export function createGroundBoundaryGeometry(
   workspace: number | RoomWorkspace,
   roomAuthoring: boolean = true
 ): THREE.BufferGeometry {
-  if (typeof workspace !== 'number' && workspace.kind === 'centered-odd-r') {
+  if (typeof workspace !== 'number' && rectangleOf(workspace)) {
     return new THREE.BufferGeometry().setFromPoints(
       workspaceBoundary(workspace).flatMap(({ a, b }) =>
         [a, b].map(

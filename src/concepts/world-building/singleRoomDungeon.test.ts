@@ -1269,3 +1269,43 @@ it('scene4 JSON → YAML → JSON preserves full populated payload and scope (We
     expect(encodeSingleRoomDungeon(decoded)).toBe(yaml);
   }
 });
+
+describe('the off-centre workspace through the single-room codec', () => {
+  it('an off-centre workspace encodes and round-trips through parse', () => {
+    const centred = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      20,
+      20
+    );
+    const grown = resizeRoomWorkspace(centred, 24, 22).draft;
+    expect(grown.workspace.kind).toBe('odd-r-rect');
+    const decoded = decodeSingleRoomDungeon(
+      encodeSingleRoomDungeon({ key: 'grown-room', draft: grown })
+    );
+    expect(decoded.draft).toEqual(grown);
+  });
+
+  it('an unresized centred document encodes byte-identical', () => {
+    const centred = resizeRoomWorkspace(
+      { draft: createRoomDraft(createEmptyScene('scene'), 'room'), scope: {} },
+      20,
+      20
+    );
+    const bytes = encodeSingleRoomDungeon({
+      key: 'room',
+      draft: centred.draft,
+    });
+    const same = resizeRoomWorkspace(centred, 20, 20);
+    expect(same).toBe(centred);
+    expect(encodeSingleRoomDungeon({ key: 'room', draft: same.draft })).toBe(
+      bytes
+    );
+    expect(
+      encodeSingleRoomDungeon({
+        key: 'room',
+        draft: decodeSingleRoomDungeon(bytes).draft,
+      })
+    ).toBe(bytes);
+    expect(bytes).toContain('centered-odd-r');
+  });
+});

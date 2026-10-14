@@ -30,11 +30,14 @@ import type { KeyValueStorage, WorldScene } from './types';
 import { pruneWallFinishes } from './wallFinishEdits';
 import { validateWorkspaceContent } from './workspaceContentBounds';
 import {
-  centeredRoomWorkspace,
   containsWorkspaceCell,
+  DEFAULT_RESIZE_EDGES,
+  growRoomWorkspace,
+  rectangleOf,
   ROOM_WORKSPACE_STEPS,
   validateWorkspace,
   workspaceCells,
+  type ResizeEdges,
   type RoomHexCell,
   type RoomWorkspace,
 } from './workspaceGeometry';
@@ -747,7 +750,7 @@ export function remapRoomDeclarations(
 }
 
 export function expandRoomWorkspace(draft: RoomDraft): RoomDraft {
-  if (draft.workspace.kind === 'centered-odd-r') return draft;
+  if (rectangleOf(draft.workspace)) return draft;
   const index = ROOM_WORKSPACE_STEPS.findIndex(
     (step) =>
       step.hexRadius === draft.workspace.hexRadius &&
@@ -1211,7 +1214,7 @@ function validateDraft(value: unknown): RoomDraft {
   );
   const workspace = validateWorkspace(input.workspace);
   if (
-    workspace.kind === 'centered-odd-r' &&
+    rectangleOf(workspace) &&
     input.scene?.version !== 2 &&
     input.scene?.version !== 3 &&
     input.scene?.version !== 4 &&
@@ -1489,12 +1492,21 @@ export function validateRoomDocument(
 }
 
 /** Explicit immutable intent; existing poses/cells are never moved. */
+/** Resize by moving only the chosen edges (default right and top), so no
+ * cell, wall, prop, label or creature changes its coordinate. A shrink that
+ * would leave content outside is refused by the content gate. */
 export function resizeRoomWorkspace(
   document: RoomDraftDocument,
   widthHexes: number,
-  heightHexes: number
+  heightHexes: number,
+  edges: ResizeEdges = DEFAULT_RESIZE_EDGES
 ): RoomDraftDocument {
-  const workspace = centeredRoomWorkspace(widthHexes, heightHexes);
+  const workspace = growRoomWorkspace(
+    document.draft.workspace,
+    widthHexes,
+    heightHexes,
+    edges
+  );
   const next = {
     draft: {
       ...document.draft,

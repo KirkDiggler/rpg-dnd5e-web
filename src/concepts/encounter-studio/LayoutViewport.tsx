@@ -46,6 +46,7 @@ import {
 import { snapPerpendicularCorner } from '../world-building/wallCornerJoins';
 import {
   containsWorkspacePoint,
+  rectangleOf,
   workspaceBounds,
   workspaceCellAtPoint,
 } from '../world-building/workspaceGeometry';
@@ -340,7 +341,7 @@ export function LayoutViewport({
   );
   const fitExtent = useMemo(
     () =>
-      presentationWorkspace.kind === 'centered-odd-r'
+      rectangleOf(presentationWorkspace) !== null
         ? workspaceBounds(presentationWorkspace)
         : presentationWorkspace.horizontalLimit,
     [presentationWorkspace]

@@ -209,6 +209,7 @@ import {
 } from './wallFinishProjection';
 import { WALL_FINISH_SIDES, type WallFinishPatch } from './wallFinishTypes';
 import { validateWorkspaceContent } from './workspaceContentBounds';
+import type { ResizeEdges } from './workspaceGeometry';
 import { WorldBuilderInspector } from './WorldBuilderInspector';
 import './worldBuilding.css';
 import {
@@ -4858,10 +4859,11 @@ export function WorldBuildingConcept({
             (cells, mode) =>
               studioHomeRef.current === 'build' && commitFloor(cells, mode)
           ),
-          resizeWorkspace: guardIntent((width: number, height: number) =>
-            applyRoomIntent((current) =>
-              resizeRoomWorkspace(current, width, height)
-            )
+          resizeWorkspace: guardIntent(
+            (width: number, height: number, edges?: ResizeEdges) =>
+              applyRoomIntent((current) =>
+                resizeRoomWorkspace(current, width, height, edges)
+              )
           ),
           createMapLabel: guardIntent((text: string, location: WorldPoint) =>
             applyRoomIntent((current) => ({

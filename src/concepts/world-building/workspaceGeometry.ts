@@ -27,7 +27,38 @@ export type RoomWorkspace =
       heightHexes: number;
       hexRadius: number;
       horizontalLimit: number;
+    }
+  /** An explicit odd-r rectangle. Its edges are where the author put them,
+   * so a resize moves only the edges the author chose and no cell moves. */
+  | {
+      kind: 'odd-r-rect';
+      /** Odd-r column of the left edge: col = q + floor(r / 2). */
+      minCol: number;
+      /** Row of the top edge. Screen-up in Layout is decreasing r. */
+      minRow: number;
+      widthHexes: number;
+      heightHexes: number;
+      /** Max cube distance from the origin over its cells: derived. */
+      hexRadius: number;
+      horizontalLimit: number;
     };
+/** The rectangle a workspace covers, in odd-r columns and rows. */
+export interface WorkspaceRectangle {
+  minCol: number;
+  minRow: number;
+  widthHexes: number;
+  heightHexes: number;
+}
+/** Which edges a resize moves. Absent means right and top. */
+export interface ResizeEdges {
+  columns: 'right' | 'left';
+  /** Top is the smallest r. */
+  rows: 'top' | 'bottom';
+}
+export const DEFAULT_RESIZE_EDGES: ResizeEdges = {
+  columns: 'right',
+  rows: 'top',
+};
 export interface WorkspaceBounds {
   minX: number;
   maxX: number;
@@ -49,6 +80,61 @@ function dimensions(width: number, height: number): void {
       'Room workspace widthHexes/heightHexes must be integers in 1..128 (at most 16384 cells).'
     );
 }
+function origin(value: number, field: string): void {
+  if (!Number.isSafeInteger(value))
+    throw new Error(`Room workspace ${field} must be an integer.`);
+}
+/** null for a legacy radius workspace: it is not a rectangle. */
+export function rectangleOf(
+  workspace: RoomWorkspace | number
+): WorkspaceRectangle | null {
+  if (typeof workspace === 'number' || workspace.kind === undefined)
+    return null;
+  if (workspace.kind === 'odd-r-rect')
+    return {
+      minCol: workspace.minCol,
+      minRow: workspace.minRow,
+      widthHexes: workspace.widthHexes,
+      heightHexes: workspace.heightHexes,
+    };
+  return {
+    minCol: -Math.floor(workspace.widthHexes / 2),
+    minRow: -Math.floor(workspace.heightHexes / 2),
+    widthHexes: workspace.widthHexes,
+    heightHexes: workspace.heightHexes,
+  };
+}
+function rectangleCells(rect: WorkspaceRectangle): RoomHexCell[] {
+  dimensions(rect.widthHexes, rect.heightHexes);
+  const cells: RoomHexCell[] = [];
+  for (let r = rect.minRow; r < rect.minRow + rect.heightHexes; r++)
+    for (let col = rect.minCol; col < rect.minCol + rect.widthHexes; col++)
+      cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
+  return cells;
+}
+/** hexRadius and horizontalLimit, derived from the cells. */
+function envelopes(rect: WorkspaceRectangle): {
+  hexRadius: number;
+  horizontalLimit: number;
+} {
+  let hexRadius = 1;
+  let horizontalLimit = 12;
+  for (const cell of rectangleCells(rect)) {
+    hexRadius = Math.max(
+      hexRadius,
+      Math.abs(cell.q),
+      Math.abs(cell.r),
+      Math.abs(cell.q + cell.r)
+    );
+    for (const p of cellCorners(cell))
+      horizontalLimit = Math.max(
+        horizontalLimit,
+        Math.ceil(Math.abs(p.x)),
+        Math.ceil(Math.abs(p.z))
+      );
+  }
+  return { hexRadius, horizontalLimit };
+}
 export function centeredRoomWorkspace(
   widthHexes: number,
   heightHexes: number
@@ -61,21 +147,46 @@ export function centeredRoomWorkspace(
     hexRadius: 1,
     horizontalLimit: 12,
   };
-  for (const cell of workspaceCells(workspace)) {
-    workspace.hexRadius = Math.max(
-      workspace.hexRadius,
-      Math.abs(cell.q),
-      Math.abs(cell.r),
-      Math.abs(cell.q + cell.r)
-    );
-    for (const p of cellCorners(cell))
-      workspace.horizontalLimit = Math.max(
-        workspace.horizontalLimit,
-        Math.ceil(Math.abs(p.x)),
-        Math.ceil(Math.abs(p.z))
-      );
-  }
-  return workspace;
+  return { ...workspace, ...envelopes(rectangleOf(workspace)!) };
+}
+/** An explicit rectangle; envelopes derived exactly as the centred kind's. */
+export function anchoredRoomWorkspace(rect: WorkspaceRectangle): RoomWorkspace {
+  dimensions(rect.widthHexes, rect.heightHexes);
+  origin(rect.minCol, 'minCol');
+  origin(rect.minRow, 'minRow');
+  return {
+    kind: 'odd-r-rect',
+    minCol: rect.minCol || 0,
+    minRow: rect.minRow || 0,
+    widthHexes: rect.widthHexes,
+    heightHexes: rect.heightHexes,
+    ...envelopes(rect),
+  };
+}
+/** Resize by moving only the chosen edges. Columns 'right' keeps minCol;
+ * 'left' moves it by the width change. Rows 'top' moves minRow by the height
+ * change; 'bottom' keeps it. No cell's {q, r} changes on any side. A legacy
+ * radius workspace has no edges to keep, so it is replaced by the centred
+ * rectangle, as resizing always did. */
+export function growRoomWorkspace(
+  current: RoomWorkspace,
+  widthHexes: number,
+  heightHexes: number,
+  edges: ResizeEdges = DEFAULT_RESIZE_EDGES
+): RoomWorkspace {
+  const rect = rectangleOf(current);
+  if (!rect) return centeredRoomWorkspace(widthHexes, heightHexes);
+  dimensions(widthHexes, heightHexes);
+  const dw = widthHexes - rect.widthHexes;
+  const dh = heightHexes - rect.heightHexes;
+  // Same size: nothing moves, so the saved kind (and bytes) stay as they are.
+  if (dw === 0 && dh === 0) return current;
+  return anchoredRoomWorkspace({
+    minCol: edges.columns === 'left' ? rect.minCol - dw : rect.minCol,
+    minRow: edges.rows === 'top' ? rect.minRow - dh : rect.minRow,
+    widthHexes,
+    heightHexes,
+  });
 }
 export function validateWorkspace(value: unknown): RoomWorkspace {
   const source = objectShape(value, 'Room workspace');
@@ -93,6 +204,35 @@ export function validateWorkspace(value: unknown): RoomWorkspace {
     if (!preset) throw new Error('Unsupported room workspace extent.');
     // Preserve the existing untagged preset normalization contract.
     return { ...preset };
+  }
+  if (source.kind === 'odd-r-rect') {
+    rejectUnknownKeys(
+      source,
+      [
+        'kind',
+        'minCol',
+        'minRow',
+        'widthHexes',
+        'heightHexes',
+        'hexRadius',
+        'horizontalLimit',
+      ],
+      'Room workspace'
+    );
+    const expected = anchoredRoomWorkspace({
+      minCol: source.minCol as number,
+      minRow: source.minRow as number,
+      widthHexes: source.widthHexes as number,
+      heightHexes: source.heightHexes as number,
+    });
+    if (
+      source.hexRadius !== expected.hexRadius ||
+      source.horizontalLimit !== expected.horizontalLimit
+    )
+      throw new Error(
+        'Room workspace hexRadius/horizontalLimit must match its derived envelopes.'
+      );
+    return expected;
   }
   rejectUnknownKeys(
     source,
@@ -127,32 +267,23 @@ export function containsWorkspaceCell(
       radius
     );
   }
-  dimensions(workspace.widthHexes, workspace.heightHexes);
+  const rect = rectangleOf(workspace)!;
+  dimensions(rect.widthHexes, rect.heightHexes);
   const col = cell.q + Math.floor(cell.r / 2);
   return (
-    col >= -Math.floor(workspace.widthHexes / 2) &&
-    col < Math.ceil(workspace.widthHexes / 2) &&
-    cell.r >= -Math.floor(workspace.heightHexes / 2) &&
-    cell.r < Math.ceil(workspace.heightHexes / 2)
+    col >= rect.minCol &&
+    col < rect.minCol + rect.widthHexes &&
+    cell.r >= rect.minRow &&
+    cell.r < rect.minRow + rect.heightHexes
   );
 }
 export function workspaceCells(
   workspace: RoomWorkspace | number
 ): RoomHexCell[] {
   const cells: RoomHexCell[] = [];
-  if (typeof workspace !== 'number' && workspace.kind === 'centered-odd-r') {
-    dimensions(workspace.widthHexes, workspace.heightHexes);
-    for (
-      let r = -Math.floor(workspace.heightHexes / 2);
-      r < Math.ceil(workspace.heightHexes / 2);
-      r++
-    )
-      for (
-        let col = -Math.floor(workspace.widthHexes / 2);
-        col < Math.ceil(workspace.widthHexes / 2);
-        col++
-      )
-        cells.push({ q: col - Math.floor(r / 2) || 0, r: r || 0 });
+  const rect = rectangleOf(workspace);
+  if (rect) {
+    cells.push(...rectangleCells(rect));
   } else {
     const radius =
       typeof workspace === 'number' ? workspace : workspace.hexRadius;

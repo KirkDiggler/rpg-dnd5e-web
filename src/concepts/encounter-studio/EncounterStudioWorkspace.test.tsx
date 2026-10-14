@@ -3,6 +3,11 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectStudioArrange } from '../world-building/studioArrange';
+import {
+  centeredRoomWorkspace,
+  growRoomWorkspace,
+  workspaceBounds,
+} from '../world-building/workspaceGeometry';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
@@ -430,10 +435,81 @@ describe('staged workspace dimensions and label controls', () => {
     expect(observed.session?.cancelTransients).not.toHaveBeenCalled();
     // The room view keeps the form open after Apply.
     expect(screen.getByRole('textbox', { name: 'Width (hexes)' })).toBeTruthy();
+    const bounds = workspaceBounds(centeredRoomWorkspace(73, 48));
     expect(observed.layoutProps?.frame).toEqual({
-      center: { x: 0, z: 0 },
+      center: {
+        x: (bounds.minX + bounds.maxX) / 2,
+        z: (bounds.minZ + bounds.maxZ) / 2,
+      },
       zoom: 1,
     });
+  });
+  it('apply frames the new workspace centre', () => {
+    const session = observed.session!;
+    observed.session = {
+      ...session,
+      document: {
+        ...session.document,
+        draft: {
+          ...session.document.draft,
+          workspace: centeredRoomWorkspace(20, 20),
+        },
+      },
+    };
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    change('Width (hexes)', '24');
+    change('Height (hexes)', '22');
+    submit('Workspace dimensions');
+    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
+      24,
+      22
+    );
+    const bounds = workspaceBounds(
+      growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22)
+    );
+    expect(observed.layoutProps?.frame).toEqual({
+      center: {
+        x: (bounds.minX + bounds.maxX) / 2,
+        z: (bounds.minZ + bounds.maxZ) / 2,
+      },
+      zoom: 1,
+    });
+    expect(observed.layoutProps?.frame.center).not.toEqual({ x: 0, z: 0 });
+  });
+  it('choosing Left passes columns left to resizeWorkspace and shows no warning', () => {
+    const session = observed.session!;
+    observed.session = {
+      ...session,
+      document: {
+        ...session.document,
+        draft: {
+          ...session.document.draft,
+          workspace: growRoomWorkspace(centeredRoomWorkspace(20, 20), 24, 22),
+        },
+      },
+    };
+    render(<EncounterStudioWorkspace compositionSource={source} />);
+    expect(
+      (screen.getByLabelText('Columns change on') as HTMLSelectElement).value
+    ).toBe('right');
+    expect(
+      (screen.getByLabelText('Rows change on') as HTMLSelectElement).value
+    ).toBe('top');
+    fireEvent.change(screen.getByLabelText('Columns change on'), {
+      target: { value: 'left' },
+    });
+    change('Width (hexes)', '26');
+    submit('Workspace dimensions');
+    expect(observed.session?.resizeWorkspace).toHaveBeenCalledExactlyOnceWith(
+      26,
+      22,
+      { columns: 'left', rows: 'top' }
+    );
+    expect(
+      screen.getByText('No cell moves, whichever side changes.')
+    ).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/shift/i)).toBeNull();
   });
   it.each(['0', '129', '1.5', 'no', ''])(
     'retains invalid width %j without owner/history intent',

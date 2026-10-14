@@ -22,6 +22,7 @@ import type {
 } from '../world-building/studioDoorEditing';
 import type { WorldPoint, WorldScene } from '../world-building/types';
 import type { WallCornerJoin } from '../world-building/wallCornerJoins';
+import type { ResizeEdges } from '../world-building/workspaceGeometry';
 import type { WorldBuildingTool } from '../world-building/WorldBuildingInteraction';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 export type {
@@ -61,6 +62,7 @@ export type {
   StudioWallArrangeValues,
 } from '../world-building/studioArrange';
 export type { WorldPoint } from '../world-building/types';
+export type { ResizeEdges } from '../world-building/workspaceGeometry';
 
 export type EncounterStudioView = 'layout' | '3d';
 
@@ -304,9 +306,11 @@ export interface EncounterStudioSession {
   /** Shape/bounds/size-checked transaction preserving editable policies;
    * a successful no-op adds no history. */
   commitFloor(cells: readonly RoomHexCell[], mode: 'paint' | 'erase'): boolean;
-  /** Explicit centered resize; labels never resize implicitly. Refusals and
-   * retired-context callbacks return false without history/storage changes. */
-  resizeWorkspace(width: number, height: number): boolean;
+  /** Explicit resize that moves only the chosen edges; absent edges means
+   * right and top, so no cell moves. Labels never resize implicitly.
+   * Refusals and retired-context callbacks return false without
+   * history/storage changes. */
+  resizeWorkspace(width: number, height: number, edges?: ResizeEdges): boolean;
   createMapLabel(text: string, location: WorldPoint): boolean;
   moveMapLabel(id: string, location: WorldPoint): boolean;
   renameMapLabel(id: string, text: string): boolean;

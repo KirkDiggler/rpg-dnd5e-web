@@ -71,6 +71,7 @@ import { WorkspaceCellOverlay } from './WorkspaceCellOverlay';
 import { createWorkspaceFloorGeometry } from './workspaceFloorGeometry';
 import { WorkspaceFloorUnderlay } from './WorkspaceFloorUnderlay';
 import {
+  rectangleOf,
   workspaceBounds,
   workspaceCellAtPoint,
   workspaceCells,
@@ -409,7 +410,7 @@ function WorldBuildingCameraControls({
   useEffect(recordCamera, [recordCamera]);
   const extent = useMemo(
     () =>
-      workspace?.kind === 'centered-odd-r' ? workspaceBounds(workspace) : null,
+      workspace && rectangleOf(workspace) ? workspaceBounds(workspace) : null,
     [workspace]
   );
   const fittedRectangle = useRef(false);
@@ -493,7 +494,7 @@ function RoomAuthoringDeclarations({
 }) {
   const fillGeometry = useMemo(() => createWalkableHexFillGeometry(), []);
   useEffect(() => () => fillGeometry.dispose(), [fillGeometry]);
-  const rectangular = authoring.workspace.kind === 'centered-odd-r';
+  const rectangular = rectangleOf(authoring.workspace) !== null;
   return (
     <group name="room-authored-declarations">
       {rectangular ? (
@@ -695,7 +696,7 @@ export function WorldSceneContents(
   const displayScene = previewScene ?? scene;
   const isRoomAuthoring = Boolean(props.roomAuthoring);
   const workspace = usePresentationWorkspace(props.roomAuthoring?.workspace);
-  const rectangular = workspace?.kind === 'centered-odd-r';
+  const rectangular = !!workspace && rectangleOf(workspace) !== null;
   const rectangleCells = useMemo(
     () => createWorkspaceRectangleSelection(workspace ?? 6),
     [workspace]

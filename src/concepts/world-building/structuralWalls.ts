@@ -10,6 +10,7 @@ import {
 import type { WorldPoint } from './types';
 import {
   containsWorkspacePoint,
+  rectangleOf,
   type RoomWorkspace,
 } from './workspaceGeometry';
 
@@ -97,7 +98,8 @@ function pointAt(
       throw new Error(`${path}.${axis}: outside the authoring workspace`);
   }
   if (
-    workspace?.kind === 'centered-odd-r' &&
+    workspace &&
+    rectangleOf(workspace) &&
     !containsWorkspacePoint(workspace, { x, z })
   )
     throw new Error(`${path}: outside the authoring workspace`);

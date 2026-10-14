@@ -5,7 +5,11 @@ import {
   hexCorners,
 } from '@/components/hex-grid/hexMath';
 import * as THREE from 'three';
-import { workspaceCells, type RoomWorkspace } from './workspaceGeometry';
+import {
+  rectangleOf,
+  workspaceCells,
+  type RoomWorkspace,
+} from './workspaceGeometry';
 
 /** One batched cell-union plane for rectangles; numeric/legacy callers retain
  * their six-sided envelope. Local +Y maps to world -Z after rotateX(-PI/2). */
@@ -24,7 +28,7 @@ export function createWorkspaceFloorGeometry(
   const radius =
     typeof workspace === 'number' ? workspace : workspace.horizontalLimit + 1;
   const geometry =
-    typeof workspace === 'number' || workspace.kind !== 'centered-odd-r'
+    typeof workspace === 'number' || !rectangleOf(workspace)
       ? new THREE.CircleGeometry(radius, 6)
       : createWorkspaceCellPlane(workspace);
   const position = geometry.getAttribute('position');
