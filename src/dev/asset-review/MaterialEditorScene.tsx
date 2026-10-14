@@ -23,6 +23,7 @@ import {
   type GltfLike,
 } from './slotMaterials';
 
+import { editorCameraFrame } from './materialEditorFraming';
 import { attachSlotOutline } from './slotOutline';
 
 export type TextureLoadStatus = 'loading' | 'success' | 'error';
@@ -42,6 +43,8 @@ export interface MaterialEditorSceneProps {
   /** Editing state per slot, keyed by slotKey(sourcePath, objectName, slot). */
   slots: Record<string, SlotVisualState>;
   selectedSlot?: string;
+  /** Fit only on model/viewport change, never on color choice changes. */
+  fitAsset?: boolean;
   onLoadStateChange: (
     url: string,
     status: AssetReviewLoadStatus,
@@ -259,6 +262,20 @@ function EditorWorld(
     gltf?: GltfLike;
   }
 ) {
+  const size = useThree((state) => state.size);
+  const frame = useMemo(
+    () =>
+      props.fitAsset && props.gltf
+        ? editorCameraFrame(
+            boundsFor(props.gltf.scene),
+            SYNTY_SCALE,
+            DUNGEON_SURFACE_Y,
+            size.width,
+            size.height
+          )
+        : undefined,
+    [props.fitAsset, props.gltf, size.width, size.height]
+  );
   return (
     <>
       <color attach="background" args={['#101719']} />
@@ -266,12 +283,16 @@ function EditorWorld(
       <directionalLight position={[4, 7, 5]} intensity={2.2} />
       <OrthographicCamera
         makeDefault
-        position={[4, 3.4, 4]}
-        zoom={90}
+        position={frame?.position ?? [4, 3.4, 4]}
+        zoom={frame?.zoom ?? 90}
         near={0.01}
-        far={100}
+        far={frame ? Math.max(100, Math.hypot(...frame.position) * 4) : 100}
       />
-      <OrbitControls makeDefault target={[0, 0.75, 0]} enableDamping={false} />
+      <OrbitControls
+        makeDefault
+        target={frame?.target ?? [0, 0.75, 0]}
+        enableDamping={false}
+      />
       {props.gltf && (
         <EditorModel
           gltf={props.gltf}
@@ -294,6 +315,7 @@ export function MaterialEditorScene({
   source,
   slots,
   selectedSlot,
+  fitAsset,
   onLoadStateChange,
   onTextureStateChange,
 }: MaterialEditorSceneProps) {
@@ -353,6 +375,7 @@ export function MaterialEditorScene({
             source={source}
             slots={slots}
             selectedSlot={selectedSlot}
+            fitAsset={fitAsset}
             gltf={gltf}
             onTextureStateChange={onTextureStateChange}
           />

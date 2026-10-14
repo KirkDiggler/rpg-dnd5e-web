@@ -9,7 +9,7 @@ import {
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssetReviewLab } from './AssetReviewLab';
-import { MaterialEditorLab } from './MaterialEditorLab';
+import { MaterialEditorWorkbench as MaterialEditorLab } from './MaterialEditorWorkbench';
 import { slotKey } from './materialRecipe';
 import {
   FIXTURE_OBJECT_NAME,
@@ -395,9 +395,10 @@ describe('material editor lab', () => {
     try {
       window.history.replaceState({}, '', '?assetReview=1&materialEditor=1');
       render(<AssetReviewLab />);
+      expect(await screen.findByLabelText('Pack name')).toBeVisible();
       expect(
-        await screen.findByRole('button', { name: 'Scene GLB loaded' })
-      ).toBeVisible();
+        screen.queryByLabelText('Match this pack to this surface')
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /Export Ready provider/ })
       ).not.toBeInTheDocument();

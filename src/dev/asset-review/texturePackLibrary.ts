@@ -9,6 +9,15 @@ import {
   type MaterialEditorManifest,
 } from './materialRecipe';
 
+/** Display-only suggestion; never infers compatibility or a channel role. */
+export function imageLabel(path: string): string {
+  const name = path
+    .split('/')
+    .at(-1)!
+    .replace(/\.[^.]+$/, '');
+  return name.match(/(?:^|_)(\d+_[A-Za-z]+)$/)?.[1] ?? name;
+}
+
 export interface PackTarget {
   sourcePath: string;
   objectName: string;
