@@ -1,15 +1,31 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RoomWallFinish } from '../world-building/regionFinishTypes';
 import {
+  parseRoomDocumentJson,
   placeRoomMonster,
   setRoomPartyStart,
+  stringifyRoomDraft,
+  type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import { addProp, groupSelection } from '../world-building/sceneState';
 import {
+  applyStudioActorArrange,
   projectStudioArrange,
+  type StudioArrangeIntent,
   type StudioArrangeTarget,
 } from '../world-building/studioArrange';
+import {
+  createGuardCastDocument,
+  GUARD,
+  placeCastMember,
+} from './fixtures/castDocument';
 import { createFakeStudioSession } from './fixtures/fakeStudioSession';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 import { StudioInspector, type StudioInspectorProps } from './StudioInspector';
@@ -447,5 +463,167 @@ describe('StudioInspector', () => {
     expect(
       (view.getByLabelText('Appearance height') as HTMLInputElement).value
     ).toBe('5');
+  });
+
+  describe('S1 the creature view names its cast member', () => {
+    const LOOK = 'dnd5e:npcs:kingdom:soldier-male-01-style-02-b';
+    function castSession(
+      document: RoomDraftDocument,
+      id: string
+    ): EncounterStudioSession {
+      return selected(
+        { ...createFakeStudioSession(), document },
+        { kind: 'actor', id }
+      );
+    }
+    const castSection = () =>
+      within(within(region()).getByRole('region', { name: 'Cast member' }));
+
+    it('the creature view names its cast member and links to it', () => {
+      const onOpenCastMember = vi.fn();
+      inspector(castSession(createGuardCastDocument(), 'gate-1'), {
+        onOpenCastMember,
+      });
+      expect(castSection().getByText(/^Cast member:/).textContent).toBe(
+        'Cast member: Guard · stat block guard'
+      );
+      expect(
+        castSection().getByText('Changes to Guard reach every placement.')
+      ).toBeTruthy();
+      expect(castSection().getByText(/^Stat block:/).textContent).toBe(
+        'Stat block: base Human'
+      );
+      expect(
+        castSection().getByText(
+          "Stamped at placement. Changing Guard's default faction does not change this."
+        )
+      ).toBeTruthy();
+      fireEvent.click(
+        castSection().getByRole('button', { name: 'Open cast member Guard' })
+      );
+      expect(onOpenCastMember).toHaveBeenCalledWith(GUARD);
+    });
+
+    it('a look equal to the default reads as the default, a changed one as stamped', () => {
+      const document = createGuardCastDocument();
+      const stamped = placeCastMember(document, 'gate-3', GUARD, 2, LOOK);
+      inspector(castSession(stamped, 'gate-1'));
+      expect(castSection().getByText(/^Look:/).textContent).toBe(
+        "Look: Cast member's default"
+      );
+      cleanup();
+      inspector(castSession(stamped, 'gate-3'));
+      expect(castSection().getByText(/^Look:/).textContent).toBe(
+        'Look: Stamped at placement'
+      );
+    });
+
+    it("changing one placement's look leaves its sibling unchanged", () => {
+      const document = createGuardCastDocument();
+      const session = castSession(document, 'gate-1');
+      inspector(session);
+      fireEvent.change(within(region()).getByLabelText('Style'), {
+        target: { value: '02' },
+      });
+      fireEvent.click(
+        within(region()).getByRole('button', { name: 'Apply Arrange' })
+      );
+      expect(session.commitArrange).toHaveBeenCalledTimes(1);
+      const intent = vi.mocked(session.commitArrange).mock
+        .calls[0]![0] as Extract<StudioArrangeIntent, { kind: 'actor-start' }>;
+      expect(intent).toMatchObject({
+        kind: 'actor-start',
+        target: { kind: 'actor', id: 'gate-1' },
+      });
+      const next = applyStudioActorArrange(document.draft, intent);
+      const [first, second] = next.room.monsterDeclarations;
+      expect(first!.appearanceRef).not.toBe(
+        'dnd5e:npcs:kingdom:soldier-male-01'
+      );
+      expect(second).toEqual(document.draft.room.monsterDeclarations[1]);
+    });
+
+    it('a placement whose stat block is missing warns, offers the cast and reassigns through one intent', () => {
+      const document = placeCastMember(
+        createGuardCastDocument(),
+        'lost-1',
+        'dnd5e:monsters:x',
+        2
+      );
+      const session = castSession(document, 'lost-1');
+      inspector(session);
+      expect(castSection().getByRole('alert').textContent).toBe(
+        "This placement's stat block, dnd5e:monsters:x, is not in the cast."
+      );
+      const pick = castSection().getByLabelText('Reassign to cast member');
+      expect(
+        [...pick.querySelectorAll('option')]
+          .filter((option) => !option.disabled)
+          .map((option) => option.value)
+      ).toEqual([GUARD]);
+      fireEvent.change(pick, { target: { value: GUARD } });
+      fireEvent.click(castSection().getByRole('button', { name: 'Reassign' }));
+      expect(session.creatures.setDefinition).toHaveBeenCalledTimes(1);
+      expect(session.creatures.setDefinition).toHaveBeenCalledWith(
+        'lost-1',
+        GUARD
+      );
+    });
+
+    it('a placement with a missing stat block still saves locally', () => {
+      const document = placeCastMember(
+        createGuardCastDocument(),
+        'lost-1',
+        'dnd5e:monsters:x',
+        2
+      );
+      expect(
+        parseRoomDocumentJson(
+          stringifyRoomDraft(document.draft, document.scope)
+        )
+      ).toEqual(document);
+    });
+  });
+
+  describe('S1 a selected cast member', () => {
+    it('the inspector shows the cast member form, not a creature view', () => {
+      const session = selected(
+        {
+          ...createFakeStudioSession(),
+          document: createGuardCastDocument(),
+        },
+        { kind: 'cast', ref: GUARD }
+      );
+      expect(
+        studioInspectionOf(session.arrange, session.document.draft.scene)
+          .selection
+      ).toEqual({ kind: 'castMember', ref: GUARD });
+      inspector(session);
+      const view = within(region());
+      expect(
+        view.getByRole('heading', { level: 2, name: 'Guard' })
+      ).toBeTruthy();
+      expect(
+        view.getByRole('form', { name: 'Cast member Guard' })
+      ).toBeTruthy();
+      expect(view.queryByLabelText('Map name')).toBeNull();
+      expect(view.queryByLabelText('Starting hex q')).toBeNull();
+      fireEvent.click(
+        view.getByRole('button', { name: 'Select placement gate-2' })
+      );
+      expect(session.creatures.select).toHaveBeenCalledWith('gate-2');
+    });
+
+    it('a cast target whose member is gone projects to nothing', () => {
+      const document = createGuardCastDocument();
+      expect(
+        projectStudioArrange({
+          draft: document.draft,
+          scope: {},
+          target: { kind: 'cast', ref: 'dnd5e:monsters:nobody' },
+          selectionRevision: 1,
+        })
+      ).toBeNull();
+    });
   });
 });

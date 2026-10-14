@@ -14,8 +14,8 @@ import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import './encounterStudio.css';
 import { LayoutViewport } from './LayoutViewport';
 import { StudioArrangePanel } from './StudioArrangePanel';
+import { StudioCast } from './StudioCast';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
-import { StudioCreatures } from './StudioCreatures';
 import { StudioDoorControls } from './StudioDoorControls';
 import { StudioInspector } from './StudioInspector';
 import { StudioRegions } from './StudioRegions';
@@ -30,13 +30,11 @@ import {
   type StudioSocialSection,
 } from './studioSession';
 import { StudioSidebar, type StudioSidebarSection } from './StudioSidebar';
-import { StudioStatBlocks } from './StudioStatBlocks';
 import { StudioWallControls } from './StudioWallControls';
 import { useStudioLabels } from './useStudioLabels';
 
 const ENCOUNTER_SECTIONS = {
-  creatures: 'Creatures',
-  'stat-blocks': 'Stat blocks',
+  cast: 'Cast',
   tables: 'Tables',
   factions: 'Factions',
   dispositions: 'Dispositions',
@@ -91,7 +89,7 @@ function StudioSurface({
   onBack,
 }: StudioSurfaceProps): React.JSX.Element {
   const [encounterSection, setEncounterSection] =
-    useState<keyof typeof ENCOUNTER_SECTIONS>('tables');
+    useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
   const [mapPalette, setMapPalette] = useState<'props' | 'creatures'>('props');
   const [regionTool, setRegionTool] = useState<LayoutFloorTool>('paint');
   const selectedRegion =
@@ -569,6 +567,7 @@ function StudioSurface({
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
+                onOpenCastMember={(ref) => session.cast.select(ref)}
                 onOpenRegion={(labelId) => {
                   session.mapLabelSelection.select(labelId);
                   changeHome('regions');
@@ -771,7 +770,7 @@ function StudioSurface({
                         session={session}
                         onConfigure={() => {
                           changeHome('encounter');
-                          setEncounterSection('creatures');
+                          setEncounterSection('cast');
                         }}
                         onPlace={(id, appearanceRef) => {
                           const accepted = session.creatures.armPlacement(
@@ -812,14 +811,7 @@ function StudioSurface({
         >
           <nav className="es-buttons" aria-label="Encounter tools">
             {(
-              [
-                'creatures',
-                'stat-blocks',
-                'tables',
-                'factions',
-                'dispositions',
-                'intel',
-              ] as const
+              ['cast', 'tables', 'factions', 'dispositions', 'intel'] as const
             ).map((section) => (
               <button
                 key={section}
@@ -831,19 +823,13 @@ function StudioSurface({
               </button>
             ))}
           </nav>
-          {home === 'encounter' && encounterSection === 'creatures' && (
-            <StudioCreatures
+          {home === 'encounter' && encounterSection === 'cast' && (
+            <StudioCast
               session={session}
-              onConfigure={openDefinitions}
-              onMoveCreature={moveSelectedCreature}
-              onOpenPalette={() => {
-                changeHome('build');
-                onViewChange('3d');
-                setMapPalette('creatures');
-              }}
-              onShowMap={() => {
-                // The one arbiter already holds the creature; Build opens
-                // the inspector on it, in the view the author last used.
+              onShowPlacement={(id) => {
+                // The one arbiter holds the placement; Build opens the
+                // inspector on it, in the view the author last used.
+                if (!session.creatures.select(id)) return;
                 changeHome('build');
                 setSidebarOpen(true);
               }}
@@ -868,9 +854,6 @@ function StudioSurface({
                 {session.socialControls[encounterSection]}
               </section>
             )}
-          {home === 'encounter' && encounterSection === 'stat-blocks' && (
-            <StudioStatBlocks session={session} />
-          )}
           <div hidden={encounterSection !== 'tables'}>
             <h2>Tables</h2>
             <p className="es-help">

@@ -9,10 +9,7 @@ import {
   encodeRoomDocument,
   isRoomDocument,
 } from '@/compositions/roomDocument';
-import {
-  NPC_APPEARANCE_FAMILIES,
-  npcAppearanceOptions,
-} from '@/npc-appearances/npcAppearanceChoices';
+import { npcAppearanceOptions } from '@/npc-appearances/npcAppearanceChoices';
 import {
   useCallback,
   useEffect,
@@ -26,16 +23,22 @@ import type {
   StudioWallAppearanceOption,
 } from '../encounter-studio/studioSession';
 import {
+  adoptCastMember,
+  applyCastEdit,
+  castMemberOf,
+  removeCastMember,
+  removeUnusedLook,
+  renameCastMember,
+  shuffleCastLooks,
+  type CastEdit,
+} from './cast';
+import {
   WORLD_BUILDING_CATALOG,
   WORLD_BUILDING_CATALOG_BY_REF,
 } from './catalog';
 import { paintConcealmentCells, setConcealmentProp } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
-import {
-  setActorName,
-  setCreaturePalette,
-  type CreaturePaletteEntry,
-} from './creaturePalette';
+import { setActorName } from './creaturePalette';
 import {
   declarationMapForSelection,
   seedDeclarations,
@@ -53,7 +56,6 @@ import {
   setMonsterFaction as changeMonsterFaction,
   withBinding,
 } from './monsterOrderEdits';
-import { validateMonsterTemplates } from './monsterTemplates';
 import type { MeasuredWorldPropBounds } from './placementGuides';
 import { withPropBinding } from './propBindingEdits';
 import {
@@ -238,11 +240,13 @@ function studioTargetKey(target: StudioArrangeTarget | null): string {
           }
         : target?.kind === 'start'
           ? { kind: 'start' }
-          : target?.kind === 'hex'
-            ? { kind: 'hex', q: target.cell.q, r: target.cell.r }
-            : target
-              ? { kind: target.kind, id: target.id }
-              : null
+          : target?.kind === 'cast'
+            ? { kind: 'cast', ref: target.ref }
+            : target?.kind === 'hex'
+              ? { kind: 'hex', q: target.cell.q, r: target.cell.r }
+              : target
+                ? { kind: target.kind, id: target.id }
+                : null
   );
 }
 
@@ -444,8 +448,9 @@ export function WorldBuildingConcept({
    * a selected actor is a monster id or 'start', never a WorldProp id, and
    * actor operations never touch scenery selections. */
   const [armedMonsterRef, setArmedMonsterRef] = useState<string | null>(null);
+  /** The armed cast member, by its monster ref, and the chosen look. */
   const [armedCreature, setArmedCreature] = useState<{
-    id: string;
+    ref: string;
     appearanceRef: string;
   } | null>(null);
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
@@ -1081,32 +1086,53 @@ export function WorldBuildingConcept({
       return;
     }
     try {
-      const recipe = armedCreature
-        ? roomDraft.scene.creaturePalette?.find(
-            (entry) => entry.id === armedCreature.id
-          )
+      const current = roomHistoryRef.current.present;
+      const member = armedCreature
+        ? castMemberOf(current, armedCreature.ref)
         : undefined;
       if (
         armedCreature &&
-        (!recipe ||
+        (!member ||
+          !member.defaults ||
           npcAppearanceOptions(armedCreature.appearanceRef).family?.ref !==
-            recipe.modelRef)
+            member.defaults.modelRef)
       )
-        throw new Error('This creature recipe or look is no longer available.');
+        throw new Error('This cast member or look is no longer available.');
+      const faction = member?.defaults?.faction;
+      if (
+        faction !== undefined &&
+        !(current.scope.factions ?? []).some((entry) => entry.id === faction)
+      )
+        throw new Error(
+          `${member!.name}'s default faction ${faction} no longer exists. Choose another in the cast.`
+        );
       const id = idFactory();
       const next = placeRoomMonster(roomDraft, {
         id,
-        ref: recipe?.ref ?? armedMonsterRef,
+        ref: member?.ref ?? armedMonsterRef,
         ...(armedCreature
           ? { appearanceRef: armedCreature.appearanceRef }
           : {}),
         startingCell: { location: { ...cell } },
       });
+      // The defaults are stamped once: a later default change reaches no
+      // placed creature. The stat block is followed by id, never copied.
+      const room =
+        faction === undefined
+          ? next.room
+          : {
+              ...next.room,
+              monsterBindings: withBinding(
+                next.room.monsterBindings,
+                id,
+                changeMonsterFaction(next.room.monsterBindings?.[id], faction)
+              ),
+            };
       if (
         !commit(
-          recipe ? setActorName(scene, id, recipe.name) : scene,
+          member ? setActorName(scene, id, member.name) : scene,
           selectedIds,
-          next.room
+          room
         )
       )
         return;
@@ -3653,6 +3679,7 @@ export function WorldBuildingConcept({
         target,
         selectionRevision,
         regionResolutions,
+        scope: roomHistory.present.scope,
       })
     ) {
       rejectEdit(new Error('Actor target no longer exists.'));
@@ -3664,6 +3691,15 @@ export function WorldBuildingConcept({
       target?.kind === 'actor' ? target.id : target ? 'start' : null
     );
     activateStudioTarget(target);
+  };
+  /** Select one cast member (rpg-project#575, R11): every noun owner's id
+   * is cleared and the arbiter names the member. Not a set of placements. */
+  const selectStudioCastMember = (ref: string): boolean => {
+    if (refuseWhilePublishing()) return false;
+    if (!castMemberOf(roomHistoryRef.current.present, ref)) return false;
+    clearStudioSelection();
+    activateStudioTarget({ kind: 'cast', ref });
+    return true;
   };
   const selectStudioHex = (cell: RoomHexCell | null): boolean => {
     if (refuseWhilePublishing()) return false;
@@ -3685,6 +3721,7 @@ export function WorldBuildingConcept({
       target: activeStudioTargetRef.current,
       selectionRevision,
       regionResolutions,
+      scope: roomHistory.present.scope,
     })
   )
     activeStudioTargetRef.current = null;
@@ -3731,6 +3768,7 @@ export function WorldBuildingConcept({
     previewWall,
     previewDoor,
     regionResolutions,
+    scope: roomHistory.present.scope,
   });
   const commitArrange = (intent: StudioArrangeIntent): boolean => {
     if (
@@ -4215,11 +4253,12 @@ export function WorldBuildingConcept({
           partyStart: roomDraft.room.partyStart ?? null,
           armedMonsterRef: armedMonsterRef,
           armedMonsterName: armedCreature
-            ? roomDraft.scene.creaturePalette?.find(
-                (entry) => entry.id === armedCreature.id
-              )?.name
+            ? castMemberOf(roomHistory.present, armedCreature.ref)?.name
             : undefined,
           selectedActorId: selectedActorId,
+          ...(arrange?.kind === 'cast'
+            ? { highlightedActorIds: new Set(arrange.placements) }
+            : {}),
           ...(studioPresentation
             ? {
                 selectedActorTarget:
@@ -4559,18 +4598,60 @@ export function WorldBuildingConcept({
             clearStudioSelection();
             return true;
           }),
-          commitTemplates: guardSnapshotIntent((templates): boolean => {
-            try {
-              const valid = validateMonsterTemplates(templates);
-              const current = roomHistoryRef.current.present;
-              const scope = { ...current.scope };
-              if (Object.keys(valid).length) scope.templates = valid;
-              else delete scope.templates;
-              return commitRoomDocument({ ...current, scope });
-            } catch (error) {
-              return rejectEdit(error);
-            }
-          }),
+          cast: (() => {
+            /** One transaction. `follows` names the member's ref after the
+             * edit: the edited member becomes the selection, so a rename or
+             * an adoption keeps the author on the member they changed. */
+            const castIntent = <Args extends unknown[]>(
+              edit: (current: RoomDocument, ...args: Args) => RoomDocument,
+              follows?: (...args: Args) => string
+            ): ((...args: Args) => boolean) =>
+              guardSnapshotIntent((...args: Args): boolean => {
+                if (refuseWhilePublishing()) return false;
+                try {
+                  const next = edit(roomHistoryRef.current.present, ...args);
+                  if (!commitRoomDocument(next)) return false;
+                  const ref = follows?.(...args);
+                  if (ref !== undefined && castMemberOf(next, ref)) {
+                    clearStudioSelection();
+                    activateStudioTarget({ kind: 'cast', ref });
+                  }
+                  return true;
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              });
+            const MONSTER = 'dnd5e:monsters:';
+            return {
+              save: castIntent(
+                (current, edit: CastEdit) =>
+                  applyCastEdit(current, edit, idFactory),
+                (edit) =>
+                  edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
+              ),
+              rename: castIntent(
+                (current, ref: string, toId: string) =>
+                  renameCastMember(current, ref, toId),
+                (_ref, toId) => `${MONSTER}${toId}`
+              ),
+              adopt: castIntent(
+                (current, ref: string, templateId: string) =>
+                  adoptCastMember(current, ref, templateId),
+                (_ref, templateId) => `${MONSTER}${templateId}`
+              ),
+              remove: castIntent((current, ref: string) =>
+                removeCastMember(current, ref)
+              ),
+              removeUnusedLook: castIntent(
+                (current, ref: string, entryId: string) =>
+                  removeUnusedLook(current, ref, entryId)
+              ),
+              select: guardSnapshotIntent(selectStudioCastMember),
+              shuffle: castIntent((current, ref: string) =>
+                shuffleCastLooks(current, ref, Math.random)
+              ),
+            };
+          })(),
           creatures: {
             select: guardSnapshotIntent((id: string): boolean => {
               if (
@@ -4587,64 +4668,36 @@ export function WorldBuildingConcept({
               roomTool === 'monster' && armedCreature
                 ? {
                     name:
-                      roomDraft.scene.creaturePalette?.find(
-                        (entry) => entry.id === armedCreature.id
-                      )?.name ?? 'Creature',
+                      castMemberOf(roomHistory.present, armedCreature.ref)
+                        ?.name ?? 'Creature',
                     appearanceRef: armedCreature.appearanceRef,
                   }
                 : null,
-            savePaletteEntry: guardSnapshotIntent(
-              (
-                entry: Omit<CreaturePaletteEntry, 'id'>,
-                id?: string
-              ): boolean => {
-                try {
-                  const current = roomHistoryRef.current.present;
-                  const entries = current.draft.scene.creaturePalette ?? [];
-                  if (id && !entries.some((item) => item.id === id))
-                    throw new Error('Creature recipe no longer exists.');
-                  if (
-                    !NPC_APPEARANCE_FAMILIES.some(
-                      (family) => family.ref === entry.modelRef
-                    )
-                  )
-                    throw new Error('Choose a published NPC model.');
-                  const next = { ...entry, id: id ?? idFactory() };
-                  const palette = id
-                    ? entries.map((item) => (item.id === id ? next : item))
-                    : [...entries, next];
-                  return commitRoomDocument({
-                    ...current,
-                    draft: {
-                      ...current.draft,
-                      scene: setCreaturePalette(current.draft.scene, palette),
-                    },
-                  });
-                } catch (error) {
-                  return rejectEdit(error);
-                }
-              }
-            ),
             armPlacement: guardSnapshotIntent(
-              (id: string, appearanceRef: string): boolean => {
+              (ref: string, appearanceRef: string): boolean => {
                 if (refuseWhilePublishing()) return false;
-                const entry =
-                  roomHistoryRef.current.present.draft.scene.creaturePalette?.find(
-                    (item) => item.id === id
+                const member = castMemberOf(
+                  roomHistoryRef.current.present,
+                  ref
+                );
+                if (!member)
+                  return rejectEdit(new Error(`${ref} is not in the cast.`));
+                if (!member.defaults)
+                  return rejectEdit(
+                    new Error('Choose a default look in the cast to place it.')
                   );
                 if (
-                  !entry ||
                   npcAppearanceOptions(appearanceRef).family?.ref !==
-                    entry.modelRef
+                  member.defaults.modelRef
                 )
                   return rejectEdit(
                     new Error(
-                      'Choose an available model/look for this creature.'
+                      `Choose a look from ${member.name}'s default look family.`
                     )
                   );
                 cancelTransients();
-                setArmedMonsterRef(entry.ref);
-                setArmedCreature({ id, appearanceRef });
+                setArmedMonsterRef(member.ref);
+                setArmedCreature({ ref: member.ref, appearanceRef });
                 setRoomTool('monster');
                 setTool('select');
                 setSelectedActorId(null);

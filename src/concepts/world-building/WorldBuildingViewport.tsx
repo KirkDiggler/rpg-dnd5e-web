@@ -177,6 +177,8 @@ export interface WorldBuildingViewportProps {
       target: Extract<StudioArrangeTarget, { kind: 'actor' | 'start' }> | null
     ) => void;
     selectedActorId?: string | null;
+    /** A selected cast member's placements (rpg-project#575, R11). */
+    highlightedActorIds?: ReadonlySet<string>;
     onSelectActor?: (actorId: string | null) => void;
     onPlaceMonster?: (cell: RoomHexCell) => void;
     onMoveMonster?: (id: string, cell: RoomHexCell) => void;
@@ -1352,6 +1354,7 @@ export function WorldSceneContents(
           partyStart={props.roomAuthoring.partyStart ?? null}
           selectedActorId={props.roomAuthoring.selectedActorId ?? null}
           selectedActorTarget={props.roomAuthoring.selectedActorTarget}
+          highlightedActorIds={props.roomAuthoring.highlightedActorIds}
           onSelectActorTarget={
             props.roomAuthoring.onSelectActorTarget
               ? (target) => {

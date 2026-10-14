@@ -3,7 +3,7 @@ import type {
   AuthoringRegion,
   RegionResolution,
 } from '../world-building/authoringRegions';
-import type { CreaturePaletteEntry } from '../world-building/creaturePalette';
+import type { CastEdit } from '../world-building/cast';
 import type {
   RoomDraft,
   RoomDraftDocument,
@@ -67,7 +67,7 @@ export type { ResizeEdges } from '../world-building/workspaceGeometry';
 export type EncounterStudioView = 'layout' | '3d';
 
 /** The inspector's key: one thing, derived from the owner's arbiter on every
- * render and never stored. Nine kinds; `nothing` is the room. */
+ * render and never stored. Ten kinds; `nothing` is the room. */
 export type StudioSelection =
   | { readonly kind: 'nothing' }
   | { readonly kind: 'wall'; readonly id: string }
@@ -81,7 +81,9 @@ export type StudioSelection =
   | { readonly kind: 'hex'; readonly cell: RoomHexCell }
   /** A map label, with or without a region. */
   | { readonly kind: 'label'; readonly id: string }
-  | { readonly kind: 'partyStart' };
+  | { readonly kind: 'partyStart' }
+  /** One cast member, by its monster ref (rpg-project#575). */
+  | { readonly kind: 'castMember'; readonly ref: string };
 
 /** The scene multi-pick that feeds Group selection is a PICK, not a
  * selection: while two or more roots are picked, nothing is inspected. */
@@ -129,6 +131,8 @@ export function studioInspectionOf(
       return one({ kind: 'label', id: arrange.label.id });
     case 'hex':
       return one({ kind: 'hex', cell: { ...arrange.cell } });
+    case 'cast':
+      return one({ kind: 'castMember', ref: arrange.target.ref });
   }
 }
 export type StudioSocialSection =
@@ -279,14 +283,33 @@ export interface EncounterStudioSession {
   /** Root behavior declarations only; absence removes tables. Ordinary draft
    * gate, one shared history transaction, retired snapshots refuse changes. */
   commitTables(tables: SiteScope['tables']): boolean;
-  commitTemplates(templates: NonNullable<SiteScope['templates']>): boolean;
+  /** The cast (rpg-project#575): each intent is one document transaction
+   * over the pure edits in world-building/cast.ts. A refusal returns false
+   * with no history entry; the form shows the edit's own sentence. */
+  cast: {
+    /** One staged form: an id change, the stat block and the defaults. */
+    save(edit: CastEdit): boolean;
+    rename(ref: string, toId: string): boolean;
+    adopt(ref: string, templateId: string): boolean;
+    /** Refused while the member has placements. */
+    remove(ref: string): boolean;
+    /** Remove a later recipe on the member's ref (an unused look). */
+    removeUnusedLook(ref: string, entryId: string): boolean;
+    /** Select one cast member: the inspector shows its form and its
+     * placements are highlighted on the map. One selection, not a set (R9).
+     * Refused for a ref that is not in the cast. */
+    select(ref: string): boolean;
+    /** Deal the member's placements looks from its default look family,
+     * without repeats until the family runs out. One transaction; undo
+     * restores every look. Refused for a family of one look. */
+    shuffle(ref: string): boolean;
+  };
   creatures: {
     select(id: string): boolean;
-    savePaletteEntry(
-      entry: Omit<CreaturePaletteEntry, 'id'>,
-      id?: string
-    ): boolean;
-    armPlacement(id: string, appearanceRef: string): boolean;
+    /** Arm one placement of a cast member, keyed by its monster ref, with a
+     * look from its default family. Refused for a ref not in the cast, a
+     * member without a default look, or a look outside its family. */
+    armPlacement(ref: string, appearanceRef: string): boolean;
     readonly placement: { name: string; appearanceRef: string } | null;
     setDefinition(id: string, ref: string): boolean;
   };

@@ -81,6 +81,11 @@ import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import {
+  createGuardCastDocument,
+  GUARD,
+  SOLDIER,
+} from './fixtures/castDocument';
+import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
 } from './fixtures/castleWorkspace';
@@ -306,11 +311,12 @@ it('saves a reusable creature without a position, then places independent looks 
   let screen = within(
     page.getByRole('region', { name: 'Encounter configuration' })
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Stat blocks' }));
-  fireEvent.change(screen.getByLabelText('Stat block id'), {
+  // Cast is the Encounter home's default section.
+  fireEvent.click(screen.getByRole('button', { name: 'Add a cast member' }));
+  fireEvent.change(screen.getByLabelText('Cast member id'), {
     target: { value: 'town_guard' },
   });
-  fireEvent.change(screen.getByLabelText('Name', { exact: true }), {
+  fireEvent.change(screen.getByLabelText('Cast member name'), {
     target: { value: 'Town Guard' },
   });
   fireEvent.change(screen.getByLabelText('CON', { exact: true }), {
@@ -319,13 +325,15 @@ it('saves a reusable creature without a position, then places independent looks 
   fireEvent.change(screen.getByLabelText('Hit dice'), {
     target: { value: '2d8' },
   });
-  fireEvent.change(screen.getByLabelText('Armor reference'), {
+  fireEvent.change(screen.getByLabelText('Armor'), {
     target: { value: 'dnd5e:armor:chain-shirt' },
   });
-  fireEvent.change(screen.getByLabelText('Experience award'), {
+  fireEvent.change(screen.getByLabelText('Experience'), {
     target: { value: '0' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply stat block' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Soldier Male' }));
+  expect(storage.document()).toEqual(original);
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   const template = storage.document().scope.templates!.town_guard;
   expect(template).toEqual({
     base: 'dnd5e:monsters:human',
@@ -335,28 +343,24 @@ it('saves a reusable creature without a position, then places independent looks 
     armor: 'dnd5e:armor:chain-shirt',
     experience: 0,
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Creatures' }));
-  expect(screen.queryByLabelText('Starting hex q')).toBeNull();
-  fireEvent.change(screen.getByLabelText('Creature name'), {
-    target: { value: 'Castle Guard' },
-  });
-  fireEvent.change(screen.getByLabelText('Creature stat block'), {
-    target: { value: 'dnd5e:monsters:town_guard' },
-  });
-  fireEvent.change(screen.getByLabelText('NPC model'), {
-    target: { value: 'dnd5e:npcs:kingdom:soldier-male-01' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Add to creature list' }));
   const palette = storage.document().draft.scene.creaturePalette;
-  expect(palette).toHaveLength(1);
+  expect(palette).toEqual([
+    {
+      id: expect.any(String),
+      name: 'Town Guard',
+      ref: 'dnd5e:monsters:town_guard',
+      modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+    },
+  ]);
   expect(storage.document().draft.room.monsterDeclarations).toEqual(
     original.draft.room.monsterDeclarations
   );
+  expect(screen.queryByLabelText('Starting hex q')).toBeNull();
   expect(screen.queryByLabelText('Placement look')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Place on map' })).toBeNull();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Open map creature list' })
-  );
+  fireEvent.click(page.getByRole('button', { name: 'Build' }));
+  switchTo('3D');
+  fireEvent.click(page.getByRole('button', { name: 'Monsters & NPCs' }));
   const palettePanel = page.getByRole('region', {
     name: 'Monsters and NPCs palette',
   });
@@ -426,7 +430,7 @@ it('saves a reusable creature without a position, then places independent looks 
   ]);
   expect(final.draft.scene.creaturePalette).toEqual(palette);
   for (const actor of final.draft.room.monsterDeclarations.slice(-2))
-    expect(final.draft.scene.actorNames?.[actor.id]).toBe('Castle Guard');
+    expect(final.draft.scene.actorNames?.[actor.id]).toBe('Town Guard');
   fireEvent.click(button('Undo'));
   expect(storage.document().draft.room.monsterDeclarations).toHaveLength(
     original.draft.room.monsterDeclarations.length + 1
@@ -468,19 +472,32 @@ it('saves a reusable creature without a position, then places independent looks 
   expect(storage.document()).toEqual(final);
 });
 
-it('opens configuration from the empty map creature palette without changing the document', () => {
+it('the palette lists every cast member, including a rulebook member, and opens the cast', () => {
   const storage = new MemoryStorage(seed());
   const before = storage.document();
   mount(storage);
   switchTo('3D');
   fireEvent.click(screen.getByRole('button', { name: 'Monsters & NPCs' }));
-  expect(
+  const palette = within(
     screen.getByRole('region', { name: 'Monsters and NPCs palette' })
-      .textContent
-  ).toContain('No named creatures yet');
-  fireEvent.click(screen.getByRole('button', { name: 'Configure creatures' }));
+  );
   expect(
-    screen.getByRole('form', { name: 'Create creature recipe' })
+    within(palette.getByRole('list', { name: 'Cast' }))
+      .getAllByRole('button')
+      .map((node) => node.textContent)
+  ).toEqual(['Goblin', 'Skeleton']);
+  // A member without a default look is listed but cannot be armed.
+  expect(palette.getByRole('status').textContent).toBe(
+    'Choose a default look in the cast to place it.'
+  );
+  expect(
+    (palette.getByRole('button', { name: 'Place on map' }) as HTMLButtonElement)
+      .disabled
+  ).toBe(true);
+  fireEvent.click(palette.getByRole('button', { name: 'Configure creatures' }));
+  expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Add a cast member' })
   ).toBeTruthy();
   expect(storage.document()).toEqual(before);
 });
@@ -2972,7 +2989,7 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     propPanel.unmount();
   });
 
-  it('owns creature definitions and templates atomically and retires stale callbacks', () => {
+  it('owns creature definitions and cast stat blocks atomically and retires stale callbacks', () => {
     const original = seed();
     original.draft.scene.version = 5;
     original.draft.scene.creaturePalette = [
@@ -2990,8 +3007,9 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     const stale = owner.session;
     act(() => {
       expect(
-        owner.session.commitTemplates({
-          town_guard: {
+        owner.session.cast.save({
+          ref: 'dnd5e:monsters:town_guard',
+          template: {
             base: 'dnd5e:monsters:human',
             hitDice: '2d8',
             armor: 'dnd5e:armor:chain-shirt',
@@ -3021,7 +3039,7 @@ describe('Arrange owner atomic noun transactions and arbitration', () => {
     act(() => {
       expect(
         owner.session.creatures.armPlacement(
-          'guard-look',
+          'dnd5e:monsters:human',
           'dnd5e:npcs:kingdom:soldier-male-01'
         )
       ).toBe(true);
@@ -5025,28 +5043,30 @@ describe('S0 inspector through the real owner', () => {
 describe('S0 one selection across the homes', () => {
   const inspector = () =>
     within(screen.getByRole('region', { name: 'Inspector' }));
-  const placed = (id: string): HTMLElement =>
-    screen.getByRole('button', { name: new RegExp(`· ${id}$`) });
-  const openCreatures = (): void => {
+  const member = (name: string): HTMLElement =>
+    within(screen.getByRole('list', { name: 'Cast members' })).getByRole(
+      'button',
+      { name: new RegExp(`^${name} ·`) }
+    );
+  const openCast = (): void => {
     fireEvent.click(button('Encounter'));
     fireEvent.click(
       within(
         screen.getByRole('navigation', { name: 'Encounter tools' })
-      ).getByRole('button', { name: 'Creatures' })
+      ).getByRole('button', { name: 'Cast' })
     );
   };
 
-  it('a placed instance selected on the home is the map selection with the inspector open', async () => {
+  it("a placement selected on its cast member's form is the map selection with the inspector open", async () => {
     const original = createPopulatedStudioDocument();
     const id = original.draft.room.monsterDeclarations[0]!.id;
     const storage = new MemoryStorage(original);
     mount(storage);
     await settled();
     fireEvent.keyDown(window, { key: 'n' });
-    openCreatures();
-    fireEvent.click(placed(id));
-    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(button('Show creature on map'));
+    openCast();
+    fireEvent.click(member('Goblin'));
+    fireEvent.click(button(`Select placement ${id}`));
     expect(button('Build').getAttribute('aria-pressed')).toBe('true');
     // The view the author last used: Layout.
     expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
@@ -5055,7 +5075,7 @@ describe('S0 one selection across the homes', () => {
     expect(storage.document()).toEqual(original);
   });
 
-  it("a creature selected on the map is pressed in the home's placed list", async () => {
+  it("a creature selected on the map presses its cast member's row", async () => {
     const original = createPopulatedStudioDocument();
     const id = original.draft.room.monsterDeclarations[0]!.id;
     const storage = new MemoryStorage(original);
@@ -5066,8 +5086,9 @@ describe('S0 one selection across the homes', () => {
       viewport().roomAuthoring!.onSelectActorTarget!({ kind: 'actor', id })
     );
     expect(inspector().getByLabelText('Map name')).toBeTruthy();
-    openCreatures();
-    expect(placed(id).getAttribute('aria-pressed')).toBe('true');
+    openCast();
+    expect(member('Goblin').getAttribute('aria-pressed')).toBe('true');
+    expect(member('Skeleton').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('switching homes keeps a wall selection', async () => {
@@ -5084,7 +5105,7 @@ describe('S0 one selection across the homes', () => {
     ).toBeTruthy();
   });
 
-  it('the Encounter home lists Creatures, Stat blocks, Tables, Factions, Dispositions and Intel', async () => {
+  it('the home lists Cast, Tables, Factions, Dispositions and Intel, and no Creatures or Stat blocks', async () => {
     mount(new MemoryStorage(createPopulatedStudioDocument()));
     await settled();
     fireEvent.click(button('Encounter'));
@@ -5092,14 +5113,290 @@ describe('S0 one selection across the homes', () => {
       within(screen.getByRole('navigation', { name: 'Encounter tools' }))
         .getAllByRole('button')
         .map((node) => node.textContent)
-    ).toEqual([
-      'Creatures',
-      'Stat blocks',
-      'Tables',
-      'Factions',
-      'Dispositions',
-      'Intel',
+    ).toEqual(['Cast', 'Tables', 'Factions', 'Dispositions', 'Intel']);
+    expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stat blocks' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Cast' })).toBeTruthy();
+  });
+});
+
+describe('S1 the cast through the real owner', () => {
+  const member = (name: string): HTMLElement =>
+    within(screen.getByRole('list', { name: 'Cast members' })).getByRole(
+      'button',
+      { name: new RegExp(`^${name} ·`) }
+    );
+
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  const highlighted = (): string[] =>
+    [...(viewport().roomAuthoring?.highlightedActorIds ?? [])].sort();
+  const withGoblin = (): RoomDraftDocument => {
+    const document = createGuardCastDocument();
+    document.draft.room.monsterDeclarations.push({
+      id: 'goblin-1',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 3, r: 0 } },
+    });
+    return document;
+  };
+
+  it('selecting a cast member highlights exactly its placements', async () => {
+    const storage = new MemoryStorage(withGoblin());
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    expect(highlighted()).toEqual([]);
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Build'));
+    expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+    // One selection, not a set: no single placement is the selection.
+    expect(viewport().roomAuthoring?.selectedActorId).toBeNull();
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Guard' })
+    ).toBeTruthy();
+    expect(
+      inspector().getByRole('form', { name: 'Cast member Guard' })
+    ).toBeTruthy();
+    // Clicking a highlighted placement selects that placement.
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: 'gate-2',
+      })
+    );
+    expect(highlighted()).toEqual([]);
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(inspector().getByText(/^Cast member:/).textContent).toBe(
+      'Cast member: Guard · stat block guard'
+    );
+    // The member link in a creature view selects the member again.
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Open cast member Guard' })
+    );
+    expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+  });
+
+  it("deleting the selected member's template falls back to nothing", async () => {
+    const document = createGuardCastDocument();
+    document.draft.room.monsterDeclarations = [];
+    const storage = new MemoryStorage(document);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Delete Guard'));
+    expect(storage.document().scope).not.toHaveProperty('templates');
+    fireEvent.click(button('Build'));
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Room' })
+    ).toBeTruthy();
+    switchTo('3D');
+    expect(highlighted()).toEqual([]);
+  });
+
+  it('undo after a shuffle restores every look', async () => {
+    const original = createGuardCastDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Shuffle looks'));
+    const looks = (): (string | undefined)[] =>
+      storage
+        .document()
+        .draft.room.monsterDeclarations.map((monster) => monster.appearanceRef);
+    const shuffled = looks();
+    expect(new Set(shuffled).size).toBe(2);
+    expect(shuffled).not.toEqual([SOLDIER, SOLDIER]);
+    fireEvent.click(button('Undo'));
+    expect(looks()).toEqual([SOLDIER, SOLDIER]);
+    expect(storage.document()).toEqual(original);
+  });
+
+  it('undo after a cast rename restores the old id on every placement', async () => {
+    const original = createGuardCastDocument();
+    const storage = new MemoryStorage(original);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.change(screen.getByLabelText('Cast member id'), {
+      target: { value: 'gate-guard' },
+    });
+    fireEvent.click(button('Apply'));
+    const refs = (): string[] =>
+      storage
+        .document()
+        .draft.room.monsterDeclarations.map((monster) => monster.ref);
+    expect(refs()).toEqual([
+      'dnd5e:monsters:gate-guard',
+      'dnd5e:monsters:gate-guard',
     ]);
+    expect(Object.keys(storage.document().scope.templates ?? {})).toEqual([
+      'gate-guard',
+    ]);
+    fireEvent.click(button('Undo'));
+    expect(storage.document()).toEqual(original);
+    expect(refs()).toEqual([GUARD, GUARD]);
+    fireEvent.click(button('Redo'));
+    expect(refs()).toEqual([
+      'dnd5e:monsters:gate-guard',
+      'dnd5e:monsters:gate-guard',
+    ]);
+  });
+});
+
+describe('S1 placing a cast member stamps its defaults', () => {
+  function castOwner(document: RoomDraftDocument) {
+    const storage = new MemoryStorage(document);
+    let session: EncounterStudioSession;
+    let ids = 0;
+    render(
+      <WorldBuildingConcept
+        roomMode
+        storage={storage}
+        idFactory={() => `placed-${(ids += 1)}`}
+        studioPresentation={{
+          view: '3d',
+          render: (next) => {
+            session = next;
+            return null;
+          },
+        }}
+      />
+    );
+    return {
+      get session() {
+        return session!;
+      },
+      storage,
+      /** Arm and place; returns the new placement's id. */
+      place(ref: string, look: string, q: number): string | undefined {
+        act(() => {
+          expect(session.creatures.armPlacement(ref, look)).toBe(true);
+        });
+        act(() =>
+          session.viewportProps.roomAuthoring!.onPlaceMonster!({ q, r: 0 })
+        );
+        return session.document.draft.room.monsterDeclarations.at(-1)?.id;
+      },
+    };
+  }
+  const LOOK = 'dnd5e:npcs:kingdom:soldier-male-01-style-02-b';
+  const withGuardRecipe = (): RoomDraftDocument => {
+    const document = createGuardCastDocument();
+    document.draft.room.monsterDeclarations = [];
+    return document;
+  };
+
+  it('placing writes the ref, the chosen look and the name in one history entry', () => {
+    const owner = castOwner(withGuardRecipe());
+    const before = owner.session.document;
+    const id = owner.place(GUARD, LOOK, 0)!;
+    const after = owner.session.document;
+    expect(after.draft.room.monsterDeclarations).toEqual([
+      {
+        id,
+        ref: GUARD,
+        appearanceRef: LOOK,
+        startingCell: { location: { q: 0, r: 0 } },
+      },
+    ]);
+    expect(after.draft.scene.actorNames).toEqual({ [id]: 'Guard' });
+    // The stat block is followed by id: the template is not copied.
+    expect(after.scope.templates).toEqual(before.scope.templates);
+    act(() => owner.session.undo());
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canUndo).toBe(false);
+  });
+
+  it('placing stamps the default faction onto the binding', () => {
+    const owner = castOwner(withGuardRecipe());
+    const id = owner.place(GUARD, LOOK, 0)!;
+    expect(owner.session.document.draft.room.monsterBindings).toEqual({
+      [id]: { faction: 'garrison' },
+    });
+  });
+
+  it('a stale default faction refuses the placement without a history entry', () => {
+    const document = withGuardRecipe();
+    document.scope.factions = [{ id: 'kitchen' }];
+    const owner = castOwner(document);
+    const before = owner.session.document;
+    owner.place(GUARD, LOOK, 0);
+    expect(owner.session.document).toEqual(before);
+    expect(owner.session.canUndo).toBe(false);
+    expect(owner.session.notice).toBe(
+      "Guard's default faction garrison no longer exists. Choose another in the cast."
+    );
+  });
+
+  it('changing the default faction afterwards leaves the placed binding unchanged', () => {
+    const owner = castOwner(withGuardRecipe());
+    const first = owner.place(GUARD, LOOK, 0)!;
+    act(() => {
+      expect(
+        owner.session.cast.save({
+          ref: GUARD,
+          defaults: {
+            name: 'Guard',
+            modelRef: 'dnd5e:npcs:kingdom:soldier-male-01',
+            faction: 'kitchen',
+          },
+        })
+      ).toBe(true);
+    });
+    const document = owner.session.document;
+    expect(document.draft.scene.creaturePalette?.[0]?.faction).toBe('kitchen');
+    expect(document.draft.room.monsterBindings).toEqual({
+      [first]: { faction: 'garrison' },
+    });
+    const second = owner.place(GUARD, LOOK, 1)!;
+    expect(owner.session.document.draft.room.monsterBindings).toEqual({
+      [first]: { faction: 'garrison' },
+      [second]: { faction: 'kitchen' },
+    });
+  });
+
+  it('a member without a default look cannot be armed', () => {
+    const owner = castOwner(createPopulatedStudioDocument());
+    const before = owner.session.document;
+    act(() => {
+      expect(
+        owner.session.creatures.armPlacement(
+          'dnd5e:monsters:goblin',
+          'dnd5e:npcs:kingdom:soldier-male-01'
+        )
+      ).toBe(false);
+    });
+    expect(owner.session.notice).toContain(
+      'Choose a default look in the cast to place it.'
+    );
+    act(() => {
+      expect(
+        owner.session.creatures.armPlacement(
+          'dnd5e:monsters:nobody',
+          'dnd5e:npcs:kingdom:soldier-male-01'
+        )
+      ).toBe(false);
+    });
+    expect(owner.session.viewportProps.roomAuthoring?.tool).not.toBe('monster');
+    expect(owner.session.document).toEqual(before);
+  });
+
+  it('a look outside the default family cannot be armed', () => {
+    const owner = castOwner(withGuardRecipe());
+    act(() => {
+      expect(
+        owner.session.creatures.armPlacement(
+          GUARD,
+          'dnd5e:npcs:kingdom:peasant-male-01'
+        )
+      ).toBe(false);
+    });
   });
 });
 

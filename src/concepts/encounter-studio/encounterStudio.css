@@ -616,3 +616,62 @@
     grid-template-rows: minmax(300px, 1fr);
   }
 }
+
+/* The cast (rpg-project#575): a member's look picker and skill list. */
+.es-look-picker,
+.es-skill-fields {
+  min-width: 0;
+  border: 1px solid var(--wb-border);
+  padding: 0.5rem;
+}
+.es-look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.4rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.es-look-option {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  font-size: 0.75rem;
+}
+.es-look-option img,
+.es-look-thumbnail-fallback {
+  width: 5.5rem;
+  height: 5.5rem;
+  object-fit: contain;
+}
+.es-look-thumbnail-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 0.65rem;
+  color: var(--wb-muted, #a99f92);
+  background: #1b1714;
+}
+.es-look-option[aria-checked='true'] {
+  outline: 2px solid var(--wb-accent);
+}
+.es-skill-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.25rem 0.75rem;
+}
+.es-creature-panel .es-skill-fields label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.es-creature-panel .es-skill-fields input {
+  width: auto;
+}
+.es-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
