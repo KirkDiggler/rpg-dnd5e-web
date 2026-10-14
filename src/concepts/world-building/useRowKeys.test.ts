@@ -32,4 +32,20 @@ describe('useRowKeys', () => {
     expect(result.current[0]).toBe(ka);
     expect(new Set(result.current).size).toBe(2);
   });
+
+  it('editing the first of two identical rows leaves the twin its key', () => {
+    const { result, rerender } = renderHook(({ rows }) => useRowKeys(rows), {
+      initialProps: { rows: [{ hold: {} }, { hold: {} }] as object[] },
+    });
+    const [first, twin] = result.current;
+    rerender({ rows: [{ hold: {}, say: 'edited' }, { hold: {} }] });
+    expect(result.current).toEqual([first, twin]);
+    rerender({
+      rows: [
+        { hold: {}, say: 'edited' },
+        { hold: {}, say: 'too' },
+      ],
+    });
+    expect(result.current).toEqual([first, twin]);
+  });
 });
