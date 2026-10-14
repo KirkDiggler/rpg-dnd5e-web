@@ -10,6 +10,7 @@ import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Suspense } from 'react';
 import { authoredActorName } from './creaturePalette';
+import { roomMonsterMarkerYaw } from './roomActorFacing';
 import type {
   RoomHexCell,
   RoomMonsterBinding,
@@ -175,11 +176,12 @@ function MonsterMarker({
                 A plain scene.clone leaves skinned bodies at the source origin. */}
             <ClassCharacterModel
               url={modelUrl}
-              facingRotation={
+              facingRotation={roomMonsterMarkerYaw(
+                placement.startingCell,
                 appearance.kind === 'resolved'
                   ? appearance.forwardOffset
                   : undefined
-              }
+              )}
               mainHandPresentation={mainHand.presentation}
             />
           </ErrorBoundary>
