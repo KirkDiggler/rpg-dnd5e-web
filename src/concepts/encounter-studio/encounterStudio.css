@@ -1128,3 +1128,34 @@
   width: 9rem;
   max-width: 100%;
 }
+
+/* Export and import beside the local save (rpg-project#578): the key form,
+ * the replace confirmation and the result open under the buttons, so the
+ * header keeps its one line. */
+.encounter-studio .es-draft-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.encounter-studio .es-draft-file > form,
+.encounter-studio .es-draft-file > [role='alertdialog'],
+.encounter-studio .es-draft-file > p {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  width: max-content;
+  max-width: min(28rem, 90vw);
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  white-space: normal;
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+}

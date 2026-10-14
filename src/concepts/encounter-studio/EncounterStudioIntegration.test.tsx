@@ -19,6 +19,7 @@ import {
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { WORLD_BUILDING_CATALOG_BY_REF } from '../world-building/catalog';
 import frontGoblinOptionsYaml from '../world-building/fixtures/frontGoblinOptions.yaml?raw';
 import { nextIntelId } from '../world-building/intelEdits';
@@ -79,6 +80,7 @@ import {
 import { WorldBuilderWorkspace } from '../world-building/WorldBuilderWorkspace';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+import { defaultDraftKey, exportDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import {
   createGuardCastDocument,
@@ -91,6 +93,7 @@ import {
   keepRoomCells,
 } from './fixtures/castleKeep';
 import { createCastleReadBackDocument } from './fixtures/castleReadBack';
+import { createCastleS4Document } from './fixtures/castleS4';
 import {
   createCastleWorkspaceDocument,
   createSparseMaxWorkspaceDocument,
@@ -5348,6 +5351,134 @@ describe('S4 concealments through the real owner', () => {
     expect([...hidden.options].map((option) => option.text)).toEqual([
       'Not hidden',
     ]);
+  });
+});
+
+describe('S4 the draft as a file through the real owner', () => {
+  const fileInput = (): HTMLInputElement =>
+    screen.getByLabelText('Draft file to import') as HTMLInputElement;
+  const choose = async (name: string, text: string): Promise<void> => {
+    const answered = () =>
+      document.querySelector(
+        '.es-draft-file > [role="alertdialog"], .es-draft-file > [role="alert"]'
+      );
+    const previous = answered()?.textContent ?? null;
+    fireEvent.change(fileInput(), {
+      target: { files: [new File([text], name, { type: 'text/yaml' })] },
+    });
+    await waitFor(() => {
+      const now = answered()?.textContent ?? null;
+      expect(now).not.toBeNull();
+      expect(now).not.toBe(previous);
+    });
+  };
+  const exported = async (): Promise<{
+    name: string;
+    text: string;
+    type: string;
+  }> => {
+    let blob: Blob | undefined;
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation((value) => {
+        blob = value as Blob;
+        return 'blob:draft';
+      });
+    const revoke = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => {});
+    let name = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        name = this.download;
+      });
+    fireEvent.click(screen.getByRole('button', { name: /^Download / }));
+    create.mockRestore();
+    revoke.mockRestore();
+    click.mockRestore();
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blob!);
+    });
+    return { name, text, type: blob!.type };
+  };
+
+  it('export downloads the encoder bytes as {key}.yaml', async () => {
+    const storage = new MemoryStorage(createCastleS4Document());
+    mount(storage);
+    await settled();
+    fireEvent.click(screen.getByRole('button', { name: 'Export draft' }));
+    const key = screen.getByLabelText('File key') as HTMLInputElement;
+    expect(key.value).toBe(defaultDraftKey(storage.document()));
+    fireEvent.change(key, { target: { value: 'mad-king' } });
+    const file = await exported();
+    expect(file.name).toBe('mad-king.yaml');
+    expect(file.type).toBe('text/yaml;charset=utf-8');
+    expect(file.text).toBe(exportDraftYaml(storage.document(), 'mad-king'));
+  });
+
+  it('an accepted import is one history entry and undo restores the previous draft', async () => {
+    const castle = createCastleS4Document();
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    await choose('mad-king.yaml', exportDraftYaml(castle, 'mad-king'));
+    const confirm = screen.getByRole('alertdialog', { name: 'Confirm import' });
+    expect(confirm.textContent).toContain(castle.draft.name);
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(
+      within(confirm).getByRole('button', { name: 'Replace draft' })
+    );
+    expect(storage.document()).toEqual(castle);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(storage.document()).toEqual(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(storage.document()).toEqual(castle);
+  });
+
+  it('the next export defaults to the imported key', async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    await choose(
+      'mad-king.yaml',
+      exportDraftYaml(createCastleS4Document(), 'mad-king')
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export draft' }));
+    expect((screen.getByLabelText('File key') as HTMLInputElement).value).toBe(
+      'mad-king'
+    );
+  });
+
+  it('a v2 file and a typo are refused, naming the dialect and the field, and change nothing', async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    const before = storage.document();
+    const writes = storage.roomWrites();
+    await choose('reference-tomb.yaml', referenceTombYaml);
+    expect(screen.getByRole('alert').textContent).toBe(
+      'This file is a version 2 dungeon, the multi-room dialect. The studio opens single-room files, version 3 or 4.'
+    );
+    await choose(
+      'typo.yaml',
+      exportDraftYaml(createCastleS4Document(), 'castle').replace(
+        /^endings:/m,
+        'endngs:'
+      )
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Could not import: Unsupported single-room field: endngs.'
+    );
+    expect(
+      screen.queryByRole('alertdialog', { name: 'Confirm import' })
+    ).toBeNull();
+    expect(storage.document()).toEqual(before);
+    expect(storage.roomWrites()).toBe(writes);
   });
 });
 

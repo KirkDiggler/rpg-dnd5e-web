@@ -288,6 +288,7 @@ function createAppStudioSession(): EncounterStudioSession {
     doors: { setBinding: vi.fn(() => true) },
     exits: { set: vi.fn(() => true) },
     endings: { set: vi.fn(() => true) },
+    importDocument: vi.fn(() => true),
     concealments: {
       setDoorHiddenBy: vi.fn(() => true),
       add: vi.fn(() => true),

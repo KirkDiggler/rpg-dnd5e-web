@@ -26,6 +26,7 @@ import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
 import { StudioDoorControls } from './StudioDoorControls';
+import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
@@ -302,6 +303,8 @@ function StudioSurface({
     changeHome('build');
     setSidebarOpen(true);
   };
+  /** The last imported file's key, for its draft (S4-Q2). */
+  const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -526,6 +529,11 @@ function StudioSurface({
               ? 'Replace unreadable local draft'
               : 'Save local draft'}
           </button>
+          <StudioDraftFile
+            session={session}
+            fileKey={fileKey}
+            onFileKey={setFileKey}
+          />
         </div>
       </header>
       {session.autosaveBlocked && (

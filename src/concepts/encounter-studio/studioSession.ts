@@ -399,6 +399,10 @@ export interface EncounterStudioSession {
   };
   wallEditing: StudioWallEditing;
   regionEditing: StudioRegionEditing;
+  /** Replace the draft with an imported file's document, through the
+   * owner's `importCanonicalRoomYaml`: one undoable step, saved locally.
+   * Refused while publishing or for a document the gate refuses. */
+  importDocument(draft: RoomDraft, scope: SiteScope): boolean;
   /** Trimmed nonblank name, max 120; one ordinary document transaction. */
   renameDocument(name: string): boolean;
   canUndo: boolean;

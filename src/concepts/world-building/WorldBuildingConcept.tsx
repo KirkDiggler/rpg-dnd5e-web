@@ -5073,6 +5073,7 @@ export function WorldBuildingConcept({
             ),
           },
           renameDocument: guardSnapshotIntent(renameDocument),
+          importDocument: guardSnapshotIntent(importCanonicalRoomYaml),
           wallEditing: {
             finishes: {
               catalog: materialCatalog,
