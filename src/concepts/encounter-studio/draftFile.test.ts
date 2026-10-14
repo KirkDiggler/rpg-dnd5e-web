@@ -65,10 +65,10 @@ describe('the draft as a file (rpg-project#578)', () => {
   it('a field the decoder refuses is named with its path', () => {
     const yaml = exportDraftYaml(createCastleS4Document(), 'castle');
     const withLifetime = yaml.replace(
-      /( +)checks:\n/,
-      (_, indent: string) =>
-        `${indent}attempts:\n${indent}  lifetime: run\n${indent}checks:\n`
+      /^ {2}stash:\n/m,
+      '  stash:\n    attempts:\n      lifetime: run\n'
     );
+    expect(withLifetime).not.toBe(yaml);
     const read = readDraftYaml(withLifetime);
     expect(read).toEqual({
       ok: false,
