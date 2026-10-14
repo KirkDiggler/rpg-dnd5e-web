@@ -24,6 +24,9 @@ import type { StudioArrangeTarget } from './studioArrange';
 export const ROOM_MONSTER_COLOR = MONSTER_COLOR;
 export const ROOM_START_COLOR = '#22d3ee';
 const SELECTED_COLOR = '#fbbf24';
+/** A selected cast member's placements (R11): a second colour, distinct from
+ * the one selected thing. */
+export const HIGHLIGHTED_COLOR = '#c084fc';
 
 /** The snapped world centre of an axial cell through the SAME shared math
  * the floor paint gestures use. */
@@ -55,11 +58,13 @@ function ActorRing({
   actorId,
   color,
   selected,
+  highlighted = false,
   onSelectActor,
 }: {
   actorId: string;
   color: string;
   selected: boolean;
+  highlighted?: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
   const select = (event: ThreeEvent<PointerEvent>) => {
@@ -87,9 +92,11 @@ function ActorRing({
       >
         <ringGeometry args={[0.72, 0.96, 6]} />
         <meshBasicMaterial
-          color={selected ? SELECTED_COLOR : color}
+          color={
+            selected ? SELECTED_COLOR : highlighted ? HIGHLIGHTED_COLOR : color
+          }
           transparent
-          opacity={selected ? 1 : 0.85}
+          opacity={selected || highlighted ? 1 : 0.85}
           depthTest={false}
           toneMapped={false}
         />
@@ -117,12 +124,14 @@ function MonsterMarker({
   displayName,
   mainHandRef,
   selected,
+  highlighted,
   onSelectActor,
 }: {
   placement: RoomMonsterPlacement;
   displayName?: string;
   mainHandRef: string | undefined;
   selected: boolean;
+  highlighted: boolean;
   onSelectActor: (actorId: string) => void;
 }) {
   const center = roomActorCenter(placement.startingCell.location);
@@ -155,6 +164,7 @@ function MonsterMarker({
         actorId={placement.id}
         color={MONSTER_COLOR}
         selected={selected}
+        highlighted={highlighted}
         onSelectActor={onSelectActor}
       />
       {modelUrl ? (
@@ -199,7 +209,11 @@ function MonsterMarker({
       <Html center style={{ pointerEvents: 'none' }}>
         <output
           className={`wb-actor-chip wb-actor-chip--monster${
-            selected ? ' wb-actor-chip--selected' : ''
+            selected
+              ? ' wb-actor-chip--selected'
+              : highlighted
+                ? ' wb-actor-chip--highlighted'
+                : ''
           }`}
           aria-label={`Monster ${label} ${placement.id}`}
           data-weapon-preview={mainHand.code}
@@ -325,6 +339,7 @@ export function RoomActorMarkers({
   onSelectActor,
   selectedActorTarget,
   onSelectActorTarget,
+  highlightedActorIds,
 }: {
   monsters: readonly RoomMonsterPlacement[];
   actorNames?: Readonly<Record<string, string>>;
@@ -339,6 +354,8 @@ export function RoomActorMarkers({
   onSelectActorTarget?: (
     target: Extract<StudioArrangeTarget, { kind: 'actor' | 'start' }> | null
   ) => void;
+  /** A selected cast member's placements, drawn in a second colour. */
+  highlightedActorIds?: ReadonlySet<string>;
 }) {
   return (
     <group name="room-actor-markers">
@@ -354,6 +371,7 @@ export function RoomActorMarkers({
                 selectedActorTarget.id === placement.id
               : selectedActorId === placement.id
           }
+          highlighted={highlightedActorIds?.has(placement.id) ?? false}
           onSelectActor={() =>
             onSelectActorTarget
               ? onSelectActorTarget({ kind: 'actor', id: placement.id })

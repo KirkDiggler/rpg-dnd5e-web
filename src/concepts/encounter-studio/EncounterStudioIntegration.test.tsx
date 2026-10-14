@@ -5123,6 +5123,75 @@ describe('S1 the cast through the real owner', () => {
       { name: new RegExp(`^${name} ·`) }
     );
 
+  const inspector = () =>
+    within(screen.getByRole('region', { name: 'Inspector' }));
+  const highlighted = (): string[] =>
+    [...(viewport().roomAuthoring?.highlightedActorIds ?? [])].sort();
+  const withGoblin = (): RoomDraftDocument => {
+    const document = createGuardCastDocument();
+    document.draft.room.monsterDeclarations.push({
+      id: 'goblin-1',
+      ref: 'dnd5e:monsters:goblin',
+      startingCell: { location: { q: 3, r: 0 } },
+    });
+    return document;
+  };
+
+  it('selecting a cast member highlights exactly its placements', async () => {
+    const storage = new MemoryStorage(withGoblin());
+    mount(storage);
+    await settled();
+    switchTo('3D');
+    expect(highlighted()).toEqual([]);
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Build'));
+    expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+    // One selection, not a set: no single placement is the selection.
+    expect(viewport().roomAuthoring?.selectedActorId).toBeNull();
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Guard' })
+    ).toBeTruthy();
+    expect(
+      inspector().getByRole('form', { name: 'Cast member Guard' })
+    ).toBeTruthy();
+    // Clicking a highlighted placement selects that placement.
+    act(() =>
+      viewport().roomAuthoring!.onSelectActorTarget!({
+        kind: 'actor',
+        id: 'gate-2',
+      })
+    );
+    expect(highlighted()).toEqual([]);
+    expect(inspector().getByLabelText('Map name')).toBeTruthy();
+    expect(inspector().getByText(/^Cast member:/).textContent).toBe(
+      'Cast member: Guard · stat block guard'
+    );
+    // The member link in a creature view selects the member again.
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Open cast member Guard' })
+    );
+    expect(highlighted()).toEqual(['gate-1', 'gate-2']);
+  });
+
+  it("deleting the selected member's template falls back to nothing", async () => {
+    const document = createGuardCastDocument();
+    document.draft.room.monsterDeclarations = [];
+    const storage = new MemoryStorage(document);
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(member('Guard'));
+    fireEvent.click(button('Delete Guard'));
+    expect(storage.document().scope).not.toHaveProperty('templates');
+    fireEvent.click(button('Build'));
+    expect(
+      inspector().getByRole('heading', { level: 2, name: 'Room' })
+    ).toBeTruthy();
+    switchTo('3D');
+    expect(highlighted()).toEqual([]);
+  });
+
   it('undo after a cast rename restores the old id on every placement', async () => {
     const original = createGuardCastDocument();
     const storage = new MemoryStorage(original);

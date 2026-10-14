@@ -42,7 +42,11 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ),
 }));
 
-import { RoomActorMarkers, RoomActorPreview } from './RoomActorMarkers';
+import {
+  HIGHLIGHTED_COLOR,
+  RoomActorMarkers,
+  RoomActorPreview,
+} from './RoomActorMarkers';
 
 beforeAll(() => {
   (
@@ -284,5 +288,38 @@ it('typed actor start and party start have distinct picks/highlights; typed null
   await renderer.update(draw(null));
   expect(color(actorRing())).not.toBe('fbbf24');
   expect(color(startRing())).not.toBe('fbbf24');
+  await renderer.unmount();
+});
+
+it("draws a selected cast member's placements, and only those, in the highlight colour", async () => {
+  const monster = (id: string, q: number) => ({
+    id,
+    ref: 'dnd5e:monsters:human',
+    startingCell: { location: { q, r: 0 } },
+  });
+  const renderer = await ReactThreeTestRenderer.create(
+    <RoomActorMarkers
+      monsters={[
+        monster('gate-1', 0),
+        monster('gate-2', 1),
+        monster('cook', 2),
+      ]}
+      partyStart={null}
+      selectedActorId={null}
+      onSelectActor={vi.fn()}
+      highlightedActorIds={new Set(['gate-1', 'gate-2'])}
+    />
+  );
+  const ring = (id: string): string =>
+    (
+      (
+        renderer.scene.findByProps({ name: `room-actor-ring-${id}` })
+          .instance as THREE.Mesh
+      ).material as THREE.MeshBasicMaterial
+    ).color.getHexString();
+  const highlight = new THREE.Color(HIGHLIGHTED_COLOR).getHexString();
+  expect(ring('gate-1')).toBe(highlight);
+  expect(ring('gate-2')).toBe(highlight);
+  expect(ring('cook')).not.toBe(highlight);
   await renderer.unmount();
 });

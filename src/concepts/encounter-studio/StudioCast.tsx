@@ -533,7 +533,10 @@ export function CastMemberForm({
   );
 }
 
-/** The Encounter home's Cast: the derived member list and one member's form. */
+/** The Encounter home's Cast: the derived member list and one member's form.
+ * The selected member is the studio's one selection (R11): selecting it here
+ * highlights its placements on the map, and a selected placement presses its
+ * member's row. Only the "adding a member" state is local. */
 export function StudioCast({
   session,
   onShowPlacement,
@@ -542,20 +545,25 @@ export function StudioCast({
   onShowPlacement?(id: string): void;
 }): React.JSX.Element {
   const cast = castOf(session.document);
-  const [selected, setSelected] = useState<string | 'new' | null>(null);
+  const [adding, setAdding] = useState(false);
+  const arrange = session.arrange;
   const member =
-    selected && selected !== 'new'
-      ? (cast.find((entry) => entry.ref === selected) ?? null)
+    !adding && arrange?.kind === 'cast'
+      ? (cast.find((entry) => entry.ref === arrange.target.ref) ?? null)
       : null;
-  // A placement selected on the map presses its member's row (R11).
-  const placedRef =
-    session.arrange?.kind === 'actor' ? session.arrange.monster.ref : null;
+  const pressedRef =
+    arrange?.kind === 'cast'
+      ? arrange.target.ref
+      : arrange?.kind === 'actor'
+        ? arrange.monster.ref
+        : null;
   return (
     <section aria-label="Cast" className="es-creature-panel">
       <h2>Cast</h2>
       <p className="es-help">
         A cast member is a stat block, or a rulebook monster as it is, plus the
-        look and faction new placements start with.
+        look and faction new placements start with. Selecting one highlights its
+        placements on the map.
       </p>
       {cast.length ? (
         <ul aria-label="Cast members" className="es-inspector-list">
@@ -563,10 +571,10 @@ export function StudioCast({
             <li key={entry.ref}>
               <button
                 type="button"
-                aria-pressed={
-                  member ? member.ref === entry.ref : placedRef === entry.ref
-                }
-                onClick={() => setSelected(entry.ref)}
+                aria-pressed={!adding && pressedRef === entry.ref}
+                onClick={() => {
+                  if (session.cast.select(entry.ref)) setAdding(false);
+                }}
               >
                 {entry.name} ·{' '}
                 {entry.source === 'template' ? 'stat block' : 'rulebook'} ·{' '}
@@ -581,18 +589,18 @@ export function StudioCast({
       )}
       <button
         type="button"
-        aria-pressed={selected === 'new'}
-        onClick={() => setSelected('new')}
+        aria-pressed={adding}
+        onClick={() => setAdding(true)}
       >
         Add a cast member
       </button>
-      {(selected === 'new' || member) && (
+      {(adding || member) && (
         <CastMemberForm
           key={member?.ref ?? 'new'}
           session={session}
           member={member}
           onShowPlacement={onShowPlacement}
-          onSaved={(ref) => setSelected(ref)}
+          onSaved={() => setAdding(false)}
         />
       )}
     </section>

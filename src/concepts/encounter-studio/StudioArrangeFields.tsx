@@ -263,6 +263,9 @@ export function arrangeFields(
     case 'hex':
       // Read-only in S0: the play contract is the dialect's, not the form's.
       return [];
+    case 'cast':
+      // The cast member's own form edits it, not the arrange form.
+      return [];
   }
 }
 
@@ -455,6 +458,7 @@ export function arrangeIntent(
         location: cell(selection.cell),
       };
     case 'hex':
+    case 'cast':
       return null;
   }
 }
@@ -519,5 +523,7 @@ export function selectionName(
       return 'Party start';
     case 'hex':
       return `Hex ${selection.cell.q}, ${selection.cell.r}`;
+    case 'cast':
+      return selection.member.name;
   }
 }

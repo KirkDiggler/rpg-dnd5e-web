@@ -3,6 +3,7 @@ import type {
   RegionLighting,
   RegionResolution,
 } from './authoringRegions';
+import { castMemberOf, type CastMember } from './cast';
 import { authoredActorName, setActorName } from './creaturePalette';
 import { regionsAtCell } from './regionAtCell';
 import { resolveAuthoringRegions } from './regionBoundaryGeometry';
@@ -25,6 +26,7 @@ import {
   setSelectionHeight,
   topLevelSelectedIds,
 } from './sceneState';
+import type { SiteScope } from './siteScope';
 import {
   previewWallTransform,
   resizeWallLength,
@@ -48,6 +50,9 @@ export type StudioArrangeTarget =
   | { readonly kind: 'actor'; readonly id: string }
   | { readonly kind: 'start' }
   | { readonly kind: 'hex'; readonly cell: RoomHexCell }
+  /** One cast member, by its monster ref: one thing, not a set of its
+   * placements (R9, rpg-project#575). */
+  | { readonly kind: 'cast'; readonly ref: string }
   | StudioDoorTarget;
 
 export type StudioArrangeHeight =
@@ -126,6 +131,13 @@ export type StudioArrangeSelection = ArrangeSelectionIdentity &
         readonly kind: 'start';
         readonly target: Extract<StudioArrangeTarget, { kind: 'start' }>;
         readonly cell: Readonly<RoomHexCell>;
+      }
+    | {
+        readonly kind: 'cast';
+        readonly target: Extract<StudioArrangeTarget, { kind: 'cast' }>;
+        readonly member: Readonly<CastMember>;
+        /** monsterDeclarations[].id of the member, authored order. */
+        readonly placements: readonly string[];
       }
     | {
         readonly kind: 'hex';
@@ -246,6 +258,8 @@ export interface StudioArrangeProjectionInput {
   readonly previewWall?: StructuralWall | null;
   readonly previewDoor?: StudioDoorPreview | null;
   readonly regionResolutions?: readonly RegionResolution[];
+  /** The site scope; a cast target reads its templates. */
+  readonly scope?: Readonly<SiteScope>;
 }
 
 function validSceneTarget(scene: WorldScene, ids: readonly string[]): boolean {
@@ -349,6 +363,22 @@ export function projectStudioArrange(
         ? { preview: { position: preview.position, width: preview.width } }
         : {}),
     };
+  }
+  if (target.kind === 'cast') {
+    const member = castMemberOf(
+      { draft, scope: input.scope ?? {} },
+      target.ref
+    );
+    return member
+      ? {
+          kind: 'cast',
+          target: { kind: 'cast', ref: target.ref },
+          selectionKey: JSON.stringify({ kind: 'cast', ref: target.ref }),
+          selectionRevision,
+          member,
+          placements: member.placements,
+        }
+      : null;
   }
   if (target.kind === 'hex') {
     const { q, r } = target.cell;

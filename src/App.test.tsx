@@ -319,6 +319,7 @@ function createAppStudioSession(): EncounterStudioSession {
       adopt: vi.fn(() => true),
       remove: vi.fn(() => true),
       removeUnusedLook: vi.fn(() => true),
+      select: vi.fn(() => true),
     },
     creatures: {
       select: vi.fn(() => true),

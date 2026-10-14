@@ -6,6 +6,7 @@ import {
   StudioArrangePanel,
   type ArrangeComposition,
 } from './StudioArrangePanel';
+import { CastMemberForm } from './StudioCast';
 import { StudioDimensions } from './StudioDimensions';
 import type {
   EncounterStudioSession,
@@ -36,6 +37,8 @@ export interface StudioInspectorProps {
   onPlacePartyStart(): void;
   /** Open one cast member, by its monster ref (rpg-project#575). */
   onOpenCastMember?(ref: string): void;
+  /** Select one placement from a cast member's list. */
+  onShowPlacement?(id: string): void;
 }
 
 /** The Build home's only sidebar content: one view for the one selected
@@ -85,7 +88,31 @@ function InspectorBody(props: StudioInspectorProps): React.JSX.Element {
       return <LabelView {...props} arrange={arrange} />;
     case 'partyStart':
       return <PartyStartView {...props} />;
+    case 'castMember':
+      return <CastMemberView {...props} />;
   }
+}
+
+/** A selected cast member: its form, as on the Encounter home. Its
+ * placements are highlighted on the map; it is one thing, not a set. */
+function CastMemberView({
+  session,
+  onShowPlacement,
+}: StudioInspectorProps): React.JSX.Element | null {
+  const arrange = session.arrange;
+  if (arrange?.kind !== 'cast') return null;
+  return (
+    <div className="es-context-panel es-creature-panel">
+      <CastMemberForm
+        key={arrange.member.ref}
+        session={session}
+        member={arrange.member}
+        onShowPlacement={(id) =>
+          onShowPlacement ? onShowPlacement(id) : session.creatures.select(id)
+        }
+      />
+    </div>
+  );
 }
 
 /** The one-transaction form for the selected noun, without the Regions

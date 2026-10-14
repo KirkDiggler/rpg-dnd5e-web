@@ -67,7 +67,7 @@ export type { ResizeEdges } from '../world-building/workspaceGeometry';
 export type EncounterStudioView = 'layout' | '3d';
 
 /** The inspector's key: one thing, derived from the owner's arbiter on every
- * render and never stored. Nine kinds; `nothing` is the room. */
+ * render and never stored. Ten kinds; `nothing` is the room. */
 export type StudioSelection =
   | { readonly kind: 'nothing' }
   | { readonly kind: 'wall'; readonly id: string }
@@ -81,7 +81,9 @@ export type StudioSelection =
   | { readonly kind: 'hex'; readonly cell: RoomHexCell }
   /** A map label, with or without a region. */
   | { readonly kind: 'label'; readonly id: string }
-  | { readonly kind: 'partyStart' };
+  | { readonly kind: 'partyStart' }
+  /** One cast member, by its monster ref (rpg-project#575). */
+  | { readonly kind: 'castMember'; readonly ref: string };
 
 /** The scene multi-pick that feeds Group selection is a PICK, not a
  * selection: while two or more roots are picked, nothing is inspected. */
@@ -129,6 +131,8 @@ export function studioInspectionOf(
       return one({ kind: 'label', id: arrange.label.id });
     case 'hex':
       return one({ kind: 'hex', cell: { ...arrange.cell } });
+    case 'cast':
+      return one({ kind: 'castMember', ref: arrange.target.ref });
   }
 }
 export type StudioSocialSection =
@@ -291,6 +295,10 @@ export interface EncounterStudioSession {
     remove(ref: string): boolean;
     /** Remove a later recipe on the member's ref (an unused look). */
     removeUnusedLook(ref: string, entryId: string): boolean;
+    /** Select one cast member: the inspector shows its form and its
+     * placements are highlighted on the map. One selection, not a set (R9).
+     * Refused for a ref that is not in the cast. */
+    select(ref: string): boolean;
   };
   creatures: {
     select(id: string): boolean;

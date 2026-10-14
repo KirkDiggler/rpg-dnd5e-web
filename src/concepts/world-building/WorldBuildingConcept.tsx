@@ -239,11 +239,13 @@ function studioTargetKey(target: StudioArrangeTarget | null): string {
           }
         : target?.kind === 'start'
           ? { kind: 'start' }
-          : target?.kind === 'hex'
-            ? { kind: 'hex', q: target.cell.q, r: target.cell.r }
-            : target
-              ? { kind: target.kind, id: target.id }
-              : null
+          : target?.kind === 'cast'
+            ? { kind: 'cast', ref: target.ref }
+            : target?.kind === 'hex'
+              ? { kind: 'hex', q: target.cell.q, r: target.cell.r }
+              : target
+                ? { kind: target.kind, id: target.id }
+                : null
   );
 }
 
@@ -3676,6 +3678,7 @@ export function WorldBuildingConcept({
         target,
         selectionRevision,
         regionResolutions,
+        scope: roomHistory.present.scope,
       })
     ) {
       rejectEdit(new Error('Actor target no longer exists.'));
@@ -3687,6 +3690,15 @@ export function WorldBuildingConcept({
       target?.kind === 'actor' ? target.id : target ? 'start' : null
     );
     activateStudioTarget(target);
+  };
+  /** Select one cast member (rpg-project#575, R11): every noun owner's id
+   * is cleared and the arbiter names the member. Not a set of placements. */
+  const selectStudioCastMember = (ref: string): boolean => {
+    if (refuseWhilePublishing()) return false;
+    if (!castMemberOf(roomHistoryRef.current.present, ref)) return false;
+    clearStudioSelection();
+    activateStudioTarget({ kind: 'cast', ref });
+    return true;
   };
   const selectStudioHex = (cell: RoomHexCell | null): boolean => {
     if (refuseWhilePublishing()) return false;
@@ -3708,6 +3720,7 @@ export function WorldBuildingConcept({
       target: activeStudioTargetRef.current,
       selectionRevision,
       regionResolutions,
+      scope: roomHistory.present.scope,
     })
   )
     activeStudioTargetRef.current = null;
@@ -3754,6 +3767,7 @@ export function WorldBuildingConcept({
     previewWall,
     previewDoor,
     regionResolutions,
+    scope: roomHistory.present.scope,
   });
   const commitArrange = (intent: StudioArrangeIntent): boolean => {
     if (
@@ -4241,6 +4255,9 @@ export function WorldBuildingConcept({
             ? castMemberOf(roomHistory.present, armedCreature.ref)?.name
             : undefined,
           selectedActorId: selectedActorId,
+          ...(arrange?.kind === 'cast'
+            ? { highlightedActorIds: new Set(arrange.placements) }
+            : {}),
           ...(studioPresentation
             ? {
                 selectedActorTarget:
@@ -4581,28 +4598,45 @@ export function WorldBuildingConcept({
             return true;
           }),
           cast: (() => {
+            /** One transaction. `follows` names the member's ref after the
+             * edit: the edited member becomes the selection, so a rename or
+             * an adoption keeps the author on the member they changed. */
             const castIntent = <Args extends unknown[]>(
-              edit: (current: RoomDocument, ...args: Args) => RoomDocument
+              edit: (current: RoomDocument, ...args: Args) => RoomDocument,
+              follows?: (...args: Args) => string
             ): ((...args: Args) => boolean) =>
               guardSnapshotIntent((...args: Args): boolean => {
                 if (refuseWhilePublishing()) return false;
                 try {
-                  return commitRoomDocument(
-                    edit(roomHistoryRef.current.present, ...args)
-                  );
+                  const next = edit(roomHistoryRef.current.present, ...args);
+                  if (!commitRoomDocument(next)) return false;
+                  const ref = follows?.(...args);
+                  if (ref !== undefined && castMemberOf(next, ref)) {
+                    clearStudioSelection();
+                    activateStudioTarget({ kind: 'cast', ref });
+                  }
+                  return true;
                 } catch (error) {
                   return rejectEdit(error);
                 }
               });
+            const MONSTER = 'dnd5e:monsters:';
             return {
-              save: castIntent((current, edit: CastEdit) =>
-                applyCastEdit(current, edit, idFactory)
+              save: castIntent(
+                (current, edit: CastEdit) =>
+                  applyCastEdit(current, edit, idFactory),
+                (edit) =>
+                  edit.id === undefined ? edit.ref : `${MONSTER}${edit.id}`
               ),
-              rename: castIntent((current, ref: string, toId: string) =>
-                renameCastMember(current, ref, toId)
+              rename: castIntent(
+                (current, ref: string, toId: string) =>
+                  renameCastMember(current, ref, toId),
+                (_ref, toId) => `${MONSTER}${toId}`
               ),
-              adopt: castIntent((current, ref: string, templateId: string) =>
-                adoptCastMember(current, ref, templateId)
+              adopt: castIntent(
+                (current, ref: string, templateId: string) =>
+                  adoptCastMember(current, ref, templateId),
+                (_ref, templateId) => `${MONSTER}${templateId}`
               ),
               remove: castIntent((current, ref: string) =>
                 removeCastMember(current, ref)
@@ -4611,6 +4645,7 @@ export function WorldBuildingConcept({
                 (current, ref: string, entryId: string) =>
                   removeUnusedLook(current, ref, entryId)
               ),
+              select: guardSnapshotIntent(selectStudioCastMember),
             };
           })(),
           creatures: {

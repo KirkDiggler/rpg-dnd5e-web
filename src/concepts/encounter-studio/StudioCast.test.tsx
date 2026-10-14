@@ -15,6 +15,7 @@ import {
   renameCastMember,
 } from '../world-building/cast';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
+import { projectStudioArrange } from '../world-building/studioArrange';
 import {
   createEmptyCastDocument,
   createGuardCastDocument,
@@ -30,22 +31,27 @@ vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
 }));
 
 /** A stateful stand-in for the owner: each cast intent is one transaction
- * over the same pure edits the owner commits, recorded in history. */
+ * over the same pure edits the owner commits, recorded in history, and the
+ * edited member becomes the one selection, as the owner does. */
 function harness(initial: RoomDraftDocument) {
   const history: RoomDraftDocument[] = [initial];
   let ids = 0;
   const select = vi.fn(() => true);
   function Harness(): React.JSX.Element {
     const [document, setDocument] = useState(initial);
+    const [target, setTarget] = useState<string | null>(null);
     const intent =
       <Args extends unknown[]>(
-        edit: (current: RoomDraftDocument, ...args: Args) => RoomDraftDocument
+        edit: (current: RoomDraftDocument, ...args: Args) => RoomDraftDocument,
+        follows?: (...args: Args) => string
       ) =>
       (...args: Args): boolean => {
         try {
           const next = edit(document, ...args);
           history.push(next);
           setDocument(next);
+          const ref = follows?.(...args);
+          if (ref !== undefined) setTarget(ref);
           return true;
         } catch {
           return false;
@@ -55,15 +61,30 @@ function harness(initial: RoomDraftDocument) {
     const session: EncounterStudioSession = {
       ...fake,
       document,
+      arrange: target
+        ? projectStudioArrange({
+            draft: document.draft,
+            scope: document.scope,
+            target: { kind: 'cast', ref: target },
+            selectionRevision: 1,
+          })
+        : null,
       creatures: { ...fake.creatures, select },
       cast: {
-        save: intent((current, edit) =>
-          applyCastEdit(current, edit, () => `recipe-${(ids += 1)}`)
+        save: intent(
+          (current, edit) =>
+            applyCastEdit(current, edit, () => `recipe-${(ids += 1)}`),
+          (edit) =>
+            edit.id === undefined ? edit.ref : `dnd5e:monsters:${edit.id}`
         ),
         rename: intent(renameCastMember),
         adopt: intent(adoptCastMember),
         remove: intent(removeCastMember),
         removeUnusedLook: intent(removeUnusedLook),
+        select: (ref) => {
+          setTarget(ref);
+          return true;
+        },
       },
     };
     return <StudioCast session={session} onShowPlacement={select} />;
@@ -308,5 +329,32 @@ describe('StudioCast', () => {
     expect(
       latest().draft.scene.creaturePalette?.map((entry) => entry.id)
     ).toEqual(['guard-recipe']);
+  });
+
+  it("a selected placement presses its member's row", () => {
+    const document = placeCastMember(
+      createGuardCastDocument(),
+      'goblin-1',
+      'dnd5e:monsters:goblin',
+      2
+    );
+    const fake = createFakeStudioSession();
+    render(
+      <StudioCast
+        session={{
+          ...fake,
+          document,
+          arrange: projectStudioArrange({
+            draft: document.draft,
+            target: { kind: 'actor', id: 'gate-2' },
+            selectionRevision: 1,
+          }),
+        }}
+      />
+    );
+    expect(member('Guard').getAttribute('aria-pressed')).toBe('true');
+    expect(member('Goblin').getAttribute('aria-pressed')).toBe('false');
+    // Pressing a row is the member's selection, never a placement's.
+    expect(screen.queryByRole('form')).toBeNull();
   });
 });

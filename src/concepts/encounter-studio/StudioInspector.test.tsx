@@ -581,4 +581,46 @@ describe('StudioInspector', () => {
       ).toEqual(document);
     });
   });
+
+  describe('S1 a selected cast member', () => {
+    it('the inspector shows the cast member form, not a creature view', () => {
+      const session = selected(
+        {
+          ...createFakeStudioSession(),
+          document: createGuardCastDocument(),
+        },
+        { kind: 'cast', ref: GUARD }
+      );
+      expect(
+        studioInspectionOf(session.arrange, session.document.draft.scene)
+          .selection
+      ).toEqual({ kind: 'castMember', ref: GUARD });
+      inspector(session);
+      const view = within(region());
+      expect(
+        view.getByRole('heading', { level: 2, name: 'Guard' })
+      ).toBeTruthy();
+      expect(
+        view.getByRole('form', { name: 'Cast member Guard' })
+      ).toBeTruthy();
+      expect(view.queryByLabelText('Map name')).toBeNull();
+      expect(view.queryByLabelText('Starting hex q')).toBeNull();
+      fireEvent.click(
+        view.getByRole('button', { name: 'Select placement gate-2' })
+      );
+      expect(session.creatures.select).toHaveBeenCalledWith('gate-2');
+    });
+
+    it('a cast target whose member is gone projects to nothing', () => {
+      const document = createGuardCastDocument();
+      expect(
+        projectStudioArrange({
+          draft: document.draft,
+          scope: {},
+          target: { kind: 'cast', ref: 'dnd5e:monsters:nobody' },
+          selectionRevision: 1,
+        })
+      ).toBeNull();
+    });
+  });
 });

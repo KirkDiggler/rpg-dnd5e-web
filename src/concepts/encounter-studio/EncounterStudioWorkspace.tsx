@@ -567,10 +567,7 @@ function StudioSurface({
                 onFrameChange={onFrameChange}
                 onArmTool={armTool}
                 onPlacePartyStart={placePartyStart}
-                onOpenCastMember={() => {
-                  changeHome('encounter');
-                  setEncounterSection('cast');
-                }}
+                onOpenCastMember={(ref) => session.cast.select(ref)}
                 onOpenRegion={(labelId) => {
                   session.mapLabelSelection.select(labelId);
                   changeHome('regions');
