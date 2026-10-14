@@ -1,0 +1,279 @@
+/* Material editor lab — preview-only styling, follows MaterialReviewLab.css. */
+.material-editor {
+  min-height: 100vh;
+  padding: 1.25rem;
+  background: #111827;
+  color: #e5e7eb;
+}
+.material-editor header,
+.material-editor footer {
+  max-width: 100rem;
+  margin: auto;
+}
+.material-editor-notice {
+  border: 2px solid #eab308;
+  padding: 0.7rem;
+  background: #292615;
+  font-weight: 600;
+}
+.material-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  max-width: 100rem;
+  margin: 1rem auto;
+}
+.material-editor nav {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  max-height: 70vh;
+  overflow: auto;
+}
+.material-editor button,
+.material-editor select,
+.material-editor input {
+  padding: 0.45rem;
+  border: 1px solid #4b5563;
+  border-radius: 0.3rem;
+  background: #1f2937;
+  color: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.material-editor input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  justify-self: start;
+}
+.material-editor .material-editor-outline-toggle {
+  display: flex;
+  align-items: center;
+}
+.material-editor button {
+  cursor: pointer;
+}
+.material-editor nav button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.material-editor nav button[aria-pressed='true'] {
+  border-color: #38bdf8;
+  background: #16435b;
+}
+.material-editor nav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.material-editor small {
+  display: block;
+  opacity: 0.75;
+}
+.material-editor label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.6rem 0;
+}
+.material-editor p,
+.material-editor li {
+  overflow-wrap: anywhere;
+}
+.material-editor .channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.material-editor-workspace {
+  display: grid;
+  grid-template-columns: minmax(18rem, 27rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.material-editor-workspace h2 {
+  overflow-wrap: anywhere;
+}
+.material-editor-controls .channel-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.material-editor-preview {
+  position: sticky;
+  top: 1rem;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .material-editor-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .material-editor-preview {
+    position: static;
+    grid-row: 1;
+  }
+  .material-editor-preview .material-editor-canvas {
+    height: 45vh;
+  }
+}
+.material-editor .channel {
+  min-width: 0;
+  border: 1px solid #374151;
+  border-radius: 0.4rem;
+  padding: 0.7rem;
+  background: #111827;
+}
+.material-editor .channel h4 {
+  margin: 0 0 0.4rem;
+}
+.material-editor .channel-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.material-editor .channel-row input[type='number'] {
+  width: 6rem;
+}
+.material-editor .channel-row input[type='color'] {
+  width: 3rem;
+  height: 2.2rem;
+  padding: 0.1rem;
+}
+.material-editor-canvas {
+  position: relative;
+  height: 62vh;
+  min-height: 22rem;
+  border: 1px solid #374151;
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+.material-editor-mapping {
+  font-family: monospace;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+.material-editor-scope {
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid #4b5563;
+}
+.material-editor-scope--slot-override {
+  border-color: #38bdf8;
+  color: #7dd3fc;
+}
+.material-editor-scope--family-default {
+  border-color: #a78bfa;
+  color: #c4b5fd;
+}
+.material-editor-scope--unassigned {
+  border-color: #9ca3af;
+  color: #d1d5db;
+}
+.material-editor-scope--working-style {
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+.material-editor-texture-status--error {
+  color: #fca5a5;
+}
+.material-editor-texture-status--loading {
+  color: #fde68a;
+}
+.material-editor-texture-status--success {
+  color: #86efac;
+}
+.material-editor-scene-error {
+  margin: 1rem;
+  padding: 0.8rem;
+  border: 1px solid #ef4444;
+  background: #2a1215;
+  border-radius: 0.4rem;
+}
+.material-editor fieldset {
+  border: 1px solid #374151;
+  border-radius: 0.4rem;
+  margin: 0.8rem 0;
+}
+.material-editor-batch nav {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  max-height: 30vh;
+  overflow: auto;
+}
+.material-editor-batch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.3rem;
+  align-items: stretch;
+}
+.material-editor-batch-row > button:first-child {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.material-editor-batch-row > button[aria-pressed='true'] {
+  border-color: #38bdf8;
+  background: #16435b;
+}
+.material-editor-batch-remove {
+  padding: 0.45rem 0.6rem;
+}
+.material-editor-batch-status {
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid #4b5563;
+}
+.material-editor-batch-status--configured {
+  border-color: #4ade80;
+  color: #86efac;
+}
+.material-editor-batch-status--deferred {
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+.material-editor-batch-status--draft {
+  border-color: #9ca3af;
+  color: #d1d5db;
+}
+.material-editor-batch-stale {
+  color: #fca5a5;
+  margin-left: 0.4rem;
+}
+.material-editor-batch-picks {
+  display: grid;
+  gap: 0.2rem;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0.4rem 0;
+}
+.material-editor-batch-picks label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.material-editor-batch-note {
+  color: #86efac;
+}
+.material-editor-footer-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.material-editor .asset-review-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 24, 39, 0.6);
+}
+.material-editor .asset-review-scene-error {
+  position: absolute;
+  inset: auto 1rem 1rem;
+  padding: 0.8rem;
+  border: 1px solid #ef4444;
+  background: #2a1215;
+  border-radius: 0.4rem;
+}

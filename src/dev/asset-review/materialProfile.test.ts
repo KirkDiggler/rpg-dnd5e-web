@@ -5,6 +5,8 @@ import {
   selectFamilyOption,
   serializeMaterialProfile,
 } from './materialProfile';
+import { parseMaterialEditorManifest } from './materialRecipe';
+import { materialEditorManifestFixture } from './materialRecipe.testFixtures';
 import capabilities from './materialReviewCapabilities.json';
 
 import {
@@ -19,10 +21,13 @@ describe('material profile contract', () => {
       const fixtures: Record<number, unknown> = {
         1: materialManifestFixture(),
         2: auditedMaterialManifestFixture(),
+        3: materialEditorManifestFixture(),
       };
-      expect(parseMaterialReviewManifest(fixtures[version]).schemaVersion).toBe(
-        version
-      );
+      const parse =
+        version === 3
+          ? parseMaterialEditorManifest
+          : parseMaterialReviewManifest;
+      expect(parse(fixtures[version]).schemaVersion).toBe(version);
     }
   );
   it('accepts explicit blocked coverage but rejects previews from unresolved sources', () => {
