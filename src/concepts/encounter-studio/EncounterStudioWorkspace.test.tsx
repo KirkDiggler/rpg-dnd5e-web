@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoomDraft } from '../world-building/roomDraft';
 import { projectStudioArrange } from '../world-building/studioArrange';
-import type { WorldBuildingViewportProps } from '../world-building/WorldBuildingViewport';
+import type {
+  WorldBuildingCanvasOptions,
+  WorldBuildingViewportProps,
+} from '../world-building/WorldBuildingViewport';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import type {
   EncounterStudioPresentation,
@@ -21,7 +24,9 @@ const observed = vi.hoisted(() => ({
   viewportUnmounts: 0,
   ownerProps: null as Record<string, unknown> | null,
   layoutProps: null as LayoutViewportProps | null,
-  viewportProps: null as WorldBuildingViewportProps | null,
+  viewportProps: null as
+    | (WorldBuildingViewportProps & WorldBuildingCanvasOptions)
+    | null,
   events: [] as string[],
 }));
 
@@ -106,7 +111,9 @@ vi.mock('./LayoutViewport', () => ({
 }));
 
 vi.mock('../world-building/WorldBuildingViewport', () => ({
-  WorldBuildingViewport: (props: WorldBuildingViewportProps) => {
+  WorldBuildingViewport: (
+    props: WorldBuildingViewportProps & WorldBuildingCanvasOptions
+  ) => {
     observed.viewportProps = props;
     useEffect(
       () => () => {
@@ -305,9 +312,13 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     click('3D');
     expect(screen.queryByLabelText('Layout floor surface')).toBeNull();
     expect(observed.layoutUnmounts).toBe(1);
+    const surface = screen.getByLabelText('Controlled 3D surface');
     click('Layout');
-    expect(screen.queryByLabelText('Controlled 3D surface')).toBeNull();
-    expect(observed.viewportUnmounts).toBe(1);
+    // The 3D viewport stays mounted, hidden and paused (#1271).
+    expect(screen.getByLabelText('Controlled 3D surface')).toBe(surface);
+    expect(surface.closest('.es-3d')?.hasAttribute('inert')).toBe(true);
+    expect(observed.viewportProps).toMatchObject({ active: false });
+    expect(observed.viewportUnmounts).toBe(0);
     expect(observed.ownerMounts).toBe(1);
     expect(observed.ownerUnmounts).toBe(0);
     expect(observed.session?.viewportProps.selectedIds).toEqual([
@@ -362,7 +373,11 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
       <EncounterStudioWorkspace compositionSource={source} />
     );
     click('3D');
-    expect(observed.viewportProps).toEqual(observed.session?.viewportProps);
+    expect(observed.viewportProps).toEqual({
+      ...observed.session?.viewportProps,
+      active: true,
+      studioCanvas: true,
+    });
     expect(observed.viewportProps?.scene).toBe(
       observed.session?.viewportProps.scene
     );
