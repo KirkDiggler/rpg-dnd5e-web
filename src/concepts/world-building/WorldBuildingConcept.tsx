@@ -50,6 +50,7 @@ import {
 } from './declarationFootprint';
 import { setDoorBindingState, withDoorBinding } from './doorBindingEdits';
 import { DoorStates } from './DoorStates';
+import { exitAt, setExitAt } from './exitEdits';
 import { IntelPanel } from './IntelPanel';
 import {
   createMapLabel,
@@ -4795,6 +4796,36 @@ export function WorldBuildingConcept({
                   ...current,
                   draft: { ...current.draft, room },
                 });
+              }
+            ),
+          },
+          exits: {
+            set: guardSnapshotIntent(
+              (cell: RoomHexCell, id: string | null): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                const walkable = current.draft.room.walkableHexes.some(
+                  (hex) => hex.q === cell.q && hex.r === cell.r
+                );
+                if (
+                  id !== null &&
+                  !walkable &&
+                  !exitAt(current.scope.exits, cell)
+                )
+                  return rejectEdit(
+                    new Error(
+                      `An exit needs walkable floor; hex q ${cell.q}, r ${cell.r} has none.`
+                    )
+                  );
+                try {
+                  const exits = setExitAt(current.scope.exits, cell, id);
+                  const scope = { ...current.scope };
+                  if (exits.length === 0) delete scope.exits;
+                  else scope.exits = exits;
+                  return commitRoomDocument({ ...current, scope });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
               }
             ),
           },

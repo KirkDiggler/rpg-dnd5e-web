@@ -53,6 +53,7 @@ function setup(
   options: {
     selected?: StudioSelection;
     interactive?: boolean;
+    exits?: { id: string; cell: { q: number; r: number } }[];
   } = {}
 ) {
   const editing: LayoutPlacedEditing = {
@@ -77,6 +78,7 @@ function setup(
         items={items}
         declarations={declarations}
         partyStart={{ q: 0, r: 0 }}
+        exits={options.exits}
         editing={editing}
         interactive={options.interactive ?? true}
         transform={transform}
@@ -89,6 +91,28 @@ function setup(
 }
 
 describe('LayoutPlacedOverlay', () => {
+  it('the exit marker draws at its cell', () => {
+    const { q } = setup({
+      exits: [{ id: 'postern', cell: { q: 3, r: -2 } }],
+    });
+    const centre = layoutCellCenter({ q: 3, r: -2 });
+    const marker = q('[data-exit="postern"] rect');
+    expect(
+      Number(marker.getAttribute('x')) +
+        Number(marker.getAttribute('width')) / 2
+    ).toBeCloseTo(centre.x);
+    expect(
+      Number(marker.getAttribute('y')) +
+        Number(marker.getAttribute('height')) / 2
+    ).toBeCloseTo(centre.z);
+    expect(q('[data-placed-name="exit:postern"]').textContent).toBe(
+      'Exit postern'
+    );
+    expect(q('[data-exit="postern"]').getAttribute('pointer-events')).toBe(
+      'none'
+    );
+  });
+
   it('a creature ring sits at its cell in its cast colour', () => {
     const { q } = setup();
     const centre = layoutCellCenter({ q: 2, r: -1 });

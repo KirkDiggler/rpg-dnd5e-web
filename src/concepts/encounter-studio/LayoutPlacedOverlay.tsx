@@ -8,6 +8,7 @@ import type {
   RoomMonsterPlacement,
   RoomPropDeclaration,
 } from '../world-building/roomDraft';
+import type { SiteExit } from '../world-building/siteScope';
 import type { WorldProp } from '../world-building/types';
 import {
   layoutCellCenter,
@@ -34,6 +35,7 @@ export interface LayoutPlacedEditing {
 }
 
 const RING_RADIUS = 0.62;
+const NO_EXITS: readonly SiteExit[] = [];
 const MARKER_RADIUS = 0.34;
 
 function footprintPoints(
@@ -75,6 +77,7 @@ interface GlyphProps {
   items: readonly WorldProp[];
   declarations: Readonly<Record<string, RoomPropDeclaration>>;
   partyStart?: RoomHexCell;
+  exits: readonly SiteExit[];
   /** "creature:<id>", "cast:<ref>", "start", or "" */
   selectedKey: string;
   /** Selected or picked prop ids, joined: a primitive for the memo. */
@@ -92,6 +95,7 @@ const PlacedGlyphs = memo(
     items,
     declarations,
     partyStart,
+    exits,
     selectedKey,
     propKey,
     interactive,
@@ -189,6 +193,34 @@ const PlacedGlyphs = memo(
             </g>
           );
         })}
+        {exits.map((exit) => {
+          const at = layoutCellCenter(exit.cell);
+          return (
+            <g
+              key={`exit:${exit.id}`}
+              data-exit={exit.id}
+              data-exit-cell={`${exit.cell.q},${exit.cell.r}`}
+              pointerEvents="none"
+            >
+              <rect
+                x={at.x - 0.5}
+                y={at.z - 0.5}
+                width={1}
+                height={1}
+                fill="#38bdf8"
+                fillOpacity={0.35}
+                stroke="#e0f2fe"
+                strokeWidth={1.5}
+                strokeDasharray="3 2"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polygon
+                points={`${at.x - 0.25},${at.z - 0.2} ${at.x + 0.3},${at.z} ${at.x - 0.25},${at.z + 0.2}`}
+                fill="#e0f2fe"
+              />
+            </g>
+          );
+        })}
         {partyStart &&
           (() => {
             const at = layoutCellCenter(partyStart);
@@ -225,6 +257,7 @@ const PlacedGlyphs = memo(
     previous.items === next.items &&
     previous.declarations === next.declarations &&
     previous.partyStart === next.partyStart &&
+    previous.exits === next.exits &&
     previous.selectedKey === next.selectedKey &&
     previous.propKey === next.propKey &&
     previous.interactive === next.interactive
@@ -254,6 +287,7 @@ export function LayoutPlacedOverlay({
   items,
   declarations,
   partyStart,
+  exits = NO_EXITS,
   editing,
   interactive,
   worldTransform,
@@ -263,6 +297,8 @@ export function LayoutPlacedOverlay({
   items: readonly WorldProp[];
   declarations: Readonly<Record<string, RoomPropDeclaration>>;
   partyStart?: RoomHexCell;
+  /** The root `exits`, drawn at their cells (rpg-project#578). */
+  exits?: readonly SiteExit[];
   editing: LayoutPlacedEditing;
   interactive: boolean;
   /** The world-to-surface SVG transform the floor uses. */
@@ -315,6 +351,7 @@ export function LayoutPlacedOverlay({
           items={items}
           declarations={declarations}
           partyStart={partyStart}
+          exits={exits}
           selectedKey={selectedKeyOf(selected)}
           propKey={propIds.join('\n')}
           interactive={interactive}
@@ -353,6 +390,15 @@ export function LayoutPlacedOverlay({
               )
             : null;
         })}
+        {exits.map((exit) =>
+          label(
+            `exit:${exit.id}`,
+            `Exit ${exit.id}`,
+            layoutCellCenter(exit.cell),
+            0.5,
+            '#e0f2fe'
+          )
+        )}
         {partyStart &&
           label(
             'start',

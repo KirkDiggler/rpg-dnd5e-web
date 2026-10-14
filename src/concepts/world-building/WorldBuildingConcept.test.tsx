@@ -4954,6 +4954,52 @@ describe('Studio owner facade', () => {
     expect(owner.session.arrange).toBeNull();
   });
 
+  describe('exits on the hex view (rpg-project#578)', () => {
+    it('adding an exit writes exits[] with its cell', () => {
+      const owner = mountStudio(populatedStorage());
+      const cell = owner.session.document.draft.room.walkableHexes.find(
+        (hex) => !(hex.q === 2 && hex.r === 0)
+      )!;
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.exits.set(cell, 'postern')).toBe(true);
+      });
+      expect(owner.session.document.scope.exits).toEqual([
+        { id: 'studio-exit', cell: { q: 2, r: 0 } },
+        { id: 'postern', cell: { q: cell.q, r: cell.r } },
+      ]);
+      act(() => {
+        expect(owner.session.exits.set(cell, 'postern-gate')).toBe(true);
+      });
+      expect(owner.session.document.scope.exits?.[1]?.id).toBe('postern-gate');
+      act(() => owner.session.undo());
+      act(() => owner.session.undo());
+      expect(owner.session.document).toEqual(before);
+    });
+
+    it('a duplicate id and an unwalkable hex are refused without history', () => {
+      const owner = mountStudio(populatedStorage());
+      const walkable = owner.session.document.draft.room.walkableHexes;
+      const cell = walkable.find((hex) => !(hex.q === 2 && hex.r === 0))!;
+      const before = owner.session.document;
+      act(() => {
+        expect(owner.session.exits.set(cell, 'studio-exit')).toBe(false);
+      });
+      expect(owner.session.notice).toMatch(/duplicate exit id: studio-exit/);
+      let floorless = { q: 0, r: 0 };
+      for (let q = -8; q <= 8; q++)
+        if (!walkable.some((hex) => hex.q === q && hex.r === 1)) {
+          floorless = { q, r: 1 };
+          break;
+        }
+      act(() => {
+        expect(owner.session.exits.set(floorless, 'nowhere')).toBe(false);
+      });
+      expect(owner.session.document).toBe(before);
+      expect(owner.session.canUndo).toBe(false);
+    });
+  });
+
   describe('the door state and Hidden by (rpg-project#578)', () => {
     it('setting locked writes a lock check and one history entry', () => {
       const owner = mountStudio(populatedStorage());

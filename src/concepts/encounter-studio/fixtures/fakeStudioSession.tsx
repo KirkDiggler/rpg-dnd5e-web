@@ -36,6 +36,7 @@ export function createFakeStudioSession(
       cancelPreview: vi.fn(),
     },
     doors: { setBinding: vi.fn(() => true) },
+    exits: { set: vi.fn(() => true) },
     concealments: { setDoorHiddenBy: vi.fn(() => true) },
     arrange: null,
     commitArrange: vi.fn(() => true),

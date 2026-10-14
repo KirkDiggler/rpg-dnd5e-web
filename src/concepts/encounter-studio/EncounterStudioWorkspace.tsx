@@ -744,6 +744,7 @@ function StudioSurface({
                     onSelectHex={(cell) => void session.selectHex(cell)}
                     onClearSelection={() => void session.clearSelection()}
                     placedEditing={placedEditing}
+                    exits={session.document.scope.exits}
                     frameTarget={frameTarget}
                   />
                 </div>

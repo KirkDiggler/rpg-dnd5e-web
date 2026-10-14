@@ -212,6 +212,7 @@ export function LayoutViewport({
   onSelectHex,
   onClearSelection,
   placedEditing,
+  exits,
   frameTarget,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
@@ -1158,6 +1159,7 @@ export function LayoutViewport({
           items={draft.scene.items}
           declarations={draft.room.propDeclarations}
           partyStart={draft.room.partyStart}
+          exits={exits}
           editing={placedEditing}
           interactive={tool === 'select'}
           worldTransform={worldTransform}

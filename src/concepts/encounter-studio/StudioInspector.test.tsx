@@ -380,6 +380,82 @@ describe('StudioInspector', () => {
     });
   });
 
+  describe('the hex exit (rpg-project#578)', () => {
+    function hexSession(cell: { q: number; r: number }) {
+      const base = populated();
+      const document = structuredClone(base.document);
+      document.draft.room.walkableHexes = [
+        { q: 2, r: 0 },
+        { q: 3, r: 0 },
+      ];
+      return selected({ ...base, document }, { kind: 'hex', cell });
+    }
+
+    it('a walkable hex with no exit offers Add exit, which writes the id at the hex', () => {
+      const live = hexSession({ q: 3, r: 0 });
+      inspector(live);
+      const view = within(region());
+      expect(view.getByText(/No exit here/)).toBeTruthy();
+      fireEvent.click(view.getByRole('button', { name: 'Add exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'postern' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply exit' }));
+      expect(live.exits.set).toHaveBeenCalledExactlyOnceWith(
+        { q: 3, r: 0 },
+        'postern'
+      );
+    });
+
+    it('a duplicate exit id is refused at the field', () => {
+      const live = hexSession({ q: 3, r: 0 });
+      inspector(live);
+      const view = within(region());
+      fireEvent.click(view.getByRole('button', { name: 'Add exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'studio-exit' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply exit' }));
+      expect(view.getByRole('alert').textContent).toBe(
+        'Site exit at index 1: duplicate exit id: studio-exit'
+      );
+      expect(live.exits.set).not.toHaveBeenCalled();
+    });
+
+    it('a hex with an exit shows its id, with rename and Remove', () => {
+      const live = hexSession({ q: 2, r: 0 });
+      inspector(live);
+      const view = within(region());
+      expect(view.getByText(/Exit studio-exit/)).toBeTruthy();
+      fireEvent.click(view.getByRole('button', { name: 'Rename exit' }));
+      fireEvent.change(view.getByLabelText('Exit id'), {
+        target: { value: 'gate' },
+      });
+      fireEvent.click(view.getByRole('button', { name: 'Apply rename' }));
+      expect(live.exits.set).toHaveBeenLastCalledWith({ q: 2, r: 0 }, 'gate');
+      fireEvent.click(view.getByRole('button', { name: 'Remove exit' }));
+      expect(live.exits.set).toHaveBeenLastCalledWith({ q: 2, r: 0 }, null);
+    });
+
+    it('an unwalkable hex offers no exit', () => {
+      inspector(hexSession({ q: 0, r: 0 }));
+      const view = within(region());
+      expect(view.queryByRole('button', { name: 'Add exit' })).toBeNull();
+      expect(view.getByText('An exit needs walkable floor.')).toBeTruthy();
+    });
+
+    it("the exit form's help names the blocking-prop refusal", () => {
+      inspector(hexSession({ q: 3, r: 0 }));
+      const view = within(region());
+      fireEvent.click(view.getByRole('button', { name: 'About Exit' }));
+      expect(
+        view.getByText(
+          'An exit under a blocking prop is refused when the encounter is played.'
+        )
+      ).toBeTruthy();
+    });
+  });
+
   describe('the door state (rpg-project#578)', () => {
     const DOOR = {
       kind: 'door',

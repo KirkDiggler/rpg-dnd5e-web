@@ -33,6 +33,7 @@ function fixture(): EncounterStudioSession {
     arrange: null,
     intentEpoch: 0,
     doors: { setBinding: vi.fn(() => true) },
+    exits: { set: vi.fn(() => true) },
     concealments: { setDoorHiddenBy: vi.fn(() => true) },
     regionEditing: {
       resolutions: [],

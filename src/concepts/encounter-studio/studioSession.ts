@@ -239,6 +239,8 @@ export interface LayoutViewportProps {
   /** Placed creatures, props and the party start, drawn and selectable
    * through the S0 contract (rpg-project#577). Absent draws none. */
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
+  /** The root `exits`, drawn with the placed nouns (rpg-project#578). */
+  exits?: readonly import('../world-building/siteScope').SiteExit[];
   /** A request to frame these world bounds: the viewport fits them to its
    * own size and reports the frame through onFrameChange. A new nonce is a
    * new request; the request itself is never document state. */
@@ -345,6 +347,13 @@ export interface EncounterStudioSession {
    * it. Refused for an id that is no wall's door. */
   doors: {
     setBinding(doorId: string, next: RoomDoorBinding | undefined): boolean;
+  };
+  /** The root `exits` (rpg-project#578, H3). `set` writes the hex's exit:
+   * an id adds or renames it, null removes it. Adding is refused on a hex
+   * that is not walkable floor; an id the validator refuses is refused with
+   * its sentence. Standability is the toolkit's, at compile. */
+  exits: {
+    set(cell: RoomHexCell, id: string | null): boolean;
   };
   /** The root `concealments` (rpg-project#578). Each intent is one
    * transaction; a refusal returns false with its sentence as the notice. */

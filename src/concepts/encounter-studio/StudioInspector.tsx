@@ -15,6 +15,7 @@ import {
   setDoorBindingState,
   type DoorBindingState,
 } from '../world-building/doorBindingEdits';
+import { exitAt, setExitAt } from '../world-building/exitEdits';
 import type { ReadBackTarget } from '../world-building/readBack';
 import { PLAY_CONTRACT } from '../world-building/singleRoomDungeon';
 import { CopyId } from './CopyId';
@@ -35,6 +36,7 @@ import type {
   EncounterStudioView,
   LayoutFrame,
   LayoutTool,
+  RoomHexCell,
   StudioArrangeSelection,
   StudioInspection,
   StudioSelection,
@@ -722,6 +724,12 @@ function HexView({
             <p className="es-help">No region is drawn here.</p>
           )}
         </StudioSection>
+        <HexExit
+          key={`${arrange.cell.q},${arrange.cell.r}`}
+          session={session}
+          cell={arrange.cell}
+          walkable={arrange.walkable}
+        />
         <StudioSection title="Play" level="subsection">
           <p>
             Void: {PLAY_CONTRACT.void} · Lighting: {PLAY_CONTRACT.lighting} ·
@@ -730,6 +738,98 @@ function HexView({
         </StudioSection>
       </StudioSection>
     </div>
+  );
+}
+
+/** The hex's exit (rpg-project#578, H3): add one with an id, rename it,
+ * remove it. Offered on walkable floor only; whether the hex is standable
+ * is the toolkit's call when the encounter is played (S4-Q6). */
+function HexExit({
+  session,
+  cell,
+  walkable,
+}: {
+  session: EncounterStudioSession;
+  cell: RoomHexCell;
+  walkable: boolean;
+}): React.JSX.Element {
+  const exit = exitAt(session.document.scope.exits, cell);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const close = (): void => {
+    setEditing(null);
+    setRefusal(null);
+  };
+  const apply = (): void => {
+    if (editing === null) return;
+    const id = editing.trim();
+    try {
+      setExitAt(session.document.scope.exits, cell, id);
+    } catch (error) {
+      setRefusal(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (session.exits.set(cell, id)) close();
+    else setRefusal('The exit was refused; the notice says why.');
+  };
+  return (
+    <StudioSection title="Exit" level="subsection">
+      <p className="es-help">
+        {exit ? `Exit ${exit.id}` : 'No exit here.'}{' '}
+        <FieldHelp field="Exit">
+          An exit under a blocking prop is refused when the encounter is played.
+        </FieldHelp>
+      </p>
+      {editing !== null ? (
+        <form
+          className="es-buttons"
+          aria-label={exit ? 'Rename exit' : 'Add exit'}
+          onSubmit={(event) => {
+            event.preventDefault();
+            apply();
+          }}
+        >
+          <label className="es-field">
+            <span>Exit id</span>
+            <input
+              aria-label="Exit id"
+              value={editing}
+              autoFocus
+              onChange={(event) => {
+                setEditing(event.target.value);
+                setRefusal(null);
+              }}
+            />
+          </label>
+          <button type="submit">{exit ? 'Apply rename' : 'Apply exit'}</button>
+          <button type="button" onClick={close}>
+            Cancel
+          </button>
+          {refusal && (
+            <p role="alert" className="es-warning">
+              {refusal}
+            </p>
+          )}
+        </form>
+      ) : exit ? (
+        <div className="es-buttons">
+          <button type="button" onClick={() => setEditing(exit.id)}>
+            Rename exit
+          </button>
+          <button type="button" onClick={() => session.exits.set(cell, null)}>
+            Remove exit
+          </button>
+        </div>
+      ) : walkable ? (
+        <div className="es-buttons">
+          <button type="button" onClick={() => setEditing('')}>
+            Add exit
+          </button>
+        </div>
+      ) : (
+        <p className="es-help">An exit needs walkable floor.</p>
+      )}
+    </StudioSection>
   );
 }
 
