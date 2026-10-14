@@ -6064,4 +6064,91 @@ describe('S3 the overview through the real owner', () => {
     expect(ids).not.toContain('lighting-empty');
     expect(ids.length).toBeGreaterThan(0);
   });
+
+  it('a prop writer in Facts selects the prop from Layout', async () => {
+    mount(new MemoryStorage(createCastleReadBackDocument()));
+    await settled();
+    expect(button('Layout').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button('Encounter'));
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name: 'Facts' })
+    );
+    const facts = screen.getByRole('region', { name: 'Facts' });
+    const row = facts.querySelector(
+      '[data-fact="king-is-cultist"]'
+    ) as HTMLElement;
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+    expect(pressed('Build')).toBe('true');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Altar'
+    );
+  });
+
+  it("the group view's Select member selects the member from Layout", async () => {
+    mount(new MemoryStorage(createPopulatedStudioDocument()));
+    await settled();
+    // Select the group in 3D, then come back to Layout with it selected.
+    switchTo('3D');
+    act(() => viewport().onSelect(['furniture']));
+    switchTo('Layout');
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Furniture'
+    );
+    fireEvent.click(
+      inspector().getByRole('button', { name: 'Select member Table' })
+    );
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Table'
+    );
+  });
+
+  it("a creature at a region's centre is selectable by click in Layout", async () => {
+    mount(new MemoryStorage(createCastleKeepDocument()));
+    await settled();
+    // The captain stands at the great hall's centre, under its label.
+    const label = surface().querySelector(
+      '[data-label-id="label-great-hall"]'
+    )!;
+    const ring = glyph('[data-placed-creature="captain"] circle');
+    // Later in the SVG is drawn on top and takes the pointer first.
+    expect(
+      label.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    fireEvent.pointerDown(ring, { button: 0 });
+    expect(inspector().getByRole('heading', { level: 2 }).textContent).toBe(
+      'Captain'
+    );
+  });
+
+  it('a room row flags a finish that is not applied while its boundary resolves', async () => {
+    installFinishPreview();
+    const storage = new MemoryStorage({
+      draft: finishRoomFixture(true),
+      scope: {},
+    });
+    const mounted = mount(storage);
+    await settled();
+    fireEvent.click(row('Left'));
+    fireEvent.change(inspector().getByLabelText('Room masonry'), {
+      target: { value: GRAY_REF },
+    });
+    expect(row('Left').textContent).not.toContain('finish unapplied');
+    mounted.unmount();
+    // The material's resources go missing: the boundary still resolves.
+    materialPreview.catalog = {
+      ...materialPreview.catalog!,
+      materials: materialPreview.catalog!.materials.filter(
+        (material) => material.ref !== GRAY_REF
+      ),
+    };
+    mount(storage);
+    await settled();
+    expect(row('Left').textContent).toMatch(/hexes · .* — finish unapplied$/);
+    expect(row('Left').getAttribute('aria-label')).toMatch(
+      /, finish unapplied$/
+    );
+    expect(row('Right').textContent).not.toContain('finish unapplied');
+  });
 });

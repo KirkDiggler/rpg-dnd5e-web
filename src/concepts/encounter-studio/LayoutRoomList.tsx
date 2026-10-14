@@ -15,8 +15,13 @@ export function LayoutRoomList({
   onSelect,
   onCreate,
   onShowEntire,
+  unappliedFinishes,
 }: {
   draft: Readonly<RoomDraft>;
+  /** Regions whose wall finish is authored but not applied: a stale pattern
+   * start, missing material or unresolved wall boundary. A boundary can
+   * resolve while its finish does not, so this is its own flag. */
+  unappliedFinishes?: ReadonlySet<string>;
   overview: RegionOverview;
   selectedLabelId: string | null;
   /** Bounds are null for an unresolved region: it is selected, not framed. */
@@ -46,13 +51,14 @@ export function LayoutRoomList({
               region.id;
             const size = overview.sizes.get(region.id) ?? null;
             const colour = size ? overview.colours.get(region.id) : undefined;
+            const unapplied = unappliedFinishes?.has(region.id) ?? false;
             return (
               <li key={region.id}>
                 <button
                   type="button"
                   data-region-row={region.id}
                   aria-pressed={selectedLabelId === region.labelId}
-                  aria-label={`Room ${text}, ${regionSizeText(size)}`}
+                  aria-label={`Room ${text}, ${regionSizeText(size)}${unapplied ? ', finish unapplied' : ''}`}
                   onClick={() =>
                     onSelect(
                       region.labelId,
@@ -71,7 +77,10 @@ export function LayoutRoomList({
                     }
                   />
                   <span className="es-room-name">{text}</span>
-                  <small className="es-room-size">{regionSizeText(size)}</small>
+                  <small className="es-room-size">
+                    {regionSizeText(size)}
+                    {unapplied && ' — finish unapplied'}
+                  </small>
                 </button>
               </li>
             );

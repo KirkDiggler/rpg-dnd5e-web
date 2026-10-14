@@ -1154,20 +1154,6 @@ export function LayoutViewport({
           layer="body"
         />
       )}
-      {transform && placedEditing && (
-        <LayoutPlacedOverlay
-          monsters={draft.room.monsterDeclarations}
-          items={draft.scene.items}
-          declarations={draft.room.propDeclarations}
-          partyStart={draft.room.partyStart}
-          exits={exits}
-          concealedCells={concealedCells}
-          editing={placedEditing}
-          interactive={tool === 'select'}
-          worldTransform={worldTransform}
-          transform={transform}
-        />
-      )}
       {transform && labelEditing && (
         <MapLabelOverlay
           labels={draft.scene.mapLabels ?? []}
@@ -1181,6 +1167,22 @@ export function LayoutViewport({
             labelEditing.onSelect(id);
             wallEditing?.select(null);
           }}
+        />
+      )}
+      {/* Placed nouns draw over the map labels: a room's label covers its
+          centre, where a creature often stands, and must not take its click. */}
+      {transform && placedEditing && (
+        <LayoutPlacedOverlay
+          monsters={draft.room.monsterDeclarations}
+          items={draft.scene.items}
+          declarations={draft.room.propDeclarations}
+          partyStart={draft.room.partyStart}
+          exits={exits}
+          concealedCells={concealedCells}
+          editing={placedEditing}
+          interactive={tool === 'select'}
+          worldTransform={worldTransform}
+          transform={transform}
         />
       )}
       {transform && (

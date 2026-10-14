@@ -191,7 +191,7 @@ describe('StudioInspector', () => {
     const view = within(region());
     expect(view.getByRole('heading', { level: 2, name: 'Shelf' })).toBeTruthy();
     fireEvent.click(view.getByRole('button', { name: 'Select member books' }));
-    expect(session.viewportProps.onSelect).toHaveBeenCalledWith(['books']);
+    expect(session.selectScene).toHaveBeenCalledWith(['books']);
     expect(
       view.getByRole('button', { name: 'Select member candle' })
     ).toBeTruthy();

@@ -644,7 +644,7 @@ function GroupView({
                   <button
                     type="button"
                     aria-label={`Select member ${member.label || member.id}`}
-                    onClick={() => session.viewportProps.onSelect([member.id])}
+                    onClick={() => session.selectScene([member.id])}
                   >
                     {member.label || member.id}
                   </button>
