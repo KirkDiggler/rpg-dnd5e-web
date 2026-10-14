@@ -35,6 +35,7 @@ describe('layeredOrders', () => {
     expect(time.source).toEqual({ kind: 'own' });
     expect(time.rows).toEqual(own.time);
     expect(time.sharedWith).toEqual([]);
+    expect(time.shadowed).toEqual([{ kind: 'table', id: 'gate-patrol' }]);
   });
 
   it("the binding's named table beats the faction's rows", () => {

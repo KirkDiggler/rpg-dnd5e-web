@@ -143,4 +143,29 @@ describe('readBackOf over the castle', () => {
       '“Examine the altar.” Investigation DC 12. Success: “Ash, and a sigil of the old god.”, and the speaker learns king-is-cultist.'
     );
   });
+
+  it('a guard’s own time rows name every layer they replace', () => {
+    const document = createCastleReadBackDocument();
+    document.scope.factions![0]!.on = {
+      time: [{ when: { enemy: 'none' }, hold: {} }],
+    };
+    document.draft.room.monsterBindings!['gate-1']!.on = {
+      time: [{ when: { enemy: 'reach' }, attack: 'enemy' }],
+    };
+    const time = paragraph(
+      readBackOf(document, { kind: 'creature', id: 'gate-1' }),
+      'on-its-time'
+    );
+    expect(texts(time)[0]).toBe('On its time it follows its own rows.');
+    const replaced = time.sentences.find((s) =>
+      s.text.startsWith('Its own rows')
+    )!;
+    expect(replaced.text).toBe(
+      'Its own rows name time, so gate-patrol’s time rows, the garrison’s own time rows and the kind’s default time rows do not apply.'
+    );
+    expect(replaced.refs).toContainEqual({
+      text: 'gate-patrol',
+      target: { kind: 'table', id: 'gate-patrol' },
+    });
+  });
 });

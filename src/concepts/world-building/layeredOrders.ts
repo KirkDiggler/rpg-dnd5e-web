@@ -47,6 +47,9 @@ export interface OrdersLayer {
   rows: readonly AnswerEntryShape[];
   /** Other placements' shown names, in document order. */
   sharedWith: readonly string[];
+  /** The farther layers that also name this trigger and so do not apply,
+   * nearest first; the kind's default is always below them. */
+  shadowed: readonly OrdersSource[];
 }
 
 /** The faction a binding's creature is on: its named one, else the reserved
@@ -60,40 +63,62 @@ export function factionOf(
   return (document.scope.factions ?? []).find((f) => f.id === named);
 }
 
-/** The one trigger's winning layer for one placement, nearest first. */
+/** One trigger's layers for one placement, nearest first: the winner, its
+ * rows, and every farther layer that also names the trigger and so does not
+ * apply. A layer reading the winner's own table is not listed again. */
 function resolve(
   document: Readonly<RoomDraftDocument>,
   placementId: string,
   trigger: string
-): { source: OrdersSource; rows: readonly AnswerEntryShape[] } {
+): {
+  source: OrdersSource;
+  rows: readonly AnswerEntryShape[];
+  shadowed: readonly OrdersSource[];
+} {
   const tables = document.scope.tables ?? {};
   const binding = document.draft.room.monsterBindings?.[placementId];
+  const faction = factionOf(document, placementId);
+  const layers: { source: OrdersSource; rows: readonly AnswerEntryShape[] }[] =
+    [];
   const own = binding?.on?.[trigger];
-  if (own !== undefined) return { source: { kind: 'own' }, rows: own };
+  if (own !== undefined) layers.push({ source: { kind: 'own' }, rows: own });
   if (binding?.table !== undefined) {
     const rows = tables[binding.table]?.[trigger];
     if (rows !== undefined)
-      return { source: { kind: 'table', id: binding.table }, rows };
+      layers.push({ source: { kind: 'table', id: binding.table }, rows });
   }
-  const faction = factionOf(document, placementId);
   if (faction !== undefined) {
     const rows = faction.on?.[trigger];
     if (rows !== undefined)
-      return { source: { kind: 'faction', id: faction.id }, rows };
+      layers.push({ source: { kind: 'faction', id: faction.id }, rows });
     if (faction.table !== undefined) {
       const named = tables[faction.table]?.[trigger];
       if (named !== undefined)
-        return {
+        layers.push({
           source: {
             kind: 'faction-table',
             faction: faction.id,
             id: faction.table,
           },
           rows: named,
-        };
+        });
     }
   }
-  return { source: { kind: 'kind-default' }, rows: [] };
+  const [winner, ...farther] = layers;
+  if (winner === undefined)
+    return { source: { kind: 'kind-default' }, rows: [], shadowed: [] };
+  const tableOf = (s: OrdersSource) =>
+    s.kind === 'table' || s.kind === 'faction-table' ? s.id : undefined;
+  const winnerTable = tableOf(winner.source);
+  const shadowed = farther
+    .map((layer) => layer.source)
+    .filter((s) => winnerTable === undefined || tableOf(s) !== winnerTable)
+    .filter(
+      (s, index, all) =>
+        tableOf(s) === undefined ||
+        all.findIndex((other) => tableOf(other) === tableOf(s)) === index
+    );
+  return { source: winner.source, rows: winner.rows, shadowed };
 }
 
 /** Two placements read the same rows when both resolve to one named table,
@@ -119,11 +144,11 @@ export function layeredOrders(
   );
   const out: Record<string, OrdersLayer> = {};
   for (const trigger of ANSWER_TRIGGER_KEYS) {
-    const { source, rows } = resolve(document, placementId, trigger);
+    const { source, rows, shadowed } = resolve(document, placementId, trigger);
     const sharedWith = others
       .filter((m) => sameRows(source, resolve(document, m.id, trigger).source))
       .map((m) => names.get(m.id) ?? m.id);
-    out[trigger] = { source, rows, sharedWith };
+    out[trigger] = { source, rows, sharedWith, shadowed };
   }
   return out;
 }

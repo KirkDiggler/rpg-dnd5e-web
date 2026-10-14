@@ -27,7 +27,11 @@ import {
 import { castMemberOf } from './cast';
 import { ENGINE_LAWS, type EngineLawId } from './engineLaws';
 import { walkFacts } from './factWalk';
-import { layeredOrders, type OrdersLayer } from './layeredOrders';
+import {
+  layeredOrders,
+  type OrdersLayer,
+  type OrdersSource,
+} from './layeredOrders';
 import { documentPlacementNames } from './placementNames';
 import {
   dispositionSentence,
@@ -188,22 +192,42 @@ function ordersParagraph(
         : layer.source.kind === 'faction'
           ? capitalized(`${possessive(sideName(layer.source.id))} rows`)
           : 'Its own rows';
+    // EVERY LAYER IT REPLACES, nearest first, then the kind's default: a
+    // creature's own rows also silence the table it names and its faction's.
+    const replaced = layer.shadowed.map((source) =>
+      shadowedPhrase(source, trigger)
+    );
+    const refs: ReadBackRef[] = [];
+    for (const source of [layer.source, ...layer.shadowed]) {
+      if (source.kind === 'table' || source.kind === 'faction-table')
+        refs.push({
+          text: source.id,
+          target: { kind: 'table', id: source.id },
+        });
+    }
     sentences.push(
       sentence(
-        `${named} ${named.endsWith('rows') ? 'name' : 'names'} ${trigger}, so the kind’s default ${trigger} rows do not apply.`,
-        layer.source.kind === 'table' || layer.source.kind === 'faction-table'
-          ? [
-              {
-                text: layer.source.id,
-                target: { kind: 'table', id: layer.source.id },
-              },
-            ]
-          : []
+        `${named} ${named.endsWith('rows') ? 'name' : 'names'} ${trigger}, so ${joinAnd([...replaced, `the kind’s default ${trigger} rows`])} do not apply.`,
+        refs
       )
     );
     if (trigger === 'time') sentences.push(lawSentence('holds'));
   }
   return { heading: 'on-its-time', lead: 'On its time', sentences };
+}
+
+/** A layer that does not apply, as a noun phrase. */
+function shadowedPhrase(source: OrdersSource, trigger: string): string {
+  switch (source.kind) {
+    case 'table':
+      return `${source.id}’s ${trigger} rows`;
+    case 'faction-table':
+      return `${source.id}’s ${trigger} rows, named by ${sideName(source.faction)}`;
+    case 'faction':
+      return `${possessive(sideName(source.id))} own ${trigger} rows`;
+    default:
+      return `its own ${trigger} rows`;
+  }
 }
 
 function temperText(temper: SiteTemper): string {
