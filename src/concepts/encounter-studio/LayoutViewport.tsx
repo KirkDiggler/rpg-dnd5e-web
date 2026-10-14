@@ -213,6 +213,7 @@ export function LayoutViewport({
   onClearSelection,
   placedEditing,
   exits,
+  concealedCells,
   frameTarget,
 }: LayoutViewportProps): React.JSX.Element {
   const surfaceRef = useRef<SVGSVGElement>(null);
@@ -1160,6 +1161,7 @@ export function LayoutViewport({
           declarations={draft.room.propDeclarations}
           partyStart={draft.room.partyStart}
           exits={exits}
+          concealedCells={concealedCells}
           editing={placedEditing}
           interactive={tool === 'select'}
           worldTransform={worldTransform}

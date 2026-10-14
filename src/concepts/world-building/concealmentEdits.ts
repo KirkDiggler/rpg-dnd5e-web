@@ -1,4 +1,4 @@
-import type { RoomHexCell } from './roomDraft';
+import type { RoomDraftDocument, RoomHexCell } from './roomDraft';
 import type { SiteConcealmentSpec, SiteScope } from './siteScope';
 
 export function nextConcealmentId(scope: SiteScope): string {
@@ -122,4 +122,98 @@ export function setPropHiddenBy(
   return concealmentId === null
     ? next
     : setConcealmentProp(next, concealmentId, propId, true);
+}
+
+/** One thing a concealment can hide (rpg-project#578, S4-Q5): a walkable
+ * cell, or in `props` a declared prop id, a wall door id or a structural
+ * wall id. */
+export type ConcealmentMember =
+  | { kind: 'cell'; cell: RoomHexCell }
+  | { kind: 'prop'; id: string };
+
+export type ConcealmentMemberKind = 'prop' | 'door' | 'wall';
+
+/** What a `props` id names in this document, or undefined for an id that
+ * is no declared prop, wall door or wall. */
+export function concealmentMemberKind(
+  document: Readonly<RoomDraftDocument>,
+  id: string
+): ConcealmentMemberKind | undefined {
+  const room = document.draft.room;
+  for (const wall of room.walls ?? []) {
+    if (wall.id === id) return 'wall';
+    if (wall.openings.some((opening) => opening.door?.id === id)) return 'door';
+  }
+  return Object.hasOwn(room.propDeclarations, id) ? 'prop' : undefined;
+}
+
+/** A `props` member in words: "Altar", "the door in Gate wall",
+ * "Gate wall". An id this document does not name reads as itself. */
+export function concealmentMemberName(
+  document: Readonly<RoomDraftDocument>,
+  id: string
+): string {
+  const room = document.draft.room;
+  for (const wall of room.walls ?? []) {
+    const label = wall.label?.trim() ? wall.label : wall.id;
+    if (wall.id === id) return label;
+    if (wall.openings.some((opening) => opening.door?.id === id))
+      return `the door in ${label}`;
+  }
+  const item = document.draft.scene.items.find((entry) => entry.id === id);
+  return item?.label?.trim() ? item.label : id;
+}
+
+const cellKey = (cell: RoomHexCell) => `${cell.q},${cell.r}`;
+
+/** Toggle one member of concealment `id` while its members are picked on
+ * the map: a member joins, or leaves if it is already there. Throws one
+ * sentence for what the toolkit's ConcealmentSpec would refuse: a cell that
+ * is not walkable floor, an undeclared prop, or a member another
+ * concealment already hides, named. */
+export function toggleConcealmentMember(
+  document: Readonly<RoomDraftDocument>,
+  id: string,
+  member: ConcealmentMember
+): SiteScope {
+  const scope = document.scope;
+  const spec = scope.concealments?.[id];
+  if (!spec) throw new Error(`There is no concealment ${id}.`);
+  const others = Object.entries(scope.concealments ?? {}).filter(
+    ([other]) => other !== id
+  );
+  if (member.kind === 'cell') {
+    const key = cellKey(member.cell);
+    const where = `Hex q ${member.cell.q}, r ${member.cell.r}`;
+    if (
+      !document.draft.room.walkableHexes.some((cell) => cellKey(cell) === key)
+    )
+      throw new Error(
+        `${where} is not walkable floor, so it cannot be hidden.`
+      );
+    const holder = others.find(([, other]) =>
+      other.cells?.some((cell) => cellKey(cell) === key)
+    );
+    if (holder) throw new Error(`${where} is already hidden by ${holder[0]}.`);
+    const present = spec.cells?.some((cell) => cellKey(cell) === key) ?? false;
+    return paintConcealmentCells(
+      scope,
+      id,
+      [member.cell],
+      present ? 'erase' : 'paint'
+    );
+  }
+  const name = concealmentMemberName(document, member.id);
+  if (concealmentMemberKind(document, member.id) === undefined)
+    throw new Error(
+      `${name} has no declaration, so it cannot be hidden. Only declared props, doors and walls can.`
+    );
+  const holder = others.find(([, other]) => other.props?.includes(member.id));
+  if (holder) throw new Error(`${name} is already hidden by ${holder[0]}.`);
+  return setConcealmentProp(
+    scope,
+    id,
+    member.id,
+    !(spec.props?.includes(member.id) ?? false)
+  );
 }

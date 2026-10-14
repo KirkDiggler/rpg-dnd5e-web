@@ -1154,7 +1154,7 @@ describe('promoted canonical room JSON/YAML seam', () => {
           checks: [{ ability: 'wis', dc: 12 }],
           cells: [{ q: 1, r: 0 }],
           props: ['door'],
-          attempts: { max: 3, reset_hexes: 2, lifetime: 'run' },
+          attempts: { max: 3, reset_hexes: 2 },
         },
       },
     };

@@ -38,9 +38,14 @@ import {
   WORLD_BUILDING_CATALOG_BY_REF,
 } from './catalog';
 import {
+  addConcealment,
   paintConcealmentCells,
+  renameConcealment,
+  setConcealment,
   setConcealmentProp,
   setPropHiddenBy,
+  toggleConcealmentMember,
+  type ConcealmentMember,
 } from './concealmentEdits';
 import { ConcealmentPanel } from './ConcealmentPanel';
 import { setActorName } from './creaturePalette';
@@ -91,6 +96,7 @@ import {
   FOOTPRINT_MAXIMUM_OFFSET,
   FOOTPRINT_MINIMUM_EXTENT,
   isCellWithinWorkspace,
+  lifetimeNotice,
   loadRoomDraft,
   moveRoomMonster,
   parseRoomDocumentJson,
@@ -156,7 +162,9 @@ import {
   FactionsPanel,
 } from './SitePolicies';
 import {
+  validateSiteConcealments,
   validateSiteEndings,
+  type SiteConcealmentSpec,
   type SiteEnding,
   type SiteScope,
 } from './siteScope';
@@ -525,7 +533,15 @@ export function WorldBuildingConcept({
     []
   );
   const [notice, setNotice] = useState(
-    [initial.error, initialRoom.error].filter(Boolean).join(' ')
+    [
+      initial.error,
+      initialRoom.error,
+      'strippedLifetime' in initialRoom && initialRoom.strippedLifetime
+        ? lifetimeNotice(initialRoom.strippedLifetime)
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ')
   );
   const roomAutosaveBlockedRef = useRef(Boolean(initialRoom.error));
   /** Autosave is paused while the stored bytes cannot be read. The ref is the
@@ -2258,7 +2274,9 @@ export function WorldBuildingConcept({
       setTool('select');
       setRoomTool('select');
       setActiveDrag(null);
-      setNotice('');
+      setNotice(
+        result.strippedLifetime ? lifetimeNotice(result.strippedLifetime) : ''
+      );
       setSaveStatus('Reopened local room authoring draft');
       return;
     }
@@ -4219,6 +4237,10 @@ export function WorldBuildingConcept({
           activeConcealmentId,
           onConcealmentCellPick: (cell) => {
             if (!activeConcealmentId) return;
+            if (isStudio) {
+              pickConcealmentMember({ kind: 'cell', cell });
+              return;
+            }
             commitPolicies(
               paintConcealmentCells(
                 siteScope,
@@ -4230,6 +4252,10 @@ export function WorldBuildingConcept({
           },
           onConcealmentPropPick: (id) => {
             if (!activeConcealmentId) return;
+            if (isStudio) {
+              pickConcealmentMember({ kind: 'prop', id });
+              return;
+            }
             const structure = walls.some(
               (wall) =>
                 wall.id === id ||
@@ -4363,6 +4389,21 @@ export function WorldBuildingConcept({
         current[id] === state ? current : { ...current, [id]: state }
       ),
     onMeasuredBounds: handleMeasuredBounds,
+  };
+  /** Studio member picking (rpg-project#578, S4-Q5): one toggle per click,
+   * through `toggleConcealmentMember`; a refusal is the notice, naming the
+   * concealment that already hides the member. */
+  const pickConcealmentMember = (member: ConcealmentMember): boolean => {
+    if (refuseWhilePublishing() || !activeConcealmentId) return false;
+    const current = roomHistoryRef.current.present;
+    let scope: SiteScope;
+    try {
+      scope = toggleConcealmentMember(current, activeConcealmentId, member);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+    return commitRoomDocument({ ...current, scope });
   };
   const viewportGeneration = viewportGenerationRef.current;
   const viewportDocument = roomHistory.present;
@@ -4849,6 +4890,76 @@ export function WorldBuildingConcept({
             }),
           },
           concealments: {
+            add: guardSnapshotIntent((): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              return commitRoomDocument({
+                ...current,
+                scope: addConcealment(current.scope),
+              });
+            }),
+            update: guardSnapshotIntent(
+              (id: string, spec: SiteConcealmentSpec | undefined): boolean => {
+                if (refuseWhilePublishing()) return false;
+                const current = roomHistoryRef.current.present;
+                if (!Object.hasOwn(current.scope.concealments ?? {}, id))
+                  return rejectEdit(
+                    new Error(`There is no concealment ${id}.`)
+                  );
+                try {
+                  if (spec !== undefined)
+                    validateSiteConcealments({ [id]: spec });
+                  if (spec === undefined && paintingConcealmentId === id)
+                    setPaintingConcealmentId(null);
+                  return commitRoomDocument({
+                    ...current,
+                    scope: setConcealment(current.scope, id, spec),
+                  });
+                } catch (error) {
+                  return rejectEdit(error);
+                }
+              }
+            ),
+            rename: guardSnapshotIntent((from: string, to: string): boolean => {
+              if (refuseWhilePublishing()) return false;
+              const current = roomHistoryRef.current.present;
+              const concealments = current.scope.concealments ?? {};
+              if (!Object.hasOwn(concealments, from))
+                return rejectEdit(
+                  new Error(`There is no concealment ${from}.`)
+                );
+              if (from === to) return true;
+              if (Object.hasOwn(concealments, to))
+                return rejectEdit(
+                  new Error(`There is already a concealment ${to}.`)
+                );
+              try {
+                const scope = renameConcealment(current.scope, from, to);
+                validateSiteConcealments(scope.concealments);
+                if (paintingConcealmentId === from)
+                  setPaintingConcealmentId(to);
+                return commitRoomDocument({ ...current, scope });
+              } catch (error) {
+                return rejectEdit(error);
+              }
+            }),
+            armedId: activeConcealmentId,
+            armMembers: (id: string): boolean => {
+              if (!mountedRef.current || refuseWhilePublishing()) return false;
+              if (
+                !Object.hasOwn(
+                  roomHistoryRef.current.present.scope.concealments ?? {},
+                  id
+                )
+              )
+                return false;
+              setRoomTool('select');
+              setTool('select');
+              setPaintingConcealmentId(id);
+              return true;
+            },
+            disarm: () => setPaintingConcealmentId(null),
+            pick: guardSnapshotIntent(pickConcealmentMember),
             setDoorHiddenBy: guardSnapshotIntent(
               (doorId: string, concealmentId: string | null): boolean => {
                 if (refuseWhilePublishing()) return false;

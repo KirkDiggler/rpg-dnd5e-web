@@ -241,6 +241,8 @@ export interface LayoutViewportProps {
   placedEditing?: import('./LayoutPlacedOverlay').LayoutPlacedEditing;
   /** The root `exits`, drawn with the placed nouns (rpg-project#578). */
   exits?: readonly import('../world-building/siteScope').SiteExit[];
+  /** The armed concealment's cells, hatched (rpg-project#578). */
+  concealedCells?: readonly RoomHexCell[];
   /** A request to frame these world bounds: the viewport fits them to its
    * own size and reports the frame through onFrameChange. A new nonce is a
    * new request; the request itself is never document state. */
@@ -369,6 +371,31 @@ export interface EncounterStudioSession {
     /** The door id leaves every concealment's `props` and joins the chosen
      * one, or none. The door's wall and floor are never added. */
     setDoorHiddenBy(doorId: string, concealmentId: string | null): boolean;
+    /** Add a concealment under the next free `secret-<n>` id, with one
+     * search check, as `addConcealment` writes it. */
+    add(): boolean;
+    /** Replace one concealment's spec, read through
+     * `validateSiteConcealments`; undefined removes it, and with it every
+     * door's Hidden by that named it. */
+    update(
+      id: string,
+      spec:
+        | import('../world-building/siteScope').SiteConcealmentSpec
+        | undefined
+    ): boolean;
+    /** Refused for an id the validator refuses or one already in use. */
+    rename(from: string, to: string): boolean;
+    /** The concealment whose members the map is picking, else null. */
+    readonly armedId: string | null;
+    /** Arm member picking on the map for one concealment. Not fenced by
+     * the view epoch, so it can follow a home switch in the same event. */
+    armMembers(id: string): boolean;
+    disarm(): void;
+    /** While armed: toggle a walkable cell, a declared prop, a wall door
+     * or a wall. A member another concealment hides is refused, named. */
+    pick(
+      member: import('../world-building/concealmentEdits').ConcealmentMember
+    ): boolean;
   };
   wallEditing: StudioWallEditing;
   regionEditing: StudioRegionEditing;

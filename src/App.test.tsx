@@ -288,7 +288,16 @@ function createAppStudioSession(): EncounterStudioSession {
     doors: { setBinding: vi.fn(() => true) },
     exits: { set: vi.fn(() => true) },
     endings: { set: vi.fn(() => true) },
-    concealments: { setDoorHiddenBy: vi.fn(() => true) },
+    concealments: {
+      setDoorHiddenBy: vi.fn(() => true),
+      add: vi.fn(() => true),
+      update: vi.fn(() => true),
+      rename: vi.fn(() => true),
+      armedId: null,
+      armMembers: vi.fn(() => true),
+      disarm: vi.fn(),
+      pick: vi.fn(() => true),
+    },
     regionEditing: {
       resolutions: [],
       createRoomLabel: vi.fn(() => true),

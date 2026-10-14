@@ -190,10 +190,12 @@ export interface SiteConcealmentCheck {
 export interface SiteDiscoveryAttempts {
   max?: number;
   reset_hexes?: number;
-  /** Legacy source values round-trip; the game owns discoveries in the
-   * encounter regardless. New policy edits emit 'run', not cross-run memory. */
-  lifetime?: 'character' | 'run';
 }
+
+/** The toolkit's `DiscoveryAttemptsSpec` reads `max` and `reset_hexes` only
+ * (rpg-project#578, S4-Q1); `lifetime` is refused in its words. */
+export const LIFETIME_REFUSAL =
+  '"lifetime" is not a key this build reads: they are max, reset_hexes';
 
 export interface SiteConcealmentSpec {
   attempts?: SiteDiscoveryAttempts;
@@ -594,11 +596,9 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
     };
     if (Object.hasOwn(raw, 'attempts')) {
       const attempts = objectShape(raw.attempts, `${path} attempts`);
-      rejectUnknownKeys(
-        attempts,
-        ['max', 'reset_hexes', 'lifetime'],
-        `${path} attempts`
-      );
+      if (Object.hasOwn(attempts, 'lifetime'))
+        fail(`${path} attempts.lifetime`, LIFETIME_REFUSAL);
+      rejectUnknownKeys(attempts, ['max', 'reset_hexes'], `${path} attempts`);
       const policy: SiteDiscoveryAttempts = {};
       for (const key of ['max', 'reset_hexes'] as const) {
         if (Object.hasOwn(attempts, key)) {
@@ -607,11 +607,6 @@ export function validateSiteConcealments(value: unknown): SiteConcealments {
             fail(`${path} attempts.${key}`, 'must be an integer');
           policy[key] = number as number;
         }
-      }
-      if (Object.hasOwn(attempts, 'lifetime')) {
-        if (attempts.lifetime !== 'character' && attempts.lifetime !== 'run')
-          fail(`${path} attempts.lifetime`, 'must be character or run');
-        policy.lifetime = attempts.lifetime as 'character' | 'run';
       }
       spec.attempts = policy;
     }

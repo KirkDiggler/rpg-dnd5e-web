@@ -5129,6 +5129,7 @@ describe('S0 one selection across the homes', () => {
       'Dispositions',
       'Intel',
       'Endings',
+      'Concealments',
       'Facts',
     ]);
     expect(screen.queryByRole('button', { name: 'Creatures' })).toBeNull();
@@ -5215,6 +5216,137 @@ describe('S4 the hidden nouns through the real owner', () => {
     ).toEqual([expect.stringMatching(/^king-slain: when .+ is down$/)]);
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(endings().getByText('No ending yet.')).toBeTruthy();
+  });
+});
+
+describe('S4 concealments through the real owner', () => {
+  const section = (name: string): void => {
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Encounter tools' })
+      ).getByRole('button', { name })
+    );
+  };
+  const withStash = (): RoomDraftDocument => {
+    const document = createPopulatedStudioDocument();
+    document.scope.concealments = {
+      ...document.scope.concealments,
+      stash: { checks: [{ ability: 'investigation', dc: 14 }] },
+    };
+    return document;
+  };
+
+  it('members picked on the map toggle in one step each', async () => {
+    const storage = new MemoryStorage(withStash());
+    mount(storage);
+    await settled();
+    const cell = storage
+      .document()
+      .draft.room.walkableHexes.find(
+        (hex) => Math.abs(hex.q) <= 2 && hex.r === 1
+      )!;
+    expect(cell).toBeTruthy();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add members on the map' })
+    );
+    expect(
+      screen.getByText(/Adding members to stash/, { selector: 'strong' })
+    ).toBeTruthy();
+    const writes = storage.roomWrites();
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    expect(storage.document().scope.concealments!.stash.cells).toEqual([cell]);
+    expect(storage.roomWrites()).toBe(writes + 1);
+    expect(
+      document.querySelector(`[data-concealed-cell="${cell.q},${cell.r}"]`)
+    ).toBeTruthy();
+    fireEvent.pointerDown(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(cell), button: 0, pointerId: 7 });
+    expect(storage.document().scope.concealments!.stash.cells).toBeUndefined();
+    expect(storage.roomWrites()).toBe(writes + 2);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Done adding members' })
+    );
+    expect(screen.queryByText(/Adding members to stash/)).toBeNull();
+    expect(document.querySelector('[data-concealed-cell]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(storage.document().scope.concealments!.stash.cells).toEqual([cell]);
+  });
+
+  it('a member already in another concealment is refused at the click, naming it', async () => {
+    const storage = new MemoryStorage(withStash());
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'stash' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add members on the map' })
+    );
+    const writes = storage.roomWrites();
+    const taken = { q: 1, r: 0 };
+    fireEvent.pointerDown(surface(), { ...at(taken), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(surface(), { ...at(taken), button: 0, pointerId: 7 });
+    expect(storage.roomWrites()).toBe(writes);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Hex q 1, r 0 is already hidden by studio-secret.'
+    );
+  });
+
+  it('a stored draft with lifetime opens stripped and shows the notice naming the concealment', async () => {
+    const document = createPopulatedStudioDocument();
+    const storage = new MemoryStorage(document);
+    const envelope = JSON.parse(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)!);
+    envelope.scope.concealments['studio-secret'].attempts = {
+      max: 2,
+      lifetime: 'run',
+    };
+    storage.bytes.set(ROOM_DRAFT_STORAGE_KEY, JSON.stringify(envelope));
+    mount(storage);
+    await settled();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'lifetime is not read by the engine; removed from studio-secret, attempts keep max and reset_hexes'
+    );
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    expect(
+      (
+        screen.getByLabelText(
+          'Max attempts for studio-secret'
+        ) as HTMLInputElement
+      ).value
+    ).toBe('2');
+    fireEvent.change(screen.getByLabelText('Reset hexes for studio-secret'), {
+      target: { value: '3' },
+    });
+    expect(
+      storage.document().scope.concealments!['studio-secret'].attempts
+    ).toEqual({ max: 2, reset_hexes: 3 });
+    expect(storage.bytes.get(ROOM_DRAFT_STORAGE_KEY)).not.toContain('lifetime');
+  });
+
+  it("removing a concealment clears its door's Hidden by", async () => {
+    const storage = new MemoryStorage(createPopulatedStudioDocument());
+    mount(storage);
+    await settled();
+    fireEvent.click(button('Encounter'));
+    section('Concealments');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove concealment' }));
+    expect(storage.document().scope.concealments).toBeUndefined();
+    fireEvent.click(button('Build'));
+    const door = document.querySelector('[data-door-id="studio-door"]')!;
+    fireEvent.pointerDown(door, { ...at(zero), button: 0, pointerId: 7 });
+    fireEvent.pointerUp(door, { ...at(zero), button: 0, pointerId: 7 });
+    const hidden = within(
+      screen.getByRole('region', { name: 'Inspector' })
+    ).getByLabelText('Hidden by') as HTMLSelectElement;
+    expect(hidden.value).toBe('');
+    expect([...hidden.options].map((option) => option.text)).toEqual([
+      'Not hidden',
+    ]);
   });
 });
 

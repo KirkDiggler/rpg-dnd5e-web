@@ -12,6 +12,7 @@ import type { SiteExit } from '../world-building/siteScope';
 import type { WorldProp } from '../world-building/types';
 import {
   layoutCellCenter,
+  layoutCellCorners,
   worldToClient,
   type LayoutTransform,
 } from './layoutGeometry';
@@ -288,6 +289,7 @@ export function LayoutPlacedOverlay({
   declarations,
   partyStart,
   exits = NO_EXITS,
+  concealedCells,
   editing,
   interactive,
   worldTransform,
@@ -299,6 +301,8 @@ export function LayoutPlacedOverlay({
   partyStart?: RoomHexCell;
   /** The root `exits`, drawn at their cells (rpg-project#578). */
   exits?: readonly SiteExit[];
+  /** The armed concealment's cells, hatched under the glyphs. */
+  concealedCells?: readonly RoomHexCell[];
   editing: LayoutPlacedEditing;
   interactive: boolean;
   /** The world-to-surface SVG transform the floor uses. */
@@ -345,6 +349,45 @@ export function LayoutPlacedOverlay({
   };
   return (
     <>
+      {concealedCells && concealedCells.length > 0 && (
+        <g
+          className="es-layout-concealed"
+          transform={worldTransform}
+          pointerEvents="none"
+        >
+          <defs>
+            <pattern
+              id="es-concealed-hatch"
+              patternUnits="userSpaceOnUse"
+              width={0.45}
+              height={0.45}
+              patternTransform="rotate(45)"
+            >
+              <line
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={0.45}
+                stroke="#c4b5fd"
+                strokeWidth={0.14}
+              />
+            </pattern>
+          </defs>
+          {concealedCells.map((cell) => (
+            <polygon
+              key={`${cell.q},${cell.r}`}
+              data-concealed-cell={`${cell.q},${cell.r}`}
+              points={layoutCellCorners(cell)
+                .map((corner) => `${corner.x},${corner.z}`)
+                .join(' ')}
+              fill="url(#es-concealed-hatch)"
+              stroke="#c4b5fd"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+      )}
       <g className="es-layout-placed" transform={worldTransform}>
         <PlacedGlyphs
           monsters={monsters}
