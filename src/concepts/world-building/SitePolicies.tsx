@@ -64,6 +64,15 @@ import {
   type OptionShape,
   type OptionVerdict,
 } from './answerTableShape';
+import {
+  conditionShorthand,
+  deedLabel,
+  enemyBandPhrase,
+  factLabel,
+  heardLabel,
+  whenShorthand,
+  wordShorthand,
+} from './answerVocabulary';
 import { CheckApproachRows } from './CheckApproachRows';
 import {
   addMonsterAction,
@@ -142,45 +151,6 @@ function factionTemperText(temper: SiteTemper): string {
     .join(' · ');
 }
 
-/** What the entry's word acts on, by the SHAPE the declaration gives the
- * word — `string` carries an opaque id, `selector` a sealed word or an
- * authored `at:` cell, and `none` carries nothing so it renders bare. */
-function entryWordText(entry: AnswerEntryShape, word: string): string {
-  const value = (entry as Record<string, unknown>)[word];
-  const shape = answerWord(word)?.value;
-  if (shape === 'string') return ` ${String(value)}`;
-  if (shape === 'selector') {
-    if (typeof value === 'string') return ` ${value}`;
-  }
-  return '';
-}
-
-/** A `when:` as written — its conditions joined by "and", since every one
- * must hold (rpg-project#569 R8). */
-function whenText(when: AnswerWhenShape): string {
-  return whenConditions(when).map(whenConditionText).join(' and ');
-}
-
-/** One condition — one key, so the key IS the condition. */
-function whenConditionText(when: AnswerWhenCondition): string {
-  if ('enemy' in when) return `enemy ${when.enemy}`;
-  if ('heard' in when)
-    return `heard ${when.heard.kind} within ${when.heard.within}`;
-  if ('fact' in when) return `fact ${when.fact}`;
-  if (isNotCondition(when)) return `not ${whenConditionText(when.not)}`;
-  const [deed, span] = Object.entries(when)[0] as [
-    string,
-    { within: number; on?: string; as?: string },
-  ];
-  // The scope and the span both come off the body, so the readout says whose
-  // deed the row reads and not merely which deed.
-  const whose =
-    span.on !== undefined ? 'an ally' : span.as !== undefined ? 'I' : undefined;
-  return whose === undefined
-    ? `${deed} within ${span.within}`
-    : `${whose} ${deed} within ${span.within}`;
-}
-
 /** One entry: its condition — WHEN it is on the table at all, said only where
  * a condition is a thing this grammar has — its weight (an omitted weight IS 1
  * to the engine), the `say` that goes with it, and the one word it does.
@@ -200,13 +170,15 @@ function entryText(entry: AnswerEntryShape, trigger: string): string {
   const parts: string[] = [];
   if (answerWhenLegalOn(trigger)) {
     parts.push(
-      entry.when === undefined ? 'any time' : `when ${whenText(entry.when)}`
+      entry.when === undefined
+        ? 'any time'
+        : `when ${whenShorthand(entry.when)}`
     );
   }
   parts.push(`weight ${entry.weight ?? 1}`);
   if (entry.say !== undefined) parts.push(`say “${entry.say}”`);
   const word = entryWord(entry);
-  if (word !== undefined) parts.push(`${word}${entryWordText(entry, word)}`);
+  if (word !== undefined) parts.push(wordShorthand(entry, word));
   return parts.join(' · ');
 }
 
@@ -457,7 +429,7 @@ function WhenConditionRow({
       )}
       {base?.kind === 'nested' ? (
         <span className="wb-help" data-testid="when-nested-not">
-          {whenConditionText(base.condition)} — a `not` inside a `not`, kept as
+          {conditionShorthand(base.condition)} — a `not` inside a `not`, kept as
           written
         </span>
       ) : (
@@ -475,25 +447,24 @@ function WhenConditionRow({
           )}
           {ANSWER_WHEN.enemyBands.map((band) => (
             <option key={`enemy:${band}`} value={`enemy:${band}`}>
-              {band === 'none'
-                ? 'no enemy is seen or remembered'
-                : `an enemy is ${band === 'reach' ? 'in reach' : band}`}
+              {enemyBandPhrase(band)}
             </option>
           ))}
           {ANSWER_WHEN.deeds.map((deed) => (
             <option key={`deed:${deed}`} value={`deed:${deed}`}>
-              {base?.kind === 'deed' && base.scope?.value === 'ally'
-                ? 'an ally'
-                : 'I'}{' '}
-              {deed !== 'fled' &&
-              !(base?.kind === 'deed' && base.scope?.value === 'actor')
-                ? 'was '
-                : ''}
-              {deed}
+              {deedLabel(
+                deed,
+                base?.kind === 'deed' && base.scope !== undefined
+                  ? ({ [base.scope.key]: base.scope.value } as {
+                      on?: 'ally';
+                      as?: 'actor';
+                    })
+                  : {}
+              )}
             </option>
           ))}
-          <option value="heard">I heard a sound</option>
-          <option value="fact">I know a fact</option>
+          <option value="heard">{heardLabel()}</option>
+          <option value="fact">{factLabel()}</option>
         </select>
       )}
       {base?.kind === 'deed' && (
