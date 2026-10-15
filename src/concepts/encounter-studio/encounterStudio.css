@@ -209,12 +209,21 @@
   stroke-width: 6;
 }
 
-/* Two permanent bands. Overflow scrolls, never becomes permanent extra rows. */
-.es-header,
+/* Two bands. The toolbar's overflow scrolls. The header never scrolls
+ * sideways (S5's law, rpg-project#585 QA): its words wrap inside the Save
+ * group first, and only a window too narrow for that moves the Save group
+ * onto a second row. */
 .es-toolbar {
   flex-wrap: nowrap;
   overflow-x: auto;
+}
+.es-header,
+.es-toolbar {
   min-height: 3rem;
+}
+.es-header {
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
 }
 .es-header > *,
 .es-toolbar > * {
@@ -228,6 +237,25 @@
 }
 .es-header .es-save {
   width: auto;
+  max-width: none;
+  /* May shrink to the row it lands on and wrap its own controls there. */
+  flex-shrink: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+/* The local draft's label over its status, and the reason a control is
+ * disabled, wrap in a narrow column instead of widening the band. */
+.es-local-state {
+  display: flex;
+  flex-direction: column;
+  max-width: 12rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+.es-save > .es-help {
+  max-width: 11rem;
+  line-height: 1.15;
+  white-space: normal;
 }
 .es-title {
   min-width: 12rem;

@@ -765,8 +765,10 @@ function StudioSurface({
           </button>
         </nav>
         <div className="es-save">
-          <span className="es-local">LOCAL DRAFT</span>
-          <span role="status">{session.saveStatus}</span>
+          <span className="es-local-state">
+            <span className="es-local">LOCAL DRAFT</span>
+            <span role="status">{session.saveStatus}</span>
+          </span>
           <button type="button" onClick={session.saveLocalDraft}>
             {session.autosaveBlocked
               ? 'Replace unreadable local draft'
