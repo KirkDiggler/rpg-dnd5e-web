@@ -26,6 +26,9 @@ vi.mock('@react-three/fiber', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@react-three/fiber')>()),
   Canvas: () => <div data-testid="webgl-boundary" />,
 }));
+vi.mock('@/author/useAuthoringGate', () => ({
+  useAuthoringGate: () => ({ state: 'gate-off', retry: vi.fn() }),
+}));
 vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
   ThumbnailRenderer: () => {
     throw new Error('Catalog thumbnails must not capture models');

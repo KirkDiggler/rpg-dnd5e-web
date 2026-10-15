@@ -1,0 +1,74 @@
+/**
+ * A deferred fake of the authoring boundary for tests: every `putDungeon`
+ * and `getDungeon` is recorded with a deferred answer the test resolves or
+ * rejects, so a test drives the exact order of every asynchronous seam.
+ * Shared by the World Builder publishing panel's tests and the studio's
+ * Save and Play tests.
+ */
+import { vi } from 'vitest';
+import type { AuthoringClient } from '../authoringRpc';
+
+export type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+};
+
+export function makeDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+export type PutAnswer = {
+  errors: Array<{ path: string; message: string }>;
+};
+export type GetAnswer = { yaml: string };
+
+export interface FakePut {
+  request: { key: string; yaml: string; validateOnly: boolean };
+  deferred: Deferred<never>;
+}
+export interface FakeGet {
+  key: string;
+  deferred: Deferred<never>;
+}
+
+/** Where the fake records its calls. Read at call time, so a test may
+ * replace the answer lists between cases. */
+export interface FakeAuthoringSink {
+  readonly puts: FakePut[];
+  readonly gets: FakeGet[];
+  readonly putAnswers: Deferred<PutAnswer>[];
+  readonly getAnswers: Deferred<GetAnswer | Error>[];
+}
+
+export function fakeAuthoringClient(sink: FakeAuthoringSink): AuthoringClient {
+  return {
+    putDungeon: vi.fn(async (request: never) => {
+      const record = request as unknown as {
+        key: string;
+        yaml: string;
+        validateOnly: boolean;
+      };
+      const deferred = makeDeferred<PutAnswer>();
+      sink.puts.push({ request: record, deferred: deferred as never });
+      sink.putAnswers.push(deferred);
+      return deferred.promise as never;
+    }),
+    getDungeon: vi.fn(async (request: never) => {
+      const record = request as unknown as { key: string };
+      const deferred = makeDeferred<GetAnswer | Error>();
+      sink.gets.push({ key: record.key, deferred: deferred as never });
+      sink.getAnswers.push(deferred);
+      const answer = await deferred.promise;
+      if (answer instanceof Error) throw answer;
+      return answer as never;
+    }),
+    listScenarios: vi.fn(),
+  } as unknown as AuthoringClient;
+}

@@ -1,3 +1,4 @@
+import { useAuthoringGate } from '@/author/useAuthoringGate';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import {
   memo,
@@ -8,13 +9,19 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { castMemberOf } from '../world-building/cast';
 import type { FactUseTarget } from '../world-building/factIndex';
 import { documentPlacementNames } from '../world-building/placementNames';
 import { TablesPanel } from '../world-building/TablesPanel';
 import type { IdFactory, KeyValueStorage } from '../world-building/types';
+import {
+  useRoomPublishing,
+  type RoomPublishingCapability,
+} from '../world-building/useRoomPublishing';
 import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
+import { defaultDraftKey } from './draftFile';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
@@ -22,6 +29,14 @@ import { LayoutFooter, LayoutRoomList } from './LayoutRoomList';
 import { LayoutViewport } from './LayoutViewport';
 import { regionOverview } from './overviewColours';
 import { contentBounds } from './overviewFrame';
+import {
+  browserPublicationStorage,
+  clearPublication,
+  readPublication,
+  writePublication,
+  type PublicationRecord,
+} from './publicationMemory';
+import { refusalJumps, type RefusalTarget } from './refusalJump';
 import { StudioCast } from './StudioCast';
 import { StudioConcealments } from './StudioConcealments';
 import { StudioCreaturePalette } from './StudioCreaturePalette';
@@ -30,6 +45,8 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioPlayButton, StudioPublish } from './StudioPublish';
+import { currentRefusals, keyRefusalOf } from './studioPublishing';
 import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
@@ -59,6 +76,10 @@ const ENCOUNTER_SECTIONS = {
   facts: 'Facts',
 } as const;
 
+/** A mount with no route into the game cannot play; the capability then
+ * carries no character, so Play says so rather than launching nowhere. */
+const NO_PLAY = (): void => {};
+
 /** Holds a hidden subtree still: while it stays inactive React skips it, so
  * Layout gestures never re-render the mounted 3D block. Becoming active (or
  * the render that turns it inactive) renders it with current props. */
@@ -79,6 +100,13 @@ interface EncounterStudioWorkspaceProps {
   storage?: KeyValueStorage;
   idFactory?: IdFactory;
   onBack?: () => void;
+  /** The character picked on Home, the same value World Builder receives;
+   * null when none is picked. Play seats it (R18). */
+  characterId?: string | null;
+  /** App's route into the game on the started encounter, the same callback
+   * World Builder receives. A mount without it has no route into play, so
+   * Play is unavailable as it is without a character. */
+  onPlay?: (encounterId: string, characterId: string) => void;
 }
 interface StudioSurfaceProps {
   session: EncounterStudioSession;
@@ -91,6 +119,10 @@ interface StudioSurfaceProps {
   onLayoutToolChange(next: LayoutTool): void;
   onFrameChange(next: LayoutFrame): void;
   onBack?: () => void;
+  characterId: string | null;
+  onPlay?: (encounterId: string, characterId: string) => void;
+  /** Where the studio remembers this draft's last saved key (S6-T7). */
+  storage: KeyValueStorage;
 }
 
 /** Presentation homes share the same mounted owner and canonical selection. */
@@ -105,6 +137,9 @@ function StudioSurface({
   onLayoutToolChange,
   onFrameChange,
   onBack,
+  characterId,
+  onPlay,
+  storage,
 }: StudioSurfaceProps): React.JSX.Element {
   const [encounterSection, setEncounterSection] =
     useState<keyof typeof ENCOUNTER_SECTIONS>('cast');
@@ -316,6 +351,88 @@ function StudioSurface({
   /** The last imported file's key, for its draft (S4-Q2). */
   const [fileKey, setFileKey] = useState<DraftFileKey | null>(null);
   const [draftFileOpen, setDraftFileOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  /** Save and Play (R15–R18): the publishing hook World Builder uses, hosted
+   * here so the draft file and the server save share its one key. The
+   * owner's lock is its busy boundary; the preview asks the server only
+   * while the gate says the server accepts authoring (S6-Q3). */
+  const gate = useAuthoringGate();
+  const capability = useMemo<RoomPublishingCapability>(
+    () => ({
+      characterId: onPlay ? characterId : null,
+      onPlay: onPlay ?? NO_PLAY,
+    }),
+    [characterId, onPlay]
+  );
+  const playCharacter = capability.characterId;
+  /** The key this draft was last saved under, across mounts (R16, S6-T7):
+   * a reopened studio neither re-asks before overwriting it nor forgets it. */
+  const [remembered, setRemembered] = useState<PublicationRecord | null>(() => {
+    const record = readPublication(storage);
+    return record && record.roomId === session.document.draft.id
+      ? record
+      : null;
+  });
+  const rememberedKey =
+    remembered && remembered.roomId === session.document.draft.id
+      ? remembered.key
+      : null;
+  const publishing = useRoomPublishing({
+    draft: session.document.draft,
+    scope: session.document.scope,
+    capability,
+    onImportDraft: session.importDocument,
+    onBusyChange: session.publishing.setBusy,
+    previewEnabled: gate.state === 'live',
+    rememberedSavedKey: rememberedKey,
+  });
+  /** One key per draft (R16): seeded once per draft id from the imported
+   * file's key for that draft, else the slug of the room name. */
+  const draftId = session.document.draft.id;
+  const seededFor = useRef<string | null>(null);
+  const { setKey: setPublishKey } = publishing;
+  useEffect(() => {
+    if (seededFor.current === draftId) return;
+    seededFor.current = draftId;
+    setPublishKey(
+      fileKey?.roomId === draftId
+        ? fileKey.key
+        : remembered?.roomId === draftId
+          ? remembered.key
+          : defaultDraftKey(session.document)
+    );
+    // Seeded once per draft id; later name edits never rename the key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
+  const adoptFileKey = (next: DraftFileKey): void => {
+    setFileKey(next);
+    setPublishKey(next.key);
+    // A different file is not the file this draft saved: forget the save.
+    clearPublication(storage);
+    setRemembered(null);
+  };
+  /** Every successful save is remembered for the draft, once: the hook
+   * hands each save a new `savedFor`, so a forget (an import) is never
+   * undone by the save it forgot. */
+  const { saver: publishSaver, savedFor } = publishing;
+  const rememberedSave = useRef(savedFor);
+  useEffect(() => {
+    if (savedFor === rememberedSave.current) return;
+    rememberedSave.current = savedFor;
+    if (publishSaver.status !== 'saved' || !savedFor) return;
+    const record = { roomId: savedFor.roomId, key: savedFor.key };
+    writePublication(storage, record);
+    setRemembered(record);
+  }, [publishSaver.status, savedFor, storage]);
+  const keyRefusal = keyRefusalOf(publishing);
+  const jumps = refusalJumps(
+    currentRefusals(publishing, gate.state),
+    session.document
+  );
+  const pressPlay = (): void => {
+    setPublishOpen(true);
+    void publishing.saveAndPlay();
+  };
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(session.document.draft.name);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -346,6 +463,62 @@ function StudioSurface({
     () => documentPlacementNames(session.document),
     [session.document]
   );
+  /** A refusal's noun, in words, for its jump button. */
+  const refusalNounName = (target: RefusalTarget): string => {
+    switch (target.kind) {
+      case 'creature':
+        return placementNames.get(target.id) ?? target.id;
+      case 'prop':
+        return (
+          session.document.draft.scene.items.find(
+            (item) => item.id === target.id
+          )?.label || target.id
+        );
+      case 'door':
+        return `Door ${target.target.doorId}`;
+      case 'hex':
+        return `Hex ${target.cell.q}, ${target.cell.r}`;
+      case 'castMember':
+        return castMemberOf(session.document, target.ref)?.name ?? target.ref;
+      case 'home':
+        return target.id
+          ? `${ENCOUNTER_SECTIONS[target.section]} · ${target.id}`
+          : ENCOUNTER_SECTIONS[target.section];
+      case 'ending':
+        return `Ending ${target.id}`;
+    }
+  };
+  /** A refusal lands at the thing (R17): a placed thing, door, hex or cast
+   * member is selected and its inspector opened on Build; a root policy
+   * opens its Encounter section, an ending its own form. */
+  const jumpTo = (target: RefusalTarget): void => {
+    const inspect = (selected: boolean): void => {
+      if (!selected) return;
+      changeHome('build');
+      showSection('inspector');
+    };
+    switch (target.kind) {
+      case 'creature':
+        return inspect(session.creatures.select(target.id));
+      case 'prop':
+        return inspect(session.selectScene([target.id]));
+      case 'door':
+        return inspect(session.doorEditing.select(target.target));
+      case 'hex':
+        return inspect(session.selectHex(target.cell));
+      case 'castMember':
+        return inspect(session.cast.select(target.ref));
+      case 'home':
+        changeHome('encounter');
+        setEncounterSection(target.section);
+        return;
+      case 'ending':
+        setFocusEnding({ id: target.id });
+        changeHome('encounter');
+        setEncounterSection('endings');
+        return;
+    }
+  };
   const armedConcealment = session.concealments.armedId;
   /** While a concealment is armed, a Layout click on a hex, prop, door or
    * wall toggles membership instead of selecting it (rpg-project#578). */
@@ -451,7 +624,14 @@ function StudioSurface({
     >
       <header className="es-header">
         {onBack && (
-          <button type="button" onClick={() => setConfirmLeave(true)}>
+          <button
+            type="button"
+            disabled={session.publishing.busy}
+            title={
+              session.publishing.busy ? 'Save & Play is running…' : undefined
+            }
+            onClick={() => setConfirmLeave(true)}
+          >
             Back
           </button>
         )}
@@ -548,6 +728,14 @@ function StudioSurface({
           >
             Draft file
           </button>
+          <StudioPlayButton
+            publishing={publishing}
+            gate={gate}
+            characterId={playCharacter}
+            roomId={draftId}
+            panelOpen={publishOpen}
+            onPress={pressPlay}
+          />
         </div>
       </header>
       {session.autosaveBlocked && (
@@ -561,9 +749,25 @@ function StudioSurface({
         <div id="studio-draft-file">
           <StudioDraftFile
             session={session}
-            fileKey={fileKey}
-            onFileKey={setFileKey}
+            draftKey={publishing.key}
+            onKeyChange={publishing.setKey}
+            keyRefusal={keyRefusal}
+            onFileKey={adoptFileKey}
+            onOpenServer={() => setPublishOpen(true)}
             onClose={() => setDraftFileOpen(false)}
+          />
+        </div>
+      )}
+      {publishOpen && (
+        <div id="studio-publish">
+          <StudioPublish
+            publishing={publishing}
+            gate={gate}
+            characterId={playCharacter}
+            jumps={jumps}
+            nameOf={refusalNounName}
+            onJump={jumpTo}
+            onClose={() => setPublishOpen(false)}
           />
         </div>
       )}
@@ -1060,6 +1264,8 @@ export function EncounterStudioWorkspace({
   storage,
   idFactory,
   onBack,
+  characterId = null,
+  onPlay,
 }: EncounterStudioWorkspaceProps): React.JSX.Element {
   const [home, setHome] = useState<StudioHome>('build');
   const [view, setView] = useState<EncounterStudioView>('layout');
@@ -1068,6 +1274,23 @@ export function EncounterStudioWorkspace({
     center: { x: 0, z: 0 },
     zoom: 1,
   });
+  /** The owner's publishing latch, mirrored synchronously: leaving the
+   * studio while a save or launch is in flight is refused, as World Builder
+   * refuses Back (R15). */
+  const publishBusyRef = useRef(false);
+  const handlePublishBusy = useCallback((busy: boolean) => {
+    publishBusyRef.current = busy;
+  }, []);
+  const leave = useMemo(
+    () =>
+      onBack
+        ? () => {
+            if (!publishBusyRef.current) onBack();
+          }
+        : undefined,
+    [onBack]
+  );
+  const publicationStorage = storage ?? browserPublicationStorage;
   const renderPresentation = useCallback(
     (session: EncounterStudioSession): ReactNode => (
       <StudioSurface
@@ -1080,10 +1303,22 @@ export function EncounterStudioWorkspace({
         onViewChange={setView}
         onLayoutToolChange={setLayoutTool}
         onFrameChange={setFrame}
-        onBack={onBack}
+        onBack={leave}
+        characterId={characterId}
+        onPlay={onPlay}
+        storage={publicationStorage}
       />
     ),
-    [home, view, layoutTool, frame, onBack]
+    [
+      home,
+      view,
+      layoutTool,
+      frame,
+      leave,
+      characterId,
+      onPlay,
+      publicationStorage,
+    ]
   );
   return (
     <WorldBuildingConcept
@@ -1091,6 +1326,7 @@ export function EncounterStudioWorkspace({
       compositionSource={compositionSource}
       storage={storage}
       idFactory={idFactory}
+      onPublishBusyChange={handlePublishBusy}
       studioPresentation={{
         home,
         view,

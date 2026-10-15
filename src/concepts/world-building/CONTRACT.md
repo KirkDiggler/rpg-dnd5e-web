@@ -44,8 +44,8 @@ Floor edits/history/reload preserve supported walls/openings/attached doors and
 state, props/declarations/bindings, transforms/groups/supports/lights,
 monsters/bindings/party start and all scope fields. Shape validation does not grade
 gameplay legality. Source availability is not proof of remote write permission.
-Studio exposes no publication, lobby launch, Save & Play, world-snapshot,
-import/reset or policy-editing commands. Room-management/focus tools, discovery
+Studio exposes no world-snapshot or reset commands; its one publication
+command is Save & Play (below). Room-management/focus tools, discovery
 simulation, new opening/door creation tools, asset markings and gameplay camera
 presets are outside this slice. Map labels do not supply those capabilities.
 Missing room-navigation controls do not imply unsupported multi-room gameplay.
@@ -54,6 +54,33 @@ See [the safe verification procedure](../../../docs/how-to/encounter-studio-veri
 for disposable-context interaction checks and the DOM tests' WebGL boundary.
 The older sections below describe their own extensions or the standalone prop
 composer; they do not narrow this current Studio boundary.
+
+## Studio Save and Play (#1236, rpg-project#545 R15–R19)
+
+The header's Save group carries one **Save & Play** on every home and view.
+The studio hosts the existing `useRoomPublishing` and, through it,
+`usePlayAuthoredDungeon`; their transactions are unchanged. Save & Play reads
+the key, saves `encodeSingleRoomDungeon` of the current draft and scope (the
+draft-file export's bytes) with `PutDungeon`, then `createLobby → setReady →
+startEncounter{dungeonKey}` seats the character picked on Home and App opens
+the game view. A first save to a key the server holds asks Replace or Keep;
+later saves to that key in the same editor session do not.
+
+One key per draft: the Draft file panel and the Save and Play panel edit the
+hook's key. It is seeded once per draft id from the imported file's key for
+that draft, else the slug of the room name; a rename never renames it. The
+server's key sentences show at the key field.
+
+While a save or launch is in flight the owner's publish lock refuses edits,
+undo, redo, selection, imports and the local save with its notice, and Back is
+refused; home and view changes stay ungated. Authoring off or an unreachable
+server disables the control with its sentence (with Retry when unreachable);
+no character disables Play with "Pick a character on Home to play." and Save
+to server stays available from the panel. The validate-only preview runs only
+while the gate is live. A refusal whose path maps to a creature, prop, door,
+exit hex, cast member, table, faction, disposition, intel, concealment or
+ending is a jump; any other path is a sentence. Wall finishes, region wall
+finishes and region lighting say they do not reach play (R19).
 
 ## Studio Layout walls and compact contexts (#1233)
 

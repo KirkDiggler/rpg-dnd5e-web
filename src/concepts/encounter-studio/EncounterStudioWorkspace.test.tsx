@@ -1,5 +1,5 @@
 import type { CompositionSource } from '@/compositions/compositionSource';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectStudioArrange } from '../world-building/studioArrange';
@@ -84,6 +84,13 @@ vi.mock('../world-building/WorldBuildingConcept', () => ({
   },
 }));
 
+const gate = vi.hoisted(() => ({
+  state: 'gate-off' as 'probing' | 'live' | 'gate-off' | 'unreachable',
+}));
+vi.mock('@/author/useAuthoringGate', () => ({
+  useAuthoringGate: () => ({ state: gate.state, retry: vi.fn() }),
+}));
+
 vi.mock('./LayoutViewport', () => ({
   LayoutViewport: (props: LayoutViewportProps) => {
     observed.layoutProps = props;
@@ -144,6 +151,7 @@ function createSession(): EncounterStudioSession {
 }
 
 beforeEach(() => {
+  gate.state = 'gate-off';
   observed.session = createSession();
   observed.ownerMounts =
     observed.ownerUnmounts =
@@ -196,14 +204,67 @@ describe('Encounter Studio shell (fake owner, real presentation)', () => {
     expect(observed.layoutProps?.intentEpoch).toBe(0);
     expect(screen.queryByLabelText('Prop palette')).toBeNull();
     expect(screen.queryByText('Reused scene tree')).toBeNull();
-    expect(
-      screen.queryByText(/site inspector|Save & Play|Identity|Policies/i)
-    ).toBeNull();
+    expect(screen.queryByText(/site inspector|Identity|Policies/i)).toBeNull();
     expect(observed.ownerProps).toEqual(
       expect.objectContaining({ roomMode: true, compositionSource: source })
     );
+    // The studio hosts its own publishing (S6); World Builder's panel and
+    // its capability prop are not the owner's to render here.
     expect(observed.ownerProps).not.toHaveProperty('roomPublishing');
     expect(observed.ownerProps).not.toHaveProperty('onPlay');
+  });
+
+  it('the studio passes onPublishBusyChange to the owner and characterId/onPlay to the surface', () => {
+    gate.state = 'live';
+    const onBack = vi.fn();
+    const onPlay = vi.fn();
+    const view = render(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        onBack={onBack}
+        characterId={null}
+        onPlay={onPlay}
+      />
+    );
+    expect(observed.ownerProps?.onPublishBusyChange).toEqual(
+      expect.any(Function)
+    );
+    // No character: the surface says so on the one control.
+    const play = screen.getByRole('button', { name: 'Save & Play' });
+    expect((play as HTMLButtonElement).disabled).toBe(true);
+    expect(play.getAttribute('title')).toBe(
+      'Pick a character on Home to play.'
+    );
+    view.rerender(
+      <EncounterStudioWorkspace
+        compositionSource={source}
+        onBack={onBack}
+        characterId="hero-1"
+        onPlay={onPlay}
+      />
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Save & Play' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+    // While the owner reports a publish in flight, leaving is refused.
+    act(() =>
+      (observed.ownerProps!.onPublishBusyChange as (busy: boolean) => void)(
+        true
+      )
+    );
+    click('Back');
+    click('Leave Encounter Studio');
+    expect(onBack).not.toHaveBeenCalled();
+    act(() =>
+      (observed.ownerProps!.onPublishBusyChange as (busy: boolean) => void)(
+        false
+      )
+    );
+    click('Back');
+    click('Leave Encounter Studio');
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onPlay).not.toHaveBeenCalled();
   });
 
   it('Layout and 3D switch without replacing the Concept instance', () => {

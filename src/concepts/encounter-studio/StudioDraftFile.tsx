@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import {
-  defaultDraftKey,
   exportDraftYaml,
   readDraftYaml,
   type DraftFileRead,
@@ -31,24 +30,33 @@ export interface DraftFileKey {
  * opens under the header. Export downloads the encoder's bytes as
  * `{key}.yaml`. Import reads a file, shows the decoder's
  * first refusal and changes nothing, or asks to replace the draft and then
- * replaces it in one undoable step. */
+ * replaces it in one undoable step.
+ *
+ * The key is the draft's one key (R16), held by the studio's publishing
+ * hook and shared with the server save: this panel shows and edits it and
+ * never keeps a copy. */
 export function StudioDraftFile({
   session,
-  fileKey,
+  draftKey,
+  onKeyChange,
+  keyRefusal,
   onFileKey,
+  onOpenServer,
   onClose,
 }: {
   session: EncounterStudioSession;
-  fileKey: DraftFileKey | null;
+  /** The draft's one key. (`key` itself is React's.) */
+  draftKey: string;
+  onKeyChange(next: string): void;
+  /** The server's sentence for this key, shown at the field. */
+  keyRefusal?: string | null;
   onFileKey(next: DraftFileKey): void;
+  /** Opens the server save beside this panel. */
+  onOpenServer?(): void;
   onClose(): void;
 }): React.JSX.Element {
   const document = session.document;
-  const suggested =
-    fileKey && fileKey.roomId === document.draft.id
-      ? fileKey.key
-      : defaultDraftKey(document);
-  const [key, setKey] = useState(suggested);
+  const key = draftKey;
   const [pending, setPending] = useState<{
     file: string;
     read: Extract<DraftFileRead, { ok: true }>;
@@ -99,7 +107,6 @@ export function StudioDraftFile({
     setPending(null);
     if (session.importDocument(read.draft, read.scope)) {
       onFileKey({ key: read.key, roomId: read.draft.id });
-      setKey(read.key);
       setMessage({ text: `Imported ${file}`, refusal: false });
     } else
       setMessage({
@@ -122,17 +129,25 @@ export function StudioDraftFile({
           <span>
             File key{' '}
             <FieldHelp field="File key">
-              The dungeon key written into the file and its name. An imported
-              file&apos;s key is kept for its draft.
+              The dungeon key written into the file and its name, and the key
+              Save and Play saves under: one key per draft. Lowercase letters,
+              digits and dashes. An imported file&apos;s key is kept for its
+              draft.
             </FieldHelp>
           </span>
           <input
             aria-label="File key"
             value={key}
-            onChange={(event) => setKey(event.target.value)}
+            disabled={session.publishing.busy}
+            onChange={(event) => onKeyChange(event.target.value)}
           />
         </label>
         <button type="submit">Download {key.trim() || '…'}.yaml</button>
+        {keyRefusal && (
+          <span role="alert" className="es-warning">
+            {keyRefusal}
+          </span>
+        )}
       </form>
       <div className="es-buttons">
         <button type="button" onClick={() => input.current?.click()}>
@@ -150,6 +165,11 @@ export function StudioDraftFile({
             if (file) void choose(file);
           }}
         />
+        {onOpenServer && (
+          <button type="button" onClick={onOpenServer}>
+            Save to server…
+          </button>
+        )}
         <button type="button" onClick={onClose}>
           Close draft file
         </button>

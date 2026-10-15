@@ -6,6 +6,13 @@
  * refusals, fencing and busy behavior. No test asserts hook names.
  */
 import type { AuthoringClient } from '@/author/authoringRpc';
+import {
+  fakeAuthoringClient,
+  makeDeferred,
+  type Deferred,
+  type GetAnswer,
+  type PutAnswer,
+} from '@/author/testing/fakeAuthoringClient';
 import { Code, ConnectError } from '@connectrpc/connect';
 import type {
   CreateLobbyResponse,
@@ -29,27 +36,7 @@ import { decodeSingleRoomDungeon } from './singleRoomDungeon';
 import type { SiteScope } from './siteScope';
 import type { WorldScene } from './types';
 
-/** ── Deferred authoring client ─────────────────────────────────────── */
-
-type PutAnswer = {
-  errors: Array<{ path: string; message: string }>;
-};
-type GetAnswer = { yaml: string };
-type Deferred<T> = {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-};
-
-function makeDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
+/** ── Deferred authoring client (author/testing/fakeAuthoringClient) ── */
 
 const rpc = vi.hoisted(() => {
   const makeDeferred = <T,>(): {
@@ -158,29 +145,16 @@ function savePuts() {
 }
 
 function fakeClient(): AuthoringClient {
-  return {
-    putDungeon: vi.fn(async (request: never) => {
-      const record = request as unknown as {
-        key: string;
-        yaml: string;
-        validateOnly: boolean;
-      };
-      const deferred = makeDeferred<PutAnswer>();
-      rpc.puts.push({ request: record, deferred: deferred as never });
-      putAnswers.push(deferred);
-      return deferred.promise as never;
-    }),
-    getDungeon: vi.fn(async (request: never) => {
-      const record = request as unknown as { key: string };
-      const deferred = makeDeferred<GetAnswer | Error>();
-      rpc.gets.push({ key: record.key, deferred: deferred as never });
-      getAnswers.push(deferred);
-      const answer = await deferred.promise;
-      if (answer instanceof Error) throw answer;
-      return answer as never;
-    }),
-    listScenarios: vi.fn(),
-  } as unknown as AuthoringClient;
+  return fakeAuthoringClient({
+    puts: rpc.puts as never,
+    gets: rpc.gets as never,
+    get putAnswers() {
+      return putAnswers;
+    },
+    get getAnswers() {
+      return getAnswers;
+    },
+  });
 }
 
 /** ── A rich complete-room draft ────────────────────────────────────── */

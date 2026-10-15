@@ -284,7 +284,7 @@ export interface StudioRegionEditing {
 }
 
 /** Render-time projection of the existing owner, never a second store.
- * Consumers must not mutate or serialize document. No publishing/play seam. */
+ * Consumers must not mutate or serialize document. */
 export interface EncounterStudioSession {
   document: Readonly<RoomDraftDocument>;
   viewportProps: WorldBuildingViewportProps;
@@ -449,6 +449,17 @@ export interface EncounterStudioSession {
    * Present that consequence clearly on the consuming save control. */
   saveLocalDraft(): void;
   dismissNotice(): void;
+  /** The owner's publishing lock (R15): while a save or launch is in
+   * flight the owner refuses every edit, undo, redo, selection change and
+   * the local-draft save with its existing notice, and forces the tool to
+   * select. Home, view and frame changes are workspace state and stay
+   * ungated. The studio's Save and Play reports its transaction here. */
+  publishing: {
+    /** Mirrors the owner's publish latch. */
+    readonly busy: boolean;
+    /** The owner's own busy handler; false releases and clears the notice. */
+    setBusy(next: boolean): void;
+  };
 }
 
 export type StudioHome = 'build' | 'encounter';

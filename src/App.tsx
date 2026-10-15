@@ -567,6 +567,8 @@ function AppContent() {
               key={compositionIdentity}
               compositionSource={compositionSource}
               onBack={handleBackToHome}
+              characterId={selectedType === 'character' ? selectedId : null}
+              onPlay={handlePlayAuthored}
             />
           ) : (
             <section className="p-8" aria-label="Encounter Studio unavailable">
