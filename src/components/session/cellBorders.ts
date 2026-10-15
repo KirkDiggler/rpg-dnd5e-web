@@ -12,7 +12,9 @@
 
 import {
   coordToKey,
+  cubeToWorld,
   worldToCube,
+  type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 
@@ -109,6 +111,60 @@ export function stretchesBesideLine<S>(
   const stretches: { from: number; to: number; state: S }[] = [];
   for (let i = 0; i < samples.length; i++) {
     const state = stateOf(samples[i]!.cells);
+    const last = stretches.at(-1);
+    if (last && last.state === state) continue;
+    const from = i === 0 ? 0 : (samples[i - 1]!.t + samples[i]!.t) / 2;
+    if (last) last.to = from;
+    stretches.push({ from, to: 1, state });
+  }
+  return stretches;
+}
+
+/** Two footprint cells whose centres project within this fraction of the
+ * line of each other are one sample. */
+const SAME_T = 1e-9;
+
+/**
+ * A wall line split by the cells its blocker footprint overlaps (fog of war
+ * R9: a wall is known where sight reached its footprint). The server lists
+ * the cells; this never re-derives them from the line.
+ *
+ * Each cell is a sample at its centre's projection onto the line (`t`,
+ * clamped 0–1). Samples are sorted by `t`; cells at the same `t` (a pair the
+ * line runs between) are one sample and `stateOf` is asked about both, so it
+ * takes the brighter. Stretches split midway between samples whose state
+ * differs, the rule `stretchesBesideLine` uses. No cells, no stretches.
+ * Attribution only: `stateOf` is a lookup in what the server sent.
+ */
+export function stretchesAlongCells<S>(
+  line: { readonly start: WorldPos; readonly end: WorldPos },
+  cells: readonly CubeCoord[],
+  hexSize: number,
+  stateOf: (cells: readonly string[]) => S
+): LineStretch<S>[] {
+  const { start, end } = line;
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const lengthSq = dx * dx + dz * dz;
+  const projected = cells
+    .map((cell) => {
+      const centre = cubeToWorld(cell, hexSize);
+      const t =
+        lengthSq === 0
+          ? 0
+          : ((centre.x - start.x) * dx + (centre.z - start.z) * dz) / lengthSq;
+      return { t: Math.min(1, Math.max(0, t)), key: coordToKey(cell) };
+    })
+    .sort((a, b) => a.t - b.t);
+  const samples: { t: number; keys: string[] }[] = [];
+  for (const { t, key } of projected) {
+    const last = samples.at(-1);
+    if (last && t - last.t <= SAME_T) last.keys.push(key);
+    else samples.push({ t, keys: [key] });
+  }
+  const stretches: { from: number; to: number; state: S }[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    const state = stateOf(samples[i]!.keys);
     const last = stretches.at(-1);
     if (last && last.state === state) continue;
     const from = i === 0 ? 0 : (samples[i - 1]!.t + samples[i]!.t) / 2;

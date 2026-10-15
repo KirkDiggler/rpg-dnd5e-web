@@ -39,7 +39,8 @@ import {
   worldPositionOf,
 } from './atlasToScene3D';
 import type { AuthoredWallRun, DoorGapPiece } from './atlasWallRuns';
-import { cellKnowledge } from './cellKnowledge';
+import { stretchesBesideLine } from './cellBorders';
+import { borderState, cellKnowledge } from './cellKnowledge';
 import {
   ATLAS_CELLS,
   FRAMED,
@@ -1076,5 +1077,126 @@ describe('applyCellKnowledge — the scene as this seat knows it (fog of war, rp
     );
     expect(fog.wallRuns.map((r) => r.key)).toEqual(['S']);
     expect(fog.rememberedWallRunKeys!.size).toBe(0);
+  });
+});
+
+/**
+ * Fog of war R9 (rpg-project#600): a structural wall is graded by the cells
+ * its blocker footprint overlaps, as the server lists them
+ * (`footprint_cells`), never by cells the client samples beside its line.
+ */
+describe('applyCellKnowledge — a wall is known where sight reached its footprint (R9)', () => {
+  const SQRT3 = Math.sqrt(3);
+  /** Scene units → canonical feet at hex size 1. */
+  const K = 5 / SQRT3;
+  const feet = (x: number, z: number) =>
+    create(FootprintPointSchema, { x: x * K, y: z * K });
+  const wallAtlas = (
+    cells: { x: number; y: number }[],
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    footprintCells: { x: number; y: number }[]
+  ) =>
+    create(GetAtlasResponseSchema, {
+      cells,
+      structuralWalls: [
+        create(AtlasStructuralWallSchema, {
+          id: 'west-wall',
+          ref: 'wall',
+          from: feet(from.x, from.z),
+          to: feet(to.x, to.z),
+          height: 3,
+          thickness: 0.375,
+          footprintCells,
+        }),
+      ],
+    });
+  const graded = (
+    atlas: ReturnType<typeof wallAtlas>,
+    visible: { x: number; y: number }[]
+  ) =>
+    applyCellKnowledge(
+      buildScene3D(atlas, 1, 'pointy'),
+      cellKnowledge(atlas.cells, visible),
+      atlas,
+      1
+    );
+
+  /**
+   * The replay's west wall in miniature: a vertical wall on x = SQRT3/2 from
+   * row 0 to row 8. The line runs through the centre of one footing hex on
+   * every odd row and along the edge between a straddled pair on every even
+   * row; the footprint lists them in order along the wall.
+   */
+  const footprint = Array.from({ length: 9 }, (_, r) =>
+    r % 2 === 1
+      ? [{ x: (1 - r) / 2, y: r }]
+      : [
+          { x: -r / 2, y: r },
+          { x: 1 - r / 2, y: r },
+        ]
+  ).flat();
+  const westFrom = { x: SQRT3 / 2, z: 0 };
+  const westTo = { x: SQRT3 / 2, z: 12 };
+
+  it('a centre-line wall known at one footing hex draws only that stretch', () => {
+    // Only the south corner is known: the row-8 pair and the row-7 footing
+    // hex. No footing hex up the wall is known.
+    const corner = footprint.filter((c) => c.y >= 7);
+    const fog = graded(wallAtlas(corner, westFrom, westTo, footprint), corner);
+    const stretches = fog.structuralWallStretches!.get('west-wall')!;
+    // Row 7 projects to t 10.5/12, row 6 to 9/12: the split is midway.
+    expect(stretches.map((st) => st.state)).toEqual(['absent', 'seen']);
+    expect(stretches[0]!.from).toBe(0);
+    expect(stretches[0]!.to).toBeCloseTo(0.8125, 10);
+    expect(stretches[1]!.from).toBeCloseTo(0.8125, 10);
+    expect(stretches[1]!.to).toBe(1);
+  });
+
+  it('a wall whose footprint straddles an edge takes the brighter side', () => {
+    // A wall on the edge between (0,0) and (1,0): one sample, both cells.
+    const pair = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ];
+    const from = { x: SQRT3 / 2, z: -0.5 };
+    const to = { x: SQRT3 / 2, z: 0.5 };
+    const brighter = graded(wallAtlas(pair, from, to, pair), [{ x: 1, y: 0 }]);
+    expect(brighter.structuralWallStretches!.has('west-wall')).toBe(false);
+    expect(brighter.rememberedStructuralWallIds!.has('west-wall')).toBe(false);
+    const neither = graded(wallAtlas(pair, from, to, pair), [{ x: 5, y: 5 }]);
+    expect(neither.rememberedStructuralWallIds!.has('west-wall')).toBe(true);
+  });
+
+  it('a seen neighbour the footprint does not overlap does not light the wall', () => {
+    // A thin wall at x = 0.75 runs inside (0,0) only; (1,0) is half a hex
+    // off the line but not under the wall. Sampling beside the line counted
+    // (1,0); the footprint does not, and (0,0) is unknown, so nothing draws.
+    const from = { x: 0.75, z: -0.5 };
+    const to = { x: 0.75, z: 0.5 };
+    const known = [{ x: 1, y: 0 }];
+    const fog = graded(wallAtlas(known, from, to, [{ x: 0, y: 0 }]), known);
+    expect(fog.structuralWallStretches!.get('west-wall')).toEqual([
+      { from: 0, to: 1, state: 'absent' },
+    ]);
+  });
+
+  it('a wall without footprint_cells grades as before', () => {
+    // An older server lists no footprint: the cells beside the line stand in.
+    const known = [{ x: 1, y: 0 }];
+    const from = { x: 0.75, z: -0.5 };
+    const to = { x: 0.75, z: 0.5 };
+    const atlas = wallAtlas(known, from, to, []);
+    const fog = graded(atlas, known);
+    const line = buildScene3D(atlas, 1, 'pointy').structuralWalls![0]!.surface
+      .line;
+    const knowledge = cellKnowledge(known, known);
+    expect(fog.structuralWallStretches!.has('west-wall')).toBe(false);
+    expect(fog.rememberedStructuralWallIds!.has('west-wall')).toBe(false);
+    expect(
+      stretchesBesideLine(line.start, line.end, 1, (cells) =>
+        borderState(knowledge, cells)
+      )
+    ).toEqual([{ from: 0, to: 1, state: 'seen' }]);
   });
 });

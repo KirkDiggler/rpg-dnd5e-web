@@ -49,8 +49,9 @@
  * A cell a wall seals keeps its region and stays in `cells`, so it tiles
  * as floor like any other — it is floor nobody stands on, and refusing a
  * step onto it is the engine's job, not the renderer's. The same is true
- * of the footing cells a presented wall puts in the recipient's atlas
- * (design C18): they arrive in `cells` and tile.
+ * of a wall's footing cells the recipient's sight has reached (fog of war
+ * R9; a presented wall no longer adds footing of its own): they arrive in
+ * `cells` and tile.
  */
 
 import {
@@ -84,6 +85,7 @@ import {
 import {
   cellsAroundPoint,
   cellsBesideLine,
+  stretchesAlongCells,
   stretchesBesideLine,
 } from './cellBorders';
 import {
@@ -289,7 +291,9 @@ export function sceneProp3DKey(prop: SceneProp3D): string {
  *   otherwise. The rule is applied PER STRETCH: a wall run is split where the
  *   state of the cells beside it changes (`stretchesBesideLine`), so a long
  *   wall with one seen neighbour is lit only beside that cell. Structural
- *   walls carry the same stretches for their pieces.
+ *   walls carry the same stretches for their pieces, graded by the cells
+ *   their footprint overlaps (`stretchesAlongCells`, R9) when the server
+ *   lists them, and beside the line when it does not.
  * - Fixed props and presentations on a remembered cell join the remembered
  *   sets; mutable ones keep their observation lifecycle (sightings with no
  *   `currentVia`), which the caller has already folded in.
@@ -375,12 +379,25 @@ export function applyCellKnowledge(
   const rememberedStructuralWallIds = new Set<string>();
   const structuralWallStretches = new Map<string, WallFogStretch[]>();
   for (const unit of scene.structuralWalls ?? []) {
-    const stretches = stretchesBesideLine(
-      unit.surface.line.start,
-      unit.surface.line.end,
-      hexSize,
-      stretchState
-    );
+    // R9: a wall is known where sight reached a cell its footprint overlaps,
+    // so it is graded by the cells the server listed for it. A server older
+    // than `footprint_cells` lists none; then the cells beside the line
+    // stand in, so the wall does not go blank.
+    const footprint = unit.footprintCells ?? [];
+    const stretches =
+      footprint.length > 0
+        ? stretchesAlongCells(
+            unit.surface.line,
+            footprint,
+            hexSize,
+            stretchState
+          )
+        : stretchesBesideLine(
+            unit.surface.line.start,
+            unit.surface.line.end,
+            hexSize,
+            stretchState
+          );
     if (stretches.some((stretch) => stretch.state !== 'seen'))
       structuralWallStretches.set(unit.id, stretches);
     if (stretches.every((stretch) => stretch.state === 'remembered'))
