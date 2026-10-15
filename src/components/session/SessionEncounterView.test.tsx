@@ -24,6 +24,7 @@ import {
   GetViewResponseSchema,
   VendorStockMode,
   type GetAtlasResponse,
+  type GetKnowledgeResponse,
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
@@ -47,6 +48,7 @@ import {
   LifeState,
   MemberKind,
   Passage,
+  PositionSchema,
   ReactionRefSchema,
   ShortfallReason,
   ShortfallSchema,
@@ -6354,5 +6356,58 @@ describe('the ground click while a cell cast is armed', () => {
     });
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('fog of war: draw what the seat knows (rpg-project#586)', () => {
+  /** Wrap the default snapshot so its view carries `visible_cells`. */
+  function seeing(cells: { x: number; y: number }[]) {
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.visibleCells = cells.map((c) => create(PositionSchema, c));
+      return snapshot;
+    });
+    // Every later GetView answers the same seen-now.
+    const baseView = hoisted.getViewFn.getMockImplementation();
+    hoisted.getViewFn.mockImplementation(async (...args: unknown[]) => ({
+      ...((await baseView?.(...args)) ?? {}),
+      visibleCells: cells,
+    }));
+  }
+
+  it('lights visible_cells, greys the rest of the atlas, and draws nothing else', async () => {
+    readyScene();
+    seeing([{ x: 0, y: 0 }]);
+    renderView();
+    const probe = await screen.findByTestId('seat-knowledge');
+    expect(probe.dataset.seenCells).toBe('0,0,0');
+    expect(probe.dataset.rememberedCells).toBe('1,-1,0');
+    const scene = hoisted.lastCanvasProps.current?.scene;
+    expect(scene?.floorLitByCell?.get('0,0,0')).toBe(1);
+    expect(scene?.floorLitByCell?.get('1,-1,0')).toBeLessThan(1);
+    expect([...(scene?.floorLitByCell?.keys() ?? [])].sort()).toEqual([
+      '0,0,0',
+      '1,-1,0',
+    ]);
+  });
+
+  it('re-reads the view on the member’s own move, so seen-now follows the seat', async () => {
+    readyScene();
+    const live = deferredStream([
+      event(EventKind.MOVED, {
+        case: 'moved',
+        value: { member: 'char-1', to: { x: 1, y: 0 } },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await screen.findByTestId('session-canvas');
+    const before = hoisted.getViewFn.mock.calls.length;
+    live.release();
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(before)
+    );
   });
 });

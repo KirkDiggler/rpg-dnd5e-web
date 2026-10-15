@@ -1454,9 +1454,12 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
   // body case is a type error at the index below, which is the guard that
   // makes every new body a decision somebody wrote down.
   // XP added in the catalog SDK release updates private state; narration is deferred.
+  // CELLS_REVEALED (fog of war, rpg-project#586) is map delivery, not story:
+  // it patches this viewer's atlas, which the canvas already draws.
   if (
     bodyCase === 'sighted' ||
     bodyCase === 'roomRevealed' ||
+    bodyCase === 'cellsRevealed' ||
     bodyCase === 'experienceGained'
   ) {
     return undefined;

@@ -11,6 +11,7 @@ vi.mock('@react-three/drei', () => ({
   useTexture: useTextureMock,
 }));
 
+import { rememberedFloorColor } from './sceneKnowledge';
 import { SyntyHexFloor } from './SyntyHexFloor';
 import {
   computeFloorPoolColor,
@@ -677,6 +678,78 @@ describe('SyntyHexFloor litSurfaces dev/Kirk-only A/B (look-lab lighting experim
     expect(renderer.scene.findAllByType('MeshBasicMaterial')).toHaveLength(1);
     expect(renderer.scene.findAllByType('MeshStandardMaterial')).toHaveLength(
       0
+    );
+  });
+});
+
+describe('SyntyHexFloor fog of war per-cell treatment (rpg-project#586)', () => {
+  const lighting = (lit: Record<string, number>): DungeonFloorLighting => ({
+    exposureByCell: new Map(),
+    poolsByCell: new Map(),
+    litByCell: new Map(Object.entries(lit)),
+  });
+  const byName = (
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>,
+    key: string
+  ) =>
+    renderer.scene.findByProps({ name: `floor-tile-${key}` })
+      .instance as THREE.Mesh;
+
+  it('draws a seen tile lit, a remembered tile grey with its texture, and an edge tile between', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0], [2, -2, 0])}
+        hexSize={1}
+        floorLighting={lighting({ '0,0,0': 1, '1,-1,0': 0.5, '2,-2,0': 0 })}
+      />
+    );
+    const seen = byName(renderer, '0,0,0');
+    const edge = byName(renderer, '1,-1,0');
+    const remembered = byName(renderer, '2,-2,0');
+    expect(seen.userData).toMatchObject({ knowledge: 'seen', lit: 1 });
+    expect(edge.userData).toMatchObject({ knowledge: 'edge', lit: 0.5 });
+    expect(remembered.userData).toMatchObject({
+      knowledge: 'remembered',
+      lit: 0,
+    });
+    const color = (m: THREE.Mesh) =>
+      (m.material as THREE.MeshBasicMaterial).color;
+    const map = (m: THREE.Mesh) => (m.material as THREE.MeshBasicMaterial).map;
+    expect(isCloseTo(color(seen), WHITE)).toBe(true);
+    expect(
+      isCloseTo(color(remembered), rememberedFloorColor(WHITE.clone(), 0))
+    ).toBe(true);
+    // The shape stays readable: the remembered tile keeps the floor texture.
+    expect(map(remembered)).toBeTruthy();
+    const lum = (c: THREE.Color) => c.r + c.g + c.b;
+    expect(lum(color(edge))).toBeLessThan(lum(color(seen)));
+    expect(lum(color(edge))).toBeGreaterThan(lum(color(remembered)));
+  });
+
+  it('grades the crypt tint the same way, after exposure', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        floorLighting={lighting({ '0,0,0': 1, '1,-1,0': 0 })}
+      />
+    );
+    const color = (key: string) =>
+      (byName(renderer, key).material as THREE.MeshBasicMaterial).color;
+    expect(isCloseTo(color('0,0,0'), CRYPT_TINT)).toBe(true);
+    expect(
+      isCloseTo(color('1,-1,0'), rememberedFloorColor(CRYPT_TINT.clone(), 0))
+    ).toBe(true);
+  });
+
+  it('a tile the knowledge does not list renders lit, as before', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor floorTiles={tiles([0, 0, 0])} hexSize={1} />
+    );
+    expect(byName(renderer, '0,0,0').userData.knowledge).toBe('seen');
+    expect(floorTileColors(renderer).every((c) => isCloseTo(c, WHITE))).toBe(
+      true
     );
   });
 });

@@ -6,14 +6,15 @@ import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import {
-  type DungeonLightSource,
   resolveDungeonLighting,
+  type DungeonLightSource,
 } from '../../rendering/dungeonLighting';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { coordToKey } from '../hex-grid/hexMath';
 import { AtlasPropModel } from './AtlasPropModel';
 import {
   propWorldPosition,
+  sceneProp3DKey,
   type Scene3D,
   type SceneProp3D,
 } from './atlasToScene3D';
@@ -181,8 +182,11 @@ export function DungeonEnvironment({
     () => ({
       exposureByCell: plan.floorExposureByCell,
       poolsByCell: plan.floorPoolsByCell,
+      // Fog of war composes AFTER region exposure and pools: a remembered
+      // tile is the lit tile greyed, a seen tile is unchanged.
+      litByCell: scene.floorLitByCell,
     }),
-    [plan.floorExposureByCell, plan.floorPoolsByCell]
+    [plan.floorExposureByCell, plan.floorPoolsByCell, scene.floorLitByCell]
   );
   const diagnosticsSignature = plan.diagnostics.join('\u0000');
   const reportedDiagnostics = useRef<{
@@ -235,6 +239,7 @@ export function DungeonEnvironment({
           doors={doors}
           onDoorClick={onDoorClick}
           hiddenPlacedIds={hiddenLegacyIds}
+          rememberedItemIds={scene.rememberedRoomItemIds}
         />
         {/* The supplied structural layout renders in BOTH branches. It is
             independent of the authored room presentation and of the legacy
@@ -247,6 +252,9 @@ export function DungeonEnvironment({
           diagnostics={scene.structuralDiagnostics ?? []}
           observedDoors={doors}
           onDoorClick={onDoorClick}
+          rememberedWallIds={scene.rememberedStructuralWallIds}
+          wallStretches={scene.structuralWallStretches}
+          rememberedDoorIds={scene.rememberedStructuralDoorIds}
         />
       </>
     );
@@ -278,6 +286,7 @@ export function DungeonEnvironment({
             orientation="pointy"
             compositionSource={compositionSource}
             compositionResolution={compositionResolution}
+            remembered={scene.rememberedPropKeys?.has(sceneProp3DKey(prop))}
           />
         );
       })}
@@ -288,6 +297,9 @@ export function DungeonEnvironment({
         diagnostics={scene.structuralDiagnostics ?? []}
         observedDoors={doors}
         onDoorClick={onDoorClick}
+        rememberedWallIds={scene.rememberedStructuralWallIds}
+        wallStretches={scene.structuralWallStretches}
+        rememberedDoorIds={scene.rememberedStructuralDoorIds}
       />
     </>
   );

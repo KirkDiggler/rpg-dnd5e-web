@@ -18,6 +18,9 @@ export interface WorldPropModelProps {
   rotationY: number;
   heightScale?: number;
   remembered?: boolean;
+  /** The remembered multiply tint for a generated asset (default
+   * `REMEMBERED_TINT`); structural surfaces pass `REMEMBERED_SURFACE_TINT`. */
+  rememberedTint?: WorldAssetModelProps['rememberedTint'];
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
   surfaceSelections?: readonly WorldSurfaceSelection[];
@@ -45,6 +48,7 @@ export function WorldPropModel({
   rotationY,
   heightScale = 1,
   remembered = false,
+  rememberedTint,
   visualLighting,
   plainWallFit,
   surfaceSelections,
@@ -73,6 +77,7 @@ export function WorldPropModel({
       surfacePlans={surfacePlans}
       surfaceProvider={surfaceProvider}
       remembered={remembered}
+      rememberedTint={rememberedTint}
       visualLighting={visualLighting}
       position={position}
       rotationY={rotationY}

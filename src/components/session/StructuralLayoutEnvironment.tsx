@@ -33,6 +33,7 @@ import {
   StructuralWallSurfacePieces,
   WallMarker,
   type FittedDoorState,
+  type WallFogStretch,
 } from '@/concepts/world-building/StructuralWallSurfaces';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
@@ -56,19 +57,33 @@ export interface StructuralLayoutEnvironmentProps {
    * exactly as the atlas carries it. */
   readonly observedDoors?: ReadonlyMap<string, DoorInfo>;
   readonly onDoorClick?: (door: string) => void;
+  /** Fog of war (rpg-project#586): walls and doors no seen cell borders
+   * (`applyCellKnowledge`). Undefined draws everything lit. */
+  readonly rememberedWallIds?: ReadonlySet<string>;
+  readonly rememberedDoorIds?: ReadonlySet<string>;
+  /** Per wall, its line split by the state of the cells beside it: pieces
+   * draw lit, remembered, or not at all (`applyCellKnowledge`). */
+  readonly wallStretches?: ReadonlyMap<string, readonly WallFogStretch[]>;
 }
 
-/** The observed state, or `unknown` — never an invented closed/open. An
- * UNSPECIFIED state is not an observation of a shut door. */
+/** True when the door has no observed state: no observation at all, or one
+ * whose state is unspecified. */
+function unobserved(info: DoorInfo | undefined): boolean {
+  return !info || info.state === DoorState.UNSPECIFIED;
+}
+
+/**
+ * The drawn state for a presented door (fog of war, rpg-project#586 R2). AN
+ * UNOBSERVED DOOR DRAWS CLOSED, GREY AND INERT: the atlas presented it because
+ * a cell on its edge is known, so it is drawn in its rest pose in the
+ * remembered treatment and takes no click, never as a placeholder marker. An
+ * observed door draws its observed state.
+ */
 function fittedDoorStateFromObservation(
   info: DoorInfo | undefined
 ): FittedDoorState {
-  if (!info) return 'unknown';
-  if (info.state === DoorState.OPEN) return 'open';
-  if (info.state === DoorState.CLOSED || info.state === DoorState.LOCKED) {
-    return 'closed';
-  }
-  return 'unknown';
+  if (unobserved(info)) return 'closed';
+  return info!.state === DoorState.OPEN ? 'open' : 'closed';
 }
 
 export function StructuralLayoutEnvironment({
@@ -77,6 +92,9 @@ export function StructuralLayoutEnvironment({
   diagnostics,
   observedDoors,
   onDoorClick,
+  rememberedWallIds,
+  rememberedDoorIds,
+  wallStretches,
 }: StructuralLayoutEnvironmentProps): ReactElement {
   return (
     <>
@@ -103,17 +121,20 @@ export function StructuralLayoutEnvironment({
               />
             }
           >
-            <StructuralWallSurfacePieces wall={unit.surface} />
+            <StructuralWallSurfacePieces
+              wall={unit.surface}
+              remembered={rememberedWallIds?.has(unit.id) ?? false}
+              fogStretches={wallStretches?.get(unit.id)}
+            />
           </Suspense>
         </ErrorBoundary>
       ))}
       {doors.map((unit) => {
         const info = observedDoors?.get(unit.id);
         const state = fittedDoorStateFromObservation(info);
-        const clickable =
-          onDoorClick !== undefined &&
-          info !== undefined &&
-          state !== 'unknown';
+        const remembered =
+          unobserved(info) || !!rememberedDoorIds?.has(unit.id);
+        const clickable = onDoorClick !== undefined && !remembered;
         const marker = {
           position: [
             unit.pose.point.x,
@@ -150,6 +171,7 @@ export function StructuralLayoutEnvironment({
                 assetRef={unit.assetRef}
                 pose={unit.pose}
                 state={state}
+                remembered={remembered}
                 onClick={clickable ? () => onDoorClick(unit.id) : undefined}
               />
             </Suspense>

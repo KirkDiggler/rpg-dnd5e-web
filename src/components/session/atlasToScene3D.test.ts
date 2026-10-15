@@ -19,6 +19,7 @@ import { coordToKey } from '@/components/hex-grid/hexMath';
 import { resolveDungeonLighting } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
+import { GetAtlasResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AtlasStructuralDoorSchema,
   AtlasStructuralWallSchema,
@@ -30,12 +31,21 @@ import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
 import {
+  applyCellKnowledge,
   buildScene3D,
   hiddenPlacedPropIds,
   positionToCube,
   propWorldPosition,
   worldPositionOf,
 } from './atlasToScene3D';
+import type { AuthoredWallRun, DoorGapPiece } from './atlasWallRuns';
+import { cellKnowledge } from './cellKnowledge';
+import {
+  ATLAS_CELLS,
+  FRAMED,
+  VISIBLE_AFTER_LEAVING,
+  VISIBLE_AT_ARCHWAY,
+} from './fogCellBlock.fixture';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 
@@ -683,5 +693,388 @@ describe('buildScene3D supplied structural layout', () => {
         'pointy'
       )
     ).toThrow(/wall broken/);
+  });
+});
+
+describe('applyCellKnowledge — the scene as this seat knows it (fog of war, rpg-project#586)', () => {
+  const SQRT3 = Math.sqrt(3);
+  const key = (c: { x: number; y: number }) => coordToKey(positionToCube(c));
+  const atlas = () =>
+    create(GetAtlasResponseSchema, {
+      cells: ATLAS_CELLS,
+      regions: [{ id: 'block', cells: ATLAS_CELLS }],
+      doorways: [
+        { connection: 'archway', from: { x: 3, y: 0 }, to: { x: 4, y: 0 } },
+      ],
+    });
+  /** A vertical wall on the east edge of axial (q, 0), hex size 1. */
+  const eastEdge = (q: number, k: string): AuthoredWallRun => ({
+    key: k,
+    start: { x: SQRT3 * (q + 0.5), z: -0.5 },
+    end: { x: SQRT3 * (q + 0.5), z: 0.5 },
+    height: 0,
+    facing: { x: 1, z: 0 },
+  });
+  const gap = (connection: string, q: number): DoorGapPiece => ({
+    key: `gap-${connection}`,
+    connection,
+    position: { x: SQRT3 * (q + 0.5), z: 0 },
+    leafPosition: { x: SQRT3 * (q + 0.5), z: -0.5 },
+    rotationY: Math.PI / 2,
+  });
+  const scene = () => ({
+    ...buildScene3D(atlas(), 1, 'pointy'),
+    wallRuns: [eastEdge(3, 'archway-wall'), eastEdge(4, 'cell-east-wall')],
+    doorGaps: [gap('archway', 3)],
+  });
+
+  it('remembered cells carry the remembered floor flag; seen cells are lit; absent cells have no tile', () => {
+    const fog = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    expect(fog.floorLitByCell!.get(key({ x: 0, y: 0 }))).toBe(1);
+    // (5,0) is two steps from the seen corridor: inside the soft edge but dim.
+    const far = fog.floorLitByCell!.get(key({ x: 5, y: 0 }))!;
+    expect(far).toBeGreaterThan(0);
+    expect(far).toBeLessThan(1);
+    for (const c of FRAMED) {
+      expect(fog.cellKnowledge!.state.get(key(c))).toBe('remembered');
+      expect(fog.floorLitByCell!.get(key(c))!).toBeLessThan(1);
+    }
+    // Only atlas cells have tiles, so only atlas cells are graded.
+    expect([...fog.floorLitByCell!.keys()].sort()).toEqual(
+      ATLAS_CELLS.map(key).sort()
+    );
+  });
+
+  it('walls take the BRIGHTEST state of the cells they border', () => {
+    const leaving = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    // The archway wall borders the seen corridor end (3,0): lit.
+    expect(leaving.rememberedWallRunKeys!.has('archway-wall')).toBe(false);
+    // The cell's east wall borders (4,0) and (5,0), both remembered.
+    expect(leaving.rememberedWallRunKeys!.has('cell-east-wall')).toBe(true);
+    const looking = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AT_ARCHWAY),
+      atlas(),
+      1
+    );
+    expect(looking.rememberedWallRunKeys!.size).toBe(0);
+  });
+
+  it('a door takes the brightest state of its doorway cells', () => {
+    const remembered = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, [{ x: 0, y: 0 }]),
+      atlas(),
+      1
+    );
+    expect(remembered.rememberedDoorGapKeys!.has('gap-archway')).toBe(true);
+    const lit = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, [{ x: 4, y: 0 }]),
+      atlas(),
+      1
+    );
+    expect(lit.rememberedDoorGapKeys!.has('gap-archway')).toBe(false);
+  });
+
+  it('a structural wall takes the brightest bordering state too', () => {
+    const base = scene();
+    const withWall = {
+      ...base,
+      structuralWalls: [
+        {
+          id: 'sw',
+          surface: {
+            line: {
+              start: { x: SQRT3 * 4.5, z: -0.5 },
+              end: { x: SQRT3 * 4.5, z: 0.5 },
+            },
+          },
+        } as never,
+      ],
+    };
+    const fog = applyCellKnowledge(
+      withWall,
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    expect(fog.rememberedStructuralWallIds!.has('sw')).toBe(true);
+    const seen = applyCellKnowledge(
+      withWall,
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AT_ARCHWAY),
+      atlas(),
+      1
+    );
+    expect(seen.rememberedStructuralWallIds!.has('sw')).toBe(false);
+  });
+
+  it('hides authored-room items on absent cells and greys those on remembered cells', () => {
+    const item = (id: string, c: { x: number; y: number }) => ({
+      id,
+      transform: {
+        x: SQRT3 * (c.x + c.y / 2),
+        y: 0,
+        z: 1.5 * c.y,
+        rotationY: 0,
+      },
+    });
+    const withRoom = {
+      ...scene(),
+      roomScene: {
+        coordinateFrame: { hexRadius: 1 },
+        scene: {
+          items: [
+            item('lit-torch', { x: 0, y: 0 }),
+            item('cot', { x: 4, y: 0 }),
+            item('chains-behind-jamb', { x: 3, y: 1 }),
+          ],
+        },
+      } as never,
+    };
+    const fog = applyCellKnowledge(
+      withRoom,
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    expect(fog.hiddenPlacedIds!.has('chains-behind-jamb')).toBe(true);
+    expect(fog.rememberedRoomItemIds!.has('cot')).toBe(true);
+    expect(fog.rememberedRoomItemIds!.has('lit-torch')).toBe(false);
+    expect(fog.hiddenPlacedIds!.has('lit-torch')).toBe(false);
+  });
+
+  it('computes no visibility: an atlas cell absent from visible_cells is remembered even beside the seat', () => {
+    // The seat stands at (0,0) and is told it sees only its own cell.
+    const fog = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, [{ x: 0, y: 0 }]),
+      atlas(),
+      1
+    );
+    expect(fog.floorLitByCell!.get(key({ x: 0, y: 0 }))).toBe(1);
+    expect(fog.floorLitByCell!.get(key({ x: 1, y: 0 }))).toBeLessThan(1);
+    expect(fog.cellKnowledge!.state.get(key({ x: 1, y: 0 }))).toBe(
+      'remembered'
+    );
+    expect(fog.rememberedWallRunKeys!.size).toBe(2);
+  });
+
+  it('a view with no visible cells draws every atlas cell lit', () => {
+    const fog = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, []),
+      atlas(),
+      1
+    );
+    expect([...fog.floorLitByCell!.values()].every((w) => w === 1)).toBe(true);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
+    expect(fog.rememberedDoorGapKeys!.size).toBe(0);
+  });
+
+  it('a long wall with one seen neighbour lights only the stretch beside the seen cell, the rest remembered', () => {
+    // The reviewer's probe: a straight wall four hexes long between row r=0
+    // and row r=1, cells along both sides, and the seat sees only the hex at
+    // the wall's start.
+    const rows = [
+      ...[0, 1, 2, 3, 4].map((q) => ({ x: q, y: 0 })),
+      ...[-1, 0, 1, 2, 3].map((q) => ({ x: q, y: 1 })),
+    ];
+    const rowAtlas = create(GetAtlasResponseSchema, { cells: rows });
+    const longWall: AuthoredWallRun = {
+      key: 'long',
+      start: { x: 0, z: 0.75 },
+      end: { x: SQRT3 * 4, z: 0.75 },
+      height: 0,
+      facing: { x: 0, z: 1 },
+    };
+    const fog = applyCellKnowledge(
+      { ...buildScene3D(rowAtlas, 1, 'pointy'), wallRuns: [longWall] },
+      cellKnowledge(rows, [{ x: 0, y: 0 }]),
+      rowAtlas,
+      1
+    );
+    expect(fog.wallRuns.length).toBeGreaterThan(1);
+    const lit = fog.wallRuns.filter(
+      (run) => !fog.rememberedWallRunKeys!.has(run.key)
+    );
+    const grey = fog.wallRuns.filter((run) =>
+      fog.rememberedWallRunKeys!.has(run.key)
+    );
+    expect(lit).toHaveLength(1);
+    // The lit stretch starts at the wall's start and stops within the seen
+    // hex's span (x ≤ √3 · 0.5 + one half-hex sample).
+    expect(lit[0]!.start.x).toBeCloseTo(0);
+    expect(lit[0]!.end.x).toBeLessThan(SQRT3);
+    // Everything after it is remembered and reaches the wall's end.
+    expect(grey.length).toBeGreaterThan(0);
+    expect(Math.max(...grey.map((run) => run.end.x))).toBeCloseTo(SQRT3 * 4);
+    // The stretches tile the original line with no gap or overlap.
+    const ordered = [...fog.wallRuns].sort((a, b) => a.start.x - b.start.x);
+    for (let i = 1; i < ordered.length; i++) {
+      expect(ordered[i]!.start.x).toBeCloseTo(ordered[i - 1]!.end.x);
+    }
+  });
+
+  it('a uniform wall run keeps its own key', () => {
+    const fog = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AT_ARCHWAY),
+      atlas(),
+      1
+    );
+    expect(fog.wallRuns.map((run) => run.key)).toEqual([
+      'archway-wall',
+      'cell-east-wall',
+    ]);
+  });
+
+  it('greys a structural wall only along its remembered stretch', () => {
+    const rows = [
+      ...[0, 1, 2, 3, 4].map((q) => ({ x: q, y: 0 })),
+      ...[-1, 0, 1, 2, 3].map((q) => ({ x: q, y: 1 })),
+    ];
+    const rowAtlas = create(GetAtlasResponseSchema, { cells: rows });
+    const fog = applyCellKnowledge(
+      {
+        ...buildScene3D(rowAtlas, 1, 'pointy'),
+        structuralWalls: [
+          {
+            id: 'long-sw',
+            surface: {
+              line: {
+                start: { x: 0, z: 0.75 },
+                end: { x: SQRT3 * 4, z: 0.75 },
+              },
+            },
+          } as never,
+        ],
+      },
+      cellKnowledge(rows, [{ x: 0, y: 0 }]),
+      rowAtlas,
+      1
+    );
+    const stretches = fog.structuralWallStretches!.get('long-sw')!;
+    expect(stretches.map((st) => st.state)).toEqual(['seen', 'remembered']);
+    expect(stretches[0]!.from).toBe(0);
+    expect(stretches[0]!.to).toBeGreaterThan(0);
+    expect(stretches[0]!.to).toBeLessThan(0.25);
+    expect(stretches[1]!.to).toBe(1);
+    expect(fog.rememberedStructuralWallIds!.has('long-sw')).toBe(false);
+  });
+
+  it('hides no authored-room item while the server sends no visible_cells', () => {
+    const offAtlas = {
+      ...scene(),
+      roomScene: {
+        coordinateFrame: { hexRadius: 1 },
+        scene: {
+          items: [
+            {
+              id: 'banner-across-the-wall',
+              transform: { x: SQRT3 * 9, y: 0, z: 0, rotationY: 0 },
+            },
+          ],
+        },
+      } as never,
+    };
+    const degraded = applyCellKnowledge(
+      offAtlas,
+      cellKnowledge(ATLAS_CELLS, []),
+      atlas(),
+      1
+    );
+    expect(degraded.hiddenPlacedIds!.has('banner-across-the-wall')).toBe(false);
+    expect(degraded.rememberedRoomItemIds!.size).toBe(0);
+    // Once the server speaks per cell, the off-atlas item is absent.
+    const supplied = applyCellKnowledge(
+      offAtlas,
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    expect(supplied.hiddenPlacedIds!.has('banner-across-the-wall')).toBe(true);
+  });
+
+  it('counts the hex across the wall for a wall-mounted item', () => {
+    // On the edge between seen (3,0) and remembered (4,0): lit, not hidden.
+    const mounted = {
+      ...scene(),
+      roomScene: {
+        coordinateFrame: { hexRadius: 1 },
+        scene: {
+          items: [
+            {
+              id: 'torch-on-archway',
+              transform: { x: SQRT3 * 3.5, y: 0, z: 0, rotationY: 0 },
+            },
+          ],
+        },
+      } as never,
+    };
+    const fog = applyCellKnowledge(
+      mounted,
+      cellKnowledge(ATLAS_CELLS, VISIBLE_AFTER_LEAVING),
+      atlas(),
+      1
+    );
+    expect(fog.hiddenPlacedIds!.has('torch-on-archway')).toBe(false);
+    expect(fog.rememberedRoomItemIds!.has('torch-on-archway')).toBe(false);
+  });
+
+  it('a wall with one seen tip draws only the tip stretch; the rest, bordering absent cells, is not drawn', () => {
+    // The atlas knows only the two hexes beside the wall's start; the wall
+    // arrives whole (structural walls do), running on beside unknown space.
+    const tip = [
+      { x: 0, y: 0 },
+      { x: -1, y: 1 },
+    ];
+    const tipAtlas = create(GetAtlasResponseSchema, { cells: tip });
+    const line = { start: { x: 0, z: 0.75 }, end: { x: SQRT3 * 4, z: 0.75 } };
+    const fog = applyCellKnowledge(
+      {
+        ...buildScene3D(tipAtlas, 1, 'pointy'),
+        wallRuns: [{ key: 'S', ...line, height: 0, facing: { x: 0, z: 1 } }],
+        structuralWalls: [{ id: 'S-wall', surface: { line } } as never],
+      },
+      cellKnowledge(tip, [{ x: 0, y: 0 }]),
+      tipAtlas,
+      1
+    );
+    expect(fog.wallRuns).toHaveLength(1);
+    expect(fog.wallRuns[0]!.start.x).toBeCloseTo(0);
+    expect(fog.wallRuns[0]!.end.x).toBeLessThan(SQRT3);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
+    const stretches = fog.structuralWallStretches!.get('S-wall')!;
+    expect(stretches[0]!.state).toBe('seen');
+    expect(stretches.at(-1)!.state).toBe('absent');
+    expect(stretches.at(-1)!.to).toBe(1);
+  });
+
+  it('draws absent-only stretches while the server sends no visible_cells', () => {
+    const tip = [{ x: 0, y: 0 }];
+    const tipAtlas = create(GetAtlasResponseSchema, { cells: tip });
+    const line = { start: { x: 0, z: 0.75 }, end: { x: SQRT3 * 4, z: 0.75 } };
+    const fog = applyCellKnowledge(
+      {
+        ...buildScene3D(tipAtlas, 1, 'pointy'),
+        wallRuns: [{ key: 'S', ...line, height: 0, facing: { x: 0, z: 1 } }],
+      },
+      cellKnowledge(tip, []),
+      tipAtlas,
+      1
+    );
+    expect(fog.wallRuns.map((r) => r.key)).toEqual(['S']);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
   });
 });

@@ -36,6 +36,11 @@ export function refreshKeysFor(
   switch (event.body.case) {
     case 'experienceGained':
       return ['characterData'];
+    // THE MOVER'S OWN STEP DOES NOT LIST `view`, and seen-now still follows
+    // the seat (fog of war, rpg-project#586). `where` re-reads the position,
+    // and SessionEncounterView schedules `view` whenever that position
+    // changes — so `GetView`, and with it `visible_cells`, is re-read after
+    // every own step. Listing `view` here too would read it twice per step.
     case 'moved':
       return event.body.value.member === member
         ? ['where', 'afford', 'turn']
@@ -65,7 +70,13 @@ export function refreshKeysFor(
       return ['roster'];
     case 'door':
       return ['view'];
+    // ROOM_REVEALED is deprecated and no server produces it; its row stays for
+    // an older server. CELLS_REVEALED replaces it (rpg-project#586): the
+    // event patches the atlas in place (`applyCellsRevealed`), and the cells
+    // it taught are cells this seat now sees, so `view` re-reads seen-now;
+    // `roster` because a newly known cell can hold a creature to list.
     case 'roomRevealed':
+    case 'cellsRevealed':
       return ['view', 'roster'];
     // DOOR_REVEALED / REGION_REVEALED patch this recipient's cached
     // GetDoors / GetAtlas views in place, per the protos' own doc

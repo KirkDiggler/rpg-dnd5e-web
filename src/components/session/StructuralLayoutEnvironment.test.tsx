@@ -9,6 +9,7 @@
  * the click affordance. Conversion itself is proven against the numeric
  * witness in `structuralLayout.test.ts`.
  */
+import { REMEMBERED_SURFACE_TINT } from '@/components/hex-grid/sceneKnowledge';
 import { create } from '@bufbuild/protobuf';
 import {
   AtlasStructuralDoorSchema,
@@ -184,7 +185,147 @@ describe('StructuralLayoutEnvironment', () => {
     await view.unmount();
   });
 
-  it('renders an explicit neutral marker for an UNKNOWN state and never a click', async () => {
+  it('greys only the wall pieces inside a remembered stretch', async () => {
+    const built = render([wall()]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        wallStretches={
+          new Map([
+            [
+              'wall-1',
+              [
+                { from: 0, to: 0.5, state: 'seen' as const },
+                { from: 0.5, to: 1, state: 'remembered' as const },
+              ],
+            ],
+          ])
+        }
+      />
+    );
+    const pieces = view.scene.findAll(
+      (node) =>
+        typeof node.props.name === 'string' &&
+        node.props.name.startsWith('structural-wall-piece-wall-1-')
+    );
+    const states = pieces.map((piece) => piece.props.userData.knowledge);
+    expect(states).toContain('seen');
+    expect(states).toContain('remembered');
+    // Pieces are laid out in order along the line: lit first, grey after.
+    expect(states.indexOf('remembered')).toBeGreaterThan(
+      states.lastIndexOf('seen')
+    );
+    await view.unmount();
+  });
+
+  it('cuts a fittable wall piece at a stretch boundary and grades each cut by its stretch', async () => {
+    // The walk finding: piece 0 was graded at its midpoint, so a seen stretch
+    // 0–0.15 drew remembered. Cuts follow the stretch, not the piece.
+    const built = render([
+      wall({ ref: 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01' }),
+    ]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        wallStretches={
+          new Map([
+            [
+              'wall-1',
+              [
+                { from: 0, to: 0.15, state: 'seen' as const },
+                { from: 0.15, to: 1, state: 'remembered' as const },
+              ],
+            ],
+          ])
+        }
+      />
+    );
+    const pieces = view.scene.findAll(
+      (node) =>
+        typeof node.props.name === 'string' &&
+        node.props.name.startsWith('structural-wall-piece-wall-1-')
+    );
+    expect(pieces[0]!.props.userData.knowledge).toBe('seen');
+    expect(pieces.at(-1)!.props.userData.knowledge).toBe('remembered');
+    // The seen cut ends exactly at 15% of the wall, wherever the piece ended.
+    const fits = view.scene
+      .findAllByProps({ name: 'stub-world-asset' })
+      .map(
+        (n) =>
+          n.props.userData.plainWallFit as { offset: number; width: number }
+      );
+    const total = Math.max(...fits.map((f) => f.offset + f.width));
+    const seenFits = fits.filter(
+      (_, i) => pieces[i]!.props.userData.knowledge === 'seen'
+    );
+    expect(
+      Math.max(...seenFits.map((f) => f.offset + f.width)) / total
+    ).toBeCloseTo(0.15, 6);
+    await view.unmount();
+  });
+
+  it('does not draw a stretch beside only absent cells', async () => {
+    const built = render([
+      wall({ ref: 'dnd5e:env:fantasy-kingdom:castle_wall_fit_01' }),
+    ]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        wallStretches={
+          new Map([
+            [
+              'wall-1',
+              [
+                { from: 0, to: 0.2, state: 'seen' as const },
+                { from: 0.2, to: 1, state: 'absent' as const },
+              ],
+            ],
+          ])
+        }
+      />
+    );
+    const fits = view.scene
+      .findAllByProps({ name: 'stub-world-asset' })
+      .map(
+        (n) =>
+          n.props.userData.plainWallFit as { offset: number; width: number }
+      );
+    expect(fits.length).toBeGreaterThan(0);
+    const drawnEnd = Math.max(...fits.map((f) => f.offset + f.width));
+    const wallLen = Math.hypot(
+      built.walls[0]!.surface.line.end.x - built.walls[0]!.surface.line.start.x,
+      built.walls[0]!.surface.line.end.z - built.walls[0]!.surface.line.start.z
+    );
+    expect(drawnEnd / wallLen).toBeCloseTo(0.2, 6);
+    for (const n of view.scene.findAllByProps({ name: 'stub-world-asset' }))
+      expect(n.props.userData.remembered).toBe(false);
+    await view.unmount();
+  });
+
+  it('tints a remembered structural wall with the remembered surface grey', async () => {
+    const built = render([wall()]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        rememberedWallIds={new Set(['wall-1'])}
+      />
+    );
+    for (const n of view.scene.findAllByProps({ name: 'stub-world-asset' })) {
+      expect(n.props.userData.remembered).toBe(true);
+      expect(n.props.userData.rememberedTint).toBe(REMEMBERED_SURFACE_TINT);
+    }
+    await view.unmount();
+  });
+
+  it('draws a door with NO observation closed, remembered and inert — never an unobserved marker (R2)', async () => {
     const onDoorClick = vi.fn();
     const built = render([], [door()]);
     const view = await ReactThreeTestRenderer.create(
@@ -196,22 +337,53 @@ describe('StructuralLayoutEnvironment', () => {
         onDoorClick={onDoorClick}
       />
     );
-    const marker = view.scene.findByProps({
-      name: 'structural-door-unknown-front-room/gate',
-    });
-    expect(marker).toBeTruthy();
-    expect(marker.props.userData.status).toBe('unknown');
-    // Passing open=undefined still draws the asset's CLOSED rest pose. No
-    // leaf/assembly may sit behind the neutral marker and assert that state.
-    expect(
-      view.scene.findAllByProps({ name: 'stub-world-asset' })
-    ).toHaveLength(0);
     expect(
       view.scene.findAllByProps({
-        name: 'structural-wall-door-front-room/gate',
+        name: 'structural-door-unknown-front-room/gate',
       })
     ).toHaveLength(0);
+    const assembly = view.scene.findByProps({
+      name: 'structural-wall-door-front-room/gate',
+    });
+    expect(assembly.props.userData).toMatchObject({
+      state: 'closed',
+      open: false,
+      knowledge: 'remembered',
+    });
+    const assets = view.scene.findAllByProps({ name: 'stub-world-asset' });
+    expect(assets.length).toBeGreaterThan(0);
+    for (const asset of assets) {
+      expect(asset.props.userData.remembered).toBe(true);
+      expect(asset.props.userData.onDoorClick).toBeUndefined();
+    }
     expect(onDoorClick).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('draws a wall and a door no seen cell borders in the remembered treatment', async () => {
+    const built = render([], [door()]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        observedDoors={
+          new Map([['front-room/gate', observation(DoorState.CLOSED)]])
+        }
+        onDoorClick={vi.fn()}
+        rememberedDoorIds={new Set(['front-room/gate'])}
+      />
+    );
+    const assembly = view.scene.findByProps({
+      name: 'structural-wall-door-front-room/gate',
+    });
+    expect(assembly.props.userData.knowledge).toBe('remembered');
+    for (const asset of view.scene.findAllByProps({
+      name: 'stub-world-asset',
+    })) {
+      expect(asset.props.userData.remembered).toBe(true);
+      expect(asset.props.userData.onDoorClick).toBeUndefined();
+    }
     await view.unmount();
   });
 

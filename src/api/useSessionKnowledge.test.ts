@@ -710,3 +710,142 @@ describe('session knowledge delivery', () => {
     expect(response.atlas?.props).toHaveLength(0);
   });
 });
+
+describe('fog of war cell delivery (rpg-project#586)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('a cellsRevealed event patches the atlas by region id and advances seq', async () => {
+    client.getKnowledge.mockResolvedValue(snapshot(10n));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.CELLS_REVEALED,
+          body: {
+            case: 'cellsRevealed',
+            value: {
+              regions: [
+                { id: 'entry', cells: [{ x: 1, y: 0 }] },
+                { id: 'cell', cells: [{ x: 2, y: 0 }] },
+              ],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.snapshot?.seq).toBe(11n);
+    const atlas = result.current.atlas!;
+    expect(atlas.cells.map((c) => `${c.x},${c.y}`).sort()).toEqual([
+      '0,0',
+      '1,0',
+      '2,0',
+    ]);
+    // The partial entry region UNIONED, not replaced.
+    expect(
+      atlas.regions
+        .find((r) => r.id === 'entry')!
+        .cells.map((c) => `${c.x},${c.y}`)
+    ).toEqual(['0,0', '1,0']);
+    expect(atlas.regions.map((r) => r.id)).toEqual(['entry', 'cell']);
+  });
+
+  it('carries GetView’s visible_cells into the cached view on refresh', async () => {
+    client.getKnowledge.mockResolvedValue(snapshot(10n));
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, { visibleCells: [{ x: 0, y: 0 }] })
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.view.visibleCells).toEqual([]);
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(
+      result.current.view.visibleCells.map((c) => `${c.x},${c.y}`)
+    ).toEqual(['0,0']);
+  });
+});
+
+describe('seen-now across a reveal patch (fog of war walk, rpg-project#586)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const keysOf = (cells: readonly { x: number; y: number }[]) =>
+    cells.map((c) => `${c.x},${c.y}`).sort();
+  const seeingBoth = () =>
+    create(GetKnowledgeResponseSchema, {
+      seq: 10n,
+      atlas: {
+        cells: [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+        ],
+        regions: [
+          {
+            id: 'hall',
+            cells: [
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+            ],
+          },
+        ],
+      },
+      view: {
+        visibleCells: [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+        ],
+      },
+    });
+  const reveal = () =>
+    create(EventSchema, {
+      seq: 11n,
+      kind: EventKind.CELLS_REVEALED,
+      body: {
+        case: 'cellsRevealed',
+        value: { regions: [{ id: 'cell', cells: [{ x: 2, y: 0 }] }] },
+      },
+    });
+
+  it('a reveal patch arriving before the next view never turns a seen cell remembered', async () => {
+    client.getKnowledge.mockResolvedValue(seeingBoth());
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // A view read already in flight (the door's refresh) answers from BEFORE
+    // the patch: it no longer lists (1,0).
+    const stale =
+      deferred<ReturnType<typeof create<typeof GetViewResponseSchema>>>();
+    client.getView.mockReturnValueOnce(stale.promise);
+    let inFlight!: Promise<void>;
+    act(() => {
+      inFlight = result.current.refetchView();
+    });
+    await waitFor(() => expect(client.getView).toHaveBeenCalledTimes(1));
+    act(() => result.current.acceptEvent(reveal()));
+    // The patch alone keeps every seen cell seen.
+    expect(keysOf(result.current.view.visibleCells)).toEqual(['0,0', '1,0']);
+    await act(async () => {
+      stale.resolve(
+        create(GetViewResponseSchema, { visibleCells: [{ x: 0, y: 0 }] })
+      );
+      await inFlight;
+    });
+    // The in-flight read was requested before the patch: (1,0) stays seen.
+    expect(keysOf(result.current.view.visibleCells)).toEqual(['0,0', '1,0']);
+
+    // A read requested AFTER the patch is the server's current answer.
+    client.getView.mockResolvedValueOnce(
+      create(GetViewResponseSchema, {
+        visibleCells: [
+          { x: 0, y: 0 },
+          { x: 2, y: 0 },
+        ],
+      })
+    );
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(keysOf(result.current.view.visibleCells)).toEqual(['0,0', '2,0']);
+  });
+});

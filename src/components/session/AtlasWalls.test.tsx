@@ -12,6 +12,7 @@ import {
   SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
   shellLocalOffsetToWorld,
 } from '../hex-grid/dungeonShellWallHelpers';
+import { REMEMBERED_TINT } from '../hex-grid/sceneKnowledge';
 import { AtlasWalls } from './AtlasWalls';
 import { segmentsToWallRuns, type DoorGapPiece } from './atlasWallRuns';
 
@@ -819,5 +820,71 @@ describe('AtlasWalls profile assembly', () => {
     );
     expect(meshNodes(open)).toHaveLength(1);
     expect(primitiveGroups(open).map(meshName)).toEqual(['legacy-frame']);
+  });
+});
+
+describe('AtlasWalls fog of war (rpg-project#586)', () => {
+  beforeEach(() => {
+    loadedUrls.splice(0);
+    rejectedUrls.clear();
+  });
+
+  it('draws remembered runs and doors in the remembered treatment, inert', async () => {
+    const onDoorClick = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={wallRuns}
+        doorGaps={doorGaps}
+        profile={profile}
+        doors={new Map([['door-id', { state: DoorState.CLOSED } as never]])}
+        onDoorClick={onDoorClick}
+        rememberedRunKeys={new Set(wallRuns.map((run) => run.key))}
+        rememberedDoorKeys={new Set(doorGaps.map((gap) => gap.key))}
+      />
+    );
+    for (const run of wallRuns) {
+      expect(
+        renderer.scene.findByProps({ name: `wall-run-${run.key}` }).props
+          .userData.knowledge
+      ).toBe('remembered');
+    }
+    expect(
+      renderer.scene.findByProps({ name: 'door-gap-door-id' }).props.userData
+        .knowledge
+    ).toBe('remembered');
+    // Every drawn piece carries the remembered tint, not the source white.
+    const colors = meshNodes(renderer).map(
+      (node) =>
+        (
+          (node as { instance: THREE.Mesh }).instance
+            .material as THREE.MeshStandardMaterial
+        ).color
+    );
+    expect(colors.length).toBeGreaterThan(0);
+    for (const color of colors) {
+      expect(color.getHex()).toBe(REMEMBERED_TINT.getHex());
+    }
+    expect(
+      renderer.scene.findAll((node) => typeof node.props.onClick === 'function')
+    ).toHaveLength(0);
+  });
+
+  it('keeps a run lit when it is not in the remembered set', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={wallRuns}
+        doorGaps={[]}
+        profile={profile}
+        rememberedRunKeys={new Set([wallRuns[0]!.key])}
+      />
+    );
+    expect(
+      renderer.scene.findByProps({ name: `wall-run-${wallRuns[0]!.key}` }).props
+        .userData.knowledge
+    ).toBe('remembered');
+    expect(
+      renderer.scene.findByProps({ name: `wall-run-${wallRuns[1]!.key}` }).props
+        .userData.knowledge
+    ).toBe('seen');
   });
 });

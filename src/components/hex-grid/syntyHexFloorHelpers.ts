@@ -42,6 +42,10 @@ export interface FloorPoolLight {
 export interface DungeonFloorLighting {
   readonly exposureByCell: ReadonlyMap<string, number>;
   readonly poolsByCell: ReadonlyMap<string, readonly FloorPoolLight[]>;
+  /** Fog of war (rpg-project#586): the lit share of each tile this seat
+   * knows — 1 seen now, the soft-edge weight, 0 remembered. Composes AFTER
+   * exposure and pools. Absent, or a tile it does not list, is lit (1). */
+  readonly litByCell?: ReadonlyMap<string, number>;
 }
 
 export const CRYPT_DARK_FLOOR_TINT = new THREE.Color('#101318');

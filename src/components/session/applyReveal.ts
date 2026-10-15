@@ -43,8 +43,10 @@
 
 import { clone } from '@bufbuild/protobuf';
 import {
+  CellsRevealedSchema,
   DoorRevealedSchema,
   RegionRevealedSchema,
+  type CellsRevealed,
   type ConcealmentRevealed,
   type DoorRevealed,
   type RegionRevealed,
@@ -54,6 +56,7 @@ import {
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
+  AtlasRegion,
   AtlasSegment,
   AtlasStructuralDoor,
   AtlasStructuralWall,
@@ -290,6 +293,100 @@ export function applyRegionRevealed(
   next.sealed = appendNew(
     next.sealed.filter((c) => !revealed.has(cellKey(c))),
     sealed,
+    cellKey
+  );
+  return next;
+}
+
+/**
+ * Union partial regions into the held ones BY ID (fog of war, rpg-project#586).
+ *
+ * A `CellsRevealed` region carries only the cells of that region this
+ * recipient newly learned, so replacing the held region by id — what a room
+ * reveal does — would truncate it to the latest slice. The held cells stay,
+ * the new ones are appended once, and the incoming record's other fields
+ * (archetype, lighting) are the current answer for the region.
+ */
+function unionRegions(
+  have: readonly AtlasRegion[],
+  incoming: readonly AtlasRegion[]
+): AtlasRegion[] {
+  const out = [...have];
+  for (const region of incoming) {
+    const at = out.findIndex((r) => r.id === region.id);
+    if (at < 0) {
+      out.push({ ...region, cells: appendNew([], region.cells, cellKey) });
+      continue;
+    }
+    out[at] = {
+      ...region,
+      cells: appendNew(out[at]!.cells, region.cells, cellKey),
+    };
+  }
+  return out;
+}
+
+/**
+ * The atlas this recipient should hold after a CELLS_REVEALED beat — the
+ * per-cell successor to `applyRegionRevealed` (fog of war, rpg-project#586).
+ *
+ * Every record is upserted by identity, so applying the same beat twice is a
+ * no-op and a wall sent twice draws once:
+ *
+ * - regions by id, cells UNIONED (`unionRegions`), never replaced;
+ * - `cells` gains the regions' new cells and the scenery;
+ * - props, doorways, placed props, exits, boundaries and segments append,
+ *   de-duplicated under the same keys the room reveal uses;
+ * - structural walls and doors upsert by id (`applyStructuralRecords`), prop
+ *   presentations by id (`applyPropPresentations`);
+ * - `sealed` follows the room reveal's relation over the newly owned cells:
+ *   `after.sealed = (before.sealed \ newly owned cells) ∪ event.sealed`.
+ */
+export function applyCellsRevealed(
+  atlas: GetAtlasResponse,
+  event: CellsRevealed
+): GetAtlasResponse {
+  event = clone(CellsRevealedSchema, event);
+  const next = clone(GetAtlasResponseSchema, atlas);
+  const owned = event.regions.flatMap((r) => r.cells);
+
+  next.cells = appendNew(next.cells, [...owned, ...event.scenery], cellKey);
+  next.regions = unionRegions(next.regions, event.regions);
+  next.props = appendNew(
+    next.props,
+    event.props,
+    (p) => p.id || `${p.ref}:${p.at ? cellKey(p.at) : ''}`
+  );
+  next.doorways = appendNew(
+    next.doorways,
+    event.doorways,
+    (d) => `${d.connection}:${pairKey(d.from, d.to)}`
+  );
+  next.placed = appendNew(next.placed, event.placed, (p) => p.id);
+  next.exits = appendNew(next.exits, event.exits, (e) => e.id);
+  next.boundaries = appendNew(next.boundaries, event.boundaries, (b) =>
+    pairKey(b.from, b.to)
+  );
+  next.segments = appendNew(next.segments, event.segments, segmentKey);
+
+  const structured = applyStructuralRecords(
+    next,
+    event.structuralWalls,
+    event.structuralDoors,
+    event.structuralWallOpeningsReplacements
+  );
+  next.structuralWalls = structured.structuralWalls;
+  next.structuralDoors = structured.structuralDoors;
+  next.propPresentations = applyPropPresentations(
+    atlas.propPresentations,
+    event.propPresentations,
+    next.structuralDoors
+  );
+
+  const newlyOwned = new Set(owned.map(cellKey));
+  next.sealed = appendNew(
+    next.sealed.filter((c) => !newlyOwned.has(cellKey(c))),
+    event.sealed,
     cellKey
   );
   return next;
