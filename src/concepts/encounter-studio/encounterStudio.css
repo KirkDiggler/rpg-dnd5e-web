@@ -1164,3 +1164,28 @@
 .encounter-studio .es-publish-status:empty {
   display: none;
 }
+
+/* Open from the server (rpg-project#585): the panel lists This world and
+ * References in one column under the header row. */
+.encounter-studio .es-open-panel {
+  flex-direction: column;
+  align-items: stretch;
+}
+.encounter-studio .es-open-panel > h3 {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+.encounter-studio .es-open-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-open-list > li {
+  padding: 0.2rem 0;
+}
+.encounter-studio .es-open-list small {
+  opacity: 0.7;
+}
+.encounter-studio .es-open-list p {
+  margin: 0.15rem 0 0;
+}
