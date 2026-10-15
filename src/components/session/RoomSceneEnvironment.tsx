@@ -33,6 +33,9 @@ export interface RoomSceneEnvironmentProps {
    * cannot see must not be drawn. Undefined/empty hides nothing (the author
    * preview's case: the author sees every placement). */
   readonly hiddenPlacedIds?: ReadonlySet<string>;
+  /** Fog of war (rpg-project#586): items standing on a remembered cell draw
+   * in the remembered treatment. Undefined draws every item lit. */
+  readonly rememberedItemIds?: ReadonlySet<string>;
   /** Editor previews may show the full workspace. Play supplies its floor
    * separately from the observer atlas, never from this presentation. */
   readonly renderWorkspaceFloor?: boolean;
@@ -255,6 +258,7 @@ export function RoomSceneEnvironment({
   doors,
   onDoorClick,
   hiddenPlacedIds,
+  rememberedItemIds,
   renderWorkspaceFloor = true,
 }: RoomSceneEnvironmentProps) {
   // THE HIDE RULE (rpg-dnd5e-web#1182). The authored scene is the author's
@@ -277,7 +281,10 @@ export function RoomSceneEnvironment({
           item={item}
           dungeonKey={dungeonKey}
           doors={doors}
-          onDoorClick={onDoorClick}
+          onDoorClick={
+            rememberedItemIds?.has(item.id) ? undefined : onDoorClick
+          }
+          remembered={rememberedItemIds?.has(item.id) ?? false}
         />
       ))}
     </>

@@ -148,8 +148,12 @@ export function StructuralWallSurfacePieces({
   onMeasured,
   visualLighting,
   finishSpans = [],
+  remembered = false,
 }: {
   wall: StructuralWallSurface;
+  /** Fog of war (rpg-project#586): draw every piece in the remembered
+   * treatment. The editor never sets it. */
+  remembered?: boolean;
   endFits?: WallEndFits;
   finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
@@ -206,7 +210,11 @@ export function StructuralWallSurfacePieces({
     );
   }
   return (
-    <group ref={piecesRef} name={`structural-wall-pieces-${wall.id}`}>
+    <group
+      ref={piecesRef}
+      name={`structural-wall-pieces-${wall.id}`}
+      userData={{ knowledge: remembered ? 'remembered' : 'seen' }}
+    >
       {layouts.flatMap((layout, spanIndex) =>
         layout.pieces.flatMap((piece, pieceIndex) => {
           const length =
@@ -282,6 +290,7 @@ export function StructuralWallSurfacePieces({
                     position={[0, 0, 0]}
                     rotationY={0}
                     heightScale={1}
+                    remembered={remembered}
                     onBoundsMeasured={onMeasured}
                   />
                 </group>
@@ -364,7 +373,11 @@ export function FittedDoorSurface({
   onMeasured,
   onClick,
   visualLighting,
+  remembered = false,
 }: {
+  /** Fog of war (rpg-project#586): draw the door in the remembered
+   * treatment. The editor never sets it. */
+  remembered?: boolean;
   /** The door's canonical identity — the runtime joins observed state by it
    * and the editor carries the authored opening's door id. */
   doorId: string;
@@ -458,6 +471,7 @@ export function FittedDoorSurface({
         open,
         baseY,
         heightScale,
+        knowledge: remembered ? 'remembered' : 'seen',
       }}
       position={[pose.point.x, baseY, pose.point.z]}
       rotation={[0, pose.rotationY, 0]}
@@ -470,6 +484,7 @@ export function FittedDoorSurface({
         rotationY={0}
         heightScale={1}
         open={open}
+        remembered={remembered}
         onBoundsMeasured={onMeasured}
         onDoorClick={onClick}
       />

@@ -710,3 +710,60 @@ describe('session knowledge delivery', () => {
     expect(response.atlas?.props).toHaveLength(0);
   });
 });
+
+describe('fog of war cell delivery (rpg-project#586)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('a cellsRevealed event patches the atlas by region id and advances seq', async () => {
+    client.getKnowledge.mockResolvedValue(snapshot(10n));
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.acceptEvent(
+        create(EventSchema, {
+          seq: 11n,
+          kind: EventKind.CELLS_REVEALED,
+          body: {
+            case: 'cellsRevealed',
+            value: {
+              regions: [
+                { id: 'entry', cells: [{ x: 1, y: 0 }] },
+                { id: 'cell', cells: [{ x: 2, y: 0 }] },
+              ],
+            },
+          },
+        })
+      );
+    });
+    expect(result.current.snapshot?.seq).toBe(11n);
+    const atlas = result.current.atlas!;
+    expect(atlas.cells.map((c) => `${c.x},${c.y}`).sort()).toEqual([
+      '0,0',
+      '1,0',
+      '2,0',
+    ]);
+    // The partial entry region UNIONED, not replaced.
+    expect(
+      atlas.regions
+        .find((r) => r.id === 'entry')!
+        .cells.map((c) => `${c.x},${c.y}`)
+    ).toEqual(['0,0', '1,0']);
+    expect(atlas.regions.map((r) => r.id)).toEqual(['entry', 'cell']);
+  });
+
+  it('carries GetView’s visible_cells into the cached view on refresh', async () => {
+    client.getKnowledge.mockResolvedValue(snapshot(10n));
+    client.getView.mockResolvedValue(
+      create(GetViewResponseSchema, { visibleCells: [{ x: 0, y: 0 }] })
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.view.visibleCells).toEqual([]);
+    await act(async () => {
+      await result.current.refetchView();
+    });
+    expect(
+      result.current.view.visibleCells.map((c) => `${c.x},${c.y}`)
+    ).toEqual(['0,0']);
+  });
+});

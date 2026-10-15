@@ -184,7 +184,7 @@ describe('StructuralLayoutEnvironment', () => {
     await view.unmount();
   });
 
-  it('renders an explicit neutral marker for an UNKNOWN state and never a click', async () => {
+  it('draws a door with NO observation closed, remembered and inert — never an unobserved marker (R2)', async () => {
     const onDoorClick = vi.fn();
     const built = render([], [door()]);
     const view = await ReactThreeTestRenderer.create(
@@ -196,22 +196,53 @@ describe('StructuralLayoutEnvironment', () => {
         onDoorClick={onDoorClick}
       />
     );
-    const marker = view.scene.findByProps({
-      name: 'structural-door-unknown-front-room/gate',
-    });
-    expect(marker).toBeTruthy();
-    expect(marker.props.userData.status).toBe('unknown');
-    // Passing open=undefined still draws the asset's CLOSED rest pose. No
-    // leaf/assembly may sit behind the neutral marker and assert that state.
-    expect(
-      view.scene.findAllByProps({ name: 'stub-world-asset' })
-    ).toHaveLength(0);
     expect(
       view.scene.findAllByProps({
-        name: 'structural-wall-door-front-room/gate',
+        name: 'structural-door-unknown-front-room/gate',
       })
     ).toHaveLength(0);
+    const assembly = view.scene.findByProps({
+      name: 'structural-wall-door-front-room/gate',
+    });
+    expect(assembly.props.userData).toMatchObject({
+      state: 'closed',
+      open: false,
+      knowledge: 'remembered',
+    });
+    const assets = view.scene.findAllByProps({ name: 'stub-world-asset' });
+    expect(assets.length).toBeGreaterThan(0);
+    for (const asset of assets) {
+      expect(asset.props.userData.remembered).toBe(true);
+      expect(asset.props.userData.onDoorClick).toBeUndefined();
+    }
     expect(onDoorClick).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('draws a wall and a door no seen cell borders in the remembered treatment', async () => {
+    const built = render([], [door()]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        observedDoors={
+          new Map([['front-room/gate', observation(DoorState.CLOSED)]])
+        }
+        onDoorClick={vi.fn()}
+        rememberedDoorIds={new Set(['front-room/gate'])}
+      />
+    );
+    const assembly = view.scene.findByProps({
+      name: 'structural-wall-door-front-room/gate',
+    });
+    expect(assembly.props.userData.knowledge).toBe('remembered');
+    for (const asset of view.scene.findAllByProps({
+      name: 'stub-world-asset',
+    })) {
+      expect(asset.props.userData.remembered).toBe(true);
+      expect(asset.props.userData.onDoorClick).toBeUndefined();
+    }
     await view.unmount();
   });
 

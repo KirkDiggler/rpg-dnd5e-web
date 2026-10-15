@@ -56,6 +56,7 @@
 import {
   coordToKey,
   cubeToWorld,
+  worldToCube,
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
@@ -79,8 +80,17 @@ import {
   type AuthoredWallRun,
   type DoorGapPiece,
 } from './atlasWallRuns';
+import { cellsAroundPoint, cellsBesideLine } from './cellBorders';
+import {
+  brightestBorderState,
+  litWeight,
+  type CellKnowledge,
+} from './cellKnowledge';
 import { positionToCube, worldPositionOf } from './positionBridge';
-import { applyPropPresentations } from './propPresentations';
+import {
+  applyPropPresentations,
+  propPresentationItem,
+} from './propPresentations';
 import {
   structuralLayoutRender,
   type StructuralDoorRenderUnit,
@@ -227,6 +237,172 @@ export interface Scene3D {
    * author preview's truth — the author sees every placement.
    */
   hiddenPlacedIds?: ReadonlySet<string>;
+  /**
+   * FOG OF WAR (rpg-project#586): what this seat knows per cell, from the
+   * atlas and `GetViewResponse.visible_cells` only (`cellKnowledge`). Absent
+   * means no seat knowledge was supplied — the author preview and every
+   * hand-built scene — and everything draws lit, exactly as before.
+   *
+   * The fields below are DERIVED from it by `applyCellKnowledge`, never set
+   * on their own: the lit share of each floor tile (1 seen, the soft-edge
+   * weight, 0 remembered) and the fixed things that draw in the remembered
+   * treatment because no cell they border is seen.
+   */
+  cellKnowledge?: CellKnowledge;
+  floorLitByCell?: ReadonlyMap<string, number>;
+  rememberedWallRunKeys?: ReadonlySet<string>;
+  rememberedDoorGapKeys?: ReadonlySet<string>;
+  rememberedStructuralWallIds?: ReadonlySet<string>;
+  rememberedStructuralDoorIds?: ReadonlySet<string>;
+  /** Legacy atlas props by `sceneProp3DKey`. */
+  rememberedPropKeys?: ReadonlySet<string>;
+  /** Canonical authored-room items standing on a remembered cell. */
+  rememberedRoomItemIds?: ReadonlySet<string>;
+}
+
+/** The identity a legacy atlas prop is matched by in `rememberedPropKeys`. */
+export function sceneProp3DKey(prop: SceneProp3D): string {
+  return `${prop.ref}|${coordToKey(prop.position)}|${prop.id ?? ''}`;
+}
+
+/**
+ * The scene as THIS SEAT knows it: every fixed thing takes the state the
+ * server's per-cell answer gives it (design Law "The client draws three
+ * states and nothing else").
+ *
+ * - Floor: a tile's lit share is `litWeight` — seen 1, inside the soft edge
+ *   its gradient weight, remembered 0. Tiles exist only for atlas cells, so
+ *   an absent cell has no tile to draw.
+ * - Walls and doors take the BRIGHTEST state of the cells they border
+ *   (`brightestBorderState`): lit when any bordering cell is seen, remembered
+ *   otherwise. A run is one unit, so a wall with one seen neighbour is lit
+ *   along its whole run.
+ * - Fixed props and presentations on a remembered cell join the remembered
+ *   sets; mutable ones keep their observation lifecycle (sightings with no
+ *   `currentVia`), which the caller has already folded in.
+ * - Canonical authored-room items on a cell this seat does not know are
+ *   HIDDEN: the authored room is the author's whole workspace, and unseen
+ *   space is absent.
+ *
+ * No visibility is computed: every answer is a lookup in `knowledge`.
+ */
+export function applyCellKnowledge(
+  scene: Scene3D,
+  knowledge: CellKnowledge,
+  atlas: Pick<GetAtlasResponse, 'doorways'>,
+  hexSize: number
+): Scene3D {
+  const floorLitByCell = new Map<string, number>();
+  for (const key of scene.floorTiles.keys()) {
+    floorLitByCell.set(key, litWeight(knowledge, key) ?? 0);
+  }
+  const remembered = (cells: Iterable<string>) =>
+    brightestBorderState(knowledge, cells) === 'remembered';
+  const cellAt = (point: WorldPos) => coordToKey(worldToCube(point, hexSize));
+  const stateAt = (point: WorldPos) => knowledge.state.get(cellAt(point));
+
+  const rememberedWallRunKeys = new Set(
+    scene.wallRuns
+      .filter((run) => remembered(cellsBesideLine(run.start, run.end, hexSize)))
+      .map((run) => run.key)
+  );
+  const doorwayCells = new Map<string, string[]>();
+  for (const d of atlas.doorways ?? []) {
+    const cells = [d.from, d.to].flatMap((c) =>
+      c ? [coordToKey(positionToCube(c))] : []
+    );
+    doorwayCells.set(d.connection, [
+      ...(doorwayCells.get(d.connection) ?? []),
+      ...cells,
+    ]);
+  }
+  const rememberedDoorGapKeys = new Set(
+    scene.doorGaps
+      .filter((gap) =>
+        remembered(
+          doorwayCells.get(gap.connection) ??
+            cellsAroundPoint(gap.position, hexSize)
+        )
+      )
+      .map((gap) => gap.key)
+  );
+  const rememberedStructuralWallIds = new Set(
+    (scene.structuralWalls ?? [])
+      .filter((unit) =>
+        remembered(
+          cellsBesideLine(
+            unit.surface.line.start,
+            unit.surface.line.end,
+            hexSize
+          )
+        )
+      )
+      .map((unit) => unit.id)
+  );
+  const structuralDoorCells = new Map<string, Set<string>>();
+  for (const unit of scene.structuralDoors ?? []) {
+    // The pose's yaw is the wall direction, `atan2(-dz, dx)`.
+    const half = unit.pose.width / 2;
+    const dx = Math.cos(unit.pose.rotationY) * half;
+    const dz = -Math.sin(unit.pose.rotationY) * half;
+    const { x, z } = unit.pose.point;
+    structuralDoorCells.set(
+      unit.id,
+      cellsBesideLine(
+        { x: x - dx, z: z - dz },
+        { x: x + dx, z: z + dz },
+        hexSize
+      )
+    );
+  }
+  const rememberedStructuralDoorIds = new Set(
+    [...structuralDoorCells]
+      .filter(([, cells]) => remembered(cells))
+      .map(([id]) => id)
+  );
+  const rememberedPropKeys = new Set(
+    scene.props
+      .filter(
+        (prop) => knowledge.state.get(coordToKey(prop.position)) !== 'seen'
+      )
+      .map(sceneProp3DKey)
+  );
+  // A presentation that is a door takes its door's bordering cells when the
+  // structural door is known; any other presentation, its own cell.
+  const rememberedPropPresentationIds = new Set(
+    scene.rememberedPropPresentationIds ?? []
+  );
+  for (const p of scene.propPresentations ?? []) {
+    const doorCells = p.doorId ? structuralDoorCells.get(p.doorId) : undefined;
+    const item = propPresentationItem(p, hexSize);
+    const point = { x: item.transform.x, z: item.transform.z };
+    const isRemembered = doorCells
+      ? remembered(doorCells)
+      : p.doorId
+        ? remembered(cellsAroundPoint(point, hexSize))
+        : stateAt(point) !== 'seen';
+    if (isRemembered) rememberedPropPresentationIds.add(p.id);
+  }
+  const hiddenPlacedIds = new Set(scene.hiddenPlacedIds ?? []);
+  const rememberedRoomItemIds = new Set<string>();
+  for (const item of scene.roomScene?.scene.items ?? []) {
+    const state = stateAt({ x: item.transform.x, z: item.transform.z });
+    if (state === undefined) hiddenPlacedIds.add(item.id);
+    else if (state === 'remembered') rememberedRoomItemIds.add(item.id);
+  }
+  return {
+    ...scene,
+    cellKnowledge: knowledge,
+    floorLitByCell,
+    rememberedWallRunKeys,
+    rememberedDoorGapKeys,
+    rememberedStructuralWallIds,
+    rememberedStructuralDoorIds,
+    rememberedPropKeys,
+    rememberedPropPresentationIds,
+    rememberedRoomItemIds,
+    hiddenPlacedIds,
+  };
 }
 
 export type SceneLayoutOutcome =

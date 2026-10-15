@@ -1,4 +1,5 @@
 import {
+  applyCellsRevealed,
   applyConcealmentRevealed,
   applyRegionRevealed,
   MissingStructuralWallError,
@@ -84,6 +85,7 @@ export function useSessionKnowledge(session: string, member: string) {
         throw new KnowledgeSequenceGapError(state.seq + 1n, event.seq);
       const reveal =
         event.body.case === 'roomRevealed' ||
+        event.body.case === 'cellsRevealed' ||
         event.body.case === 'concealmentRevealed'
           ? event.body.value
           : undefined;
@@ -96,12 +98,18 @@ export function useSessionKnowledge(session: string, member: string) {
           reveal.propPresentations?.length)
       )
         throw new MissingStructuralWallError('(atlas absent)');
-      // Both reveal routes use the same atomic structural reducer. Other
+      // Every reveal route uses the same atomic structural reducer. Other
       // legacy refresh behavior and mutable observations retain their owners.
+      // CELLS_REVEALED (fog of war, rpg-project#586) is the live route: it
+      // unions partial regions by id. ROOM_REVEALED is deprecated and no
+      // longer produced; its arm stays for a server that still sends it.
       let atlas =
         event.body.case === 'roomRevealed' && state.atlas
           ? applyRegionRevealed(state.atlas, event.body.value)
           : state.atlas;
+      if (event.body.case === 'cellsRevealed' && atlas) {
+        atlas = applyCellsRevealed(atlas, event.body.value);
+      }
       if (event.body.case === 'concealmentRevealed' && atlas) {
         atlas = applyConcealmentRevealed(atlas, event.body.value);
       }

@@ -1,4 +1,3 @@
-import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
   DoorState,
   type DoorInfo,
@@ -30,36 +29,24 @@ export function PropPresentationEnvironment({
         const item = propPresentationItem(p, hexSize);
         const remembered = rememberedIds?.has(p.id) ?? false;
         const door = p.doorId ? doors?.get(p.doorId) : undefined;
-        if (p.doorId && (!door || door.state === DoorState.UNSPECIFIED)) {
-          return (
-            <mesh
-              key={p.id}
-              name={`prop-door-unknown-${p.doorId}`}
-              userData={{
-                propId: p.id,
-                doorId: p.doorId,
-                status: 'unobserved',
-              }}
-              position={[
-                item.transform.x,
-                item.transform.y + DUNGEON_SURFACE_Y + 0.5,
-                item.transform.z,
-              ]}
-            >
-              <boxGeometry args={[0.4, 1, 0.15]} />
-              <meshBasicMaterial color="#a89064" wireframe />
-            </mesh>
-          );
-        }
+        // A PRESENTED DOOR WITH NO OBSERVED STATE draws CLOSED in the
+        // remembered treatment (fog of war, rpg-project#586 R2). The atlas
+        // presented it because a cell on its edge is known; without a sighting
+        // of its state it shows its rest pose, greyed and inert. There is no
+        // "unobserved" placeholder: an unseen door is absent, a seen one shows
+        // its last observed state.
+        const unobserved =
+          !!p.doorId && (!door || door.state === DoorState.UNSPECIFIED);
+        const drawnRemembered = remembered || unobserved;
         return (
           <RoomSceneItem
             key={p.id}
             item={item}
             suppliedDoorId={p.doorId || undefined}
-            remembered={remembered}
-            doors={doors}
+            remembered={drawnRemembered}
+            doors={unobserved ? undefined : doors}
             onDoorClick={
-              !remembered && p.doorId && currentDoorIds?.has(p.doorId)
+              !drawnRemembered && p.doorId && currentDoorIds?.has(p.doorId)
                 ? onDoorClick
                 : undefined
             }

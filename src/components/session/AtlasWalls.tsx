@@ -48,6 +48,7 @@ import {
   shellVisibleWallTop,
 } from '../hex-grid/dungeonShellWallHelpers';
 import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
+import { REMEMBERED_TINT } from '../hex-grid/sceneKnowledge';
 import {
   DOOR_FRAME_FILE,
   DOOR_LEAF_FILE,
@@ -64,12 +65,14 @@ function ProfileDoor({
   wallHeight,
   leafShut,
   leafScene,
+  remembered = false,
 }: {
   door: DoorGapPiece;
   profile: DungeonShellWallProfile;
   wallHeight: number;
   leafShut: boolean;
   leafScene: Object3D;
+  remembered?: boolean;
 }) {
   const surroundScene = useGLTF(
     ENV_BASE + profile.doorSurround.file.replace(/^env\//, '')
@@ -112,6 +115,7 @@ function ProfileDoor({
         positionY={DUNGEON_SURFACE_Y}
         rotationY={door.rotationY}
         scale={frameScale}
+        remembered={remembered}
       />
       {leafShut && (
         <GlbInstance
@@ -122,6 +126,7 @@ function ProfileDoor({
           scale={leafFit.scale}
           localOffset={leafFit.localTranslation}
           sourceScene={leafScene}
+          remembered={remembered}
         />
       )}
     </>
@@ -142,9 +147,11 @@ const CLOSED_DOOR_FALLBACK_DEPTH = 0.3;
 function ClosedDoorFallback({
   door,
   wallHeight,
+  remembered = false,
 }: {
   door: DoorGapPiece;
   wallHeight: number;
+  remembered?: boolean;
 }) {
   return (
     <mesh
@@ -157,7 +164,10 @@ function ClosedDoorFallback({
       rotation={[0, door.rotationY, 0]}
     >
       <boxGeometry args={[1, wallHeight, CLOSED_DOOR_FALLBACK_DEPTH]} />
-      <meshBasicMaterial color="#2c313d" toneMapped={false} />
+      <meshBasicMaterial
+        color={remembered ? REMEMBERED_TINT : '#2c313d'}
+        toneMapped={false}
+      />
     </mesh>
   );
 }
@@ -166,12 +176,20 @@ function ResilientLegacyDoorLeaf({
   door,
   wallHeight,
   leafShut,
+  remembered = false,
 }: {
   door: DoorGapPiece;
   wallHeight: number;
   leafShut: boolean;
+  remembered?: boolean;
 }) {
-  const fallback = <ClosedDoorFallback door={door} wallHeight={wallHeight} />;
+  const fallback = (
+    <ClosedDoorFallback
+      door={door}
+      wallHeight={wallHeight}
+      remembered={remembered}
+    />
+  );
   return (
     <ErrorBoundary fallback={fallback}>
       {leafShut ? (
@@ -181,6 +199,7 @@ function ResilientLegacyDoorLeaf({
             position={door.leafPosition}
             rotationY={door.rotationY}
             scale={doorLeafScale(wallHeight)}
+            remembered={remembered}
           />
         </Suspense>
       ) : null}
@@ -215,6 +234,11 @@ export interface AtlasWallsProps {
    * rejected leaf gets a closed procedural occluder instead. Defaults false
    * so loading and ordinary legacy paths stay exactly as before. */
   resilientDoorLeaves?: boolean;
+  /** Fog of war (rpg-project#586): wall-run keys and door-gap keys that take
+   * the remembered treatment — no cell they border is seen now
+   * (`applyCellKnowledge`). Undefined draws everything lit, as before. */
+  rememberedRunKeys?: ReadonlySet<string>;
+  rememberedDoorKeys?: ReadonlySet<string>;
 }
 
 export function AtlasWalls({
@@ -226,6 +250,8 @@ export function AtlasWalls({
   profile,
   profileLeafScene,
   resilientDoorLeaves = false,
+  rememberedRunKeys,
+  rememberedDoorKeys,
 }: AtlasWallsProps) {
   return (
     <>
@@ -233,17 +259,21 @@ export function AtlasWalls({
         envelopeRuns={[]}
         connectorRuns={[]}
         authoredRuns={wallRuns}
+        rememberedAuthoredRunKeys={rememberedRunKeys}
         wallHeight={wallHeight}
         profile={profile}
       />
       {doorGaps.map((door) => {
         const state = doors?.get(door.connection)?.state;
         const leafShut = state === undefined || state !== DoorState.OPEN;
+        const remembered = rememberedDoorKeys?.has(door.key) ?? false;
         return (
           <group
             key={door.key}
+            name={`door-gap-${door.connection}`}
+            userData={{ knowledge: remembered ? 'remembered' : 'seen' }}
             onClick={
-              onDoorClick
+              onDoorClick && !remembered
                 ? (e) => {
                     e.stopPropagation();
                     onDoorClick(door.connection);
@@ -259,6 +289,7 @@ export function AtlasWalls({
                   wallHeight={wallHeight}
                   leafShut={leafShut}
                   leafScene={profileLeafScene}
+                  remembered={remembered}
                 />
               ) : (
                 <LoadedProfileDoor
@@ -266,6 +297,7 @@ export function AtlasWalls({
                   profile={profile}
                   wallHeight={wallHeight}
                   leafShut={leafShut}
+                  remembered={remembered}
                 />
               )
             ) : (
@@ -275,6 +307,7 @@ export function AtlasWalls({
                   position={door.position}
                   rotationY={door.rotationY}
                   scale={doorFrameScale(wallHeight)}
+                  remembered={remembered}
                 />
                 {resilientDoorLeaves
                   ? leafShut && (
@@ -282,6 +315,7 @@ export function AtlasWalls({
                         door={door}
                         wallHeight={wallHeight}
                         leafShut={leafShut}
+                        remembered={remembered}
                       />
                     )
                   : leafShut && (
@@ -290,6 +324,7 @@ export function AtlasWalls({
                         position={door.leafPosition}
                         rotationY={door.rotationY}
                         scale={doorLeafScale(wallHeight)}
+                        remembered={remembered}
                       />
                     )}
               </>

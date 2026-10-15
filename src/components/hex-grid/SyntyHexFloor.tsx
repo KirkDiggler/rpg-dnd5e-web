@@ -29,7 +29,7 @@ import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners } from './hexMath';
-import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
+import { CRYPT_MEMORY_COLOR, rememberedFloorColor } from './sceneKnowledge';
 import {
   computeFloorPoolColor,
   CRYPT_FLOOR_TINT,
@@ -57,6 +57,9 @@ interface SyntyHexFloorTileProps {
    * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
   isRemembered: boolean;
+  /** Fog of war: this tile's lit share (`DungeonFloorLighting.litByCell`).
+   * 1 — the default — renders exactly as before. */
+  lit?: number;
   baseColor: THREE.Color;
   /** Mood lights (candles/braziers/torches/doors) to pool toward, via
    * `computeFloorPoolColor` (syntyHexFloorHelpers.ts) — deterministic,
@@ -88,16 +91,30 @@ function SyntyHexFloorTile({
   profile,
   isCrypt,
   isRemembered,
+  lit = 1,
   baseColor,
   poolLights,
   litSurfaces,
 }: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
   const cryptColor = useMemo(() => {
-    if (!isCrypt) return CRYPT_FLOOR_TINT;
-    if (!poolLights || poolLights.length === 0) return baseColor;
-    return computeFloorPoolColor(baseColor, world.x, world.z, poolLights);
-  }, [baseColor, isCrypt, poolLights, world.x, world.z]);
+    const litColor = !isCrypt
+      ? CRYPT_FLOOR_TINT
+      : !poolLights || poolLights.length === 0
+        ? baseColor
+        : computeFloorPoolColor(baseColor, world.x, world.z, poolLights);
+    return rememberedFloorColor(litColor, lit);
+  }, [baseColor, isCrypt, lit, poolLights, world.x, world.z]);
+  // The default (non-crypt) branch draws the bare texture when lit; a fog
+  // grade multiplies it by the same remembered grey the crypt branch uses.
+  const plainFogColor = useMemo(
+    () =>
+      lit >= 1
+        ? undefined
+        : rememberedFloorColor(new THREE.Color(1, 1, 1), lit),
+    [lit]
+  );
+  const knowledge = lit >= 1 ? 'seen' : lit > 0 ? 'edge' : 'remembered';
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
     const corners = hexCorners({ x: 0, z: 0 }, hexSize);
@@ -179,7 +196,12 @@ function SyntyHexFloorTile({
   // doesn't fully close the tone-mapping question — only the floor's
   // slice of it).
   return (
-    <mesh geometry={geometry} position={[world.x, DUNGEON_SURFACE_Y, world.z]}>
+    <mesh
+      name={`floor-tile-${tile.x},${tile.y},${tile.z}`}
+      userData={{ knowledge, lit }}
+      geometry={geometry}
+      position={[world.x, DUNGEON_SURFACE_Y, world.z]}
+    >
       {isRemembered ? (
         <meshBasicMaterial
           color={CRYPT_MEMORY_COLOR}
@@ -201,11 +223,17 @@ function SyntyHexFloorTile({
           color={cryptColor}
           toneMapped={false}
         />
+      ) : // Byte-identical to every pre-#558 caller: no `color` prop at all
+      // (not even `undefined`), matching this exact branch before the
+      // crypt theme existed — avoids relying on how the reconciler
+      // would handle an explicitly-undefined color prop.
+      plainFogColor ? (
+        <meshBasicMaterial
+          map={texture}
+          color={plainFogColor}
+          toneMapped={false}
+        />
       ) : (
-        // Byte-identical to every pre-#558 caller: no `color` prop at all
-        // (not even `undefined`), matching this exact branch before the
-        // crypt theme existed — avoids relying on how the reconciler
-        // would handle an explicitly-undefined color prop.
         <meshBasicMaterial map={texture} toneMapped={false} />
       )}
     </mesh>
@@ -300,6 +328,7 @@ export function SyntyHexFloor({
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }
             isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
+            lit={floorLighting?.litByCell?.get(key) ?? 1}
             baseColor={baseColor}
             poolLights={lights}
             litSurfaces={litSurfaces}

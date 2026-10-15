@@ -783,17 +783,22 @@ describe('DungeonEnvironment', () => {
     expect(
       renderer.scene.findAllByProps({ name: 'structural-wall-pieces-w' })
     ).toHaveLength(1);
-    // No observation supplied ⇒ marker only, never the asset's closed rest pose.
+    // No observation supplied ⇒ the closed rest pose in the remembered
+    // treatment (fog of war R2), never an "unobserved" marker.
     expect(
       renderer.scene.findAllByProps({
-        name: 'structural-wall-door-dungeon/gate',
+        name: 'structural-door-unknown-dungeon/gate',
       })
     ).toHaveLength(0);
     expect(
       renderer.scene.findByProps({
-        name: 'structural-door-unknown-dungeon/gate',
+        name: 'structural-wall-door-dungeon/gate',
       }).props.userData
-    ).toMatchObject({ doorId: 'dungeon/gate', status: 'unknown' });
+    ).toMatchObject({
+      doorId: 'dungeon/gate',
+      state: 'closed',
+      knowledge: 'remembered',
+    });
   });
 
   it('mounts the supplied structural layout in the CANONICAL branch and joins known state by canonical id', async () => {

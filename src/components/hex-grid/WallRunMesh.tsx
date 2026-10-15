@@ -407,6 +407,10 @@ export interface WallRunMeshProps {
    * run should render remembered. Undefined/empty renders every
    * connector normally. */
   rememberedConnectorDoorIds?: ReadonlySet<string>;
+  /** Fog of war (rpg-project#586): `authoredRuns` keys whose run takes the
+   * remembered treatment, because no cell it borders is seen now. Undefined
+   * renders every authored run lit, as before. */
+  rememberedAuthoredRunKeys?: ReadonlySet<string>;
   /** Wall height, world units — defaults to the game's standard
    * WALL_HEIGHT (calibrationConstants.ts) so this matches every other
    * wall renderer without callers having to pass it explicitly. Doubles as
@@ -488,6 +492,7 @@ export function WallRunMesh({
   authoredRuns = [],
   rememberedEnvelopeRegionIds,
   rememberedConnectorDoorIds,
+  rememberedAuthoredRunKeys,
   wallHeight = WALL_HEIGHT,
   wallCutaway = false,
   playerPosition,
@@ -527,11 +532,20 @@ export function WallRunMesh({
         // contract: "said nothing" and "said 1.0" render identically).
         const authored = run.height > 0 ? run.height : 1;
         return (
-          <group key={run.key}>
+          <group
+            key={run.key}
+            name={`wall-run-${run.key}`}
+            userData={{
+              knowledge: rememberedAuthoredRunKeys?.has(run.key)
+                ? 'remembered'
+                : 'seen',
+            }}
+          >
             <WallRunPieces
               segment={run}
               wallHeight={height * authored}
               tint={tint}
+              remembered={!!rememberedAuthoredRunKeys?.has(run.key)}
               facing={run.facing}
               profile={profile}
             />

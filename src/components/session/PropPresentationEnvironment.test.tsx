@@ -63,7 +63,7 @@ describe('permitted shared prop renderer', () => {
     await r.unmount();
   });
 
-  it('does not turn missing door state into a closed interactive model', async () => {
+  it('draws a door without state as a remembered closed door, with no prop-door-unknown mesh (R2)', async () => {
     const p = prop();
     p.doorId = 'actual/gate';
     const click = vi.fn();
@@ -74,10 +74,13 @@ describe('permitted shared prop renderer', () => {
         onDoorClick={click}
       />
     );
-    expect(models.calls).toHaveLength(0);
     expect(
-      r.scene.findByProps({ name: 'prop-door-unknown-actual/gate' })
-    ).toBeTruthy();
+      r.scene.findAllByProps({ name: 'prop-door-unknown-actual/gate' })
+    ).toHaveLength(0);
+    // Closed (no `open`), remembered, and not interactive.
+    expect(models.calls.at(-1)?.remembered).toBe(true);
+    expect(models.calls.at(-1)?.open).toBeUndefined();
+    expect(models.calls.at(-1)?.onDoorClick).toBeUndefined();
     const doors = new Map([
       [
         'actual/gate',

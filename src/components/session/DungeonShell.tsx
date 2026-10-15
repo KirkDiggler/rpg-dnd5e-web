@@ -63,6 +63,8 @@ function LegacyShell({
       <AtlasWalls
         wallRuns={scene.wallRuns}
         doorGaps={scene.doorGaps}
+        rememberedRunKeys={scene.rememberedWallRunKeys}
+        rememberedDoorKeys={scene.rememberedDoorGapKeys}
         doors={doors}
         onDoorClick={onDoorClick}
         resilientDoorLeaves={resilientDoorLeaves}
@@ -103,6 +105,8 @@ function ProfileResources({
       <AtlasWalls
         wallRuns={scene.wallRuns}
         doorGaps={scene.doorGaps}
+        rememberedRunKeys={scene.rememberedWallRunKeys}
+        rememberedDoorKeys={scene.rememberedDoorGapKeys}
         doors={doors}
         onDoorClick={onDoorClick}
         profile={profile.wall}

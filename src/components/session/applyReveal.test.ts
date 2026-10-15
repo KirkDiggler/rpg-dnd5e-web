@@ -2,6 +2,7 @@
 import type { MessageInitShape } from '@bufbuild/protobuf';
 import { create } from '@bufbuild/protobuf';
 import {
+  CellsRevealedSchema,
   ConcealmentRevealedSchema,
   DoorRevealedSchema,
   RegionRevealedSchema,
@@ -15,9 +16,11 @@ import {
 import {
   AtlasStructuralDoorSchema,
   AtlasStructuralWallSchema,
+  PositionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
+  applyCellsRevealed,
   applyConcealmentRevealed,
   applyDoorRevealed,
   applyRegionRevealed,
@@ -326,5 +329,88 @@ describe('fixed structural records', () => {
       'cut-2',
     ]);
     expect(after.structuralDoors.map((d) => d.id)).toEqual(['hidden']);
+  });
+});
+
+describe('a cells reveal (fog of war, rpg-project#586)', () => {
+  /** The corridor known whole; the prison cell partially. */
+  const known = () =>
+    create(GetAtlasResponseSchema, {
+      cells: [cell(0, 0), cell(1, 0), cell(2, 0), cell(3, 0)],
+      regions: [
+        {
+          id: 'corridor',
+          name: 'Corridor',
+          cells: [cell(0, 0), cell(1, 0), cell(2, 0), cell(3, 0)],
+        },
+      ],
+    });
+  const slice = (cells: { x: number; y: number }[], wallIds: string[] = []) =>
+    create(CellsRevealedSchema, {
+      regions: [
+        { id: 'prison', name: 'Prison cell', archetype: 'cell', cells },
+      ],
+      segments: [{ from: { q: 4, r: -1 }, to: { q: 3, r: 1 }, height: 0 }],
+      structuralWalls: wallIds.map((id) => structuralWall(id)),
+    });
+
+  it('unions a partial region by id across two beats — the first slice is kept', () => {
+    const first = applyCellsRevealed(known(), slice([cell(4, 0), cell(5, 0)]));
+    const second = applyCellsRevealed(first, slice([cell(4, -1), cell(4, 0)]));
+    const prison = second.regions.filter((r) => r.id === 'prison');
+    expect(prison).toHaveLength(1);
+    expect(keys(prison[0]!.cells)).toEqual(
+      keys([cell(4, 0), cell(5, 0), cell(4, -1)])
+    );
+    expect(prison[0]!.archetype).toBe('cell');
+    // The corridor is untouched and the atlas cells gained exactly the new ones.
+    expect(
+      keys(second.regions.find((r) => r.id === 'corridor')!.cells)
+    ).toEqual(keys(known().regions[0]!.cells));
+    expect(keys(second.cells)).toEqual(
+      keys([...known().cells, cell(4, 0), cell(5, 0), cell(4, -1)])
+    );
+  });
+
+  it('is idempotent under replay', () => {
+    const event = slice([cell(4, 0), cell(5, 0)], ['w']);
+    const once = applyCellsRevealed(known(), event);
+    const twice = applyCellsRevealed(once, event);
+    expect(twice).toEqual(once);
+  });
+
+  it('draws a wall sent twice exactly once — segment and structural record', () => {
+    const once = applyCellsRevealed(known(), slice([cell(4, 0)], ['w']));
+    const twice = applyCellsRevealed(once, slice([cell(5, 0)], ['w']));
+    expect(twice.segments).toHaveLength(1);
+    expect(twice.structuralWalls.map((w) => w.id)).toEqual(['w']);
+    expect(segmentsToWallRuns(twice, 1).wallRuns).toHaveLength(
+      segmentsToWallRuns(once, 1).wallRuns.length
+    );
+  });
+
+  it('newly owned cells leave sealed; the event’s sealed goes back in', () => {
+    const before = known();
+    before.sealed = [
+      create(PositionSchema, cell(4, 0)),
+      create(PositionSchema, cell(6, 0)),
+    ];
+    const after = applyCellsRevealed(
+      before,
+      create(CellsRevealedSchema, {
+        regions: [{ id: 'prison', cells: [cell(4, 0)] }],
+        sealed: [cell(7, 0)],
+      })
+    );
+    expect(keys(after.sealed)).toEqual(keys([cell(6, 0), cell(7, 0)]));
+  });
+
+  it('detaches the event’s rows from the patched atlas', () => {
+    const event = slice([cell(4, 0)]);
+    const after = applyCellsRevealed(known(), event);
+    event.regions[0]!.cells.push(create(PositionSchema, cell(9, 9)));
+    expect(keys(after.regions.find((r) => r.id === 'prison')!.cells)).toEqual(
+      keys([cell(4, 0)])
+    );
   });
 });

@@ -3,6 +3,7 @@ import {
   AnsweredSchema,
   ArrivedSchema,
   CastSchema,
+  CellsRevealedSchema,
   ConcealmentRevealedSchema,
   ConcentrationEndedSchema,
   DiscoveryCheckedSchema,
@@ -433,5 +434,31 @@ describe('the session verbs’ two rows (rpg-project#542)', () => {
     expect(refreshKeysFor(event, VIEWER)).toEqual(
       expect.arrayContaining(['characterData', 'afford', 'turn'])
     );
+  });
+});
+
+describe('fog of war refresh rows (rpg-project#586)', () => {
+  it('the member’s own move re-reads where — the view follows the position (SessionEncounterView)', () => {
+    const mine = create(EventSchema, {
+      kind: EventKind.MOVED,
+      body: { case: 'moved', value: create(MovedSchema, { member: VIEWER }) },
+    });
+    expect(refreshKeysFor(mine, VIEWER)).toContain('where');
+  });
+
+  it('another member’s move still re-reads view alone', () => {
+    const theirs = create(EventSchema, {
+      kind: EventKind.MOVED,
+      body: { case: 'moved', value: create(MovedSchema, { member: 'scout' }) },
+    });
+    expect(refreshKeysFor(theirs, VIEWER)).toEqual(['view']);
+  });
+
+  it('CELLS_REVEALED re-reads view and roster', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.CELLS_REVEALED,
+      body: { case: 'cellsRevealed', value: create(CellsRevealedSchema) },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['view', 'roster']);
   });
 });

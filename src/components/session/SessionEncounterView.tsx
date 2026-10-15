@@ -66,12 +66,14 @@ import { arrivingStep } from './arrivingStep';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
+  applyCellKnowledge,
   buildScene3D,
   hiddenPlacedPropIds,
   positionToCube,
   propWorldPosition,
   resolveSceneLayout,
 } from './atlasToScene3D';
+import { cellKnowledge } from './cellKnowledge';
 import { CombatExperience } from './combat-experience/CombatExperience';
 import {
   type DesktopHotbarLayout,
@@ -120,6 +122,7 @@ import { cubeToPosition } from './positionBridge';
 import { isRefusal, refusalMessage } from './refusal';
 import { RestDialog } from './RestDialog';
 import { RunEndedToast } from './RunEndedToast';
+import { SeatKnowledgeProbe } from './SeatKnowledgeProbe';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
@@ -339,6 +342,15 @@ function SessionEncounterScope({
     () => hiddenPlacedPropIds(placedPropIds, atlas?.placed),
     [atlas, placedPropIds]
   );
+  // FOG OF WAR (rpg-project#586): what this seat knows per cell — the atlas is
+  // every known cell, `visible_cells` the ones its character sees now. Read off
+  // what the server sent; no visibility is computed here or below.
+  const atlasCells = atlas?.cells;
+  const seatKnowledge = useMemo(
+    () =>
+      atlasCells ? cellKnowledge(atlasCells, knowledgeView.visibleCells) : null,
+    [atlasCells, knowledgeView.visibleCells]
+  );
   const sceneBuild = useMemo(() => {
     if (!atlas || !layoutOutcome?.ok) return null;
     // A dungeon whose room is still being read is not yet a scene.
@@ -348,29 +360,32 @@ function SessionEncounterScope({
     // loading state covers the gap instead.
     if (roomSceneLoading) return null;
     try {
+      const built = {
+        ...buildScene3D(
+          atlas,
+          HEX_SIZE,
+          layoutOutcome.layout,
+          roomScene ?? undefined,
+          hiddenPlacedIds
+        ),
+        rememberedPropPresentationIds: new Set(
+          knowledgeView.props.flatMap((s) =>
+            s.presentation && s.currentVia.length === 0
+              ? [s.presentation.id]
+              : []
+          )
+        ),
+        currentDoorIds: new Set(
+          knowledgeView.doors.flatMap((s) =>
+            s.door && s.currentVia.length > 0 ? [s.door.door] : []
+          )
+        ),
+      };
       return {
         ok: true as const,
-        scene: {
-          ...buildScene3D(
-            atlas,
-            HEX_SIZE,
-            layoutOutcome.layout,
-            roomScene ?? undefined,
-            hiddenPlacedIds
-          ),
-          rememberedPropPresentationIds: new Set(
-            knowledgeView.props.flatMap((s) =>
-              s.presentation && s.currentVia.length === 0
-                ? [s.presentation.id]
-                : []
-            )
-          ),
-          currentDoorIds: new Set(
-            knowledgeView.doors.flatMap((s) =>
-              s.door && s.currentVia.length > 0 ? [s.door.door] : []
-            )
-          ),
-        },
+        scene: seatKnowledge
+          ? applyCellKnowledge(built, seatKnowledge, atlas, HEX_SIZE)
+          : built,
       };
     } catch (error) {
       return {
@@ -386,6 +401,7 @@ function SessionEncounterScope({
     hiddenPlacedIds,
     knowledgeView.props,
     knowledgeView.doors,
+    seatKnowledge,
   ]);
   const scene = sceneBuild?.ok ? sceneBuild.scene : null;
   const observationMarkers = useMemo(() => {
@@ -1250,6 +1266,10 @@ function SessionEncounterScope({
     handleStreamAgedOut
   );
 
+  // A NEW POSITION RE-READS THE VIEW. This is also how seen-now follows the
+  // seat (fog of war, rpg-project#586): the member's own `moved` re-reads
+  // `where`, and the new position lands here, so `visible_cells` is re-read
+  // after every own step without a second read in the refresh table.
   useEffect(() => {
     if (!wherePosition) return;
     scheduleRefresh(['view']);
@@ -1755,6 +1775,7 @@ function SessionEncounterScope({
             container: 'organized-hud / size',
           }}
         >
+          {seatKnowledge && <SeatKnowledgeProbe knowledge={seatKnowledge} />}
           <CombatExperience
             layout="fill-parent"
             actionPresentation={actionPresentation}
