@@ -80,7 +80,11 @@ import {
   type AuthoredWallRun,
   type DoorGapPiece,
 } from './atlasWallRuns';
-import { cellsAroundPoint, cellsBesideLine } from './cellBorders';
+import {
+  cellsAroundPoint,
+  cellsBesideLine,
+  stretchesBesideLine,
+} from './cellBorders';
 import {
   brightestBorderState,
   litWeight,
@@ -253,6 +257,13 @@ export interface Scene3D {
   rememberedWallRunKeys?: ReadonlySet<string>;
   rememberedDoorGapKeys?: ReadonlySet<string>;
   rememberedStructuralWallIds?: ReadonlySet<string>;
+  /** Per structural wall: the stretches (fractions of its line, 0 at start)
+   * no seen cell borders. A piece whose middle falls in one draws remembered.
+   * A wall wholly remembered is also in `rememberedStructuralWallIds`. */
+  rememberedStructuralWallSpans?: ReadonlyMap<
+    string,
+    readonly { readonly from: number; readonly to: number }[]
+  >;
   rememberedStructuralDoorIds?: ReadonlySet<string>;
   /** Legacy atlas props by `sceneProp3DKey`. */
   rememberedPropKeys?: ReadonlySet<string>;
@@ -275,14 +286,20 @@ export function sceneProp3DKey(prop: SceneProp3D): string {
  *   an absent cell has no tile to draw.
  * - Walls and doors take the BRIGHTEST state of the cells they border
  *   (`brightestBorderState`): lit when any bordering cell is seen, remembered
- *   otherwise. A run is one unit, so a wall with one seen neighbour is lit
- *   along its whole run.
+ *   otherwise. The rule is applied PER STRETCH: a wall run is split where the
+ *   state of the cells beside it changes (`stretchesBesideLine`), so a long
+ *   wall with one seen neighbour is lit only beside that cell. Structural
+ *   walls carry the same stretches for their pieces.
  * - Fixed props and presentations on a remembered cell join the remembered
  *   sets; mutable ones keep their observation lifecycle (sightings with no
  *   `currentVia`), which the caller has already folded in.
- * - Canonical authored-room items on a cell this seat does not know are
- *   HIDDEN: the authored room is the author's whole workspace, and unseen
- *   space is absent.
+ * - Canonical authored-room items are attributed to the cells around their
+ *   point (`cellsAroundPoint`), so a wall-mounted item counts the hex on
+ *   either side of the wall. One with no known cell there is HIDDEN: the
+ *   authored room is the author's whole workspace, and unseen space is
+ *   absent. Not while the server sends no `visible_cells`
+ *   (`knowledge.visibleSupplied` false): then nothing is hidden, so the
+ *   play view is unchanged until the server speaks per cell.
  *
  * No visibility is computed: every answer is a lookup in `knowledge`.
  */
@@ -301,11 +318,37 @@ export function applyCellKnowledge(
   const cellAt = (point: WorldPos) => coordToKey(worldToCube(point, hexSize));
   const stateAt = (point: WorldPos) => knowledge.state.get(cellAt(point));
 
-  const rememberedWallRunKeys = new Set(
-    scene.wallRuns
-      .filter((run) => remembered(cellsBesideLine(run.start, run.end, hexSize)))
-      .map((run) => run.key)
-  );
+  const brightest = (cells: readonly string[]) =>
+    brightestBorderState(knowledge, cells);
+  // Split each run where the state beside it changes. A uniform run keeps its
+  // own key; a split run's stretches are keyed `<run key>#<index>`.
+  const wallRuns: AuthoredWallRun[] = [];
+  const rememberedWallRunKeys = new Set<string>();
+  for (const run of scene.wallRuns) {
+    const stretches = stretchesBesideLine(
+      run.start,
+      run.end,
+      hexSize,
+      brightest
+    );
+    stretches.forEach((stretch, index) => {
+      const at = (t: number) => ({
+        x: run.start.x + (run.end.x - run.start.x) * t,
+        z: run.start.z + (run.end.z - run.start.z) * t,
+      });
+      const piece =
+        stretches.length === 1
+          ? run
+          : {
+              ...run,
+              key: `${run.key}#${index}`,
+              start: at(stretch.from),
+              end: at(stretch.to),
+            };
+      wallRuns.push(piece);
+      if (stretch.state === 'remembered') rememberedWallRunKeys.add(piece.key);
+    });
+  }
   const doorwayCells = new Map<string, string[]>();
   for (const d of atlas.doorways ?? []) {
     const cells = [d.from, d.to].flatMap((c) =>
@@ -326,19 +369,25 @@ export function applyCellKnowledge(
       )
       .map((gap) => gap.key)
   );
-  const rememberedStructuralWallIds = new Set(
-    (scene.structuralWalls ?? [])
-      .filter((unit) =>
-        remembered(
-          cellsBesideLine(
-            unit.surface.line.start,
-            unit.surface.line.end,
-            hexSize
-          )
-        )
-      )
-      .map((unit) => unit.id)
-  );
+  const rememberedStructuralWallIds = new Set<string>();
+  const rememberedStructuralWallSpans = new Map<
+    string,
+    { from: number; to: number }[]
+  >();
+  for (const unit of scene.structuralWalls ?? []) {
+    const stretches = stretchesBesideLine(
+      unit.surface.line.start,
+      unit.surface.line.end,
+      hexSize,
+      brightest
+    );
+    const spans = stretches
+      .filter((stretch) => stretch.state === 'remembered')
+      .map(({ from, to }) => ({ from, to }));
+    if (spans.length) rememberedStructuralWallSpans.set(unit.id, spans);
+    if (stretches.every((stretch) => stretch.state === 'remembered'))
+      rememberedStructuralWallIds.add(unit.id);
+  }
   const structuralDoorCells = new Map<string, Set<string>>();
   for (const unit of scene.structuralDoors ?? []) {
     // The pose's yaw is the wall direction, `atan2(-dz, dx)`.
@@ -386,15 +435,25 @@ export function applyCellKnowledge(
   const hiddenPlacedIds = new Set(scene.hiddenPlacedIds ?? []);
   const rememberedRoomItemIds = new Set<string>();
   for (const item of scene.roomScene?.scene.items ?? []) {
-    const state = stateAt({ x: item.transform.x, z: item.transform.z });
-    if (state === undefined) hiddenPlacedIds.add(item.id);
-    else if (state === 'remembered') rememberedRoomItemIds.add(item.id);
+    const around = [
+      ...cellsAroundPoint(
+        { x: item.transform.x, z: item.transform.z },
+        hexSize
+      ),
+    ];
+    const known = around.filter((key) => knowledge.state.has(key));
+    if (known.length === 0) {
+      // No visible_cells from the server: hide nothing on the client side.
+      if (knowledge.visibleSupplied) hiddenPlacedIds.add(item.id);
+    } else if (remembered(known)) rememberedRoomItemIds.add(item.id);
   }
   return {
     ...scene,
     cellKnowledge: knowledge,
     floorLitByCell,
+    wallRuns,
     rememberedWallRunKeys,
+    rememberedStructuralWallSpans,
     rememberedDoorGapKeys,
     rememberedStructuralWallIds,
     rememberedStructuralDoorIds,

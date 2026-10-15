@@ -59,6 +59,10 @@ export interface CellKnowledge {
   /** Remembered cells inside the soft edge, by the same key, with their
    * `EDGE_WEIGHTS` value. Seen cells and cells beyond two steps are absent. */
   readonly edge: ReadonlyMap<string, number>;
+  /** False when the view carried no `visible_cells` — the server does not
+   * say what is seen (see `cellKnowledge`). Everything draws seen, and
+   * nothing is withheld on the client's side either. */
+  readonly visibleSupplied: boolean;
 }
 
 const keyOf = (cell: Pick<Position, 'x' | 'y'>): string =>
@@ -108,7 +112,7 @@ export function cellKnowledge(
     }
     frontier = next;
   }
-  return { state, edge };
+  return { state, edge, visibleSupplied: !unknown };
 }
 
 /**

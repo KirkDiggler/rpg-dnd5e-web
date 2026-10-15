@@ -29,34 +29,93 @@ const STEP = 0.5;
 const cellKeyAt = (point: WorldPos, hexSize: number): string =>
   coordToKey(worldToCube(point, hexSize));
 
-/** The cells on both sides of a straight wall from `start` to `end`. */
-export function cellsBesideLine(
+/** One sample along a wall line: where it sits (`t`, 0 at `start`, 1 at
+ * `end`) and the two cells either side of the line there. */
+export interface LineSample {
+  readonly t: number;
+  readonly cells: readonly [string, string];
+}
+
+/** The line sampled every half hex, each sample with its two side cells. */
+export function sampleBesideLine(
   start: WorldPos,
   end: WorldPos,
   hexSize: number
-): Set<string> {
+): LineSample[] {
   const dx = end.x - start.x;
   const dz = end.z - start.z;
   const length = Math.hypot(dx, dz);
-  const keys = new Set<string>();
   if (length === 0) {
-    for (const key of cellsAroundPoint(start, hexSize)) keys.add(key);
-    return keys;
+    const key = cellKeyAt(start, hexSize);
+    return [{ t: 0, cells: [key, key] }];
   }
   const nx = -dz / length;
   const nz = dx / length;
   const offset = SIDE_OFFSET * hexSize;
   const samples = Math.max(1, Math.ceil(length / (STEP * hexSize)));
+  const out: LineSample[] = [];
   for (let i = 0; i <= samples; i++) {
     // Inset the ends a little so a wall ending on a corner does not claim
     // the hex diagonally beyond its end.
     const t = Math.min(0.98, Math.max(0.02, i / samples));
     const px = start.x + dx * t;
     const pz = start.z + dz * t;
-    keys.add(cellKeyAt({ x: px + nx * offset, z: pz + nz * offset }, hexSize));
-    keys.add(cellKeyAt({ x: px - nx * offset, z: pz - nz * offset }, hexSize));
+    out.push({
+      t,
+      cells: [
+        cellKeyAt({ x: px + nx * offset, z: pz + nz * offset }, hexSize),
+        cellKeyAt({ x: px - nx * offset, z: pz - nz * offset }, hexSize),
+      ],
+    });
   }
-  return keys;
+  return out;
+}
+
+/** The cells on both sides of a straight wall from `start` to `end`. */
+export function cellsBesideLine(
+  start: WorldPos,
+  end: WorldPos,
+  hexSize: number
+): Set<string> {
+  if (start.x === end.x && start.z === end.z)
+    return cellsAroundPoint(start, hexSize);
+  return new Set(
+    sampleBesideLine(start, end, hexSize).flatMap((s) => [...s.cells])
+  );
+}
+
+/** A stretch of a wall line, `from`→`to` as fractions of its length, and the
+ * brightest state of the cells beside that stretch. */
+export interface LineStretch<S> {
+  readonly from: number;
+  readonly to: number;
+  readonly state: S;
+}
+
+/**
+ * The wall line split where the state of the cells beside it changes: each
+ * stretch takes the brightest state of ITS OWN bordering cells (`stateOf` is
+ * asked about one sample's two side cells). A uniform line is one stretch
+ * covering 0→1. A split falls midway between the two samples that differ.
+ * Attribution only: `stateOf` is a lookup in what the server sent.
+ */
+export function stretchesBesideLine<S>(
+  start: WorldPos,
+  end: WorldPos,
+  hexSize: number,
+  stateOf: (cells: readonly string[]) => S
+): LineStretch<S>[] {
+  const samples = sampleBesideLine(start, end, hexSize);
+  const stretches: { from: number; to: number; state: S }[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    const state = stateOf(samples[i]!.cells);
+    const last = stretches.at(-1);
+    if (last && last.state === state) continue;
+    const from = i === 0 ? 0 : (samples[i - 1]!.t + samples[i]!.t) / 2;
+    if (last) last.to = from;
+    stretches.push({ from, to: 1, state });
+  }
+  return stretches;
 }
 
 /** The cells around a door or fixed thing standing at `point` when no wall

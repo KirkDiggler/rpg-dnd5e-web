@@ -184,6 +184,31 @@ describe('StructuralLayoutEnvironment', () => {
     await view.unmount();
   });
 
+  it('greys only the wall pieces inside a remembered stretch', async () => {
+    const built = render([wall()]);
+    const view = await ReactThreeTestRenderer.create(
+      <StructuralLayoutEnvironment
+        walls={built.walls}
+        doors={built.doors}
+        diagnostics={built.diagnostics}
+        rememberedWallSpans={new Map([['wall-1', [{ from: 0.5, to: 1 }]]])}
+      />
+    );
+    const pieces = view.scene.findAll(
+      (node) =>
+        typeof node.props.name === 'string' &&
+        node.props.name.startsWith('structural-wall-piece-wall-1-')
+    );
+    const states = pieces.map((piece) => piece.props.userData.knowledge);
+    expect(states).toContain('seen');
+    expect(states).toContain('remembered');
+    // Pieces are laid out in order along the line: lit first, grey after.
+    expect(states.indexOf('remembered')).toBeGreaterThan(
+      states.lastIndexOf('seen')
+    );
+    await view.unmount();
+  });
+
   it('draws a door with NO observation closed, remembered and inert — never an unobserved marker (R2)', async () => {
     const onDoorClick = vi.fn();
     const built = render([], [door()]);

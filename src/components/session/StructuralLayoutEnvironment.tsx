@@ -60,27 +60,32 @@ export interface StructuralLayoutEnvironmentProps {
    * (`applyCellKnowledge`). Undefined draws everything lit. */
   readonly rememberedWallIds?: ReadonlySet<string>;
   readonly rememberedDoorIds?: ReadonlySet<string>;
+  /** Per wall, the stretches no seen cell borders: its pieces there draw
+   * remembered (`applyCellKnowledge`). */
+  readonly rememberedWallSpans?: ReadonlyMap<
+    string,
+    readonly { readonly from: number; readonly to: number }[]
+  >;
 }
 
-/** The observed state, or `unknown` — never an invented closed/open. An
- * UNSPECIFIED state is not an observation of a shut door. */
+/** True when the door has no observed state: no observation at all, or one
+ * whose state is unspecified. */
+function unobserved(info: DoorInfo | undefined): boolean {
+  return !info || info.state === DoorState.UNSPECIFIED;
+}
+
 /**
- * The drawn state for a presented door. A door with NO observation draws
- * CLOSED in the remembered treatment (fog of war, rpg-project#586 R2): the
- * atlas presented it because a cell on its edge is known, and with no sighting
- * of its state the client shows the shape it would take at rest, greyed,
- * rather than a placeholder that announces "a secret is here". An observation
- * whose state is unspecified is still `unknown`.
+ * The drawn state for a presented door (fog of war, rpg-project#586 R2). AN
+ * UNOBSERVED DOOR DRAWS CLOSED, GREY AND INERT: the atlas presented it because
+ * a cell on its edge is known, so it is drawn in its rest pose in the
+ * remembered treatment and takes no click, never as a placeholder marker. An
+ * observed door draws its observed state.
  */
 function fittedDoorStateFromObservation(
   info: DoorInfo | undefined
 ): FittedDoorState {
-  if (!info) return 'closed';
-  if (info.state === DoorState.OPEN) return 'open';
-  if (info.state === DoorState.CLOSED || info.state === DoorState.LOCKED) {
-    return 'closed';
-  }
-  return 'unknown';
+  if (unobserved(info)) return 'closed';
+  return info!.state === DoorState.OPEN ? 'open' : 'closed';
 }
 
 export function StructuralLayoutEnvironment({
@@ -91,6 +96,7 @@ export function StructuralLayoutEnvironment({
   onDoorClick,
   rememberedWallIds,
   rememberedDoorIds,
+  rememberedWallSpans,
 }: StructuralLayoutEnvironmentProps): ReactElement {
   return (
     <>
@@ -120,6 +126,7 @@ export function StructuralLayoutEnvironment({
             <StructuralWallSurfacePieces
               wall={unit.surface}
               remembered={rememberedWallIds?.has(unit.id) ?? false}
+              rememberedSpans={rememberedWallSpans?.get(unit.id)}
             />
           </Suspense>
         </ErrorBoundary>
@@ -128,12 +135,8 @@ export function StructuralLayoutEnvironment({
         const info = observedDoors?.get(unit.id);
         const state = fittedDoorStateFromObservation(info);
         const remembered =
-          info === undefined || !!rememberedDoorIds?.has(unit.id);
-        const clickable =
-          onDoorClick !== undefined &&
-          info !== undefined &&
-          !remembered &&
-          state !== 'unknown';
+          unobserved(info) || !!rememberedDoorIds?.has(unit.id);
+        const clickable = onDoorClick !== undefined && !remembered;
         const marker = {
           position: [
             unit.pose.point.x,

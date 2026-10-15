@@ -149,11 +149,16 @@ export function StructuralWallSurfacePieces({
   visualLighting,
   finishSpans = [],
   remembered = false,
+  rememberedSpans = [],
 }: {
   wall: StructuralWallSurface;
   /** Fog of war (rpg-project#586): draw every piece in the remembered
    * treatment. The editor never sets it. */
   remembered?: boolean;
+  /** Fog of war: stretches of the wall line (fractions, 0 at its start) to
+   * draw remembered. A piece whose middle falls in one draws remembered.
+   * The editor never sets it. */
+  rememberedSpans?: readonly { readonly from: number; readonly to: number }[];
   endFits?: WallEndFits;
   finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
@@ -228,6 +233,12 @@ export function StructuralWallSurfacePieces({
             (segment, segmentIndex) => {
               const middle = (segment.start + segment.end) / 2;
               const total = wallLength(wall);
+              const pieceRemembered =
+                remembered ||
+                rememberedSpans.some(
+                  (span) =>
+                    middle / total >= span.from && middle / total <= span.to
+                );
               const point = finishSpans.length
                 ? {
                     x:
@@ -252,6 +263,7 @@ export function StructuralWallSurfacePieces({
                   name={`structural-wall-piece-${wall.id}-${spanIndex}-${pieceIndex}${segmentIndex ? `-${segmentIndex}` : ''}`}
                   userData={{
                     wallId: wall.id,
+                    knowledge: pieceRemembered ? 'remembered' : 'seen',
                     span: layout.span,
                     baseY,
                     heightScale: piece.heightScale,
@@ -290,7 +302,7 @@ export function StructuralWallSurfacePieces({
                     position={[0, 0, 0]}
                     rotationY={0}
                     heightScale={1}
-                    remembered={remembered}
+                    remembered={pieceRemembered}
                     onBoundsMeasured={onMeasured}
                   />
                 </group>
