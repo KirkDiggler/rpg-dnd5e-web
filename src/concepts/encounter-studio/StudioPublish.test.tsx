@@ -5,12 +5,14 @@
  * (author/testing/fakeAuthoringClient) and the lobby sequence. Each case
  * drives the studio's own controls and observes the exact requests.
  */
+import { clearAuth, setAuth } from '@/api/auth';
 import {
   type Deferred,
   type FakeAuthoringSink,
 } from '@/author/testing/fakeAuthoringClient';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { Code, ConnectError } from '@connectrpc/connect';
+import { DungeonSource } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import {
   act,
   cleanup,
@@ -29,7 +31,7 @@ import {
   type RoomDraftDocument,
 } from '../world-building/roomDraft';
 import type { KeyValueStorage } from '../world-building/types';
-import { defaultDraftKey, exportDraftYaml } from './draftFile';
+import { defaultDraftKey, exportDraftYaml, readDraftYaml } from './draftFile';
 import { EncounterStudioWorkspace } from './EncounterStudioWorkspace';
 import { createCastleS4Document } from './fixtures/castleS4';
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
@@ -43,14 +45,45 @@ const sink = vi.hoisted(
     getAnswers: [],
   })
 );
+/** The Open panel's calls (S7) on their own sink, so the publishing
+ * hook's GetDungeon indexes stay its own. */
+const library = vi.hoisted(() => ({
+  sink: {
+    puts: [],
+    gets: [],
+    putAnswers: [],
+    getAnswers: [],
+    deletes: [],
+    renames: [],
+  } as unknown as FakeAuthoringSink & {
+    deletes: NonNullable<FakeAuthoringSink['deletes']>;
+    renames: NonNullable<FakeAuthoringSink['renames']>;
+  },
+  /** What the lobby's ListDungeons answers, read at call time. */
+  listed: [] as Array<{
+    key: string;
+    name: string;
+    source: number;
+    owner: string;
+  }>,
+  /** The bytes GetDungeon answers per key on the library sink. */
+  files: {} as Record<string, string>,
+}));
 vi.mock('@/author/authoringRpc', async (importOriginal) => {
   const { fakeAuthoringClient } =
     await import('@/author/testing/fakeAuthoringClient');
   return {
     ...(await importOriginal<typeof import('@/author/authoringRpc')>()),
     defaultAuthoringClient: fakeAuthoringClient(sink),
+    defaultAuthoringLibraryClient: fakeAuthoringClient(library.sink),
   };
 });
+vi.mock('@/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/client')>()),
+  lobbyClient: {
+    listDungeons: vi.fn(async () => ({ dungeons: [...library.listed] })),
+  },
+}));
 
 const gate = vi.hoisted(() => ({
   state: 'live' as 'probing' | 'live' | 'gate-off' | 'unreachable',
@@ -154,6 +187,7 @@ class MemoryStorage implements KeyValueStorage {
 }
 
 let source: CompositionSource;
+const libraryAnswered = new Set<number>();
 beforeEach(() => {
   sink.puts.length = 0;
   sink.gets.length = 0;
@@ -164,6 +198,13 @@ beforeEach(() => {
   lobby.startEncounter.length = 0;
   gate.state = 'live';
   gate.retry.mockReset();
+  library.sink.gets.length = 0;
+  library.sink.getAnswers.length = 0;
+  library.sink.deletes.length = 0;
+  library.sink.renames.length = 0;
+  library.listed = [];
+  library.files = {};
+  libraryAnswered.clear();
   source = {
     worldId: 'joined-test-world',
     reader: {
@@ -181,6 +222,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  clearAuth();
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -761,5 +803,220 @@ describe('S6 the saved key outlives the studio mount (T7)', () => {
     fireEvent.click(play());
     await waitFor(() => expect(sink.gets).toHaveLength(1));
     expect(savePuts()).toHaveLength(0);
+  });
+});
+
+describe('S7 opening from the server seeds the key and the memory', () => {
+  const ME = 'player-a';
+  /** A server file: its room has its own id and name. */
+  function serverFile(key: string, name: string, roomId: string): string {
+    const document = createPopulatedStudioDocument();
+    document.draft.name = name;
+    document.draft.id = roomId;
+    const yaml = exportDraftYaml(document, key);
+    library.files[key] = yaml;
+    return yaml;
+  }
+  const listing = (
+    key: string,
+    source: DungeonSource,
+    owner = '',
+    name = `Room ${key}`
+  ) => ({ key, name, source, owner });
+  const openPanel = () =>
+    within(screen.getByRole('region', { name: 'Open from server' }));
+  /** Press Open (or Replace) and answer every library read from `files`. */
+  async function answerLibrary(): Promise<void> {
+    await waitFor(() => {
+      if (library.sink.gets.length === libraryAnswered.size)
+        throw new Error('no library read yet');
+    });
+    await act(async () => {
+      library.sink.gets.forEach((get, index) => {
+        if (libraryAnswered.has(index)) return;
+        libraryAnswered.add(index);
+        library.sink.getAnswers[index]!.resolve({
+          yaml: library.files[get.key] ?? '',
+        });
+      });
+    });
+  }
+  async function openFromServer(key: string): Promise<void> {
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await answerLibrary();
+    fireEvent.click(
+      await openPanel().findByRole('button', { name: `Open ${key}` })
+    );
+    await answerLibrary();
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace' }));
+  }
+  const draftKey = (): string => {
+    fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
+    const value = keyIn(draftPanel()).value;
+    fireEvent.click(screen.getByRole('button', { name: 'Close draft file' }));
+    return value;
+  };
+  const record = (storage: MemoryStorage) =>
+    JSON.parse(storage.bytes.get(PUBLICATION_STORAGE_KEY) ?? 'null');
+
+  beforeEach(() => setAuth('discord-token', ME));
+
+  it('opening my own file then Save and Play does not ask and puts under its key', async () => {
+    const yaml = serverFile('the-cells', 'The cells', 'cells-room');
+    library.listed = [
+      listing('the-cells', DungeonSource.WORLD, ME, 'The cells'),
+      listing('castle-kitchen', DungeonSource.SHIPPED),
+    ];
+    serverFile('castle-kitchen', 'The castle kitchen', 'kitchen-room');
+    const { storage, onPlay } = mount();
+    await settled();
+    await openFromServer('the-cells');
+    const roomId = (readDraftYaml(yaml) as { draft: { id: string } }).draft.id;
+    await waitFor(() =>
+      expect(storage.document().draft.name).toBe('The cells')
+    );
+    expect(record(storage)).toEqual({ roomId, key: 'the-cells' });
+    expect(draftKey()).toBe('the-cells');
+    fireEvent.click(play());
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    expect(sink.gets).toHaveLength(0);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(savePuts()[0]!.request.key).toBe('the-cells');
+    await answerSave(0, { errors: [] });
+    await answerLaunch();
+    await waitFor(() => expect(onPlay).toHaveBeenCalledTimes(1));
+  });
+
+  it("opening another member's file seeds a fresh key and no remembered save", async () => {
+    serverFile('b-keep', 'The keep', 'keep-room');
+    library.listed = [
+      listing('b-keep', DungeonSource.WORLD, 'walk-player-b', 'The keep'),
+    ];
+    const { storage } = mount();
+    await settled();
+    await openFromServer('b-keep');
+    await waitFor(() => expect(storage.document().draft.name).toBe('The keep'));
+    expect(draftKey()).toBe('the-keep');
+    expect(storage.bytes.get(PUBLICATION_STORAGE_KEY)).toBe('null');
+  });
+
+  it('opening a reference seeds the fresh key and the first Save and Play to it does not ask (NotFound) and puts under the fresh key', async () => {
+    serverFile('castle-kitchen', 'The castle kitchen', 'kitchen-room');
+    library.listed = [listing('castle-kitchen', DungeonSource.SHIPPED)];
+    const { storage } = mount();
+    await settled();
+    await openFromServer('castle-kitchen');
+    await waitFor(() =>
+      expect(storage.document().draft.name).toBe('The castle kitchen')
+    );
+    expect(draftKey()).toBe('the-castle-kitchen');
+    fireEvent.click(play());
+    await answerGet(0, notFound());
+    expect(sink.gets[0]!.key).toBe('the-castle-kitchen');
+    await answerSave(0, { errors: [] });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(savePuts()[0]!.request.key).toBe('the-castle-kitchen');
+  });
+
+  it('opening a reference whose slug is taken seeds -2', async () => {
+    serverFile('castle-kitchen', 'The castle kitchen', 'kitchen-room');
+    serverFile('the-castle-kitchen', 'The castle kitchen', 'theirs-room');
+    library.listed = [
+      listing('the-castle-kitchen', DungeonSource.WORLD, 'walk-player-b'),
+      listing('castle-kitchen', DungeonSource.SHIPPED),
+    ];
+    mount();
+    await settled();
+    await openFromServer('castle-kitchen');
+    await waitFor(() => expect(draftKey()).toBe('the-castle-kitchen-2'));
+  });
+
+  it('undo after Open restores the previous draft', async () => {
+    serverFile('the-cells', 'The cells', 'cells-room');
+    library.listed = [listing('the-cells', DungeonSource.WORLD, ME)];
+    const document = createCastleS4Document();
+    const { storage } = mount(document);
+    await settled();
+    await openFromServer('the-cells');
+    await waitFor(() =>
+      expect(storage.document().draft.name).toBe('The cells')
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() =>
+      expect(storage.document().draft.name).toBe(document.draft.name)
+    );
+  });
+
+  it('renaming the remembered key moves the record', async () => {
+    serverFile('the-cells', 'The cells', 'cells-room');
+    library.listed = [listing('the-cells', DungeonSource.WORLD, ME)];
+    const { storage } = mount();
+    await settled();
+    await openFromServer('the-cells');
+    const roomId = record(storage).roomId;
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await answerLibrary();
+    fireEvent.click(
+      await openPanel().findByRole('button', { name: 'Rename the-cells' })
+    );
+    fireEvent.change(openPanel().getByRole('textbox', { name: 'New key' }), {
+      target: { value: 'kitchen-copy' },
+    });
+    fireEvent.click(openPanel().getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(library.sink.renames).toHaveLength(1));
+    library.listed = [listing('kitchen-copy', DungeonSource.WORLD, ME)];
+    library.files['kitchen-copy'] = library.files['the-cells']!;
+    await act(async () => library.sink.renames[0]!.deferred.resolve(undefined));
+    await answerLibrary();
+    await waitFor(() =>
+      expect(record(storage)).toEqual({ roomId, key: 'kitchen-copy' })
+    );
+    expect(draftKey()).toBe('kitchen-copy');
+  });
+
+  it('deleting the remembered key clears it', async () => {
+    serverFile('the-cells', 'The cells', 'cells-room');
+    library.listed = [listing('the-cells', DungeonSource.WORLD, ME)];
+    const { storage } = mount();
+    await settled();
+    await openFromServer('the-cells');
+    expect(record(storage)?.key).toBe('the-cells');
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await answerLibrary();
+    fireEvent.click(
+      await openPanel().findByRole('button', { name: 'Delete the-cells' })
+    );
+    fireEvent.click(
+      within(
+        screen.getByRole('alertdialog', { name: 'Delete the-cells' })
+      ).getByRole('button', { name: 'Delete' })
+    );
+    await waitFor(() => expect(library.sink.deletes).toHaveLength(1));
+    library.listed = [];
+    await act(async () => library.sink.deletes[0]!.deferred.resolve(undefined));
+    await waitFor(() =>
+      expect(storage.bytes.get(PUBLICATION_STORAGE_KEY)).toBe('null')
+    );
+    // The key field is unchanged: the next save writes it anew.
+    expect(draftKey()).toBe('the-cells');
+  });
+
+  it('a reopened studio after opening my own file does not ask', async () => {
+    serverFile('the-cells', 'The cells', 'cells-room');
+    library.listed = [listing('the-cells', DungeonSource.WORLD, ME)];
+    const first = mount();
+    await settled();
+    await openFromServer('the-cells');
+    await waitFor(() =>
+      expect(first.storage.document().draft.name).toBe('The cells')
+    );
+    first.view.unmount();
+    mount(undefined, { storage: first.storage });
+    await settled();
+    expect(draftKey()).toBe('the-cells');
+    fireEvent.click(play());
+    await waitFor(() => expect(savePuts()).toHaveLength(1));
+    expect(sink.gets).toHaveLength(0);
+    expect(savePuts()[0]!.request.key).toBe('the-cells');
   });
 });
