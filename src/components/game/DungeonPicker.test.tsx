@@ -1,4 +1,7 @@
-import type { DungeonSummary } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
+import {
+  DungeonSource,
+  type DungeonSummary,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DungeonPicker } from './DungeonPicker';
@@ -45,6 +48,59 @@ describe('DungeonPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /choose a dungeon/i }));
 
     screen.getByText('No options available');
+  });
+
+  it("DungeonPicker labels yours, another member's and reference in server order", () => {
+    const listed = [
+      {
+        key: 'the-cells',
+        name: 'The cells',
+        source: DungeonSource.WORLD,
+        owner: 'player-a',
+      },
+      {
+        key: 'b-keep',
+        name: 'The keep',
+        source: DungeonSource.WORLD,
+        owner: 'walk-player-b',
+      },
+      {
+        key: 'castle-kitchen',
+        name: 'The castle kitchen',
+        source: DungeonSource.SHIPPED,
+        owner: '',
+      },
+    ] as DungeonSummary[];
+    const onChange = vi.fn();
+    render(
+      <DungeonPicker
+        dungeons={listed}
+        value=""
+        onChange={onChange}
+        playerId="player-a"
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /choose a dungeon/i }));
+    const labels = [
+      'The cells (yours)',
+      'The keep (walk-player-b)',
+      'The castle kitchen (reference)',
+    ];
+    const options = screen
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+      .filter((text) => labels.includes(text ?? ''));
+    expect(options).toEqual(labels);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'The keep (walk-player-b)' })
+    );
+    expect(onChange).toHaveBeenCalledWith('b-keep');
+  });
+
+  it('a server that lists no source keeps the bare names', () => {
+    render(<DungeonPicker dungeons={dungeons} value="" onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /choose a dungeon/i }));
+    screen.getByRole('button', { name: 'The Reference Tomb' });
   });
 
   it('respects an explicit disabled prop independent of loading', () => {
