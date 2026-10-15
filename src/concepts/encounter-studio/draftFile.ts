@@ -49,7 +49,9 @@ export type DraftFileRead =
       draft: RoomDraft;
       scope: SiteScope;
     }
-  | { ok: false; refusal: string };
+  /** `multiRoom` marks the dialect refusal, so a list can leave such a file
+   * out without matching the sentence (R23). */
+  | { ok: false; refusal: string; multiRoom?: true };
 
 export type ImportResult =
   | { ok: true; key: string }
@@ -72,6 +74,7 @@ export function readDraftYaml(text: string): DraftFileRead {
     return {
       ok: false,
       refusal: `This file is a version ${read.version} dungeon, the multi-room dialect. The studio opens single-room files, version 3 or 4.`,
+      multiRoom: true,
     };
   return { ok: true, key: read.key, draft: read.draft, scope: scopeFrom(read) };
 }
@@ -85,7 +88,7 @@ export function importDraftYaml(
   }
 ): ImportResult {
   const read = readDraftYaml(text);
-  if (!read.ok) return read;
+  if (!read.ok) return { ok: false, refusal: read.refusal };
   return session.importDocument(read.draft, read.scope)
     ? { ok: true, key: read.key }
     : {

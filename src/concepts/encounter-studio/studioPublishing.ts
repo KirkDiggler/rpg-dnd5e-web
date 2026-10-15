@@ -50,11 +50,17 @@ export function playUnavailableReason(
 /** The server's own sentence when it refused the KEY, not the file: the
  * registry's grammar and its key-line match travel as InvalidArgument
  * transport errors (`key must match [a-z0-9-]+`, `key does not match the
- * file's own key line`), and a field error with an empty path naming the
- * key is read the same way (R16). Null when no key refusal is current. */
+ * file's own key line`), the world store's refusals of a key that is a
+ * reference or another member's travel as PermissionDenied (R20, S7-Q2),
+ * and a field error with an empty path naming the key is read the same way
+ * (R16). Null when no key refusal is current. */
 export function keyRefusalOf(publishing: StudioPublishing): string | null {
   const fromTransport = (text: string | null | undefined): string | null => {
-    const match = /InvalidArgument: (key\b.*)$/.exec(text ?? '');
+    const match =
+      /InvalidArgument: (key\b.*)$/.exec(text ?? '') ??
+      /PermissionDenied: (that key (?:is a reference|belongs to another member of this world).*)$/.exec(
+        text ?? ''
+      );
     return match ? match[1]! : null;
   };
   const field = [...publishing.preview.errors, ...publishing.saver.errors].find(
