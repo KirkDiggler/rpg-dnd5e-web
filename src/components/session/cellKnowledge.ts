@@ -17,6 +17,10 @@
  * authority for what exists for this seat, the view only says which known
  * cells are lit. Unknown space is never invented from a view.
  *
+ * An EMPTY `visible_cells` is not "sees nothing": it draws every atlas cell
+ * seen (see `cellKnowledge`), because the wire cannot tell it from a server
+ * that does not send the field.
+ *
  * # The soft edge
  *
  * The boundary between seen and remembered is a short gradient over at most
@@ -73,11 +77,19 @@ export function cellKnowledge(
   atlasCells: readonly Pick<Position, 'x' | 'y'>[],
   visibleCells: readonly Pick<Position, 'x' | 'y'>[]
 ): CellKnowledge {
+  // AN EMPTY `visible_cells` DRAWS EVERY ATLAS CELL SEEN — today's look.
+  // proto3 cannot tell an absent repeated field from an empty one, so a
+  // server that predates the field and a seat that sees nothing would arrive
+  // identically. An all-grey screen is therefore never the fallback. The api
+  // contract (fog of war T4) closes the gap from the other side: a seat that
+  // truly sees nothing is still sent its own cell, so empty keeps meaning
+  // "the server does not know".
+  const unknown = visibleCells.length === 0;
   const visible = new Set(visibleCells.map(keyOf));
   const state = new Map<string, CellState>();
   for (const cell of atlasCells) {
     const key = keyOf(cell);
-    state.set(key, visible.has(key) ? 'seen' : 'remembered');
+    state.set(key, unknown || visible.has(key) ? 'seen' : 'remembered');
   }
 
   // Breadth-first from every seen cell, through atlas cells only, at most

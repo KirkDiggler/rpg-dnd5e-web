@@ -64,10 +64,16 @@ describe('cellKnowledge — the per-cell state map (fog of war, rpg-project#586)
     }
   });
 
-  it('empty visible_cells makes every atlas cell remembered', () => {
+  it('a view with no visible cells draws every atlas cell lit', () => {
+    // proto3 cannot tell an absent field from an empty one: empty means the
+    // server does not know, never "sees nothing", so the fallback is never grey.
     const k = cellKnowledge(ATLAS_CELLS, []);
-    expect([...k.state.values()].every((s) => s === 'remembered')).toBe(true);
+    expect(k.state.size).toBe(ATLAS_CELLS.length);
+    expect([...k.state.values()].every((s) => s === 'seen')).toBe(true);
+    for (const c of ATLAS_CELLS) expect(litWeight(k, key(c))).toBe(1);
     expect(k.edge.size).toBe(0);
+    // Absent cells stay absent.
+    for (const c of BEHIND_JAMB) expect(k.state.has(key(c))).toBe(false);
   });
 });
 

@@ -855,13 +855,30 @@ describe('applyCellKnowledge — the scene as this seat knows it (fog of war, rp
   });
 
   it('computes no visibility: an atlas cell absent from visible_cells is remembered even beside the seat', () => {
+    // The seat stands at (0,0) and is told it sees only its own cell.
+    const fog = applyCellKnowledge(
+      scene(),
+      cellKnowledge(ATLAS_CELLS, [{ x: 0, y: 0 }]),
+      atlas(),
+      1
+    );
+    expect(fog.floorLitByCell!.get(key({ x: 0, y: 0 }))).toBe(1);
+    expect(fog.floorLitByCell!.get(key({ x: 1, y: 0 }))).toBeLessThan(1);
+    expect(fog.cellKnowledge!.state.get(key({ x: 1, y: 0 }))).toBe(
+      'remembered'
+    );
+    expect(fog.rememberedWallRunKeys!.size).toBe(2);
+  });
+
+  it('a view with no visible cells draws every atlas cell lit', () => {
     const fog = applyCellKnowledge(
       scene(),
       cellKnowledge(ATLAS_CELLS, []),
       atlas(),
       1
     );
-    expect([...fog.floorLitByCell!.values()].every((w) => w === 0)).toBe(true);
-    expect(fog.rememberedWallRunKeys!.size).toBe(2);
+    expect([...fog.floorLitByCell!.values()].every((w) => w === 1)).toBe(true);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
+    expect(fog.rememberedDoorGapKeys!.size).toBe(0);
   });
 });
