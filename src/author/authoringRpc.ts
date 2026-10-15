@@ -34,7 +34,17 @@ export type AuthoringClient = Pick<
   'putDungeon' | 'getDungeon' | 'listScenarios'
 >;
 
+/** The studio's Open panel's calls (S7): read one file, and the owner's
+ * Rename and Delete. The panel lists through the lobby's ListDungeons. A separate pick so the clients that only save and
+ * preview (World Builder, the contributor sandbox) are not widened. */
+export type AuthoringLibraryClient = Pick<
+  Client<typeof AuthoringService>,
+  'getDungeon' | 'deleteDungeon' | 'renameDungeon'
+>;
+
 export const defaultAuthoringClient: AuthoringClient = authoringClient;
+export const defaultAuthoringLibraryClient: AuthoringLibraryClient =
+  authoringClient;
 
 export type PreviewStatus =
   | 'idle'

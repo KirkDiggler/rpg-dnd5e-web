@@ -406,6 +406,7 @@ export function LobbyFlow({
             value={selectedDungeonKey}
             onChange={setSelectedDungeonKey}
             loading={dungeonsLoading}
+            playerId={playerId}
           />
         ))}
 

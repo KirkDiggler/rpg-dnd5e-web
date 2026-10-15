@@ -22,6 +22,7 @@ import type { WorkspaceBounds } from '../world-building/workspaceGeometry';
 import { WorldBuildingConcept } from '../world-building/WorldBuildingConcept';
 import { WorldBuildingViewport } from '../world-building/WorldBuildingViewport';
 import { defaultDraftKey } from './draftFile';
+import { freshKeyFor, useDungeonLibrary } from './dungeonLibrary';
 import './encounterStudio.css';
 import { AboutPanel } from './FieldHelp';
 import type { LayoutPlacedEditing } from './LayoutPlacedOverlay';
@@ -45,8 +46,13 @@ import { StudioDraftFile, type DraftFileKey } from './StudioDraftFile';
 import { StudioEndings } from './StudioEndings';
 import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
+import { StudioOpen, StudioOpenButton, type OpenedFile } from './StudioOpen';
 import { StudioPlayButton, StudioPublish } from './StudioPublish';
-import { currentRefusals, keyRefusalOf } from './studioPublishing';
+import {
+  currentRefusals,
+  keyRefusalOf,
+  PUBLISH_RUNNING_TITLE,
+} from './studioPublishing';
 import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
@@ -424,6 +430,54 @@ function StudioSurface({
     writePublication(storage, record);
     setRemembered(record);
   }, [publishSaver.status, savedFor, storage]);
+  /** Open from the server (R24, S7): the world's encounters and the
+   * references, listed only while the panel is open and the server accepts
+   * authoring. */
+  const [openPanel, setOpenPanel] = useState(false);
+  const library = useDungeonLibrary({
+    enabled: openPanel && gate.state === 'live',
+  });
+  /** Opening is the import. One's own file seeds its key as saved, so the
+   * next Save and Play does not ask (R16); another member's file or a
+   * reference is a copy: a fresh key and no remembered save. */
+  const openFile = ({ read, key, source }: OpenedFile): void => {
+    if (!session.importDocument(read.draft, read.scope)) return;
+    const roomId = read.draft.id;
+    setOpenPanel(false);
+    if (source === 'mine') {
+      const record = { roomId, key };
+      setFileKey(record);
+      setPublishKey(key);
+      writePublication(storage, record);
+      setRemembered(record);
+      return;
+    }
+    const fresh = freshKeyFor(
+      { draft: read.draft, scope: read.scope },
+      library.taken
+    );
+    setFileKey({ key: fresh, roomId });
+    setPublishKey(fresh);
+    clearPublication(storage);
+    setRemembered(null);
+  };
+  /** The memory follows a rename of the remembered key, and the key field
+   * follows a rename of its key (S7-Q7). */
+  const renamedOnServer = (from: string, to: string): void => {
+    if (remembered?.key === from) {
+      const record = { roomId: remembered.roomId, key: to };
+      writePublication(storage, record);
+      setRemembered(record);
+    }
+    if (fileKey?.key === from) setFileKey({ ...fileKey, key: to });
+    if (publishing.key.trim() === from) setPublishKey(to);
+  };
+  /** A delete of the remembered key forgets it; the key field stays. */
+  const deletedOnServer = (key: string): void => {
+    if (remembered?.key !== key) return;
+    clearPublication(storage);
+    setRemembered(null);
+  };
   const keyRefusal = keyRefusalOf(publishing);
   const jumps = refusalJumps(
     currentRefusals(publishing, gate.state),
@@ -627,9 +681,7 @@ function StudioSurface({
           <button
             type="button"
             disabled={session.publishing.busy}
-            title={
-              session.publishing.busy ? 'Save & Play is running…' : undefined
-            }
+            title={session.publishing.busy ? PUBLISH_RUNNING_TITLE : undefined}
             onClick={() => setConfirmLeave(true)}
           >
             Back
@@ -713,8 +765,10 @@ function StudioSurface({
           </button>
         </nav>
         <div className="es-save">
-          <span className="es-local">LOCAL DRAFT</span>
-          <span role="status">{session.saveStatus}</span>
+          <span className="es-local-state">
+            <span className="es-local">LOCAL DRAFT</span>
+            <span role="status">{session.saveStatus}</span>
+          </span>
           <button type="button" onClick={session.saveLocalDraft}>
             {session.autosaveBlocked
               ? 'Replace unreadable local draft'
@@ -728,6 +782,11 @@ function StudioSurface({
           >
             Draft file
           </button>
+          <StudioOpenButton
+            gate={gate.state}
+            panelOpen={openPanel}
+            onPress={() => setOpenPanel(!openPanel)}
+          />
           <StudioPlayButton
             publishing={publishing}
             gate={gate}
@@ -755,6 +814,19 @@ function StudioSurface({
             onFileKey={adoptFileKey}
             onOpenServer={() => setPublishOpen(true)}
             onClose={() => setDraftFileOpen(false)}
+          />
+        </div>
+      )}
+      {openPanel && (
+        <div id="studio-open">
+          <StudioOpen
+            library={library}
+            gate={gate.state}
+            publishing={session.publishing.busy}
+            onOpen={openFile}
+            onRenamed={renamedOnServer}
+            onDeleted={deletedOnServer}
+            onClose={() => setOpenPanel(false)}
           />
         </div>
       )}

@@ -10,7 +10,10 @@ import type {
   HostChanged,
   LobbySnapshot,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/events_pb';
-import type { DungeonSummary } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
+import {
+  DungeonSource,
+  type DungeonSummary,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useEffect, useRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,8 +44,18 @@ vi.mock('../../api/useStartLobbyEncounter', () => ({
 vi.mock('../../api/useListDungeons', () => ({
   useListDungeons: () => ({
     dungeons: [
-      { key: 'reference-tomb', name: 'The Reference Tomb' },
-      { key: 'smoke-test', name: 'Smoke Test' },
+      {
+        key: 'reference-tomb',
+        name: 'The Reference Tomb',
+        source: DungeonSource.SHIPPED,
+        owner: '',
+      },
+      {
+        key: 'smoke-test',
+        name: 'Smoke Test',
+        source: DungeonSource.WORLD,
+        owner: 'walk-player-b',
+      },
     ] as DungeonSummary[],
     loading: false,
     error: hoisted.dungeonsError,
@@ -126,7 +139,9 @@ describe('LobbyFlow — dungeon picker (rpg-project#131)', () => {
     screen.getByTestId('dungeon-picker');
 
     fireEvent.click(screen.getByRole('button', { name: /choose a dungeon/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Smoke Test' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Smoke Test (walk-player-b)' })
+    );
 
     fireEvent.click(screen.getByTestId('start-encounter-button'));
 

@@ -209,12 +209,21 @@
   stroke-width: 6;
 }
 
-/* Two permanent bands. Overflow scrolls, never becomes permanent extra rows. */
-.es-header,
+/* Two bands. The toolbar's overflow scrolls. The header never scrolls
+ * sideways (S5's law, rpg-project#585 QA): its words wrap inside the Save
+ * group first, and only a window too narrow for that moves the Save group
+ * onto a second row. */
 .es-toolbar {
   flex-wrap: nowrap;
   overflow-x: auto;
+}
+.es-header,
+.es-toolbar {
   min-height: 3rem;
+}
+.es-header {
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
 }
 .es-header > *,
 .es-toolbar > * {
@@ -228,6 +237,25 @@
 }
 .es-header .es-save {
   width: auto;
+  max-width: none;
+  /* May shrink to the row it lands on and wrap its own controls there. */
+  flex-shrink: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+/* The local draft's label over its status, and the reason a control is
+ * disabled, wrap in a narrow column instead of widening the band. */
+.es-local-state {
+  display: flex;
+  flex-direction: column;
+  max-width: 12rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+.es-save > .es-help {
+  max-width: 11rem;
+  line-height: 1.15;
+  white-space: normal;
 }
 .es-title {
   min-width: 12rem;
@@ -1163,4 +1191,29 @@
 }
 .encounter-studio .es-publish-status:empty {
   display: none;
+}
+
+/* Open from the server (rpg-project#585): the panel lists This world and
+ * References in one column under the header row. */
+.encounter-studio .es-open-panel {
+  flex-direction: column;
+  align-items: stretch;
+}
+.encounter-studio .es-open-panel > h3 {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+.encounter-studio .es-open-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.encounter-studio .es-open-list > li {
+  padding: 0.2rem 0;
+}
+.encounter-studio .es-open-list small {
+  opacity: 0.7;
+}
+.encounter-studio .es-open-list p {
+  margin: 0.15rem 0 0;
 }
