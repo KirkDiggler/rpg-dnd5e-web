@@ -301,6 +301,11 @@ async function answerLaunch(encounterId = 'encounter-7') {
   );
 }
 const notFound = () => new ConnectError('no such dungeon', Code.NotFound);
+/** The replace question appears only after the file is read and decoded
+ * (`readDraftYaml` over a whole populated room). The first decode in a
+ * worker takes ~170 ms locally and several times that on CI, so the
+ * default 1 s wait of `findBy` is a race there, not a bound. */
+const FILE_READ_TIMEOUT_MS = 5000;
 
 describe('S6 one key', () => {
   it('the key seeds from the room name slug on a fresh draft', async () => {
@@ -359,7 +364,11 @@ describe('S6 one key', () => {
       },
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Replace draft' })
+      await screen.findByRole(
+        'button',
+        { name: 'Replace draft' },
+        { timeout: FILE_READ_TIMEOUT_MS }
+      )
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save to server…' }));
     await waitFor(() => expect(keyIn(panel()).value).toBe('mad-king'));
@@ -783,7 +792,11 @@ describe('S6 the saved key outlives the studio mount (T7)', () => {
       },
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Replace draft' })
+      await screen.findByRole(
+        'button',
+        { name: 'Replace draft' },
+        { timeout: FILE_READ_TIMEOUT_MS }
+      )
     );
     expect(keyIn(draftPanel()).value).toBe(key);
     fireEvent.click(play());
@@ -847,7 +860,13 @@ describe('S7 opening from the server seeds the key and the memory', () => {
       await openPanel().findByRole('button', { name: `Open ${key}` })
     );
     await answerLibrary();
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace' }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Replace' },
+        { timeout: FILE_READ_TIMEOUT_MS }
+      )
+    );
   }
   const draftKey = (): string => {
     fireEvent.click(screen.getByRole('button', { name: 'Draft file' }));
