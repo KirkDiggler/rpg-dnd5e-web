@@ -27,7 +27,7 @@ import {
   StudioOpen,
   StudioOpenButton,
 } from './StudioOpen';
-import { GATE_OFF_SENTENCE } from './studioPublishing';
+import { GATE_OFF_SENTENCE, PUBLISH_RUNNING_TITLE } from './studioPublishing';
 
 const ME = 'player-a';
 const fileFor = (key: string, name = `Room ${key}`) => {
@@ -94,14 +94,27 @@ function setup(lists: DungeonSummary[][], files: Record<string, string> = {}) {
     onDeleted: vi.fn(),
     onClose: vi.fn(),
   };
-  function Harness({ gate }: { gate: AuthoringGateState }) {
+  function Harness({
+    gate,
+    publishing = false,
+  }: {
+    gate: AuthoringGateState;
+    publishing?: boolean;
+  }) {
     const library = useDungeonLibrary({
       client,
       lobby,
       enabled: gate === 'live',
       playerId: ME,
     });
-    return <StudioOpen library={library} gate={gate} {...handlers} />;
+    return (
+      <StudioOpen
+        library={library}
+        gate={gate}
+        publishing={publishing}
+        {...handlers}
+      />
+    );
   }
   return { sink, lobby, answerGets, handlers, Harness };
 }
@@ -109,7 +122,6 @@ function setup(lists: DungeonSummary[][], files: Record<string, string> = {}) {
 async function renderReady(lists: DungeonSummary[][], files = {}) {
   const harness = setup(lists, files);
   render(<harness.Harness gate="live" />);
-  await harness.answerGets();
   await screen.findByRole('heading', { name: 'This world' });
   return harness;
 }
@@ -169,11 +181,11 @@ describe('StudioOpen', () => {
   });
 
   it('a version 2 file read from the server shows the dialect sentence and imports nothing', async () => {
-    // The probe saw a v4 file; by the time Open reads it, it is version 2.
+    // An older server lists a version 2 file; the reader refuses it at Open.
     const { sink, handlers } = await renderReady([[...WORLD]]);
     fireEvent.click(screen.getByRole('button', { name: 'Open the-cells' }));
-    await waitFor(() => expect(sink.gets.length).toBe(3));
-    sink.getAnswers[2]!.resolve({ yaml: referenceTombYaml });
+    await waitFor(() => expect(sink.gets.length).toBe(1));
+    sink.getAnswers[0]!.resolve({ yaml: referenceTombYaml });
     expect(
       (await within(rowOf('Room the-cells')).findByRole('alert')).textContent
     ).toMatch(/version 2 dungeon, the multi-room dialect/);
@@ -184,8 +196,8 @@ describe('StudioOpen', () => {
   it('a read refusal is shown on the row', async () => {
     const { sink } = await renderReady([[...WORLD]]);
     fireEvent.click(screen.getByRole('button', { name: 'Open the-cells' }));
-    await waitFor(() => expect(sink.gets.length).toBe(3));
-    sink.getAnswers[2]!.resolve(
+    await waitFor(() => expect(sink.gets.length).toBe(1));
+    sink.getAnswers[0]!.resolve(
       new ConnectError('dungeon not found', Code.NotFound)
     );
     expect(
@@ -230,7 +242,7 @@ describe('StudioOpen', () => {
   });
 
   it('rename sends key and new_key and shows the AlreadyExists sentence on refusal', async () => {
-    const { sink, handlers, answerGets } = await renderReady([
+    const { sink, handlers } = await renderReady([
       [...WORLD],
       [summary('kitchen-copy', DungeonSource.WORLD, ME), WORLD[1]!],
     ]);
@@ -261,7 +273,6 @@ describe('StudioOpen', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(sink.renames).toHaveLength(2));
     sink.renames[1]!.deferred.resolve(undefined);
-    await answerGets();
     expect(
       await screen.findByRole('listitem', { name: 'Room kitchen-copy' })
     ).toBeTruthy();
@@ -272,10 +283,7 @@ describe('StudioOpen', () => {
   });
 
   it('delete asks, sends the key, and the row is gone after the refetch', async () => {
-    const { sink, handlers, answerGets } = await renderReady([
-      [...WORLD],
-      [WORLD[1]!],
-    ]);
+    const { sink, handlers } = await renderReady([[...WORLD], [WORLD[1]!]]);
     fireEvent.click(screen.getByRole('button', { name: 'Delete the-cells' }));
     const ask = screen.getByRole('alertdialog', { name: 'Delete the-cells' });
     expect(ask.textContent).toContain(
@@ -285,7 +293,6 @@ describe('StudioOpen', () => {
     await waitFor(() => expect(sink.deletes).toHaveLength(1));
     expect(sink.deletes[0]!.key).toBe('the-cells');
     sink.deletes[0]!.deferred.resolve(undefined);
-    await answerGets();
     await waitFor(() =>
       expect(
         screen.queryByRole('listitem', { name: 'Room the-cells' })
@@ -307,6 +314,41 @@ describe('StudioOpen', () => {
     expect(
       (await within(rowOf('Room the-cells')).findByRole('alert')).textContent
     ).toContain('Delete is not available on this server.');
+  });
+
+  it('listing reads no file', async () => {
+    const { sink } = await renderReady([[...WORLD, ...REFERENCES]]);
+    expect(sink.gets).toEqual([]);
+  });
+
+  it('a Save and Play in flight disables Rename and Delete with the lock title', async () => {
+    const harness = setup([[...WORLD]]);
+    const view = render(<harness.Harness gate="live" publishing />);
+    await screen.findByRole('heading', { name: 'This world' });
+    const row = rowOf('Room the-cells');
+    for (const name of ['Rename the-cells', 'Delete the-cells']) {
+      const button = within(row).getByRole('button', {
+        name,
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('title')).toBe(PUBLISH_RUNNING_TITLE);
+    }
+    // Open stays: the owner's lock refuses the import itself.
+    expect(
+      (
+        within(row).getByRole('button', {
+          name: 'Open the-cells',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    view.rerender(<harness.Harness gate="live" />);
+    expect(
+      (
+        within(row).getByRole('button', {
+          name: 'Rename the-cells',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
   });
 
   it('References rows offer neither Rename nor Delete', async () => {

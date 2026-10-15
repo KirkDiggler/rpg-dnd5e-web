@@ -48,7 +48,11 @@ import { StudioFacts } from './StudioFacts';
 import { StudioInspector } from './StudioInspector';
 import { StudioOpen, StudioOpenButton, type OpenedFile } from './StudioOpen';
 import { StudioPlayButton, StudioPublish } from './StudioPublish';
-import { currentRefusals, keyRefusalOf } from './studioPublishing';
+import {
+  currentRefusals,
+  keyRefusalOf,
+  PUBLISH_RUNNING_TITLE,
+} from './studioPublishing';
 import { StudioScenarios } from './StudioScenarios';
 import {
   studioInspectionOf,
@@ -677,9 +681,7 @@ function StudioSurface({
           <button
             type="button"
             disabled={session.publishing.busy}
-            title={
-              session.publishing.busy ? 'Save & Play is running…' : undefined
-            }
+            title={session.publishing.busy ? PUBLISH_RUNNING_TITLE : undefined}
             onClick={() => setConfirmLeave(true)}
           >
             Back
@@ -818,6 +820,7 @@ function StudioSurface({
           <StudioOpen
             library={library}
             gate={gate.state}
+            publishing={session.publishing.busy}
             onOpen={openFile}
             onRenamed={renamedOnServer}
             onDeleted={deletedOnServer}

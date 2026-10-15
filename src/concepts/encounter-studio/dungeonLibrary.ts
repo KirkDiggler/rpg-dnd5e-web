@@ -12,10 +12,9 @@
  * is Mine), and a Rename or Delete the server does not implement answers
  * one sentence saying so.
  *
- * The multi-room dialect is never listed (R23), whatever the server sends:
- * each listed file is read once and passed through `readDraftYaml`, the
- * studio's one reader, and a file it refuses as the other dialect is left
- * out. Nothing here decodes a file itself.
+ * The multi-room dialect is left out of the list by the server, which owns
+ * that rule (R23, S7-Q3). On an older server such a file is still listed,
+ * and Open refuses it with the reader's dialect sentence.
  */
 import { getPlayerId } from '@/api/auth';
 import { lobbyClient } from '@/api/client';
@@ -38,7 +37,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RoomDraftDocument } from '../world-building/roomDraft';
-import { defaultDraftKey, readDraftYaml } from './draftFile';
+import { defaultDraftKey } from './draftFile';
 
 export type LobbyListClient = Pick<Client<typeof LobbyService>, 'listDungeons'>;
 
@@ -67,8 +66,7 @@ export interface DungeonLibrary {
   /** False when the server listed encounters without a source (a server
    * from before the world store). */
   sourcesKnown: boolean;
-  /** Every key the server listed, the multi-room files left out of the
-   * lists included: the keys a fresh key must avoid. */
+  /** Every key the server listed: the keys a fresh key must avoid. */
   taken: ReadonlySet<string>;
   /** The list's failure, else null. */
   message: string | null;
@@ -107,9 +105,8 @@ export function useDungeonLibrary(input: {
   const [state, setState] = useState<{
     status: DungeonLibrary['status'];
     listed: DungeonSummary[];
-    shown: DungeonSummary[];
     message: string | null;
-  }>({ status: 'idle', listed: [], shown: [], message: null });
+  }>({ status: 'idle', listed: [], message: null });
   const sequence = useRef(0);
 
   const read = useCallback(
@@ -137,32 +134,12 @@ export function useDungeonLibrary(input: {
         .dungeons;
     } catch (error) {
       if (mine !== sequence.current) return;
-      setState({
-        status: 'error',
-        listed: [],
-        shown: [],
-        message: refusalOf(error),
-      });
+      setState({ status: 'error', listed: [], message: refusalOf(error) });
       return;
     }
-    // A file the reader refuses as the multi-room dialect is never listed;
-    // a file that cannot be read stays, and Open shows why.
-    const multiRoom = await Promise.all(
-      listed.map(async (summary) => {
-        const file = await read(summary.key);
-        if (!file.ok) return false;
-        const opened = readDraftYaml(file.yaml);
-        return !opened.ok && opened.multiRoom === true;
-      })
-    );
     if (mine !== sequence.current) return;
-    setState({
-      status: 'ready',
-      listed,
-      shown: listed.filter((_, index) => !multiRoom[index]),
-      message: null,
-    });
-  }, [lobby, read]);
+    setState({ status: 'ready', listed, message: null });
+  }, [lobby]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -217,10 +194,10 @@ export function useDungeonLibrary(input: {
   );
 
   return useMemo(() => {
-    const world = state.shown.filter(
+    const world = state.listed.filter(
       (summary) => summary.source === DungeonSource.WORLD
     );
-    const references = state.shown.filter(
+    const references = state.listed.filter(
       (summary) => summary.source !== DungeonSource.WORLD
     );
     return {

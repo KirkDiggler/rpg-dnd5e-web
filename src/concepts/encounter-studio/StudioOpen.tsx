@@ -17,7 +17,10 @@ import {
   OWNERS_NOT_ON_SERVER_SENTENCE,
   type DungeonLibrary,
 } from './dungeonLibrary';
-import { serverUnavailableReason } from './studioPublishing';
+import {
+  PUBLISH_RUNNING_TITLE,
+  serverUnavailableReason,
+} from './studioPublishing';
 
 export const EMPTY_WORLD_SENTENCE =
   'Nothing saved in this world yet. Save and Play saves here.';
@@ -59,6 +62,9 @@ export function StudioOpenButton({
 export interface StudioOpenProps {
   library: DungeonLibrary;
   gate: AuthoringGateState;
+  /** The owner's publishing lock: while a Save and Play is in flight, a
+   * rename or delete could move the key it is writing. */
+  publishing: boolean;
   onOpen(opened: OpenedFile): void;
   onRenamed(from: string, to: string): void;
   onDeleted(key: string): void;
@@ -72,6 +78,7 @@ type Asking =
 export function StudioOpen({
   library,
   gate,
+  publishing,
   onOpen,
   onRenamed,
   onDeleted,
@@ -175,7 +182,8 @@ export function StudioOpen({
               <button
                 type="button"
                 aria-label={`Rename ${summary.key}`}
-                disabled={busy}
+                disabled={busy || publishing}
+                title={publishing ? PUBLISH_RUNNING_TITLE : undefined}
                 onClick={() => {
                   setAsking(null);
                   setRenaming({ key: summary.key, value: summary.key });
@@ -186,7 +194,8 @@ export function StudioOpen({
               <button
                 type="button"
                 aria-label={`Delete ${summary.key}`}
-                disabled={busy}
+                disabled={busy || publishing}
+                title={publishing ? PUBLISH_RUNNING_TITLE : undefined}
                 onClick={() => {
                   setRenaming(null);
                   setAsking({ kind: 'delete', summary });
@@ -217,7 +226,11 @@ export function StudioOpen({
                 }
               />
             </label>
-            <button type="submit" disabled={busy}>
+            <button
+              type="submit"
+              disabled={busy || publishing}
+              title={publishing ? PUBLISH_RUNNING_TITLE : undefined}
+            >
               Save
             </button>
             <button
@@ -268,6 +281,8 @@ export function StudioOpen({
             <button
               type="button"
               ref={answerRef}
+              disabled={publishing}
+              title={publishing ? PUBLISH_RUNNING_TITLE : undefined}
               onClick={() => void remove(summary.key)}
             >
               Delete

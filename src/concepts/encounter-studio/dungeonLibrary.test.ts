@@ -11,8 +11,6 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
-import { exportDraftYaml } from './draftFile';
 import {
   freshKeyFor,
   notOnServerSentence,
@@ -22,8 +20,6 @@ import {
 import { createPopulatedStudioDocument } from './fixtures/studioDocument';
 
 const ME = 'player-a';
-const singleRoomYaml = (key: string) =>
-  exportDraftYaml(createPopulatedStudioDocument(), key);
 
 function summary(
   key: string,
@@ -39,12 +35,8 @@ function summary(
 }
 
 /** A library over the deferred authoring fake and a lobby list that
- * answers each call with the next queued list. Every GetDungeon the
- * dialect probe sends is answered from `files` (a v4 file by default). */
-function setup(
-  lists: DungeonSummary[][],
-  files: Record<string, string | Error> = {}
-) {
+ * answers each call with the next queued list. */
+function setup(lists: DungeonSummary[][]) {
   const sink: FakeAuthoringSink & {
     deletes: NonNullable<FakeAuthoringSink['deletes']>;
     renames: NonNullable<FakeAuthoringSink['renames']>;
@@ -63,85 +55,64 @@ function setup(
       dungeons: queue.length > 1 ? queue.shift()! : queue[0]!,
     })) as never,
   };
-  const answered = new Set<number>();
-  const answerProbes = async () => {
-    await waitFor(() => {
-      // Wait for the probes of a fresh list, then answer them all.
-      if (sink.gets.length === answered.size) throw new Error('no probe yet');
-      sink.gets.forEach((get, index) => {
-        if (answered.has(index)) return;
-        answered.add(index);
-        const file = files[get.key] ?? singleRoomYaml(get.key);
-        sink.getAnswers[index]!.resolve(
-          file instanceof Error ? file : { yaml: file }
-        );
-      });
-    });
-  };
-  return { sink, client, lobby, answerProbes };
+  return { sink, client, lobby };
 }
 
 describe('useDungeonLibrary', () => {
   it('splits This world and References in server order', async () => {
-    const { client, lobby, answerProbes } = setup(
+    const { client, lobby } = setup([
       [
-        [
-          summary('b-mine', DungeonSource.WORLD, ME),
-          summary('a-theirs', DungeonSource.WORLD, 'player-b'),
-          summary('castle-kitchen', DungeonSource.SHIPPED),
-          summary('reference-tomb', DungeonSource.SHIPPED),
-          summary('alpha-ref', DungeonSource.SHIPPED),
-        ],
+        summary('b-mine', DungeonSource.WORLD, ME),
+        summary('a-theirs', DungeonSource.WORLD, 'player-b'),
+        summary('castle-kitchen', DungeonSource.SHIPPED),
+        summary('alpha-ref', DungeonSource.SHIPPED),
       ],
-      { 'reference-tomb': referenceTombYaml }
-    );
+    ]);
     const { result } = renderHook(() =>
       useDungeonLibrary({ client, lobby, enabled: true, playerId: ME })
     );
-    await answerProbes();
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.world.map((s) => s.key)).toEqual([
       'b-mine',
       'a-theirs',
     ]);
-    // Server order kept; the version 2 tomb is left out of the lists but
-    // its key is still one a fresh key must avoid.
+    // Server order kept, not re-sorted.
     expect(result.current.references.map((s) => s.key)).toEqual([
       'castle-kitchen',
       'alpha-ref',
     ]);
-    expect(result.current.taken.has('reference-tomb')).toBe(true);
+    expect([...result.current.taken]).toEqual([
+      'b-mine',
+      'a-theirs',
+      'castle-kitchen',
+      'alpha-ref',
+    ]);
     expect(result.current.sourcesKnown).toBe(true);
   });
 
-  it('leaves out a multi-room file whatever source the server gives it', async () => {
-    const { client, lobby, answerProbes } = setup(
-      [
-        [
-          summary('old-world', DungeonSource.WORLD, ME),
-          summary('reference-tomb', DungeonSource.UNSPECIFIED),
-        ],
-      ],
-      { 'old-world': referenceTombYaml, 'reference-tomb': referenceTombYaml }
-    );
+  it('lists as the server sends, reading no file', async () => {
+    // The server owns the dialect rule (R23); an older server's version 2
+    // entry is listed, and Open refuses it with the reader's sentence.
+    const { client, lobby, sink } = setup([
+      [summary('reference-tomb', DungeonSource.UNSPECIFIED)],
+    ]);
     const { result } = renderHook(() =>
       useDungeonLibrary({ client, lobby, enabled: true, playerId: ME })
     );
-    await answerProbes();
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(result.current.world).toEqual([]);
-    expect(result.current.references).toEqual([]);
-    expect([...result.current.taken]).toEqual(['old-world', 'reference-tomb']);
+    expect(result.current.references.map((s) => s.key)).toEqual([
+      'reference-tomb',
+    ]);
+    expect(sink.gets).toEqual([]);
   });
 
   it('a summary with no source is a reference and nothing is Mine', async () => {
-    const { client, lobby, answerProbes } = setup([
+    const { client, lobby } = setup([
       [summary('the-cells', DungeonSource.UNSPECIFIED)],
     ]);
     const { result } = renderHook(() =>
       useDungeonLibrary({ client, lobby, enabled: true, playerId: ME })
     );
-    await answerProbes();
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.world).toEqual([]);
     expect(result.current.references.map((s) => s.key)).toEqual(['the-cells']);
@@ -191,14 +162,13 @@ describe('useDungeonLibrary', () => {
   });
 
   it('rename refetches and returns ok', async () => {
-    const { client, lobby, sink, answerProbes } = setup([
+    const { client, lobby, sink } = setup([
       [summary('old', DungeonSource.WORLD, ME)],
       [summary('new', DungeonSource.WORLD, ME)],
     ]);
     const { result } = renderHook(() =>
       useDungeonLibrary({ client, lobby, enabled: true, playerId: ME })
     );
-    await answerProbes();
     await waitFor(() => expect(result.current.status).toBe('ready'));
     let answer: Promise<unknown>;
     act(() => {
@@ -207,7 +177,6 @@ describe('useDungeonLibrary', () => {
     await waitFor(() => expect(sink.renames).toHaveLength(1));
     expect(sink.renames[0]).toMatchObject({ key: 'old', newKey: 'new' });
     sink.renames[0]!.deferred.resolve(undefined);
-    await answerProbes();
     await act(async () => {
       expect(await answer).toEqual({ ok: true });
     });

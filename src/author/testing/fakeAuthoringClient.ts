@@ -4,7 +4,7 @@
  * rejects, so a test drives the exact order of every asynchronous seam.
  * Shared by the World Builder publishing panel's tests, the studio's
  * Save and Play tests and the studio's Open panel tests (S7), which also
- * drive `listDungeons`, `deleteDungeon` and `renameDungeon` the same way.
+ * drive `deleteDungeon` and `renameDungeon` the same way.
  */
 import { vi } from 'vitest';
 import type { AuthoringClient, AuthoringLibraryClient } from '../authoringRpc';
@@ -44,9 +44,6 @@ export interface FakeMove {
   newKey: string;
   deferred: Deferred<undefined | Error>;
 }
-export type ListAnswer = {
-  dungeons: Array<{ key: string; name: string; source: number; owner: string }>;
-};
 
 /** Where the fake records its calls. Read at call time, so a test may
  * replace the answer lists between cases. */
@@ -56,7 +53,6 @@ export interface FakeAuthoringSink {
   readonly putAnswers: Deferred<PutAnswer>[];
   readonly getAnswers: Deferred<GetAnswer | Error>[];
   /** Optional, so suites written before S7 need not declare them. */
-  readonly lists?: Deferred<ListAnswer | Error>[];
   readonly deletes?: FakeMove[];
   readonly renames?: FakeMove[];
 }
@@ -86,13 +82,6 @@ export function fakeAuthoringClient(
       return answer as never;
     }),
     listScenarios: vi.fn(),
-    listDungeons: vi.fn(async () => {
-      const deferred = makeDeferred<ListAnswer | Error>();
-      sink.lists?.push(deferred);
-      const answer = await deferred.promise;
-      if (answer instanceof Error) throw answer;
-      return answer as never;
-    }),
     deleteDungeon: vi.fn(async (request: never) => {
       const { key } = request as unknown as { key: string };
       const deferred = makeDeferred<undefined | Error>();

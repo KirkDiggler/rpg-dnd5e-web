@@ -18,6 +18,8 @@ export const GATE_OFF_SENTENCE =
 export const UNREACHABLE_SENTENCE = 'The server could not be reached.';
 export const PROBING_SENTENCE = 'Checking whether the server accepts saves…';
 export const NO_CHARACTER_SENTENCE = 'Pick a character on Home to play.';
+/** The title of a control the owner's publishing lock disables. */
+export const PUBLISH_RUNNING_TITLE = 'Save & Play is running…';
 
 /** Why the server save cannot run, or null when it can. */
 export function serverUnavailableReason(

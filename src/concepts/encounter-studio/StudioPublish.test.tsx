@@ -825,7 +825,7 @@ describe('S7 opening from the server seeds the key and the memory', () => {
   ) => ({ key, name, source, owner });
   const openPanel = () =>
     within(screen.getByRole('region', { name: 'Open from server' }));
-  /** Press Open (or Replace) and answer every library read from `files`. */
+  /** Answer every library read (an Open of a row) from `files`. */
   async function answerLibrary(): Promise<void> {
     await waitFor(() => {
       if (library.sink.gets.length === libraryAnswered.size)
@@ -843,7 +843,6 @@ describe('S7 opening from the server seeds the key and the memory', () => {
   }
   async function openFromServer(key: string): Promise<void> {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
-    await answerLibrary();
     fireEvent.click(
       await openPanel().findByRole('button', { name: `Open ${key}` })
     );
@@ -955,7 +954,6 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await openFromServer('the-cells');
     const roomId = record(storage).roomId;
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
-    await answerLibrary();
     fireEvent.click(
       await openPanel().findByRole('button', { name: 'Rename the-cells' })
     );
@@ -967,7 +965,6 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     library.listed = [listing('kitchen-copy', DungeonSource.WORLD, ME)];
     library.files['kitchen-copy'] = library.files['the-cells']!;
     await act(async () => library.sink.renames[0]!.deferred.resolve(undefined));
-    await answerLibrary();
     await waitFor(() =>
       expect(record(storage)).toEqual({ roomId, key: 'kitchen-copy' })
     );
@@ -982,7 +979,6 @@ describe('S7 opening from the server seeds the key and the memory', () => {
     await openFromServer('the-cells');
     expect(record(storage)?.key).toBe('the-cells');
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
-    await answerLibrary();
     fireEvent.click(
       await openPanel().findByRole('button', { name: 'Delete the-cells' })
     );
