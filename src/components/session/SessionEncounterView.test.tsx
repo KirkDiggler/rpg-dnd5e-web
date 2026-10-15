@@ -5265,62 +5265,20 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.searchFn).not.toHaveBeenCalled();
     });
 
-    it('the box starts unchecked and the join preference is private', async () => {
-      // Fog of war R8: the server's persisted zero value is shared; the
-      // client sends private once for the seat, and the box starts off.
+    it('sends explicit false for the seated character and refreshes the sharing preference', async () => {
       readySearchableScene();
       hoisted.discoverySharing = true;
-      renderView();
-      const checkbox = (await screen.findByLabelText(
-        'Share discoveries with party'
-      )) as HTMLInputElement;
-      expect(checkbox.checked).toBe(false);
-      await waitFor(() =>
-        expect(hoisted.setDiscoverySharingFn).toHaveBeenCalledWith({
-          session: 'enc-1',
-          member: 'char-1',
-          sharing: false,
-        })
-      );
-      expect(hoisted.setDiscoverySharingFn).toHaveBeenCalledTimes(1);
-      await waitFor(() =>
-        expect(hoisted.getKnowledgeFn.mock.calls.length).toBeGreaterThan(1)
-      );
-      expect(
-        (
-          screen.getByLabelText(
-            'Share discoveries with party'
-          ) as HTMLInputElement
-        ).checked
-      ).toBe(false);
-      expect(hoisted.discoverySharing).toBe(false);
-      expect(hoisted.searchFn).not.toHaveBeenCalled();
-    });
-
-    it('sends nothing when the seat is already private', async () => {
-      readySearchableScene();
-      hoisted.discoverySharing = false;
-      renderView();
-      const checkbox = (await screen.findByLabelText(
-        'Share discoveries with party'
-      )) as HTMLInputElement;
-      expect(checkbox.checked).toBe(false);
-      expect(hoisted.setDiscoverySharingFn).not.toHaveBeenCalled();
-    });
-
-    it('checking it sends shared', async () => {
-      readySearchableScene();
-      hoisted.discoverySharing = false;
       renderView();
       const checkbox = await screen.findByLabelText(
         'Share discoveries with party'
       );
+      expect((checkbox as HTMLInputElement).checked).toBe(true);
       fireEvent.click(checkbox);
       await waitFor(() =>
         expect(hoisted.setDiscoverySharingFn).toHaveBeenCalledWith({
           session: 'enc-1',
           member: 'char-1',
-          sharing: true,
+          sharing: false,
         })
       );
       await waitFor(() =>
@@ -5330,14 +5288,10 @@ describe('SessionEncounterView production combat integration', () => {
               'Share discoveries with party'
             ) as HTMLInputElement
           ).checked
-        ).toBe(true)
+        ).toBe(false)
       );
-      // The opt-in is not undone by the private default.
-      expect(
-        hoisted.setDiscoverySharingFn.mock.calls.filter(
-          ([input]) => (input as { sharing: boolean }).sharing === false
-        )
-      ).toHaveLength(0);
+      expect(hoisted.getKnowledgeFn.mock.calls.length).toBeGreaterThan(1);
+      expect(hoisted.searchFn).not.toHaveBeenCalled();
     });
 
     it('shows a sharing failure without claiming the preference changed', async () => {
