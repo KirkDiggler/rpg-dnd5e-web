@@ -10,7 +10,7 @@ import {
 } from '@/components/session/propPresentations';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
 import { nextViewerHoldings } from '@/components/session/viewerHoldings';
-import { create } from '@bufbuild/protobuf';
+import { clone, create } from '@bufbuild/protobuf';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetViewResponseSchema,
@@ -45,6 +45,20 @@ export function useSessionKnowledge(session: string, member: string) {
   const currentSnapshot = useRef<GetKnowledgeResponse | null>(null);
   const snapshotTask = useRef<Promise<void> | null>(null);
   const needsSnapshot = useRef(false);
+  // SEEN-NOW SURVIVES A REVEAL PATCH (fog of war, rpg-project#586 walk). A
+  // CELLS_REVEALED patch lands on the atlas before the view is re-read, and a
+  // view read that was already in flight answers from before the patch. Until
+  // a view read REQUESTED AFTER the patch lands, the cells the last view
+  // marked seen stay seen. Every read and every patch takes a ticket from one
+  // counter; only a read whose ticket is newer than the patch releases them.
+  const ticket = useRef(0);
+  const [held, setHeld] = useState<{
+    cells: GetViewResponse['visibleCells'];
+    after: number;
+  } | null>(null);
+  const releaseHeld = useCallback((readTicket: number) => {
+    setHeld((prev) => (prev && readTicket > prev.after ? null : prev));
+  }, []);
   const install = useCallback((next: GetKnowledgeResponse | null) => {
     currentSnapshot.current = next;
     setSnapshot(next);
@@ -138,6 +152,7 @@ export function useSessionKnowledge(session: string, member: string) {
         }
         return;
       }
+      const readTicket = ++ticket.current;
       const response = await sessionClient.getKnowledge({ session, member });
       if (!current()) return;
       if (response.atlas)
@@ -163,6 +178,7 @@ export function useSessionKnowledge(session: string, member: string) {
         restored = applyEvent(restored, event);
       }
       install(restored);
+      releaseHeld(readTicket);
       pending.current = [];
       needsSnapshot.current = false;
       setLoading(false);
@@ -178,6 +194,7 @@ export function useSessionKnowledge(session: string, member: string) {
     () =>
       enqueue(async (current) => {
         if (!session || !member) return;
+        const readTicket = ++ticket.current;
         const view: GetViewResponse = await sessionClient.getView({
           session,
           member,
@@ -194,9 +211,10 @@ export function useSessionKnowledge(session: string, member: string) {
             currentSnapshot.current.atlas?.structuralDoors
           );
           install({ ...currentSnapshot.current, view });
+          releaseHeld(readTicket);
         }
       }),
-    [session, member, enqueue, install]
+    [session, member, enqueue, install, releaseHeld]
   );
 
   const refetchWhere = useCallback(
@@ -233,7 +251,16 @@ export function useSessionKnowledge(session: string, member: string) {
         return;
       }
       try {
-        install(applyEvent(currentSnapshot.current, event));
+        const before = currentSnapshot.current;
+        install(applyEvent(before, event));
+        if (event.body.case === 'cellsRevealed') {
+          const after = ++ticket.current;
+          const seen = before.view?.visibleCells ?? [];
+          setHeld((prev) => ({
+            cells: prev ? [...prev.cells, ...seen] : [...seen],
+            after,
+          }));
+        }
       } catch (reason) {
         needsSnapshot.current = true;
         pending.current.push(event);
@@ -259,6 +286,7 @@ export function useSessionKnowledge(session: string, member: string) {
     snapshotTask.current = null;
     needsSnapshot.current = false;
     pending.current = [];
+    setHeld(null);
     void refetch();
     return () => {
       generation.current++;
@@ -311,10 +339,25 @@ export function useSessionKnowledge(session: string, member: string) {
       ),
     [snapshot?.view?.doors]
   );
+  // The view the scene draws: the server's latest answer, plus any cells held
+  // seen across a reveal patch until a newer read lands. Never computed sight.
+  const rawView = snapshot?.view ?? EMPTY_VIEW;
+  const view = useMemo(() => {
+    if (!held || held.cells.length === 0) return rawView;
+    const merged = clone(GetViewResponseSchema, rawView);
+    const keys = new Set(merged.visibleCells.map((c) => `${c.x},${c.y}`));
+    for (const cell of held.cells) {
+      const key = `${cell.x},${cell.y}`;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      merged.visibleCells.push(cell);
+    }
+    return merged;
+  }, [held, rawView]);
   return {
     atlas,
     snapshot,
-    view: snapshot?.view ?? EMPTY_VIEW,
+    view,
     holding: snapshot?.holding ?? EMPTY_HOLDING,
     roster,
     doors,

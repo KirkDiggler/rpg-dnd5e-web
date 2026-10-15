@@ -964,11 +964,12 @@ describe('applyCellKnowledge — the scene as this seat knows it (fog of war, rp
       rowAtlas,
       1
     );
-    const spans = fog.rememberedStructuralWallSpans!.get('long-sw')!;
-    expect(spans).toHaveLength(1);
-    expect(spans[0]!.from).toBeGreaterThan(0);
-    expect(spans[0]!.from).toBeLessThan(0.25);
-    expect(spans[0]!.to).toBe(1);
+    const stretches = fog.structuralWallStretches!.get('long-sw')!;
+    expect(stretches.map((st) => st.state)).toEqual(['seen', 'remembered']);
+    expect(stretches[0]!.from).toBe(0);
+    expect(stretches[0]!.to).toBeGreaterThan(0);
+    expect(stretches[0]!.to).toBeLessThan(0.25);
+    expect(stretches[1]!.to).toBe(1);
     expect(fog.rememberedStructuralWallIds!.has('long-sw')).toBe(false);
   });
 
@@ -1029,5 +1030,51 @@ describe('applyCellKnowledge — the scene as this seat knows it (fog of war, rp
     );
     expect(fog.hiddenPlacedIds!.has('torch-on-archway')).toBe(false);
     expect(fog.rememberedRoomItemIds!.has('torch-on-archway')).toBe(false);
+  });
+
+  it('a wall with one seen tip draws only the tip stretch; the rest, bordering absent cells, is not drawn', () => {
+    // The atlas knows only the two hexes beside the wall's start; the wall
+    // arrives whole (structural walls do), running on beside unknown space.
+    const tip = [
+      { x: 0, y: 0 },
+      { x: -1, y: 1 },
+    ];
+    const tipAtlas = create(GetAtlasResponseSchema, { cells: tip });
+    const line = { start: { x: 0, z: 0.75 }, end: { x: SQRT3 * 4, z: 0.75 } };
+    const fog = applyCellKnowledge(
+      {
+        ...buildScene3D(tipAtlas, 1, 'pointy'),
+        wallRuns: [{ key: 'S', ...line, height: 0, facing: { x: 0, z: 1 } }],
+        structuralWalls: [{ id: 'S-wall', surface: { line } } as never],
+      },
+      cellKnowledge(tip, [{ x: 0, y: 0 }]),
+      tipAtlas,
+      1
+    );
+    expect(fog.wallRuns).toHaveLength(1);
+    expect(fog.wallRuns[0]!.start.x).toBeCloseTo(0);
+    expect(fog.wallRuns[0]!.end.x).toBeLessThan(SQRT3);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
+    const stretches = fog.structuralWallStretches!.get('S-wall')!;
+    expect(stretches[0]!.state).toBe('seen');
+    expect(stretches.at(-1)!.state).toBe('absent');
+    expect(stretches.at(-1)!.to).toBe(1);
+  });
+
+  it('draws absent-only stretches while the server sends no visible_cells', () => {
+    const tip = [{ x: 0, y: 0 }];
+    const tipAtlas = create(GetAtlasResponseSchema, { cells: tip });
+    const line = { start: { x: 0, z: 0.75 }, end: { x: SQRT3 * 4, z: 0.75 } };
+    const fog = applyCellKnowledge(
+      {
+        ...buildScene3D(tipAtlas, 1, 'pointy'),
+        wallRuns: [{ key: 'S', ...line, height: 0, facing: { x: 0, z: 1 } }],
+      },
+      cellKnowledge(tip, []),
+      tipAtlas,
+      1
+    );
+    expect(fog.wallRuns.map((r) => r.key)).toEqual(['S']);
+    expect(fog.rememberedWallRunKeys!.size).toBe(0);
   });
 });

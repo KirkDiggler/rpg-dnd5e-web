@@ -69,6 +69,7 @@ import {
   type HexLayout,
 } from '../../concepts/session-tomb/atlas';
 import type { RoomScenePresentation } from '../../concepts/world-building/roomDraft';
+import type { WallFogStretch } from '../../concepts/world-building/StructuralWallSurfaces';
 import {
   buildDungeonLightingFacts,
   type DungeonLightingFacts,
@@ -86,6 +87,7 @@ import {
   stretchesBesideLine,
 } from './cellBorders';
 import {
+  borderState,
   brightestBorderState,
   litWeight,
   type CellKnowledge,
@@ -257,13 +259,11 @@ export interface Scene3D {
   rememberedWallRunKeys?: ReadonlySet<string>;
   rememberedDoorGapKeys?: ReadonlySet<string>;
   rememberedStructuralWallIds?: ReadonlySet<string>;
-  /** Per structural wall: the stretches (fractions of its line, 0 at start)
-   * no seen cell borders. A piece whose middle falls in one draws remembered.
-   * A wall wholly remembered is also in `rememberedStructuralWallIds`. */
-  rememberedStructuralWallSpans?: ReadonlyMap<
-    string,
-    readonly { readonly from: number; readonly to: number }[]
-  >;
+  /** Per structural wall that is not lit end to end: its line split into
+   * stretches (fractions, 0 at its start) by the state of the cells beside
+   * them — seen, remembered, or absent (not drawn). A wall wholly remembered
+   * is also in `rememberedStructuralWallIds`. */
+  structuralWallStretches?: ReadonlyMap<string, readonly WallFogStretch[]>;
   rememberedStructuralDoorIds?: ReadonlySet<string>;
   /** Legacy atlas props by `sceneProp3DKey`. */
   rememberedPropKeys?: ReadonlySet<string>;
@@ -318,8 +318,8 @@ export function applyCellKnowledge(
   const cellAt = (point: WorldPos) => coordToKey(worldToCube(point, hexSize));
   const stateAt = (point: WorldPos) => knowledge.state.get(cellAt(point));
 
-  const brightest = (cells: readonly string[]) =>
-    brightestBorderState(knowledge, cells);
+  const stretchState = (cells: readonly string[]) =>
+    borderState(knowledge, cells);
   // Split each run where the state beside it changes. A uniform run keeps its
   // own key; a split run's stretches are keyed `<run key>#<index>`.
   const wallRuns: AuthoredWallRun[] = [];
@@ -329,9 +329,12 @@ export function applyCellKnowledge(
       run.start,
       run.end,
       hexSize,
-      brightest
+      stretchState
     );
     stretches.forEach((stretch, index) => {
+      // Unseen is absent (R2): a stretch beside only unknown cells is not
+      // drawn at all.
+      if (stretch.state === 'absent') return;
       const at = (t: number) => ({
         x: run.start.x + (run.end.x - run.start.x) * t,
         z: run.start.z + (run.end.z - run.start.z) * t,
@@ -370,21 +373,16 @@ export function applyCellKnowledge(
       .map((gap) => gap.key)
   );
   const rememberedStructuralWallIds = new Set<string>();
-  const rememberedStructuralWallSpans = new Map<
-    string,
-    { from: number; to: number }[]
-  >();
+  const structuralWallStretches = new Map<string, WallFogStretch[]>();
   for (const unit of scene.structuralWalls ?? []) {
     const stretches = stretchesBesideLine(
       unit.surface.line.start,
       unit.surface.line.end,
       hexSize,
-      brightest
+      stretchState
     );
-    const spans = stretches
-      .filter((stretch) => stretch.state === 'remembered')
-      .map(({ from, to }) => ({ from, to }));
-    if (spans.length) rememberedStructuralWallSpans.set(unit.id, spans);
+    if (stretches.some((stretch) => stretch.state !== 'seen'))
+      structuralWallStretches.set(unit.id, stretches);
     if (stretches.every((stretch) => stretch.state === 'remembered'))
       rememberedStructuralWallIds.add(unit.id);
   }
@@ -453,7 +451,7 @@ export function applyCellKnowledge(
     floorLitByCell,
     wallRuns,
     rememberedWallRunKeys,
-    rememberedStructuralWallSpans,
+    structuralWallStretches,
     rememberedDoorGapKeys,
     rememberedStructuralWallIds,
     rememberedStructuralDoorIds,

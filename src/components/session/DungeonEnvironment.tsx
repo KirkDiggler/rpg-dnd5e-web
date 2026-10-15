@@ -253,7 +253,7 @@ export function DungeonEnvironment({
           observedDoors={doors}
           onDoorClick={onDoorClick}
           rememberedWallIds={scene.rememberedStructuralWallIds}
-          rememberedWallSpans={scene.rememberedStructuralWallSpans}
+          wallStretches={scene.structuralWallStretches}
           rememberedDoorIds={scene.rememberedStructuralDoorIds}
         />
       </>
@@ -298,7 +298,7 @@ export function DungeonEnvironment({
         observedDoors={doors}
         onDoorClick={onDoorClick}
         rememberedWallIds={scene.rememberedStructuralWallIds}
-        rememberedWallSpans={scene.rememberedStructuralWallSpans}
+        wallStretches={scene.structuralWallStretches}
         rememberedDoorIds={scene.rememberedStructuralDoorIds}
       />
     </>

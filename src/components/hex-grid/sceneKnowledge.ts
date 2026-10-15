@@ -16,6 +16,7 @@ export const REMEMBERED_FLOOR_SHADE = 0.55;
 export const REMEMBERED_FLOOR_TINT_MIX = 0.25;
 
 export const CRYPT_MEMORY_COLOR = REMEMBERED_TINT;
+
 export const CRYPT_MEMORY_EMISSIVE = new THREE.Color('#111923');
 export const CRYPT_MEMORY_OPACITY = 1.0;
 export const CRYPT_MEMORY_EMISSIVE_INTENSITY = 0.08;
@@ -46,13 +47,14 @@ export function rememberedFitting(
 }
 
 export function cloneCryptMaterials(
-  original: THREE.Material | THREE.Material[]
+  original: THREE.Material | THREE.Material[],
+  tint: THREE.Color = CRYPT_MEMORY_COLOR
 ): THREE.Material | THREE.Material[] {
   const source = Array.isArray(original) ? original : [original];
   const clones = source.map((material) => {
     const clone = material.clone();
     if ('color' in clone && clone.color instanceof THREE.Color) {
-      clone.color.multiply(CRYPT_MEMORY_COLOR);
+      clone.color.multiply(tint);
     }
     if (clone instanceof THREE.MeshStandardMaterial) {
       clone.emissive.copy(CRYPT_MEMORY_EMISSIVE);
@@ -84,3 +86,17 @@ export function rememberedFloorColor(
     .lerp(REMEMBERED_TINT, REMEMBERED_FLOOR_TINT_MIX);
   return remembered.lerp(litColor, share);
 }
+
+/**
+ * THE REMEMBERED SURFACE TINT — the remembered treatment for fixed surfaces
+ * (structural walls and the doors set in them), raised to the grey a
+ * remembered floor reads as. `REMEMBERED_TINT` multiplied onto a dark wall
+ * asset reads near-black, so a remembered door on it was hard to see (fog of
+ * war walk, rpg-project#586). The floor's grey for a white texel is
+ * `rememberedFloorColor(white, 0)`; this IS that value, so the two can never
+ * drift apart, and it retunes with the floor's constants (O2).
+ */
+export const REMEMBERED_SURFACE_TINT = rememberedFloorColor(
+  new THREE.Color(1, 1, 1),
+  0
+);

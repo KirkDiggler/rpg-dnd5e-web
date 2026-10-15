@@ -33,6 +33,7 @@ import {
   StructuralWallSurfacePieces,
   WallMarker,
   type FittedDoorState,
+  type WallFogStretch,
 } from '@/concepts/world-building/StructuralWallSurfaces';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import {
@@ -60,12 +61,9 @@ export interface StructuralLayoutEnvironmentProps {
    * (`applyCellKnowledge`). Undefined draws everything lit. */
   readonly rememberedWallIds?: ReadonlySet<string>;
   readonly rememberedDoorIds?: ReadonlySet<string>;
-  /** Per wall, the stretches no seen cell borders: its pieces there draw
-   * remembered (`applyCellKnowledge`). */
-  readonly rememberedWallSpans?: ReadonlyMap<
-    string,
-    readonly { readonly from: number; readonly to: number }[]
-  >;
+  /** Per wall, its line split by the state of the cells beside it: pieces
+   * draw lit, remembered, or not at all (`applyCellKnowledge`). */
+  readonly wallStretches?: ReadonlyMap<string, readonly WallFogStretch[]>;
 }
 
 /** True when the door has no observed state: no observation at all, or one
@@ -96,7 +94,7 @@ export function StructuralLayoutEnvironment({
   onDoorClick,
   rememberedWallIds,
   rememberedDoorIds,
-  rememberedWallSpans,
+  wallStretches,
 }: StructuralLayoutEnvironmentProps): ReactElement {
   return (
     <>
@@ -126,7 +124,7 @@ export function StructuralLayoutEnvironment({
             <StructuralWallSurfacePieces
               wall={unit.surface}
               remembered={rememberedWallIds?.has(unit.id) ?? false}
-              rememberedSpans={rememberedWallSpans?.get(unit.id)}
+              fogStretches={wallStretches?.get(unit.id)}
             />
           </Suspense>
         </ErrorBoundary>

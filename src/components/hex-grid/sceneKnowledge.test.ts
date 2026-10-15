@@ -52,3 +52,18 @@ describe('scene knowledge decisions', () => {
     expect(arrayClone[0]!.opacity).toBe(1);
   });
 });
+
+describe('REMEMBERED_SURFACE_TINT (fog of war walk, rpg-project#586)', () => {
+  it('is the remembered floor grey, and lighter than the model tint', async () => {
+    const knowledge = await import('./sceneKnowledge');
+    const floorGrey = knowledge.rememberedFloorColor(
+      new THREE.Color(1, 1, 1),
+      0
+    );
+    expect(knowledge.REMEMBERED_SURFACE_TINT.getHex()).toBe(floorGrey.getHex());
+    const sum = (c: THREE.Color) => c.r + c.g + c.b;
+    expect(sum(knowledge.REMEMBERED_SURFACE_TINT)).toBeGreaterThan(
+      sum(knowledge.REMEMBERED_TINT)
+    );
+  });
+});

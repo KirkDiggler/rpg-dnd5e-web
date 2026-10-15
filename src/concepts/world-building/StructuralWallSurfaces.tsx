@@ -27,6 +27,7 @@ import type { RegionLightingMaterialBinding } from '@/rendering/regionLightingMa
  * are explicit, named, non-raycasting, and anchored at the wall/opening they
  * describe rather than at the world origin.
  */
+import { REMEMBERED_SURFACE_TINT } from '@/components/hex-grid/sceneKnowledge';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -134,6 +135,19 @@ export function StructuralWallFallbackMarker({
   );
 }
 
+/** A wall stretch's fog-of-war state: lit, remembered, or not drawn. */
+export type WallFogState = 'seen' | 'remembered' | 'absent';
+export interface WallFogStretch {
+  readonly from: number;
+  readonly to: number;
+  readonly state: WallFogState;
+}
+const FOG_RANK: Record<WallFogState, number> = {
+  absent: 0,
+  remembered: 1,
+  seen: 2,
+};
+
 /**
  * The repeated real-asset wall surface. It derives its spans from the wall's
  * visible line via the shared cut helper and fills each one by repeating the
@@ -149,16 +163,19 @@ export function StructuralWallSurfacePieces({
   visualLighting,
   finishSpans = [],
   remembered = false,
-  rememberedSpans = [],
+  fogStretches = [],
 }: {
   wall: StructuralWallSurface;
   /** Fog of war (rpg-project#586): draw every piece in the remembered
    * treatment. The editor never sets it. */
   remembered?: boolean;
-  /** Fog of war: stretches of the wall line (fractions, 0 at its start) to
-   * draw remembered. A piece whose middle falls in one draws remembered.
-   * The editor never sets it. */
-  rememberedSpans?: readonly { readonly from: number; readonly to: number }[];
+  /** Fog of war (rpg-project#586): the wall line split into stretches
+   * (fractions, 0 at its start) by the state of the cells beside them. A
+   * fittable piece is cut at every stretch boundary and each cut draws its
+   * stretch's state; an `absent` cut is not drawn at all. A piece that cannot
+   * be cut takes the brightest state it overlaps. Empty draws everything
+   * seen. The editor never sets it. */
+  fogStretches?: readonly WallFogStretch[];
   endFits?: WallEndFits;
   finishSpans?: readonly WallFinishSpan[];
   maxPieces?: number;
@@ -229,26 +246,68 @@ export function StructuralWallSurfacePieces({
             pieceIndex === layout.pieces.length - 1
               ? layout.span.end
               : start + length;
-          return partitionFinishInterval(start, end, finishSpans).map(
-            (segment, segmentIndex) => {
+          const total = wallLength(wall);
+          const fog = fogStretches.map((stretch) => ({
+            start: stretch.from * total,
+            end: stretch.to * total,
+            state: stretch.state,
+          }));
+          const stateOver = (a: number, b: number): WallFogState => {
+            if (fog.length === 0) return 'seen';
+            let best: WallFogState = 'absent';
+            for (const f of fog) {
+              if (
+                f.end > a &&
+                f.start < b &&
+                FOG_RANK[f.state] > FOG_RANK[best]
+              )
+                best = f.state;
+            }
+            return best;
+          };
+          const cutByFog = (segment: {
+            start: number;
+            end: number;
+            finishes: WallFinishSpan[];
+          }) => {
+            if (!capable || fog.length === 0) return [segment];
+            const cuts = [
+              ...new Set([
+                segment.start,
+                segment.end,
+                ...fog
+                  .flatMap((f) => [f.start, f.end])
+                  .filter((n) => n > segment.start && n < segment.end),
+              ]),
+            ].sort((x, y) => x - y);
+            return cuts
+              .slice(0, -1)
+              .map((a, i) => ({ ...segment, start: a, end: cuts[i + 1]! }));
+          };
+          return partitionFinishInterval(start, end, finishSpans)
+            .flatMap(cutByFog)
+            .flatMap((segment, segmentIndex) => {
               const middle = (segment.start + segment.end) / 2;
-              const total = wallLength(wall);
-              const pieceRemembered =
-                remembered ||
-                rememberedSpans.some(
-                  (span) =>
-                    middle / total >= span.from && middle / total <= span.to
-                );
-              const point = finishSpans.length
-                ? {
-                    x:
-                      wall.line.start.x +
-                      ((wall.line.end.x - wall.line.start.x) * middle) / total,
-                    z:
-                      wall.line.start.z +
-                      ((wall.line.end.z - wall.line.start.z) * middle) / total,
-                  }
-                : piece.point;
+              const fogState = stateOver(segment.start, segment.end);
+              // Unseen is absent: a stretch beside only unknown cells draws
+              // nothing, not even a grey wall.
+              if (fogState === 'absent') return [];
+              const pieceRemembered = remembered || fogState === 'remembered';
+              const cutWithin =
+                segment.start > start + 1e-9 || segment.end < end - 1e-9;
+              const point =
+                finishSpans.length || cutWithin
+                  ? {
+                      x:
+                        wall.line.start.x +
+                        ((wall.line.end.x - wall.line.start.x) * middle) /
+                          total,
+                      z:
+                        wall.line.start.z +
+                        ((wall.line.end.z - wall.line.start.z) * middle) /
+                          total,
+                    }
+                  : piece.point;
               // The shared leaf adds `DUNGEON_SURFACE_Y` once, inside its own
               // group. The parent would scale that offset by the exact fit, so the
               // parent's own Y is lowered by the scaled amount: the net floor lift
@@ -257,7 +316,7 @@ export function StructuralWallSurfacePieces({
               const baseY = capable
                 ? piece.y
                 : piece.y + DUNGEON_SURFACE_Y * (1 - piece.heightScale);
-              return (
+              return [
                 <group
                   key={`${spanIndex}-${pieceIndex}-${segmentIndex}`}
                   name={`structural-wall-piece-${wall.id}-${spanIndex}-${pieceIndex}${segmentIndex ? `-${segmentIndex}` : ''}`}
@@ -303,12 +362,12 @@ export function StructuralWallSurfacePieces({
                     rotationY={0}
                     heightScale={1}
                     remembered={pieceRemembered}
+                    rememberedTint={REMEMBERED_SURFACE_TINT}
                     onBoundsMeasured={onMeasured}
                   />
-                </group>
-              );
-            }
-          );
+                </group>,
+              ];
+            });
         })
       )}
     </group>
@@ -497,6 +556,7 @@ export function FittedDoorSurface({
         heightScale={1}
         open={open}
         remembered={remembered}
+        rememberedTint={REMEMBERED_SURFACE_TINT}
         onBoundsMeasured={onMeasured}
         onDoorClick={onClick}
       />

@@ -66,6 +66,8 @@ export interface WorldAssetModelProps {
   onDiagnostic?: (diagnostic: WorldAssetModelDiagnostic) => void;
   heightScale?: number;
   remembered?: boolean;
+  /** The remembered multiply tint (default `REMEMBERED_TINT`). */
+  rememberedTint?: THREE.Color;
   visualLighting?: RegionLightingMaterialBinding;
   /** Visual-only fitting for an explicitly enrolled plain wall body. */
   plainWallFit?: PlainWallFit;
@@ -306,6 +308,7 @@ function LoadedWorldAssetModel({
   onDoorClick,
   heightScale,
   remembered,
+  rememberedTint,
   visualLighting,
   plainWallFit,
   surfaces,
@@ -326,6 +329,7 @@ function LoadedWorldAssetModel({
   onDoorClick?: () => void;
   heightScale: number;
   remembered: boolean;
+  rememberedTint?: THREE.Color;
   visualLighting?: RegionLightingMaterialBinding;
   plainWallFit?: PlainWallFit;
   surfaces: GeneratedWorldAsset['surfaces'];
@@ -390,7 +394,8 @@ function LoadedWorldAssetModel({
     visualLighting,
     assetRef,
     'lit',
-    surfaceTreatment
+    surfaceTreatment,
+    rememberedTint
   );
   const parts = useMemo(
     () => (roles && roles.length > 0 ? resolveRoles(cloned, roles) : undefined),
@@ -723,6 +728,7 @@ export function WorldAssetModel({
   onDiagnostic,
   heightScale = 1,
   remembered = false,
+  rememberedTint,
   visualLighting,
   openDoors = [],
   open,
@@ -768,6 +774,7 @@ export function WorldAssetModel({
       onDoorClick={onDoorClick}
       heightScale={safeHeightScale}
       remembered={remembered}
+      rememberedTint={rememberedTint}
       visualLighting={visualLighting}
       plainWallFit={plainWallFit}
       surfaces={surfaceProvider?.bindings ?? asset.surfaces}

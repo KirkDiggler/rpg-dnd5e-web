@@ -19,7 +19,9 @@ export function useRememberedModelTint(
   visualLighting?: RegionLightingMaterialBinding,
   assetRef?: string,
   receiver: 'lit' | 'workspace-basic' = 'lit',
-  surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>
+  surfaces?: Pick<WorldSurfaceMaterialsInput, 'bindings' | 'selections'>,
+  /** The remembered multiply tint; defaults to `REMEMBERED_TINT`. */
+  rememberedTint?: THREE.Color
 ): void {
   // Courses created while a previous treatment is mounted can inherit one of
   // its clones. Retain weak provenance, not retired meshes or owned resources.
@@ -51,7 +53,10 @@ export function useRememberedModelTint(
       if (existing) return existing;
       let material = source;
       if (remembered) {
-        material = cloneCryptMaterials(source) as THREE.Material;
+        material = cloneCryptMaterials(
+          source,
+          rememberedTint
+        ) as THREE.Material;
         // Three.clone does not copy callbacks. Preserve the source hook for
         // compatibility checking rather than silently dropping unknown hooks.
         material.onBeforeCompile = source.onBeforeCompile;
@@ -113,5 +118,6 @@ export function useRememberedModelTint(
     assetRef,
     receiver,
     surfaces,
+    rememberedTint,
   ]);
 }

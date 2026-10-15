@@ -146,3 +146,24 @@ export function brightestBorderState(
   }
   return 'remembered';
 }
+
+/**
+ * A wall stretch's state from the cells beside it: `seen` when any is seen,
+ * `remembered` when any is known, `absent` when none is known — unseen space
+ * is absent, so such a stretch is not drawn (design R2). While the server
+ * sends no `visible_cells` nothing is withheld on the client's side, so an
+ * unlisted stretch draws `seen`, today's look.
+ */
+export function borderState(
+  knowledge: CellKnowledge,
+  cellKeys: Iterable<string>
+): CellState | 'absent' {
+  let known = false;
+  for (const key of cellKeys) {
+    const state = knowledge.state.get(key);
+    if (state === 'seen') return 'seen';
+    if (state) known = true;
+  }
+  if (known) return 'remembered';
+  return knowledge.visibleSupplied ? 'absent' : 'seen';
+}
