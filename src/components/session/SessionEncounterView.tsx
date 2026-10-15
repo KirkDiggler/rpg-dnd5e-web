@@ -1750,6 +1750,49 @@ function SessionEncounterScope({
     ]
   );
 
+  // SHARE DISCOVERIES DEFAULTS OFF (fog of war design R8, rpg-project#586).
+  // The encounter persists each character's preference and its zero value
+  // means shared; the plan puts the default on the client instead: the box
+  // starts unchecked and the client sends PRIVATE unless the player opts in.
+  // The server cannot say whether "shared" was chosen or is only its zero
+  // value, and this client keeps no memory of the choice, so once per seat
+  // per page load a shared preference is set private. The cost, stated: a
+  // player who opted in is set private again on reload and checks the box
+  // again. A server-side "never chosen" answer (the plan's open item) removes
+  // that cost.
+  const sharingKey = `${sessionId}|${member}`;
+  const serverSharing = snapshot?.discoverySharing;
+  const [sharingChosenKey, setSharingChosenKey] = useState<string | null>(null);
+  const privateDefaultSent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!member || serverSharing !== true || runEnded !== null) return;
+    if (
+      sharingChosenKey === sharingKey ||
+      privateDefaultSent.current === sharingKey
+    )
+      return;
+    privateDefaultSent.current = sharingKey;
+    void setSharing({ session: sessionId, member, sharing: false })
+      .then(() => refetchAtlas())
+      .catch(() => {
+        // The default did not land: show the server's own answer, not a
+        // private box over a shared preference.
+        setSharingChosenKey(sharingKey);
+      });
+  }, [
+    member,
+    serverSharing,
+    runEnded,
+    sharingChosenKey,
+    sharingKey,
+    sessionId,
+    setSharing,
+    refetchAtlas,
+  ]);
+  // Until this seat makes a choice the box shows the client's default, off.
+  const sharingChecked =
+    sharingChosenKey === sharingKey ? serverSharing === true : false;
+
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -1807,7 +1850,7 @@ function SessionEncounterScope({
                     <input
                       type="checkbox"
                       aria-label="Share discoveries with party"
-                      checked={snapshot.discoverySharing}
+                      checked={sharingChecked}
                       disabled={
                         sharingPending ||
                         !member ||
@@ -1816,6 +1859,7 @@ function SessionEncounterScope({
                       }
                       onChange={(event) => {
                         if (!member) return;
+                        setSharingChosenKey(sharingKey);
                         void setSharing({
                           session: sessionId,
                           member,
