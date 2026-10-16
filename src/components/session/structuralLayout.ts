@@ -29,6 +29,7 @@
  * shared leaf can name it at the record's own pose rather than here.
  */
 
+import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { FittedDoorPose } from '@/concepts/world-building/structuralDoorEditing';
 import { wallSolidIntervals } from '@/concepts/world-building/structuralWallGeometry';
 import type {
@@ -40,11 +41,17 @@ import type {
   AtlasStructuralWall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { FEET_PER_HEX } from './areaFootprintProjection';
+import { positionToCube } from './positionBridge';
 
 /** One wall as the shared surface leaf consumes it (scene units). */
 export interface StructuralWallRenderUnit {
   readonly id: string;
   readonly surface: StructuralWallSurface;
+  /** The floor cells the wall's blocker footprint overlaps, in order along
+   * the wall, as the server listed them (`footprint_cells`). Fog of war grades
+   * the wall's stretches by these cells (R9). Empty from a server older than
+   * the field; the grading then samples beside the line instead. */
+  readonly footprintCells: readonly CubeCoord[];
 }
 
 /** One door as the shared fitted-door leaf consumes it (scene units). */
@@ -257,6 +264,8 @@ export function structuralLayoutRender(
       rendered.walls.push({
         id: wall.id,
         surface: structuralWallSurfaceFromAtlas(wall, scale),
+        // `?? []`: a stale client-side schema hands back the field absent.
+        footprintCells: (wall.footprintCells ?? []).map(positionToCube),
       });
     } catch (error) {
       rendered.diagnostics.push(reasonOf(error));

@@ -12,7 +12,9 @@
 
 import {
   coordToKey,
+  cubeToWorld,
   worldToCube,
+  type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 
@@ -115,6 +117,80 @@ export function stretchesBesideLine<S>(
     if (last) last.to = from;
     stretches.push({ from, to: 1, state });
   }
+  return stretches;
+}
+
+/** Cut points within this fraction of the line's length are one cut, and a
+ * span covers its ends within it. Abutting hexes share a corner, but their
+ * projected span ends differ by rounding; without the tolerance that
+ * difference reads as a zero-width uncovered gap. */
+const SAME_T = 1e-6;
+
+/**
+ * A wall line split by the cells its blocker footprint overlaps (fog of war
+ * R9: a wall is known where sight reached its footprint). The server lists
+ * the cells; this never re-derives them from the line.
+ *
+ * A hex covers a SPAN of the wall, not a point: each cell's six corners are
+ * projected onto the line and `[min t, max t]`, clamped to 0–1, is the span
+ * it covers. The state at any `t` is `stateOf` the cells whose span covers
+ * it, so the brightest of them wins; where no span covers it, `stateOf` is
+ * asked about no cells (`borderState`'s answer: absent once the server sends
+ * per-cell knowledge). The line splits at the sorted span boundaries where
+ * that state changes; equal neighbours merge. A cell wholly past an end
+ * covers nothing. No cells, no stretches. Attribution only: `stateOf` is a
+ * lookup in what the server sent.
+ */
+export function stretchesAlongCells<S>(
+  line: { readonly start: WorldPos; readonly end: WorldPos },
+  cells: readonly CubeCoord[],
+  hexSize: number,
+  stateOf: (cells: readonly string[]) => S
+): LineStretch<S>[] {
+  if (cells.length === 0) return [];
+  const { start, end } = line;
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const lengthSq = dx * dx + dz * dz;
+  const keys = cells.map(coordToKey);
+  if (lengthSq === 0) return [{ from: 0, to: 1, state: stateOf(keys) }];
+  const tOf = (x: number, z: number) =>
+    ((x - start.x) * dx + (z - start.z) * dz) / lengthSq;
+  const clamp = (t: number) => Math.min(1, Math.max(0, t));
+  const spans = cells.map((cell, index) => {
+    const centre = cubeToWorld(cell, hexSize);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 6; i++) {
+      // Pointy-top corners lie at 30°, 90°, … from the +x axis.
+      const angle = (Math.PI / 3) * i + Math.PI / 6;
+      const t = tOf(
+        centre.x + Math.cos(angle) * hexSize,
+        centre.z + Math.sin(angle) * hexSize
+      );
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+    return { from: clamp(lo), to: clamp(hi), key: keys[index]! };
+  });
+  const bounds = [0, 1, ...spans.flatMap((sp) => [sp.from, sp.to])]
+    .sort((a, b) => a - b)
+    .filter((t, i, all) => i === 0 || t - all[i - 1]! > SAME_T);
+  const stretches: { from: number; to: number; state: S }[] = [];
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const from = bounds[i]!;
+    const to = bounds[i + 1]!;
+    const mid = (from + to) / 2;
+    const state = stateOf(
+      spans
+        .filter((sp) => sp.from - SAME_T <= mid && mid <= sp.to + SAME_T)
+        .map((sp) => sp.key)
+    );
+    const last = stretches.at(-1);
+    if (last && last.state === state) last.to = to;
+    else stretches.push({ from, to, state });
+  }
+  if (stretches.length > 0) stretches.at(-1)!.to = 1;
   return stretches;
 }
 
