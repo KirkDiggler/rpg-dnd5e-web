@@ -887,8 +887,10 @@ picker rather than being silently rewritten. Semantic authority is the server's.
 
 The entry editor inside a table is the **one** `AnswerEntryRow` a faction's
 table already used, over the one vocabulary declaration. It offers no `at:`
-cell and no `path:` route: the single-room dialect has no frame for either, and
-the engine refuses both (rpg-toolkit#2044).
+cell and no `path:` route yet. The single-room dialect reads both in the room's
+own axial frame, `toward: { at: { q, r } }` and `toward: { path: [{ q, r }, …] }`,
+and refuses the offset `[col, row]` (rpg-toolkit#2063). A cell or a route a file
+carries is shown in words and kept verbatim.
 
 ## Destinations — the site is the document (#1152, corrected model)
 

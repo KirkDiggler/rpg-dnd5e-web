@@ -41,3 +41,8 @@ src/author/fixtures/*.yaml
 # pattern also protects `singleRoomV3.golden.yaml`, which was stable only by
 # luck: nothing asserted a byte Prettier would have touched.
 src/concepts/world-building/fixtures/*.yaml
+
+# A verbatim copy of rpg-api `content/the-mad-king.yaml` (rpg-project#605 D1),
+# the castle the studio's import must open. Reformatting it would make it a
+# different file from the one the server ships.
+src/concepts/encounter-studio/fixtures/*.yaml

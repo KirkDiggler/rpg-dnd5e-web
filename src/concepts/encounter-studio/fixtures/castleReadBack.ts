@@ -12,8 +12,10 @@
  * plan's task D1 promotes it to rpg-api content. The studio never writes
  * rpg-api content itself.
  *
- * `path` IS REFUSED in this dialect until the sites layer, so no guard
- * patrols a route here.
+ * No guard patrols a route here, though the single room now reads one
+ * (`toward: { path: [{ q, r }, …] }`, rpg-toolkit#2063): the read-back of a
+ * route and a cell is pinned beside this castle in `readBack.test.ts`, so the
+ * suites that read this fixture are not moved by it.
  */
 import {
   createRoomDraft,

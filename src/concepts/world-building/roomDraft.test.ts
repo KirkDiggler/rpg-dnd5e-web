@@ -967,15 +967,29 @@ describe('room draft v3 migration and structural exactness', () => {
     expect(refused([{ attack: 'sound' }])).toThrow(
       /on\.time\[0\]: `attack` cannot take `sound`: a sound cannot be struck/
     );
-    // THE SINGLE ROOM NAMES NO ROUTE (rpg-toolkit#2044): its cells have no
-    // frame, exactly as `at`'s have none.
+    // AN OFFSET ROUTE IS REFUSED IN THE SINGLE ROOM (rpg-toolkit#2063): its
+    // cells are written { q, r }, as its walkable hexes are.
     expect(refused([{ toward: { path: [[1, 1]] } }])).toThrow(
-      /on\.time\[0\]\.toward\.path: path is not a route a single room can name yet: its cells are axial/
+      /on\.time\[0\]\.toward\.path: path names a route of this room's cells, each written \{ q, r \} as its walkable hexes are: \[col, row\] is an offset in a document orientation this dialect does not have$/
     );
-    // NOR A CELL, for the same reason, whatever word it sits on.
+    // NOR AN OFFSET CELL, for the same reason, whatever word it sits on.
     expect(refused([{ toward: { at: [3, 4] } }])).toThrow(
-      /on\.time\[0\]\.toward\.at: at is not a place a single room can name yet: its cells are axial and the selector's cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer/
+      /on\.time\[0\]\.toward\.at: at names a cell of this room, written \{ q, r \} as its walkable hexes are: \[col, row\] is an offset in a document orientation this dialect does not have$/
     );
+    // The room's own spelling reads.
+    expect(refused([{ toward: { at: { q: 1, r: 0 } } }])).not.toThrow();
+    expect(
+      refused([
+        {
+          toward: {
+            path: [
+              { q: 1, r: 0 },
+              { q: 0, r: 0 },
+            ],
+          },
+        },
+      ])
+    ).not.toThrow();
     expect(
       refused([
         {
@@ -985,7 +999,7 @@ describe('room draft v3 migration and structural exactness', () => {
       ])
     ).toThrow(/`sound` needs a `heard` condition on the row/);
     expect(refused([{ patrol: {} }])).toThrow(
-      /`patrol` is not a word: a patrol is a route/
+      /`patrol` is not a word: a patrol is a route, write toward: \{ path: \[\{ q, r \}, …\] \}$/
     );
     // `heard` faults are mind/behavior's, reported at the ROW.
     expect(refused([{ when: { heard: { within: 2 } }, hold: {} }])).toThrow(

@@ -26,9 +26,10 @@
  *
  * THE GRAMMAR INSIDE A TABLE IS THE ONE GRAMMAR. Entries are edited by the SAME
  * `AnswerEntryRow` a faction's table uses, driven by the same one vocabulary
- * declaration, so a word the engine adds shows up here with no change. No
- * cell (`at`) and no route (`path`) is offered: the single-room dialect has no
- * frame for either and the engine refuses both (rpg-toolkit#2044).
+ * declaration, so a word the engine adds shows up here with no change. A cell
+ * (`at: { q, r }`) or a route (`path: [{ q, r }, …]`) a file carries is read,
+ * shown in words and kept verbatim (rpg-toolkit#2063); no picker offers one
+ * yet.
  */
 import { ANSWER_TRIGGERS, answerTrigger } from '@/author/answerVocabulary';
 import { useState } from 'react';
