@@ -121,8 +121,9 @@ export function stretchesBesideLine<S>(
 }
 
 /** Two footprint cells whose centres project within this fraction of the
- * line of each other are one sample. */
-const SAME_T = 1e-9;
+ * line's length of each other are one sample: the pair a line runs between
+ * lands at the same `t` up to rounding. */
+const SAME_T = 1e-6;
 
 /**
  * A wall line split by the cells its blocker footprint overlaps (fog of war
