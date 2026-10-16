@@ -103,7 +103,7 @@ describe('the draft as a file (rpg-project#578)', () => {
 
   /**
    * THE SHIPPED CASTLE OPENS (rpg-project#605 D1, rpg-toolkit#2063). A verbatim
-   * copy of rpg-api `content/the-mad-king.yaml` at the D1c re-sync (2f9f6399):
+   * copy of rpg-api `content/the-mad-king.yaml` at the D1c re-sync (be6c55f6):
    * its patrols walk `toward: { path: [{ q, r }, …] }` and its reserves walk
    * `toward: { at: { q, r } }`. The engine reads it, so the studio's import
    * must — the web never refuses what the engine accepts (#1119).
