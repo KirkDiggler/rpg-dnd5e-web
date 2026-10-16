@@ -1145,12 +1145,27 @@ describe('applyCellKnowledge — a wall is known where sight reached its footpri
     const corner = footprint.filter((c) => c.y >= 7);
     const fog = graded(wallAtlas(corner, westFrom, westTo, footprint), corner);
     const stretches = fog.structuralWallStretches!.get('west-wall')!;
-    // Row 7 projects to t 10.5/12, row 6 to 9/12: the split is midway.
+    // The row-7 footing hex covers the wall from z 9.5, its lower corner:
+    // t 9.5/12. Below that only unknown hexes cover it.
     expect(stretches.map((st) => st.state)).toEqual(['absent', 'seen']);
     expect(stretches[0]!.from).toBe(0);
-    expect(stretches[0]!.to).toBeCloseTo(0.8125, 10);
-    expect(stretches[1]!.from).toBeCloseTo(0.8125, 10);
+    expect(stretches[0]!.to).toBeCloseTo(9.5 / 12, 10);
+    expect(stretches[1]!.from).toBeCloseTo(9.5 / 12, 10);
     expect(stretches[1]!.to).toBe(1);
+  });
+
+  it('an east-west wall between staggered rows with one row known draws as one stretch', () => {
+    // The castle's south wall in miniature: the line runs between rows 0
+    // and 1, whose centres sit half a hex apart along it, so footprint
+    // centres project to alternating t. The seat knows row 1 only; its hexes
+    // overlap end to end along the wall.
+    const row0 = [0, 1, 2, 3, 4].map((q) => ({ x: q, y: 0 }));
+    const row1 = [-1, 0, 1, 2, 3].map((q) => ({ x: q, y: 1 }));
+    const from = { x: 0, z: 0.75 };
+    const to = { x: SQRT3 * 4, z: 0.75 };
+    const fog = graded(wallAtlas(row1, from, to, [...row0, ...row1]), row1);
+    expect(fog.structuralWallStretches!.has('west-wall')).toBe(false);
+    expect(fog.rememberedStructuralWallIds!.has('west-wall')).toBe(false);
   });
 
   it('a wall whose footprint straddles an edge takes the brighter side', () => {

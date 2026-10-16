@@ -120,22 +120,24 @@ export function stretchesBesideLine<S>(
   return stretches;
 }
 
-/** Two footprint cells whose centres project within this fraction of the
- * line's length of each other are one sample: the pair a line runs between
- * lands at the same `t` up to rounding. */
-const SAME_T = 1e-6;
+/** Span boundaries closer than this fraction of the line are one boundary,
+ * so rounding never makes a sliver stretch. */
+const SAME_T = 1e-9;
 
 /**
  * A wall line split by the cells its blocker footprint overlaps (fog of war
  * R9: a wall is known where sight reached its footprint). The server lists
  * the cells; this never re-derives them from the line.
  *
- * Each cell is a sample at its centre's projection onto the line (`t`,
- * clamped 0–1). Samples are sorted by `t`; cells at the same `t` (a pair the
- * line runs between) are one sample and `stateOf` is asked about both, so it
- * takes the brighter. Stretches split midway between samples whose state
- * differs, the rule `stretchesBesideLine` uses. No cells, no stretches.
- * Attribution only: `stateOf` is a lookup in what the server sent.
+ * A hex covers a SPAN of the wall, not a point: each cell's six corners are
+ * projected onto the line and `[min t, max t]`, clamped to 0–1, is the span
+ * it covers. The state at any `t` is `stateOf` the cells whose span covers
+ * it, so the brightest of them wins; where no span covers it, `stateOf` is
+ * asked about no cells (`borderState`'s answer: absent once the server sends
+ * per-cell knowledge). The line splits at the sorted span boundaries where
+ * that state changes; equal neighbours merge. A cell wholly past an end
+ * covers nothing. No cells, no stretches. Attribution only: `stateOf` is a
+ * lookup in what the server sent.
  */
 export function stretchesAlongCells<S>(
   line: { readonly start: WorldPos; readonly end: WorldPos },
@@ -143,35 +145,48 @@ export function stretchesAlongCells<S>(
   hexSize: number,
   stateOf: (cells: readonly string[]) => S
 ): LineStretch<S>[] {
+  if (cells.length === 0) return [];
   const { start, end } = line;
   const dx = end.x - start.x;
   const dz = end.z - start.z;
   const lengthSq = dx * dx + dz * dz;
-  const projected = cells
-    .map((cell) => {
-      const centre = cubeToWorld(cell, hexSize);
-      const t =
-        lengthSq === 0
-          ? 0
-          : ((centre.x - start.x) * dx + (centre.z - start.z) * dz) / lengthSq;
-      return { t: Math.min(1, Math.max(0, t)), key: coordToKey(cell) };
-    })
-    .sort((a, b) => a.t - b.t);
-  const samples: { t: number; keys: string[] }[] = [];
-  for (const { t, key } of projected) {
-    const last = samples.at(-1);
-    if (last && t - last.t <= SAME_T) last.keys.push(key);
-    else samples.push({ t, keys: [key] });
-  }
+  const keys = cells.map(coordToKey);
+  if (lengthSq === 0) return [{ from: 0, to: 1, state: stateOf(keys) }];
+  const tOf = (x: number, z: number) =>
+    ((x - start.x) * dx + (z - start.z) * dz) / lengthSq;
+  const clamp = (t: number) => Math.min(1, Math.max(0, t));
+  const spans = cells.map((cell, index) => {
+    const centre = cubeToWorld(cell, hexSize);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 6; i++) {
+      // Pointy-top corners lie at 30°, 90°, … from the +x axis.
+      const angle = (Math.PI / 3) * i + Math.PI / 6;
+      const t = tOf(
+        centre.x + Math.cos(angle) * hexSize,
+        centre.z + Math.sin(angle) * hexSize
+      );
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+    return { from: clamp(lo), to: clamp(hi), key: keys[index]! };
+  });
+  const bounds = [0, 1, ...spans.flatMap((sp) => [sp.from, sp.to])]
+    .sort((a, b) => a - b)
+    .filter((t, i, all) => i === 0 || t - all[i - 1]! > SAME_T);
   const stretches: { from: number; to: number; state: S }[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    const state = stateOf(samples[i]!.keys);
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const from = bounds[i]!;
+    const to = bounds[i + 1]!;
+    const mid = (from + to) / 2;
+    const state = stateOf(
+      spans.filter((sp) => sp.from <= mid && mid <= sp.to).map((sp) => sp.key)
+    );
     const last = stretches.at(-1);
-    if (last && last.state === state) continue;
-    const from = i === 0 ? 0 : (samples[i - 1]!.t + samples[i]!.t) / 2;
-    if (last) last.to = from;
-    stretches.push({ from, to: 1, state });
+    if (last && last.state === state) last.to = to;
+    else stretches.push({ from, to, state });
   }
+  if (stretches.length > 0) stretches.at(-1)!.to = 1;
   return stretches;
 }
 
