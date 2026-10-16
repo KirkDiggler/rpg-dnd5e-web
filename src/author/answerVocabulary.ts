@@ -124,7 +124,7 @@ export const ANSWER_WORDS: readonly AnswerWordSpec[] = Object.freeze([
     key: 'toward',
     label: 'Walks toward',
     commandLabel: 'Walk toward',
-    help: 'Walks toward the selected creature, onto an authored cell, along an authored route, or to where it last heard something. The only word `{ at: [col,row] }` and `{ path: [...] }` are legal on.',
+    help: 'Walks toward the selected creature, onto an authored cell, along an authored route, or to where it last heard something. The only word `{ at }` and `{ path }` are legal on.',
     value: 'selector',
     legalOn: ['time'],
   },
@@ -364,7 +364,8 @@ export function selectorWordLegalOn(selector: string, word: string): boolean {
   return spec !== undefined && !(spec.refusedOn ?? []).includes(word);
 }
 
-/** The authored-cell selector — `{ at: [col, row] }`.
+/** The authored-cell selector — `{ at: [col, row] }` in a v2 document,
+ * `{ at: { q, r } }` in a single room (rpg-toolkit#2063).
  *
  * `toward` IS THE ONLY WORD `at:` IS LEGAL ON (`SelectorSpec`): walking away
  * from a fixed cell is a direction rather than a flight, and nothing has paid
@@ -377,7 +378,8 @@ export const ANSWER_AT_SELECTOR = Object.freeze({
   onlyWord: 'toward',
 });
 
-/** The authored-route selector — `{ path: [[col, row], …] }`, a patrol
+/** The authored-route selector — `{ path: [[col, row], …] }` in a v2
+ * document, `{ path: [{ q, r }, …] }` in a single room — a patrol
  * (rpg-project#569 R7).
  *
  * THE ROUTE HOLDS NO STATE. Which waypoint is next is derived by the engine
@@ -661,11 +663,51 @@ export function unknownScopeRefusal(key: string, value: string): string {
   return `\`${key}: ${value}\` is not a scope this build reads: they are ${scopeWords()} (and omitting it means the creature itself)`;
 }
 
+/** How a dialect spells a cell and a route, for the hints the decoder's
+ * shared refusals give (`cellForms`, rpg-toolkit#2063). The decoder cannot
+ * tell the dialects apart, so a refusal carries its sentence unspelt and the
+ * dialect that read the file spells it: v2 in offset pairs, the single room in
+ * its own axial `{ q, r }`. */
+export interface CellForms {
+  readonly cell: string;
+  readonly route: string;
+}
+
+/** The v2 document's spelling (`floorCells.forms`): offsets in its
+ * orientation. The default, so every v2 sentence reads as it always has. */
+export const V2_CELL_FORMS: CellForms = Object.freeze({
+  cell: '[col, row]',
+  route: '[[col, row], …]',
+});
+
+/** The single room's spelling (`singleRoomCells.forms`): axial, as its
+ * walkable hexes are written. */
+export const SINGLE_ROOM_CELL_FORMS: CellForms = Object.freeze({
+  cell: '{ q, r }',
+  route: '[{ q, r }, …]',
+});
+
+/** `selectorForms`: the two mapping spellings, in a dialect's forms. */
+function selectorForms(forms: CellForms): string {
+  return `or { at: ${forms.cell} }, or { path: ${forms.route} }`;
+}
+
 /** `SelectorSpec.UnmarshalYAML`: a scalar outside the sealed three. */
-export function unknownSelectorRefusal(word: string): string {
+export function unknownSelectorRefusal(
+  word: string,
+  forms: CellForms = V2_CELL_FORMS
+): string {
   return `"${word}" is not a selector this build resolves: they are ${ANSWER_SELECTOR_WORDS.map(
     (s) => s.key
-  ).join(', ')}, or { at: [col, row] }, or { path: [[col, row], …] }`;
+  ).join(', ')}, ${selectorForms(forms)}`;
+}
+
+/** `SelectorSpec.UnmarshalYAML`: a selector that is neither a word nor a
+ * mapping. */
+export function selectorShapeRefusal(forms: CellForms = V2_CELL_FORMS): string {
+  return `a selector is one of ${ANSWER_SELECTOR_WORDS.map((s) => s.key).join(
+    ', '
+  )}, ${selectorForms(forms)}`;
 }
 
 /** `SelectorSpec.UnmarshalYAML`: a selector mapping that names anything but
@@ -710,6 +752,8 @@ export const EMPTY_TEMPER_MIX_REFUSAL =
 // THE HEARING SENTENCES (rpg-project#569 R4–R8, R10) — ONE TABLE.
 //
 // Every one is the engine's, word for word, at rpg-toolkit#2044's final head
+// (the single-room cell and route sentences and the dialect-spelled `patrol`
+// hint at rpg-toolkit#2063, 4e588e2d)
 // (6081ad79, `dungeonspec/hearing_test.go`, `single_room_site.go`) and the
 // `mind/behavior` it pins (29ea4324, `When.Validate`, `Selector.validate`,
 // `Answer.Validate`) — minus the `line N:` prefix and the sentinel suffix the
@@ -771,17 +815,21 @@ export const HEARING_SENTENCES = Object.freeze({
    * target — `{}`, or a route with no waypoints. */
   namesNoTarget: (word: string): string =>
     `\`${word}\` names no target; give it one of somebody, a cell (\`at\`) or a route (\`path\`)`,
-  /** `AnswerSpec.UnmarshalYAML`: the word named before it was built. */
-  patrol: (): string =>
-    '`patrol` is not a word: a patrol is a route, write toward: { path: [[col, row], …] }',
-  /** `singleRoomCellSelector`: the v4 single room has no frame for an `at`
-   * cell — refused whatever word it sits on (rpg-toolkit#2044). */
+  /** `AnswerSpec.UnmarshalYAML`: the word named before it was built — a
+   * route, spelt in the reading dialect's forms (`patrolRefusal`,
+   * rpg-toolkit#2063). */
+  patrol: (forms: CellForms = V2_CELL_FORMS): string =>
+    `\`patrol\` is not a word: a patrol is a route, write toward: { path: ${forms.route} }`,
+  /** `singleRoomCellSelector` (rpg-toolkit#2063, 4e588e2d): an `at` written
+   * as an offset pair in the single room, whose cells are its own axial
+   * `{ q, r }`. Refused whatever word it sits on — the spelling is the
+   * mistake. */
   singleRoomCell: (): string =>
-    "at is not a place a single room can name yet: its cells are axial and the selector's cell is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer",
-  /** `singleRoomPathSelector`: the v4 single room has no frame for a route's
-   * cells, exactly as it has none for `at`. */
+    'at names a cell of this room, written { q, r } as its walkable hexes are: [col, row] is an offset in a document orientation this dialect does not have',
+  /** `singleRoomPathSelector`: the route twin, said once for the route when
+   * any waypoint is an offset pair. */
   singleRoomPath: (): string =>
-    'path is not a route a single room can name yet: its cells are axial and a waypoint is an offset in a document orientation this dialect does not have; name enemy, attacker, actor or sound, or wait for the sites layer',
+    "path names a route of this room's cells, each written { q, r } as its walkable hexes are: [col, row] is an offset in a document orientation this dialect does not have",
 });
 
 /**

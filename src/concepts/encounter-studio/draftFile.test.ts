@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import referenceTombYaml from '../../author/fixtures/reference-tomb.yaml?raw';
 import { encodeSingleRoomDungeon } from '../world-building/singleRoomDungeon';
@@ -98,5 +99,47 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(defaultDraftKey(document)).toBe('the-mad-king-s-castle');
     document.draft.name = '…';
     expect(defaultDraftKey(document)).toMatch(/^(room-.+|encounter)$/);
+  });
+
+  /**
+   * THE SHIPPED CASTLE OPENS (rpg-project#605 D1, rpg-toolkit#2063). A verbatim
+   * copy of rpg-api `content/the-mad-king.yaml` at the D1c re-sync (9a8da736):
+   * its patrols walk `toward: { path: [{ q, r }, …] }` and its reserves walk
+   * `toward: { at: { q, r } }`. The engine reads it, so the studio's import
+   * must — the web never refuses what the engine accepts (#1119).
+   */
+  it("imports the mad king's castle, patrols and all, with no refusal", () => {
+    const yaml = readFileSync(
+      'src/concepts/encounter-studio/fixtures/the-mad-king.yaml',
+      'utf8'
+    );
+    const read = readDraftYaml(yaml);
+    if (!read.ok) throw new Error(read.refusal);
+    expect(read.key).toBe('the-mad-king');
+    const selectors = Object.values(read.scope.tables ?? {}).flatMap((t) =>
+      (t.time ?? []).map((row) => row.toward)
+    );
+    expect(selectors).toContainEqual({ at: { q: 10, r: -19 } });
+    expect(selectors).toContainEqual({
+      path: [
+        { q: -9, r: 13 },
+        { q: -3, r: 13 },
+        { q: -5, r: 16 },
+        { q: -11, r: 16 },
+      ],
+    });
+    const importDocument = vi.fn().mockReturnValue(true);
+    expect(importDraftYaml(yaml, { importDocument })).toEqual({
+      ok: true,
+      key: 'the-mad-king',
+    });
+    // What the studio would save reads back as itself.
+    const document = { draft: read.draft, scope: read.scope };
+    const once = exportDraftYaml(document, read.key);
+    const again = readDraftYaml(once);
+    if (!again.ok) throw new Error(again.refusal);
+    expect(
+      exportDraftYaml({ draft: again.draft, scope: again.scope }, read.key)
+    ).toBe(once);
   });
 });

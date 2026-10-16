@@ -118,13 +118,14 @@ describe('answer table shape', () => {
     expect(table({ time: [{ toward: 'nobody' }] })).toThrow(
       /"nobody" is not a selector this build resolves/
     );
-    // The single room names no cell at all (rpg-toolkit#2044), whatever word
-    // it sits on — the engine's frame refusal, not the `toward`-only one.
+    // An OFFSET cell is refused in the single room (rpg-toolkit#2063),
+    // whatever word it sits on — the engine's frame refusal, not the
+    // `toward`-only one: the spelling is the mistake.
     expect(table({ time: [{ attack: { at: [1, 2] } }] })).toThrow(
-      'on.time[0].attack.at: at is not a place a single room can name yet'
+      'on.time[0].attack.at: at names a cell of this room, written { q, r } as its walkable hexes are'
     );
     expect(table({ time: [{ toward: { at: [1, 2] } }] })).toThrow(
-      'on.time[0].toward.at: at is not a place a single room can name yet'
+      'on.time[0].toward.at: at names a cell of this room, written { q, r } as its walkable hexes are'
     );
     expect(table({ time: [{ attack: 'actor' }] })).toThrow(
       /`actor` is the actor of the deed this entry's `when` names/

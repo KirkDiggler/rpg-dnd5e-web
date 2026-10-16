@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCastleReadBackDocument } from '../encounter-studio/fixtures/castleReadBack';
 import { ENGINE_LAWS } from './engineLaws';
+import { factIndexOf } from './factIndex';
 import { readBackOf, type ReadBackParagraph } from './readBack';
 
 const castle = createCastleReadBackDocument();
@@ -37,6 +38,43 @@ describe('readBackOf over the castle', () => {
     );
     expect(time).toContain(
       'If an enemy is in reach, it attacks the enemy (weight 1).'
+    );
+  });
+
+  it('reads a patrol row and a march row in words; the fact index does not move (rpg-toolkit#2063)', () => {
+    const document = createCastleReadBackDocument();
+    const before = factIndexOf(document);
+    const rows = document.scope.tables!['gate-patrol'].time;
+    document.scope.tables!['gate-patrol'].time = [
+      ...rows,
+      {
+        when: { enemy: 'none' },
+        toward: {
+          path: [
+            { q: -2, r: 0 },
+            { q: 0, r: -2 },
+            { q: 2, r: 0 },
+            { q: 0, r: 2 },
+          ],
+        },
+      },
+      { when: { fact: 'alarm-raised' }, toward: { at: { q: 1, r: 1 } } },
+    ];
+    const time = texts(
+      paragraph(
+        readBackOf(document, { kind: 'creature', id: 'gate-1' }),
+        'on-its-time'
+      )
+    );
+    expect(time).toContain(
+      'If no enemy is seen or remembered, it walks a route through 4 cells (weight 1).'
+    );
+    expect(time).toContain(
+      'If it knows alarm-raised, it walks to {q: 1, r: 1} (weight 1).'
+    );
+    // A cell and a route name no fact: the index is the same rows.
+    expect(factIndexOf(document).map((row) => row.fact)).toEqual(
+      before.map((row) => row.fact)
     );
   });
 

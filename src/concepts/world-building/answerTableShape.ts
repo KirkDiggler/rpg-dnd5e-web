@@ -23,18 +23,25 @@
  * and never resolves a selector. It refuses what the engine's strict decoder
  * would refuse, in the engine's own sentences, and carries the rest verbatim.
  *
- * NO CELL AND NO ROUTE (rpg-toolkit#2044). The engine resolves an offset pair
- * under a document `orientation`, which the single-room dialect does not
- * carry, so it refuses `{ at }` and `{ path }` here by name; this reader
- * refuses them in the same sentences rather than carrying bytes the server
- * will not take. The v2 dialect (`dungeonYaml.ts`) keeps both.
+ * A CELL AND A ROUTE ARE SPELT IN THE ROOM'S OWN FRAME (rpg-toolkit#2063).
+ * `toward: { at: { q, r } }` and `toward: { path: [{ q, r }, …] }` name cells
+ * in the axial frame the room's walkable hexes are written in, read as
+ * strictly as the engine reads them (both keys, integers, nothing else). The
+ * offset spelling `[col, row]` is resolved through a document `orientation`
+ * this dialect does not carry, so it is refused here in the engine's sentence.
+ * The v2 dialect (`dungeonYaml.ts`) keeps its offsets.
+ *
+ * WHETHER A CELL IS WALKABLE IS NOT ASKED HERE, as `dungeonYaml.ts` does not
+ * ask whether a v2 cell is floor: that is membership, and the engine's floor
+ * and route-leg rules are its own (`singleRoomCells`, `routeLegs`). This
+ * reader refuses the shape and the spelling; the server grades the rest.
  */
 
 import {
   ACTOR_WITHOUT_DEED_REFUSAL,
+  ANSWER_AT_SELECTOR,
   ANSWER_ENTRY_RULES,
   ANSWER_PATH_SELECTOR,
-  ANSWER_SELECTOR_WORDS,
   ANSWER_SOUND_KINDS,
   ANSWER_TRIGGER_KEYS,
   ANSWER_WHEN,
@@ -42,6 +49,7 @@ import {
   answerWhenRefusal,
   answerWord,
   answerWordRefusal,
+  atSelectorRefusal,
   bothScopesRefusal,
   EMPTY_ENTRY_REFUSAL,
   EMPTY_FACT_REFUSAL,
@@ -54,7 +62,9 @@ import {
   RETIRED_TRIGGER_KEYS,
   retiredTriggerRefusal,
   SELECTOR_MAPPING_KEYS,
+  selectorShapeRefusal,
   selectorWordLegalOn,
+  SINGLE_ROOM_CELL_FORMS,
   spanRefusal,
   suggestKey,
   unknownDeedRefusal,
@@ -68,10 +78,37 @@ import {
   whenShapeRefusal,
 } from '@/author/answerVocabulary';
 
-/** A selector as written: one of the sealed words (`sound` among them). An
- * authored cell (`{ at }`) or route (`{ path }`) is refused in this dialect —
- * its cells are axial and it states no frame for them (rpg-toolkit#2044). */
-export type AnswerSelectorShape = string;
+/** One cell of the room, as its walkable hexes are written: axial. */
+export interface AnswerCellShape {
+  q: number;
+  r: number;
+}
+
+/** A selector as written: one of the sealed words (`sound` among them), an
+ * authored cell `{ at: { q, r } }`, or an authored route `{ path: [{ q, r },
+ * …] }` (rpg-toolkit#2063). A mapping names exactly one of the two. */
+export type AnswerSelectorShape =
+  | string
+  | { at: AnswerCellShape }
+  | { path: AnswerCellShape[] };
+
+/** The cell a selector names, if it names one. */
+export function selectorCell(
+  selector: AnswerSelectorShape | undefined
+): AnswerCellShape | undefined {
+  return typeof selector === 'object' && 'at' in selector
+    ? selector.at
+    : undefined;
+}
+
+/** The route a selector names, if it names one. */
+export function selectorRoute(
+  selector: AnswerSelectorShape | undefined
+): AnswerCellShape[] | undefined {
+  return typeof selector === 'object' && 'path' in selector
+    ? selector.path
+    : undefined;
+}
 
 /** A `when:` as written: EXACTLY ONE exclusive enemy band, or one deed with
  * its span and — optionally — WHOSE deed it is about. The key IS the shape,
@@ -295,7 +332,8 @@ function validateAnswerEntry(
     if (ENTRY_KEYS.includes(key)) continue;
     // THE RETIRED WORD POINTS AT ITS REPLACEMENT (rpg-project#569 R7): a
     // patrol is `toward: { path }`, and an author who wrote `patrol` meant it.
-    if (key === 'patrol') fail(`${path}.patrol`, HEARING_SENTENCES.patrol());
+    if (key === 'patrol')
+      fail(`${path}.patrol`, HEARING_SENTENCES.patrol(SINGLE_ROOM_CELL_FORMS));
     const meant = suggestKey(key, ENTRY_KEYS);
     fail(
       path,
@@ -385,8 +423,7 @@ function validateAnswerEntry(
   }
 
   // `actor` needs a deed to have been the actor of; `sound` needs a row that
-  // listened. (A cell or a route never reaches here: this dialect refuses
-  // both at the selector.)
+  // listened. A cell or a route is neither, and passes both.
   for (const word of words) {
     const selector =
       word === 'attack'
@@ -608,22 +645,25 @@ function validateWhenScope(
   return {};
 }
 
-/** One selector on a table word: a sealed word (`sound` among them) or
- * `{ at: [col, row] }`. `word` is the table word it sits on, because `sound`
- * on `attack` is refused for the pair.
+/** One selector on a table word: a sealed word (`sound` among them), a cell
+ * `{ at: { q, r } }` or a route `{ path: [{ q, r }, …] }`. `word` is the table
+ * word it sits on, because `sound` on `attack` and a cell on anything but
+ * `toward` are refused for the pair.
  *
- * A ROUTE IS REFUSED IN THIS DIALECT (rpg-toolkit#2044): `{ path }` is a list
- * of the same offset cells `at` is, and the v4 single room has no frame for
- * either, so the engine names it once for the route. The decoder's own two
- * refusals — both keys at once, an empty route — come first, as they do
- * there. */
+ * THE ENGINE'S ORDER (rpg-toolkit#2063), so one mistake reads as one
+ * sentence: the decoder first (a key that is not `at`/`path`, a `{ q, r }`
+ * that is not strictly one), then the frame — a route spelt in offsets, else
+ * a cell spelt in offsets, each refused whole — then a cell on a word that
+ * acts on a creature, then mind/behavior's shape at the row: both a cell and
+ * a route, neither, a route on a word that does not walk one. */
 function validateAnswerSelector(
   value: unknown,
   path: string,
   word: string
 ): AnswerSelectorShape {
   if (typeof value === 'string') {
-    if (!isSelectorWord(value)) fail(path, unknownSelectorRefusal(value));
+    if (!isSelectorWord(value))
+      fail(path, unknownSelectorRefusal(value, SINGLE_ROOM_CELL_FORMS));
     if (!selectorWordLegalOn(value, word))
       // A SELECTOR-SHAPE FAULT IS THE ROW'S (rpg-toolkit#2044): the engine
       // asks mind/behavior of the compiled row and reports at `…time[i]`.
@@ -631,28 +671,80 @@ function validateAnswerSelector(
     return value;
   }
   if (isMapping(value)) {
+    // DECODE IN DOCUMENT ORDER, as `SelectorSpec.UnmarshalYAML` walks the
+    // mapping: an unknown key, a malformed `at` and a malformed `path` are
+    // refused as each is reached, so the first one written is the one
+    // reported. A parsed mapping keeps the file's key order. Each spelling
+    // goes into its own slot, as `decodeAt`/`decodePath` do; an offset is
+    // only noted here, and the frame refuses it below, by path.
+    const rawAt = value[ANSWER_AT_SELECTOR.key];
+    const hasAt = rawAt !== undefined && rawAt !== null;
+    let at: AnswerCellShape | null = null;
+    const rawPath = value[ANSWER_PATH_SELECTOR.key];
+    const waypoints = Array.isArray(rawPath) ? (rawPath as unknown[]) : [];
+    const route: AnswerCellShape[] = [];
+    let offsetWaypoint = false;
     for (const key of Object.keys(value)) {
       if (!SELECTOR_MAPPING_KEYS.includes(key))
         fail(path, unknownSelectorKeyRefusal(key));
+      if (key === ANSWER_AT_SELECTOR.key && hasAt && isMapping(rawAt))
+        at = hexCell(rawAt, `${path}.at`);
+      if (key === ANSWER_PATH_SELECTOR.key)
+        waypoints.forEach((waypoint, i) => {
+          if (isMapping(waypoint))
+            route.push(hexCell(waypoint, `${path}.path[${i}]`));
+          else offsetWaypoint = true;
+        });
     }
-    const hasAt = value.at !== undefined && value.at !== null;
-    const hasPath =
-      Array.isArray(value[ANSWER_PATH_SELECTOR.key]) &&
-      (value[ANSWER_PATH_SELECTOR.key] as unknown[]).length > 0;
-    // THE ENGINE'S ORDER (rpg-toolkit#2044): the frame refusal first — a
-    // route, then a cell — then mind/behavior's shape at the row. With no
-    // frame here, every cell or route is refused by name, and a mapping that
-    // names neither (`{}`, `path: []`) names no target.
-    if (hasPath) fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
-    if (hasAt) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
+    // THE FRAME: a route first, then a cell; an offset is the whole defect.
+    // A `path` that is not a list at all is refused here too — the engine's
+    // decoder refuses it in yaml.v3's words, which this file does not copy.
+    const routeWritten =
+      waypoints.length > 0 ||
+      (rawPath !== undefined && rawPath !== null && !Array.isArray(rawPath));
+    if (routeWritten && (offsetWaypoint || !Array.isArray(rawPath)))
+      fail(`${path}.path`, HEARING_SENTENCES.singleRoomPath());
+    if (!routeWritten && hasAt) {
+      if (at === null) fail(`${path}.at`, HEARING_SENTENCES.singleRoomCell());
+      if (word !== ANSWER_AT_SELECTOR.onlyWord)
+        fail(path, atSelectorRefusal(word));
+    }
+    // mind/behavior's shape, at the ROW (`Selector.validate`).
+    if (hasAt && route.length > 0)
+      fail(rowPathOf(path, word), HEARING_SENTENCES.selectorNamesBoth(word));
+    if (route.length > 0) {
+      if (word !== ANSWER_PATH_SELECTOR.onlyWord)
+        fail(rowPathOf(path, word), HEARING_SENTENCES.pathNotToward(word));
+      return { path: route };
+    }
+    if (at !== null) return { at };
     fail(rowPathOf(path, word), HEARING_SENTENCES.namesNoTarget(word));
   }
-  fail(
-    path,
-    `a selector is one of ${ANSWER_SELECTOR_WORDS.map((s) => s.key).join(
-      ', '
-    )}, or { at: [col, row] }, or { path: [[col, row], …] }`
-  );
+  fail(path, selectorShapeRefusal(SINGLE_ROOM_CELL_FORMS));
+}
+
+/** `decodeHexCell`: one axial `{ q, r }`, STRICTLY — both keys, each an
+ * integer, nothing else — in the engine's sentences (minus the `line N:`
+ * prefix this reader never carries). A missing `r` read as 0 would be a
+ * creature sent to a cell nobody wrote. */
+function hexCell(
+  value: Record<string, unknown>,
+  path: string
+): AnswerCellShape {
+  for (const key of Object.keys(value)) {
+    if (key !== 'q' && key !== 'r')
+      fail(path, `field ${key} not found in type dungeonspec.RoomCell`);
+    const n = value[key];
+    if (typeof n !== 'number' || !Number.isInteger(n))
+      fail(path, `a cell's ${key} must be an integer`);
+  }
+  for (const key of ['q', 'r']) {
+    if (!(key in value))
+      fail(path, `a cell is { q, r }, and this one has no ${key}`);
+  }
+  // Written q then r, the order the engine's fixture and the room's own
+  // walkable hexes use, so the bytes re-emit in that order.
+  return { q: value.q as number, r: value.r as number };
 }
 
 /** The row's own path, from a selector's `…time[i].<word>`. */

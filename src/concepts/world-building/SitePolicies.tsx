@@ -55,6 +55,7 @@ import {
   whenListensShape,
   whenNamesDeedShape,
   type AnswerEntryShape,
+  type AnswerSelectorShape,
   type AnswerTableShape,
   type AnswerWhenCondition,
   type AnswerWhenShape,
@@ -67,6 +68,7 @@ import {
   enemyBandPhrase,
   factLabel,
   heardLabel,
+  selectorPhrase,
   whenShorthand,
   wordShorthand,
 } from './answerVocabulary';
@@ -906,7 +908,16 @@ export function AnswerEntryRow({
             />
           </label>
         )}
-        {spec?.value === 'selector' && (
+        {spec?.value === 'selector' && isMapping(value) && (
+          // A CELL OR A ROUTE IS SHOWN, NOT OFFERED (rpg-toolkit#2063): the
+          // room's `{ q, r }` spelling is read and carried verbatim, and no
+          // picker for it exists yet. A word select here would claim the row
+          // walks to "the enemy" while the file says a route.
+          <span className="wb-entry-target" data-testid="entry-place">
+            <span>To</span> {selectorPhrase(value as AnswerSelectorShape, 'it')}
+          </span>
+        )}
+        {spec?.value === 'selector' && !isMapping(value) && (
           <>
             <label className="wb-entry-target">
               <span>{word === 'away' ? 'From' : 'To'}</span>

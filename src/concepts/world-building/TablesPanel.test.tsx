@@ -328,7 +328,8 @@ describe('the faction’s table reference', () => {
  * `when` is a list with a `not` per condition, `heard` and `fact` join the
  * conditions, `fact` is a word on `time`, `toward` walks to a sound, `away`
  * flees one, `attack` never offers `sound`, and neither a route nor `patrol`
- * is ever offered — the v4 single room names no route (rpg-toolkit#2044).
+ * is ever offered. A cell or a route a file carries (rpg-toolkit#2063) is
+ * shown in words and kept verbatim; no picker writes one yet.
  */
 describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
   type Entry = NonNullable<
@@ -428,9 +429,35 @@ describe('TablesPanel — hearing, facts and patrols (rpg-project#569)', () => {
 
   it('`toward` offers exactly enemy and attacker on a row that listens for nothing — never a cell or a route', () => {
     mount({ when: { enemy: 'none' }, toward: 'enemy' });
-    // `actor` waits for a deed and `sound` for a top-level `heard`; `at` and
-    // `path` are refused by the single room (rpg-toolkit#2044).
+    // `actor` waits for a deed and `sound` for a top-level `heard`; a cell
+    // and a route are read from a file but not offered here.
     expect(options('To for time entry')).toEqual(['enemy', 'attacker']);
+  });
+
+  it('a route from the file is shown as a place, not as a word, and kept verbatim', () => {
+    const route = {
+      path: [
+        { q: -2, r: 0 },
+        { q: 0, r: -2 },
+      ],
+    };
+    const last = mount({ when: { enemy: 'none' }, toward: route });
+    // No word select claims the row walks to "the enemy".
+    expect(screen.queryByLabelText('To for time entry')).toBeNull();
+    expect(screen.getByTestId('entry-place').textContent).toBe(
+      'To a route through 2 cells'
+    );
+    fireEvent.change(screen.getByLabelText('Say (optional) for time entry'), {
+      target: { value: 'Round again.' },
+    });
+    expect(last()?.toward).toEqual(route);
+  });
+
+  it('a cell from the file is shown in the room’s own spelling', () => {
+    mount({ when: { enemy: 'none' }, toward: { at: { q: 1, r: 1 } } });
+    expect(screen.getByTestId('entry-place').textContent).toBe(
+      'To {q: 1, r: 1}'
+    );
   });
 
   it('`toward` offers the sound once the row listens', () => {

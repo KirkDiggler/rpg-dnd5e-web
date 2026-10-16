@@ -20,8 +20,12 @@
 import { answerWord } from '@/author/answerVocabulary';
 import {
   isNotCondition,
+  selectorCell,
+  selectorRoute,
   whenConditions,
+  type AnswerCellShape,
   type AnswerEntryShape,
+  type AnswerSelectorShape,
   type AnswerWhenCondition,
   type AnswerWhenDeed,
   type AnswerWhenShape,
@@ -179,13 +183,45 @@ export function joinAnd(parts: readonly string[]): string {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
-/** What a selector names, from the subject's side. */
-export function selectorPhrase(selector: string, subject: Subject): string {
+/** A cell in the room's own spelling, as the engine spells one back to its
+ * author (`singleRoomCells.spell`): `{q: 1, r: -1}`. */
+export function cellPhrase(cell: AnswerCellShape): string {
+  return `{q: ${cell.q}, r: ${cell.r}}`;
+}
+
+/** A route's length in words: "1 cell", "4 cells". */
+function cellsPhrase(count: number): string {
+  return count === 1 ? '1 cell' : `${count} cells`;
+}
+
+/** What a selector names, from the subject's side. A cell or a route is a
+ * place rather than a figure, and reads as one. */
+export function selectorPhrase(
+  selector: AnswerSelectorShape,
+  subject: Subject
+): string {
+  const cell = selectorCell(selector);
+  if (cell !== undefined) return cellPhrase(cell);
+  const route = selectorRoute(selector);
+  if (route !== undefined)
+    return `a route through ${cellsPhrase(route.length)}`;
   if (selector === 'enemy') return 'the enemy';
   if (selector === 'attacker') return `whoever hit ${verb('object', subject)}`;
   if (selector === 'actor') return 'whoever did it';
   if (selector === 'sound') return 'the sound';
-  return selector;
+  return String(selector);
+}
+
+/** `toward` on a selector: a figure is walked TOWARD, a cell is walked ONTO
+ * ("walks to {q: 1, r: 1}"), and a route is walked through, round again
+ * ("walks a route through 4 cells"). */
+function towardPhrase(selector: AnswerSelectorShape, subject: Subject): string {
+  const walk = verb('walk', subject);
+  const cell = selectorCell(selector);
+  if (cell !== undefined) return `${walk} to ${cellPhrase(cell)}`;
+  if (selectorRoute(selector) !== undefined)
+    return `${walk} ${selectorPhrase(selector, subject)}`;
+  return `${walk} toward ${selectorPhrase(selector, subject)}`;
 }
 
 /** The row's one word, as a verb phrase agreeing with the subject (the
@@ -205,8 +241,7 @@ export function wordPhrase(
   if (entry.hold !== undefined) return verb('hold', subject);
   if (entry.attack !== undefined)
     return `${verb('attack', subject)} ${selectorPhrase(entry.attack, subject)}`;
-  if (entry.toward !== undefined)
-    return `${verb('walk', subject)} toward ${selectorPhrase(entry.toward, subject)}`;
+  if (entry.toward !== undefined) return towardPhrase(entry.toward, subject);
   if (entry.away !== undefined)
     return `${verb('walk', subject)} away from ${selectorPhrase(entry.away, subject)}`;
   return undefined;
@@ -258,6 +293,14 @@ export function wordShorthand(entry: AnswerEntryShape, word: string): string {
   if (shape === 'string') return `${word} ${String(value)}`;
   if (shape === 'selector' && typeof value === 'string')
     return `${word} ${value}`;
+  if (shape === 'selector') {
+    const selector = value as AnswerSelectorShape;
+    const cell = selectorCell(selector);
+    if (cell !== undefined) return `${word} at ${cellPhrase(cell)}`;
+    const route = selectorRoute(selector);
+    if (route !== undefined)
+      return `${word} path ${route.map(cellPhrase).join(' ')}`;
+  }
   return word;
 }
 

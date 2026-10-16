@@ -50,8 +50,8 @@ const readOptionsGolden = () =>
 /** The encoder's output for a room whose creature's `time` table carries the
  * castle's hearing rows (rpg-project#569 R6–R8, R10): `toward`/`away: sound`,
  * `fact` on `time` with and without a line, `heard`, and a list `when` with a
- * `not`. No route and no cell: the v4 single room refuses both
- * (rpg-toolkit#2044, `singleRoomPathSelector`). A sibling of the
+ * `not`. No route and no cell: those are the engine's own fixture's,
+ * round-tripped in `answerTableAtPath.test.ts` (rpg-toolkit#2063). A sibling of the
  * two goldens above, for their reason. */
 const readHearingGolden = () =>
   readFileSync(
