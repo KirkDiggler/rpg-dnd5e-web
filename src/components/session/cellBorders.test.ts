@@ -125,6 +125,24 @@ describe('stretchesAlongCells', () => {
     ).toEqual([{ from: 0, to: 1, state: 'seen' }]);
   });
 
+  it('abutting spans of the same state are one stretch at real, unrounded coordinates', () => {
+    // The castle's south wall as the server sent it, in feet, at hex size 1.
+    // Row-14 hexes abut corner to corner along it; their projected span ends
+    // differ only by rounding, which must not open an uncovered gap.
+    const scale = SQRT3 / 5;
+    const south = {
+      start: { x: -72.5 * scale, z: 59.178402591936646 * scale },
+      end: { x: -5.147480714328994 * scale, z: 59.178402591936646 * scale },
+    };
+    const row14 = Array.from({ length: 15 }, (_, i) => cell(-22 + i, 14));
+    const seen = Object.fromEntries(
+      row14.map((c) => [key(c), 'seen' as const])
+    );
+    expect(stretchesAlongCells(south, row14, 1, states(seen))).toEqual([
+      { from: 0, to: 1, state: 'seen' },
+    ]);
+  });
+
   it('a uniform footprint is one stretch over the whole line; no cells, no stretches', () => {
     expect(
       stretchesAlongCells(line, [cell(0, 0), cell(4, 0)], 1, () => 'seen')

@@ -120,9 +120,11 @@ export function stretchesBesideLine<S>(
   return stretches;
 }
 
-/** Span boundaries closer than this fraction of the line are one boundary,
- * so rounding never makes a sliver stretch. */
-const SAME_T = 1e-9;
+/** Cut points within this fraction of the line's length are one cut, and a
+ * span covers its ends within it. Abutting hexes share a corner, but their
+ * projected span ends differ by rounding; without the tolerance that
+ * difference reads as a zero-width uncovered gap. */
+const SAME_T = 1e-6;
 
 /**
  * A wall line split by the cells its blocker footprint overlaps (fog of war
@@ -180,7 +182,9 @@ export function stretchesAlongCells<S>(
     const to = bounds[i + 1]!;
     const mid = (from + to) / 2;
     const state = stateOf(
-      spans.filter((sp) => sp.from <= mid && mid <= sp.to).map((sp) => sp.key)
+      spans
+        .filter((sp) => sp.from - SAME_T <= mid && mid <= sp.to + SAME_T)
+        .map((sp) => sp.key)
     );
     const last = stretches.at(-1);
     if (last && last.state === state) last.to = to;
