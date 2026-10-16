@@ -91,6 +91,31 @@ describe('the single room reads a cell and a route as { q, r }', () => {
     );
   });
 
+  it('decodes the keys in document order, as the engine does', () => {
+    // Both keys malformed: whichever the file writes first is reported.
+    expect(
+      table({ time: [{ toward: { path: [{ q: 1 }], at: { r: 2 } } }] })
+    ).toThrow(
+      'on.time[0].toward.path[0]: a cell is { q, r }, and this one has no r'
+    );
+    expect(
+      table({ time: [{ toward: { at: { r: 2 }, path: [{ q: 1 }] } }] })
+    ).toThrow(
+      'on.time[0].toward.at: a cell is { q, r }, and this one has no q'
+    );
+    // An unknown key is refused where it stands in that order too.
+    expect(
+      table({ time: [{ toward: { path: [{ q: 1 }], where: 1 } }] })
+    ).toThrow(
+      'on.time[0].toward.path[0]: a cell is { q, r }, and this one has no r'
+    );
+    expect(
+      table({ time: [{ toward: { where: 1, path: [{ q: 1 }] } }] })
+    ).toThrow(
+      'on.time[0].toward: field where not found in type dungeonspec.SelectorSpec'
+    );
+  });
+
   it("refuses [col, row] in the engine's exact sentences", () => {
     expect(table({ time: [{ toward: { at: [1, 2] } }] })).toThrow(
       'on.time[0].toward.at: at names a cell of this room, written { q, r } as its walkable hexes are: [col, row] is an offset in a document orientation this dialect does not have'

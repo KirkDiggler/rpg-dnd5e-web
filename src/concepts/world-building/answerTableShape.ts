@@ -671,24 +671,31 @@ function validateAnswerSelector(
     return value;
   }
   if (isMapping(value)) {
-    for (const key of Object.keys(value)) {
-      if (!SELECTOR_MAPPING_KEYS.includes(key))
-        fail(path, unknownSelectorKeyRefusal(key));
-    }
-    // DECODE: each spelling into its own slot, as `decodeAt`/`decodePath`
-    // do. An offset is only noted — the frame refuses it below, by path.
+    // DECODE IN DOCUMENT ORDER, as `SelectorSpec.UnmarshalYAML` walks the
+    // mapping: an unknown key, a malformed `at` and a malformed `path` are
+    // refused as each is reached, so the first one written is the one
+    // reported. A parsed mapping keeps the file's key order. Each spelling
+    // goes into its own slot, as `decodeAt`/`decodePath` do; an offset is
+    // only noted here, and the frame refuses it below, by path.
     const rawAt = value[ANSWER_AT_SELECTOR.key];
     const hasAt = rawAt !== undefined && rawAt !== null;
-    const at = hasAt && isMapping(rawAt) ? hexCell(rawAt, `${path}.at`) : null;
+    let at: AnswerCellShape | null = null;
     const rawPath = value[ANSWER_PATH_SELECTOR.key];
     const waypoints = Array.isArray(rawPath) ? (rawPath as unknown[]) : [];
     const route: AnswerCellShape[] = [];
     let offsetWaypoint = false;
-    waypoints.forEach((waypoint, i) => {
-      if (isMapping(waypoint))
-        route.push(hexCell(waypoint, `${path}.path[${i}]`));
-      else offsetWaypoint = true;
-    });
+    for (const key of Object.keys(value)) {
+      if (!SELECTOR_MAPPING_KEYS.includes(key))
+        fail(path, unknownSelectorKeyRefusal(key));
+      if (key === ANSWER_AT_SELECTOR.key && hasAt && isMapping(rawAt))
+        at = hexCell(rawAt, `${path}.at`);
+      if (key === ANSWER_PATH_SELECTOR.key)
+        waypoints.forEach((waypoint, i) => {
+          if (isMapping(waypoint))
+            route.push(hexCell(waypoint, `${path}.path[${i}]`));
+          else offsetWaypoint = true;
+        });
+    }
     // THE FRAME: a route first, then a cell; an offset is the whole defect.
     // A `path` that is not a list at all is refused here too — the engine's
     // decoder refuses it in yaml.v3's words, which this file does not copy.
