@@ -103,7 +103,7 @@ describe('the draft as a file (rpg-project#578)', () => {
 
   /**
    * THE SHIPPED CASTLE OPENS (rpg-project#605 D1, rpg-toolkit#2063). A verbatim
-   * copy of rpg-api `content/the-mad-king.yaml` at the D1c re-sync (9a8da736):
+   * copy of rpg-api `content/the-mad-king.yaml` at the cells-and-kitchen fold (1ee589bc, rpg-project#611):
    * its patrols walk `toward: { path: [{ q, r }, …] }` and its reserves walk
    * `toward: { at: { q, r } }`. The engine reads it, so the studio's import
    * must — the web never refuses what the engine accepts (#1119).
@@ -122,10 +122,10 @@ describe('the draft as a file (rpg-project#578)', () => {
     expect(selectors).toContainEqual({ at: { q: 10, r: -19 } });
     expect(selectors).toContainEqual({
       path: [
-        { q: -9, r: 13 },
-        { q: -3, r: 13 },
-        { q: -5, r: 16 },
-        { q: -11, r: 16 },
+        { q: -7, r: 9 },
+        { q: -1, r: 9 },
+        { q: -3, r: 12 },
+        { q: -9, r: 12 },
       ],
     });
     const importDocument = vi.fn().mockReturnValue(true);
