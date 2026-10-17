@@ -12,6 +12,7 @@ import {
   RaceInfoSchema,
   SpellcastingInfoSchema,
   SubclassInfoSchema,
+  type Appearance,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
@@ -37,7 +38,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps, ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDraftState } from './CharacterDraftContextDef';
 import { CharacterDraftContext } from './CharacterDraftContextDef';
 import { InteractiveCharacterSheet } from './InteractiveCharacterSheet';
@@ -45,14 +46,23 @@ import { InteractiveCharacterSheet } from './InteractiveCharacterSheet';
 vi.mock('@/components/ProgressTracker', () => ({
   ProgressTracker: () => null,
 }));
+const toastSpy = vi.hoisted(() => ({ addToast: vi.fn() }));
 vi.mock('@/components/ui', () => ({
   Button: ({ children }: { children: ReactNode }) => (
     <button>{children}</button>
   ),
-  useToast: () => ({ addToast: vi.fn() }),
+  useToast: () => ({ addToast: toastSpy.addToast }),
+}));
+const appearanceModal = vi.hoisted(() => ({
+  onConfirm: null as null | ((appearance: Appearance) => Promise<void>),
 }));
 vi.mock('./AppearanceSelectionModal', () => ({
-  AppearanceSelectionModal: () => null,
+  AppearanceSelectionModal: (props: {
+    onConfirm: (appearance: Appearance) => Promise<void>;
+  }) => {
+    appearanceModal.onConfirm = props.onConfirm;
+    return null;
+  },
 }));
 vi.mock('./BackgroundSelectionModal', () => ({
   BackgroundSelectionModal: () => null,
@@ -117,6 +127,14 @@ function persistedDuplicateEquipmentChoice() {
       }),
     },
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 function draftState(
@@ -185,6 +203,11 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
   const dwarf = create(RaceInfoSchema, {
     name: 'Dwarf',
     raceId: Race.DWARF,
+  });
+
+  beforeEach(() => {
+    toastSpy.addToast.mockClear();
+    appearanceModal.onConfirm = null;
   });
 
   it.each([
@@ -284,6 +307,42 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
     expect(screen.queryByTitle('Skin Tone')).toBeNull();
     expect(screen.queryByTitle('Primary Color')).toBeNull();
   });
+
+  it('drops a held appearance update after unmount instead of raising a toast for the old sheet', async () => {
+    const heldAppearance =
+      deferred<NonNullable<CharacterDraftState['draft']>>();
+    const state = draftState(vi.fn(), {
+      raceInfo: dwarf,
+      classInfo: create(ClassInfoSchema, {
+        name: 'Rogue',
+        classId: Class.ROGUE,
+      }),
+      classChoices: [],
+    });
+    state.updateAppearance = () => heldAppearance.promise;
+    const { unmount } = render(
+      <CharacterDraftContext.Provider value={state}>
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const onConfirm = appearanceModal.onConfirm;
+    expect(onConfirm).not.toBeNull();
+
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = onConfirm!(create(AppearanceSchema, {}));
+    });
+    // The identity boundary remounts the sheet: this continuation now belongs
+    // to a sheet that no longer exists.
+    unmount();
+    await act(async () => {
+      heldAppearance.resolve(state.draft!);
+      await pending;
+    });
+
+    expect(toastSpy.addToast).not.toHaveBeenCalled();
+  });
 });
 
 describe('InteractiveCharacterSheet persisted equipment guard', () => {
@@ -351,6 +410,27 @@ describe('InteractiveCharacterSheet persisted equipment guard', () => {
     expect(finalize.getAttribute('disabled')).toBeNull();
     fireEvent.click(finalize);
     expect(finalizeDraft).toHaveBeenCalled();
+  });
+
+  it('drops a held finalize completion after unmount instead of completing the old sheet', async () => {
+    const heldFinalize = deferred<string>();
+    const onComplete = vi.fn();
+    const { unmount } = render(
+      <CharacterDraftContext.Provider
+        value={draftState(() => heldFinalize.promise)}
+      >
+        <InteractiveCharacterSheet onComplete={onComplete} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /begin adventure/i }));
+    unmount();
+    await act(async () => {
+      heldFinalize.resolve('char-1');
+      await heldFinalize.promise;
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });
 

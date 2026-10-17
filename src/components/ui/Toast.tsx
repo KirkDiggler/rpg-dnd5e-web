@@ -19,6 +19,24 @@ export interface Toast {
 let toasts: Toast[] = [];
 const listeners = new Set<() => void>();
 
+/**
+ * Drop every pending toast.
+ *
+ * The store is deliberately outside React and the provider mounts above the
+ * app's identity boundary, so a keyed remount of the subtree does NOT clear it.
+ * A toast belongs to the identity (world/player/credential epoch) that raised
+ * it; the identity boundary calls this when that identity changes so nothing
+ * from the previous world can remain visible under the new one. It removes
+ * existing residue only — an origin that writes UI past its own lifetime still
+ * has to fence itself (see LevelUpView / InteractiveCharacterSheet), because a
+ * continuation that outlives the change would otherwise re-add a toast here.
+ */
+export function clearToasts(): void {
+  if (toasts.length === 0) return;
+  toasts = [];
+  emitChange();
+}
+
 function emitChange() {
   listeners.forEach((listener) => listener());
 }

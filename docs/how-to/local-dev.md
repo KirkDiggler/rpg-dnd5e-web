@@ -37,6 +37,36 @@ VITE_DEV_PLAYER_ID=test-player        # Player ID for local dev (bypasses Discor
 
 The dev fallback auth scheme (`Authorization: Dev <playerId>`) requires rpg-api to recognize the `Dev` scheme (`AUTH_DEV_MODE=true` — already set by the local dev compose stack). If the server rejects it, check that env var on the `rpg-api` container.
 
+## Two local worlds (Dev world selection)
+
+To simulate the same player in two worlds against ONE local API, opt in
+with an explicit allowlist. This is development-only; production cannot
+enable it by setting the list, and real Discord credentials always use the
+SDK guild instead:
+
+```bash
+VITE_DEV_WORLD_IDS=123456789012345678,223456789012345678  # canonical guild-shaped ids
+VITE_DEV_WORLD_ID=123456789012345678                      # default; must be in the list
+```
+
+Start a tab in `A` and another in `B` (same player unless `?playerId=` is
+set):
+
+- `http://localhost:3001/?worldId=123456789012345678`
+- `http://localhost:3001/?worldId=223456789012345678`
+
+Each client sends the selected world as `x-rpg-guild-id` on Dev requests and
+uses the same world for its identity, composition source and Server access
+settings. A development-only label in the top-left corner names the live
+identity (kind, player, world, credential epoch) and links to each allowed
+world.
+
+An unknown, malformed, repeated or non-allowed `?worldId=` is refused: the
+client shows a refusal screen and sends no gameplay request at all — it never
+falls back to the default world. Without `VITE_DEV_WORLD_IDS`, the previous
+fixed `VITE_DEV_WORLD_ID` (default `test-world`) behavior is unchanged and no
+client-selected world is exposed.
+
 ## Discord Activity mode
 
 When running on `discordsays.com`, the app switches to `/.proxy` for all API calls. The Vite dev server proxies `/.proxy` to `VITE_API_HOST`. This is transparent in local dev.

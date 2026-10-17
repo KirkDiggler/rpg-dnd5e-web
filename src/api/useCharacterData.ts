@@ -66,9 +66,13 @@ export function useCharacterData(
   keyRef.current = scopeKey;
   const generationRef = useRef(0);
   const inFlightRef = useRef<InFlightRead | null>(null);
+  // An unmounted cache must not start a read: a continuation that outlives the
+  // identity boundary would otherwise dispatch the old character's request
+  // with the NEW identity's credentials attached by the transport.
+  const mountedRef = useRef(false);
 
   const refetch = useCallback((): Promise<void> => {
-    if (!ready || keyRef.current !== scopeKey) {
+    if (!ready || keyRef.current !== scopeKey || !mountedRef.current) {
       return Promise.resolve();
     }
 
@@ -173,7 +177,7 @@ export function useCharacterData(
 
   const replace = useCallback(
     (confirmed: CharacterData) => {
-      if (!ready || keyRef.current !== scopeKey) return;
+      if (!ready || keyRef.current !== scopeKey || !mountedRef.current) return;
       generationRef.current += 1;
       inFlightRef.current?.controller.abort();
       inFlightRef.current = null;
@@ -188,6 +192,7 @@ export function useCharacterData(
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     generationRef.current += 1;
     inFlightRef.current?.controller.abort();
     inFlightRef.current = null;
@@ -201,6 +206,7 @@ export function useCharacterData(
     if (ready) void refetch();
 
     return () => {
+      mountedRef.current = false;
       generationRef.current += 1;
       inFlightRef.current?.controller.abort();
       inFlightRef.current = null;

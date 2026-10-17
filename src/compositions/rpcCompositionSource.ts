@@ -1,5 +1,6 @@
 import type { AuthDecision } from '@/api/auth';
 import { compositionClient } from '@/api/client';
+import { canonicalGuildId, DEFAULT_DEV_WORLD_ID } from '@/api/gameIdentity';
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import type {
@@ -8,8 +9,9 @@ import type {
 } from './compositionJsonAdapter';
 import type { CompositionSource } from './compositionSource';
 
-export const DEFAULT_DEV_WORLD_ID = 'test-world';
-const MAX_UINT64 = 18_446_744_073_709_551_615n;
+// Re-exported from the shared identity module so existing importers keep
+// working while there is exactly one definition of the local default world.
+export { DEFAULT_DEV_WORLD_ID };
 
 interface CompositionRpcClient {
   createComposition(request: {
@@ -137,23 +139,13 @@ class SessionBoundCompositionClient implements CompositionRpcClient {
   }
 }
 
-function canonicalGuildId(value: string | null): string | undefined {
-  if (!value || !/^[1-9][0-9]*$/.test(value)) return undefined;
-  try {
-    if (BigInt(value) > MAX_UINT64) return undefined;
-  } catch {
-    return undefined;
-  }
-  return value;
-}
-
 /** Select a source from the exact same non-secret auth decision as transport. */
 export function createRpcCompositionSource(
   input: RpcCompositionSourceInput
 ): CompositionSource | undefined {
   let worldId: string | undefined;
   if (input.auth.kind === 'discord') {
-    worldId = canonicalGuildId(input.auth.guildId);
+    worldId = canonicalGuildId(input.auth.guildId) ?? undefined;
   } else if (input.auth.kind === 'dev' && input.mode === 'development') {
     worldId = input.devWorldId?.trim() || DEFAULT_DEV_WORLD_ID;
   }

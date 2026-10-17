@@ -25,7 +25,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BackgroundModalChoices,
   ClassModalChoices,
@@ -211,6 +211,17 @@ export function InteractiveCharacterSheet({
   }, [draft.draft?.name]);
   const { setBackground } = draft;
   const { addToast } = useToast();
+  // Creation happens under ONE identity. The identity boundary remounts this
+  // sheet when that identity changes, so an awaited creation continuation that
+  // lands afterwards belongs to a sheet that no longer exists: it may not add a
+  // toast or hand a character to the completion handler under the new identity.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const selectedClassRef = isClassInfo(draft.classInfo)
     ? draft.classInfo.name
     : undefined;
@@ -552,6 +563,7 @@ export function InteractiveCharacterSheet({
 
     try {
       const characterId = await draft.finalizeDraft();
+      if (!mountedRef.current) return;
       // Pass the character ID to the completion handler
       onComplete(characterId);
     } catch (error) {
@@ -2031,6 +2043,7 @@ export function InteractiveCharacterSheet({
           currentAppearance={draft.draft?.appearance}
           onConfirm={async (appearance) => {
             await draft.updateAppearance(appearance);
+            if (!mountedRef.current) return;
             addToast({
               type: 'success',
               message: 'Appearance updated',

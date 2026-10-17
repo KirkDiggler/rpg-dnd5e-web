@@ -1,5 +1,5 @@
 import type { Interceptor } from '@connectrpc/connect';
-import { createClient } from '@connectrpc/connect';
+import { Code, ConnectError, createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
@@ -13,6 +13,7 @@ import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-pro
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
 import { getAuthDecision, getDiscordToken } from './auth';
+import { getDevWorldSelection } from './gameIdentity';
 import { wrapStreamResponseForLogging } from './streamLogging';
 
 // Get API host from environment - handle Discord Activity proxy
@@ -27,21 +28,34 @@ const API_HOST = isDiscordActivity
  * Header format: "authorization: Discord <token>"
  *
  * In development mode without Discord auth, uses VITE_DEV_PLAYER_ID
- * with a special "Dev" scheme for local testing.
+ * with a special "Dev" scheme for local testing. When the explicit
+ * VITE_DEV_WORLD_IDS allowlist selected a world, Dev requests also carry the
+ * same selected world as `x-rpg-guild-id` — the API provider owns whether that
+ * selector is honored, and real Discord credentials always win. An invalid
+ * selection refuses at the transport (no request leaves) instead of silently
+ * falling back to the default world.
  */
 export const authInterceptor: Interceptor = (next) => async (req) => {
   const decision = getAuthDecision();
 
   if (decision.kind === 'discord') {
     // Credential lookup stays private to the transport. Source selection sees
-    // only the non-secret decision above.
+    // only the non-secret decision above. A dev selection — including a
+    // refusal — never applies to real credentials.
     const token = getDiscordToken();
     if (token) req.header.set('authorization', `Discord ${token}`);
     if (decision.guildId) {
       req.header.set('x-rpg-guild-id', decision.guildId);
     }
   } else if (decision.kind === 'dev') {
+    const devWorld = getDevWorldSelection();
+    if (devWorld.refusal) {
+      throw new ConnectError(devWorld.refusal, Code.FailedPrecondition);
+    }
     req.header.set('authorization', `Dev ${decision.playerId}`);
+    if (devWorld.sendsGuildSelector && devWorld.worldId) {
+      req.header.set('x-rpg-guild-id', devWorld.worldId);
+    }
   }
 
   return next(req);
