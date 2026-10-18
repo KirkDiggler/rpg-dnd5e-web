@@ -100,3 +100,24 @@ export const REMEMBERED_SURFACE_TINT = rememberedFloorColor(
   new THREE.Color(1, 1, 1),
   0
 );
+
+/**
+ * THE RED FLOOR TINT (sneaking, rpg-project#619, design R5, R15) — the one
+ * value the watch-zone floor is made of: where a sneaking seat would be
+ * rolled for, drawn red, as Baldur's Gate does. Red is distinct from fog's
+ * seen (the lit colour) and remembered (grey toward `REMEMBERED_TINT`).
+ */
+export const WATCH_ZONE_TINT = new THREE.Color('#ff2a1f');
+/** How far a zone tile's colour leans toward `WATCH_ZONE_TINT`. The texture
+ * still multiplies the result, so a red tile keeps its stone. */
+export const WATCH_ZONE_TINT_MIX = 0.6;
+
+/**
+ * A floor tile's colour once it is in a watch zone: its fog colour (lit,
+ * soft edge or remembered) leaned toward `WATCH_ZONE_TINT`. Composes AFTER
+ * fog, so a remembered zone tile is still darker than a seen one, and red
+ * either way. One lean per tile, however many zones list it.
+ */
+export function watchZoneFloorColor(fogColor: THREE.Color): THREE.Color {
+  return fogColor.clone().lerp(WATCH_ZONE_TINT, WATCH_ZONE_TINT_MIX);
+}

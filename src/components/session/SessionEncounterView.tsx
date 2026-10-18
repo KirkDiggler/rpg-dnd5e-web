@@ -140,6 +140,7 @@ import {
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
 import { VendorPopover } from './vendor/VendorPopover';
+import { watchZoneCells } from './watchZoneCells';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -412,7 +413,23 @@ function SessionEncounterScope({
     knowledgeView.doors,
     seatKnowledge,
   ]);
-  const scene = sceneBuild?.ok ? sceneBuild.scene : null;
+  // THE RED FLOOR (sneaking, rpg-project#619, R15): the cells of the zones
+  // the server sent, painted over the fog floor. No sneaking check gates it:
+  // the server sends no zones to a seat that is not sneaking, and an empty
+  // list paints nothing. The seat's own cell is not excluded: standing in a
+  // zone is where the roll happens, so it shows red too.
+  const zoneCells = useMemo(
+    () => watchZoneCells(knowledgeView.watchZones),
+    [knowledgeView.watchZones]
+  );
+  const builtScene = sceneBuild?.ok ? sceneBuild.scene : null;
+  const scene = useMemo(
+    () =>
+      builtScene && zoneCells.size > 0
+        ? { ...builtScene, watchZoneCells: zoneCells }
+        : builtScene,
+    [builtScene, zoneCells]
+  );
   const observationMarkers = useMemo(() => {
     if (!scene) return [];
     const props = knowledgeView.props.flatMap((s) => {
@@ -1784,7 +1801,12 @@ function SessionEncounterScope({
             container: 'organized-hud / size',
           }}
         >
-          {seatKnowledge && <SeatKnowledgeProbe knowledge={seatKnowledge} />}
+          {seatKnowledge && (
+            <SeatKnowledgeProbe
+              knowledge={seatKnowledge}
+              watchZoneCells={zoneCells}
+            />
+          )}
           <CombatExperience
             layout="fill-parent"
             actionPresentation={actionPresentation}

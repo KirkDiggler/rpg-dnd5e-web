@@ -23,6 +23,7 @@ import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
   VendorStockMode,
+  WatchZoneSchema,
   type GetAtlasResponse,
   type GetKnowledgeResponse,
   type GetViewResponse,
@@ -6540,5 +6541,62 @@ describe('fog of war: draw what the seat knows (rpg-project#586)', () => {
     await waitFor(() =>
       expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(before)
     );
+  });
+});
+
+describe('the red floor: paint the zones the server sent (sneaking, rpg-project#619)', () => {
+  /** Wrap the default snapshot so its view carries `watch_zones`. */
+  function watched(
+    zones: { watcher: string; cells: { x: number; y: number }[] }[]
+  ) {
+    const wire = () =>
+      zones.map((z) =>
+        create(WatchZoneSchema, {
+          watcher: z.watcher,
+          cells: z.cells.map((c) => create(PositionSchema, c)),
+        })
+      );
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.watchZones = wire();
+      return snapshot;
+    });
+    const baseView = hoisted.getViewFn.getMockImplementation();
+    hoisted.getViewFn.mockImplementation(async (...args: unknown[]) => ({
+      ...((await baseView?.(...args)) ?? {}),
+      watchZones: wire(),
+    }));
+  }
+
+  it('hands the floor exactly the cells of the view’s zones', async () => {
+    readyScene();
+    watched([
+      { watcher: 'knight-1', cells: [{ x: 1, y: 0 }] },
+      { watcher: 'knight-2', cells: [{ x: 1, y: 0 }] },
+    ]);
+    renderView();
+    const probe = await screen.findByTestId('seat-knowledge');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+        new Set(['1,-1,0'])
+      )
+    );
+    expect(probe.dataset.watchZoneCells).toBe('1,-1,0');
+  });
+
+  it('a view with no zones hands the floor none', async () => {
+    readyScene();
+    watched([]);
+    renderView();
+    const probe = await screen.findByTestId('seat-knowledge');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene).toBeTruthy()
+    );
+    expect(
+      hoisted.lastCanvasProps.current?.scene?.watchZoneCells
+    ).toBeUndefined();
+    expect(probe.dataset.watchZoneCells).toBe('');
   });
 });

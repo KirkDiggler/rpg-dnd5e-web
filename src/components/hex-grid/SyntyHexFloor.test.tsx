@@ -11,7 +11,12 @@ vi.mock('@react-three/drei', () => ({
   useTexture: useTextureMock,
 }));
 
-import { rememberedFloorColor } from './sceneKnowledge';
+import { watchZoneCells } from '@/components/session/watchZoneCells';
+import {
+  rememberedFloorColor,
+  WATCH_ZONE_TINT,
+  watchZoneFloorColor,
+} from './sceneKnowledge';
 import { SyntyHexFloor } from './SyntyHexFloor';
 import {
   computeFloorPoolColor,
@@ -751,5 +756,163 @@ describe('SyntyHexFloor fog of war per-cell treatment (rpg-project#586)', () => 
     expect(floorTileColors(renderer).every((c) => isCloseTo(c, WHITE))).toBe(
       true
     );
+  });
+});
+
+describe('SyntyHexFloor red floor — the watch zones the server sent (sneaking, rpg-project#619)', () => {
+  // Wire positions are axial (x = q, y = r); tiles are keyed by cube.
+  const FLOOR = tiles(
+    [0, 0, 0],
+    [1, -1, 0],
+    [2, -2, 0],
+    [0, -1, 1],
+    [-1, 0, 1],
+    [3, -3, 0]
+  );
+  const lighting = (
+    zones: { cells: { x: number; y: number }[] }[],
+    lit: Record<string, number> = {}
+  ): DungeonFloorLighting => ({
+    exposureByCell: new Map(),
+    poolsByCell: new Map(),
+    litByCell: new Map(Object.entries(lit)),
+    watchZoneCells: watchZoneCells(zones),
+  });
+  const render = (floorLighting: DungeonFloorLighting) =>
+    ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={FLOOR}
+        hexSize={1}
+        floorLighting={floorLighting}
+      />
+    );
+  const tile = (
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>,
+    key: string
+  ) =>
+    renderer.scene.findByProps({ name: `floor-tile-${key}` })
+      .instance as THREE.Mesh;
+  const color = (m: THREE.Mesh) =>
+    (m.material as THREE.MeshBasicMaterial).color;
+  const redKeys = (
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
+  ) => [...FLOOR.keys()].filter((k) => tile(renderer, k).userData.watchZone);
+
+  it('a view with two zones tints exactly their cells', async () => {
+    const renderer = await render(
+      lighting([
+        // the knight's zone: q 1..2 on row 0
+        {
+          cells: [
+            { x: 1, y: 0 },
+            { x: 2, y: 0 },
+          ],
+        },
+        // the cook's zone: one cell on row 1
+        { cells: [{ x: -1, y: 1 }] },
+      ])
+    );
+    expect(new Set(redKeys(renderer))).toEqual(
+      new Set(['1,-1,0', '2,-2,0', '-1,0,1'])
+    );
+    const red = watchZoneFloorColor(WHITE);
+    for (const k of ['1,-1,0', '2,-2,0', '-1,0,1']) {
+      expect(isCloseTo(color(tile(renderer, k)), red)).toBe(true);
+    }
+    // Every other tile draws exactly as fog alone would: lit, untinted.
+    for (const k of ['0,0,0', '0,-1,1', '3,-3,0']) {
+      expect(isCloseTo(color(tile(renderer, k)), WHITE)).toBe(true);
+    }
+    // The tint is red: red leads, and it is not fog's grey.
+    expect(red.r).toBeGreaterThan(red.g);
+    expect(red.r).toBeGreaterThan(red.b);
+    expect(isCloseTo(red, rememberedFloorColor(WHITE.clone(), 0))).toBe(false);
+  });
+
+  it('an empty list tints nothing', async () => {
+    const renderer = await render(lighting([]));
+    expect(redKeys(renderer)).toEqual([]);
+    expect(floorTileColors(renderer).every((c) => isCloseTo(c, WHITE))).toBe(
+      true
+    );
+  });
+
+  it('overlapping zones tint a shared cell once, the same as one zone', async () => {
+    const renderer = await render(
+      lighting([
+        {
+          cells: [
+            { x: 1, y: 0 },
+            { x: 2, y: 0 },
+          ],
+        },
+        {
+          cells: [
+            { x: 2, y: 0 },
+            { x: 3, y: 0 },
+          ],
+        },
+      ])
+    );
+    // 2,-2,0 is in both zones; it carries the one tint 1,-1,0 carries.
+    expect(
+      isCloseTo(
+        color(tile(renderer, '2,-2,0')),
+        color(tile(renderer, '1,-1,0'))
+      )
+    ).toBe(true);
+    expect(
+      isCloseTo(color(tile(renderer, '2,-2,0')), watchZoneFloorColor(WHITE))
+    ).toBe(true);
+  });
+
+  it('a zone over a remembered tile is red over the fog grey, darker than a seen one', async () => {
+    const renderer = await render(
+      lighting(
+        [
+          {
+            cells: [
+              { x: 1, y: 0 },
+              { x: 2, y: 0 },
+            ],
+          },
+        ],
+        { '0,0,0': 1, '1,-1,0': 1, '2,-2,0': 0 }
+      )
+    );
+    const seenRed = color(tile(renderer, '1,-1,0'));
+    const rememberedRed = color(tile(renderer, '2,-2,0'));
+    expect(
+      isCloseTo(
+        rememberedRed,
+        watchZoneFloorColor(rememberedFloorColor(WHITE.clone(), 0))
+      )
+    ).toBe(true);
+    expect(tile(renderer, '2,-2,0').userData).toMatchObject({
+      knowledge: 'remembered',
+      watchZone: true,
+    });
+    const lum = (c: THREE.Color) => c.r + c.g + c.b;
+    expect(lum(rememberedRed)).toBeLessThan(lum(seenRed));
+    expect(rememberedRed.r).toBeGreaterThan(rememberedRed.g);
+  });
+
+  it('the crypt floor takes the same tint after its exposure', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        floorLighting={lighting([{ cells: [{ x: 1, y: 0 }] }])}
+      />
+    );
+    expect(
+      isCloseTo(
+        color(tile(renderer, '1,-1,0')),
+        watchZoneFloorColor(CRYPT_TINT)
+      )
+    ).toBe(true);
+    expect(isCloseTo(color(tile(renderer, '0,0,0')), CRYPT_TINT)).toBe(true);
+    expect(WATCH_ZONE_TINT.r).toBeGreaterThan(WATCH_ZONE_TINT.g);
   });
 });
