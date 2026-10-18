@@ -1297,6 +1297,11 @@ const EXPECTED_OTHER_KIND = {
   // kind/body mismatch, and this beat is the listener's only account of the
   // noise — recipient-scoped, nobody else has it.
   heard: EventKind.HEARD,
+  // THE MOVER'S SNEAK ROLL (rpg-project#606, sneaking R5, R12), here for
+  // `concentrationEnded`'s reason: a body with no row is discarded as a typed
+  // kind/body mismatch, and this beat is the mover's only account of the
+  // roll. Recipient-scoped to the mover; nobody else has it.
+  snuck: EventKind.SNUCK,
   // RETIRED, NOT NARRATED (rpg-project#569). Speak replaced both; the bodies
   // stay on the wire, deprecated, so they are listed to be ACCEPTED and then
   // silenced in SILENT_OTHER_BODIES rather than accused as a mismatch.
@@ -1353,6 +1358,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.RESTED,
   EventKind.SPOKE,
   EventKind.HEARD,
+  EventKind.SNUCK,
   EventKind.INTIMIDATED,
   EventKind.PERSUADED,
   EventKind.ANSWERED,
@@ -1666,6 +1672,24 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         x: heard.position?.x,
         y: heard.position?.y,
         hops: heard.hops,
+      });
+    }
+    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#606). One beat per judged
+    // (mover, watcher) pair, and the same pair can be judged again on a later
+    // entry into the zone; the numbers are what tell those apart. `watcher`
+    // is part of it even when empty: two unseen watchers judged on one step
+    // are two beats that differ only in their DCs and dice.
+    case 'snuck': {
+      const snuck = event.body.value;
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: snuck.member,
+        watcher: snuck.watcher,
+        dc: snuck.dc,
+        total: snuck.total,
+        beaten: snuck.beaten,
+        calculation: snuck.calculation,
       });
     }
     case 'spoke': {

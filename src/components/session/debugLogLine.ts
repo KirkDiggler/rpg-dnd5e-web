@@ -485,6 +485,25 @@ export function formatDebugLine(
           `kind=${quoteDebugString(b.kind)} at=${positionText(b.position)} hops=${b.hops}`,
       };
     }
+    case 'snuck': {
+      // THE MOVER'S SNEAK ROLL (rpg-project#606), typed for R1's reason: THE
+      // DIE IS HERE. An empty watcher is one the mover cannot see (R12) and
+      // prints as `unseen`, never as a guessed id.
+      const b = event.body.value;
+      const watcher = b.watcher ? name(b.watcher) : 'unseen';
+      return {
+        seq,
+        ids: [
+          b.member,
+          ...(b.watcher ? [b.watcher] : []),
+          ...keepSourceIds(b.calculation),
+        ],
+        text:
+          `${prefix} snuck member=${name(b.member)} watcher=${watcher} ` +
+          `dc=${b.dc} total=${b.total} beaten=${b.beaten}` +
+          checkCalculationText(b.calculation),
+      };
+    }
     case 'answered': {
       const b = event.body.value;
       const word = AnswerWord[b.word] ?? String(b.word);

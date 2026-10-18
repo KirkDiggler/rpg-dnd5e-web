@@ -874,6 +874,36 @@ describe('formatDebugLine', () => {
     );
   });
 
+  // THE SNEAK ROLL (rpg-project#606): the die is here; an unseen watcher
+  // (R12) prints as `unseen` and hovers no id.
+  it('a snuck beat prints the roll and names the watcher only when the beat does', () => {
+    const snuck = (watcher: string) =>
+      formatDebugLine(
+        baseEvent({
+          kind: EventKind.SNUCK,
+          body: {
+            case: 'snuck',
+            value: {
+              member: 'char-1',
+              watcher,
+              dc: 13,
+              total: 9,
+              beaten: false,
+            },
+          },
+        }),
+        names
+      );
+    const seen = snuck('skeleton-1');
+    expect(seen.ids).toEqual(['char-1', 'skeleton-1']);
+    expect(seen.text).toContain(
+      'snuck member=Toolkit Sandbox Fighter watcher=Skeleton dc=13 total=9 beaten=false'
+    );
+    const unseen = snuck('');
+    expect(unseen.ids).toEqual(['char-1']);
+    expect(unseen.text).toContain('watcher=unseen dc=13');
+  });
+
   it('a spoke beat to a prop names the prop and hovers no member for it', () => {
     const event = baseEvent({
       kind: EventKind.SPOKE,

@@ -284,6 +284,13 @@ export function refreshKeysFor(
     // brings anything, arrives as that creature's own beats.
     case 'heard':
       return [];
+    // A SNEAKING MOVER WAS JUDGED (rpg-project#606). Nothing this client
+    // reads moved: the roll changes no position, spends no action, writes no
+    // sheet and leaves the mode as it was, so `view.sneaking` stands. A lost
+    // verdict means the watcher sees the mover, and what that brings arrives
+    // as its own beats (contact, a fight starting), each with its own row.
+    case 'snuck':
+      return [];
     case 'looted':
     case 'activated':
     case 'exited':
