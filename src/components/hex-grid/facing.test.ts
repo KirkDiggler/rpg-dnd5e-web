@@ -10,6 +10,7 @@ import {
   SYNTY_GLB_FORWARD_OFFSET,
   TURN_RATE_RAD_PER_SEC,
 } from './facing';
+import { degreesToYaw, facingToYaw } from './facingYaw';
 import { cubeToWorld, HEX_DIRECTIONS } from './hexMath';
 
 const deg = (r: number) => ((((r * 180) / Math.PI) % 360) + 360) % 360;
@@ -159,5 +160,57 @@ describe('easeHeading with a modulo-2PI-equivalent target (Copilot review, #592)
 
   it('settles for a negative co-terminal pair too', () => {
     expect(easeHeading(-2 * Math.PI, 0, 0.016, 8)).toBe(0);
+  });
+});
+
+describe('degreesToYaw — the wire bearing draws as the compass word (rpg-project#582)', () => {
+  // Seen.facing_degrees is a compass bearing: 0 = north, clockwise. Written
+  // out by hand rather than derived, so a wrong frame conversion fails a
+  // named word.
+  const BEARING_OF_WORD = [
+    ['n', 0],
+    ['ne', 45],
+    ['e', 90],
+    ['se', 135],
+    ['s', 180],
+    ['sw', 225],
+    ['w', 270],
+    ['nw', 315],
+  ] as const;
+
+  it.each(BEARING_OF_WORD)(
+    '%s (%i deg) equals facingToYaw of the word, exactly',
+    (word, bearing) => {
+      expect(degreesToYaw(bearing)).toBe(facingToYaw(word));
+    }
+  );
+
+  // The character rig's heading convention is headingFromDelta's, not the
+  // prop table's. They agree only because FACING_YAW_OFFSET happens to equal
+  // the +Z-forward rig mapping, so this pins that agreement: if either side
+  // moves, a bearing stops pointing the character where it says.
+  it.each([
+    [0, 0, -1],
+    [90, 1, 0],
+    [180, 0, 1],
+    [270, -1, 0],
+  ] as const)(
+    'bearing %i turns a character toward world (%i, %i)',
+    (bearing, dx, dz) => {
+      expect(
+        shortestTurn(degreesToYaw(bearing), headingFromDelta(dx, dz)!)
+      ).toBeCloseTo(0, 12);
+    }
+  );
+
+  it('wraps a bearing outside [0, 360) onto the same heading', () => {
+    expect(shortestTurn(degreesToYaw(450), degreesToYaw(90))).toBeCloseTo(
+      0,
+      12
+    );
+    expect(shortestTurn(degreesToYaw(-90), degreesToYaw(270))).toBeCloseTo(
+      0,
+      12
+    );
   });
 });

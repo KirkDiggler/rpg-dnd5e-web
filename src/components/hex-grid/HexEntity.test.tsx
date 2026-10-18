@@ -362,3 +362,105 @@ describe('remembered entities look like a memory (rpg-dnd5e-web#605/#609)', () =
     expect(`#${color.getHexString()}`).toBe('#805ad5');
   });
 });
+
+describe('the wire facing draws (rpg-project#582)', () => {
+  // The group useEntityFacing turns: the one direct child of the scene root
+  // that HexEntity's player/monster branch renders.
+  const headingOf = (
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
+  ) => (renderer.scene.children[0].instance as THREE.Object3D).rotation.y;
+  const EAST = Math.PI / 2;
+  const WEST = -Math.PI / 2;
+
+  it('seeds a monster facing east from seen.facingDegrees 90', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        seenFacingDegrees={90}
+      />
+    );
+    expect(headingOf(renderer)).toBeCloseTo(EAST, 12);
+    await renderer.unmount();
+  });
+
+  it('turns to a later facing', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        seenFacingDegrees={90}
+      />
+    );
+    await renderer.update(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        seenFacingDegrees={270}
+      />
+    );
+    await ReactThreeTestRenderer.act(async () => {
+      await renderer.advanceFrames(60, 0.05);
+    });
+    expect(Math.cos(headingOf(renderer) - WEST)).toBeCloseTo(1, 9);
+    await renderer.unmount();
+  });
+
+  // A move due west: the move path reports a west heading on its first leg.
+  const westPath = [
+    { x: 0, y: 0, z: 0 },
+    { x: -1, y: 1, z: 0 },
+  ];
+
+  it('ignores the move path heading while the wire states a facing', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        seenFacingDegrees={90}
+      />
+    );
+    await renderer.update(
+      <HexEntity
+        {...base}
+        position={westPath[1]}
+        type="monster"
+        monsterRefId="skeleton"
+        seenFacingDegrees={90}
+        movePath={westPath}
+        moveSeq={1}
+      />
+    );
+    await ReactThreeTestRenderer.act(async () => {
+      await renderer.advanceFrames(60, 0.05);
+    });
+    expect(headingOf(renderer)).toBeCloseTo(EAST, 12);
+    await renderer.unmount();
+  });
+
+  it('turns along the move path when the wire states no facing', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity {...base} type="monster" monsterRefId="skeleton" />
+    );
+    expect(headingOf(renderer)).toBe(0);
+    await renderer.update(
+      <HexEntity
+        {...base}
+        position={westPath[1]}
+        type="monster"
+        monsterRefId="skeleton"
+        movePath={westPath}
+        moveSeq={1}
+      />
+    );
+    await ReactThreeTestRenderer.act(async () => {
+      await renderer.advanceFrames(60, 0.05);
+    });
+    expect(headingOf(renderer)).not.toBeCloseTo(0, 3);
+    await renderer.unmount();
+  });
+});

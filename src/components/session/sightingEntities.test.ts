@@ -233,3 +233,28 @@ describe("SightedMember.equipment (a peer's observed hands)", () => {
     expect(member.equipment).not.toBeUndefined();
   });
 });
+
+describe('SightedMember.facingDegrees (rpg-project#582)', () => {
+  it('carries the observed bearing verbatim', () => {
+    const [member] = sightingsToEntities(
+      [sighting({ seen: seen({ facingDegrees: 90 }) })],
+      'alice'
+    );
+    expect(member.facingDegrees).toBe(90);
+  });
+
+  // 0 is north, a real facing; collapsing it with absence would turn every
+  // north-facing subject into one whose testimony predates facing.
+  it('keeps a bearing of 0 rather than dropping it', () => {
+    const [member] = sightingsToEntities(
+      [sighting({ seen: seen({ facingDegrees: 0 }) })],
+      'alice'
+    );
+    expect(member.facingDegrees).toBe(0);
+  });
+
+  it('stays undefined when the testimony predates facing', () => {
+    const [member] = sightingsToEntities([sighting({ seen: seen() })], 'alice');
+    expect(member.facingDegrees).toBeUndefined();
+  });
+});

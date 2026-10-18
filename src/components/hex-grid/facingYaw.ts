@@ -127,5 +127,31 @@ export function facingAngleDeg(name: string): number | undefined {
 export function facingToYaw(facing: string): number {
   const deg = facingAngleDeg(facing);
   if (deg === undefined) return 0;
-  return -deg * DEG + FACING_YAW_OFFSET;
+  return tableAngleToYaw(deg);
+}
+
+/** The table-angle step both entry points share: a world table-angle
+ * (degrees, part 1's convention) becomes a `rotationY` through the
+ * outward-facing reduction plus the calibrated offset (part 2). One
+ * function so a word and a wire bearing can never take different paths. */
+function tableAngleToYaw(tableDeg: number): number {
+  return -tableDeg * DEG + FACING_YAW_OFFSET;
+}
+
+/**
+ * A wire compass bearing (`Seen.facing_degrees`: 0 = map north = the
+ * plane's -Y, 90 = east = +X, clockwise) becomes a `rotationY`, in
+ * radians (rpg-project ideas/sneaking design R13).
+ *
+ * The bearing is first moved onto the table-angle frame, where east is 0,
+ * by the protos doc's own conversion `(bearing - 90) mod 360`, then
+ * normalised into (-180, 180] — the range `FACING_ANGLE_DEG` itself is
+ * written in — so each compass word's bearing runs through EXACTLY the
+ * arithmetic `facingToYaw` runs for that word, and the two agree to the
+ * bit, not merely to within a full turn.
+ */
+export function degreesToYaw(bearing: number): number {
+  let tableDeg = (((bearing - 90) % 360) + 360) % 360;
+  if (tableDeg > 180) tableDeg -= 360;
+  return tableAngleToYaw(tableDeg);
 }

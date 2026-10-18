@@ -848,6 +848,7 @@ export function SessionScene({
           position={member.position}
           movePath={movements?.get(member.subject)?.route}
           moveSeq={movements?.get(member.subject)?.seq}
+          seenFacingDegrees={member.facingDegrees}
           onMovementPresentationComplete={(entityId, completedMoveSeq) =>
             onMovementPainted?.(
               entityId,

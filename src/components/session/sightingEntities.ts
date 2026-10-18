@@ -130,6 +130,17 @@ export interface SightedMember {
    * the same way `StanceChanged.stance` is.
    */
   stance: string;
+  /**
+   * `Sighting.seen.facing_degrees`, verbatim — the compass bearing this
+   * observer saw the subject facing (0 = map north, clockwise; rpg-project
+   * ideas/sneaking design R13). Per-observer testimony like the position and
+   * hands beside it, so a memory keeps the facing it last saw.
+   *
+   * UNDEFINED IS NOT NORTH: the wire leaves it unset when the testimony
+   * predates facing, and the entity then keeps its staging pose and turns
+   * with its moves (`HexEntity.seenFacingDegrees`).
+   */
+  facingDegrees?: number;
 }
 
 /** Strips a subject id's trailing `-<ordinal>` (e.g. "skeleton-1" ->
@@ -179,6 +190,7 @@ export function sightingsToEntities(
       // different claim from "neutral" and must not be resolved into one
       // here.
       stance: sighting.stance,
+      facingDegrees: sighting.seen.facingDegrees,
     });
   }
   return entities;
