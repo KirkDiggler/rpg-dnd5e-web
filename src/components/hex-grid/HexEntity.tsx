@@ -34,12 +34,12 @@ import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolvePlayerCharacterModel } from './classCharacterModels';
 import { resolveDemoNpcModelUrl } from './demoNpcModels';
+import { movePathHeadingSink, seedHeading, seenHeading } from './entityHeading';
 import {
   EntityTargetMarker,
   type EntityTargetMarkerState,
 } from './EntityTargetMarker';
 import {
-  DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
   POLYGON_DUNGEON_FORWARD_OFFSET,
   SYNTY_GLB_FORWARD_OFFSET,
@@ -188,6 +188,13 @@ export interface HexEntityProps {
   moveSeq?: number;
   /** Presentation-only completion for this entity's exact move sequence. */
   onMovementPresentationComplete?: (entityId: string, moveSeq: number) => void;
+  /** `Seen.facing_degrees`, verbatim: the compass bearing this viewer
+   * observed the subject facing (0 = north, clockwise). When present it
+   * seeds and steers the heading and the move path's heading is ignored;
+   * undefined (testimony predating facing, or no Seen for this entity at
+   * all) keeps the staging pose and movement-driven turning — see
+   * `entityHeading.ts`. */
+  seenFacingDegrees?: number;
 }
 
 // Visual state colors
@@ -395,6 +402,7 @@ export function HexEntity({
   movePath,
   moveSeq,
   onMovementPresentationComplete,
+  seenFacingDegrees,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
@@ -412,11 +420,18 @@ export function HexEntity({
   const movingGroupRef = useRef<THREE.Group>(null);
   // rpg-dnd5e-web#590: heading lives here, not in the movement hook, so a
   // future attack-facing source is another `requestHeading` caller rather than
-  // a refactor. Seeded with the staging pose; movement turns it from there.
+  // a refactor. Seeded with the wire's facing when this viewer's Seen states
+  // one (rpg-project#582), else the staging pose; see entityHeading.ts.
   const { requestHeading } = useEntityFacing(
     movingGroupRef,
-    DEFAULT_HEADING_BY_TYPE[type] ?? 0
+    seedHeading(seenFacingDegrees, type)
   );
+  // A later Seen with a new facing turns the entity to it. The seed covers
+  // the first render; this covers every change after it.
+  const wireHeading = seenHeading(seenFacingDegrees);
+  useEffect(() => {
+    if (wireHeading !== undefined) requestHeading(wireHeading);
+  }, [wireHeading, requestHeading]);
   // A memory does not move. Withholding the path here (rather than ignoring
   // it downstream) means the frozen entity settles at its last observed hex.
   const remembered = isRemembered(knowledgeState);
@@ -431,7 +446,7 @@ export function HexEntity({
     hexSize,
     CHARACTER_Y_OFFSET,
     movingGroupRef,
-    requestHeading,
+    movePathHeadingSink(seenFacingDegrees, requestHeading),
     (completedMoveSeq) =>
       onMovementPresentationComplete?.(entityId, completedMoveSeq)
   );

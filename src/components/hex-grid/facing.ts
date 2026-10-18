@@ -14,6 +14,8 @@
  * the forward-offset constants below), never folded in here.
  */
 
+import { degreesToYaw } from './facingYaw';
+
 /**
  * World heading for a world-space direction, or `undefined` if the delta has
  * no direction at all.
@@ -143,8 +145,14 @@ export const POLYGON_DUNGEON_FORWARD_OFFSET = 0;
  * and monsters face down-board so an encounter reads as two sides squaring off.
  * Preserved deliberately (Kirk, 2026-07-24); entities turn out of it as soon as
  * they move. Obstacles never move and fall through to 0.
+ *
+ * The monster's down-board pose is also the rules default for an unset
+ * facing, a bearing of 180 (rpg-project ideas/sneaking design R13), so it is
+ * written as that bearing and pinned to it. The two player poses differ: peers
+ * draw an unauthored player at 180 from the wire, while the player sees PI
+ * until the viewer's own facing reaches the wire (rpg-api-protos#398).
  */
 export const DEFAULT_HEADING_BY_TYPE: Record<string, number> = {
   player: Math.PI,
-  monster: 0,
+  monster: degreesToYaw(180),
 };
