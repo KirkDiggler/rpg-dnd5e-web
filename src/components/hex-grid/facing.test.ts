@@ -105,10 +105,13 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
   const norm = (r: number) =>
     ((r % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
-  it('player on MediumHumanoid still composes to PI', () => {
+  // The player's PI was the 2026-07-24 staging pose. It is now the rules
+  // default, south, like the monster's (rpg-dnd5e-web#1298 ruling), so the
+  // player composes to 0 too.
+  it('player on MediumHumanoid composes to 0, the rules south', () => {
     expect(
       norm(DEFAULT_HEADING_BY_TYPE.player + MEDIUM_HUMANOID_FORWARD_OFFSET)
-    ).toBeCloseTo(Math.PI, 12);
+    ).toBeCloseTo(0, 12);
   });
 
   it('monster on MediumHumanoid still composes to 0', () => {
@@ -117,10 +120,10 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     ).toBeCloseTo(0, 12);
   });
 
-  it('player on a Synty class GLB still composes to PI', () => {
+  it('player on a Synty class GLB composes to 0, the rules south', () => {
     expect(
       norm(DEFAULT_HEADING_BY_TYPE.player + SYNTY_GLB_FORWARD_OFFSET)
-    ).toBeCloseTo(Math.PI, 12);
+    ).toBeCloseTo(0, 12);
   });
 
   it('monster on a POLYGON Dungeon npc GLB composes to 0 (rpg-dnd5e-web#559) -- mirrors the player+Synty case above; inert today since both terms are zero, which is exactly when a silent-cancellation bug would hide', () => {

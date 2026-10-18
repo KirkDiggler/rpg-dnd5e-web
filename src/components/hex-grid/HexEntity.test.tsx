@@ -460,7 +460,7 @@ describe('the wire facing draws (rpg-project#582)', () => {
     await ReactThreeTestRenderer.act(async () => {
       await renderer.advanceFrames(60, 0.05);
     });
-    expect(headingOf(renderer)).not.toBeCloseTo(0, 3);
+    expect(Math.cos(headingOf(renderer) - WEST)).toBeCloseTo(1, 9);
     await renderer.unmount();
   });
 });

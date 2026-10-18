@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { movePathHeadingSink, seedHeading, seenHeading } from './entityHeading';
 import { DEFAULT_HEADING_BY_TYPE, headingFromDelta } from './facing';
+import { degreesToYaw } from './facingYaw';
 
 // East in the character heading convention: the heading a move toward +X
 // reports. Derived from the movement side, not from degreesToYaw, so the
@@ -41,5 +42,19 @@ describe('the wire facing is the gate (rpg-project#582)', () => {
     expect(movePathHeadingSink(Number.NaN, requestHeading)).toBe(
       requestHeading
     );
+  });
+});
+
+// The plan's open item "an unset authored facing is a rules bearing of 180":
+// the wire states 180 for an entity nobody turned, so the web's own default
+// must be that same heading, or a peer and an undescribed entity disagree
+// before anyone moves.
+describe('the web default agrees with the wire on an unset facing', () => {
+  it('a monster seeds at the rules bearing 180', () => {
+    expect(DEFAULT_HEADING_BY_TYPE.monster).toBe(degreesToYaw(180));
+  });
+
+  it('the local player seeds at the rules bearing 180 too', () => {
+    expect(DEFAULT_HEADING_BY_TYPE.player).toBe(degreesToYaw(180));
   });
 });
