@@ -234,11 +234,13 @@ function SessionEncounterScope({
     loading: sharingPending,
     error: sharingError,
   } = useSetDiscoverySharing();
-  const {
-    setSneaking,
-    loading: sneakPending,
-    error: sneakError,
-  } = useSetSneaking();
+  const { setSneaking, error: sneakError } = useSetSneaking();
+  // A DECLARATION IS IN FLIGHT UNTIL ITS RE-READ LANDS (rpg-project#606).
+  // The hook's own `loading` clears when SetSneaking answers, before the
+  // view is re-read, and in that window the toggle still shows the old
+  // `view.sneaking`. This covers both round trips. It is pending state, not
+  // the mode: the mode is only ever `view.sneaking` (R6).
+  const [sneakDeclaring, setSneakDeclaring] = useState(false);
   const { loot, loading: looting } = useSessionLoot();
   const { hold, loading: holding } = useSessionHold();
   const { leave, loading: leaving } = useSessionLeave();
@@ -1841,16 +1843,18 @@ function SessionEncounterScope({
                 {turnClock === ClockKind.WORLD && snapshot?.view && (
                   <SneakToggle
                     sneaking={snapshot.view.sneaking}
-                    disabled={sneakPending || !member || runEnded !== null}
+                    disabled={sneakDeclaring || !member || runEnded !== null}
                     onChange={(next) => {
                       if (!member) return;
+                      setSneakDeclaring(true);
                       void setSneaking({
                         session: sessionId,
                         member,
                         sneaking: next,
                       })
                         .then(() => refetchView())
-                        .catch(() => undefined);
+                        .catch(() => undefined)
+                        .finally(() => setSneakDeclaring(false));
                     }}
                   />
                 )}

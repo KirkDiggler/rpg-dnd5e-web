@@ -146,7 +146,7 @@ describe('the snuck beat (rpg-project#606)', () => {
     ).toMatchObject({
       headline: 'Stealth 9 vs DC 13 — spotted by Knight',
       detail: '1d20 [6] + 3 Dexterity modifier = 9',
-      tone: 'neutral',
+      tone: 'danger',
     });
   });
 
@@ -164,7 +164,7 @@ describe('the snuck beat (rpg-project#606)', () => {
     expect(line).toMatchObject({
       headline: 'Stealth 11 vs DC 15 — spotted; something is watching',
       detail: '1d20 [8] + 3 Dexterity modifier = 11',
-      tone: 'neutral',
+      tone: 'danger',
     });
     expect(`${line?.headline} ${line?.detail}`).not.toMatch(/Knight|knight-1/);
   });

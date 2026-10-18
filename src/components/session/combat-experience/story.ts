@@ -769,7 +769,9 @@ function buildOtherStory(
         eyebrow: 'Sneaking',
         headline: `Stealth ${snuck.total} vs DC ${snuck.dc} — ${outcome}`,
         detail: arithmetic ?? '',
-        tone: snuck.beaten ? 'success' : 'neutral',
+        // A LOSS IS NEWS: being spotted reads as a warning, the tone a lost
+        // concentration or a downed member carries.
+        tone: snuck.beaten ? 'success' : 'danger',
       });
     }
     case 'answered': {

@@ -17,8 +17,9 @@ export interface SneakToggleProps {
  *
  * IT SENDS ONLY ON CHANGE. A press always asks for the opposite of what the
  * server holds, so it never re-declares the held mode (a no-op server-side).
- * The caller disables it while a declaration is in flight, so a second press
- * cannot repeat the first before the view is re-read.
+ * The caller disables it from the press until the view re-read after
+ * SetSneaking has landed, so a second press can never act on the old
+ * `sneaking` and repeat the first declaration.
  *
  * WHETHER IT IS SHOWN IS THE CALLER'S. Sneaking is a world-clock mode only,
  * so the session view renders this only on the world clock.

@@ -148,6 +148,7 @@ const hoisted = vi.hoisted(() => ({
   discoverySharing: undefined as boolean | undefined,
   setSneakingFn: vi.fn(),
   sneaking: false,
+  knowledgeWithoutView: false,
   interactFn: vi.fn(),
   tradeFn: vi.fn(),
   unpackFn: vi.fn(),
@@ -713,6 +714,7 @@ beforeEach(() => {
   hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
   hoisted.discoverySharing = undefined;
   hoisted.sneaking = false;
+  hoisted.knowledgeWithoutView = false;
   hoisted.setSneakingFn.mockReset();
   hoisted.setSneakingFn.mockImplementation(
     async (input: { sneaking: boolean }) => {
@@ -745,14 +747,16 @@ beforeEach(() => {
       },
       roster,
       seq: 0n,
-      view: {
-        sneaking: hoisted.sneaking,
-        doors: (doors?.doors ?? []).map((door: object) => ({
-          door,
-          currentVia: ['sight'],
-          status: 'current',
-        })),
-      },
+      view: hoisted.knowledgeWithoutView
+        ? undefined
+        : {
+            sneaking: hoisted.sneaking,
+            doors: (doors?.doors ?? []).map((door: object) => ({
+              door,
+              currentVia: ['sight'],
+              status: 'current',
+            })),
+          },
     });
   });
   hoisted.affordFn.mockResolvedValue({
@@ -5381,6 +5385,49 @@ describe('SessionEncounterView production combat integration', () => {
             .getByTestId('session-sneak-toggle')
             .getAttribute('aria-pressed')
         ).toBe('false');
+      });
+
+      it('stays disabled until the re-read view lands, then shows the new mode', async () => {
+        readyScene();
+        renderView();
+        const toggle = await screen.findByTestId('session-sneak-toggle');
+        let landView: (value: { sightings: [] }) => void = () => undefined;
+        hoisted.getViewFn.mockReturnValueOnce(
+          new Promise((resolve) => {
+            landView = resolve;
+          })
+        );
+        fireEvent.click(toggle);
+        await waitFor(() => expect(hoisted.setSneakingFn).toHaveBeenCalled());
+        await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalled());
+        // SetSneaking has answered; the view has not. Still the old mode, and
+        // not pressable.
+        const waiting = screen.getByTestId(
+          'session-sneak-toggle'
+        ) as HTMLButtonElement;
+        expect(waiting.getAttribute('aria-pressed')).toBe('false');
+        expect(waiting.disabled).toBe(true);
+        fireEvent.click(waiting);
+        expect(hoisted.setSneakingFn).toHaveBeenCalledTimes(1);
+        landView({ sightings: [] });
+        await waitFor(() => {
+          const landed = screen.getByTestId(
+            'session-sneak-toggle'
+          ) as HTMLButtonElement;
+          expect(landed.getAttribute('aria-pressed')).toBe('true');
+          expect(landed.disabled).toBe(false);
+        });
+      });
+
+      it('is absent until the view has been read', async () => {
+        // A knowledge snapshot with no view yet: the server's mode is unknown,
+        // so no toggle is drawn rather than a guessed false (R6).
+        readyScene();
+        hoisted.knowledgeWithoutView = true;
+        hoisted.getViewFn.mockReturnValue(new Promise(() => {}));
+        renderView();
+        await screen.findByTestId('session-canvas');
+        expect(screen.queryByTestId('session-sneak-toggle')).toBeNull();
       });
 
       it('is absent on the turn clock', async () => {
