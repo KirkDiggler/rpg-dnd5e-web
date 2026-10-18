@@ -42,14 +42,23 @@ describe('watchZoneCells — the red floor is the zones the server sent (rpg-pro
     expect(watchZoneCells([{ cells: [] }])).toBe(NO_WATCH_ZONE_CELLS);
   });
 
-  it('overlapping zones paint a shared cell once, as one entry', () => {
-    const shared = { x: 5, y: -2 };
+  it('overlapping zones paint their union: each distinct cell, nothing else', () => {
     const red = watchZoneCells([
-      { cells: [shared, { x: 6, y: -2 }] },
-      { cells: [{ x: 4, y: -2 }, shared] },
+      {
+        cells: [
+          { x: 5, y: -2 },
+          { x: 6, y: -2 },
+        ],
+      },
+      {
+        cells: [
+          { x: 4, y: -2 },
+          { x: 5, y: -2 },
+        ],
+      },
     ]);
-    expect([...red].filter((k) => k === key(shared))).toEqual([key(shared)]);
-    expect(red.has(key({ x: 6, y: -2 }))).toBe(true);
-    expect(red.has(key({ x: 4, y: -2 }))).toBe(true);
+    // Cube keys written out by hand (x = q, y = -q - r, z = r), not derived
+    // from the input: a dropped, invented or doubled key all fail here.
+    expect([...red].sort()).toEqual(['4,-2,-2', '5,-3,-2', '6,-4,-2']);
   });
 });
