@@ -741,18 +741,24 @@ function buildOtherStory(
       });
     }
     case 'snuck': {
-      // THE MOVER'S SNEAK ROLL (rpg-project#606, sneaking R5, R12): a seen
-      // roll, the whole calculation when there is one and the total when
-      // there is not, against the watcher's DC, with the SERVER'S verdict.
-      // `beaten` is copied, never derived here from total against dc.
+      // THE MOVER'S SNEAK ROLL (rpg-project#606, sneaking R5, R12), watched
+      // like any seen roll. THE HEADLINE IS THE TOAST: Story notices render
+      // this entry where the player is looking (rpg-dnd5e-web#1293), so it is
+      // one concise line — the total against the DC and the SERVER'S
+      // verdict. The whole calculation rides in the detail. `beaten` is
+      // copied, never derived here from total against dc.
       //
       // AN EMPTY WATCHER IS A WATCHER THIS PLAYER CANNOT SEE (R12), never a
       // producer defect. The line says "something is watching" and names
       // nobody: naming a creature the player's eyes never gave them is the
-      // exact leak R12 forbids, and this line does not guess one either.
+      // exact leak R12 forbids, and this line does not guess one either. The
+      // verdict still shows, because being spotted by it is the player's to
+      // know.
       const snuck = event.body.value;
-      const actor = memberName(snuck.member, context);
-      const verdict = snuck.beaten ? 'Unseen' : 'Seen';
+      const verdict = snuck.beaten ? 'unseen' : 'spotted';
+      const outcome = snuck.watcher
+        ? `${verdict} by ${memberName(snuck.watcher, context)}`
+        : `${verdict}; something is watching`;
       const arithmetic = snuck.calculation
         ? formatRollCalculation(snuck.calculation, (sourceId) =>
             memberName(sourceId, context)
@@ -760,11 +766,9 @@ function buildOtherStory(
         : undefined;
       return Object.freeze({
         ...base,
-        eyebrow: 'Stealth',
-        headline: snuck.watcher
-          ? `${actor}: ${verdict} by ${memberName(snuck.watcher, context)}`
-          : 'Something is watching',
-        detail: `Stealth ${arithmetic ?? snuck.total} vs DC ${snuck.dc} · ${verdict}`,
+        eyebrow: 'Sneaking',
+        headline: `Stealth ${snuck.total} vs DC ${snuck.dc} — ${outcome}`,
+        detail: arithmetic ?? '',
         tone: snuck.beaten ? 'success' : 'neutral',
       });
     }

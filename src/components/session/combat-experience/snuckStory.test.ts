@@ -126,51 +126,69 @@ describe('the snuck beat (rpg-project#606)', () => {
     expect(changed.otherStory[0]?.conflicted).toBe(true);
   });
 
-  it('names a watcher the mover sees, with the roll and its calculation', () => {
-    const [line] = selectVisibleStory(
-      reduce(snuck({ watcher: 'knight-1', dc: 13, total: 17, beaten: true }))
-    );
-    expect(line).toMatchObject({
-      eyebrow: 'Stealth',
-      headline: 'Aldric: Unseen by Knight',
+  const lineFor = (value: Parameters<typeof snuck>[0]) =>
+    selectVisibleStory(reduce(snuck(value)))[0];
+
+  it('names a watcher the mover sees: unseen, with the whole roll in the detail', () => {
+    expect(
+      lineFor({ watcher: 'knight-1', dc: 13, total: 17, beaten: true })
+    ).toMatchObject({
+      eyebrow: 'Sneaking',
+      headline: 'Stealth 17 vs DC 13 — unseen by Knight',
+      detail: '1d20 [14] + 3 Dexterity modifier = 17',
       tone: 'success',
     });
-    expect(line?.detail).toBe(
-      'Stealth 1d20 [14] + 3 Dexterity modifier = 17 vs DC 13 · Unseen'
-    );
   });
 
-  it('says something is watching when the watcher is unseen, and names nobody', () => {
-    const [line] = selectVisibleStory(
-      reduce(snuck({ watcher: '', dc: 15, total: 11, beaten: false }))
-    );
-    expect(line).toMatchObject({
-      eyebrow: 'Stealth',
-      headline: 'Something is watching',
+  it('names a watcher the mover sees: spotted', () => {
+    expect(
+      lineFor({ watcher: 'knight-1', dc: 13, total: 9, beaten: false })
+    ).toMatchObject({
+      headline: 'Stealth 9 vs DC 13 — spotted by Knight',
+      detail: '1d20 [6] + 3 Dexterity modifier = 9',
       tone: 'neutral',
     });
-    expect(line?.detail).toBe(
-      'Stealth 1d20 [8] + 3 Dexterity modifier = 11 vs DC 15 · Seen'
-    );
-    expect(`${line?.headline} ${line?.detail}`).not.toContain('Knight');
-    expect(`${line?.headline} ${line?.detail}`).not.toContain('knight-1');
   });
 
-  it('shows the total when the beat carries no calculation', () => {
-    const [line] = selectVisibleStory(
-      reduce(
-        snuck({
-          watcher: 'knight-1',
-          dc: 13,
-          total: 9,
-          beaten: false,
-          withCalculation: false,
-        })
-      )
-    );
+  it('an unseen watcher: unseen, something is watching, nobody named', () => {
+    const line = lineFor({ watcher: '', dc: 15, total: 18, beaten: true });
     expect(line).toMatchObject({
-      headline: 'Aldric: Seen by Knight',
-      detail: 'Stealth 9 vs DC 13 · Seen',
+      headline: 'Stealth 18 vs DC 15 — unseen; something is watching',
+      tone: 'success',
+    });
+    expect(`${line?.headline} ${line?.detail}`).not.toMatch(/Knight|knight-1/);
+  });
+
+  it('an unseen watcher: spotted, something is watching, nobody named', () => {
+    const line = lineFor({ watcher: '', dc: 15, total: 11, beaten: false });
+    expect(line).toMatchObject({
+      headline: 'Stealth 11 vs DC 15 — spotted; something is watching',
+      detail: '1d20 [8] + 3 Dexterity modifier = 11',
+      tone: 'neutral',
+    });
+    expect(`${line?.headline} ${line?.detail}`).not.toMatch(/Knight|knight-1/);
+  });
+
+  it('takes the verdict from the server, not from total against dc', () => {
+    // A total over the DC that the server judged lost still reads spotted.
+    expect(
+      lineFor({ watcher: 'knight-1', dc: 13, total: 17, beaten: false })
+        ?.headline
+    ).toBe('Stealth 17 vs DC 13 — spotted by Knight');
+  });
+
+  it('leaves the detail empty when the beat carries no calculation', () => {
+    expect(
+      lineFor({
+        watcher: 'knight-1',
+        dc: 13,
+        total: 9,
+        beaten: false,
+        withCalculation: false,
+      })
+    ).toMatchObject({
+      headline: 'Stealth 9 vs DC 13 — spotted by Knight',
+      detail: '',
     });
   });
 });
