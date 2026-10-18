@@ -141,20 +141,18 @@ export const MEDIUM_HUMANOID_FORWARD_OFFSET = 0;
 export const POLYGON_DUNGEON_FORWARD_OFFSET = 0;
 
 /**
- * Spawn pose: the heading an entity holds before anything states one. NOT a
- * model correction. Entities turn out of it as soon as they move.
+ * Spawn pose. NOT a model correction — this is staging: players face up-board
+ * and monsters face down-board so an encounter reads as two sides squaring off.
+ * Preserved deliberately (Kirk, 2026-07-24); entities turn out of it as soon as
+ * they move. Obstacles never move and fall through to 0.
  *
- * IT IS THE RULES DEFAULT, NOT STAGING. An unset authored facing is a rules
- * bearing of 180, south (rpg-project ideas/sneaking design R13), so the wire
- * states 180 for an entity nobody turned. Players and monsters both seed
- * there, so a peer the wire describes and an entity drawn from this default
- * agree before the first step. The local player seeds there too, because the
- * wire does not yet carry the viewer's own facing (lead ruling on
- * rpg-dnd5e-web#1298). This replaces the 2026-07-24 staging, where players
- * faced up-board (PI) so two sides squared off. Obstacles never move and fall
- * through to 0.
+ * The monster's down-board pose is also the rules default for an unset
+ * facing, a bearing of 180 (rpg-project ideas/sneaking design R13), so it is
+ * written as that bearing and pinned to it. The two player poses differ: peers
+ * draw an unauthored player at 180 from the wire, while the player sees PI
+ * until the viewer's own facing reaches the wire (rpg-api-protos#398).
  */
 export const DEFAULT_HEADING_BY_TYPE: Record<string, number> = {
-  player: degreesToYaw(180),
+  player: Math.PI,
   monster: degreesToYaw(180),
 };

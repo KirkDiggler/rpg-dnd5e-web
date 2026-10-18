@@ -53,8 +53,4 @@ describe('the web default agrees with the wire on an unset facing', () => {
   it('a monster seeds at the rules bearing 180', () => {
     expect(DEFAULT_HEADING_BY_TYPE.monster).toBe(degreesToYaw(180));
   });
-
-  it('the local player seeds at the rules bearing 180 too', () => {
-    expect(DEFAULT_HEADING_BY_TYPE.player).toBe(degreesToYaw(180));
-  });
 });
