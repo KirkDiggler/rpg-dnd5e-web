@@ -9,11 +9,16 @@ import type { CellKnowledge } from './cellKnowledge';
  * - `data-seen` / `data-remembered` / `data-edge`: cell counts.
  * - `data-seen-cells` / `data-remembered-cells`: cube keys (`x,y,z`), sorted,
  *   `;`-separated. An absent cell appears in neither list.
+ * - `data-watch-zone-cells`: the red floor (sneaking, rpg-project#619) — the
+ *   zone cells the floor tints, which are the known ones, by the same keys.
+ *   Empty when the server sent no zones.
  */
 export function SeatKnowledgeProbe({
   knowledge,
+  watchZoneCells,
 }: {
   knowledge: CellKnowledge;
+  watchZoneCells?: ReadonlySet<string>;
 }) {
   const seen: string[] = [];
   const remembered: string[] = [];
@@ -22,6 +27,9 @@ export function SeatKnowledgeProbe({
   }
   seen.sort();
   remembered.sort();
+  const red = [...(watchZoneCells ?? [])]
+    .filter((key) => knowledge.state.has(key))
+    .sort();
   return (
     <div
       hidden
@@ -31,6 +39,7 @@ export function SeatKnowledgeProbe({
       data-edge={knowledge.edge.size}
       data-seen-cells={seen.join(';')}
       data-remembered-cells={remembered.join(';')}
+      data-watch-zone-cells={red.join(';')}
     />
   );
 }

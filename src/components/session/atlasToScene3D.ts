@@ -258,6 +258,14 @@ export interface Scene3D {
    */
   cellKnowledge?: CellKnowledge;
   floorLitByCell?: ReadonlyMap<string, number>;
+  /**
+   * THE RED FLOOR (sneaking, rpg-project#619, design R15): the union of the
+   * cells in `GetViewResponse.watch_zones`, by floor-tile key
+   * (`watchZoneCells`). The floor tints them after fog. Set beside the scene,
+   * never derived from it: no zone is computed on the client. Absent or
+   * empty tints nothing.
+   */
+  watchZoneCells?: ReadonlySet<string>;
   rememberedWallRunKeys?: ReadonlySet<string>;
   rememberedDoorGapKeys?: ReadonlySet<string>;
   rememberedStructuralWallIds?: ReadonlySet<string>;

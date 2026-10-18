@@ -29,7 +29,11 @@ import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners } from './hexMath';
-import { CRYPT_MEMORY_COLOR, rememberedFloorColor } from './sceneKnowledge';
+import {
+  CRYPT_MEMORY_COLOR,
+  rememberedFloorColor,
+  watchZoneFloorColor,
+} from './sceneKnowledge';
 import {
   computeFloorPoolColor,
   CRYPT_FLOOR_TINT,
@@ -60,6 +64,10 @@ interface SyntyHexFloorTileProps {
   /** Fog of war: this tile's lit share (`DungeonFloorLighting.litByCell`).
    * 1 — the default — renders exactly as before. */
   lit?: number;
+  /** The red floor: this tile is in a watch zone the server sent
+   * (`DungeonFloorLighting.watchZoneCells`). False — the default — renders
+   * exactly as before. */
+  inWatchZone?: boolean;
   baseColor: THREE.Color;
   /** Mood lights (candles/braziers/torches/doors) to pool toward, via
    * `computeFloorPoolColor` (syntyHexFloorHelpers.ts) — deterministic,
@@ -92,6 +100,7 @@ function SyntyHexFloorTile({
   isCrypt,
   isRemembered,
   lit = 1,
+  inWatchZone = false,
   baseColor,
   poolLights,
   litSurfaces,
@@ -103,17 +112,17 @@ function SyntyHexFloorTile({
       : !poolLights || poolLights.length === 0
         ? baseColor
         : computeFloorPoolColor(baseColor, world.x, world.z, poolLights);
-    return rememberedFloorColor(litColor, lit);
-  }, [baseColor, isCrypt, lit, poolLights, world.x, world.z]);
+    const fog = rememberedFloorColor(litColor, lit);
+    return inWatchZone ? watchZoneFloorColor(fog) : fog;
+  }, [baseColor, inWatchZone, isCrypt, lit, poolLights, world.x, world.z]);
   // The default (non-crypt) branch draws the bare texture when lit; a fog
-  // grade multiplies it by the same remembered grey the crypt branch uses.
-  const plainFogColor = useMemo(
-    () =>
-      lit >= 1
-        ? undefined
-        : rememberedFloorColor(new THREE.Color(1, 1, 1), lit),
-    [lit]
-  );
+  // grade multiplies it by the same remembered grey the crypt branch uses,
+  // and a watch zone leans that toward red.
+  const plainFogColor = useMemo(() => {
+    if (lit >= 1 && !inWatchZone) return undefined;
+    const fog = rememberedFloorColor(new THREE.Color(1, 1, 1), lit);
+    return inWatchZone ? watchZoneFloorColor(fog) : fog;
+  }, [inWatchZone, lit]);
   const knowledge = lit >= 1 ? 'seen' : lit > 0 ? 'edge' : 'remembered';
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
@@ -198,7 +207,7 @@ function SyntyHexFloorTile({
   return (
     <mesh
       name={`floor-tile-${tile.x},${tile.y},${tile.z}`}
-      userData={{ knowledge, lit }}
+      userData={{ knowledge, lit, watchZone: inWatchZone }}
       geometry={geometry}
       position={[world.x, DUNGEON_SURFACE_Y, world.z]}
     >
@@ -329,6 +338,7 @@ export function SyntyHexFloor({
             }
             isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
             lit={floorLighting?.litByCell?.get(key) ?? 1}
+            inWatchZone={floorLighting?.watchZoneCells?.has(key) ?? false}
             baseColor={baseColor}
             poolLights={lights}
             litSurfaces={litSurfaces}

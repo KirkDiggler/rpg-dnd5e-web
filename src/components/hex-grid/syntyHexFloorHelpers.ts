@@ -46,6 +46,10 @@ export interface DungeonFloorLighting {
    * knows — 1 seen now, the soft-edge weight, 0 remembered. Composes AFTER
    * exposure and pools. Absent, or a tile it does not list, is lit (1). */
   readonly litByCell?: ReadonlyMap<string, number>;
+  /** The red floor (sneaking, rpg-project#619): tile keys inside any watch
+   * zone the server sent this seat. Composes after fog. Absent or empty
+   * tints nothing. */
+  readonly watchZoneCells?: ReadonlySet<string>;
 }
 
 export const CRYPT_DARK_FLOOR_TINT = new THREE.Color('#101318');

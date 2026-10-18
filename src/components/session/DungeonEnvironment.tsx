@@ -185,8 +185,16 @@ export function DungeonEnvironment({
       // Fog of war composes AFTER region exposure and pools: a remembered
       // tile is the lit tile greyed, a seen tile is unchanged.
       litByCell: scene.floorLitByCell,
+      // The red floor composes after fog: a zone tile is its fog colour
+      // leaned red, seen or remembered.
+      watchZoneCells: scene.watchZoneCells,
     }),
-    [plan.floorExposureByCell, plan.floorPoolsByCell, scene.floorLitByCell]
+    [
+      plan.floorExposureByCell,
+      plan.floorPoolsByCell,
+      scene.floorLitByCell,
+      scene.watchZoneCells,
+    ]
   );
   const diagnosticsSignature = plan.diagnostics.join('\u0000');
   const reportedDiagnostics = useRef<{
