@@ -740,6 +740,34 @@ function buildOtherStory(
         tone: 'neutral',
       });
     }
+    case 'snuck': {
+      // THE MOVER'S SNEAK ROLL (rpg-project#606, sneaking R5, R12): a seen
+      // roll, the whole calculation when there is one and the total when
+      // there is not, against the watcher's DC, with the SERVER'S verdict.
+      // `beaten` is copied, never derived here from total against dc.
+      //
+      // AN EMPTY WATCHER IS A WATCHER THIS PLAYER CANNOT SEE (R12), never a
+      // producer defect. The line says "something is watching" and names
+      // nobody: naming a creature the player's eyes never gave them is the
+      // exact leak R12 forbids, and this line does not guess one either.
+      const snuck = event.body.value;
+      const actor = memberName(snuck.member, context);
+      const verdict = snuck.beaten ? 'Unseen' : 'Seen';
+      const arithmetic = snuck.calculation
+        ? formatRollCalculation(snuck.calculation, (sourceId) =>
+            memberName(sourceId, context)
+          )
+        : undefined;
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Stealth',
+        headline: snuck.watcher
+          ? `${actor}: ${verdict} by ${memberName(snuck.watcher, context)}`
+          : 'Something is watching',
+        detail: `Stealth ${arithmetic ?? snuck.total} vs DC ${snuck.dc} · ${verdict}`,
+        tone: snuck.beaten ? 'success' : 'neutral',
+      });
+    }
     case 'answered': {
       // WHAT THE CREATURE DID ABOUT IT (rpg-project#458) — the second roll,
       // the author's table read by the world.

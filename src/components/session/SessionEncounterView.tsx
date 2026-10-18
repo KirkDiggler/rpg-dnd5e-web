@@ -26,6 +26,7 @@ import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionUnpack } from '@/api/useSessionUnpack';
 import { useSetDiscoverySharing } from '@/api/useSetDiscoverySharing';
+import { useSetSneaking } from '@/api/useSetSneaking';
 import { useUnequipItem } from '@/api/useUnequipItem';
 import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
 import {
@@ -126,6 +127,7 @@ import { SeatKnowledgeProbe } from './SeatKnowledgeProbe';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
+import { SneakToggle } from './SneakToggle';
 import {
   type SessionRefreshKey,
   useCoalescedSessionRefreshes,
@@ -232,6 +234,11 @@ function SessionEncounterScope({
     loading: sharingPending,
     error: sharingError,
   } = useSetDiscoverySharing();
+  const {
+    setSneaking,
+    loading: sneakPending,
+    error: sneakError,
+  } = useSetSneaking();
   const { loot, loading: looting } = useSessionLoot();
   const { hold, loading: holding } = useSessionHold();
   const { leave, loading: leaving } = useSessionLeave();
@@ -1828,6 +1835,25 @@ function SessionEncounterScope({
                     Share discoveries
                   </label>
                 )}
+                {/* SNEAKING IS A FREE-ROAM MODE (rpg-project#606, R1): absent
+                    on the turn clock, and absent until the view has been read,
+                    because the pressed state is the server's (R6). */}
+                {turnClock === ClockKind.WORLD && snapshot?.view && (
+                  <SneakToggle
+                    sneaking={snapshot.view.sneaking}
+                    disabled={sneakPending || !member || runEnded !== null}
+                    onChange={(next) => {
+                      if (!member) return;
+                      void setSneaking({
+                        session: sessionId,
+                        member,
+                        sneaking: next,
+                      })
+                        .then(() => refetchView())
+                        .catch(() => undefined);
+                    }}
+                  />
+                )}
               </>
             }
             sceneNotice={
@@ -1842,6 +1868,7 @@ function SessionEncounterScope({
                 {sharingError && (
                   <span role="alert">{sharingError.message}</span>
                 )}
+                {sneakError && <span role="alert">{sneakError.message}</span>}
                 {holdingNotice && <span>{holdingNotice}</span>}
                 {vendorNotice && <span>{vendorNotice}</span>}
                 {unpackNotice && <span>{unpackNotice}</span>}

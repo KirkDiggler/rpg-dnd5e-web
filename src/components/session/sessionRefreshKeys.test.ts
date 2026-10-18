@@ -18,6 +18,7 @@ import {
   RollWindowOpenedSchema,
   SavedSchema,
   SightedSchema,
+  SnuckSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -374,6 +375,25 @@ describe('the social beats and the creature’s answer', () => {
         },
       });
       expect(refreshKeysFor(revealed, VIEWER)).toEqual(['doors', 'atlas']);
+    });
+  });
+
+  describe('snuck (rpg-project#606)', () => {
+    it('re-reads nothing: the roll moves no position, sheet, action or mode', () => {
+      const judged = create(EventSchema, {
+        kind: EventKind.SNUCK,
+        body: {
+          case: 'snuck',
+          value: create(SnuckSchema, {
+            member: VIEWER,
+            watcher: '',
+            dc: 13,
+            total: 9,
+            beaten: false,
+          }),
+        },
+      });
+      expect(refreshKeysFor(judged, VIEWER)).toEqual([]);
     });
   });
 

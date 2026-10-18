@@ -146,6 +146,8 @@ const hoisted = vi.hoisted(() => ({
   searchFn: vi.fn(),
   setDiscoverySharingFn: vi.fn(),
   discoverySharing: undefined as boolean | undefined,
+  setSneakingFn: vi.fn(),
+  sneaking: false,
   interactFn: vi.fn(),
   tradeFn: vi.fn(),
   unpackFn: vi.fn(),
@@ -213,6 +215,7 @@ vi.mock('@/api/client', () => ({
       const view = await hoisted.getViewFn(...args);
       const doors = await hoisted.getDoorsFn(...args);
       return create(GetViewResponseSchema, {
+        sneaking: hoisted.sneaking,
         ...view,
         doors:
           view.doors ??
@@ -230,6 +233,7 @@ vi.mock('@/api/client', () => ({
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
     setDiscoverySharing: hoisted.setDiscoverySharingFn,
+    setSneaking: hoisted.setSneakingFn,
     interact: hoisted.interactFn,
     trade: hoisted.tradeFn,
     unpack: hoisted.unpackFn,
@@ -708,6 +712,14 @@ beforeEach(() => {
   });
   hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
   hoisted.discoverySharing = undefined;
+  hoisted.sneaking = false;
+  hoisted.setSneakingFn.mockReset();
+  hoisted.setSneakingFn.mockImplementation(
+    async (input: { sneaking: boolean }) => {
+      hoisted.sneaking = input.sneaking;
+      return { sneaking: input.sneaking };
+    }
+  );
   hoisted.setDiscoverySharingFn.mockReset();
   hoisted.setDiscoverySharingFn.mockImplementation(
     async (input: { sharing: boolean }) => {
@@ -734,6 +746,7 @@ beforeEach(() => {
       roster,
       seq: 0n,
       view: {
+        sneaking: hoisted.sneaking,
         doors: (doors?.doors ?? []).map((door: object) => ({
           door,
           currentVia: ['sight'],
@@ -5307,6 +5320,77 @@ describe('SessionEncounterView production combat integration', () => {
       fireEvent.click(checkbox);
       expect(await screen.findByText('preference unavailable')).toBeTruthy();
       expect((checkbox as HTMLInputElement).checked).toBe(true);
+    });
+
+    // SNEAKING (rpg-project#606, sneaking R1, R6): a free-roam declaration
+    // whose pressed state is the server's `GetViewResponse.sneaking`.
+    describe('the sneak toggle (rpg-project#606)', () => {
+      it('sends SetSneaking for the seated character and reflects the re-read view', async () => {
+        readyScene();
+        renderView();
+        const toggle = await screen.findByTestId('session-sneak-toggle');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        const viewReads = hoisted.getViewFn.mock.calls.length;
+        fireEvent.click(toggle);
+        await waitFor(() =>
+          expect(hoisted.setSneakingFn).toHaveBeenCalledWith({
+            session: 'enc-1',
+            member: 'char-1',
+            sneaking: true,
+          })
+        );
+        await waitFor(() =>
+          expect(
+            screen
+              .getByTestId('session-sneak-toggle')
+              .getAttribute('aria-pressed')
+          ).toBe('true')
+        );
+        expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(viewReads);
+        expect(hoisted.setSneakingFn).toHaveBeenCalledTimes(1);
+      });
+
+      it('shows the mode the server holds and clears it with explicit false', async () => {
+        readyScene();
+        hoisted.sneaking = true;
+        renderView();
+        const toggle = await screen.findByTestId('session-sneak-toggle');
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        expect(toggle.textContent).toContain('Sneaking');
+        fireEvent.click(toggle);
+        await waitFor(() =>
+          expect(hoisted.setSneakingFn).toHaveBeenCalledWith({
+            session: 'enc-1',
+            member: 'char-1',
+            sneaking: false,
+          })
+        );
+      });
+
+      it('keeps the server’s mode when the declaration fails', async () => {
+        readyScene();
+        hoisted.setSneakingFn.mockRejectedValue(
+          new Error('not on the world clock')
+        );
+        renderView();
+        const toggle = await screen.findByTestId('session-sneak-toggle');
+        fireEvent.click(toggle);
+        expect(await screen.findByText('not on the world clock')).toBeTruthy();
+        expect(
+          screen
+            .getByTestId('session-sneak-toggle')
+            .getAttribute('aria-pressed')
+        ).toBe('false');
+      });
+
+      it('is absent on the turn clock', async () => {
+        readyTurn();
+        renderView();
+        await screen.findByTestId('session-canvas');
+        await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalled());
+        expect(screen.queryByTestId('session-sneak-toggle')).toBeNull();
+        expect(hoisted.setSneakingFn).not.toHaveBeenCalled();
+      });
     });
 
     it('renders an automatic failure from the event without a Search RPC', async () => {
