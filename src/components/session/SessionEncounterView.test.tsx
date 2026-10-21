@@ -62,6 +62,7 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { StreamRecordResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
 import {
   CharacterDataSchema,
   FeatureViewSchema,
@@ -134,6 +135,8 @@ const hoisted = vi.hoisted(() => ({
   },
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
+  streamRecordFn: vi.fn(),
+  getRecordFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
   publishDiceThrowFn: vi.fn(),
   getStoryFn: vi.fn(),
@@ -199,6 +202,10 @@ vi.mock('../../api/hooks', () => ({
 }));
 
 vi.mock('@/api/client', () => ({
+  recordClient: {
+    streamRecord: hoisted.streamRecordFn,
+    getRecord: hoisted.getRecordFn,
+  },
   sessionPresentationClient: {
     streamDiceThrows: hoisted.streamDiceThrowsFn,
     publishDiceThrow: hoisted.publishDiceThrowFn,
@@ -527,6 +534,20 @@ function currentLocalWorldDieCommand(): LocalWorldDieCommand | undefined {
     : undefined;
 }
 
+// recordStream yields record messages, then stays open until aborted — the
+// shape of a live StreamRecord.
+function recordStream(messages: unknown[], signal?: AbortSignal) {
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      for (const message of messages) yield message;
+      await new Promise<void>((resolve) => {
+        if (!signal || signal.aborted) return resolve();
+        signal.addEventListener('abort', () => resolve());
+      });
+    },
+  };
+}
+
 function deferredStream(events: SessionEvent[]) {
   const gate = deferred<void>();
   return {
@@ -689,6 +710,13 @@ beforeEach(() => {
   }
 
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
+  hoisted.streamRecordFn.mockReset();
+  hoisted.streamRecordFn.mockImplementation(
+    (_req: unknown, options?: { signal?: AbortSignal }) =>
+      recordStream([], options?.signal)
+  );
+  hoisted.getRecordFn.mockReset();
+  hoisted.getRecordFn.mockResolvedValue({ events: [], restarted: false });
   hoisted.streamDiceThrowsFn.mockReturnValue(fakeStream([]));
   hoisted.getStoryFn.mockResolvedValue({ entries: [] });
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
@@ -3249,10 +3277,48 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
     localStrike.release();
+    // The Debug panel reads the record stream now (rpg-project#628), so it
+    // is no probe of the v1 ingest; Story staying concealed is the claim.
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    await waitFor(() => screen.getByText(/source=live/i));
+    await waitFor(() => screen.getByText('The record'));
     fireEvent.click(screen.getByRole('button', { name: 'Story' }));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
+  });
+
+  it('reads the record stream in Debug, from the oldest beat, and stops it in Story', async () => {
+    readyTurn();
+    const walk = 'move:01HF7YAT003RVQKEBZ99Y1AF3E';
+    let signal: AbortSignal | undefined;
+    hoisted.streamRecordFn.mockImplementation(
+      (_req: unknown, options?: { signal?: AbortSignal }) => {
+        signal = options?.signal;
+        return recordStream(
+          [
+            create(StreamRecordResponseSchema, {
+              item: {
+                case: 'event',
+                value: { id: '01HF7YAT01', beat: 'moved', act: walk },
+              },
+            }),
+          ],
+          signal
+        );
+      }
+    );
+    renderView();
+
+    const debugButton = await screen.findByRole('button', { name: 'Debug' });
+    expect(hoisted.streamRecordFn).not.toHaveBeenCalled();
+    fireEvent.click(debugButton);
+    await waitFor(() => screen.getByRole('button', { name: walk }));
+    expect(hoisted.streamRecordFn).toHaveBeenCalledWith(
+      expect.objectContaining({ afterId: '' }),
+      expect.anything()
+    );
+    screen.getByText('moved');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    await waitFor(() => expect(signal?.aborted).toBe(true));
   });
 
   it('automatically plans and publishes the actor throw without a playback selector', async () => {
@@ -3986,7 +4052,7 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
-  it('coalesces a stream burst into one CharacterData/Turn/Afford/View refresh while Debug ingests immediately', async () => {
+  it('coalesces a stream burst into one CharacterData/Turn/Afford/View refresh', async () => {
     readyTurn();
     const burst = deferredStream([
       event(EventKind.FIGHT_STARTED, {
@@ -4011,12 +4077,8 @@ describe('SessionEncounterView production combat integration', () => {
 
     const privateRefresh = new Promise(() => {});
     hoisted.getCharacterDataFn.mockReturnValue(privateRefresh);
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
     burst.release();
 
-    await waitFor(() =>
-      expect(screen.getAllByText(/source=live/i)).toHaveLength(3)
-    );
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
@@ -4239,7 +4301,7 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => screen.getByText('Aldric recovers 2 HP'));
   });
 
-  it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation or raw Debug', async () => {
+  it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
     readyTurn();
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
@@ -4268,9 +4330,6 @@ describe('SessionEncounterView production combat integration', () => {
       // Authority reconciliation is immediate, before the 300ms Story cursor.
       expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-      expect(screen.getAllByText(/source=live/i)).toHaveLength(2);
-      fireEvent.click(screen.getByRole('button', { name: 'Story' }));
       expect(screen.queryByText(/Skeleton strikes Aldric/i)).toBeNull();
 
       await act(async () => {

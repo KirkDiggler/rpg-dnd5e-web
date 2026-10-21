@@ -169,6 +169,7 @@ export function CombatExperience({
   story,
   storyFeedback,
   debug,
+  record,
   result,
   rollWindow,
   diceEvents,
@@ -579,6 +580,7 @@ export function CombatExperience({
         <StoryLog
           story={revealedStory}
           debug={debug}
+          record={record}
           mode={logMode}
           streamState={streamState}
           onModeChange={onLogModeChange}
