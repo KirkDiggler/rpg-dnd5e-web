@@ -63,6 +63,17 @@
 # turned garrison storms the keep; a garrison told to hold the castle ends
 # the run with the king still breathing.
 #
+# STATED FACINGS (rpg-project#623). A watcher's cone points where it faces,
+# and an unstated facing is south (180), so every creature that stands still
+# states the compass word that points it at what it keeps, nearest the
+# bearing from its cell to that cell: the cook looks at the kitchen door (e,
+# 90), the scullion into the kitchen (ne; its centre is at 53), the captain
+# down the gatehouse at whoever comes to the gate (s, the party start), the
+# turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
+# the throne door (e, 90). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
+# guards' pause facings are rpg-project#624's. castle_king_facings_test.go
+# holds each cone over the cell it keeps.
+#
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
 # class or an attack bonus, which are the rulebook's to derive. The guard
@@ -167,9 +178,12 @@ tables:
             within: 2
         toward: sound
       # Hand edit: the gate guards pace the gatehouse, a right-angled loop
-      # whose legs never share a cell (use case R7).
+      # whose legs never share a cell (use case R7). At each gate-side
+      # corner a guard stands two rounds turned inward to the party start,
+      # watching the incomers (rpg-project#624): se from the west corner,
+      # sw from the east.
       - when: { enemy: none }
-        toward: { path: [{ q: -7, r: 9 }, { q: -1, r: 9 }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
+        toward: { path: [{ q: -7, r: 9, wait: 2, facing: se }, { q: -1, r: 9, wait: 2, facing: sw }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -249,6 +263,23 @@ tables:
         fact: alarm-raised
       - weight: 1
         hold: {}
+  hall-patrol:
+    time:
+      # Hand edit: the hall guard is storm-the-keep's soldier when the
+      # garrison turns, and until then walks a loop across the great hall
+      # between the kitchen door and the throne door (sneaking S1,
+      # rpg-project#606): the watcher a party sneaking from the kitchen to the
+      # throne room has to get past.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      - when: { enemy: none }
+        toward: { path: [{ q: -2, r: -12 }, { q: 6, r: -12 }, { q: 6, r: -15 }, { q: 1, r: -15 }] }
   storm-the-keep:
     time:
       # Hand edit: a turned garrison marches on the throne room until it sees
@@ -6891,6 +6922,7 @@ room:
           location:
             q: -4
             r: 8
+          facing: s
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-04-a
       - id: reserve-1
         ref: dnd5e:monsters:knight
@@ -6912,6 +6944,7 @@ room:
           location:
             q: -14
             r: -12
+          facing: e
         appearanceRef: dnd5e:npcs:kingdom:peasant-male-01
       - id: hall-1
         ref: dnd5e:monsters:guard
@@ -6940,6 +6973,7 @@ room:
           location:
             q: 3
             r: -17
+          facing: e
         appearanceRef: dnd5e:npcs:kingdom:prince-01
       - id: scullion
         ref: dnd5e:monsters:commoner
@@ -6947,6 +6981,7 @@ room:
           location:
             q: -19
             r: -9
+          facing: ne
         appearanceRef: dnd5e:npcs:kingdom:peasant-female-01
       - id: sergeant
         ref: dnd5e:monsters:guard
@@ -6954,6 +6989,7 @@ room:
           location:
             q: -24
             r: 5
+          facing: se
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: turnkey
         ref: dnd5e:monsters:guard
@@ -6961,6 +6997,7 @@ room:
           location:
             q: -20
             r: 5
+          facing: w
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01-style-02-b
       - id: prisoner-1
         ref: dnd5e:monsters:prisoner
@@ -7002,7 +7039,7 @@ room:
         table: gate-patrol
       hall-1:
         faction: garrison
-        table: storm-the-keep
+        table: hall-patrol
       captain:
         faction: garrison
         table: storm-the-keep
@@ -7239,6 +7276,15 @@ room:
         closed: true
       kitchen-wall-door:
         closed: true
+        # Hand edit (sneaking S1, rpg-project#606): the use case's forced
+        # door. Picked with thieves' tools, it opens silently; forced with
+        # Strength, it crashes.
+        locked:
+          - ability: str
+            dc: 15
+          - ability: dex
+            tool: dnd5e:item:thieves-tools
+            dc: 13
       chapel-wall-door:
         closed: true
       throne-wall-door:

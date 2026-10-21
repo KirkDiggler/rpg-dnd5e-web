@@ -188,6 +188,52 @@ export function growRoomWorkspace(
     heightHexes,
   });
 }
+/** The largest radius whose hexagon fits the rectangle kinds' cell budget:
+ * a radius-R hexagon holds 3R(R+1)+1 cells. */
+export const MAX_ROOM_WORKSPACE_RADIUS = (() => {
+  let radius = 1;
+  while (3 * (radius + 1) * (radius + 2) + 1 <= MAX_ROOM_WORKSPACE_HEXES)
+    radius += 1;
+  return radius;
+})();
+
+/**
+ * A RADIUS WORKSPACE OFF THE PRESETS (rpg-dnd5e-web#1311). The engine reads
+ * `workspace.hexRadius` as the floor bound and nothing else from the block
+ * (`single_room_lowering.go`; `horizontalLimit` is the editor's drawing
+ * bound, which the engine is deliberately indifferent to). So a file that
+ * writes `{hexRadius: 9, horizontalLimit: 20}`, or `{hexRadius: 6}` alone, is
+ * one the engine plays, and the studio reads it as written: a whole radius
+ * within the cell budget the rectangle kinds keep, and a drawing bound that
+ * is a positive number, absent meaning twice the radius — the ratio every
+ * preset has. What it still refuses, it refuses naming the authored value.
+ */
+function radiusRoomWorkspace(
+  hexRadius: unknown,
+  horizontalLimit: unknown
+): RoomWorkspace {
+  if (
+    typeof hexRadius !== 'number' ||
+    !Number.isInteger(hexRadius) ||
+    hexRadius < 1 ||
+    hexRadius > MAX_ROOM_WORKSPACE_RADIUS
+  )
+    throw new Error(
+      `Unsupported room workspace extent: hexRadius must be a whole number from 1 to ${MAX_ROOM_WORKSPACE_RADIUS}, and this file says ${JSON.stringify(hexRadius)}.`
+    );
+  if (horizontalLimit === undefined)
+    return { hexRadius, horizontalLimit: 2 * hexRadius };
+  if (
+    typeof horizontalLimit !== 'number' ||
+    !Number.isFinite(horizontalLimit) ||
+    horizontalLimit <= 0
+  )
+    throw new Error(
+      `Unsupported room workspace extent: horizontalLimit must be a positive number, and this file says ${JSON.stringify(horizontalLimit)}.`
+    );
+  return { hexRadius, horizontalLimit };
+}
+
 export function validateWorkspace(value: unknown): RoomWorkspace {
   const source = objectShape(value, 'Room workspace');
   if (source.kind === undefined) {
@@ -201,9 +247,9 @@ export function validateWorkspace(value: unknown): RoomWorkspace {
         p.hexRadius === source.hexRadius &&
         p.horizontalLimit === source.horizontalLimit
     );
-    if (!preset) throw new Error('Unsupported room workspace extent.');
     // Preserve the existing untagged preset normalization contract.
-    return { ...preset };
+    if (preset) return { ...preset };
+    return radiusRoomWorkspace(source.hexRadius, source.horizontalLimit);
   }
   if (source.kind === 'odd-r-rect') {
     rejectUnknownKeys(

@@ -751,12 +751,14 @@ export function remapRoomDeclarations(
 
 export function expandRoomWorkspace(draft: RoomDraft): RoomDraft {
   if (rectangleOf(draft.workspace)) return draft;
-  const index = ROOM_WORKSPACE_STEPS.findIndex(
+  // The next preset LARGER than the floor there is: a radius workspace off
+  // the presets (rpg-dnd5e-web#1311) never shrinks to the first one.
+  const next = ROOM_WORKSPACE_STEPS.find(
     (step) =>
-      step.hexRadius === draft.workspace.hexRadius &&
-      step.horizontalLimit === draft.workspace.horizontalLimit
+      step.hexRadius > draft.workspace.hexRadius ||
+      (step.hexRadius === draft.workspace.hexRadius &&
+        step.horizontalLimit > draft.workspace.horizontalLimit)
   );
-  const next = ROOM_WORKSPACE_STEPS[index + 1];
   return next ? { ...draft, workspace: { ...next } } : draft;
 }
 
@@ -1174,6 +1176,39 @@ function requireOptionHoldings(
     check(`Prop binding for ${id}`, binding.options);
 }
 
+/** The one frame the studio draws in. Each word has exactly one value. */
+const ROOM_COORDINATE_FRAME = Object.freeze({
+  horizontalPlane: 'world-xz',
+  verticalAxis: 'world-y-up',
+  distanceUnit: 'world-scene-unit',
+  hexRadius: 1,
+  footprintFrame: 'owner-local-xz',
+} as const);
+
+/**
+ * THE FRAME STATES ITS SCALE; THE WORDS ARE THE ONLY ONES THERE ARE
+ * (rpg-dnd5e-web#1311). The engine reads one number from
+ * `coordinateFrame` — `hexRadius`, which must be 1 — and nothing else
+ * (`single_room_lowering.go`), so a file that writes only `{hexRadius: 1}`
+ * is one it plays. The four vocabulary words each have exactly one value
+ * the studio draws in, so an absent word is that value; a word that states
+ * another frame is refused naming the word and what the file says. The
+ * draft always carries the whole frame, so a save writes all five.
+ */
+function validateCoordinateFrame(frame: Record<string, unknown>): void {
+  if (!Object.hasOwn(frame, 'hexRadius'))
+    throw new Error(
+      'Unsupported room coordinate frame: hexRadius is required, and it must be 1.'
+    );
+  for (const [key, expected] of Object.entries(ROOM_COORDINATE_FRAME)) {
+    if (!Object.hasOwn(frame, key)) continue;
+    if (frame[key] !== expected)
+      throw new Error(
+        `Unsupported room coordinate frame: ${key} must be ${JSON.stringify(expected)}, and this file says ${JSON.stringify(frame[key])}.`
+      );
+  }
+}
+
 function validateDraft(value: unknown): RoomDraft {
   if (!value || typeof value !== 'object')
     throw new Error('Room draft must be an object.');
@@ -1192,15 +1227,8 @@ function validateDraft(value: unknown): RoomDraft {
     ['version', 'id', 'name', 'coordinateFrame', 'workspace', 'scene', 'room'],
     'Room draft'
   );
-  const frame = input.coordinateFrame;
-  if (
-    frame.horizontalPlane !== 'world-xz' ||
-    frame.verticalAxis !== 'world-y-up' ||
-    frame.distanceUnit !== 'world-scene-unit' ||
-    frame.hexRadius !== 1 ||
-    frame.footprintFrame !== 'owner-local-xz'
-  )
-    throw new Error('Unsupported room coordinate frame.');
+  const frame = objectShape(input.coordinateFrame, 'Room coordinate frame');
+  validateCoordinateFrame(frame);
   rejectUnknownKeys(
     frame as unknown as Record<string, unknown>,
     [
