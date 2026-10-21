@@ -62,7 +62,18 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  AttackOutcome,
+  ClockMark,
+  Family,
+  PartyKind,
+  Sense,
+  StateKind,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { StreamRecordResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
+import { StreamEventsResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/story_service_pb';
 import {
   CharacterDataSchema,
   FeatureViewSchema,
@@ -137,6 +148,8 @@ const hoisted = vi.hoisted(() => ({
   streamEventsFn: vi.fn(),
   streamRecordFn: vi.fn(),
   getRecordFn: vi.fn(),
+  streamActsFn: vi.fn(),
+  getStoryActsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
   publishDiceThrowFn: vi.fn(),
   getStoryFn: vi.fn(),
@@ -205,6 +218,10 @@ vi.mock('@/api/client', () => ({
   recordClient: {
     streamRecord: hoisted.streamRecordFn,
     getRecord: hoisted.getRecordFn,
+  },
+  storyClient: {
+    streamEvents: hoisted.streamActsFn,
+    getStory: hoisted.getStoryActsFn,
   },
   sessionPresentationClient: {
     streamDiceThrows: hoisted.streamDiceThrowsFn,
@@ -578,6 +595,119 @@ function steppedEventStream(stepCount: number) {
   };
 }
 
+/**
+ * THE ACT STREAM (rpg-project#630). The funnel — authority, refreshes,
+ * knowledge, movement, carriage, doors and the run's end — reads acts, so a
+ * test that drives it pushes acts here. The v1 stream above still feeds the
+ * story and toasts, and a test that asserts story text pushes the v1 beat
+ * too, as the server sends both.
+ */
+function actStream() {
+  const queue: unknown[] = [];
+  let wake: (() => void) | null = null;
+  return {
+    impl: (_req: unknown, options?: { signal?: AbortSignal }) => ({
+      [Symbol.asyncIterator]: async function* () {
+        const signal = options?.signal;
+        for (;;) {
+          while (queue.length > 0) yield queue.shift();
+          if (signal?.aborted) return;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+            signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+          if (signal?.aborted) return;
+        }
+      },
+    }),
+    // As the server does: the last act of each same-id run in a push carries
+    // run_end, so the feed closes the run there.
+    push: (...acts: Act[]) => {
+      acts.forEach((a, i) => {
+        const runEnd = acts[i + 1]?.id !== a.id;
+        queue.push(
+          create(StreamEventsResponseSchema, {
+            item: { case: 'act', value: create(ActSchema, { ...a, runEnd }) },
+          })
+        );
+      });
+      const w = wake;
+      wake = null;
+      w?.();
+    },
+  };
+}
+
+/** Installs a fresh act stream for the view about to render. */
+function liveActs() {
+  const stream = actStream();
+  hoisted.streamActsFn.mockImplementation(stream.impl);
+  return stream;
+}
+
+/** Acts held until `release`, as `deferredStream` holds v1 beats. */
+function deferredActs(acts: Act[]) {
+  const stream = liveActs();
+  return { release: () => stream.push(...acts) };
+}
+
+let nextActId = 1;
+function actId(): string {
+  return `id-${String(nextActId++).padStart(6, '0')}`;
+}
+
+const memberParty = (id: string) => ({ kind: PartyKind.MEMBER, id });
+
+function makeAct(
+  family: Family,
+  body: Act['body'],
+  id: string = actId(),
+  verb = ''
+): Act {
+  return create(ActSchema, {
+    session: 'enc-1',
+    id,
+    act: verb ? `${verb}:${id}` : '',
+    verb,
+    family,
+    body,
+  });
+}
+
+function clockAct(
+  mark: ClockMark,
+  extra: Record<string, unknown> = {},
+  id?: string
+): Act {
+  return makeAct(
+    Family.CLOCK,
+    { case: 'clock', value: { mark, ...extra } } as Act['body'],
+    id
+  );
+}
+
+function walkAct(mover: string, cells: { x: number; y: number }[]): Act {
+  return makeAct(
+    Family.ACT,
+    {
+      case: 'walk',
+      value: {
+        mover: memberParty(mover),
+        path: cells.map((cell) => ({ cell })),
+      },
+    } as Act['body'],
+    undefined,
+    'move'
+  );
+}
+
+function stateAct(change: StateKind, party: string): Act {
+  return makeAct(Family.STATE, {
+    case: 'state',
+    value: { change, party: memberParty(party) },
+  } as Act['body']);
+}
+
 let nextSeq = 1n;
 function event(
   kind: EventKind,
@@ -654,6 +784,7 @@ function renderView(
 
 beforeEach(() => {
   nextSeq = 1n;
+  nextActId = 1;
   hoisted.lastCanvasProps.current = null;
   Object.assign(hoisted.characterResult, {
     data: null,
@@ -717,6 +848,19 @@ beforeEach(() => {
   );
   hoisted.getRecordFn.mockReset();
   hoisted.getRecordFn.mockResolvedValue({ events: [], restarted: false });
+  // The act stream (rpg-project#630) holds open and pages nothing by default;
+  // a test that drives the funnel scripts its own acts (see `actStream`).
+  hoisted.streamActsFn.mockReset();
+  hoisted.streamActsFn.mockImplementation(
+    (_req: unknown, options?: { signal?: AbortSignal }) =>
+      recordStream([], options?.signal)
+  );
+  hoisted.getStoryActsFn.mockReset();
+  hoisted.getStoryActsFn.mockResolvedValue({
+    acts: [],
+    more: false,
+    restarted: false,
+  });
   hoisted.streamDiceThrowsFn.mockReturnValue(fakeStream([]));
   hoisted.getStoryFn.mockResolvedValue({ entries: [] });
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
@@ -1943,8 +2087,7 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('carries free-roam movement into combat once, without re-arming after cancel', async () => {
     readyScene();
-    const updates = steppedEventStream(2);
-    hoisted.streamEventsFn.mockReturnValue(updates.stream);
+    const acts = liveActs();
     hoisted.turnFn
       .mockResolvedValueOnce({
         clock: ClockKind.WORLD,
@@ -1981,12 +2124,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(true);
 
     act(() => {
-      updates.publish(
-        event(EventKind.FIGHT_STARTED, {
-          case: 'fightStarted',
-          value: { members: ['char-1', 'skeleton-1'] },
-        } as SessionEvent['body'])
-      );
+      acts.push(clockAct(ClockMark.FIGHT_FORMED));
     });
 
     const move = await screen.findByRole('button', { name: /move/i });
@@ -1999,12 +2137,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.lastCanvasProps.current?.movementPreviewEnabled).toBe(false);
 
     act(() => {
-      updates.publish(
-        event(EventKind.FIGHT_STARTED, {
-          case: 'fightStarted',
-          value: { members: ['char-1', 'skeleton-1'] },
-        } as SessionEvent['body'])
-      );
+      acts.push(clockAct(ClockMark.FIGHT_FORMED));
     });
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(3));
@@ -2177,13 +2310,7 @@ describe('SessionEncounterView production combat integration', () => {
       .mockResolvedValueOnce({ clock: ClockKind.WORLD, declarations: [] })
       .mockReturnValue(postFightAffordRefresh.promise);
     hoisted.moveFn.mockResolvedValue({ steps: [] });
-    const ended = deferredStream([
-      event(EventKind.FIGHT_ENDED, {
-        case: 'fightEnded',
-        value: { cause: 1 },
-      } as SessionEvent['body']),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(ended.stream);
+    const ended = deferredActs([clockAct(ClockMark.FIGHT_DISSOLVED)]);
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /move/i }));
 
@@ -2501,11 +2628,10 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('re-arms the same Death Save selector only after fresh authority observes it absent', async () => {
     readyDyingTurn();
-    const progression = steppedEventStream(2);
+    const acts = liveActs();
     const response = deferred<unknown>();
     const sameOfferTurnRefresh = deferred<unknown>();
     const sameOfferAffordRefresh = deferred<unknown>();
-    hoisted.streamEventsFn.mockReturnValue(progression.stream);
     hoisted.deathSaveFn
       .mockReturnValueOnce(response.promise)
       .mockReturnValueOnce(new Promise(() => {}));
@@ -2582,7 +2708,7 @@ describe('SessionEncounterView production combat integration', () => {
       clock: ClockKind.TURN,
       declarations: [],
     });
-    progression.publish(turnEnded('char-1', 'skeleton-1'));
+    acts.push(clockAct(ClockMark.TURN_ENDED));
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull()
     );
@@ -2605,7 +2731,7 @@ describe('SessionEncounterView production combat integration', () => {
       clock: ClockKind.TURN,
       declarations: [deathSaveDeclaration(), endTurnDeclaration()],
     });
-    progression.publish(turnEnded());
+    acts.push(clockAct(ClockMark.TURN_ENDED));
     button = await screen.findByRole('button', { name: /^death save/i });
 
     fireEvent.click(button);
@@ -3343,20 +3469,12 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.getDoorsFn.mockResolvedValue({
       doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
     });
-    const doorUpdate = deferredStream([
-      event(EventKind.DOOR, {
+    const doorUpdate = deferredActs([
+      makeAct(Family.ACT, {
         case: 'door',
-        value: {
-          door: 'crypt-door',
-          state: DoorState.OPEN,
-          actor: 'char-1',
-          dc: 0,
-          total: 0,
-          beaten: false,
-        },
-      } as SessionEvent['body']),
+        value: { by: memberParty('char-1'), door: 'crypt-door', state: 'open' },
+      } as Act['body']),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(doorUpdate.stream);
     hoisted.attackFn.mockResolvedValue({
       seq: 7n,
       roll: 17,
@@ -3875,6 +3993,12 @@ describe('SessionEncounterView production combat integration', () => {
       ),
     ]);
     hoisted.streamEventsFn.mockReturnValue(deathSaveEvent.stream);
+    const deathSaveAct = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'deathSave',
+        value: { by: memberParty('char-2') },
+      } as Act['body']),
+    ]);
     const livePlans = deferredDiceStream();
     hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
     renderView();
@@ -3947,6 +4071,7 @@ describe('SessionEncounterView production combat integration', () => {
       ],
     });
     deathSaveEvent.release();
+    deathSaveAct.release();
     expect(screen.queryByText(/Death save!/i)).toBeNull();
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
@@ -4066,6 +4191,11 @@ describe('SessionEncounterView production combat integration', () => {
       turnEnded(),
     ]);
     hoisted.streamEventsFn.mockReturnValue(burst.stream);
+    const burstActs = deferredActs([
+      clockAct(ClockMark.FIGHT_FORMED),
+      stateAct(StateKind.DOWNED, 'skeleton-1'),
+      clockAct(ClockMark.TURN_ENDED),
+    ]);
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
@@ -4078,6 +4208,7 @@ describe('SessionEncounterView production combat integration', () => {
     const privateRefresh = new Promise(() => {});
     hoisted.getCharacterDataFn.mockReturnValue(privateRefresh);
     burst.release();
+    burstActs.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
@@ -4089,6 +4220,12 @@ describe('SessionEncounterView production combat integration', () => {
     readyTurn();
     const live = deferredStream([activated()]);
     hoisted.streamEventsFn.mockReturnValue(live.stream);
+    const liveAct = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'activate',
+        value: { by: memberParty('char-1') },
+      } as Act['body']),
+    ]);
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
@@ -4099,6 +4236,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
 
     live.release();
+    liveAct.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
@@ -4144,6 +4282,7 @@ describe('SessionEncounterView production combat integration', () => {
       });
       const live = steppedEventStream(healAfter ? 3 : 1);
       hoisted.streamEventsFn.mockReturnValue(live.stream);
+      const acts = liveActs();
       renderView();
       await screen.findByRole('button', { name: /^death save/i });
       expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(2);
@@ -4186,6 +4325,21 @@ describe('SessionEncounterView production combat integration', () => {
         }),
       });
       live.publish(result);
+      acts.push(
+        makeAct(Family.ACT, {
+          case: 'activate',
+          value: {
+            by: memberParty('cleric'),
+            results: [
+              {
+                kind: 'stabilized',
+                target: memberParty('char-1'),
+                stabilization: { stabilized: true },
+              },
+            ],
+          },
+        } as Act['body'])
+      );
       await screen.findByText('Aldric is stabilized');
       await waitFor(() =>
         expect(
@@ -4245,6 +4399,17 @@ describe('SessionEncounterView production combat integration', () => {
           },
         });
         live.publish(healing);
+        acts.push(
+          makeAct(Family.ACT, {
+            case: 'activate',
+            value: {
+              by: memberParty('cleric'),
+              results: [
+                { kind: 'healed', target: memberParty('char-1'), amount: 10 },
+              ],
+            },
+          } as Act['body'])
+        );
         await screen.findByText('Aldric recovers 10 HP');
         await waitFor(() => expect(screen.queryByText('Stable')).toBeNull());
         expect(screen.getByText('10/10')).toBeTruthy();
@@ -4260,6 +4425,7 @@ describe('SessionEncounterView production combat integration', () => {
         const nextTurn = turnEnded('skeleton-1', 'char-1');
         nextTurn.seq = 3n;
         live.publish(nextTurn);
+        acts.push(clockAct(ClockMark.TURN_ENDED));
         await waitFor(() =>
           expect(
             (
@@ -4281,6 +4447,15 @@ describe('SessionEncounterView production combat integration', () => {
     readyTurn();
     const live = deferredStream([activationResult()]);
     hoisted.streamEventsFn.mockReturnValue(live.stream);
+    const liveAct = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'activate',
+        value: {
+          by: memberParty('char-1'),
+          results: [{ kind: 'healed', target: memberParty('char-1') }],
+        },
+      } as Act['body']),
+    ]);
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
@@ -4291,6 +4466,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
 
     live.release();
+    liveAct.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
@@ -4315,6 +4491,17 @@ describe('SessionEncounterView production combat integration', () => {
     });
     const burst = deferredStream([struck(), turnEnded()]);
     hoisted.streamEventsFn.mockReturnValue(burst.stream);
+    const burstActs = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'attack',
+        value: {
+          by: memberParty('skeleton-1'),
+          to: memberParty('char-1'),
+          outcome: AttackOutcome.HIT,
+        },
+      } as Act['body']),
+      clockAct(ClockMark.TURN_ENDED),
+    ]);
     const { unmount } = renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
@@ -4323,7 +4510,11 @@ describe('SessionEncounterView production combat integration', () => {
     try {
       await act(async () => {
         burst.release();
-        await vi.advanceTimersByTimeAsync(0);
+        burstActs.release();
+        // The act stream delivers what it received on its next macrotask,
+        // and the refreshes it schedules follow; 50ms is well inside the
+        // 300ms Story cursor this test separates reconciliation from.
+        await vi.advanceTimersByTimeAsync(50);
       });
 
       screen.getByText("Skeleton's turn.");
@@ -4356,17 +4547,10 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('refreshes Where for self-MOVED and View for another member MOVED', async () => {
     readyScene();
-    const burst = deferredStream([
-      event(EventKind.MOVED, {
-        case: 'moved',
-        value: { member: 'char-1', to: { x: 1, y: 0 } },
-      } as SessionEvent['body']),
-      event(EventKind.MOVED, {
-        case: 'moved',
-        value: { member: 'skeleton-1', to: { x: 0, y: 1 } },
-      } as SessionEvent['body']),
+    const burst = deferredActs([
+      walkAct('char-1', [{ x: 1, y: 0 }]),
+      walkAct('skeleton-1', [{ x: 0, y: 1 }]),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(burst.stream);
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
@@ -4380,13 +4564,9 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('pulls the public roster on JOINED', async () => {
     readyScene();
-    const joined = deferredStream([
-      event(EventKind.JOINED, {
-        case: 'joined',
-        value: { member: 'char-2' },
-      } as SessionEvent['body']),
+    const joined = deferredActs([
+      clockAct(ClockMark.JOINED, { member: memberParty('char-2') }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(joined.stream);
     renderView();
     await waitFor(() => expect(hoisted.getRosterFn).toHaveBeenCalledTimes(1));
     joined.release();
@@ -4418,21 +4598,20 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.getCharacterDataFn
       .mockResolvedValueOnce({ character: privateCharacterData() })
       .mockRejectedValueOnce(new Error('private refresh failed'));
-    const updates = deferredStream([
-      struck(),
-      event(EventKind.DOOR, {
-        case: 'door',
+    const updates = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'attack',
         value: {
-          door: 'crypt-door',
-          state: DoorState.OPEN,
-          actor: 'char-1',
-          dc: 0,
-          total: 0,
-          beaten: false,
+          by: memberParty('skeleton-1'),
+          to: memberParty('char-1'),
+          outcome: AttackOutcome.HIT,
         },
-      } as SessionEvent['body']),
+      } as Act['body']),
+      makeAct(Family.ACT, {
+        case: 'door',
+        value: { by: memberParty('char-1'), door: 'crypt-door', state: 'open' },
+      } as Act['body']),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(updates.stream);
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
@@ -5284,35 +5463,19 @@ describe('SessionEncounterView production combat integration', () => {
       });
     }
 
-    it('a legacy doorRevealed event restores a coherent knowledge snapshot', async () => {
+    it('a revealed secret restores a coherent knowledge snapshot', async () => {
       readySearchableScene();
       hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
-      const reveal = deferredStream([
-        event(EventKind.DOOR_REVEALED, {
-          case: 'doorRevealed',
-          value: {},
-        } as SessionEvent['body']),
+      const reveal = deferredActs([
+        makeAct(Family.PERCEPTION, {
+          case: 'perception',
+          value: {
+            observer: memberParty('char-1'),
+            sense: Sense.REVEAL,
+            revealed: { concealment: 'secret' },
+          },
+        } as Act['body']),
       ]);
-      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
-      renderView();
-      await waitFor(() => screen.getByTestId('session-canvas'));
-      expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(1);
-      reveal.release();
-      await waitFor(() =>
-        expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(2)
-      );
-    });
-
-    it('a legacy regionRevealed event rehydrates knowledge', async () => {
-      readySearchableScene();
-      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
-      const reveal = deferredStream([
-        event(EventKind.REGION_REVEALED, {
-          case: 'regionRevealed',
-          value: {},
-        } as SessionEvent['body']),
-      ]);
-      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
       renderView();
       await waitFor(() => screen.getByTestId('session-canvas'));
       expect(hoisted.getKnowledgeFn).toHaveBeenCalledTimes(1);
@@ -5767,13 +5930,13 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
-  it('keeps terminal-stream reconnect status visible while GetStory recovery remains active', async () => {
+  it('shows reconnect status when the act stream ends, after catching up from GetStory', async () => {
     readyScene();
-    hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
+    hoisted.streamActsFn.mockImplementation(() => fakeStream([]));
     renderView();
     await waitFor(() => screen.getByText('Reconnecting…'));
-    expect(hoisted.getStoryFn).toHaveBeenCalledWith(
-      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+    expect(hoisted.getStoryActsFn).toHaveBeenCalledWith(
+      { session: 'enc-1', member: 'char-1', afterId: '', limit: 200 },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
@@ -5784,13 +5947,9 @@ describe('SessionEncounterView production combat integration', () => {
     // dragged onto Leave. "no chance to look at the log. a toast we won or we
     // lost is sufficient. if we won maybe we wanna look around."
     readyTurn();
-    const ended = deferredStream([
-      event(EventKind.ENDED, {
-        case: 'ended',
-        value: { ending: 'boss-down' },
-      } as SessionEvent['body']),
+    const ended = deferredActs([
+      clockAct(ClockMark.ENDED, { ending: 'boss-down' }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(ended.stream);
     const onBack = vi.fn();
     renderView({ onBack });
     await screen.findByTestId('session-combat-equipment-button');
@@ -5842,13 +6001,9 @@ describe('SessionEncounterView production combat integration', () => {
     // `party_defeated` had NO case in the old table, so a wipe read "The run
     // has ended." — the one ending a player most wants named.
     readyTurn();
-    const ended = deferredStream([
-      event(EventKind.ENDED, {
-        case: 'ended',
-        value: { ending: 'party_defeated' },
-      } as SessionEvent['body']),
+    const ended = deferredActs([
+      clockAct(ClockMark.ENDED, { ending: 'party_defeated' }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(ended.stream);
     const onBack = vi.fn();
     renderView({ onBack });
     await screen.findByTestId('session-combat-equipment-button');
@@ -5864,13 +6019,9 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('lets the player dismiss the toast and keep looking around', async () => {
     readyTurn();
-    const ended = deferredStream([
-      event(EventKind.ENDED, {
-        case: 'ended',
-        value: { ending: 'boss-down' },
-      } as SessionEvent['body']),
+    const ended = deferredActs([
+      clockAct(ClockMark.ENDED, { ending: 'boss-down' }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(ended.stream);
     renderView();
     await screen.findByTestId('session-combat-equipment-button');
 
@@ -5886,13 +6037,7 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('synchronously disables declarations and movement preview when an event invalidates authority, then waits for both current snapshots', async () => {
     readyTurn();
-    const update = deferredStream([
-      event(EventKind.FIGHT_STARTED, {
-        case: 'fightStarted',
-        value: { members: ['char-1', 'skeleton-1'] },
-      } as SessionEvent['body']),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(update.stream);
+    const update = deferredActs([clockAct(ClockMark.FIGHT_FORMED)]);
     renderView();
     const attack = await screen.findByRole('button', { name: /longsword/i });
     fireEvent.click(attack);
@@ -6161,14 +6306,17 @@ describe('a placed footprint on the hold beats (rpg-dnd5e-web#1182)', () => {
     // alone — no bare cell prop under the footprint's id — and let the
     // scheduled refetch restore it (rpg-api-protos#356).
     hoisted.dungeonSceneResult.placedPropIds = new Set(['reliquary']);
-    const beats = deferredStream([
-      event(EventKind.DROPPED, {
-        case: 'dropped',
-        value: { member: 'char-1', prop: 'reliquary', at: { x: 5, y: 7 } },
-      } as SessionEvent['body']),
+    const beats = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'drop',
+        value: {
+          by: memberParty('char-1'),
+          prop: { kind: PartyKind.PROP, id: 'reliquary' },
+          cell: { x: 5, y: 7 },
+        },
+      } as Act['body']),
     ]);
     readyScene();
-    hoisted.streamEventsFn.mockReturnValue(beats.stream);
     hoisted.atlasResult.applyReveal.mockClear();
     renderView();
     await screen.findByTestId('session-canvas');
@@ -6190,14 +6338,16 @@ describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', 
     // ever connects them. Deleting the `setViewerHolding` line left the
     // whole suite green while the button silently stopped warning — which
     // is the walk finding this PR exists to fix.
-    const held = deferredStream([
-      event(EventKind.HELD, {
-        case: 'held',
-        value: { holder: 'char-1', prop: 'heirloom' },
-      } as SessionEvent['body']),
+    const held = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'hold',
+        value: {
+          by: memberParty('char-1'),
+          prop: { kind: PartyKind.PROP, id: 'heirloom' },
+        },
+      } as Act['body']),
     ]);
     readyScene();
-    hoisted.streamEventsFn.mockReturnValue(held.stream);
     renderView();
 
     const leave = await screen.findByTestId('session-combat-leave-button');
@@ -6241,18 +6391,23 @@ describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', 
     // beat is what proves the first was DELIVERED and ignored rather than
     // merely slow — a label that named the crown would be this client
     // warning about a holding it does not have.
-    const beats = deferredStream([
-      event(EventKind.HELD, {
-        case: 'held',
-        value: { holder: 'skeleton-1', prop: 'crown' },
-      } as SessionEvent['body']),
-      event(EventKind.HELD, {
-        case: 'held',
-        value: { holder: 'char-1', prop: 'heirloom' },
-      } as SessionEvent['body']),
+    const beats = deferredActs([
+      makeAct(Family.ACT, {
+        case: 'hold',
+        value: {
+          by: memberParty('skeleton-1'),
+          prop: { kind: PartyKind.PROP, id: 'crown' },
+        },
+      } as Act['body']),
+      makeAct(Family.ACT, {
+        case: 'hold',
+        value: {
+          by: memberParty('char-1'),
+          prop: { kind: PartyKind.PROP, id: 'heirloom' },
+        },
+      } as Act['body']),
     ]);
     readyScene();
-    hoisted.streamEventsFn.mockReturnValue(beats.stream);
     renderView();
     await screen.findByTestId('session-combat-leave-button');
 
@@ -6313,16 +6468,6 @@ describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
 });
 
 describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
-  const movedBeat = (member: string, x: number, y: number, seq: bigint) =>
-    event(
-      EventKind.MOVED,
-      {
-        case: 'moved',
-        value: { member, to: { x, y } },
-      } as SessionEvent['body'],
-      seq
-    );
-
   const sightingOf = (
     subject: string,
     x: number,
@@ -6344,13 +6489,14 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     hoisted.getViewFn.mockResolvedValue({
       sightings: [sightingOf('scout', 0, 0)],
     });
-    // A four-cell walk reaches a witness as four beats, one per cell.
-    const steps = deferredStream([
-      movedBeat('scout', 1, 0, 601n),
-      movedBeat('scout', 2, 0, 602n),
-      movedBeat('scout', 3, 0, 603n),
+    // A walk reaches a witness as one act carrying its path (rpg-project#630).
+    const steps = deferredActs([
+      walkAct('scout', [
+        { x: 1, y: 0 },
+        { x: 2, y: 0 },
+        { x: 3, y: 0 },
+      ]),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(steps.stream);
 
     renderView();
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
@@ -6392,11 +6538,12 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     hoisted.getViewFn.mockResolvedValue({
       sightings: [sightingOf('skeleton-1', 4, 0, [])],
     });
-    const steps = deferredStream([
-      movedBeat('skeleton-1', 5, 0, 621n),
-      movedBeat('skeleton-1', 6, 0, 622n),
+    const steps = deferredActs([
+      walkAct('skeleton-1', [
+        { x: 5, y: 0 },
+        { x: 6, y: 0 },
+      ]),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(steps.stream);
 
     renderView();
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
@@ -6424,8 +6571,7 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
 
   it('does not double-drive the local player, whose route arrives whole from their own Move answer', async () => {
     readyScene();
-    const mine = deferredStream([movedBeat('char-1', 1, 0, 611n)]);
-    hoisted.streamEventsFn.mockReturnValue(mine.stream);
+    const mine = deferredActs([walkAct('char-1', [{ x: 1, y: 0 }])]);
 
     renderView();
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
@@ -6586,13 +6732,7 @@ describe('fog of war: draw what the seat knows (rpg-project#586)', () => {
 
   it('re-reads the view on the member’s own move, so seen-now follows the seat', async () => {
     readyScene();
-    const live = deferredStream([
-      event(EventKind.MOVED, {
-        case: 'moved',
-        value: { member: 'char-1', to: { x: 1, y: 0 } },
-      } as SessionEvent['body']),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    const live = deferredActs([walkAct('char-1', [{ x: 1, y: 0 }])]);
     renderView();
     await screen.findByTestId('session-canvas');
     const before = hoisted.getViewFn.mock.calls.length;
@@ -6645,6 +6785,89 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
     expect(probe.dataset.watchZoneCells).toBe('1,-1,0');
   });
 
+  it('a walking watcher’s zone waits for its token: never ahead of it (rpg-project#630)', async () => {
+    readyScene();
+    const zoneAt = (x: number) => [
+      create(WatchZoneSchema, {
+        watcher: 'scout',
+        cells: [create(PositionSchema, { x, y: 0 })],
+      }),
+    ];
+    let walked = false;
+    // Read at call time, so the view after the walk sees the scout at its end.
+    const sighting = () => ({
+      subject: 'scout',
+      name: 'scout',
+      kind: MemberKind.MONSTER,
+      seen: { position: { x: walked ? 3 : 0, y: 0 }, standing: Standing.UP },
+      passage: Passage.PASS_THROUGH,
+      currentVia: ['sight'],
+    });
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.watchZones = zoneAt(walked ? 5 : 1);
+      snapshot.view.sightings = [
+        sighting(),
+      ] as unknown as typeof snapshot.view.sightings;
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: [sighting()],
+      watchZones: zoneAt(walked ? 5 : 1),
+    }));
+    const walk = deferredActs([
+      walkAct('scout', [
+        { x: 1, y: 0 },
+        { x: 2, y: 0 },
+        { x: 3, y: 0 },
+      ]),
+    ]);
+    renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+        new Set(['1,-1,0'])
+      )
+    );
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'scout'
+        )
+      ).toBe(true)
+    );
+
+    // The walk lands, and the view it triggers already holds the zone the
+    // scout casts from where it stops.
+    const reads = hoisted.getViewFn.mock.calls.length;
+    walked = true;
+    walk.release();
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(reads)
+    );
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
+      ).toHaveLength(3)
+    );
+    // The token is still walking: the floor keeps the zone it showed.
+    expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+      new Set(['1,-1,0'])
+    );
+
+    // The canvas paints the walk to its end: the new zone lands with it.
+    const seq = hoisted.lastCanvasProps.current!.movements!.get('scout')!.seq;
+    act(() =>
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('scout', seq, 3)
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+        new Set(['5,-5,0'])
+      )
+    );
+  });
+
   it('a view with no zones hands the floor none', async () => {
     readyScene();
     watched([]);
@@ -6657,5 +6880,94 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
       hoisted.lastCanvasProps.current?.scene?.watchZoneCells
     ).toBeUndefined();
     expect(probe.dataset.watchZoneCells).toBe('');
+  });
+});
+
+describe('the act funnel (rpg-project#630)', () => {
+  function readyDoor() {
+    readyTurn();
+    hoisted.atlasResult.atlas = pointyAtlas({
+      boundaries: [
+        {
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 0 },
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+      ],
+      doorways: [
+        { connection: 'crypt-door', from: { x: 0, y: 0 }, to: { x: 1, y: 0 } },
+      ],
+    });
+    hoisted.getDoorsFn.mockResolvedValue({
+      doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
+    });
+  }
+
+  it('door act clears door notice', async () => {
+    readyDoor();
+    hoisted.openDoorFn.mockResolvedValue({});
+    const acts = liveActs();
+    renderView();
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.doors?.get('crypt-door')?.state
+      ).toBe(DoorState.CLOSED)
+    );
+    act(() => hoisted.lastCanvasProps.current?.onDoorClick?.('crypt-door'));
+    await screen.findByText('The door opens.');
+
+    act(() =>
+      acts.push(
+        makeAct(Family.ACT, {
+          case: 'door',
+          value: {
+            by: memberParty('char-1'),
+            door: 'crypt-door',
+            state: 'open',
+          },
+        } as Act['body'])
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('The door opens.')).toBeNull()
+    );
+  });
+
+  it('ended clock ends the run', async () => {
+    readyTurn();
+    const acts = liveActs();
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+    expect(screen.queryByTestId('run-ended-toast')).toBeNull();
+
+    act(() => acts.push(clockAct(ClockMark.ENDED, { ending: 'boss-down' })));
+
+    const toast = await screen.findByTestId('run-ended-toast');
+    expect(toast.dataset.outcome).toBe('won');
+    expect(
+      screen.getByRole('button', { name: /end turn/i }).hasAttribute('disabled')
+    ).toBe(true);
+  });
+
+  it('a refused act still revokes authority and refreshes turn and afford', async () => {
+    readyTurn();
+    const acts = liveActs();
+    renderView();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+    act(() =>
+      acts.push(
+        create(ActSchema, {
+          session: 'enc-1',
+          id: actId(),
+          family: Family.ACT,
+          refused: true,
+          refusal: 'undecoded',
+        })
+      )
+    );
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
   });
 });

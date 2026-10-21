@@ -29,6 +29,10 @@
  * there is nothing to look it up in (`Exited.holding`'s own doc comment).
  */
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
+  ClockMark,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 
 /** How the caller spells a member id in prose. `combatBeat.ts` resolves
  * the local player as "You"/"you"; `story.ts` uses the roster name in
@@ -144,4 +148,20 @@ export function exitCarrier(
   const e = event.body.value;
   if (!e.exit || e.holding.length === 0) return null;
   return { member: e.member, exit: e.exit, holding: [...e.holding] };
+}
+
+/**
+ * `exitCarrier` for the act stream (rpg-project#630): the departure clock
+ * entry's member, exit and holding, under the same rule — null unless the
+ * member left through an authored exit carrying something.
+ */
+export function exitCarrierFromAct(
+  act: Act
+): { member: string; exit: string; holding: readonly string[] } | null {
+  if (act.body.case !== 'clock' || act.body.value.mark !== ClockMark.EXITED) {
+    return null;
+  }
+  const d = act.body.value.departure;
+  if (!d?.member?.id || !d.exit || d.holding.length === 0) return null;
+  return { member: d.member.id, exit: d.exit, holding: [...d.holding] };
 }

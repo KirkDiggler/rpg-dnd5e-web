@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-10-02
+updated: 2026-10-21
 confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -11,6 +11,21 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+**The session funnel reads acts (rpg-project#630, W1)** — The live session's
+funnel reads session v1alpha2's act stream (`storyClient`,
+`useSessionActStream`, `actFeed.ts`): GetStory pages first as catch-up, then
+StreamEvents as live; a `lagged` end pages GetStory after the last id held and
+reopens; `restarted` takes the aged-out refresh path. Acts sharing an id arrive
+as one run and are never split. Each run revokes authority, schedules the
+reads `actRefreshKeys.ts` names (paired against the v1 table it replaces),
+patches knowledge (`acceptAct`: perception cells and revealed secrets through
+the same reducers, holdings from hold/drop/departure), feeds a remote walk's
+path to the move controller (`arrivingWalk.ts`), and sets carriage, the door
+notice and the run's end. Knowledge cannot fence an act against the
+GetKnowledge cutoff (a v1 seq), so act replay relies on the reducers being
+unions and upserts. The v1 stream stays subscribed only for the story log and
+toasts until W2.
 
 **The debug panel reads the record (rpg-project#628)** — In a live session,
 Debug mode reads session v1alpha2's record stream (`recordClient`,

@@ -88,7 +88,7 @@ import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
 import { LocalWorldDieWarmup } from './local-world-die/LocalWorldDieLayer';
-import type { Movements } from './moveController';
+import { facingWhileWalking, type Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator.tsx';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { SightAreaOverlay } from './SightAreaOverlay';
@@ -848,7 +848,10 @@ export function SessionScene({
           position={member.position}
           movePath={movements?.get(member.subject)?.route}
           moveSeq={movements?.get(member.subject)?.seq}
-          seenFacingDegrees={member.facingDegrees}
+          seenFacingDegrees={facingWhileWalking(
+            member.facingDegrees,
+            movements?.get(member.subject)
+          )}
           onMovementPresentationComplete={(entityId, completedMoveSeq) =>
             onMovementPainted?.(
               entityId,

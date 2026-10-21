@@ -1,4 +1,8 @@
 import {
+  cellsRevealedOf,
+  concealmentRevealedOf,
+} from '@/components/session/actGeometry';
+import {
   applyCellsRevealed,
   applyConcealmentRevealed,
   applyRegionRevealed,
@@ -9,7 +13,10 @@ import {
   assertPropSightings,
 } from '@/components/session/propPresentations';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
-import { nextViewerHoldings } from '@/components/session/viewerHoldings';
+import {
+  nextViewerHoldings,
+  nextViewerHoldingsFromAct,
+} from '@/components/session/viewerHoldings';
 import { clone, create } from '@bufbuild/protobuf';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -17,6 +24,7 @@ import {
   type GetKnowledgeResponse,
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sessionClient } from './client';
 
@@ -39,6 +47,7 @@ export function useSessionKnowledge(session: string, member: string) {
   const generation = useRef(0);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef<Event[]>([]);
+  const pendingActs = useRef<Act[]>([]);
   // This ref is the same cache exposed as React state, updated synchronously at
   // the event boundary. Reducers stay pure; recovery never runs inside a React
   // state updater (which StrictMode may replay).
@@ -137,6 +146,49 @@ export function useSessionKnowledge(session: string, member: string) {
     [member]
   );
 
+  /**
+   * THE ACT STREAM'S INTAKE (rpg-project#630). A perception act's cells and
+   * revealed secret patch the atlas through the same reducers the v1 reveal
+   * beats use, and a hold, a drop or a departure moves the viewer's holdings.
+   *
+   * ACTS CARRY NO SEQ, so unlike `applyEvent` this cannot fence an act
+   * against the snapshot's cutoff: GetKnowledge names its cutoff as a v1
+   * seq, which an act does not have. It does not need to. Every patch here
+   * is a union or an upsert by id (`applyReveal.ts`), and a holding is
+   * last-writer-wins per prop, so replaying an act the snapshot already
+   * holds changes nothing, and replaying a suffix of acts in id order ends
+   * where the snapshot plus that suffix ends.
+   */
+  const applyAct = useCallback(
+    (state: GetKnowledgeResponse, act: Act): GetKnowledgeResponse => {
+      const perceived =
+        act.body.case === 'perception' ? act.body.value : undefined;
+      const cells = perceived?.cells
+        ? cellsRevealedOf(perceived.cells)
+        : undefined;
+      const revealed = perceived?.revealed
+        ? concealmentRevealedOf(perceived.revealed)
+        : undefined;
+      const reveal = cells ?? revealed;
+      if (
+        !state.atlas &&
+        reveal &&
+        (reveal.structuralWalls.length ||
+          reveal.structuralDoors.length ||
+          reveal.structuralWallOpeningsReplacements.length ||
+          reveal.propPresentations?.length)
+      )
+        throw new MissingStructuralWallError('(atlas absent)');
+      let atlas = state.atlas;
+      if (cells && atlas) atlas = applyCellsRevealed(atlas, cells);
+      if (revealed && atlas) atlas = applyConcealmentRevealed(atlas, revealed);
+      const holding = nextViewerHoldingsFromAct(state.holding, act, member);
+      if (atlas === state.atlas && holding === state.holding) return state;
+      return { ...state, atlas, holding: [...holding] };
+    },
+    [member]
+  );
+
   const refetch = useCallback(() => {
     if (snapshotTask.current) return snapshotTask.current;
     // Fence incoming events as soon as the request is queued, not only once
@@ -148,6 +200,7 @@ export function useSessionKnowledge(session: string, member: string) {
           install(null);
           needsSnapshot.current = false;
           pending.current = [];
+          pendingActs.current = [];
           setLoading(false);
         }
         return;
@@ -177,9 +230,12 @@ export function useSessionKnowledge(session: string, member: string) {
       )) {
         restored = applyEvent(restored, event);
       }
+      // Acts arrive in id order and are replayed in it (see applyAct).
+      for (const act of pendingActs.current) restored = applyAct(restored, act);
       install(restored);
       releaseHeld(readTicket);
       pending.current = [];
+      pendingActs.current = [];
       needsSnapshot.current = false;
       setLoading(false);
     });
@@ -188,7 +244,7 @@ export function useSessionKnowledge(session: string, member: string) {
       if (snapshotTask.current === task) snapshotTask.current = null;
     });
     return task;
-  }, [session, member, enqueue, applyEvent, install]);
+  }, [session, member, enqueue, applyEvent, applyAct, install]);
 
   const refetchView = useCallback(
     () =>
@@ -278,6 +334,37 @@ export function useSessionKnowledge(session: string, member: string) {
     [applyEvent, install, member, refetch, session]
   );
 
+  const acceptAct = useCallback(
+    (act: Act) => {
+      if (act.session && act.session !== session) return;
+      if (needsSnapshot.current || !currentSnapshot.current) {
+        pendingActs.current.push(act);
+        return;
+      }
+      try {
+        const before = currentSnapshot.current;
+        const after = applyAct(before, act);
+        if (after === before) return;
+        install(after);
+        if (act.body.case === 'perception' && act.body.value.cells) {
+          // SEEN-NOW SURVIVES A REVEAL PATCH, as on CELLS_REVEALED above.
+          const patched = ++ticket.current;
+          const seen = before.view?.visibleCells ?? [];
+          setHeld((prev) => ({
+            cells: prev ? [...prev.cells, ...seen] : [...seen],
+            after: patched,
+          }));
+        }
+      } catch (reason) {
+        needsSnapshot.current = true;
+        pendingActs.current.push(act);
+        setError(reason instanceof Error ? reason : new Error(String(reason)));
+        if (reason instanceof MissingStructuralWallError) void refetch();
+      }
+    },
+    [applyAct, install, refetch, session]
+  );
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -286,6 +373,7 @@ export function useSessionKnowledge(session: string, member: string) {
     snapshotTask.current = null;
     needsSnapshot.current = false;
     pending.current = [];
+    pendingActs.current = [];
     setHeld(null);
     void refetch();
     return () => {
@@ -368,5 +456,6 @@ export function useSessionKnowledge(session: string, member: string) {
     refetchWhere,
     refetchRoster,
     acceptEvent,
+    acceptAct,
   };
 }

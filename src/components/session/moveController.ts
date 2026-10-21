@@ -189,3 +189,23 @@ export function movementPainted(
   });
   return next;
 }
+
+/** True while the canvas has not painted `movement` to its last cell. */
+export function isWalking(movement: Movement | undefined): boolean {
+  return movement !== undefined && movement.reached < movement.route.length;
+}
+
+/**
+ * THE END FACING WAITS FOR THE TOKEN (rpg-project#630). A walk arrives as one
+ * act, and the view it triggers already states where the walker faces when
+ * it STOPS. Handed to the token at once, that facing turns it before it has
+ * taken a step, and it walks the whole path facing its destination's view.
+ * While it walks it carries no wire facing, so it faces the way it goes; the
+ * stated facing lands once the walk is painted to its end.
+ */
+export function facingWhileWalking(
+  facingDegrees: number | undefined,
+  movement: Movement | undefined
+): number | undefined {
+  return isWalking(movement) ? undefined : facingDegrees;
+}
