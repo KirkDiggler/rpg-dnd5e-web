@@ -11,12 +11,8 @@ import {
   type DiceThrowPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
 import {
-  ActivatedSchema,
-  ActivationResultSchema,
   EventKind,
   EventSchema,
-  HealingAppliedSchema,
-  RollWindowOpenedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -29,7 +25,6 @@ import {
   type GetViewResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
-  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
@@ -578,30 +573,6 @@ function deferredStream(events: SessionEvent[]) {
   };
 }
 
-function steppedEventStream(stepCount: number) {
-  const gates = Array.from({ length: stepCount }, () =>
-    deferred<SessionEvent>()
-  );
-  let publishIndex = 0;
-  return {
-    stream: {
-      [Symbol.asyncIterator]: async function* () {
-        for (const gate of gates) yield await gate.promise;
-      },
-    },
-    publish: (next: SessionEvent) => {
-      gates[publishIndex++]?.resolve(next);
-    },
-  };
-}
-
-/**
- * THE ACT STREAM (rpg-project#630). The funnel — authority, refreshes,
- * knowledge, movement, carriage, doors and the run's end — reads acts, so a
- * test that drives it pushes acts here. The v1 stream above still feeds the
- * story and toasts, and a test that asserts story text pushes the v1 beat
- * too, as the server sends both.
- */
 function actStream() {
   const queue: unknown[] = [];
   let wake: (() => void) | null = null;
@@ -646,6 +617,77 @@ function liveActs() {
 function deferredActs(acts: Act[]) {
   const stream = liveActs();
   return { release: () => stream.push(...acts) };
+}
+
+/** A death save act; numbers as a v1 DeathSaveResponse would state them. */
+function deathSaveAct(
+  by: string,
+  fields: {
+    roll: number;
+    successes: number;
+    failures: number;
+    successesNeeded: number;
+    failuresRemaining: number;
+    successesAdded?: number;
+    presentationId: string;
+  }
+): Act {
+  return makeAct(
+    Family.ACT,
+    {
+      case: 'deathSave',
+      value: {
+        by: memberParty(by),
+        roll: { dice: [fields.roll], total: fields.roll },
+        outcome: 'success',
+        successesAdded: fields.successesAdded ?? 1,
+        successes: fields.successes,
+        failures: fields.failures,
+        successesNeeded: fields.successesNeeded,
+        failuresRemaining: fields.failuresRemaining,
+        continuation: 'end_turn',
+        presentationId: fields.presentationId,
+      },
+    } as Act['body'],
+    undefined,
+    'death_save'
+  );
+}
+
+/** A swing as the act stream carries it. */
+function swingAct(fields: {
+  by: string;
+  to: string;
+  roll: number;
+  total: number;
+  against: number;
+  hit: boolean;
+  damage: number;
+  presentationId: string;
+  attack?: { ref: string; name: string };
+}): Act {
+  return makeAct(
+    Family.ACT,
+    {
+      case: 'attack',
+      value: {
+        by: memberParty(fields.by),
+        to: memberParty(fields.to),
+        outcome: fields.hit ? AttackOutcome.HIT : AttackOutcome.MISS,
+        roll: {
+          dice: [fields.roll],
+          total: fields.total,
+          against: fields.against,
+          beaten: fields.hit,
+        },
+        damage: fields.damage,
+        presentationId: fields.presentationId,
+        attack: fields.attack,
+      },
+    } as Act['body'],
+    undefined,
+    'attack'
+  );
 }
 
 let nextActId = 1;
@@ -970,42 +1012,6 @@ const turnEnded = (member = 'skeleton-1', next = 'char-1') =>
     case: 'turnEnded',
     value: { member, next },
   } as SessionEvent['body']);
-
-const activated = () =>
-  event(EventKind.ACTIVATED, {
-    case: 'activated',
-    value: create(ActivatedSchema, {
-      actor: 'char-1',
-      ability: create(AbilityRefSchema, {
-        ref: 'dnd5e:features:second_wind',
-        name: 'Second Wind',
-      }),
-      target: '',
-    }),
-  });
-
-const activationResult = () =>
-  event(EventKind.ACTIVATION_RESULT, {
-    case: 'activationResult',
-    value: create(ActivationResultSchema, {
-      actor: 'char-1',
-      result: {
-        case: 'healingApplied',
-        value: create(HealingAppliedSchema, {
-          target: 'char-1',
-          amount: 2,
-          requested: 7,
-          roll: 6,
-          modifier: 1,
-          sourceRef: 'dnd5e:features:second_wind',
-          sourceName: 'Second Wind',
-          hpBefore: 8,
-          hpAfter: 10,
-        }),
-      },
-    }),
-  });
-
 describe('SessionEncounterView production combat integration', () => {
   it('joins responsive desktop categories, map picks and explicit CAST confirmation without remounting the map', async () => {
     let resizeEncounter: ((width: number, height: number) => void) | undefined;
@@ -2762,33 +2768,16 @@ describe('SessionEncounterView production combat integration', () => {
       });
       return { plan: publishedPlan };
     });
-    const eventFirst = deferredStream([
-      event(
-        EventKind.DEATH_SAVE_ROLLED,
-        {
-          case: 'deathSaveRolled',
-          value: {
-            actor: 'char-1',
-            roll: 12,
-            outcome: DeathSaveOutcome.SUCCESS,
-            successesAdded: 1,
-            failuresAdded: 0,
-            successes: 2,
-            failures: 1,
-            successesNeeded: 1,
-            failuresRemaining: 2,
-            stabilized: false,
-            dead: false,
-            recovered: false,
-            hpRestored: 0,
-            continuation: DeathSaveContinuation.END_TURN,
-            presentationId: 'presentation_event-first-actor',
-          },
-        } as SessionEvent['body'],
-        103n
-      ),
+    const eventFirst = deferredActs([
+      deathSaveAct('char-1', {
+        roll: 12,
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+        presentationId: 'presentation_event-first-actor',
+      }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(eventFirst.stream);
     const actorView = renderView();
 
     fireEvent.click(
@@ -2868,34 +2857,17 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
-    const witnessEvent = deferredStream([
-      event(
-        EventKind.DEATH_SAVE_ROLLED,
-        {
-          case: 'deathSaveRolled',
-          value: {
-            actor: 'char-1',
-            roll: 12,
-            outcome: DeathSaveOutcome.SUCCESS,
-            successesAdded: 1,
-            failuresAdded: 0,
-            successes: 2,
-            failures: 1,
-            successesNeeded: 1,
-            failuresRemaining: 2,
-            stabilized: false,
-            dead: false,
-            recovered: false,
-            hpRestored: 0,
-            continuation: DeathSaveContinuation.END_TURN,
-            presentationId: 'presentation_event-first-actor',
-          },
-        } as SessionEvent['body'],
-        501n
-      ),
+    const witnessEvent = deferredActs([
+      deathSaveAct('char-1', {
+        roll: 12,
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+        presentationId: 'presentation_event-first-actor',
+      }),
     ]);
     const witnessPlans = deferredDiceStream();
-    hoisted.streamEventsFn.mockReturnValue(witnessEvent.stream);
     hoisted.streamDiceThrowsFn.mockReturnValue(witnessPlans.stream);
     renderView({ characterId: 'char-2', playerId: 'player-2' });
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
@@ -2922,7 +2894,7 @@ describe('SessionEncounterView production combat integration', () => {
         layer.props.onTerminal('settled');
       }
     });
-    await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+    await screen.findByText('Aldric rolls a death save');
   });
 
   it('renders no Death Save control when the exact declaration is absent even with Dying progress and zero HP', async () => {
@@ -3616,8 +3588,7 @@ describe('SessionEncounterView production combat integration', () => {
         clock: ClockKind.TURN,
         declarations: [postRollWindowDeclaration()],
       });
-    const live = steppedEventStream(1);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    const acts = liveActs();
     hoisted.attackFn.mockResolvedValue({
       seq: 7n,
       roll: 9,
@@ -3661,24 +3632,18 @@ describe('SessionEncounterView production combat integration', () => {
     await screen.findByText('Preparing shared d20');
 
     await act(async () => {
-      live.publish(
-        event(
-          EventKind.ROLL_WINDOW_OPENED,
-          {
-            case: 'rollWindowOpened',
-            value: create(RollWindowOpenedSchema, {
-              presentationId: 'presentation_postroll-choice',
-              audience: 'char-1',
-              offer: create(ReactionRefSchema, {
-                ref: 'dnd5e:conditions:inspired',
-                name: 'Bardic Inspiration',
-              }),
-              roll: 9,
-              total: 13,
-            }),
+      acts.push(
+        clockAct(ClockMark.ROLL_WINDOW_OPENED, {
+          rollWindow: {
+            presentationId: 'presentation_postroll-choice',
+            audience: memberParty('char-1'),
+            offer: {
+              ref: 'dnd5e:conditions:inspired',
+              name: 'Bardic Inspiration',
+            },
+            roll: { dice: [9], total: 13 },
           },
-          7n
-        )
+        })
       );
     });
     expect(await screen.findByTestId('roll-window-settling')).toBeTruthy();
@@ -3785,27 +3750,19 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
-    const authoritativeStrike = deferredStream([
-      event(
-        EventKind.STRUCK,
-        {
-          case: 'struck',
-          value: {
-            attacker: 'char-2',
-            target: 'skeleton-1',
-            roll: 14,
-            total: 18,
-            against: 13,
-            damage: 5,
-            attack: attackDeclaration().attack,
-            critical: false,
-            presentationId: 'presentation_witness-strike',
-          },
-        } as SessionEvent['body'],
-        42n
-      ),
+    const authoritativeStrike = deferredActs([
+      swingAct({
+        by: 'char-2',
+        to: 'skeleton-1',
+        roll: 14,
+        total: 18,
+        against: 13,
+        hit: true,
+        damage: 5,
+        presentationId: 'presentation_witness-strike',
+        attack: { ref: 'dnd5e:weapons:longsword', name: 'Longsword' },
+      }),
     ]);
-    hoisted.streamEventsFn.mockReturnValue(authoritativeStrike.stream);
     const livePlans = deferredDiceStream(2);
     hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
     renderView();
@@ -3963,38 +3920,15 @@ describe('SessionEncounterView production combat integration', () => {
       clock: ClockKind.TURN,
       declarations: [],
     });
-    const deathSaveEvent = deferredStream([
-      event(
-        EventKind.DEATH_SAVE_ROLLED,
-        {
-          case: 'deathSaveRolled',
-          value: {
-            actor: 'char-2',
-            roll: 12,
-            outcome: DeathSaveOutcome.SUCCESS,
-            successesAdded: 1,
-            failuresAdded: 0,
-            successes: 2,
-            failures: 1,
-            successesNeeded: 1,
-            failuresRemaining: 2,
-            stabilized: false,
-            dead: false,
-            recovered: false,
-            hpRestored: 0,
-            continuation: DeathSaveContinuation.END_TURN,
-            presentationId: 'presentation_witness-death-save',
-          },
-        } as SessionEvent['body'],
-        103n
-      ),
-    ]);
-    hoisted.streamEventsFn.mockReturnValue(deathSaveEvent.stream);
-    const deathSaveAct = deferredActs([
-      makeAct(Family.ACT, {
-        case: 'deathSave',
-        value: { by: memberParty('char-2') },
-      } as Act['body']),
+    const deathSaveEvent = deferredActs([
+      deathSaveAct('char-2', {
+        roll: 12,
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+        presentationId: 'presentation_witness-death-save',
+      }),
     ]);
     const livePlans = deferredDiceStream();
     hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
@@ -4068,7 +4002,6 @@ describe('SessionEncounterView production combat integration', () => {
       ],
     });
     deathSaveEvent.release();
-    deathSaveAct.release();
     expect(screen.queryByText(/Death save!/i)).toBeNull();
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
@@ -4093,7 +4026,7 @@ describe('SessionEncounterView production combat integration', () => {
         layer.props.onTerminal('settled');
       }
     });
-    await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+    await screen.findByText('Lyra rolls a death save');
     expect(screen.getByText('2 successes · 1 to stabilize')).toBeTruthy();
     expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
   });
@@ -4215,12 +4148,13 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('uses only the unconditional Turn/Afford refresh for Activated', async () => {
     readyTurn();
-    const live = deferredStream([activated()]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
     const liveAct = deferredActs([
       makeAct(Family.ACT, {
         case: 'activate',
-        value: { by: memberParty('char-1') },
+        value: {
+          by: memberParty('char-1'),
+          ability: { name: 'Second Wind' },
+        },
       } as Act['body']),
     ]);
     renderView();
@@ -4232,7 +4166,6 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
     );
 
-    live.release();
     liveAct.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
@@ -4246,39 +4179,6 @@ describe('SessionEncounterView production combat integration', () => {
     'refreshes stabilization and restores normal actions after healing=%s',
     async (healAfter) => {
       readyDyingTurn();
-      const result = create(EventSchema, {
-        session: 'enc-1',
-        recipient: 'char-1',
-        seq: 1n,
-        kind: EventKind.ACTIVATION_RESULT,
-        body: {
-          case: 'activationResult',
-          value: {
-            actor: 'cleric',
-            result: {
-              case: 'stabilized',
-              value: {
-                target: 'char-1',
-                sourceName: 'Spare the Dying',
-                sourceRef: 'dnd5e:spells:spare_the_dying',
-                before: LifeState.DYING,
-                after: LifeState.STABILIZED,
-                hitPoints: 0,
-                progress: {
-                  successes: 0,
-                  failures: 0,
-                  successesNeeded: 3,
-                  failuresRemaining: 3,
-                  stabilized: true,
-                  dead: false,
-                },
-              },
-            },
-          },
-        },
-      });
-      const live = steppedEventStream(healAfter ? 3 : 1);
-      hoisted.streamEventsFn.mockReturnValue(live.stream);
       const acts = liveActs();
       renderView();
       await screen.findByRole('button', { name: /^death save/i });
@@ -4321,12 +4221,12 @@ describe('SessionEncounterView production combat integration', () => {
           },
         }),
       });
-      live.publish(result);
       acts.push(
         makeAct(Family.ACT, {
           case: 'activate',
           value: {
             by: memberParty('cleric'),
+            ability: { name: 'Spare the Dying' },
             results: [
               {
                 kind: 'stabilized',
@@ -4337,7 +4237,7 @@ describe('SessionEncounterView production combat integration', () => {
           },
         } as Act['body'])
       );
-      await screen.findByText('Aldric is stabilized');
+      await screen.findByText('cleric uses Spare the Dying');
       await waitFor(() =>
         expect(
           screen.queryByRole('button', { name: /^death save/i })
@@ -4371,43 +4271,19 @@ describe('SessionEncounterView production combat integration', () => {
             participant('skeleton-1', { active: true }),
           ],
         });
-        const healing = create(EventSchema, {
-          session: 'enc-1',
-          recipient: 'char-1',
-          seq: 2n,
-          kind: EventKind.ACTIVATION_RESULT,
-          body: {
-            case: 'activationResult',
-            value: {
-              actor: 'cleric',
-              result: {
-                case: 'healingApplied',
-                value: {
-                  target: 'char-1',
-                  amount: 10,
-                  requested: 10,
-                  hpBefore: 0,
-                  hpAfter: 10,
-                  sourceRef: 'dnd5e:spells:healing-word',
-                  sourceName: 'Healing Word',
-                },
-              },
-            },
-          },
-        });
-        live.publish(healing);
         acts.push(
           makeAct(Family.ACT, {
             case: 'activate',
             value: {
               by: memberParty('cleric'),
+              ability: { name: 'Healing Word' },
               results: [
                 { kind: 'healed', target: memberParty('char-1'), amount: 10 },
               ],
             },
           } as Act['body'])
         );
-        await screen.findByText('Aldric recovers 10 HP');
+        await screen.findByText('cleric uses Healing Word');
         await waitFor(() => expect(screen.queryByText('Stable')).toBeNull());
         expect(screen.getByText('10/10')).toBeTruthy();
         expect(
@@ -4415,13 +4291,10 @@ describe('SessionEncounterView production combat integration', () => {
         ).toBeNull();
         expect(screen.queryByTestId('death-save-progress')).toBeNull();
         const headlines = screen.getByRole('log').textContent ?? '';
-        expect(headlines.indexOf('Aldric is stabilized')).toBeLessThan(
-          headlines.indexOf('Aldric recovers 10 HP')
+        expect(headlines.indexOf('cleric uses Spare the Dying')).toBeLessThan(
+          headlines.indexOf('cleric uses Healing Word')
         );
         readyTurn();
-        const nextTurn = turnEnded('skeleton-1', 'char-1');
-        nextTurn.seq = 3n;
-        live.publish(nextTurn);
         acts.push(clockAct(ClockMark.TURN_ENDED));
         await waitFor(() =>
           expect(
@@ -4442,14 +4315,15 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('refreshes CharacterData, Afford, and View for ActivationResult through the unconditional funnel', async () => {
     readyTurn();
-    const live = deferredStream([activationResult()]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
     const liveAct = deferredActs([
       makeAct(Family.ACT, {
         case: 'activate',
         value: {
           by: memberParty('char-1'),
-          results: [{ kind: 'healed', target: memberParty('char-1') }],
+          ability: { name: 'Second Wind' },
+          results: [
+            { kind: 'healed', target: memberParty('char-1'), amount: 2 },
+          ],
         },
       } as Act['body']),
     ]);
@@ -4462,7 +4336,6 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
     );
 
-    live.release();
     liveAct.release();
 
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
@@ -4471,7 +4344,7 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() =>
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
     );
-    await waitFor(() => screen.getByText('Aldric recovers 2 HP'));
+    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
   });
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
@@ -4533,10 +4406,22 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('renders catch-up Story immediately instead of replaying retained history slowly', async () => {
     readyTurn();
-    const history = struck();
-    hoisted.getStoryFn.mockResolvedValue({ entries: [history] });
-    const live = deferredStream([]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    hoisted.getStoryActsFn.mockResolvedValue({
+      acts: [
+        swingAct({
+          by: 'skeleton-1',
+          to: 'char-1',
+          roll: 16,
+          total: 20,
+          against: 16,
+          hit: true,
+          damage: 7,
+          presentationId: 'presentation_skeleton-strike',
+        }),
+      ],
+      more: false,
+      restarted: false,
+    });
     renderView();
 
     await waitFor(() => screen.getByText(/Skeleton strikes Aldric/i));
@@ -5662,22 +5547,23 @@ describe('SessionEncounterView production combat integration', () => {
 
     it('renders an automatic failure from the event without a Search RPC', async () => {
       readySearchableScene();
-      const result = deferredStream([
-        event(EventKind.DISCOVERY_CHECKED, {
-          case: 'discoveryChecked',
+      const result = deferredActs([
+        makeAct(Family.PERCEPTION, {
+          case: 'perception',
           value: {
-            member: 'char-1',
-            ability: 'perception',
-            total: 8,
-            beaten: false,
+            observer: memberParty('char-1'),
+            sense: Sense.DISCOVERY,
+            discovery: {
+              ability: 'perception',
+              roll: { total: 8, against: 12, beaten: false },
+            },
           },
-        } as SessionEvent['body']),
+        } as Act['body']),
       ]);
-      hoisted.streamEventsFn.mockReturnValue(result.stream);
       renderView();
       await screen.findByTestId('session-canvas');
       result.release();
-      expect(await screen.findByText(/Failed Perception check/)).toBeTruthy();
+      expect(await screen.findByText('Aldric searches')).toBeTruthy();
       expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
       expect(hoisted.searchFn).not.toHaveBeenCalled();
     });
@@ -5876,8 +5762,6 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('resets selection, Story/Debug, and private state on member change and fences stale map callbacks', async () => {
     readyTurn();
-    const live = deferredStream([]);
-    hoisted.streamEventsFn.mockReturnValue(live.stream);
     const { rerender } = renderView();
     await screen.findByRole('button', { name: /longsword/i });
     fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
@@ -5921,8 +5805,18 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     await waitFor(() => screen.getByText('5/5'));
     expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
-    expect(hoisted.streamEventsFn).toHaveBeenLastCalledWith(
-      { session: 'enc-1', member: 'char-2' },
+    await waitFor(() =>
+      expect(hoisted.streamActsFn).toHaveBeenLastCalledWith(
+        { session: 'enc-1', member: 'char-2', afterId: '' },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
+    expect(hoisted.streamActsFn).not.toHaveBeenCalledWith(
+      {
+        session: 'enc-1',
+        member: 'char-2',
+        afterId: expect.stringMatching(/./),
+      },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
@@ -6817,6 +6711,16 @@ describe('the act funnel (rpg-project#630)', () => {
       doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
     });
   }
+
+  it('no v1 stream subscription', async () => {
+    readyTurn();
+    liveActs();
+    renderView();
+    await waitFor(() => expect(hoisted.streamActsFn).toHaveBeenCalled());
+    await screen.findByTestId('session-canvas');
+    expect(hoisted.streamEventsFn).not.toHaveBeenCalled();
+    expect(hoisted.getStoryFn).not.toHaveBeenCalled();
+  });
 
   it('door act clears door notice', async () => {
     readyDoor();

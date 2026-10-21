@@ -11,27 +11,34 @@ import {
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { parseRef } from '@/utils/refs';
 import { clone } from '@bufbuild/protobuf';
-import {
-  EventKind,
-  EventSchema,
-  type Event,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type {
   AttackResponse,
   DeathSaveResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import type {
-  AttackRef,
+import {
   DeathSaveContinuation,
   DeathSaveOutcome,
+  type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { formatDebugLine, type DebugFeedEntry } from '../debugLogLine';
-import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
-  buildCombatAttackOutcome,
-  buildCombatStory,
+  ActSchema,
+  AttackOutcome,
+  CastOutcome,
+  ClockMark,
+  Family,
+  Sense,
+  type Act,
+  type Roll,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import type { ActDeliveryMetadata } from '../actFeed';
+import type { DebugFeedEntry } from '../debugLogLine';
+import {
+  actStoryId,
+  attackRefOf,
+  buildActAttackOutcome,
+  buildActStory,
   type CombatStoryFact,
-} from './story';
+} from './actStory';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
@@ -116,6 +123,9 @@ interface AuthoritySnapshot {
   /** Recipient-local ordering only; never parsed from presentationId. */
   readonly seq: bigint;
   readonly authoritySeq?: bigint;
+  /** A record key the authority names itself by (a save, a swing that
+   * follows its own roll window); otherwise derived in `authorityKey`. */
+  readonly identity?: string;
   readonly presentationId: string;
   readonly roller: string;
   /** Attack compatibility alias. Death Saves use roller directly. */
@@ -159,9 +169,13 @@ export interface DeathSaveResponseFact {
 }
 
 export interface CombatStreamFact {
-  readonly type: 'stream-event';
-  readonly event: Event;
-  readonly metadata: SessionEventDeliveryMetadata;
+  readonly type: 'stream-act';
+  readonly act: Act;
+  /** The act's place in its same-id run. */
+  readonly index: number;
+  /** Recipient-local delivery order, assigned as acts arrive. */
+  readonly seq: bigint;
+  readonly metadata: ActDeliveryMetadata;
   /** Where this viewer stood as the beat arrived; kept on a `heard` story
    * record only (`CombatStoryFact.listenerAt`). */
   readonly listenerAt?: { readonly x: number; readonly y: number } | null;
@@ -209,7 +223,9 @@ export interface CombatPresentationRecord {
   readonly eventAccepted: boolean;
   /** Final outcome replaced this provisional response's presentation duties. */
   readonly supersededByOutcome?: string;
-  readonly event?: Event;
+  readonly act?: Act;
+  /** The act's place in its same-id run. */
+  readonly actIndex?: number;
   /** Exact typed attack-body identity, including every nested roll fact. */
   readonly eventFacts?: string;
   readonly eventSource?: 'live' | 'catchup';
@@ -228,6 +244,8 @@ export interface OtherStoryRecord {
   readonly key: string;
   readonly fact: CombatStoryFact;
   readonly relevantFacts: string;
+  /** The dice records this act made; its row shows once they are visible. */
+  readonly authorityKeys: readonly string[];
   readonly conflicted: boolean;
   readonly order: number;
 }
@@ -286,13 +304,19 @@ export function emptyPresentation(
 }
 
 function authorityKey(authority: AuthoritySnapshot): string {
-  return authority.kind === 'death-save'
-    ? `death-save:${authority.presentationId.length}:${authority.presentationId}`
-    : `${authority.session.length}:${authority.session}:${authority.seq}`;
-}
-
-function storyAuthorityKey(session: string, seq: bigint): string {
-  return `${session.length}:${session}:${seq}`;
+  if (authority.identity) return authority.identity;
+  if (authority.kind === 'death-save') {
+    return `death-save:${authority.presentationId.length}:${authority.presentationId}`;
+  }
+  // A swing and the actor's own response are one roll: they share the
+  // provider token, which is the only identity both sides hold. A recipient's
+  // act carries no seq the response could be matched by.
+  // A token unfit for the physical die is still the swing's identity: the
+  // die falls back to its semantic reveal, the join does not.
+  if (authority.kind === 'attack' && authority.presentationId) {
+    return `attack:${authority.presentationId.length}:${authority.presentationId}`;
+  }
+  return `${authority.session.length}:${authority.session}:${authority.seq}`;
 }
 
 function attackSnapshot(
@@ -373,168 +397,250 @@ function authorityFromDeathSaveResponse(
   });
 }
 
-function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
-  if (
-    event.body.case === 'rollWindowOpened' &&
-    event.kind === EventKind.ROLL_WINDOW_OPENED
-  ) {
-    const window = event.body.value;
-    // Legacy windows remain Story-only. A current window already carries
-    // the roll; its provider token joins it to the existing physical throw.
-    if (!window.presentationId) return undefined;
-    return freezeRecord({
-      kind: 'attack' as const,
-      session: event.session,
-      seq: event.seq,
-      authoritySeq: event.seq,
-      presentationId: window.presentationId,
-      roller: window.audience,
-      attacker: window.audience,
-      roll: window.roll,
-      total: window.total,
-      die: COMBAT_D20,
-    });
+/** A roll's d20 face: the first kept die, or the total when no dice rode. */
+function rollFace(roll: Roll | undefined): number {
+  return roll?.dice[0] ?? roll?.total ?? 0;
+}
+
+function enumByWord<E extends Record<string, string | number>>(
+  table: E,
+  word: string,
+  fallback: E[keyof E]
+): E[keyof E] {
+  const value = table[word.toUpperCase() as keyof E];
+  return typeof value === 'number' ? value : fallback;
+}
+
+function saveAuthority(
+  act: Act,
+  seq: bigint,
+  identity: string,
+  presentationId: string,
+  saver: string,
+  ability: string,
+  roll: Roll | undefined,
+  succeeded: boolean,
+  source: { ref: string; name: string }
+): AuthoritySnapshot {
+  return freezeRecord({
+    kind: 'save' as const,
+    session: act.session,
+    seq,
+    // A save has no verb response to carry the sequence its physical throw
+    // is published under; its own recipient-local order is that sequence.
+    authoritySeq: seq,
+    identity,
+    presentationId,
+    roller: saver,
+    attacker: saver,
+    target: saver,
+    roll: rollFace(roll),
+    total: roll?.total ?? 0,
+    against: roll?.against ?? 0,
+    hit: succeeded,
+    critical: false,
+    damage: 0,
+    save: freezeRecord({
+      ability,
+      dc: roll?.against ?? 0,
+      succeeded,
+      sourceRef: source.ref,
+      sourceName: source.name,
+    }),
+    die: COMBAT_D20,
+  });
+}
+
+/**
+ * The dice authority one act carries (rpg-project#630): a swing's attack
+ * roll, a death save, a roll window's paused d20, and every save a cast, an
+ * activation or a ward forced. An act with no die carries none.
+ *
+ * A swing and a death save are joined to the actor's own verb response by
+ * their provider presentation token (both carry it). A save carries no
+ * token; its animation stays recipient-local under an identity built from
+ * the act's own id and place, never from anything another client shares.
+ */
+export function authoritiesFromAct(
+  act: Act,
+  index: number,
+  seq: bigint
+): readonly AuthoritySnapshot[] {
+  if (act.refused) return [];
+  const row = actStoryId(act, index);
+  const saveIdentity = (k: number) => `save:${row}:${k}`;
+  const localId = (k: number) => {
+    const id = `session:${act.session}:${act.id}.${index}.${k}`;
+    return act.session && isDicePresentationIdentifier(id) ? id : '';
+  };
+  const body = act.body;
+  switch (body.case) {
+    case 'attack': {
+      const a = body.value;
+      if (a.outcome === AttackOutcome.WARDED) {
+        // The aggressor rolls a saving throw against the ward; it failed.
+        if (!a.ward?.roll) return [];
+        return [
+          saveAuthority(
+            act,
+            seq,
+            saveIdentity(0),
+            localId(0),
+            a.by?.id ?? '',
+            a.ward.ability,
+            a.ward.roll,
+            false,
+            { ref: '', name: 'Ward' }
+          ),
+        ];
+      }
+      return [
+        freezeRecord({
+          kind: 'attack' as const,
+          session: act.session,
+          seq,
+          // Recipient-local, as the v1 beat's own seq was: the number this
+          // client publishes its own throw under when it is the roller.
+          authoritySeq: seq,
+          presentationId: a.presentationId,
+          roller: a.by?.id ?? '',
+          attacker: a.by?.id ?? '',
+          target: a.to?.id ?? '',
+          roll: rollFace(a.roll),
+          total: a.roll?.total ?? 0,
+          against: a.roll?.against ?? 0,
+          hit: a.outcome === AttackOutcome.HIT,
+          critical: a.critical,
+          damage: a.outcome === AttackOutcome.HIT ? a.damage : 0,
+          attack: attackRefOf(act),
+          die: COMBAT_D20,
+        }),
+      ];
+    }
+    case 'deathSave': {
+      const d = body.value;
+      return [
+        freezeRecord({
+          kind: 'death-save' as const,
+          session: act.session,
+          seq,
+          presentationId: d.presentationId,
+          roller: d.by?.id ?? '',
+          attacker: d.by?.id ?? '',
+          target: '',
+          roll: rollFace(d.roll),
+          total: 0,
+          against: 0,
+          hit: false,
+          critical: false,
+          damage: 0,
+          deathSave: deathSaveSnapshot({
+            outcome: enumByWord(
+              DeathSaveOutcome,
+              d.outcome,
+              DeathSaveOutcome.UNSPECIFIED
+            ),
+            successesAdded: d.successesAdded,
+            failuresAdded: d.failuresAdded,
+            successes: d.successes,
+            failures: d.failures,
+            successesNeeded: d.successesNeeded,
+            failuresRemaining: d.failuresRemaining,
+            stabilized: d.stabilized,
+            dead: d.dead,
+            recovered: d.recovered,
+            hpRestored: d.hpRestored,
+            continuation: enumByWord(
+              DeathSaveContinuation,
+              d.continuation,
+              DeathSaveContinuation.UNSPECIFIED
+            ),
+          }),
+          die: COMBAT_D20,
+        }),
+      ];
+    }
+    case 'clock': {
+      const w = body.value.rollWindow;
+      // A legacy window with no token stays story only; a current one joins
+      // the paused response's physical throw by its token.
+      if (
+        body.value.mark !== ClockMark.ROLL_WINDOW_OPENED ||
+        !w?.presentationId
+      ) {
+        return [];
+      }
+      return [
+        freezeRecord({
+          kind: 'attack' as const,
+          session: act.session,
+          seq,
+          authoritySeq: seq,
+          presentationId: w.presentationId,
+          roller: w.audience?.id ?? '',
+          attacker: w.audience?.id ?? '',
+          roll: rollFace(w.roll),
+          total: w.roll?.total ?? 0,
+          die: COMBAT_D20,
+        }),
+      ];
+    }
+    case 'cast': {
+      const c = body.value;
+      const spell = { ref: c.spell?.ref ?? '', name: c.spell?.name ?? '' };
+      const out: AuthoritySnapshot[] = [];
+      c.results.forEach((r, k) => {
+        if (!r.save) return;
+        if (r.outcome === CastOutcome.WARDED) {
+          // The caster's spell met a ward: the caster saved, and failed.
+          out.push(
+            saveAuthority(
+              act,
+              seq,
+              saveIdentity(k),
+              localId(k),
+              c.by?.id ?? '',
+              r.ability,
+              r.save,
+              false,
+              { ref: '', name: 'Ward' }
+            )
+          );
+          return;
+        }
+        out.push(
+          saveAuthority(
+            act,
+            seq,
+            saveIdentity(k),
+            localId(k),
+            r.target?.id ?? '',
+            r.ability,
+            r.save,
+            r.outcome === CastOutcome.SAVED,
+            spell
+          )
+        );
+      });
+      return out;
+    }
+    case 'activate':
+      return body.value.saves.map((s, k) =>
+        saveAuthority(
+          act,
+          seq,
+          saveIdentity(k),
+          localId(k),
+          s.saver?.id ?? '',
+          s.ability,
+          s.roll,
+          s.roll?.beaten ?? false,
+          { ref: s.source?.ref ?? '', name: s.source?.name ?? '' }
+        )
+      );
+    default:
+      return [];
   }
-  if (event.body.case === 'struck' && event.kind === EventKind.STRUCK) {
-    const struck = event.body.value;
-    // The same token the attacker received on their AttackResponse. This
-    // client's own event.seq is a different number for the same beat, so it
-    // can identify the roll here and nowhere else.
-    const presentationId = struck.presentationId;
-    return freezeRecord({
-      kind: 'attack' as const,
-      session: event.session,
-      seq: event.seq,
-      authoritySeq: event.seq,
-      presentationId,
-      roller: struck.attacker,
-      attacker: struck.attacker,
-      target: struck.target,
-      roll: struck.roll,
-      total: struck.total,
-      against: struck.against,
-      hit: true,
-      critical: struck.critical,
-      damage: struck.damage,
-      attack: attackSnapshot(struck.attack),
-      die: COMBAT_D20,
-    });
-  }
-  if (event.body.case === 'missed' && event.kind === EventKind.MISSED) {
-    const missed = event.body.value;
-    // See the struck branch: the shared token, never this client's own seq.
-    const presentationId = missed.presentationId;
-    return freezeRecord({
-      kind: 'attack' as const,
-      session: event.session,
-      seq: event.seq,
-      authoritySeq: event.seq,
-      presentationId,
-      roller: missed.attacker,
-      attacker: missed.attacker,
-      target: missed.target,
-      roll: missed.roll,
-      total: missed.total,
-      against: missed.against,
-      hit: false,
-      critical: false,
-      damage: 0,
-      attack: attackSnapshot(missed.attack),
-      die: COMBAT_D20,
-    });
-  }
-  if (
-    event.body.case === 'deathSaveRolled' &&
-    event.kind === EventKind.DEATH_SAVE_ROLLED
-  ) {
-    const result = event.body.value;
-    return freezeRecord({
-      kind: 'death-save' as const,
-      session: event.session,
-      seq: event.seq,
-      presentationId: result.presentationId,
-      roller: result.actor,
-      attacker: result.actor,
-      target: '',
-      roll: result.roll,
-      total: 0,
-      against: 0,
-      hit: false,
-      critical: false,
-      damage: 0,
-      deathSave: deathSaveSnapshot(result),
-      die: COMBAT_D20,
-    });
-  }
-  // A SAVE ROLLS A d20 THE PLAYER MUST SEE, so it becomes authority rather
-  // than typed Story alone (design rpg-project#405, R7). The saver is the
-  // roller: a monster's save settles automatically the way a monster's attack
-  // does, and the bard's own save would arm on their dice.
-  //
-  // `against` CARRIES THE DC. It is the number the total was measured
-  // against, which is what that field means for an attack too; `succeeded` is
-  // the rulebook's own reading and no receiver recomputes it.
-  if (
-    (event.body.case === 'saved' && event.kind === EventKind.SAVED) ||
-    (event.body.case === 'warded' && event.kind === EventKind.WARDED) ||
-    (event.body.case === 'castWarded' && event.kind === EventKind.CAST_WARDED)
-  ) {
-    // Continue the existing Sanctuary work: the aggressor rolls a saving
-    // throw, not an attack. Both ward event kinds mean that save failed.
-    const body = event.body.value;
-    const saved =
-      event.body.case === 'saved'
-        ? event.body.value
-        : {
-            saver:
-              'attacker' in body
-                ? body.attacker
-                : 'actor' in body
-                  ? body.actor
-                  : '',
-            ability: body.ability,
-            roll: body.roll,
-            total: body.total,
-            dc: body.dc,
-            succeeded: false,
-            source: { ref: '', name: 'Ward' },
-          };
-    // Saved carries no provider-issued presentation token. Keep its animation
-    // recipient-local until the provider contract deliberately grows one; a
-    // session/seq identity must never be mistaken for cross-recipient truth.
-    const localPresentationId = `session:${event.session}:${event.seq}`;
-    const presentationId =
-      event.session &&
-      event.seq >= 0n &&
-      isDicePresentationIdentifier(localPresentationId)
-        ? localPresentationId
-        : '';
-    return freezeRecord({
-      kind: 'save' as const,
-      session: event.session,
-      seq: event.seq,
-      authoritySeq: event.seq,
-      presentationId,
-      roller: saved.saver,
-      attacker: saved.saver,
-      target: saved.saver,
-      roll: saved.roll,
-      total: saved.total,
-      against: saved.dc,
-      hit: saved.succeeded,
-      critical: false,
-      damage: 0,
-      save: freezeRecord({
-        ability: saved.ability,
-        dc: saved.dc,
-        succeeded: saved.succeeded,
-        sourceRef: saved.source?.ref ?? '',
-        sourceName: saved.source?.name ?? '',
-      }),
-      die: COMBAT_D20,
-    });
-  }
-  return undefined;
 }
 
 function sameAttack(
@@ -623,19 +729,10 @@ function canonicalTypedIdentity(
   throw new TypeError('unsupported value cannot form presentation identity');
 }
 
-function attackEventFacts(event: Event): string | undefined {
-  if (
-    event.body.case !== 'struck' &&
-    event.body.case !== 'missed' &&
-    event.body.case !== 'deathSaveRolled' &&
-    event.body.case !== 'saved' &&
-    event.body.case !== 'warded' &&
-    event.body.case !== 'castWarded' &&
-    event.body.case !== 'rollWindowOpened'
-  ) {
-    return undefined;
-  }
-  return canonicalTypedIdentity(event.body.value);
+function actFacts(act: Act): string | undefined {
+  return act.body.case === undefined
+    ? undefined
+    : canonicalTypedIdentity(act.body.value);
 }
 
 function sameAuthority(
@@ -645,7 +742,6 @@ function sameAuthority(
   return (
     first.kind === later.kind &&
     first.session === later.session &&
-    (first.kind === 'death-save' || first.seq === later.seq) &&
     first.presentationId === later.presentationId &&
     first.roller === later.roller &&
     first.attacker === later.attacker &&
@@ -773,8 +869,8 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function snapshotEvent(event: Event): Event {
-  return deepFreeze(clone(EventSchema, event));
+function snapshotAct(act: Act): Act {
+  return deepFreeze(clone(ActSchema, act));
 }
 
 function diceEventsFor(
@@ -817,22 +913,9 @@ function appendRawDebug(
   state: CombatPresentationState,
   fact: CombatStreamFact
 ): CombatPresentationState {
-  let entry: DebugFeedEntry;
-  try {
-    const names = new Map(Object.entries(state.memberNames));
-    const line = formatDebugLine(fact.event, names);
-    const kind =
-      EventKind[fact.event.kind]?.toLowerCase() ?? String(fact.event.kind);
-    const members = line.ids.map((id) => names.get(id) ?? id).join(' · ');
-    entry = Object.freeze({
-      id: state.nextDebugId,
-      summary: `#${fact.event.seq} ${kind}${members ? ` · ${members}` : ''} · source=${fact.metadata.source}`,
-      text: `${line.text} source=${fact.metadata.source}`,
-      event: snapshotEvent(fact.event),
-    });
-  } catch (error) {
-    entry = `raw event formatting failed: ${error instanceof Error ? error.message : String(error)} source=${fact.metadata.source}`;
-  }
+  const act = fact.act;
+  const family = Family[act.family]?.toLowerCase() ?? String(act.family);
+  const entry: DebugFeedEntry = `act ${act.id} ${family} ${act.act || '-'}${act.refused ? ` refused: ${act.refusal}` : ''} source=${fact.metadata.source}`;
   return Object.freeze({
     ...state,
     nextDebugId: state.nextDebugId + 1,
@@ -920,15 +1003,15 @@ function initialRecord(
   authority: AuthoritySnapshot,
   options: {
     responseAccepted: boolean;
-    event?: Event;
+    act?: Act;
+    actIndex?: number;
     source?: 'live' | 'catchup';
   }
 ): { record: CombatPresentationRecord; pending: boolean } {
   const request = createRequest(state, authority);
   const roleKnown = state.rollerRoles[authority.attacker] !== undefined;
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
-  const historical =
-    options.event !== undefined && options.source === 'catchup';
+  const historical = options.act !== undefined && options.source === 'catchup';
   // Saves and spell attacks arrive fully resolved on the stream. CastResponse
   // carries no attack result, so there is no dock response to release their dice.
   const pending =
@@ -952,9 +1035,10 @@ function initialRecord(
       seq: authority.seq,
       authority,
       responseAccepted: options.responseAccepted,
-      eventAccepted: options.event !== undefined,
-      event: options.event,
-      eventFacts: options.event ? attackEventFacts(options.event) : undefined,
+      eventAccepted: options.act !== undefined,
+      act: options.act,
+      actIndex: options.actIndex,
+      eventFacts: options.act ? actFacts(options.act) : undefined,
       eventSource: options.source,
       request,
       release,
@@ -975,7 +1059,8 @@ function addAttackRecord(
   authority: AuthoritySnapshot,
   options: {
     responseAccepted: boolean;
-    event?: Event;
+    act?: Act;
+    actIndex?: number;
     source?: 'live' | 'catchup';
   }
 ): CombatPresentationState {
@@ -986,16 +1071,14 @@ function addAttackRecord(
   // later seq and may include an inspiration bonus. Its provider token still
   // names the d20 the actor already settled, not a second throw to enqueue.
   const settledResponse =
-    options.event &&
+    options.act &&
     authority.kind === 'attack' &&
     isDicePresentationIdentifier(authority.presentationId)
       ? state.presentations.find(
           (prior) =>
             !prior.conflicted &&
-            (prior.responseAccepted ||
-              prior.event?.body.case === 'rollWindowOpened') &&
-            (!prior.eventAccepted ||
-              prior.event?.body.case === 'rollWindowOpened') &&
+            (prior.responseAccepted || isRollWindowAct(prior.act)) &&
+            (!prior.eventAccepted || isRollWindowAct(prior.act)) &&
             (prior.settlement === 'released' || prior.settlement === 'auto') &&
             prior.authority.kind === 'attack' &&
             prior.session === authority.session &&
@@ -1118,7 +1201,13 @@ function acceptResponse(
         })
       : current.authority.against === undefined
         ? authority
-        : current.authority;
+        : // The act made this record first; only the actor's response
+          // carries the sequence its physical throw is published under.
+          Object.freeze({
+            ...current.authority,
+            authoritySeq:
+              current.authority.authoritySeq ?? authority.authoritySeq,
+          });
   const upgradedRequest = createRequest(state, upgradedAuthority);
   return replacePresentation(state, index, {
     ...current,
@@ -1167,51 +1256,100 @@ function settleCatchupPresentation(
   );
 }
 
-function acceptAttackEvent(
+function isRollWindowAct(act: Act | undefined): boolean {
+  return (
+    act?.body.case === 'clock' &&
+    act.body.value.mark === ClockMark.ROLL_WINDOW_OPENED
+  );
+}
+
+/** Accepts one authority an act carries; answers the record key it landed on. */
+function acceptAuthorityAct(
   state: CombatPresentationState,
   fact: CombatStreamFact,
-  authority: AuthoritySnapshot
-): CombatPresentationState {
-  const key = authorityKey(authority);
+  incoming: AuthoritySnapshot
+): { state: CombatPresentationState; key: string } {
+  let authority = incoming;
+  let key = authorityKey(authority);
+  const act = snapshotAct(fact.act);
+  const options = {
+    responseAccepted: false,
+    act,
+    actIndex: fact.index,
+    source: fact.metadata.source,
+  };
+  // A POST-ROLL CHOICE HAS TWO ACTS BUT ONE PHYSICAL THROW. The paused
+  // response and its roll window share the provider token, and so does the
+  // swing that finally lands — which may carry an inspiration bonus. The
+  // window owns the token's record; the swing is its own record, joined to
+  // the settled throw by `addAttackRecord`, never a second throw.
+  const prior = state.presentations.find((record) => record.key === key);
+  // The paused response's own window may never reach this client (a window is
+  // its roller's alone), so a settled response that saw no act of its own and
+  // now meets a swing with its token but other numbers is that outcome too.
+  const settledPausedResponse =
+    prior !== undefined &&
+    prior.act === undefined &&
+    prior.responseAccepted &&
+    (prior.settlement === 'released' || prior.settlement === 'auto') &&
+    !sameAuthority(prior.authority, authority);
+  if (
+    authority.kind === 'attack' &&
+    fact.act.body.case === 'attack' &&
+    prior &&
+    (isRollWindowAct(prior.act) || settledPausedResponse)
+  ) {
+    authority = freezeRecord({ ...authority, identity: `${key}:outcome` });
+    key = authorityKey(authority);
+  }
   const identity = identityAt(state, key);
-  const event = snapshotEvent(fact.event);
   if (!identity) {
-    return addAttackRecord(state, authority, {
-      responseAccepted: false,
-      event,
-      source: fact.metadata.source,
-    });
+    return { state: addAttackRecord(state, authority, options), key };
   }
   if (identity.category !== authority.kind) {
-    return markConflicted(
-      state,
+    return {
+      state: markConflicted(
+        state,
+        key,
+        `dice act conflicts with typed Story for ${key}`
+      ),
       key,
-      `dice event conflicts with typed Story for ${key}`
-    );
+    };
   }
-
   const index = state.presentations.findIndex((record) => record.key === key);
   const current = state.presentations[index];
   if (!current) {
-    return markConflicted(state, key, `missing attack record for ${key}`);
+    return {
+      state: markConflicted(state, key, `missing attack record for ${key}`),
+      key,
+    };
   }
   if (!sameAuthority(current.authority, authority)) {
-    return markConflicted(
-      state,
-      key,
-      `conflicting authority for ${key}; event rejected`
-    );
-  }
-  const eventFacts = attackEventFacts(event);
-  if (current.eventAccepted) {
-    if (current.eventFacts !== eventFacts) {
-      return markConflicted(
+    return {
+      state: markConflicted(
         state,
         key,
-        `conflicting typed attack facts for ${key}`
-      );
+        `conflicting authority for ${key}; act rejected`
+      ),
+      key,
+    };
+  }
+  const facts = actFacts(act);
+  if (current.eventAccepted) {
+    if (current.eventFacts !== facts) {
+      return {
+        state: markConflicted(
+          state,
+          key,
+          `conflicting typed attack facts for ${key}`
+        ),
+        key,
+      };
     }
-    return settleCatchupPresentation(state, index, fact.metadata.source);
+    return {
+      state: settleCatchupPresentation(state, index, fact.metadata.source),
+      key,
+    };
   }
 
   const pending = state.pendingLocalKeys.includes(key);
@@ -1223,8 +1361,9 @@ function acceptAttackEvent(
   const accepted = replacePresentation(state, index, {
     ...current,
     eventAccepted: true,
-    event,
-    eventFacts,
+    act,
+    actIndex: fact.index,
+    eventFacts: facts,
     eventSource: fact.metadata.source,
     release,
     settlement,
@@ -1232,773 +1371,57 @@ function acceptAttackEvent(
       current.responseAccepted && pending && settlement === 'armed',
   });
   // A reconnect catch-up is already-spent provider history. Only the
-  // response-first Death Save needs this first-event path; Attack semantics
-  // and genuinely live Death Saves keep their existing settlement behavior.
-  return authority.kind === 'death-save' && current.responseAccepted
-    ? settleCatchupPresentation(accepted, index, fact.metadata.source)
-    : accepted;
+  // response-first Death Save needs this first-act path.
+  return {
+    state:
+      authority.kind === 'death-save' && current.responseAccepted
+        ? settleCatchupPresentation(accepted, index, fact.metadata.source)
+        : accepted,
+    key,
+  };
 }
 
-type RelevantOtherEvent = Readonly<Record<string, unknown>>;
-
-const EXPECTED_OTHER_KIND = {
-  turnEnded: EventKind.TURN_ENDED,
-  downed: EventKind.DOWNED,
-  fightStarted: EventKind.FIGHT_STARTED,
-  fightEnded: EventKind.FIGHT_ENDED,
-  moved: EventKind.MOVED,
-  joined: EventKind.JOINED,
-  exited: EventKind.EXITED,
-  ended: EventKind.ENDED,
-  door: EventKind.DOOR,
-  doorRevealed: EventKind.DOOR_REVEALED,
-  regionRevealed: EventKind.REGION_REVEALED,
-  // CONCEALMENT_REVEALED SUPERSEDES BOTH doorRevealed AND regionRevealed
-  // (rpg-api-protos#352): one secret, one beat, carrying the floor, props,
-  // doors and doorways it was hiding. It is carried and not narrated here for
-  // the same reason its two predecessors are — a reveal is perception, not
-  // story, and the canvas/atlas already re-renders from the refetch.
-  concealmentRevealed: EventKind.CONCEALMENT_REVEALED,
-  activated: EventKind.ACTIVATED,
-  activationResult: EventKind.ACTIVATION_RESULT,
-  looted: EventKind.LOOTED,
-  held: EventKind.HELD,
-  dropped: EventKind.DROPPED,
-  deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
-  stanceChanged: EventKind.STANCE_CHANGED,
-  arrived: EventKind.ARRIVED,
-  windowOpened: EventKind.WINDOW_OPENED,
-  rollWindowOpened: EventKind.ROLL_WINDOW_OPENED,
-  // A CAST IS TYPED STORY, NOT A ROLL. It carries no die of its own — the
-  // save that may follow it is the roll, and that has its own authority.
-  cast: EventKind.CAST,
-  castMissed: EventKind.CAST_MISSED,
-  // THE HELD SPELL LET GO (design rpg-project#407, R10). It has to be here or
-  // the beat never reaches the log at all: a body with no row is discarded by
-  // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
-  // exact gap `saved` fell into in slice two.
-  concentrationEnded: EventKind.CONCENTRATION_ENDED,
-  // THE SESSION VERBS' TWO BEATS (rpg-project#542): a hand changed, a member
-  // rested. Narrated in story.ts; listed here so they are accepted rather than
-  // dropped as a kind/body mismatch.
-  equipmentChanged: EventKind.EQUIPMENT_CHANGED,
-  rested: EventKind.RESTED,
-  // THE ONE SOCIAL CHECK (rpg-project#569), and it has to be here for
-  // `concentrationEnded`'s reason directly above: a body with no row is
-  // discarded as a typed kind/body mismatch, and this beat is the ONLY
-  // account of the roll — `SpeakResponse` carries no beaten, total or dc — so
-  // dropping it would lose the die for the whole table, actor included.
-  // `answered` is the only account of ANYTHING the creature did about it:
-  // the line it spoke, the fact it taught and whether it bolted all ride that
-  // one body.
-  spoke: EventKind.SPOKE,
-  // A SOUND REACHED THIS VIEWER (rpg-project#569 H5), here for
-  // `concentrationEnded`'s reason: a body with no row is discarded as a typed
-  // kind/body mismatch, and this beat is the listener's only account of the
-  // noise — recipient-scoped, nobody else has it.
-  heard: EventKind.HEARD,
-  // THE MOVER'S SNEAK ROLL (rpg-project#606, sneaking R5, R12), here for
-  // `concentrationEnded`'s reason: a body with no row is discarded as a typed
-  // kind/body mismatch, and this beat is the mover's only account of the
-  // roll. Recipient-scoped to the mover; nobody else has it.
-  snuck: EventKind.SNUCK,
-  // RETIRED, NOT NARRATED (rpg-project#569). Speak replaced both; the bodies
-  // stay on the wire, deprecated, so they are listed to be ACCEPTED and then
-  // silenced in SILENT_OTHER_BODIES rather than accused as a mismatch.
-  intimidated: EventKind.INTIMIDATED,
-  persuaded: EventKind.PERSUADED,
-  discoveryChecked: EventKind.DISCOVERY_CHECKED,
-  answered: EventKind.ANSWERED,
-  // The creature's table's own two (rpg-project#465). LISTED, so the
-  // kind/body pairing is checked and the beat is accepted, and given no story
-  // row below — narrating them is rpg-dnd5e-web#1122. They are quiet rather
-  // than accused because [SILENT_OTHER_BODIES] names them; see it for why the
-  // diagnostic could not tell a decision from a defect.
-  //
-  // THE WARD BEATS ARE NOT HERE, and that is the ward slice's own answer
-  // rather than an omission: `warded` and `castWarded` carry a die, so they
-  // become AUTHORITY above and never reach this table at all.
-  tempered: EventKind.TEMPERED,
-  stayed: EventKind.STAYED,
-  // `saved` IS DELIBERATELY ABSENT. It becomes authority in
-  // `authorityFromEvent`, so it never reaches the other-story path; listing
-  // it here would offer a second, conflicting home for the same beat.
-} as const;
-
-const TYPED_EVENT_KINDS = new Set<number>([
-  EventKind.TURN_ENDED,
-  EventKind.DOWNED,
-  EventKind.FIGHT_STARTED,
-  EventKind.FIGHT_ENDED,
-  EventKind.MOVED,
-  EventKind.JOINED,
-  EventKind.EXITED,
-  EventKind.ENDED,
-  EventKind.DOOR,
-  EventKind.STRUCK,
-  EventKind.MISSED,
-  EventKind.ACTIVATED,
-  EventKind.ACTIVATION_RESULT,
-  EventKind.LOOTED,
-  EventKind.HELD,
-  EventKind.DROPPED,
-  EventKind.DEATH_SAVE_ROLLED,
-  EventKind.STANCE_CHANGED,
-  EventKind.ARRIVED,
-  EventKind.WINDOW_OPENED,
-  EventKind.ROLL_WINDOW_OPENED,
-  EventKind.CAST,
-  EventKind.CAST_MISSED,
-  EventKind.WARDED,
-  EventKind.CAST_WARDED,
-  EventKind.TEMPERED,
-  EventKind.SAVED,
-  EventKind.CONCENTRATION_ENDED,
-  EventKind.EQUIPMENT_CHANGED,
-  EventKind.RESTED,
-  EventKind.SPOKE,
-  EventKind.HEARD,
-  EventKind.SNUCK,
-  EventKind.INTIMIDATED,
-  EventKind.PERSUADED,
-  EventKind.ANSWERED,
-  // Typed, so a SIGHTED arriving with no body is dropped rather than
-  // falling through as a bodyless 'none' row. The server only publishes one
-  // when it names somebody, so a bodyless one is a beat that should not
-  // exist — and it is not story either way (see relevantOtherEvent).
-  EventKind.SIGHTED,
-]);
-
-// Body cases this layer deliberately gives NO STORY ROW, so that
-// `acceptStreamEvent` can drop them in silence rather than diagnosing them.
-//
-// THE DIAGNOSTIC WAS LYING ABOUT THEM (found on Kirk's walk, rpg-project#465).
-// `relevantOtherEvent` answers `undefined` for two unrelated reasons — a
-// genuine kind/body MISMATCH, which is a defect worth saying out loud, and a
-// decision that this beat is not story — and the caller could not tell them
-// apart, so it printed "typed event kind/body mismatch ignored" after every
-// well-formed `tempered`. A debug feed that cries defect on a correct beat
-// teaches a reader to ignore it, which costs the one time it is right.
-//
-// BOTH MEMBERS ARE NOT STORY: a mix dealt at the door, before the party has
-// met anybody, and a round in which nothing moved. The debug line carries each
-// in full, and narrating them is rpg-dnd5e-web#1122.
-// THE WARD BEATS NEEDED NOTHING HERE. `warded` and `castWarded` carry a die,
-// so the ward slice makes them AUTHORITY; they never reach the diagnostic and
-// were never accused.
-//
-// WHAT IS DELIBERATELY NOT IN HERE. `sighted`, `doorRevealed`,
-// `regionRevealed` and `concealmentRevealed` have the identical shape and
-// produce the identical false warning on `dev` today, unchanged by this
-// branch — `sighted` at the early return below, the reveals in the switch's
-// last arm. They are pre-existing (concealmentRevealed makes this list after
-// the v0.1.207 proto bump, which added it as the successor to the door/region
-// reveals) and not this pin's to move; adding them would be a fix nobody asked
-// for riding in on a pin bump. One line each when somebody wants it.
-const SILENT_OTHER_BODIES = [
-  'tempered',
-  'stayed',
-  // The two retired social checks (rpg-project#569): Speak replaced both, and
-  // this client narrates `spoke` only.
-  'intimidated',
-  'persuaded',
-] as const satisfies readonly (keyof typeof EXPECTED_OTHER_KIND)[];
-
-type SilentOtherBody = (typeof SILENT_OTHER_BODIES)[number];
-
-/** Narrows a body case to one this layer deliberately does not narrate, so the
- * kind lookup below is an indexed read rather than a cast. Listing a body here
- * that EXPECTED_OTHER_KIND does not know is a type error, which is what keeps
- * the two lists from drifting apart. */
-function isSilentBody(bodyCase: string): bodyCase is SilentOtherBody {
-  return (SILENT_OTHER_BODIES as readonly string[]).includes(bodyCase);
-}
-
-// isSilentOtherEvent is a WELL-FORMED beat this layer chose not to narrate:
-// its body is one of [SILENT_OTHER_BODIES] and its kind is the one that body
-// is supposed to arrive under.
-//
-// THE PAIRING IS CHECKED HERE TOO, and that is the whole reason this is a
-// function rather than a set lookup at the call site. Silencing on the body
-// case alone would also swallow a `tempered` body arriving under some other
-// kind — a genuine mismatch, and exactly the defect the diagnostic exists to
-// catch. Not narrating a beat is a decision about a CORRECT beat; a malformed
-// one is still somebody's bug and still says so.
-function isSilentOtherEvent(event: Event): boolean {
-  const bodyCase = event.body.case;
-  if (bodyCase === undefined || !isSilentBody(bodyCase)) {
-    return false;
-  }
-  return event.kind === EXPECTED_OTHER_KIND[bodyCase];
-}
-
-function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
-  const bodyCase = event.body.case;
-  if (bodyCase === undefined) {
-    if (TYPED_EVENT_KINDS.has(event.kind)) return undefined;
-    return Object.freeze({ kind: event.kind, bodyCase: 'none' });
-  }
-  // The bodies that become authority instead: they carry a die, so they are
-  // presentation records rather than other-story rows.
-  if (
-    bodyCase === 'struck' ||
-    bodyCase === 'missed' ||
-    bodyCase === 'saved' ||
-    bodyCase === 'warded' ||
-    bodyCase === 'castWarded'
-  ) {
-    return undefined;
-  }
-  // A SIGHTING IS NOT STORY, and is absent from EXPECTED_OTHER_KIND for that
-  // reason rather than by oversight. It is a nudge addressed to this viewer
-  // alone — "what you perceive changed, read it again" — and the reading is
-  // what the canvas already draws. It also fires on every ghost transition,
-  // so a row per sighting would narrate the viewer's own bookkeeping back at
-  // them while somebody is still mid-swing.
-  //
-  // Excluded HERE rather than by leaving a hole in the table: an unlisted
-  // body case is a type error at the index below, which is the guard that
-  // makes every new body a decision somebody wrote down.
-  // XP added in the catalog SDK release updates private state; narration is deferred.
-  // CELLS_REVEALED (fog of war, rpg-project#586) is map delivery, not story:
-  // it patches this viewer's atlas, which the canvas already draws.
-  if (
-    bodyCase === 'sighted' ||
-    bodyCase === 'roomRevealed' ||
-    bodyCase === 'cellsRevealed' ||
-    bodyCase === 'experienceGained'
-  ) {
-    return undefined;
-  }
-  if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
-
-  switch (bodyCase) {
-    case 'turnEnded':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        next: event.body.value.next,
-      });
-    case 'downed':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-      });
-    case 'fightStarted':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        members: Object.freeze([...event.body.value.members]),
-      });
-    case 'fightEnded':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        cause: event.body.value.cause,
-      });
-    case 'moved':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        to: event.body.value.to
-          ? Object.freeze({
-              x: event.body.value.to.x,
-              y: event.body.value.to.y,
-            })
-          : null,
-      });
-    case 'joined':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-      });
-    // A DEPARTURE NOW CARRIES WHAT LEFT WITH IT (rpg-project#368 §6): the
-    // exit id it went through and the prop ids carried out. Both belong in
-    // the typed identity, or two departures that differ only in what the
-    // member was holding would hash the same and the second would be
-    // recorded as a conflict.
-    case 'exited':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        exit: event.body.value.exit,
-        holding: Object.freeze([...event.body.value.holding]),
-      });
-    case 'looted':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        looter: event.body.value.looter,
-        body: event.body.value.body,
-      });
-    case 'held':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        holder: event.body.value.holder,
-        prop: event.body.value.prop,
-      });
-    case 'dropped':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        prop: event.body.value.prop,
-        at: event.body.value.at
-          ? Object.freeze({
-              x: event.body.value.at.x,
-              y: event.body.value.at.y,
-            })
-          : null,
-      });
-    case 'ended':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        ending: event.body.value.ending,
-      });
-    // The hold-out's two beats (rpg-project#375 §5): the typed identity is
-    // the pair and the word, and the placement, its kind and its cell.
-    case 'stanceChanged':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        between: Object.freeze([...event.body.value.between]),
-        stance: event.body.value.stance,
-      });
-    case 'arrived':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        id: event.body.value.id,
-        placementKind: event.body.value.kind,
-        cell: event.body.value.cell
-          ? Object.freeze({
-              x: event.body.value.cell.x,
-              y: event.body.value.cell.y,
-            })
-          : null,
-      });
-    // THE FIGHT PAUSED ON AN ANSWER (rpg-project#316). Both cells are part
-    // of the identity: the same mover can be asked about twice in one turn
-    // from different cells, and two windows that differ only in where the
-    // step starts are different beats, not a conflicting duplicate.
-    //
-    // `to` IS NOT WHERE THE MOVER IS. The step has not happened; nothing
-    // reads this as a position, and the MOVED that follows the answer is
-    // what moves anybody.
-    case 'windowOpened':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        audience: Object.freeze([...event.body.value.audience]),
-        mover: event.body.value.mover,
-        from: event.body.value.from
-          ? Object.freeze({
-              x: event.body.value.from.x,
-              y: event.body.value.from.y,
-            })
-          : null,
-        to: event.body.value.to
-          ? Object.freeze({
-              x: event.body.value.to.x,
-              y: event.body.value.to.y,
-            })
-          : null,
-        reaction: event.body.value.reaction
-          ? Object.freeze({
-              ref: event.body.value.reaction.ref,
-              name: event.body.value.reaction.name,
-            })
-          : null,
-      });
-    // THE FIGHT PAUSED ON A DIE ALREADY ROLLED (rpg-project#398). Roll and
-    // total are both part of the identity: the same member can be asked about
-    // the same offer twice in one turn on two different swings, and two
-    // windows that differ only in what was rolled are different beats, not a
-    // conflicting duplicate.
-    //
-    // THERE IS NO `against` HERE, and its absence is the design. The window
-    // withholds the target's AC so the player decides on the roll rather than
-    // on whether the roll already landed.
-    case 'rollWindowOpened':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        audience: event.body.value.audience,
-        roll: event.body.value.roll,
-        total: event.body.value.total,
-        offer: event.body.value.offer
-          ? Object.freeze({
-              ref: event.body.value.offer.ref,
-              name: event.body.value.offer.name,
-            })
-          : null,
-      });
-    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#454). Actor and target
-    // alone would hash two threats in one fight the same, and the second
-    // would be recorded as a conflicting duplicate of the first — a fighter
-    // may lean on the same goblin twice across two turns, and the numbers
-    // are what differ.
-    case 'discoveryChecked':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        ability: event.body.value.ability,
-        total: event.body.value.total,
-        beaten: event.body.value.beaten,
-        calculation: event.body.value.calculation,
-      });
-    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#454, kept by #569). Actor,
-    // target and option alone would hash two tries of the same line on the
-    // same goblin the same, and the second would be recorded as a conflicting
-    // duplicate of the first; the numbers are what differ.
-    // THE WHOLE REPORT IS THE IDENTITY (rpg-project#569). Two sounds of one
-    // kind in one round differ by where they were made and how far they came;
-    // there is no maker to tell them apart by, by design.
-    case 'heard': {
-      const heard = event.body.value;
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        listener: heard.listener,
-        soundKind: heard.kind,
-        x: heard.position?.x,
-        y: heard.position?.y,
-        hops: heard.hops,
-      });
-    }
-    // THE WHOLE ROLL IS THE IDENTITY (rpg-project#606). One beat per judged
-    // (mover, watcher) pair, and the same pair can be judged again on a later
-    // entry into the zone; the numbers are what tell those apart. `watcher`
-    // is part of it even when empty: two unseen watchers judged on one step
-    // are two beats that differ only in their DCs and dice.
-    case 'snuck': {
-      const snuck = event.body.value;
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: snuck.member,
-        watcher: snuck.watcher,
-        dc: snuck.dc,
-        total: snuck.total,
-        beaten: snuck.beaten,
-        calculation: snuck.calculation,
-      });
-    }
-    case 'spoke': {
-      const spoke = event.body.value;
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        actor: spoke.actor,
-        target: spoke.target.value,
-        targetCase: spoke.target.case,
-        optionId: spoke.optionId,
-        skill: spoke.skill,
-        dc: spoke.check?.dc,
-        total: spoke.check?.total,
-        beaten: spoke.check?.beaten,
-      });
-    }
-    // THE WORLD'S ROLL IS THE IDENTITY (rpg-project#458). The creature and the
-    // verb alone would hash two answers to two attempts on one goblin the
-    // same, and the author's whole point is that the SECOND attempt can roll
-    // a different entry off the same table — so the die, the entry and the
-    // line are what tell them apart.
-    case 'answered':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        creature: event.body.value.creature,
-        key: event.body.value.key,
-        // Which option's table: two answers to two different lines on one
-        // goblin must not hash the same (rpg-project#569).
-        optionId: event.body.value.optionId,
-        verb: event.body.value.verb,
-        beaten: event.body.value.beaten,
-        roll: event.body.value.roll,
-        of: event.body.value.of,
-        entry: event.body.value.entry,
-        word: event.body.value.word,
-        say: event.body.value.say,
-        fact: event.body.value.fact,
-      });
-    case 'door':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        door: event.body.value.door,
-        state: event.body.value.state,
-        actor: event.body.value.actor,
-        dc: event.body.value.dc,
-        total: event.body.value.total,
-        beaten: event.body.value.beaten,
-      });
-    case 'activated':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        actor: event.body.value.actor,
-        ability: event.body.value.ability
-          ? Object.freeze({
-              ref: event.body.value.ability.ref,
-              name: event.body.value.ability.name,
-            })
-          : null,
-        target: event.body.value.target,
-      });
-    case 'deathSaveRolled':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        value: event.body.value,
-      });
-    // THE SPELL AND ITS TARGET ARE THE IDENTITY. Two casts of the same
-    // cantrip at two targets in one turn are different beats, not a
-    // conflicting duplicate, and the spell's server-authored name is part of
-    // what was said so a renamed spell reads as a new fact rather than
-    // silently replacing the old one.
-    case 'cast':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        actor: event.body.value.actor,
-        spell: event.body.value.spell
-          ? Object.freeze({
-              ref: event.body.value.spell.ref,
-              name: event.body.value.spell.name,
-            })
-          : null,
-        target: event.body.value.target,
-        targets: Object.freeze([...event.body.value.targets]),
-      });
-    case 'castMissed':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        actor: event.body.value.actor,
-        target: event.body.value.target,
-        spell: event.body.value.spell
-          ? Object.freeze({
-              ref: event.body.value.spell.ref,
-              name: event.body.value.spell.name,
-            })
-          : null,
-      });
-    case 'activationResult': {
-      const activation = event.body.value;
-      switch (activation.result.case) {
-        case 'damageApplied':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            damage: activation.result.value,
-          });
-        case 'stabilized':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            // Keep every provider field, including progress presence, zeros and false.
-            stabilized: activation.result.value,
-          });
-        case 'healingApplied':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            target: activation.result.value.target,
-            amount: activation.result.value.amount,
-            requested: activation.result.value.requested,
-            roll: activation.result.value.roll,
-            modifier: activation.result.value.modifier,
-            sourceRef: activation.result.value.sourceRef,
-            sourceName: activation.result.value.sourceName,
-            hpBefore: activation.result.value.hpBefore,
-            hpAfter: activation.result.value.hpAfter,
-            // Preserve graph presence and every nested field. JSON identity
-            // distinguishes absent optionals from present-zero values.
-            calculation: activation.result.value.calculation ?? null,
-          });
-        case 'conditionApplied':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            target: activation.result.value.target,
-            ref: activation.result.value.ref,
-            sourceId: activation.result.value.sourceId,
-            name: activation.result.value.name,
-          });
-        case 'conditionRemoved':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            target: activation.result.value.target,
-            ref: activation.result.value.ref,
-            sourceId: activation.result.value.sourceId,
-            name: activation.result.value.name,
-            reason: activation.result.value.reason,
-          });
-        case 'capacityGranted':
-          return Object.freeze({
-            kind: event.kind,
-            bodyCase,
-            actor: activation.actor,
-            resultCase: activation.result.case,
-            member: activation.result.value.member,
-            description: activation.result.value.description,
-          });
-        case undefined:
-          return undefined;
-      }
-      return undefined;
-    }
-    // DOOR_REVEALED / REGION_REVEALED carry no attack-adjacent facts this
-    // presentation layer narrates today — the beat's job is done by the
-    // atlas/doors refetch `SessionEncounterView.refreshKeysForEvent`
-    // already fires on it (rpg-project#350/#886). A Story-log narration
-    // ("you find a hidden door") is a named follow-up, not this wave's:
-    // returning undefined here means the beat is accepted and updates
-    // state correctly, just without an otherStory entry of its own.
-    // WHOSE CONCENTRATION ENDED, ON WHAT, AND WHY. Every field the log line
-    // reads, so the identity this beat is deduplicated by covers the whole
-    // sentence rather than the caster alone. The spell is preserved as a
-    // graph presence, like Cast.spell above: absent and present-empty are
-    // different facts.
-    case 'concentrationEnded':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        caster: event.body.value.caster,
-        spell: event.body.value.spell
-          ? Object.freeze({
-              ref: event.body.value.spell.ref,
-              name: event.body.value.spell.name,
-            })
-          : null,
-        reason: event.body.value.reason,
-      });
-    case 'equipmentChanged':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        slot: event.body.value.slot,
-        item: event.body.value.item,
-        change: event.body.value.change,
-      });
-    case 'rested':
-      return Object.freeze({
-        kind: event.kind,
-        bodyCase,
-        member: event.body.value.member,
-        restKind: event.body.value.kind,
-        hitPointsRestored: event.body.value.hitPointsRestored,
-        hitPoints: event.body.value.hitPoints,
-        hitDiceSpent: event.body.value.hitDiceSpent,
-        hitDiceReturned: event.body.value.hitDiceReturned,
-        hitDiceRemaining: event.body.value.hitDiceRemaining,
-        resourcesRefilled: Object.freeze([
-          ...event.body.value.resourcesRefilled,
-        ]),
-        concentrationEnded: Object.freeze(
-          event.body.value.concentrationEnded.map((ended) =>
-            Object.freeze({
-              caster: ended.caster,
-              spell: ended.spell?.ref ?? null,
-              reason: ended.reason,
-            })
-          )
-        ),
-        ended: Object.freeze(
-          event.body.value.ended.map((removed) =>
-            Object.freeze({
-              target: removed.target,
-              ref: removed.ref,
-              sourceId: removed.sourceId,
-              reason: removed.reason,
-            })
-          )
-        ),
-      });
-    // The reveals, plus the creature's table's own two — every body this file
-    // accepts and does not narrate. See their entries in EXPECTED_OTHER_KIND
-    // above for why each is here and why the answer stops at acceptance.
-    case 'doorRevealed':
-    case 'regionRevealed':
-    case 'concealmentRevealed':
-    case 'tempered':
-    case 'stayed':
-    case 'intimidated':
-    case 'persuaded':
-      return undefined;
-  }
-}
-
-function acceptOtherEvent(
+/** Every act takes one story row, gated by the authority records it made. */
+function acceptStoryAct(
   state: CombatPresentationState,
   fact: CombatStreamFact,
-  relevantFacts: RelevantOtherEvent
+  authorityKeys: readonly string[]
 ): CombatPresentationState {
-  // A paused AttackResponse and its RollWindowOpened beat legitimately share
-  // the attacker's recipient-local sequence: the response supplies the die
-  // presentation while the beat supplies the question. Keep the beat in the
-  // same ordered Story lane without treating those complementary facts as two
-  // competing bodies for one identity.
-  const storyKey = storyAuthorityKey(fact.event.session, fact.event.seq);
-  const key =
-    fact.event.body.case === 'rollWindowOpened'
-      ? `roll-window:${storyKey}`
-      : storyKey;
-  const factsIdentity = canonicalTypedIdentity(relevantFacts);
+  const key = `act:${actStoryId(fact.act, fact.index)}`;
+  const factsIdentity = canonicalTypedIdentity({
+    family: fact.act.family,
+    act: fact.act.act,
+    refused: fact.act.refused,
+    body: fact.act.body.value ?? null,
+  });
   const identity = identityAt(state, key);
   if (identity) {
-    if (identity.category !== 'other') {
-      return markConflicted(
-        state,
-        key,
-        `typed Story conflicts with attack for ${key}`
-      );
-    }
     const existing = state.otherStory.find((record) => record.key === key);
     if (!existing || existing.relevantFacts !== factsIdentity) {
       return markConflicted(state, key, `conflicting typed facts for ${key}`);
     }
     return state;
   }
-
-  const event = snapshotEvent(fact.event);
-  // THE BEARING IS FIXED WHEN THE SOUND IS HEARD: the cell this viewer stood
-  // on as the beat arrived is kept with it, so walking afterwards never
-  // re-aims an old line (rpg-project#569).
+  const act = snapshotAct(fact.act);
+  // THE BEARING IS FIXED WHEN THE SOUND IS HEARD (rpg-project#569).
+  const heard =
+    act.body.case === 'perception' && act.body.value.sense === Sense.HEARING;
   const listenerAt =
-    event.body.case === 'heard' && fact.listenerAt
+    heard && fact.listenerAt
       ? Object.freeze({ x: fact.listenerAt.x, y: fact.listenerAt.y })
       : undefined;
   const record: OtherStoryRecord = Object.freeze({
     key,
     fact: Object.freeze({
-      event,
+      act,
+      index: fact.index,
+      seq: fact.seq,
       source: fact.metadata.source,
       visible: true,
       ...(listenerAt ? { listenerAt } : {}),
     }),
     relevantFacts: factsIdentity,
+    authorityKeys: Object.freeze([...authorityKeys]),
     conflicted: false,
     order: state.nextOrder,
   });
@@ -2010,38 +1433,31 @@ function acceptOtherEvent(
   });
 }
 
-function acceptStreamEvent(
+function acceptStreamAct(
   original: CombatPresentationState,
   fact: CombatStreamFact
 ): CombatPresentationState {
   const state = appendRawDebug(original, fact);
-  if (!inSession(state, fact.event.session)) {
-    return diagnose(state, `event outside session ${state.session} ignored`);
+  if (!inSession(state, fact.act.session)) {
+    return diagnose(state, `act outside session ${state.session} ignored`);
   }
-  let authority: AuthoritySnapshot | undefined;
+  let authorities: readonly AuthoritySnapshot[];
   try {
-    authority = authorityFromEvent(fact.event);
+    authorities = authoritiesFromAct(fact.act, fact.index, fact.seq);
   } catch (error) {
     return diagnose(
       state,
-      `rejected typed event: ${error instanceof Error ? error.message : String(error)}`
+      `rejected typed act: ${error instanceof Error ? error.message : String(error)}`
     );
   }
-  if (authority) return acceptAttackEvent(state, fact, authority);
-
-  // A BEAT WE CHOSE NOT TO NARRATE IS NOT A DEFECT, and must not be reported
-  // as one (found on Kirk's walk, rpg-project#465). The raw feed already holds
-  // it — appendRawDebug ran at the top of this function — so dropping it here
-  // loses nothing and keeps the diagnostic meaning what it says.
-  if (isSilentOtherEvent(fact.event)) {
-    return state;
+  let next = state;
+  const keys: string[] = [];
+  for (const authority of authorities) {
+    const accepted = acceptAuthorityAct(next, fact, authority);
+    next = accepted.state;
+    keys.push(accepted.key);
   }
-
-  const relevantFacts = relevantOtherEvent(fact.event);
-  if (!relevantFacts) {
-    return diagnose(state, 'typed event kind/body mismatch ignored');
-  }
-  return acceptOtherEvent(state, fact, relevantFacts);
+  return acceptStoryAct(next, fact, keys);
 }
 
 function acceptLocalRelease(
@@ -2306,8 +1722,8 @@ export function reduceCombatPresentation(
     case 'attack-response':
     case 'death-save-response':
       return acceptResponse(state, fact);
-    case 'stream-event':
-      return acceptStreamEvent(state, fact);
+    case 'stream-act':
+      return acceptStreamAct(state, fact);
     case 'local-release':
       return acceptLocalRelease(state, fact);
     case 'semantic-release':
@@ -2327,47 +1743,29 @@ function isVisible(record: CombatPresentationRecord): boolean {
 }
 
 function orderedStoryFacts(state: CombatPresentationState): CombatStoryFact[] {
-  const facts: {
-    order: number;
-    session: string;
-    seq: bigint;
-    fact: CombatStoryFact;
-  }[] = [];
-  for (const record of state.presentations) {
-    if (record.conflicted || !record.event || !record.eventSource) continue;
+  const records = new Map(state.presentations.map((r) => [r.key, r]));
+  const facts: { order: number; fact: CombatStoryFact }[] = [];
+  for (const record of state.otherStory) {
+    if (record.conflicted) continue;
+    const authority = record.authorityKeys.map((key) => records.get(key));
+    if (authority.some((r) => r?.conflicted)) continue;
     facts.push({
       order: record.order,
-      session: record.session,
-      seq: record.seq,
       fact: {
-        event: record.event,
-        source: record.eventSource,
-        visible: isVisible(record),
+        ...record.fact,
+        // An actor's own live roll stays hidden until its die is released.
+        visible: authority.every((r) => r === undefined || isVisible(r)),
       },
     });
   }
-  for (const record of state.otherStory) {
-    if (record.conflicted) continue;
-    facts.push({
-      order: record.order,
-      session: record.fact.event.session,
-      seq: record.fact.event.seq,
-      fact: record.fact,
-    });
-  }
-  facts.sort((left, right) => {
-    if (left.session !== right.session) return left.order - right.order;
-    if (left.seq < right.seq) return -1;
-    if (left.seq > right.seq) return 1;
-    return left.order - right.order;
-  });
+  facts.sort((left, right) => left.order - right.order);
   return facts.map(({ fact }) => fact);
 }
 
 export function selectVisibleStory(
   state: CombatPresentationState
 ): readonly CombatExperienceStoryExchange[] {
-  return buildCombatStory(orderedStoryFacts(state), {
+  return buildActStory(orderedStoryFacts(state), {
     viewerMember: state.viewerMember,
     memberNames: state.memberNames,
   });
@@ -2377,11 +1775,11 @@ export function selectVisibleResult(
   state: CombatPresentationState
 ): CombatExperienceAttackOutcome | undefined {
   const record = selectCurrentPresentation(state);
-  if (!record?.event || !isVisible(record)) return undefined;
-  return buildCombatAttackOutcome(record.event, {
-    viewerMember: state.viewerMember,
-    memberNames: state.memberNames,
-  });
+  if (!record?.act || !isVisible(record)) return undefined;
+  return buildActAttackOutcome(
+    { act: record.act, index: record.actIndex ?? 0, seq: record.seq },
+    { viewerMember: state.viewerMember, memberNames: state.memberNames }
+  );
 }
 
 /**
@@ -2425,20 +1823,19 @@ export function selectLiveAnnouncement(
   if (current?.conflicted) return null;
   const fact = orderedStoryFacts(state).at(-1);
   if (!fact || fact.source !== 'live' || !fact.visible) return null;
-  const [entry] = buildCombatStory([fact], {
+  const [entry] = buildActStory([fact], {
     viewerMember: state.viewerMember,
     memberNames: state.memberNames,
   });
   return entry ? `${entry.headline}. ${entry.detail}` : null;
 }
 
+/** Acts carry no shared sequence; the order they arrived in is the order. */
 function isAuthoritativelyNewer(
   candidate: CombatPresentationRecord,
   current: CombatPresentationRecord
 ): boolean {
-  return candidate.session === current.session
-    ? candidate.seq > current.seq
-    : candidate.order > current.order;
+  return candidate.order > current.order;
 }
 
 export function selectCurrentPresentation(

@@ -28,9 +28,10 @@ const participants = [
   }),
 ];
 
+/** A row with the id the act stream gives the fixture's swing (actStory). */
 function storyEntry(seq: bigint): CombatExperienceStoryExchange {
   return {
-    id: `9:crypt-run:${seq}`,
+    id: `9:crypt-run:id-${String(seq).padStart(8, '0')}#0`,
     eyebrow: 'Combat',
     headline: `Story ${seq}`,
     detail: `Sequence ${seq}`,
@@ -49,16 +50,16 @@ describe('useCombatStoryPacing scope', () => {
     const oldFirst = createAttackAuthorityFixture({
       seq: 23n,
       attacker: 'skeleton-guard',
-    }).event;
+    }).act;
     const oldQueued = createAttackAuthorityFixture({
       seq: 24n,
       attacker: 'skeleton-guard',
-    }).event;
+    }).act;
     const nextEvent = createAttackAuthorityFixture({
       seq: 25n,
       attacker: 'aldric',
       target: 'skeleton-guard',
-    }).event;
+    }).act;
     const oldStory = [storyEntry(23n), storyEntry(24n)];
     const nextStory = [...oldStory, storyEntry(25n)];
     const { result, rerender, unmount } = renderHook(
@@ -68,8 +69,8 @@ describe('useCombatStoryPacing scope', () => {
     );
 
     act(() => {
-      result.current.acceptEvent(oldFirst, { source: 'live' });
-      result.current.acceptEvent(oldQueued, { source: 'live' });
+      result.current.acceptActs([oldFirst], { source: 'live' });
+      result.current.acceptActs([oldQueued], { source: 'live' });
     });
     expect(result.current.story).toEqual([]);
     expect(result.current.notice).toBe("Skeleton Guard's turn.");
@@ -88,7 +89,7 @@ describe('useCombatStoryPacing scope', () => {
     expect(result.current.story).toEqual(nextStory);
     expect(result.current.notice).toBeNull();
 
-    act(() => result.current.acceptEvent(nextEvent, { source: 'live' }));
+    act(() => result.current.acceptActs([nextEvent], { source: 'live' }));
     expect(result.current.story).toEqual(oldStory);
     expect(result.current.notice).toBe("Aldric's turn.");
 

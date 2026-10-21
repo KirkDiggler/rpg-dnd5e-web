@@ -5,14 +5,15 @@ import type {
 } from '@/components/ui/dice/dicePresentationEvent';
 import { createDicePresentationRelease } from '@/components/ui/dice/dicePresentationRelease';
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
-  DiscoveryCheckedSchema,
-  DownedSchema,
-  EventKind,
-  EventSchema,
-  RollWindowOpenedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+  ActSchema,
+  ClockMark,
+  Family,
+  PartyKind,
+  Sense,
+  StateKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import {
   emptyPresentation,
@@ -90,26 +91,42 @@ function releaseCount(state: CombatPresentationState) {
   ).length;
 }
 
-function downedFact(member: string, source: 'live' | 'catchup' = 'live') {
+type ActBody = MessageInitShape<typeof ActSchema>['body'];
+const member = (id: string) => ({ kind: PartyKind.MEMBER, id });
+
+/** One act as a stream fact (rpg-project#630). */
+function actFact(
+  family: Family,
+  body: ActBody,
+  options: { id?: string; seq?: bigint; source?: 'live' | 'catchup' } = {}
+) {
+  const seq = options.seq ?? 23n;
   return {
-    type: 'stream-event' as const,
-    event: create(EventSchema, {
+    type: 'stream-act' as const,
+    act: create(ActSchema, {
       session: 'crypt-run',
-      seq: 23n,
-      kind: EventKind.DOWNED,
-      recipient: 'aldric',
-      body: {
-        case: 'downed' as const,
-        value: create(DownedSchema, { member }),
-      },
+      id: options.id ?? `id-${String(seq).padStart(8, '0')}`,
+      family,
+      body,
     }),
-    metadata: { source },
+    index: 0,
+    seq,
+    metadata: { source: options.source ?? ('live' as const) },
   };
 }
 
+function downedFact(who: string, source: 'live' | 'catchup' = 'live') {
+  return actFact(
+    Family.STATE,
+    { case: 'state', value: { party: member(who), change: StateKind.DOWNED } },
+    { id: 'id-down', source }
+  );
+}
+
 function expectConflictClosed(state: CombatPresentationState) {
-  expect(state.identities).toHaveLength(1);
-  expect(state.identities[0]?.conflicted).toBe(true);
+  // One conflicted identity: the roll, or the act's row. An act's own row is
+  // a second identity beside its roll, hidden while that roll is conflicted.
+  expect(state.identities.filter((i) => i.conflicted)).toHaveLength(1);
   expect(
     state.presentations[0]?.conflicted ?? state.otherStory[0]?.conflicted
   ).toBe(true);
@@ -120,29 +137,30 @@ function expectConflictClosed(state: CombatPresentationState) {
   expect(selectCurrentPresentation(state)).toBe(state.presentations[0]);
 }
 
-function identifiedWindowFact() {
-  return {
-    type: 'stream-event' as const,
-    event: create(EventSchema, {
-      session: 'crypt-run',
-      seq: 23n,
-      kind: EventKind.ROLL_WINDOW_OPENED,
-      body: {
-        case: 'rollWindowOpened' as const,
-        value: create(RollWindowOpenedSchema, {
-          presentationId: 'shared-window-roll',
-          audience: 'aldric',
-          roll: 9,
-          total: 13,
+function windowFact(presentationId: string) {
+  return actFact(
+    Family.CLOCK,
+    {
+      case: 'clock',
+      value: {
+        mark: ClockMark.ROLL_WINDOW_OPENED,
+        rollWindow: {
+          presentationId,
+          audience: member('aldric'),
+          roll: { dice: [9], total: 13 },
           offer: {
             ref: 'dnd5e:conditions:inspired',
             name: 'Bardic Inspiration',
           },
-        }),
+        },
       },
-    }),
-    metadata: { source: 'live' as const },
-  };
+    },
+    { id: 'id-window' }
+  );
+}
+
+function identifiedWindowFact() {
+  return windowFact('shared-window-roll');
 }
 
 describe('combat presentation authority reconciliation', () => {
@@ -239,27 +257,8 @@ describe('combat presentation authority reconciliation', () => {
 
   it('keeps the roll-window beat beside its same-sequence paused response without treating them as a conflict', () => {
     const facts = createAttackAuthorityFixture({ roll: 9, total: 13 });
-    const rollWindow = {
-      type: 'stream-event' as const,
-      event: create(EventSchema, {
-        session: 'crypt-run',
-        seq: 23n,
-        kind: EventKind.ROLL_WINDOW_OPENED,
-        body: {
-          case: 'rollWindowOpened' as const,
-          value: create(RollWindowOpenedSchema, {
-            audience: 'aldric',
-            offer: {
-              ref: 'dnd5e:conditions:inspired',
-              name: 'Bardic Inspiration',
-            },
-            roll: 9,
-            total: 13,
-          }),
-        },
-      }),
-      metadata: { source: 'live' as const },
-    };
+    // A legacy window with no provider token is story only.
+    const rollWindow = windowFact('');
 
     let state = reduceCombatPresentation(
       emptyPresentation(config),
@@ -272,8 +271,9 @@ describe('combat presentation authority reconciliation', () => {
     expect(state.otherStory).toHaveLength(1);
     expect(selectCurrentDiceEvents(state)).toHaveLength(1);
     expect(selectVisibleStory(state)[0]?.headline).toBe(
-      'Aldric rolled d20 9 + 4 = 13'
+      'Aldric may use Bardic Inspiration'
     );
+    expect(selectVisibleStory(state)[0]?.detail).toBe('13');
   });
 
   it('response first arms once and hides Story, verdict, and live result until release', () => {
@@ -296,7 +296,7 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(reconciled)).toEqual([]);
     expect(selectVisibleResult(reconciled)).toBeUndefined();
     expect(selectLiveAnnouncement(reconciled)).toBeNull();
-    expect(debugText(reconciled.debug[0])).toContain('struck');
+    expect(debugText(reconciled.debug[0])).toContain('attack:');
 
     const released = reduceCombatPresentation(
       reconciled,
@@ -487,7 +487,7 @@ describe('combat presentation authority reconciliation', () => {
         state = reduceCombatPresentation(state, facts[1]);
 
         expect(selectVisibleStory(state)).toHaveLength(1);
-        expect(selectVisibleStory(state)[0]?.id).toContain(':22');
+        expect(selectVisibleStory(state)[0]?.id).toContain('id-00000022');
         expect(selectCurrentPresentation(state)).toMatchObject({
           seq: 23n,
           conflicted: true,
@@ -570,18 +570,22 @@ describe('combat presentation authority reconciliation', () => {
     );
   });
 
-  it('orders Story by authoritative sequence rather than event arrival', () => {
+  // Acts carry no shared sequence (R30). The stream delivers them in id
+  // order, so delivery order IS the story's order.
+  it('orders Story in delivery order, which the act stream keeps in id order', () => {
     const earlier = createAttackAuthorityFixture({ seq: 22n, roll: 4 });
     const later = createAttackAuthorityFixture({ seq: 23n, roll: 12 });
     let state = reduceCombatPresentation(
       emptyPresentation(config),
-      later.streamFact('catchup')
+      earlier.streamFact('catchup')
     );
-    state = reduceCombatPresentation(state, earlier.streamFact('catchup'));
+    state = reduceCombatPresentation(state, later.streamFact('catchup'));
 
-    expect(selectVisibleStory(state).map((entry) => entry.detail)).toEqual([
-      expect.stringContaining('d20 4'),
-      expect.stringContaining('d20 12'),
+    expect(
+      selectVisibleStory(state).map((entry) => entry.rollBreakdown)
+    ).toEqual([
+      expect.stringContaining('[4]'),
+      expect.stringContaining('[12]'),
     ]);
   });
 
@@ -599,30 +603,29 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(state)).toEqual([]);
   });
 
-  it('uses one identity registry and fails closed when attack and other Story collide in either order', () => {
-    const attack = createAttackAuthorityFixture();
-
-    let attackFirst = reduceCombatPresentation(
+  it('keeps an attack and an act of another family in one record id apart', () => {
+    // On v1 a story beat and an attack shared a (session, seq) key and could
+    // collide. An act's row is keyed by its id AND its place in the run, so
+    // the swing and the fall it caused are two rows of one id, never a clash.
+    const attack = createAttackAuthorityFixture({
+      attacker: 'skeleton-guard',
+      target: 'aldric',
+    });
+    let state = reduceCombatPresentation(
       emptyPresentation(config),
-      attack.responseFact
+      attack.streamFact('catchup')
     );
-    attackFirst = reduceCombatPresentation(
-      attackFirst,
-      downedFact('skeleton-guard')
-    );
-
-    let otherFirst = reduceCombatPresentation(
-      emptyPresentation(config),
-      downedFact('skeleton-guard')
-    );
-    otherFirst = reduceCombatPresentation(otherFirst, attack.responseFact);
-
-    expectConflictClosed(attackFirst);
-    expectConflictClosed(otherFirst);
-    expect(attackFirst.presentations).toHaveLength(1);
-    expect(attackFirst.otherStory).toHaveLength(0);
-    expect(otherFirst.presentations).toHaveLength(0);
-    expect(otherFirst.otherStory).toHaveLength(1);
+    const fall = downedFact('aldric', 'catchup');
+    state = reduceCombatPresentation(state, {
+      ...fall,
+      act: create(ActSchema, { ...fall.act, id: attack.act.id }),
+      index: 1,
+    });
+    expect(state.identities.some((i) => i.conflicted)).toBe(false);
+    expect(selectVisibleStory(state).map((e) => e.headline)).toEqual([
+      'Skeleton Guard strikes Aldric',
+      'Aldric falls',
+    ]);
   });
 
   it('compares exact typed Story facts and marks differing same-key facts conflicted in both orders', () => {
@@ -774,7 +777,7 @@ describe('combat presentation settlement policy', () => {
       'presentation~crypt-run~23'
     );
     expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
-      expect.stringContaining(':25'),
+      expect.stringContaining('id-00000025'),
     ]);
     expect(selectVisibleResult(state)).toBeUndefined();
 
@@ -788,8 +791,8 @@ describe('combat presentation settlement policy', () => {
 
     state = reduceCombatPresentation(state, releaseFact(state));
     expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
-      expect.stringContaining(':23'),
-      expect.stringContaining(':25'),
+      expect.stringContaining('id-00000023'),
+      expect.stringContaining('id-00000025'),
     ]);
     expect(selectCurrentPresentation(state)?.seq).toBe(24n);
     expect(selectVisibleResult(state)).toBeUndefined();
@@ -797,9 +800,9 @@ describe('combat presentation settlement policy', () => {
     state = reduceCombatPresentation(state, releaseFact(state));
     expect(state.pendingLocalKeys).toEqual([]);
     expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
-      expect.stringContaining(':23'),
-      expect.stringContaining(':24'),
-      expect.stringContaining(':25'),
+      expect.stringContaining('id-00000023'),
+      expect.stringContaining('id-00000024'),
+      expect.stringContaining('id-00000025'),
     ]);
   });
 
@@ -1077,39 +1080,32 @@ describe('stream-delivered spell attacks', () => {
  * promotion.
  */
 describe('the resolved automatic discovery check (rpg-project#523)', () => {
-  const fact = (total: number, seq = 41n) => ({
-    type: 'stream-event' as const,
-    event: create(EventSchema, {
-      session: 'crypt-run',
-      seq,
-      kind: EventKind.DISCOVERY_CHECKED,
-      recipient: 'aldric',
-      body: {
-        case: 'discoveryChecked' as const,
-        value: create(DiscoveryCheckedSchema, {
-          member: 'aldric',
-          ability: 'perception',
-          beaten: false,
-          total,
-        }),
+  const fact = (total: number) =>
+    actFact(
+      Family.PERCEPTION,
+      {
+        case: 'perception',
+        value: {
+          observer: member('aldric'),
+          sense: Sense.DISCOVERY,
+          discovery: {
+            ability: 'perception',
+            roll: { total, against: 15, beaten: false },
+          },
+        },
       },
-    }),
-    metadata: { source: 'live' as const },
-  });
+      { id: 'id-search', seq: 41n }
+    );
 
-  it('is accepted rather than accused as a kind/body mismatch', () => {
+  it('is accepted as a story row with no diagnostic', () => {
     const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
-    expect(
-      state.diagnostics.filter((line) => line.includes('mismatch'))
-    ).toEqual([]);
-    // Recorded as an accepted other-event with its own identity.
+    expect(state.diagnostics).toEqual([]);
     expect(state.otherStory).toHaveLength(1);
   });
 
   it('keeps two checks that differ only in the die as distinct beats', () => {
-    // The whole roll is the identity, the same law the threat/appeal beats
-    // use: the SAME member may be checked twice, and it is the numbers that
-    // tell the beats apart. Reusing the previous result must be a conflict.
+    // The same act delivered twice is one row; the same row with a different
+    // die is a conflict, never a silent replacement.
     const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
     const repeated = reduceCombatPresentation(state, fact(12));
     expect(repeated.otherStory).toHaveLength(1);
@@ -1118,13 +1114,13 @@ describe('the resolved automatic discovery check (rpg-project#523)', () => {
     expect(changed.otherStory[0]?.conflicted).toBe(true);
   });
 
-  it('retains the upstream automatic-discovery story presentation', () => {
+  it('describes the check in one line with its roll', () => {
     const state = reduceCombatPresentation(emptyPresentation(config), fact(12));
     expect(selectVisibleStory(state)).toMatchObject([
       {
-        eyebrow: 'Discovery',
-        headline: 'Aldric: Failed Perception check',
-        detail: 'Total 12',
+        eyebrow: 'Search',
+        headline: 'Aldric searches',
+        detail: 'perception, 12 vs 15',
       },
     ]);
   });

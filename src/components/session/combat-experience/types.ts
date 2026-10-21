@@ -93,6 +93,14 @@ export interface CombatExperienceStoryExchange {
   tone: 'neutral' | 'success' | 'danger' | 'turn';
   /** Exact typed provider identity retained beside presentation prose. */
   attack?: Readonly<Pick<AttackRef, 'ref' | 'name' | 'damageType'>>;
+  /** The act id (`<verb>:<id>`) this row belongs to (rpg-project#630). */
+  group?: string;
+  /** This row belongs to the act of the row above it, and sits under it. */
+  nested?: boolean;
+  /** The roll that decided the act, as a breakdown line. */
+  rollBreakdown?: string;
+  /** Whether a live arrival of this row may toast (`actToasts`). */
+  toast?: boolean;
 }
 
 /** Presentation projection of an already-authoritative typed attack event. */

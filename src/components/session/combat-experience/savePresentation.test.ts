@@ -1,22 +1,17 @@
 // @vitest-environment node
 /**
- * The save's d20 reaching the table.
- *
- * THE GAP THIS CLOSES. Before the save had a fact category of its own, a
- * `SAVED` beat had nowhere to go: it is not an attack, so it never became
- * authority, and its body was not in the other-story table, so
- * `relevantOtherEvent` returned undefined and the beat was discarded as a
- * "typed event kind/body mismatch". Nothing rolled and nothing was logged.
- * Giving it a `'save'` kind is what makes the identity and the authority agree
- * (design rpg-project#405, folded presentation gap).
+ * The save's d20 reaching the table, from the act that forced it
+ * (rpg-project#630). A cast's result carries its target's save; it becomes
+ * `kind: 'save'` authority under a recipient-local identity built from the
+ * act's own id and place, never anything another client shares.
  */
 import { create } from '@bufbuild/protobuf';
 import {
-  EventKind,
-  EventSchema,
-  SavedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { SpellRefSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+  ActSchema,
+  CastOutcome,
+  Family,
+  PartyKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import {
   emptyPresentation,
@@ -25,6 +20,8 @@ import {
   selectVisibleStory,
   type CombatPresentationState,
 } from './presentation';
+
+const member = (id: string) => ({ kind: PartyKind.MEMBER, id });
 
 function configured(session = 'crypt-run'): CombatPresentationState {
   return reduceCombatPresentation(emptyPresentation(), {
@@ -36,124 +33,101 @@ function configured(session = 'crypt-run'): CombatPresentationState {
   });
 }
 
-function savedEvent(seq = 41n, session = 'crypt-run') {
-  return create(EventSchema, {
+function mockery(session = 'crypt-run', face = 7, total = 9, saved = false) {
+  return create(ActSchema, {
     session,
-    seq,
-    at: 11n,
-    recipient: 'bard-1',
-    kind: EventKind.SAVED,
+    id: 'id-mock',
+    act: 'cast:id-mock',
+    verb: 'cast',
+    family: Family.ACT,
     body: {
-      case: 'saved',
-      value: create(SavedSchema, {
-        saver: 'skeleton-1',
-        ability: 'wis',
-        roll: 7,
-        total: 9,
-        dc: 13,
-        succeeded: false,
-        source: create(SpellRefSchema, {
-          ref: 'dnd5e:spells:vicious-mockery',
-          name: 'Vicious Mockery',
-        }),
-      }),
+      case: 'cast',
+      value: {
+        by: member('bard-1'),
+        spell: { ref: 'dnd5e:spells:vicious-mockery', name: 'Vicious Mockery' },
+        targets: [member('skeleton-1')],
+        results: [
+          {
+            target: member('skeleton-1'),
+            outcome: saved ? CastOutcome.SAVED : CastOutcome.FAILED,
+            ability: 'wis',
+            save: { dice: [face], total, against: 13, beaten: saved },
+          },
+        ],
+      },
     },
   });
 }
 
 function accept(
   state: CombatPresentationState,
-  event: ReturnType<typeof savedEvent>,
+  act: ReturnType<typeof mockery>,
   source: 'live' | 'catchup' = 'live'
 ): CombatPresentationState {
   return reduceCombatPresentation(state, {
-    type: 'stream-event',
-    event,
+    type: 'stream-act',
+    act,
+    index: 0,
+    seq: 41n,
     metadata: { source },
   });
 }
 
 describe('a saving throw on the table', () => {
-  it('rolls a d20 with a recipient-local session and sequence identity', () => {
-    const state = accept(configured(), savedEvent());
-
+  it('rolls a d20 with a recipient-local act identity', () => {
+    const state = accept(configured(), mockery());
     const [request] = selectCurrentDiceEvents(state);
     expect(request).toMatchObject({
       type: 'dice-presentation-requested',
-      presentationId: 'session:crypt-run:41',
+      presentationId: 'session:crypt-run:id-mock.0.0',
       authoritySeq: 41n,
       die: { kind: 'd20', authoritativeResult: 7 },
     });
+    expect(state.presentations[0]?.authority.roller).toBe('skeleton-1');
   });
 
   it.each([
-    ['empty session', '', 41n],
-    ['overlong identifier', `unsafe-${'x'.repeat(140)}`, 41n],
-  ])('keeps an %s off the physical dice path', (_, session, seq) => {
-    const state = accept(configured(session), savedEvent(seq, session));
-
+    ['empty session', ''],
+    ['overlong identifier', `unsafe-${'x'.repeat(140)}`],
+  ])('keeps an %s off the physical dice path', (_, session) => {
+    const state = accept(configured(session), mockery(session));
     expect(selectCurrentDiceEvents(state)).toEqual([]);
     expect(state.presentations[0]?.authority.presentationId).toBe('');
     expect(state.presentations[0]?.semanticFallback).toBe(true);
   });
 
   it('records no diagnostic, and never marks the beat conflicted', () => {
-    const state = accept(configured(), savedEvent());
-
-    // THE WARNING THIS EXISTS TO PREVENT. A save registering as typed Story
-    // while its d20 wanted authority is exactly the "dice response conflicts
-    // with typed Story" refusal, and a conflicted record draws no dice.
+    const state = accept(configured(), mockery());
     expect(state.diagnostics).toEqual([]);
     expect(state.presentations.every((record) => !record.conflicted)).toBe(
       true
     );
   });
 
-  it('tells the story beside the roll', () => {
-    const story = selectVisibleStory(accept(configured(), savedEvent()));
-
+  it('tells the story in the cast’s one line', () => {
+    const story = selectVisibleStory(accept(configured(), mockery()));
     expect(story).toHaveLength(1);
-    expect(story[0]?.headline).toBe('Skeleton saves vs Vicious Mockery');
+    expect(story[0]?.headline).toBe('Lyric casts Vicious Mockery at Skeleton');
+    expect(story[0]?.detail).toBe('Skeleton failed the save, 9 vs 13');
   });
 
   it('settles a monster’s save on its own, as a monster’s attack does', () => {
-    const state = accept(configured(), savedEvent());
-
-    // The skeleton is not the local player, so nothing waits on the viewer's
-    // dice: the roll is shown and the record settles.
-    const record = state.presentations[0];
+    const record = accept(configured(), mockery()).presentations[0];
     expect(record?.settlement).toBe('auto');
     expect(record?.localPlayerOwned).toBe(false);
   });
 
-  it('accepts the same save twice without conflicting', () => {
-    // A reconnect replays the beat. Identical facts under the same key are
-    // the same beat, not a contradiction.
-    const once = accept(configured(), savedEvent());
-    const twice = accept(once, savedEvent(), 'catchup');
-
+  it('accepts the same act twice without conflicting', () => {
+    const once = accept(configured(), mockery());
+    const twice = accept(once, mockery(), 'catchup');
     expect(twice.diagnostics).toEqual([]);
     expect(twice.presentations).toHaveLength(1);
     expect(twice.presentations[0]?.conflicted).toBe(false);
   });
 
-  it('refuses two different saves that claim the same beat', () => {
-    const first = accept(configured(), savedEvent());
-    const contradicting = savedEvent();
-    contradicting.body = {
-      case: 'saved',
-      value: create(SavedSchema, {
-        saver: 'skeleton-1',
-        ability: 'wis',
-        roll: 18,
-        total: 20,
-        dc: 13,
-        succeeded: true,
-      }),
-    };
-
-    const state = accept(first, contradicting);
-
+  it('refuses two different saves that claim the same act', () => {
+    const first = accept(configured(), mockery());
+    const state = accept(first, mockery('crypt-run', 18, 20, true));
     expect(state.presentations[0]?.conflicted).toBe(true);
   });
 });

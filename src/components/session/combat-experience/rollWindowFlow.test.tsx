@@ -12,12 +12,6 @@
  * this window is not.
  */
 import { create } from '@bufbuild/protobuf';
-import {
-  EventKind,
-  EventSchema,
-  RollCalculationSchema,
-  RollWindowOpenedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { AttackResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AttackRefSchema,
@@ -35,11 +29,18 @@ import {
   Verb,
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  ClockMark,
+  Family,
+  PartyKind,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionDock } from './ActionDock';
-import { buildCombatStory } from './story';
+import { buildActStory } from './actStory';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
 
 const hoisted = vi.hoisted(() => ({
@@ -152,29 +153,31 @@ function movementWindowDeclaration(): Declaration {
   });
 }
 
+/** The window as the roller's act stream carries it (rpg-project#630). The
+ * provider token joins it to the paused swing's response. */
 function rollWindowBeat(
   audience: string,
   roll: number,
   total: number,
-  presentationId = ''
-) {
-  return create(EventSchema, {
+  presentationId = 'provider~attack-window-1'
+): Act {
+  return create(ActSchema, {
     session: 'crypt-run',
-    recipient: audience,
-    kind: EventKind.ROLL_WINDOW_OPENED,
-    seq: 7n,
+    id: 'id-window',
+    act: 'attack:id-swing',
+    verb: 'attack',
+    family: Family.CLOCK,
     body: {
-      case: 'rollWindowOpened',
-      value: create(RollWindowOpenedSchema, {
-        presentationId,
-        audience,
-        roll,
-        total,
-        offer: create(ReactionRefSchema, {
-          ref: INSPIRATION_REF,
-          name: 'Bardic Inspiration',
-        }),
-      }),
+      case: 'clock',
+      value: {
+        mark: ClockMark.ROLL_WINDOW_OPENED,
+        rollWindow: {
+          presentationId,
+          audience: { kind: PartyKind.MEMBER, id: audience },
+          roll: { dice: [roll], total },
+          offer: { ref: INSPIRATION_REF, name: 'Bardic Inspiration' },
+        },
+      },
     },
   });
 }
@@ -208,7 +211,7 @@ function Harness({
     invalidateAuthoritySnapshots: () => {},
     scheduleRefresh: () => {},
   });
-  const delivered = useDeliverOnce(combat.acceptStreamEvent, beat, source);
+  const delivered = useDeliverOnce(combat.acceptStreamActs, beat, source);
   const request = combat.diceEvents.find(
     (event) => event.type === 'dice-presentation-requested'
   );
@@ -244,7 +247,7 @@ function Harness({
 
 function useDeliverOnce(
   accept: (
-    event: ReturnType<typeof rollWindowBeat>,
+    run: readonly Act[],
     metadata: { source: 'live' | 'catchup' }
   ) => void,
   beat: ReturnType<typeof rollWindowBeat> | undefined,
@@ -253,7 +256,7 @@ function useDeliverOnce(
   const [delivered, setDelivered] = useState(false);
   useEffect(() => {
     if (!beat || delivered) return;
-    accept(beat, { source });
+    accept([beat], { source });
     setDelivered(true);
   }, [accept, beat, delivered, source]);
   return delivered;
@@ -296,7 +299,7 @@ describe('answering a post-roll window on your own d20', () => {
     );
   });
 
-  it('keeps event-first closed, then pairs it when the attack response arrives', async () => {
+  it('pairs an event-first window by its own token, and the response joins the same die', async () => {
     let resolveAttack!: (
       value: ReturnType<typeof pausedAttackResponse>
     ) => void;
@@ -320,8 +323,10 @@ describe('answering a post-roll window on your own d20', () => {
     await screen.findByText('yes', {
       selector: '[data-testid="delivered"]',
     });
+    // The window carries the provider token itself, so it names its die
+    // before the response lands; it still waits for that die to settle.
     expect(screen.getByTestId('roll-window-presentation-id').textContent).toBe(
-      ''
+      'provider~attack-window-1'
     );
     expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
       'yes'
@@ -353,7 +358,7 @@ describe('answering a post-roll window on your own d20', () => {
     view.rerender(
       <Harness
         declarations={[rollWindowDeclaration()]}
-        beat={rollWindowBeat('fighter-1', 9, 13)}
+        beat={rollWindowBeat('fighter-1', 9, 13, '')}
       />
     );
     await waitFor(() =>
@@ -370,39 +375,34 @@ describe('answering a post-roll window on your own d20', () => {
     );
   });
 
-  it('shows named dice in the decision prompt and its Story entry', async () => {
+  it('shows the act’s own roll in the decision prompt and its Story entry', async () => {
     const beat = rollWindowBeat('fighter-1', 9, 13);
-    if (beat.body.case !== 'rollWindowOpened') throw Error('expected window');
-    beat.body.value.calculation = create(RollCalculationSchema, {
-      // Preserve the provider total even if its components look inconsistent.
+    if (beat.body.case !== 'clock') throw Error('expected window');
+    // The provider total stands even when its parts look inconsistent.
+    beat.body.value.rollWindow!.roll = {
+      $typeName: 'dnd5e.api.session.v1alpha2.Roll',
+      expression: '1d20+1d4-1d4',
+      dice: [9, 3, 2],
+      modifiers: [],
       total: 99,
-      components: [
-        { dice: { notation: '1d20', finalRolls: [9] } },
-        {
-          source: { name: 'Bless' },
-          dice: { notation: '1d4', finalRolls: [3] },
-        },
-        {
-          source: { name: 'Bane' },
-          subtractDice: true,
-          dice: { notation: '1d4', finalRolls: [2] },
-        },
-      ],
-    });
+      of: 0,
+    };
     render(<Harness declarations={[rollWindowDeclaration()]} beat={beat} />);
-    const arithmetic = '1d20 [9] + 1d4 [3] Bless - 1d4 [2] Bane = 99';
     await waitFor(() =>
       expect(screen.getByTestId('reaction-window').textContent).toContain(
-        `You rolled ${arithmetic}`
+        'You rolled 1d20+1d4-1d4 = 99'
       )
     );
     for (const source of ['live', 'catchup'] as const) {
-      const [entry] = buildCombatStory(
-        [{ event: beat, source, visible: true }],
+      const [entry] = buildActStory(
+        [{ act: beat, index: 0, seq: 1n, source, visible: true }],
         { viewerMember: 'fighter-1' }
       );
-      expect(entry.headline).toContain(`rolled ${arithmetic}`);
-      expect(entry.headline).not.toMatch(/hit|miss|AC/);
+      expect(entry.headline).toBe(
+        'Aldric may use Bardic Inspiration'.replace('Aldric', 'fighter-1')
+      );
+      expect(entry.detail).toBe('1d20+1d4-1d4 = 99');
+      expect(entry.detail).not.toMatch(/hit|miss|AC/);
     }
   });
 
@@ -410,7 +410,7 @@ describe('answering a post-roll window on your own d20', () => {
     render(
       <Harness
         declarations={[rollWindowDeclaration()]}
-        beat={rollWindowBeat('fighter-1', 9, 13)}
+        beat={rollWindowBeat('fighter-1', 9, 13, '')}
       />
     );
 
@@ -490,7 +490,6 @@ describe('answering a post-roll window on your own d20', () => {
 
   it('uses the identified window for a witness die without exposing owner controls', async () => {
     const beat = rollWindowBeat('fighter-1', 9, 13, 'provider~window-die');
-    beat.recipient = 'bard-1';
     render(<Harness viewer="bard-1" declarations={[]} beat={beat} />);
     await screen.findByText('yes');
     expect(screen.getByTestId('active-dice-presentation-id').textContent).toBe(

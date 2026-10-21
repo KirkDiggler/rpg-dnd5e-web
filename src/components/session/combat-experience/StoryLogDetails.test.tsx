@@ -4,8 +4,17 @@ import {
   EventSchema,
   StruckSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
+  ActSchema,
+  Family,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  formatDebugLine,
+  type DebugEventEntry,
+  type DebugFeedEntry,
+} from '../debugLogLine';
 import styles from './CombatExperience.module.css';
 import {
   COMBAT_DEBUG_MAX_LINES,
@@ -36,16 +45,18 @@ function event(seq = 9007199254740993n) {
     },
   });
 }
-function stateFor(source = event()) {
-  return reduceCombatPresentation(
-    emptyPresentation({
-      session: 'session-1',
-      viewerMember: 'fighter',
-      memberNames: { fighter: 'Fighter' },
-      rollerRoles: { fighter: 'player' },
-    }),
-    { type: 'stream-event', event: source, metadata: { source: 'live' } }
-  );
+/** A structured debug row, as the Concepts surface still feeds StoryLog. */
+function entryFor(source: ReturnType<typeof event>, id = 0): DebugEventEntry {
+  const line = formatDebugLine(source, new Map([['fighter', 'Fighter']]));
+  return {
+    id,
+    summary: `#${source.seq} struck · Fighter · source=live`,
+    text: `${line.text} source=live`,
+    event: source,
+  };
+}
+function stateFor(source = event()): { debug: readonly DebugFeedEntry[] } {
+  return { debug: [entryFor(source)] };
 }
 const base = {
   story: [],
@@ -116,7 +127,6 @@ describe('inline Debug inspection', () => {
   it('expands the original event with precise IDs, safe highlighted JSON and copy', async () => {
     const source = event();
     const state = stateFor(source);
-    source.body = { case: undefined }; // A later caller mutation must not rewrite the recorded entry.
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const { container } = render(<StoryLog {...base} debug={state.debug} />);
@@ -153,11 +163,7 @@ describe('inline Debug inspection', () => {
       screen.getByRole('button', { name: /Inspect event.*struck/i })
     );
     await screen.findByRole('button', { name: 'Copy JSON' });
-    const next = reduceCombatPresentation(first, {
-      type: 'stream-event',
-      event: event(2n),
-      metadata: { source: 'live' },
-    });
+    const next = { debug: [...first.debug, entryFor(event(2n), 1)] };
     rerender(<StoryLog {...base} debug={next.debug} />);
     expect(screen.getAllByLabelText('Formatted event JSON')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }));
@@ -166,25 +172,29 @@ describe('inline Debug inspection', () => {
     ).toBeTruthy();
   });
 
-  it('retains the existing feed bound and unique stable keys for duplicate receipts', () => {
-    const source = event(1n);
-    let state = stateFor(source);
-    const original = state.debug[0];
-    for (let i = 0; i < COMBAT_DEBUG_MAX_LINES; i += 1) {
+  it('bounds the presentation’s own act debug feed', () => {
+    let state = emptyPresentation({
+      session: 'session-1',
+      viewerMember: 'fighter',
+    });
+    for (let i = 0; i <= COMBAT_DEBUG_MAX_LINES; i += 1) {
       state = reduceCombatPresentation(state, {
-        type: 'stream-event',
-        event: source,
+        type: 'stream-act',
+        act: create(ActSchema, {
+          session: 'session-1',
+          id: `id-${String(i).padStart(6, '0')}`,
+          family: Family.CLOCK,
+        }),
+        index: 0,
+        seq: BigInt(i + 1),
         metadata: { source: 'live' },
       });
     }
     expect(state.debug).toHaveLength(COMBAT_DEBUG_MAX_LINES);
-    expect(state.debug).not.toContain(original);
-    const ids = state.debug.map((entry) =>
-      typeof entry === 'string' ? undefined : entry.id
+    expect(String(state.debug[0])).toContain('id-000001');
+    expect(String(state.debug.at(-1))).toContain(
+      `id-${String(COMBAT_DEBUG_MAX_LINES).padStart(6, '0')}`
     );
-    expect(ids[0]).toBe(1);
-    expect(ids.at(-1)).toBe(COMBAT_DEBUG_MAX_LINES);
-    expect(new Set(ids).size).toBe(COMBAT_DEBUG_MAX_LINES);
   });
 
   it('keeps non-event warnings readable rather than inventing JSON', () => {

@@ -1,21 +1,21 @@
 // @vitest-environment node
 /**
- * A Sanctuary-style ward's own d20 reaching the table.
+ * A Sanctuary-style ward's own d20 reaching the table (rpg-project#630).
  *
- * `warded`/`castWarded` share `saved`'s carve-out (see presentation.ts's own
- * comment on `authorityFromEvent`): the beat IS the blocked attacker's or
- * caster's own failed save against the warding caster's DC, so it becomes
- * `kind: 'save'` authority the same way, under the same recipient-local
- * `session:seq` identity `savePresentation.test.ts` already covers for
- * `saved`.
+ * A warded swing and a warded cast each carry the blocked attacker's or
+ * caster's own failed save against the warding caster's DC, so each becomes
+ * `kind: 'save'` authority under the same recipient-local act identity
+ * `savePresentation.test.ts` covers.
  */
 import { create } from '@bufbuild/protobuf';
+import { AttackResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
-  CastWardedSchema,
-  EventKind,
-  EventSchema,
-  WardedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+  ActSchema,
+  AttackOutcome,
+  CastOutcome,
+  Family,
+  PartyKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import {
   emptyPresentation,
@@ -25,120 +25,140 @@ import {
   type CombatPresentationState,
 } from './presentation';
 
-function configured(session = 'crypt-run'): CombatPresentationState {
+const member = (id: string) => ({ kind: PartyKind.MEMBER, id });
+const save = { dice: [8], total: 10, against: 15, beaten: false };
+
+function configured(): CombatPresentationState {
   return reduceCombatPresentation(emptyPresentation(), {
     type: 'configure',
-    session,
+    session: 'crypt-run',
     viewerMember: 'fighter-1',
     memberNames: { 'fighter-1': 'Vex', 'cleric-1': 'Alder' },
     rollerRoles: { 'fighter-1': 'player', 'cleric-1': 'player' },
   });
 }
 
-function wardedEvent(seq = 50n, session = 'crypt-run') {
-  return create(EventSchema, {
-    session,
-    seq,
-    at: 20n,
-    recipient: 'fighter-1',
-    kind: EventKind.WARDED,
+const wardedSwing = () =>
+  create(ActSchema, {
+    session: 'crypt-run',
+    id: 'id-ward',
+    act: 'attack:id-ward',
+    verb: 'attack',
+    family: Family.ACT,
     body: {
-      case: 'warded',
-      value: create(WardedSchema, {
-        attacker: 'fighter-1',
-        target: 'cleric-1',
-        source: 'cleric-1',
-        ability: 'wis',
-        roll: 8,
-        total: 10,
-        dc: 15,
-      }),
+      case: 'attack',
+      value: {
+        by: member('fighter-1'),
+        to: member('cleric-1'),
+        outcome: AttackOutcome.WARDED,
+        attack: { name: 'Longsword' },
+        ward: { source: member('cleric-1'), ability: 'wis', roll: save },
+      },
     },
   });
-}
 
-function castWardedEvent(seq = 51n, session = 'crypt-run') {
-  return create(EventSchema, {
-    session,
-    seq,
-    at: 21n,
-    recipient: 'fighter-1',
-    kind: EventKind.CAST_WARDED,
+const wardedCast = () =>
+  create(ActSchema, {
+    session: 'crypt-run',
+    id: 'id-cast',
+    act: 'cast:id-cast',
+    verb: 'cast',
+    family: Family.ACT,
     body: {
-      case: 'castWarded',
-      value: create(CastWardedSchema, {
-        actor: 'fighter-1',
-        target: 'cleric-1',
-        source: 'cleric-1',
-        ability: 'wis',
-        roll: 8,
-        total: 10,
-        dc: 15,
-      }),
+      case: 'cast',
+      value: {
+        by: member('fighter-1'),
+        spell: { name: 'Fire Bolt' },
+        targets: [member('cleric-1')],
+        results: [
+          {
+            target: member('cleric-1'),
+            outcome: CastOutcome.WARDED,
+            ability: 'wis',
+            save,
+            source: member('cleric-1'),
+          },
+        ],
+      },
     },
   });
-}
 
 function accept(
   state: CombatPresentationState,
-  event: ReturnType<typeof wardedEvent>,
-  source: 'live' | 'catchup' = 'live'
+  act: ReturnType<typeof wardedSwing>
 ): CombatPresentationState {
   return reduceCombatPresentation(state, {
-    type: 'stream-event',
-    event,
-    metadata: { source },
+    type: 'stream-act',
+    act,
+    index: 0,
+    seq: 50n,
+    metadata: { source: 'live' },
   });
 }
 
 describe('a warded attack on the table', () => {
   it('rolls the attacker’s own save with a recipient-local identity', () => {
-    const state = accept(configured(), wardedEvent());
-
-    const [request] = selectCurrentDiceEvents(state);
+    const [request] = selectCurrentDiceEvents(
+      accept(configured(), wardedSwing())
+    );
     expect(request).toMatchObject({
       type: 'dice-presentation-requested',
-      presentationId: 'session:crypt-run:50',
+      presentationId: 'session:crypt-run:id-ward.0.0',
       authoritySeq: 50n,
       die: { kind: 'd20', authoritativeResult: 8 },
     });
   });
 
   it('never marks the beat conflicted', () => {
-    const state = accept(configured(), wardedEvent());
-
+    const state = accept(configured(), wardedSwing());
     expect(state.diagnostics).toEqual([]);
     expect(state.presentations.every((record) => !record.conflicted)).toBe(
       true
     );
   });
 
-  it('tells the story beside the roll', () => {
-    const story = selectVisibleStory(accept(configured(), wardedEvent()));
-
-    expect(story).toHaveLength(1);
-    expect(story[0]?.headline).toBe("Alder's ward blocks Vex's attack");
+  it('arms the local player’s own die, as their own save would', () => {
+    const record = accept(configured(), wardedSwing()).presentations[0];
+    expect(record?.localPlayerOwned).toBe(true);
+    expect(record?.authority.roller).toBe('fighter-1');
   });
 
-  it('arms the local player’s own die, as their own save would', () => {
-    const state = accept(configured(), wardedEvent());
+  it('tells the story beside the roll: a save arrives resolved and settles', () => {
+    const story = selectVisibleStory(accept(configured(), wardedSwing()));
+    expect(story).toHaveLength(1);
+    expect(story[0]?.headline).toBe("Vex's attack on Alder is warded");
+    expect(story[0]?.detail).toBe("wis save against Alder's ward, 10 vs 15");
+  });
 
-    // fighter-1 is both the viewer and the one whose save this is — the
-    // same ownership rule an ordinary `saved` beat already gets.
-    const record = state.presentations[0];
-    expect(record?.localPlayerOwned).toBe(true);
+  it('does not turn a warded attack response into a miss or an attack die, in either delivery order', () => {
+    const fact = {
+      type: 'attack-response' as const,
+      session: 'crypt-run',
+      attacker: 'fighter-1',
+      target: 'cleric-1',
+      response: create(AttackResponseSchema, {
+        warded: true,
+        wardedBy: 'cleric-1',
+      }),
+    };
+    const responseFirst = reduceCombatPresentation(configured(), fact);
+    expect(responseFirst.presentations).toEqual([]);
+    expect(responseFirst.diagnostics).toEqual([]);
+    const actFirst = accept(configured(), wardedSwing());
+    expect(reduceCombatPresentation(actFirst, fact)).toEqual(actFirst);
+    expect(accept(responseFirst, wardedSwing())).toEqual(actFirst);
   });
 });
 
 describe('a warded cast on the table', () => {
   it('rolls the caster’s own save the same way', () => {
-    const state = accept(configured(), castWardedEvent());
-
+    const state = accept(configured(), wardedCast());
     const [request] = selectCurrentDiceEvents(state);
     expect(request).toMatchObject({
       type: 'dice-presentation-requested',
-      presentationId: 'session:crypt-run:51',
+      presentationId: 'session:crypt-run:id-cast.0.0',
       die: { kind: 'd20', authoritativeResult: 8 },
     });
+    expect(state.presentations[0]?.authority.roller).toBe('fighter-1');
   });
 });

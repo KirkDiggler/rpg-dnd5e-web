@@ -24,8 +24,21 @@ the same reducers, holdings from hold/drop/departure), feeds a remote walk's
 path to the move controller (`arrivingWalk.ts`), and sets carriage, the door
 notice and the run's end. Knowledge cannot fence an act against the
 GetKnowledge cutoff (a v1 seq), so act replay relies on the reducers being
-unions and upserts. The v1 stream stays subscribed only for the story log and
-toasts until W2.
+unions and upserts.
+
+**The story log, toasts and dice read acts (rpg-project#630, W2)** — The live
+session no longer subscribes to v1 StreamEvents or GetStory
+(`useSessionEventStream` and the v1 story builder `story.ts` are deleted).
+Each act is one describer line (`describeAct.ts`) with its `Roll` as a
+breakdown; rows of one act id group under the act's first row (a failed
+line's answer under its line, a rest's ended concentrations under the rest).
+Toasts follow `actToasts`: act, reaction, state, and a speak's answers. The
+shared-d20 machine (`presentation.ts`) takes its authority from acts: a swing
+and a death save join the actor's verb response by provider token; a roll
+window owns its token's record and the swing after it is its own record; a
+save keys on its act id and place. Minimal rendering until rpg-dnd5e-web#1301:
+per-kind cards collapse to one line, and an attack card no longer lists its
+advantage sources (acts do not carry them).
 
 **The debug panel reads the record (rpg-project#628)** — In a live session,
 Debug mode reads session v1alpha2's record stream (`recordClient`,

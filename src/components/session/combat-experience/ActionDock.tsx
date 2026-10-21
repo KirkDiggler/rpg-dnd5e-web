@@ -24,6 +24,7 @@ import {
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
+import { formatAttackRollArithmetic } from './attackArithmetic';
 import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
@@ -40,7 +41,6 @@ import {
   standingActionsBlocked,
   type StandingAction,
 } from './standingActions';
-import { formatAttackRollArithmetic } from './story';
 import type {
   CombatExperienceActionPresentation,
   CombatExperienceRollWindow,

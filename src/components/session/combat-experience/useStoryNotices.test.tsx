@@ -32,6 +32,19 @@ afterEach(() => {
 });
 
 describe('useStoryNotices', () => {
+  it('toasts only the families the toast policy names (rpg-project#630)', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    view.rerender({
+      ...props,
+      story: [
+        old,
+        { ...entry('turn'), toast: false },
+        { ...entry('swing'), toast: true },
+      ],
+    });
+    expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
+  });
+
   it('keeps background catch-up and unknown provenance quiet even while the stream is live', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     const history = [

@@ -2,14 +2,14 @@ import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
+import {
+  formatAttackModifierSource,
+  formatAttackRollArithmetic,
+} from './attackArithmetic';
 import styles from './CombatExperience.module.css';
 import { DebugEventRow } from './DebugEventRow';
 import { isCombatDebugEnabled } from './diagnostics';
 import { RecordPanel } from './RecordPanel';
-import {
-  formatAttackModifierSource,
-  formatAttackRollArithmetic,
-} from './story';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -42,11 +42,18 @@ export interface StoryLogProps {
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
   return (
     <article
-      className={`${styles.storyEntry} ${styles[`story_${entry.tone}`]}`}
+      className={`${styles.storyEntry} ${styles[`story_${entry.tone}`]}${entry.nested ? ` ${styles.storyNested}` : ''}`}
+      data-act={entry.group}
+      data-nested={entry.nested ? 'true' : undefined}
     >
       <span>{entry.eyebrow}</span>
       <strong>{entry.headline}</strong>
       <p>{entry.detail}</p>
+      {entry.rollBreakdown && (
+        <small className={styles.storyRoll} data-testid="story-roll-breakdown">
+          {entry.rollBreakdown}
+        </small>
+      )}
     </article>
   );
 }
