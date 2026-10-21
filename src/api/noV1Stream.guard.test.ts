@@ -35,9 +35,20 @@ const ALLOWED_TYPES = new Set(
 );
 
 const V1_EVENTS = 'session/v1alpha1/events_pb';
-const IMPORT = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/g;
-const V1_STREAM_CALL = /\bsessionClient\s*\.\s*(?:streamEvents|getStory)\s*\(/;
-const COMMENT_LINE = /^\s*(?:\/\/|\/?\*)/;
+/** A named import of the v1 module: the only shape a file may carry it in. */
+const NAMED_IMPORT =
+  /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"][^'"]*session\/v1alpha1\/events_pb['"]/g;
+/** `.streamEvents(` or `.getStory(` on any receiver, across whitespace and
+ * newlines; the receiver is captured so `storyClient` alone is allowed. */
+const STREAM_CALL =
+  /([A-Za-z_$][\w$]*)?\s*(?:\)\s*)?\.\s*(streamEvents|getStory)\s*\(/g;
+
+/** The text with `//` and block comments removed: prose is not a finding. */
+function code(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -55,11 +66,19 @@ const FILES = walk(SRC)
   }))
   .filter(({ path }) => path !== SELF);
 
-/** Each v1 event type a file imports that the verb responses do not carry. */
+/**
+ * Each v1 event use a file makes that the verb responses do not carry. Every
+ * occurrence of the module specifier must sit in a named import whose names
+ * are all in ALLOWED_TYPES; any other shape — a namespace import, a
+ * re-export, an inline `import('…')` type — is a finding, as is a forbidden
+ * name in a named import.
+ */
 function forbiddenV1Imports(text: string): string[] {
+  const src = code(text);
   const out: string[] = [];
-  for (const match of text.matchAll(IMPORT)) {
-    if (!match[2]!.endsWith(V1_EVENTS)) continue;
+  let allowedSites = 0;
+  for (const match of src.matchAll(NAMED_IMPORT)) {
+    allowedSites++;
     for (const raw of match[1]!.split(',')) {
       const name = raw
         .trim()
@@ -69,13 +88,20 @@ function forbiddenV1Imports(text: string): string[] {
       if (name && !ALLOWED_TYPES.has(name)) out.push(name);
     }
   }
+  const sites = src.split(V1_EVENTS).length - 1;
+  if (sites > allowedSites)
+    out.push(`${sites - allowedSites} other use(s) of ${V1_EVENTS}`);
   return out;
 }
 
-function callsV1Stream(text: string): boolean {
-  return text
-    .split('\n')
-    .some((line) => !COMMENT_LINE.test(line) && V1_STREAM_CALL.test(line));
+/** Each `streamEvents`/`getStory` call on a receiver other than storyClient. */
+function v1StreamCalls(text: string): string[] {
+  const out: string[] = [];
+  for (const match of code(text).matchAll(STREAM_CALL)) {
+    if (match[1] !== 'storyClient')
+      out.push(`${match[1] ?? '(expression)'}.${match[2]}`);
+  }
+  return out;
 }
 
 describe('no v1 event import (rpg-dnd5e-web#1305)', () => {
@@ -90,26 +116,47 @@ describe('no v1 event import (rpg-dnd5e-web#1305)', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('calls neither v1 StreamEvents nor v1 GetStory', () => {
+  it('calls streamEvents and getStory only on storyClient', () => {
     expect(
-      FILES.filter(({ text }) => callsV1Stream(text)).map(({ path }) => path)
+      FILES.flatMap(({ path, text }) =>
+        v1StreamCalls(text).map((call) => `${path}: ${call}`)
+      )
     ).toEqual([]);
   });
 
   it('would catch the imports and calls it exists to forbid', () => {
+    const v1 = `'@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb'`;
     expect(
       forbiddenV1Imports(
-        `import {\n  EventKind,\n  type Event as SessionEvent,\n  RollCalculationSchema,\n} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';`
+        `import {\n  EventKind,\n  type Event as SessionEvent,\n  RollCalculationSchema,\n} from ${v1};`
       )
     ).toEqual(['EventKind', 'Event']);
     expect(
-      forbiddenV1Imports(
-        `import type { RollCalculation } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';`
-      )
+      forbiddenV1Imports(`import type { RollCalculation } from ${v1};`)
     ).toEqual([]);
+    // The shapes a named-import pattern alone misses (#1316 review).
+    for (const shape of [
+      `import * as V1 from ${v1};`,
+      `export { EventKind } from ${v1};`,
+      `import type * as T from ${v1};`,
+      `export type E = import(${v1}).Event;`,
+    ]) {
+      expect(forbiddenV1Imports(shape), shape).not.toEqual([]);
+    }
+    expect(forbiddenV1Imports(`// a comment naming ${v1} is prose`)).toEqual(
+      []
+    );
+
     expect(
-      callsV1Stream('  for await (const e of sessionClient.streamEvents({')
-    ).toBe(true);
-    expect(callsV1Stream('  // sessionClient.getStory( is gone')).toBe(false);
+      v1StreamCalls('for await (const e of sessionClient.streamEvents({')
+    ).toEqual(['sessionClient.streamEvents']);
+    expect(
+      v1StreamCalls('const c = sessionClient; c.streamEvents({});')
+    ).toEqual(['c.streamEvents']);
+    expect(v1StreamCalls('sessionClient\n  .getStory({ session });')).toEqual([
+      'sessionClient.getStory',
+    ]);
+    expect(v1StreamCalls('storyClient.streamEvents({ session })')).toEqual([]);
+    expect(v1StreamCalls('  // sessionClient.getStory( is gone')).toEqual([]);
   });
 });

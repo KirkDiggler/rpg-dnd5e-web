@@ -5,7 +5,12 @@ import {
   SecretRevealedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
-import { cellsPatchOf, secretPatchOf } from './actGeometry';
+import {
+  cellsPatchFromJson,
+  cellsPatchOf,
+  secretPatchFromJson,
+  secretPatchOf,
+} from './actGeometry';
 
 describe('a perception act’s geometry, as atlas rows', () => {
   it('cells learned cross field for field, a doorway’s door as its connection', () => {
@@ -50,5 +55,26 @@ describe('a perception act’s geometry, as atlas rows', () => {
     expect(patch.cells).toEqual([expect.objectContaining({ x: 1, y: 0 })]);
     expect(patch.doorways.map((d) => d.connection)).toEqual(['postern']);
     expect(patch.structuralDoors.map((d) => d.id)).toEqual(['postern']);
+  });
+
+  it('a CellsLearned field this bridge does not map throws rather than vanishing', () => {
+    expect(() => cellsPatchFromJson({ regions: [], futureRows: [] })).toThrow(
+      'actGeometry: CellsLearned.futureRows has no atlas row'
+    );
+  });
+
+  it('a SecretRevealed field this bridge does not map throws rather than vanishing', () => {
+    expect(() =>
+      secretPatchFromJson({ concealment: 'secret', futureRows: [] })
+    ).toThrow('actGeometry: SecretRevealed.futureRows has no atlas row');
+  });
+
+  it('a row field the atlas row lacks throws rather than vanishing', () => {
+    expect(() =>
+      cellsPatchFromJson({ regions: [{ id: 'cell', futureField: 1 }] })
+    ).toThrow();
+    expect(() =>
+      secretPatchFromJson({ props: [{ id: 'chest', futureField: 1 }] })
+    ).toThrow();
   });
 });

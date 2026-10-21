@@ -97,7 +97,12 @@ const CELLS_FIELDS = [
 
 /** CellsLearned as the patch `applyCellsRevealed` takes. */
 export function cellsPatchOf(cells: CellsLearned): CellsPatch {
-  const json = toJson(CellsLearnedSchema, cells) as JsonObject;
+  return cellsPatchFromJson(toJson(CellsLearnedSchema, cells) as JsonObject);
+}
+
+/** cellsPatchOf's bridge over the act body's JSON form. Exported so a test
+ * can hand it a field no CellsLearned carries yet. */
+export function cellsPatchFromJson(json: JsonObject): CellsPatch {
   assertOnly(json, CELLS_FIELDS, 'CellsLearned');
   if (Array.isArray(json.doorways))
     json.doorways = renameDoorways(json.doorways);
@@ -140,7 +145,14 @@ const SECRET_FIELDS = [
 /** SecretRevealed as the patch `applyConcealmentRevealed` takes. The door
  * rows are left to GetDoors; their doorways patch the atlas. */
 export function secretPatchOf(revealed: SecretRevealed): SecretPatch {
-  const json = toJson(SecretRevealedSchema, revealed) as JsonObject;
+  return secretPatchFromJson(
+    toJson(SecretRevealedSchema, revealed) as JsonObject
+  );
+}
+
+/** secretPatchOf's bridge over the act body's JSON form. Exported so a test
+ * can hand it a field no SecretRevealed carries yet. */
+export function secretPatchFromJson(json: JsonObject): SecretPatch {
   assertOnly(json, SECRET_FIELDS, 'SecretRevealed');
   const doors = Array.isArray(json.doors) ? (json.doors as JsonRow[]) : [];
   const doorways = renameDoorways(
