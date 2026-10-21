@@ -69,8 +69,8 @@ describe('useCombatStoryPacing scope', () => {
     );
 
     act(() => {
-      result.current.acceptActs([oldFirst], { source: 'live' });
-      result.current.acceptActs([oldQueued], { source: 'live' });
+      result.current.acceptActs([oldFirst], { source: 'live', startIndex: 0 });
+      result.current.acceptActs([oldQueued], { source: 'live', startIndex: 0 });
     });
     expect(result.current.story).toEqual([]);
     expect(result.current.notice).toBe("Skeleton Guard's turn.");
@@ -89,7 +89,7 @@ describe('useCombatStoryPacing scope', () => {
     expect(result.current.story).toEqual(nextStory);
     expect(result.current.notice).toBeNull();
 
-    act(() => result.current.acceptActs([nextEvent], { source: 'live' }));
+    act(() => result.current.acceptActs([nextEvent], { source: 'live', startIndex: 0 }));
     expect(result.current.story).toEqual(oldStory);
     expect(result.current.notice).toBe("Aldric's turn.");
 

@@ -14,6 +14,8 @@ import {
   ActSchema,
   ClockMark,
   Family,
+  PartyKind,
+  StateKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import {
   act,
@@ -93,6 +95,7 @@ function SemanticFallbackHarness() {
         onClick={() =>
           presentation.acceptStreamActs([unsafeSemanticFacts.act], {
             source: 'live',
+            startIndex: 0,
           })
         }
       >
@@ -160,7 +163,7 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
 
     expect(result.current.state.presentations[0]?.eventAccepted).toBe(true);
     expect(debugText(result.current.debug[0])).toContain(facts.act.act);
@@ -196,7 +199,7 @@ describe('useCombatPresentation', () => {
     expect(result.current.story).toEqual([]);
     expect(result.current.phase).toBe('released-waiting-event');
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
     expect(result.current.story).toHaveLength(1);
   });
 
@@ -228,11 +231,11 @@ describe('useCombatPresentation', () => {
     expect(result.current.state).toBe(waitingState);
     expect(result.current.state.diagnostics).toHaveLength(diagnosticCount);
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
     expect(result.current.story).toHaveLength(1);
     expect(result.current.phase).toBe('settled');
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
     expect(result.current.story).toHaveLength(1);
   });
 
@@ -256,14 +259,14 @@ describe('useCombatPresentation', () => {
     );
 
     act(() =>
-      result.current.acceptStreamActs([settled.act], { source: 'live' })
+      result.current.acceptStreamActs([settled.act], { source: 'live', startIndex: 0 })
     );
     expect(result.current.story).toHaveLength(1);
     expect(result.current.result?.attackId).toContain(settled.act.id);
 
     act(() => result.current.acceptAttackResponse(accepted.responseFact));
     act(() =>
-      result.current.acceptStreamActs([conflict.act], { source: 'live' })
+      result.current.acceptStreamActs([conflict.act], { source: 'live', startIndex: 0 })
     );
 
     expect(result.current.story).toHaveLength(1);
@@ -298,7 +301,7 @@ describe('useCombatPresentation', () => {
         }),
       ],
     });
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
 
     expect(result.current.diceEvents[0]).toMatchObject({
       type: 'dice-presentation-requested',
@@ -432,7 +435,7 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
 
     expect(result.current.diceWitnessRole).toBe('spectator');
     expect(result.current.diceEvents).toEqual([]);
@@ -454,7 +457,7 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live' }));
+    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
     expect(result.current.story).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
@@ -476,7 +479,7 @@ describe('useCombatPresentation', () => {
             },
           }),
         ],
-        { source: 'live' }
+        { source: 'live', startIndex: 0 }
       )
     );
     rerender({ roster: [] });
@@ -520,7 +523,7 @@ describe('useCombatPresentation', () => {
 
     act(() => result.current.acceptAttackResponse(oldFacts.responseFact));
     act(() =>
-      result.current.acceptStreamActs([oldFacts.act], { source: 'live' })
+      result.current.acceptStreamActs([oldFacts.act], { source: 'live', startIndex: 0 })
     );
     const staleAccept = result.current.acceptStreamActs;
     expect(result.current.debug).not.toEqual([]);
@@ -533,12 +536,12 @@ describe('useCombatPresentation', () => {
     expect(result.current.diceEvents).toEqual([]);
     expect(result.current.result).toBeUndefined();
 
-    act(() => staleAccept([oldFacts.act], { source: 'live' }));
+    act(() => staleAccept([oldFacts.act], { source: 'live', startIndex: 0 }));
     expect(result.current.debug).toEqual([]);
     expect(result.current.state.presentations).toEqual([]);
 
     act(() =>
-      result.current.acceptStreamActs([nextFacts.act], { source: 'catchup' })
+      result.current.acceptStreamActs([nextFacts.act], { source: 'catchup', startIndex: 0 })
     );
     expect(result.current.story).toHaveLength(1);
     const staleNextAccept = result.current.acceptStreamActs;
@@ -549,7 +552,7 @@ describe('useCombatPresentation', () => {
     expect(result.current.debug).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
-    act(() => staleNextAccept([nextFacts.act], { source: 'catchup' }));
+    act(() => staleNextAccept([nextFacts.act], { source: 'catchup', startIndex: 0 }));
     expect(result.current.state.presentations).toEqual([]);
   });
 });
@@ -682,5 +685,48 @@ describe('StoryLog developer diagnostics gate', () => {
       screen.getByLabelText('Raw debug feed').getAttribute('aria-live')
     ).toBe('off');
     expect(screen.queryByRole('log')).toBeNull();
+  });
+});
+
+describe('a same-id run continued across deliveries (rpg-dnd5e-web#1306)', () => {
+  it('gives the continued tail the next place in the run, never a second #0', () => {
+    const downed = (member: string) =>
+      create(ActSchema, {
+        session: 'crypt-run',
+        id: 'id-shared',
+        family: Family.ACT,
+        body: {
+          case: 'state',
+          value: {
+            party: { kind: PartyKind.MEMBER, id: member },
+            change: StateKind.DOWNED,
+          },
+        },
+      });
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+    act(() => {
+      result.current.acceptStreamActs([downed('aldric')], {
+        source: 'live',
+        startIndex: 0,
+      });
+    });
+    // The feed delivered the head promptly; the tail continues the open run.
+    act(() => {
+      result.current.acceptStreamActs([downed('skeleton-guard')], {
+        source: 'live',
+        startIndex: 1,
+      });
+    });
+
+    expect(result.current.story.map((entry) => entry.id)).toEqual([
+      '9:crypt-run:id-shared#0',
+      '9:crypt-run:id-shared#1',
+    ]);
   });
 });

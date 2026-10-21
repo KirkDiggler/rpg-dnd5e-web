@@ -2204,7 +2204,8 @@ export function useSessionCombatExperience({
       // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
       // window's audience is exactly one member, and a window naming
       // somebody else is a fact about their decision, not this dock's panel.
-      run.forEach((act, index) => {
+      run.forEach((act, offset) => {
+        const index = metadata.startIndex + offset;
         if (
           act.body.case !== 'clock' ||
           act.body.value.mark !== ClockMark.ROLL_WINDOW_OPENED

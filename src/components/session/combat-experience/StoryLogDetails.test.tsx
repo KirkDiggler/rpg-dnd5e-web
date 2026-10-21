@@ -187,7 +187,7 @@ describe('inline Debug inspection', () => {
         }),
         index: 0,
         seq: BigInt(i + 1),
-        metadata: { source: 'live' },
+        metadata: { source: 'live', startIndex: 0 },
       });
     }
     expect(state.debug).toHaveLength(COMBAT_DEBUG_MAX_LINES);

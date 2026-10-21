@@ -166,7 +166,7 @@ export function createAttackAuthorityFixture(
       act,
       index: 0,
       seq: eventSeq,
-      metadata: { source },
+      metadata: { source, startIndex: 0 },
     }),
   };
 }

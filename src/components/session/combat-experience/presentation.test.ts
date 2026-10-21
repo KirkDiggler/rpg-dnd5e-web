@@ -8,6 +8,7 @@ import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThro
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
   ActSchema,
+  AttackOutcome,
   ClockMark,
   Family,
   PartyKind,
@@ -111,7 +112,7 @@ function actFact(
     }),
     index: 0,
     seq,
-    metadata: { source: options.source ?? ('live' as const) },
+    metadata: { source: options.source ?? ('live' as const), startIndex: 0 },
   };
 }
 
@@ -1123,5 +1124,38 @@ describe('the resolved automatic discovery check (rpg-project#523)', () => {
         detail: 'perception, 12 vs 15',
       },
     ]);
+  });
+});
+
+describe('a swing with no provider token (rpg-dnd5e-web#1307)', () => {
+  const tokenless = (seq: bigint, source: 'live' | 'catchup') =>
+    actFact(
+      Family.ACT,
+      {
+        case: 'attack',
+        value: {
+          by: member('grub'),
+          to: member('aldric'),
+          outcome: AttackOutcome.HIT,
+          damage: 4,
+          roll: { dice: [14], total: 17, against: 15 },
+        },
+      },
+      { id: 'id-tokenless-swing', seq, source }
+    );
+
+  it('re-delivered after a stream restart is the same record, keyed by act id and place', () => {
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      tokenless(23n, 'live')
+    );
+    // `restarted` re-reads retained history as catch-up; this client's
+    // delivery counter has moved on, the act's id and place have not.
+    state = reduceCombatPresentation(state, tokenless(40n, 'catchup'));
+
+    expect(state.presentations).toHaveLength(1);
+    expect(state.identities.filter((i) => i.conflicted)).toEqual([]);
+    expect(state.diagnostics).toEqual([]);
+    expect(selectVisibleStory(state)).toHaveLength(1);
   });
 });

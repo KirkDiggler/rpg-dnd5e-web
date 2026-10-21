@@ -502,6 +502,10 @@ export function authoritiesFromAct(
           // Recipient-local, as the v1 beat's own seq was: the number this
           // client publishes its own throw under when it is the roller.
           authoritySeq: seq,
+          // A swing with no provider token has no shared identity; it is named
+          // by its act id and place, which a re-delivery (a stream restart's
+          // catch-up) keeps and this client's delivery counter does not.
+          ...(a.presentationId ? {} : { identity: `attack:${row}` }),
           presentationId: a.presentationId,
           roller: a.by?.id ?? '',
           attacker: a.by?.id ?? '',
@@ -524,6 +528,8 @@ export function authoritiesFromAct(
           kind: 'death-save' as const,
           session: act.session,
           seq,
+          // As a tokenless swing: an empty token is no identity to share.
+          ...(d.presentationId ? {} : { identity: `death-save:${row}` }),
           presentationId: d.presentationId,
           roller: d.by?.id ?? '',
           attacker: d.by?.id ?? '',

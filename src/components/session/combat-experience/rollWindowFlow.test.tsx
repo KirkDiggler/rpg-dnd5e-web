@@ -248,7 +248,7 @@ function Harness({
 function useDeliverOnce(
   accept: (
     run: readonly Act[],
-    metadata: { source: 'live' | 'catchup' }
+    metadata: { source: 'live' | 'catchup'; startIndex: number }
   ) => void,
   beat: ReturnType<typeof rollWindowBeat> | undefined,
   source: 'live' | 'catchup'
@@ -256,7 +256,7 @@ function useDeliverOnce(
   const [delivered, setDelivered] = useState(false);
   useEffect(() => {
     if (!beat || delivered) return;
-    accept([beat], { source });
+    accept([beat], { source, startIndex: 0 });
     setDelivered(true);
   }, [accept, beat, delivered, source]);
   return delivered;
