@@ -1,20 +1,21 @@
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { needsPacing, nextBeatStep } from '../monsterBeatQueue';
+import type { ActDeliveryMetadata } from '../actFeed';
+import {
+  isTurnEnd,
+  needsPacing,
+  nextBeatStep,
+  type QueuedBeat,
+} from '../monsterBeatQueue';
 import { participantNameMap } from '../participantNames';
-import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
+import { actStoryId } from './actStory';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
 } from './types';
 
 export const COMBAT_STORY_PACE_MS = 300;
-
-function storyId(event: Event): string {
-  const session = event.session ?? '';
-  return `${session.length}:${session}:${event.seq}`;
-}
 
 export interface UseCombatStoryPacingArgs {
   member: string;
@@ -28,7 +29,8 @@ export interface UseCombatStoryPacingResult {
   story: readonly CombatExperienceStoryExchange[];
   result?: CombatExperienceAttackOutcome;
   notice: string | null;
-  acceptEvent: (event: Event, metadata: SessionEventDeliveryMetadata) => void;
+  /** One same-id run of acts, whole and in order. */
+  acceptActs: (run: readonly Act[], metadata: ActDeliveryMetadata) => void;
 }
 
 interface PacingScopeToken {
@@ -69,7 +71,7 @@ export function useCombatStoryPacing({
   const [scopedPacing, setScopedPacing] = useState<ScopedPacingState>(() =>
     emptyScopedPacing(token)
   );
-  const queueRef = useRef<Event[]>([]);
+  const queueRef = useRef<QueuedBeat[]>([]);
   const drainingRef = useRef(false);
   const announcedActorRef = useRef<string | null>(null);
   const sawBeatRef = useRef(false);
@@ -161,19 +163,19 @@ export function useCombatStoryPacing({
       }
 
       queueRef.current.shift();
-      const { event, actor } = step;
+      const { beat, actor } = step;
       updateHiddenIdsForScope((current) => {
         const next = new Set(current);
-        next.delete(storyId(event));
+        next.delete(actStoryId(beat.act, beat.index));
         return next;
       });
 
-      if (event.body.case === 'moved') {
+      if (beat.act.body.case === 'walk') {
         sawBeatRef.current = true;
-      } else if (event.body.case === 'struck' || event.body.case === 'missed') {
+      } else if (beat.act.body.case === 'attack') {
         sawBeatRef.current = true;
         setNoticeForScope(null);
-      } else if (event.body.case === 'turnEnded') {
+      } else if (isTurnEnd(beat.act)) {
         if (!sawBeatRef.current) {
           const name = namesNow().get(actor);
           setNoticeForScope(`${name ?? actor} does nothing.`);
@@ -203,19 +205,19 @@ export function useCombatStoryPacing({
     ]
   );
 
-  const acceptEvent = useCallback(
-    (event: Event, metadata: SessionEventDeliveryMetadata) => {
-      if (
-        activeTokenRef.current !== token ||
-        metadata.source !== 'live' ||
-        !needsPacing(event, member)
-      ) {
+  const acceptActs = useCallback(
+    (run: readonly Act[], metadata: ActDeliveryMetadata) => {
+      if (activeTokenRef.current !== token || metadata.source !== 'live') {
         return;
       }
-      queueRef.current.push(event);
+      const paced = run.flatMap((act, index) =>
+        needsPacing(act, member) ? [{ act, index }] : []
+      );
+      if (paced.length === 0) return;
+      queueRef.current.push(...paced);
       updateHiddenIdsForScope((current) => {
         const next = new Set(current);
-        next.add(storyId(event));
+        for (const beat of paced) next.add(actStoryId(beat.act, beat.index));
         return next;
       });
       if (!drainingRef.current) {
@@ -261,6 +263,6 @@ export function useCombatStoryPacing({
     story: visibleStory,
     result: visibleResult,
     notice: currentPacing?.notice ?? null,
-    acceptEvent,
+    acceptActs,
   };
 }

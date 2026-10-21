@@ -46,7 +46,13 @@ export function useStoryNotices({
     }
     const fresh: CombatExperienceStoryExchange[] = [];
     for (const entry of story) {
-      if (!previous.seen.has(entry.id) && entry.deliverySource === 'live')
+      // Only the families that toast (`actToasts`): a deed, a change of
+      // standing, a speak's own answer. Bookkeeping stays in the log.
+      if (
+        !previous.seen.has(entry.id) &&
+        entry.deliverySource === 'live' &&
+        entry.toast !== false
+      )
         fresh.push(entry);
       previous.seen.add(entry.id);
     }

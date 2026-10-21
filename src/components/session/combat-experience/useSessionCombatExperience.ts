@@ -10,7 +10,6 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
@@ -23,6 +22,11 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  ClockMark,
+  Sense,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -31,11 +35,13 @@ import {
   useState,
   type SetStateAction,
 } from 'react';
+import type { ActDeliveryMetadata } from '../actFeed';
 import type { DebugFeedEntry } from '../debugLogLine';
-import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import { wardedCastNotice } from '../wardBeat';
+import { actStoryId } from './actStory';
 import { caughtNotice } from './caughtNotice';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import { formatRollNamed, formatRollShort } from './describeAct';
 import {
   isMultiMemberDeclaration,
   toggleMemberTarget,
@@ -46,7 +52,6 @@ import {
   staleDeclarationMessage,
 } from './selection';
 import { speakLine, speakLinesFor } from './speakOptions';
-import { formatAttackRollArithmetic, storyId } from './story';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -91,7 +96,7 @@ interface ReceivedRollWindow {
   readonly total: number;
   readonly session: string;
   readonly seq: bigint;
-  readonly source: SessionEventDeliveryMetadata['source'];
+  readonly source: ActDeliveryMetadata['source'];
   readonly receivedDuringLocalAttack: boolean;
   readonly bypassDiceSettlement?: boolean;
 }
@@ -184,9 +189,10 @@ export interface UseSessionCombatExperienceResult {
     verb: Verb,
     target?: string
   ) => void;
-  acceptStreamEvent: (
-    event: Event,
-    metadata: SessionEventDeliveryMetadata
+  /** One same-id run of acts, whole and in order (rpg-project#630). */
+  acceptStreamActs: (
+    run: readonly Act[],
+    metadata: ActDeliveryMetadata
   ) => void;
 }
 
@@ -415,7 +421,8 @@ export function useSessionCombatExperience({
       (record) =>
         !record.conflicted &&
         (record.responseAccepted ||
-          record.event?.body.case === 'rollWindowOpened') &&
+          (record.act?.body.case === 'clock' &&
+            record.act.body.value.mark === ClockMark.ROLL_WINDOW_OPENED)) &&
         record.localPlayerOwned &&
         record.authority.kind === 'attack' &&
         record.session === received.session &&
@@ -2180,43 +2187,56 @@ export function useSessionCombatExperience({
     scheduleRefresh,
   ]);
 
-  const acceptStreamEvent = useCallback(
-    (event: Event, metadata: SessionEventDeliveryMetadata) => {
+  const acceptStreamActs = useCallback(
+    (run: readonly Act[], metadata: ActDeliveryMetadata) => {
       if (!mountedRef.current) return;
-      presentation.acceptStreamEvent(
-        event,
-        metadata,
-        event.body.case === 'heard' ? viewerCellRef.current : undefined
+      const heard = run.some(
+        (act) =>
+          act.body.case === 'perception' &&
+          act.body.value.sense === Sense.HEARING
       );
-      pacing.acceptEvent(event, metadata);
+      presentation.acceptStreamActs(
+        run,
+        metadata,
+        heard ? viewerCellRef.current : undefined
+      );
+      pacing.acceptActs(run, metadata);
       // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
-      // window's audience is exactly one member, and a beat naming somebody
-      // else is a fact about their decision, not this dock's panel.
-      if (
-        event.body.case === 'rollWindowOpened' &&
-        event.body.value.audience === member
-      ) {
-        const opened = event.body.value;
+      // window's audience is exactly one member, and a window naming
+      // somebody else is a fact about their decision, not this dock's panel.
+      run.forEach((act, index) => {
+        if (
+          act.body.case !== 'clock' ||
+          act.body.value.mark !== ClockMark.ROLL_WINDOW_OPENED
+        ) {
+          return;
+        }
+        const opened = act.body.value.rollWindow;
+        if (!opened || opened.audience?.id !== member) return;
         setReceivedRollWindow({
           presentationId: opened.presentationId || undefined,
-          storyId: storyId(event),
+          storyId: actStoryId(act, index),
           offerRef: opened.offer?.ref ?? '',
-          rollArithmetic: formatAttackRollArithmetic(
-            opened.roll,
-            opened.total,
-            opened.calculation,
-            (sourceId) => presentationMemberNames[sourceId] ?? sourceId
-          ),
-          roll: opened.roll,
-          total: opened.total,
-          session: event.session,
-          seq: event.seq,
+          // The act's own dice, each named by its source (Bless, Bane), and
+          // total; else its expression; with neither the dock draws the
+          // bare d20 and total itself.
+          rollArithmetic:
+            formatRollNamed(opened.roll) ||
+            (opened.roll?.expression
+              ? formatRollShort(opened.roll)
+              : undefined),
+          roll: opened.roll?.dice[0] ?? opened.roll?.total ?? 0,
+          total: opened.roll?.total ?? 0,
+          session: act.session,
+          // A window with no provider token joins no throw; acts carry no
+          // seq a record could be matched by instead.
+          seq: -1n,
           source: metadata.source,
           receivedDuringLocalAttack: attackInFlightRef.current,
         });
-      }
+      });
     },
-    [member, pacing, presentation, presentationMemberNames]
+    [member, pacing, presentation]
   );
 
   const phase = targeting ? 'targeting' : presentation.phase;
@@ -2263,10 +2283,10 @@ export function useSessionCombatExperience({
       onWitnessDiceSettlement: presentation.onWitnessDiceSettlement,
       invalidateAuthority,
       recoverStaleDeclaration,
-      acceptStreamEvent,
+      acceptStreamActs,
     }),
     [
-      acceptStreamEvent,
+      acceptStreamActs,
       cellCastArmed,
       cellCastFootprint,
       armedCellCast?.id,

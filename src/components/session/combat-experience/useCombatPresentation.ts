@@ -2,11 +2,11 @@ import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type { AttackResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { Act } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { ActDeliveryMetadata } from '../actFeed';
 import type { DebugFeedEntry } from '../debugLogLine';
-import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   emptyPresentation,
   reduceCombatPresentation,
@@ -62,10 +62,11 @@ export interface UseCombatPresentationResult {
   readonly phase: CombatExperiencePhase;
   readonly acceptAttackResponse: (fact: AttackResponseFact) => void;
   readonly acceptDeathSaveResponse: (fact: DeathSaveResponseFact) => void;
-  readonly acceptStreamEvent: (
-    event: Event,
-    metadata: SessionEventDeliveryMetadata,
-    /** Where the viewer stands now; kept with a `heard` beat for its bearing. */
+  /** One same-id run of acts, whole and in order (rpg-project#630). */
+  readonly acceptStreamActs: (
+    run: readonly Act[],
+    metadata: ActDeliveryMetadata,
+    /** Where the viewer stands now; kept with a sound for its bearing. */
     listenerAt?: { readonly x: number; readonly y: number } | null
   ) => void;
   readonly onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
@@ -175,13 +176,22 @@ export function useCombatPresentation(
     (fact: DeathSaveResponseFact) => dispatch(fact),
     [dispatch]
   );
-  const acceptStreamEvent = useCallback(
+  // RECIPIENT-LOCAL DELIVERY ORDER. Acts carry no seq (R30); the order they
+  // arrived in is the only ordering this client needs, and it never leaves it.
+  const nextSeq = useRef(1n);
+  const acceptStreamActs = useCallback(
     (
-      event: Event,
-      metadata: SessionEventDeliveryMetadata,
+      run: readonly Act[],
+      metadata: ActDeliveryMetadata,
       listenerAt?: { readonly x: number; readonly y: number } | null
     ) => {
-      dispatch({ type: 'stream-event', event, metadata, listenerAt });
+      // Every run arrives whole, so an act's place in the call is its place
+      // in the run.
+      run.forEach((act, index) => {
+        const seq = nextSeq.current;
+        nextSeq.current += 1n;
+        dispatch({ type: 'stream-act', act, index, seq, metadata, listenerAt });
+      });
     },
     [dispatch]
   );
@@ -277,7 +287,7 @@ export function useCombatPresentation(
     phase,
     acceptAttackResponse,
     acceptDeathSaveResponse,
-    acceptStreamEvent,
+    acceptStreamActs,
     onDiceReleaseRequest,
     onSemanticReleaseRequest,
     onWitnessDiceSettlement,

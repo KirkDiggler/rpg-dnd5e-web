@@ -1,12 +1,5 @@
 import { create } from '@bufbuild/protobuf';
 import {
-  EventKind,
-  EventSchema,
-  MissedSchema,
-  StruckSchema,
-  type Event,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import {
   AttackResponseSchema,
   type AttackResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -15,6 +8,13 @@ import {
   DamageType,
   ReactionRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  AttackOutcome,
+  Family,
+  PartyKind,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { AttackResponseFact, CombatStreamFact } from './presentation';
 
 export function debugText(
@@ -63,7 +63,8 @@ export interface AttackAuthorityFixtureOptions {
 
 export interface AttackAuthorityFixture {
   response: AttackResponse;
-  event: Event;
+  /** The swing as every recipient's act stream carries it (rpg-project#630). */
+  act: Act;
   responseFact: AttackResponseFact;
   streamFact: (source?: 'live' | 'catchup') => CombatStreamFact;
 }
@@ -118,46 +119,41 @@ export function createAttackAuthorityFixture(
     attack,
     presentationId,
   });
-  const event = create(EventSchema, {
+  const act = create(ActSchema, {
     session,
-    seq: eventSeq,
+    // The record id the act folds; its number is this recipient's local
+    // ordering only, never anything the response is matched by.
+    id: `id-${String(eventSeq).padStart(8, '0')}`,
+    act: `attack:id-${String(eventSeq).padStart(8, '0')}`,
+    verb: 'attack',
     at,
-    recipient,
-    kind: hit ? EventKind.STRUCK : EventKind.MISSED,
-    body: hit
-      ? {
-          case: 'struck',
-          value: create(StruckSchema, {
-            attacker,
-            target,
-            roll,
-            total,
-            against,
-            damage,
-            attack,
-            critical,
-            reaction,
-            presentationId,
-          }),
-        }
-      : {
-          case: 'missed',
-          value: create(MissedSchema, {
-            attacker,
-            target,
-            roll,
-            total,
-            against,
-            attack,
-            reaction,
-            presentationId,
-          }),
+    family: reaction ? Family.REACTION : Family.ACT,
+    body: {
+      case: 'attack',
+      value: {
+        by: { kind: PartyKind.MEMBER, id: attacker },
+        to: { kind: PartyKind.MEMBER, id: target },
+        attack: {
+          ref: attack.ref,
+          name: attack.name,
+          damageType: attack.damageType,
         },
+        outcome: hit ? AttackOutcome.HIT : AttackOutcome.MISS,
+        critical,
+        damage: hit ? damage : 0,
+        roll: { dice: [roll], total, against, beaten: hit },
+        reaction: reaction
+          ? { ref: reaction.ref, name: reaction.name }
+          : undefined,
+        presentationId,
+      },
+    },
   });
+  void recipient; // the recipient is the subscription, never an act field
 
   return {
     response,
-    event,
+    act,
     responseFact: {
       type: 'attack-response',
       session,
@@ -166,8 +162,10 @@ export function createAttackAuthorityFixture(
       response,
     },
     streamFact: (source = 'live') => ({
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act,
+      index: 0,
+      seq: eventSeq,
       metadata: { source },
     }),
   };

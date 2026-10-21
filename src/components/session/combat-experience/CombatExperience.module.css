@@ -820,6 +820,20 @@
   line-height: 1.35;
 }
 
+/* A row of the same act as the row above it (rpg-project#630): a failed
+   line's answer, the concentrations a rest ended, a reaction inside a walk. */
+.storyNested {
+  margin-left: 14px;
+  border-left-style: dotted;
+}
+
+.storyRoll {
+  margin-top: 2px;
+  color: var(--sc-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+}
+
 .attackModifierSources {
   display: grid;
   gap: 4px;

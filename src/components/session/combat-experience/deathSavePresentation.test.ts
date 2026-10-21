@@ -1,16 +1,16 @@
 // @vitest-environment node
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
-import {
-  DeathSaveRolledSchema,
-  EventKind,
-  EventSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { DeathSaveResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   DeathSaveContinuation,
   DeathSaveOutcome,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  Family,
+  PartyKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import { localWorldDieReleaseEvent } from '../local-world-die/localWorldDieAuthority';
 import {
@@ -37,41 +37,41 @@ const response = create(DeathSaveResponseSchema, {
   continuation: DeathSaveContinuation.END_TURN,
   presentationId: 'presentation_opaque-token',
 });
-const event = create(EventSchema, {
-  session: 'crypt-run',
-  seq: 103n,
-  recipient: 'wizard-1',
-  kind: EventKind.DEATH_SAVE_ROLLED,
-  body: {
-    case: 'deathSaveRolled',
-    value: create(DeathSaveRolledSchema, {
-      actor: 'fighter-1',
-      roll: response.roll,
-      outcome: response.outcome,
-      successesAdded: response.successesAdded,
-      failuresAdded: response.failuresAdded,
-      successes: response.successes,
-      failures: response.failures,
-      successesNeeded: response.successesNeeded,
-      failuresRemaining: response.failuresRemaining,
-      stabilized: response.stabilized,
-      dead: response.dead,
-      recovered: response.recovered,
-      hpRestored: response.hpRestored,
-      continuation: response.continuation,
-      presentationId: response.presentationId,
-    }),
-  },
-});
-function deathSaveValue(presentationId: string) {
-  if (event.body.case !== 'deathSaveRolled') {
-    throw new Error('expected Death Save event fixture');
-  }
-  return create(DeathSaveRolledSchema, {
-    ...event.body.value,
-    presentationId,
+/** The death save as every recipient's act stream carries it. */
+function deathSaveAct(
+  presentationId: string = response.presentationId,
+  roll: number = response.roll
+) {
+  return create(ActSchema, {
+    session: 'crypt-run',
+    id: 'id-death-save',
+    act: 'death_save:id-death-save',
+    verb: 'death_save',
+    family: Family.ACT,
+    body: {
+      case: 'deathSave',
+      value: {
+        by: { kind: PartyKind.MEMBER, id: 'fighter-1' },
+        roll: { dice: [roll], total: roll },
+        outcome: DeathSaveOutcome[response.outcome].toLowerCase(),
+        successesAdded: response.successesAdded,
+        failuresAdded: response.failuresAdded,
+        successes: response.successes,
+        failures: response.failures,
+        successesNeeded: response.successesNeeded,
+        failuresRemaining: response.failuresRemaining,
+        stabilized: response.stabilized,
+        dead: response.dead,
+        recovered: response.recovered,
+        hpRestored: response.hpRestored,
+        continuation:
+          DeathSaveContinuation[response.continuation].toLowerCase(),
+        presentationId,
+      },
+    },
   });
 }
+const event = deathSaveAct();
 
 const metadata = { source: 'live' as const, deliveredAt: 1 } as never;
 
@@ -117,15 +117,7 @@ describe('shared Death Save d20 presentation', () => {
         ...response,
         presentationId,
       });
-      const unsafeEvent = create(EventSchema, {
-        session: 'crypt-run',
-        seq: 109n,
-        kind: EventKind.DEATH_SAVE_ROLLED,
-        body: {
-          case: 'deathSaveRolled',
-          value: deathSaveValue(presentationId),
-        },
-      });
+      const unsafeEvent = deathSaveAct(presentationId);
       let state = reduceCombatPresentation(
         reduceCombatPresentation(
           configured(),
@@ -135,7 +127,7 @@ describe('shared Death Save d20 presentation', () => {
             response: unsafeResponse,
           })
         ),
-        { type: 'stream-event', event: unsafeEvent, metadata }
+        { type: 'stream-act', act: unsafeEvent, index: 0, seq: 103n, metadata }
       );
       const pending = selectCurrentPresentation(state)!;
 
@@ -148,7 +140,7 @@ describe('shared Death Save d20 presentation', () => {
         presentationKey: pending.key,
       });
       expect(selectVisibleStory(state)[0]?.headline).toBe(
-        'Death save! 2 successes — 7 to stabilize.'
+        'Aldric rolls a death save'
       );
     }
   );
@@ -163,22 +155,22 @@ describe('shared Death Save d20 presentation', () => {
       attacker: 'fighter-1',
       presentationId: collidingToken,
     });
-    const collidingDeathSave = create(EventSchema, {
-      session: 'crypt-run',
-      seq: 103n,
-      kind: EventKind.DEATH_SAVE_ROLLED,
-      body: {
-        case: 'deathSaveRolled',
-        value: deathSaveValue(collidingToken),
-      },
-    });
+    const collidingDeathSave = deathSaveAct(collidingToken);
     let state = reduceCombatPresentation(
       reduceCombatPresentation(configured('wizard-1'), {
-        type: 'stream-event',
-        event: attack.event,
+        type: 'stream-act',
+        act: attack.act,
+        index: 0,
+        seq: 103n,
         metadata,
       }),
-      { type: 'stream-event', event: collidingDeathSave, metadata }
+      {
+        type: 'stream-act',
+        act: collidingDeathSave,
+        index: 0,
+        seq: 103n,
+        metadata,
+      }
     );
     const attackBefore = state.presentations.find(
       (record) => record.authority.kind === 'attack'
@@ -202,7 +194,7 @@ describe('shared Death Save d20 presentation', () => {
       state.presentations.find((record) => record.authority.kind === 'attack')
     ).toBe(attackBefore);
     expect(selectVisibleStory(state).at(-1)?.headline).toBe(
-      'Death save! 2 successes — 7 to stabilize.'
+      'Aldric rolls a death save'
     );
   });
 
@@ -241,12 +233,14 @@ describe('shared Death Save d20 presentation', () => {
           response,
         })
       ),
-      { type: 'stream-event', event, metadata }
+      { type: 'stream-act', act: event, index: 0, seq: 103n, metadata }
     );
     const eventFirst = reduceCombatPresentation(
       reduceCombatPresentation(configured(), {
-        type: 'stream-event',
-        event,
+        type: 'stream-act',
+        act: event,
+        index: 0,
+        seq: 103n,
         metadata,
       }),
       deathSaveResponseFact({
@@ -264,8 +258,10 @@ describe('shared Death Save d20 presentation', () => {
 
   it('keeps witness narration and refreshed current-state truth hidden until that shared throw settles in bounds', () => {
     let state = reduceCombatPresentation(configured('wizard-1'), {
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act: event,
+      index: 0,
+      seq: 103n,
       metadata,
     });
     const witnessRecord = selectCurrentPresentation(state)!;
@@ -285,14 +281,16 @@ describe('shared Death Save d20 presentation', () => {
     });
     expect(selectConcealsDeathSaveTruth(state)).toBe(false);
     expect(selectVisibleStory(state)[0]?.headline).toBe(
-      'Death save! 2 successes — 7 to stabilize.'
+      'Aldric rolls a death save'
     );
   });
 
   it('upgrades event-first local authority from the actor response without parsing or borrowing the event sequence', () => {
     let state = reduceCombatPresentation(configured(), {
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act: event,
+      index: 0,
+      seq: 103n,
       metadata,
     });
     let current = selectCurrentPresentation(state)!;
@@ -328,8 +326,10 @@ describe('shared Death Save d20 presentation', () => {
     expect(selectConcealsDeathSaveTruth(state)).toBe(true);
 
     state = reduceCombatPresentation(state, {
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act: event,
+      index: 0,
+      seq: 103n,
       metadata: { source: 'catchup', deliveredAt: 2 } as never,
     });
 
@@ -343,7 +343,7 @@ describe('shared Death Save d20 presentation', () => {
     expect(state.pendingLocalKeys).toEqual([]);
     expect(selectConcealsDeathSaveTruth(state)).toBe(false);
     expect(selectVisibleStory(state)[0]?.headline).toBe(
-      'Death save! 2 successes — 7 to stabilize.'
+      'Aldric rolls a death save'
     );
     expect(selectSettledDeathSave(state)).toBeUndefined();
   });
@@ -357,23 +357,13 @@ describe('shared Death Save d20 presentation', () => {
         response,
       })
     );
-    if (event.body.case !== 'deathSaveRolled') {
-      throw new Error('expected Death Save event fixture');
-    }
-    const mismatch = create(EventSchema, {
-      ...event,
-      body: {
-        case: 'deathSaveRolled',
-        value: create(DeathSaveRolledSchema, {
-          ...event.body.value,
-          roll: 13,
-        }),
-      },
-    });
+    const mismatch = deathSaveAct(response.presentationId, 13);
 
     state = reduceCombatPresentation(state, {
-      type: 'stream-event',
-      event: mismatch,
+      type: 'stream-act',
+      act: mismatch,
+      index: 0,
+      seq: 103n,
       metadata: { source: 'catchup', deliveredAt: 2 } as never,
     });
 
@@ -402,8 +392,10 @@ describe('shared Death Save d20 presentation', () => {
     );
     const eventBeforeRelease = reduceCombatPresentation(
       reduceCombatPresentation(responseState, {
-        type: 'stream-event',
-        event,
+        type: 'stream-act',
+        act: event,
+        index: 0,
+        seq: 103n,
         metadata,
       }),
       { type: 'local-release', event: release }
@@ -413,7 +405,7 @@ describe('shared Death Save d20 presentation', () => {
         type: 'local-release',
         event: release,
       }),
-      { type: 'stream-event', event, metadata }
+      { type: 'stream-act', act: event, index: 0, seq: 103n, metadata }
     );
 
     expect(selectVisibleStory(eventBeforeRelease)).toEqual(
@@ -468,8 +460,10 @@ describe('shared Death Save d20 presentation', () => {
       })
     );
     state = reduceCombatPresentation(state, {
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act: event,
+      index: 0,
+      seq: 103n,
       metadata,
     });
     const request = selectCurrentPresentation(state)!.request!;
@@ -487,8 +481,10 @@ describe('shared Death Save d20 presentation', () => {
       ),
     });
     expect(selectConcealsDeathSaveTruth(state)).toBe(false);
+    // The revealed line carries the provider's outcome and its tally.
     expect(selectVisibleStory(state)[0]).toMatchObject({
-      headline: 'Death save! 2 successes — 7 to stabilize.',
+      headline: 'Aldric rolls a death save',
+      detail: 'success: 2 successes, 1 failure, 12',
     });
 
     const duplicate = reduceCombatPresentation(state, {
@@ -500,8 +496,10 @@ describe('shared Death Save d20 presentation', () => {
 
   it('keeps catch-up Death Saves current and never applies concealment to Attack', () => {
     const historical = reduceCombatPresentation(configured('wizard-1'), {
-      type: 'stream-event',
-      event,
+      type: 'stream-act',
+      act: event,
+      index: 0,
+      seq: 103n,
       metadata: { source: 'catchup', deliveredAt: 1 } as never,
     });
     const attack = createAttackAuthorityFixture({
@@ -509,8 +507,10 @@ describe('shared Death Save d20 presentation', () => {
       attacker: 'fighter-1',
     });
     const liveAttack = reduceCombatPresentation(configured(), {
-      type: 'stream-event',
-      event: attack.event,
+      type: 'stream-act',
+      act: attack.act,
+      index: 0,
+      seq: 103n,
       metadata,
     });
 

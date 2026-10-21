@@ -36,7 +36,6 @@ import {
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
-import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type {
   VendorStockEntry,
   WatchZone,
@@ -67,6 +66,7 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
+import type { ActDeliveryMetadata } from './actFeed';
 import { refreshKeysForAct } from './actRefreshKeys';
 import { arrivingWalk } from './arrivingWalk';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
@@ -144,10 +144,6 @@ import {
 import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
 import { useSessionActStream } from './useSessionActStream';
-import {
-  type SessionEventDeliveryMetadata,
-  useSessionEventStream,
-} from './useSessionEventStream';
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { useSessionWalk } from './useSessionWalk';
 import { VendorPopover } from './vendor/VendorPopover';
@@ -1250,9 +1246,9 @@ function SessionEncounterScope({
   // act revokes action authority, patches knowledge, and schedules the reads
   // its family changed (`actRefreshKeys.ts`, paired with the v1 table it
   // replaces). A same-id run arrives whole and is funnelled in one pass.
-  const { acceptStreamEvent, invalidateAuthority } = combat;
+  const { acceptStreamActs, invalidateAuthority } = combat;
   const handleSessionActs = useCallback(
-    (run: readonly Act[]) => {
+    (run: readonly Act[], metadata: ActDeliveryMetadata) => {
       // Every delivered act revokes action authority before the coalesced
       // snapshots can begin. Last-good values remain display-only.
       invalidateAuthority();
@@ -1285,8 +1281,17 @@ function SessionEncounterScope({
         }
       }
       scheduleRefresh([...keys]);
+      // The story log, toasts and dice read the same run (R14).
+      acceptStreamActs(run, metadata);
     },
-    [acceptKnowledgeAct, invalidateAuthority, member, moves, scheduleRefresh]
+    [
+      acceptKnowledgeAct,
+      acceptStreamActs,
+      invalidateAuthority,
+      member,
+      moves,
+      scheduleRefresh,
+    ]
   );
 
   const handleStreamAgedOut = useCallback(() => {
@@ -1300,19 +1305,9 @@ function SessionEncounterScope({
     handleSessionActs,
     handleStreamAgedOut
   );
-  // THE STORY AND TOASTS STILL READ v1 until they move onto acts (the second
-  // half of rpg-project#630): this subscription feeds the combat presentation
-  // and nothing else. Authority, refreshes, knowledge, movement, carriage,
-  // doors and the run's end all come from the act stream above.
-  const handlePresentationEvent = useCallback(
-    (event: SessionEvent, metadata: SessionEventDeliveryMetadata) =>
-      acceptStreamEvent(event, metadata),
-    [acceptStreamEvent]
-  );
-  useSessionEventStream(sessionId, member, handlePresentationEvent);
   // THE DEBUG PANEL READS THE RECORD (rpg-project#628, event-stream R14):
   // streamed only while the panel is showing — Debug visible and the log
-  // expanded, as StoryLog reports it; the story and toasts stay on the v1
+  // expanded, as StoryLog reports it; the story and toasts read the act
   // stream above.
   const [recordShown, setRecordShown] = useState(false);
   const record = useSessionRecordStream(sessionId, member, recordShown);
