@@ -6,6 +6,14 @@
 }
 
 .filters {
+  /* The filters stay in view while the record scrolls under them. */
+  position: sticky;
+  top: -9px;
+  z-index: 1;
+  margin: -9px -10px 0;
+  padding: 9px 10px 6px;
+  background: var(--sc-panel, rgba(12, 20, 24, 0.94));
+  border-bottom: 1px solid var(--sc-line, rgba(173, 195, 202, 0.18));
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
