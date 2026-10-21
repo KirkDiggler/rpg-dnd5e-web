@@ -7,9 +7,11 @@
  * that ends with `lagged` is caught up with GetStory pages after the last id
  * held, while the server says `more`, then reopened.
  *
- * ACTS SHARING AN ID ARE ONE DELIVERY UNIT. One record beat can fold into
- * several acts that all carry its id: a rest and the concentrations it ended,
- * a failed line and its own answer. The server never splits such a run across
+ * ACTS SHARING AN ID ARE ONE DELIVERY UNIT. One record entry can fold into
+ * several acts that all carry its id: a rest and the concentrations and
+ * conditions it ended, a departure or an ending and the conditions it lifted.
+ * (A line and its own answer share only the act tag, not an id.) The server
+ * never splits such a run across
  * a page or a lag close, so this feed delivers each run whole, in one
  * `onRun` call, and resumes after the last run it delivered. An act whose id
  * is at or below that id is one this feed already delivered as part of its
