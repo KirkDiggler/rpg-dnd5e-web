@@ -69,13 +69,32 @@ function scripted(
   };
 }
 
+/** Yields `first`, waits one macrotask, yields `then`, then holds open. */
+function splitAcrossMacrotasks(
+  first: StreamEventsResponse[],
+  then: StreamEventsResponse[]
+) {
+  return async function* (signal: AbortSignal) {
+    for (const m of first) yield m;
+    await new Promise((r) => setTimeout(r, 5));
+    for (const m of then) yield m;
+    await new Promise<void>((resolve) =>
+      signal.addEventListener('abort', () => resolve())
+    );
+  };
+}
+
 function harness(
   streams: ((signal: AbortSignal) => AsyncIterable<StreamEventsResponse>)[],
   get: (afterId: string) => Promise<GetStoryResponse> = async () => page([])
 ) {
   const streamCalls: string[] = [];
   const getCalls: string[] = [];
-  const runs: { ids: string[]; source: ActDeliveryMetadata['source'] }[] = [];
+  const runs: {
+    ids: string[];
+    source: ActDeliveryMetadata['source'];
+    startIndex: number;
+  }[] = [];
   const states: ActStreamState[] = [];
   const onRestarted = vi.fn();
   const feed = startActFeed({
@@ -89,7 +108,11 @@ function harness(
       return get(afterId);
     },
     onRun: (run, metadata) =>
-      runs.push({ ids: run.map((a) => a.id), source: metadata.source }),
+      runs.push({
+        ids: run.map((a) => a.id),
+        source: metadata.source,
+        startIndex: metadata.startIndex,
+      }),
     onRestarted,
     onState: (s) => states.push(s),
     retryDelayMs: () => 0,
@@ -196,22 +219,77 @@ describe('actFeed', () => {
     h.feed.stop();
   });
 
-  it('a stream restarted resets the resume point', async () => {
-    const h = harness(
-      [scripted([restartedMsg(), actMsg('K')], 'hold')],
-      async () => page(['Z'])
-    );
-    await vi.waitFor(() => expect(h.ids()).toEqual(['Z', 'K']));
-    expect(h.onRestarted).toHaveBeenCalledTimes(1);
-    expect(h.feed.lastId()).toBe('K');
-    h.feed.stop();
-  });
-
   it('stop ends the feed without reconnecting', async () => {
     const h = harness([scripted([actMsg('A')], 'hold')]);
     await vi.waitFor(() => expect(h.ids()).toEqual(['A']));
     h.feed.stop();
     await new Promise((r) => setTimeout(r, 10));
     expect(h.streamCalls).toEqual(['']);
+  });
+
+  it('delivers a same-id run split across macrotasks whole: the tail continues it', async () => {
+    // The reviewer's probe: a rest, then its concentration-ended act one
+    // macrotask later. The first is delivered at once (the table may be
+    // waiting on it); the second continues the same run, never dropped.
+    const h = harness([
+      splitAcrossMacrotasks([actMsg('R')], [actMsg('R'), actMsg('S')]),
+    ]);
+    await vi.waitFor(() => expect(h.ids()).toEqual(['R', 'R', 'S']));
+    expect(h.runs).toEqual([
+      { ids: ['R'], source: 'live', startIndex: 0 },
+      { ids: ['R'], source: 'live', startIndex: 1 },
+      { ids: ['S'], source: 'live', startIndex: 0 },
+    ]);
+    h.feed.stop();
+  });
+
+  it('never continues a run from a page: a page’s copy of a held id is skipped', async () => {
+    const pages: Record<string, GetStoryResponse> = {
+      '': page(['A']),
+      A: page(['A', 'B']),
+    };
+    const h = harness(
+      [scripted([], 'end'), scripted([], 'hold')],
+      async (id) => pages[id] ?? page([])
+    );
+    await vi.waitFor(() => expect(h.getCalls.length).toBeGreaterThanOrEqual(2));
+    await vi.waitFor(() => expect(h.ids()).toEqual(['A', 'B']));
+    h.feed.stop();
+  });
+
+  it('refresh drops the stream, catches up after the last id and reopens', async () => {
+    const h = harness(
+      [scripted([actMsg('A')], 'hold'), scripted([], 'hold')],
+      async (id) => (id === 'A' ? page(['B']) : page([]))
+    );
+    await vi.waitFor(() => expect(h.ids()).toEqual(['A']));
+    h.feed.refresh();
+    await vi.waitFor(() => expect(h.streamCalls).toEqual(['', 'B']));
+    expect(h.getCalls).toEqual(['', 'A']);
+    expect(h.runs.at(-1)).toEqual({
+      ids: ['B'],
+      source: 'catchup',
+      startIndex: 0,
+    });
+    expect(h.states).not.toContain('reconnecting');
+    h.feed.stop();
+  });
+
+  it('a stream restarted re-reads retained history as catch-up, not live', async () => {
+    // The first read holds Z; the stream then says the resume point aged out,
+    // and the retained history (K) is re-read through GetStory from the start.
+    let calls = 0;
+    const h = harness(
+      [scripted([restartedMsg(), actMsg('K')], 'hold'), scripted([], 'hold')],
+      async () => {
+        calls += 1;
+        return calls === 1 ? page(['Z']) : page(['K']);
+      }
+    );
+    await vi.waitFor(() => expect(h.onRestarted).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(h.ids()).toEqual(['Z', 'K']));
+    expect(h.runs.find((r) => r.ids[0] === 'K')?.source).toBe('catchup');
+    expect(h.getCalls).toEqual(['', '']);
+    h.feed.stop();
   });
 });
