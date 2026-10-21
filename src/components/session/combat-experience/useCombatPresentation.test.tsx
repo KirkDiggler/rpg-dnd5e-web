@@ -163,7 +163,12 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
 
     expect(result.current.state.presentations[0]?.eventAccepted).toBe(true);
     expect(debugText(result.current.debug[0])).toContain(facts.act.act);
@@ -199,7 +204,12 @@ describe('useCombatPresentation', () => {
     expect(result.current.story).toEqual([]);
     expect(result.current.phase).toBe('released-waiting-event');
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
     expect(result.current.story).toHaveLength(1);
   });
 
@@ -231,11 +241,21 @@ describe('useCombatPresentation', () => {
     expect(result.current.state).toBe(waitingState);
     expect(result.current.state.diagnostics).toHaveLength(diagnosticCount);
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
     expect(result.current.story).toHaveLength(1);
     expect(result.current.phase).toBe('settled');
 
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
     expect(result.current.story).toHaveLength(1);
   });
 
@@ -259,14 +279,20 @@ describe('useCombatPresentation', () => {
     );
 
     act(() =>
-      result.current.acceptStreamActs([settled.act], { source: 'live', startIndex: 0 })
+      result.current.acceptStreamActs([settled.act], {
+        source: 'live',
+        startIndex: 0,
+      })
     );
     expect(result.current.story).toHaveLength(1);
     expect(result.current.result?.attackId).toContain(settled.act.id);
 
     act(() => result.current.acceptAttackResponse(accepted.responseFact));
     act(() =>
-      result.current.acceptStreamActs([conflict.act], { source: 'live', startIndex: 0 })
+      result.current.acceptStreamActs([conflict.act], {
+        source: 'live',
+        startIndex: 0,
+      })
     );
 
     expect(result.current.story).toHaveLength(1);
@@ -301,7 +327,12 @@ describe('useCombatPresentation', () => {
         }),
       ],
     });
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
 
     expect(result.current.diceEvents[0]).toMatchObject({
       type: 'dice-presentation-requested',
@@ -435,7 +466,12 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
 
     expect(result.current.diceWitnessRole).toBe('spectator');
     expect(result.current.diceEvents).toEqual([]);
@@ -457,7 +493,12 @@ describe('useCombatPresentation', () => {
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    act(() => result.current.acceptStreamActs([facts.act], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptStreamActs([facts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
+    );
     expect(result.current.story).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
@@ -523,7 +564,10 @@ describe('useCombatPresentation', () => {
 
     act(() => result.current.acceptAttackResponse(oldFacts.responseFact));
     act(() =>
-      result.current.acceptStreamActs([oldFacts.act], { source: 'live', startIndex: 0 })
+      result.current.acceptStreamActs([oldFacts.act], {
+        source: 'live',
+        startIndex: 0,
+      })
     );
     const staleAccept = result.current.acceptStreamActs;
     expect(result.current.debug).not.toEqual([]);
@@ -541,7 +585,10 @@ describe('useCombatPresentation', () => {
     expect(result.current.state.presentations).toEqual([]);
 
     act(() =>
-      result.current.acceptStreamActs([nextFacts.act], { source: 'catchup', startIndex: 0 })
+      result.current.acceptStreamActs([nextFacts.act], {
+        source: 'catchup',
+        startIndex: 0,
+      })
     );
     expect(result.current.story).toHaveLength(1);
     const staleNextAccept = result.current.acceptStreamActs;
@@ -552,7 +599,9 @@ describe('useCombatPresentation', () => {
     expect(result.current.debug).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
-    act(() => staleNextAccept([nextFacts.act], { source: 'catchup', startIndex: 0 }));
+    act(() =>
+      staleNextAccept([nextFacts.act], { source: 'catchup', startIndex: 0 })
+    );
     expect(result.current.state.presentations).toEqual([]);
   });
 });

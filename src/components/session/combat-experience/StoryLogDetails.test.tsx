@@ -7,6 +7,8 @@ import {
 import {
   ActSchema,
   Family,
+  PartyKind,
+  StateKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +22,7 @@ import {
   COMBAT_DEBUG_MAX_LINES,
   emptyPresentation,
   reduceCombatPresentation,
+  selectVisibleStory,
 } from './presentation';
 import { StoryLog } from './StoryLog';
 
@@ -172,7 +175,12 @@ describe('inline Debug inspection', () => {
     ).toBeTruthy();
   });
 
-  it('bounds the presentation’s own act debug feed', () => {
+  it('retains the act debug feed bound and unique stable ids for duplicate receipts', () => {
+    const source = create(ActSchema, {
+      session: 'session-1',
+      id: 'id-000001',
+      family: Family.CLOCK,
+    });
     let state = emptyPresentation({
       session: 'session-1',
       viewerMember: 'fighter',
@@ -180,21 +188,57 @@ describe('inline Debug inspection', () => {
     for (let i = 0; i <= COMBAT_DEBUG_MAX_LINES; i += 1) {
       state = reduceCombatPresentation(state, {
         type: 'stream-act',
-        act: create(ActSchema, {
-          session: 'session-1',
-          id: `id-${String(i).padStart(6, '0')}`,
-          family: Family.CLOCK,
-        }),
+        act: source,
         index: 0,
         seq: BigInt(i + 1),
         metadata: { source: 'live', startIndex: 0 },
       });
     }
     expect(state.debug).toHaveLength(COMBAT_DEBUG_MAX_LINES);
-    expect(String(state.debug[0])).toContain('id-000001');
-    expect(String(state.debug.at(-1))).toContain(
-      `id-${String(COMBAT_DEBUG_MAX_LINES).padStart(6, '0')}`
+    const ids = state.debug.map((entry) =>
+      typeof entry === 'string' ? undefined : entry.id
     );
+    // The first receipt (id 0) slid out of the bound; every kept line keeps
+    // the id it was given, so a row's React key never moves.
+    expect(ids[0]).toBe(1);
+    expect(ids.at(-1)).toBe(COMBAT_DEBUG_MAX_LINES);
+    expect(new Set(ids).size).toBe(COMBAT_DEBUG_MAX_LINES);
+  });
+
+  it('a later mutation of the delivered act never rewrites the recorded row', () => {
+    const source = create(ActSchema, {
+      session: 'session-1',
+      id: 'id-down',
+      family: Family.ACT,
+      body: {
+        case: 'state',
+        value: {
+          party: { kind: PartyKind.MEMBER, id: 'fighter' },
+          change: StateKind.DOWNED,
+        },
+      },
+    });
+    const state = reduceCombatPresentation(
+      emptyPresentation({ session: 'session-1', viewerMember: 'fighter' }),
+      {
+        type: 'stream-act',
+        act: source,
+        index: 0,
+        seq: 1n,
+        metadata: { source: 'live', startIndex: 0 },
+      }
+    );
+    const before = selectVisibleStory(state);
+    expect(before).toHaveLength(1);
+
+    source.body = { case: undefined };
+    source.id = 'id-rewritten';
+
+    expect(selectVisibleStory(state)).toEqual(before);
+    const recorded = state.otherStory[0]!.fact.act;
+    expect(recorded.id).toBe('id-down');
+    expect(recorded.body.case).toBe('state');
+    expect(Object.isFrozen(recorded)).toBe(true);
   });
 
   it('keeps non-event warnings readable rather than inventing JSON', () => {

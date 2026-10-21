@@ -481,8 +481,10 @@ describe('shared Death Save d20 presentation', () => {
       ),
     });
     expect(selectConcealsDeathSaveTruth(state)).toBe(false);
+    // The revealed line carries the provider's outcome and its tally.
     expect(selectVisibleStory(state)[0]).toMatchObject({
       headline: 'Aldric rolls a death save',
+      detail: 'success: 2 successes, 1 failure, 12',
     });
 
     const duplicate = reduceCombatPresentation(state, {

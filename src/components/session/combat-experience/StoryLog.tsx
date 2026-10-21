@@ -323,6 +323,13 @@ export function StoryLog({
                 >
                   {entry}
                 </div>
+              ) : !('event' in entry) ? (
+                <div
+                  className={styles.debugDiagnostic}
+                  key={`line-${entry.id}`}
+                >
+                  {entry.text}
+                </div>
               ) : (
                 <DebugEventRow
                   key={entry.id}

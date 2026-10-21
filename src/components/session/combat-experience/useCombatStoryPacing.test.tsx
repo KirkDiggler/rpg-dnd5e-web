@@ -4,6 +4,13 @@ import {
   ParticipantSchema,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  AttackOutcome,
+  ClockMark,
+  Family,
+  PartyKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
@@ -89,11 +96,93 @@ describe('useCombatStoryPacing scope', () => {
     expect(result.current.story).toEqual(nextStory);
     expect(result.current.notice).toBeNull();
 
-    act(() => result.current.acceptActs([nextEvent], { source: 'live', startIndex: 0 }));
+    act(() =>
+      result.current.acceptActs([nextEvent], { source: 'live', startIndex: 0 })
+    );
     expect(result.current.story).toEqual(oldStory);
     expect(result.current.notice).toBe("Aldric's turn.");
 
     clearTimeoutSpy.mockRestore();
     unmount();
+  });
+});
+
+describe('useCombatStoryPacing over whole driven turns', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const roster = [
+    ...participants,
+    create(ParticipantSchema, {
+      member: 'goblin',
+      name: 'Goblin',
+      kind: MemberKind.MONSTER,
+      standing: Standing.UP,
+    }),
+  ];
+  const party = (id: string) => ({ kind: PartyKind.MEMBER, id });
+  const swing = (id: string, by: string) =>
+    create(ActSchema, {
+      session: 'crypt-run',
+      id,
+      family: Family.ACT,
+      body: {
+        case: 'attack',
+        value: {
+          by: party(by),
+          to: party('aldric'),
+          outcome: AttackOutcome.MISS,
+        },
+      },
+    });
+  const turnEnd = (id: string, member: string) =>
+    create(ActSchema, {
+      session: 'crypt-run',
+      id,
+      family: Family.CLOCK,
+      body: {
+        case: 'clock',
+        value: { mark: ClockMark.TURN_ENDED, turn: { member: party(member) } },
+      },
+    });
+
+  it('announces each driven turn, the same monster again after its turn ends', () => {
+    const { result } = renderHook(() =>
+      useCombatStoryPacing({
+        member: 'aldric',
+        participants: roster,
+        story: [],
+      })
+    );
+    const notices: (string | null)[] = [];
+    const record = () => {
+      const notice = result.current.notice;
+      if (notice !== notices.at(-1)) notices.push(notice);
+    };
+    act(() => {
+      for (const a of [
+        swing('id-01', 'skeleton-guard'),
+        turnEnd('id-02', 'skeleton-guard'),
+        swing('id-03', 'goblin'),
+        turnEnd('id-04', 'goblin'),
+        // The goblin's next turn comes straight after its last.
+        swing('id-05', 'goblin'),
+        turnEnd('id-06', 'goblin'),
+      ]) {
+        result.current.acceptActs([a], { source: 'live', startIndex: 0 });
+      }
+    });
+    record();
+    for (let step = 0; step < 20; step += 1) {
+      act(() => vi.advanceTimersByTime(COMBAT_STORY_PACE_MS));
+      record();
+    }
+
+    expect(notices.filter((notice) => notice !== null)).toEqual([
+      "Skeleton Guard's turn.",
+      "Goblin's turn.",
+      "Goblin's turn.",
+    ]);
+    expect(notices.at(-1)).toBeNull();
   });
 });

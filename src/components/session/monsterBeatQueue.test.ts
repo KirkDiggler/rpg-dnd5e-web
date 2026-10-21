@@ -85,4 +85,48 @@ describe('nextBeatStep', () => {
       actor: 'orc',
     });
   });
+
+  it('processes the head once its actor is announced, never consuming the queue', () => {
+    const head = beat(walk('goblin'));
+    const queue = [head, beat(swing('goblin'))];
+    expect(nextBeatStep(queue, 'goblin')).toEqual({
+      type: 'process',
+      beat: head,
+      actor: 'goblin',
+    });
+    // The CALLER shifts on a process step.
+    expect(queue).toHaveLength(2);
+  });
+
+  it('walks a full turn: one announce, then walk, swing and turn end in order', () => {
+    const w = beat(walk('goblin'));
+    const s = beat(swing('goblin'));
+    const t = beat(turnEnded('goblin', MEMBER));
+    const queue = [w, s, t];
+
+    expect(nextBeatStep(queue, null)).toEqual({
+      type: 'announce',
+      actor: 'goblin',
+    });
+    const announced = 'goblin';
+    for (const expected of [w, s, t]) {
+      expect(nextBeatStep(queue, announced)).toEqual({
+        type: 'process',
+        beat: expected,
+        actor: 'goblin',
+      });
+      queue.shift();
+    }
+    expect(nextBeatStep(queue, announced)).toEqual({ type: 'idle' });
+  });
+
+  it('announces the next actor once the caller resets after a turn end', () => {
+    // The pacing hook resets the announced actor to null after processing
+    // goblin's turn end; the next actor's first beat announces.
+    const queue = [beat(walk('orc'))];
+    expect(nextBeatStep(queue, null)).toEqual({
+      type: 'announce',
+      actor: 'orc',
+    });
+  });
 });

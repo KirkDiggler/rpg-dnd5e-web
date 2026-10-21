@@ -573,20 +573,23 @@ describe('combat presentation authority reconciliation', () => {
 
   // Acts carry no shared sequence (R30). The stream delivers them in id
   // order, so delivery order IS the story's order.
-  it('orders Story in delivery order, which the act stream keeps in id order', () => {
-    const earlier = createAttackAuthorityFixture({ seq: 22n, roll: 4 });
-    const later = createAttackAuthorityFixture({ seq: 23n, roll: 12 });
+  it('orders Story in delivery order, never re-sorting by act id', () => {
+    // The feed delivers in id order, so this client keeps arrival order. Two
+    // acts delivered against their id order pin that rule: a reducer that
+    // sorted by id would put the roll of 4 first.
+    const higherId = createAttackAuthorityFixture({ seq: 23n, roll: 12 });
+    const lowerId = createAttackAuthorityFixture({ seq: 22n, roll: 4 });
     let state = reduceCombatPresentation(
       emptyPresentation(config),
-      earlier.streamFact('catchup')
+      higherId.streamFact('catchup')
     );
-    state = reduceCombatPresentation(state, later.streamFact('catchup'));
+    state = reduceCombatPresentation(state, lowerId.streamFact('catchup'));
 
     expect(
       selectVisibleStory(state).map((entry) => entry.rollBreakdown)
     ).toEqual([
-      expect.stringContaining('[4]'),
       expect.stringContaining('[12]'),
+      expect.stringContaining('[4]'),
     ]);
   });
 
@@ -1121,7 +1124,7 @@ describe('the resolved automatic discovery check (rpg-project#523)', () => {
       {
         eyebrow: 'Search',
         headline: 'Aldric searches',
-        detail: 'perception, 12 vs 15',
+        detail: 'failed perception check, 12 vs 15',
       },
     ]);
   });

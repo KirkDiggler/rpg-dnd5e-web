@@ -921,7 +921,10 @@ function appendRawDebug(
 ): CombatPresentationState {
   const act = fact.act;
   const family = Family[act.family]?.toLowerCase() ?? String(act.family);
-  const entry: DebugFeedEntry = `act ${act.id} ${family} ${act.act || '-'}${act.refused ? ` refused: ${act.refusal}` : ''} source=${fact.metadata.source}`;
+  const entry: DebugFeedEntry = Object.freeze({
+    id: state.nextDebugId,
+    text: `act ${act.id} ${family} ${act.act || '-'}${act.refused ? ` refused: ${act.refusal}` : ''} source=${fact.metadata.source}`,
+  });
   return Object.freeze({
     ...state,
     nextDebugId: state.nextDebugId + 1,

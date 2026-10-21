@@ -92,8 +92,15 @@ export interface DebugEventEntry {
   readonly event: Event;
 }
 
+/** One delivered act's line. Its id is fixed when the line is recorded, so
+ * the row keeps its key while the bounded feed slides. */
+export interface DebugLineEntry {
+  readonly id: number;
+  readonly text: string;
+}
+
 /** Plain diagnostics/legacy fixtures have no structured event to inspect. */
-export type DebugFeedEntry = string | DebugEventEntry;
+export type DebugFeedEntry = string | DebugLineEntry | DebugEventEntry;
 
 function displayName(names: Map<string, string>, id: string): string {
   return names.get(id) ?? id;

@@ -255,13 +255,13 @@ export function describeAct(
     }
     case 'deathSave': {
       const d = body.value;
+      const tally = `${plural(d.successes, 'success', 'successes')}, ${plural(d.failures, 'failure')}`;
+      const outcome = authoredWords(d.outcome);
       return {
         eyebrow: 'Death save',
         headline: `${name(d.by)} rolls a death save`,
-        detail: withRoll(
-          `${authoredWords(d.outcome)}: ${plural(d.successes, 'success', 'successes')}, ${plural(d.failures, 'failure')}`,
-          d.roll
-        ),
+        // No authored outcome is no prefix: the tally stands alone.
+        detail: withRoll(outcome ? `${outcome}: ${tally}` : tally, d.roll),
         tone: d.dead
           ? 'danger'
           : d.stabilized || d.recovered
@@ -424,14 +424,21 @@ export function describeAct(
             detail: p.heard ? plural(p.heard.hops, 'cell') + ' away' : '',
             tone: 'neutral',
           };
-        case Sense.DISCOVERY:
+        case Sense.DISCOVERY: {
+          // The server's verdict, copied: never total against `against`.
+          const roll = p.discovery?.roll;
+          const verdict =
+            roll?.beaten === undefined ? '' : roll.beaten ? 'passed' : 'failed';
+          const ability = p.discovery?.ability ?? '';
+          const check = ability ? `${ability} check` : '';
           return {
             eyebrow: 'Search',
             headline: `${name(p.observer)} searches`,
-            detail: withRoll(p.discovery?.ability ?? '', p.discovery?.roll),
-            tone: 'neutral',
-            roll: p.discovery?.roll,
+            detail: withRoll(`${verdict} ${check}`.trim(), roll),
+            tone: roll?.beaten ? 'success' : 'neutral',
+            roll,
           };
+        }
         case Sense.REVEAL:
           return {
             eyebrow: 'Found',

@@ -4345,6 +4345,8 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
     );
     await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+    // The amount healed is the act's own, shown on the row.
+    expect(screen.getByText('healed on Aldric (2)')).toBeTruthy();
   });
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation', async () => {
@@ -5564,6 +5566,8 @@ describe('SessionEncounterView production combat integration', () => {
       await screen.findByTestId('session-canvas');
       result.release();
       expect(await screen.findByText('Aldric searches')).toBeTruthy();
+      // The server's verdict, not total against `against`.
+      expect(screen.getByText('failed perception check, 8 vs 12')).toBeTruthy();
       expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
       expect(hoisted.searchFn).not.toHaveBeenCalled();
     });

@@ -280,6 +280,89 @@ describe('describeAct', () => {
     });
     expect(describeAct(refused, context)?.detail).toBe('undecoded');
   });
+
+  it('a death save tallies after its authored outcome, and never opens on a bare colon', () => {
+    const save = (outcome: string) =>
+      describeAct(
+        act(Family.ACT, {
+          case: 'deathSave',
+          value: { by: alice, outcome, successes: 2, failures: 1 },
+        }),
+        context
+      )?.detail;
+    expect(save('success')).toBe('success: 2 successes, 1 failure');
+    expect(save('')).toBe('2 successes, 1 failure');
+  });
+});
+
+describe('the verdict is the server’s, never derived from total and against', () => {
+  // Every roll here totals above what it was against, yet the server says it
+  // did not beat it. A describer that recomputed total >= against would say
+  // beaten, unseen or passed.
+  const lost = { dice: [12], total: 15, against: 14, beaten: false };
+
+  it('a save', () => {
+    const cast = describeAct(
+      act(Family.ACT, {
+        case: 'cast',
+        value: {
+          by: alice,
+          spell: { ref: 'dnd5e:spells:sacred-flame', name: 'Sacred Flame' },
+          results: [{ target: gate, outcome: CastOutcome.FAILED, save: lost }],
+        },
+      }),
+      context
+    );
+    expect(formatRollBreakdown(cast?.roll)).toBe(
+      '[12] = 15 vs 14 · not beaten'
+    );
+  });
+
+  it('a check', () => {
+    const speak = describeAct(
+      act(Family.ACT, {
+        case: 'speak',
+        value: {
+          by: alice,
+          to: gate,
+          line: 'Stand aside.',
+          skill: 'persuasion',
+          roll: lost,
+        },
+      }),
+      context
+    );
+    expect(formatRollBreakdown(speak?.roll)).toBe(
+      '[12] = 15 vs 14 · not beaten'
+    );
+  });
+
+  it('a sneak', () => {
+    const sneak = describeAct(
+      act(Family.ACT, {
+        case: 'sneak',
+        value: { by: alice, watcher: gate, roll: lost },
+      }),
+      context
+    );
+    expect(sneak?.detail).toBe('spotted, 15 vs 14');
+  });
+
+  it('a search', () => {
+    const search = describeAct(
+      act(Family.PERCEPTION, {
+        case: 'perception',
+        value: {
+          observer: alice,
+          sense: Sense.DISCOVERY,
+          discovery: { ability: 'perception', roll: lost },
+        },
+      }),
+      context
+    );
+    expect(search?.detail).toBe('failed perception check, 15 vs 14');
+    expect(search?.tone).toBe('neutral');
+  });
 });
 
 describe('roll breakdown from Roll', () => {
