@@ -37,7 +37,6 @@ import type { CompositionSource } from '@/compositions/compositionSource';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type {
   VendorStockEntry,
   WorldNPCDescriptor,
@@ -51,6 +50,10 @@ import {
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  type Act,
+  ClockMark,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
@@ -63,7 +66,8 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
-import { arrivingStep } from './arrivingStep';
+import { refreshKeysForAct } from './actRefreshKeys';
+import { arrivingWalk } from './arrivingWalk';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
@@ -94,7 +98,11 @@ import { useDeathSaveTruthHold } from './deathSaveTruthHold';
 import { holdDownedReveal } from './downedReveal';
 import { FactionLegend } from './FactionLegend';
 import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
-import { authoredWords, exitCarrier, holdingPhrase } from './holdingBeat';
+import {
+  authoredWords,
+  exitCarrierFromAct,
+  holdingPhrase,
+} from './holdingBeat';
 import { localWorldDieDimensions } from './local-world-die/diceDials';
 import {
   createLocalWorldDieAttemptSnapshot,
@@ -125,7 +133,6 @@ import { RestDialog } from './RestDialog';
 import { RunEndedToast } from './RunEndedToast';
 import { SeatKnowledgeProbe } from './SeatKnowledgeProbe';
 import { SessionCanvas } from './SessionCanvas';
-import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
 import { SneakToggle } from './SneakToggle';
 import {
@@ -134,6 +141,7 @@ import {
 } from './useCoalescedSessionRefreshes';
 import { useDungeonScene } from './useDungeonScene';
 import { useMoveController } from './useMoveController';
+import { useSessionActStream } from './useSessionActStream';
 import {
   type SessionEventDeliveryMetadata,
   useSessionEventStream,
@@ -208,7 +216,7 @@ function SessionEncounterScope({
     refetchView,
     refetchWhere,
     refetchRoster,
-    acceptEvent: acceptKnowledgeEvent,
+    acceptAct: acceptKnowledgeAct,
   } = useSessionKnowledge(sessionId, member);
   const wherePosition = snapshot?.where?.position ?? null;
   const currentRegionName = useMemo(
@@ -1218,67 +1226,47 @@ function SessionEncounterScope({
     ]
   );
 
-  // The refresh table lives in `sessionRefreshKeys.ts`, a pure function
-  // tested against real event fixtures (rpg-project#375 added two rows).
-  const refreshKeysForEvent = useCallback(
-    (event: SessionEvent): SessionRefreshKey[] => refreshKeysFor(event, member),
-    [member]
-  );
-
-  // One delivered-event funnel: immediate query invalidation, immediate raw
-  // Debug/authority ingestion, presentation-only pacing, then route handlers.
+  // ONE DELIVERED-ACT FUNNEL (rpg-project#630, event-stream R14): every
+  // act revokes action authority, patches knowledge, and schedules the reads
+  // its family changed (`actRefreshKeys.ts`, paired with the v1 table it
+  // replaces). A same-id run arrives whole and is funnelled in one pass.
   const { acceptStreamEvent, invalidateAuthority } = combat;
-  const handleSessionEvent = useCallback(
-    (event: SessionEvent, metadata: SessionEventDeliveryMetadata) => {
-      // Every delivered sequence advancement revokes action authority before
-      // the coalesced snapshots can begin. Last-good values remain display-only.
+  const handleSessionActs = useCallback(
+    (run: readonly Act[]) => {
+      // Every delivered act revokes action authority before the coalesced
+      // snapshots can begin. Last-good values remain display-only.
       invalidateAuthority();
-      acceptKnowledgeEvent(event);
-      scheduleRefresh([
-        ...new Set<SessionRefreshKey>([
-          'turn',
-          'afford',
-          ...refreshKeysForEvent(event),
-        ]),
-      ]);
-      acceptStreamEvent(event, metadata);
+      const keys = new Set<SessionRefreshKey>(['turn', 'afford']);
+      for (const act of run) {
+        acceptKnowledgeAct(act);
+        for (const key of refreshKeysForAct(act, member)) keys.add(key);
 
-      // A movement beat now DRAWS. One beat per cell reaches every member of
-      // the roster, the mover included — but the local player's own route
-      // already arrived whole from their Move answer, so feeding their beats
-      // here as well would drive the same walk twice.
-      const step = arrivingStep(event);
-      if (
-        step &&
-        step.member !== member &&
-        liveSightedRef.current.has(step.member)
-      ) {
-        moves.stepArrived(step.member, step.to);
-      }
+        // A remote walk DRAWS, cell by cell, from the path the act carries.
+        // The local player's own route already arrived whole from their Move
+        // answer (`arrivingWalk` drops it).
+        const walk = arrivingWalk(act, member);
+        if (walk && liveSightedRef.current.has(walk.member)) {
+          for (const cell of walk.cells) moves.stepArrived(walk.member, cell);
+        }
 
-      // Room additions and own carriage are applied by the knowledge hook
-      // after its snapshot cutoff. Mutable placements come only from GetView.
-      // Remembered BEFORE the ending arrives, because the ending beat does
-      // not name a carrier — see `carrier`'s own comment.
-      const carried = exitCarrier(event);
-      if (carried) setCarrier(carried);
-      if (event.body.case === 'door') setDoorNotice(null);
-      if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
-        // Equipment must disappear in the same authoritative event update,
-        // before the modal receives focus or can be layered over the panel.
-        setEquipmentOpen(false);
-        setRunEnded(event.body.case === 'ended' ? event.body.value.ending : '');
+        // Remembered BEFORE the ending arrives, because the ending names no
+        // carrier — see `carrier`'s own comment.
+        const carried = exitCarrierFromAct(act);
+        if (carried) setCarrier(carried);
+        if (act.body.case === 'door') setDoorNotice(null);
+        if (
+          act.body.case === 'clock' &&
+          act.body.value.mark === ClockMark.ENDED
+        ) {
+          // Equipment must disappear in the same authoritative update, before
+          // the modal receives focus or can be layered over the panel.
+          setEquipmentOpen(false);
+          setRunEnded(act.body.value.ending);
+        }
       }
+      scheduleRefresh([...keys]);
     },
-    [
-      acceptStreamEvent,
-      acceptKnowledgeEvent,
-      invalidateAuthority,
-      member,
-      moves,
-      refreshKeysForEvent,
-      scheduleRefresh,
-    ]
+    [acceptKnowledgeAct, invalidateAuthority, member, moves, scheduleRefresh]
   );
 
   const handleStreamAgedOut = useCallback(() => {
@@ -1286,12 +1274,22 @@ function SessionEncounterScope({
     scheduleRefresh(['characterData', 'turn', 'afford', 'atlas']);
     // A fresh coherent snapshot restores geometry, observations and carriage.
   }, [invalidateAuthority, scheduleRefresh]);
-  const streamState = useSessionEventStream(
+  const streamState = useSessionActStream(
     sessionId,
     member,
-    handleSessionEvent,
+    handleSessionActs,
     handleStreamAgedOut
   );
+  // THE STORY AND TOASTS STILL READ v1 until they move onto acts (the second
+  // half of rpg-project#630): this subscription feeds the combat presentation
+  // and nothing else. Authority, refreshes, knowledge, movement, carriage,
+  // doors and the run's end all come from the act stream above.
+  const handlePresentationEvent = useCallback(
+    (event: SessionEvent, metadata: SessionEventDeliveryMetadata) =>
+      acceptStreamEvent(event, metadata),
+    [acceptStreamEvent]
+  );
+  useSessionEventStream(sessionId, member, handlePresentationEvent);
   // THE DEBUG PANEL READS THE RECORD (rpg-project#628, event-stream R14):
   // streamed only while the panel is showing — Debug visible and the log
   // expanded, as StoryLog reports it; the story and toasts stay on the v1

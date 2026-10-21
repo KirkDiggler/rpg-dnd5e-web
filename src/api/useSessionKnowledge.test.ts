@@ -13,6 +13,13 @@ import {
   AtlasStructuralWallSchema,
   PropPresentationSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ActSchema,
+  ClockMark,
+  Family,
+  PartyKind,
+  Sense,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionKnowledge } from './useSessionKnowledge';
@@ -847,5 +854,207 @@ describe('seen-now across a reveal patch (fog of war walk, rpg-project#586)', ()
       await result.current.refetchView();
     });
     expect(keysOf(result.current.view.visibleCells)).toEqual(['0,0', '2,0']);
+  });
+});
+
+describe('the act stream intake (rpg-project#630)', () => {
+  const me = { kind: PartyKind.MEMBER, id: 'a' };
+
+  it('perception cells merge into atlas', async () => {
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const learned = create(ActSchema, {
+      session: 'run',
+      id: 'id-2',
+      family: Family.PERCEPTION,
+      body: {
+        case: 'perception',
+        value: {
+          observer: me,
+          sense: Sense.CELLS,
+          cells: {
+            regions: [
+              { id: 'entry', cells: [{ x: 1, y: 0 }] },
+              { id: 'cell', cells: [{ x: 2, y: 0 }] },
+            ],
+            doorways: [
+              { door: 'gate', from: { x: 1, y: 0 }, to: { x: 2, y: 0 } },
+            ],
+          },
+        },
+      },
+    });
+    act(() => result.current.acceptAct(learned));
+    const atlas = result.current.atlas!;
+    expect(atlas.cells.map((c) => `${c.x},${c.y}`).sort()).toEqual([
+      '0,0',
+      '1,0',
+      '2,0',
+    ]);
+    expect(
+      atlas.regions
+        .find((r) => r.id === 'entry')!
+        .cells.map((c) => `${c.x},${c.y}`)
+    ).toEqual(['0,0', '1,0']);
+    // The doorway's door id crossed under v1's name for it.
+    expect(atlas.doorways.map((d) => d.connection)).toEqual(['gate']);
+
+    // An act carries no seq, so a replay of the same act is a no-op union.
+    act(() => result.current.acceptAct(learned));
+    expect(result.current.atlas!.cells).toHaveLength(3);
+    expect(result.current.atlas!.doorways).toHaveLength(1);
+  });
+
+  it('a revealed secret upserts its structural door', async () => {
+    client.getKnowledge.mockResolvedValue(
+      structuralSnapshot(10n, [wallRecord('w', [])])
+    );
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'run',
+          id: 'id-3',
+          family: Family.PERCEPTION,
+          body: {
+            case: 'perception',
+            value: {
+              observer: me,
+              sense: Sense.REVEAL,
+              revealed: {
+                concealment: 'secret',
+                doors: [
+                  {
+                    door: 'postern',
+                    state: 'closed',
+                    doorways: [
+                      {
+                        door: 'postern',
+                        from: { x: 0, y: 0 },
+                        to: { x: 1, y: 0 },
+                      },
+                    ],
+                  },
+                ],
+                structuralDoors: [
+                  {
+                    id: 'postern',
+                    ref: 'ref:postern',
+                    from: { x: 0, y: 0 },
+                    to: { x: 2, y: 0 },
+                    height: 3,
+                    thickness: 0.3,
+                  },
+                ],
+              },
+            },
+          },
+        })
+      )
+    );
+    expect(
+      result.current.snapshot?.atlas?.structuralDoors.map((d) => d.id)
+    ).toEqual(['postern']);
+  });
+
+  it('a hold, a drop and a departure move the viewer’s holdings', async () => {
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.holding).toEqual(['vase']);
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'run',
+          id: 'id-4',
+          family: Family.ACT,
+          body: {
+            case: 'hold',
+            value: { by: me, prop: { kind: PartyKind.PROP, id: 'crown' } },
+          },
+        })
+      )
+    );
+    expect(result.current.holding).toEqual(['vase', 'crown']);
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'run',
+          id: 'id-5',
+          family: Family.ACT,
+          body: {
+            case: 'drop',
+            value: { by: me, prop: { kind: PartyKind.PROP, id: 'vase' } },
+          },
+        })
+      )
+    );
+    expect(result.current.holding).toEqual(['crown']);
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'run',
+          id: 'id-6',
+          family: Family.CLOCK,
+          body: {
+            case: 'clock',
+            value: {
+              mark: ClockMark.EXITED,
+              departure: { member: me, exit: 'postern', holding: ['crown'] },
+            },
+          },
+        })
+      )
+    );
+    expect(result.current.holding).toEqual([]);
+  });
+
+  it('buffers acts during hydration and replays them onto the snapshot', async () => {
+    const pendingSnapshot = deferred<GetKnowledgeResponse>();
+    client.getKnowledge.mockReturnValue(pendingSnapshot.promise);
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'run',
+          id: 'id-7',
+          family: Family.PERCEPTION,
+          body: {
+            case: 'perception',
+            value: {
+              observer: me,
+              sense: Sense.CELLS,
+              cells: { regions: [{ id: 'cell', cells: [{ x: 5, y: 0 }] }] },
+            },
+          },
+        })
+      )
+    );
+    await act(async () => pendingSnapshot.resolve(snapshot()));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.atlas!.regions.map((r) => r.id)).toEqual([
+      'entry',
+      'cell',
+    ]);
+  });
+
+  it('ignores another session’s act', async () => {
+    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const before = result.current.snapshot;
+    act(() =>
+      result.current.acceptAct(
+        create(ActSchema, {
+          session: 'other',
+          id: 'id-8',
+          family: Family.ACT,
+          body: {
+            case: 'hold',
+            value: { by: me, prop: { kind: PartyKind.PROP, id: 'crown' } },
+          },
+        })
+      )
+    );
+    expect(result.current.snapshot).toBe(before);
   });
 });

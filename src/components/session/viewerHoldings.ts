@@ -25,6 +25,10 @@
  * per-member ledger nobody reads is state waiting to go stale.
  */
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
+  ClockMark,
+  type Act,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 
 /**
  * The member's holdings after this beat. Returns the SAME array when
@@ -58,6 +62,42 @@ export function nextViewerHoldings(
       // or was dropped on the way out, which the DROPPED beat has already
       // said. Either way they are carrying nothing here any more.
       if (event.body.value.member !== member) return current;
+      return current.length === 0 ? current : [];
+    }
+    default:
+      return current;
+  }
+}
+
+/**
+ * The member's holdings after this act (rpg-project#630): the act stream's
+ * reading of the same three beats — a hold, a drop, and a departure clock
+ * entry. Same contract as `nextViewerHoldings`: the SAME array when nothing
+ * changed, and a hold delivered twice leaves one holding.
+ */
+export function nextViewerHoldingsFromAct(
+  current: readonly string[],
+  act: Act,
+  member: string
+): readonly string[] {
+  const body = act.body;
+  switch (body.case) {
+    case 'hold': {
+      const prop = body.value.prop?.id;
+      if (body.value.by?.id !== member || !prop) return current;
+      if (current.includes(prop)) return current;
+      return [...current, prop];
+    }
+    case 'drop': {
+      const prop = body.value.prop?.id;
+      if (body.value.by?.id !== member || !prop || !current.includes(prop)) {
+        return current;
+      }
+      return current.filter((held) => held !== prop);
+    }
+    case 'clock': {
+      if (body.value.mark !== ClockMark.EXITED) return current;
+      if (body.value.departure?.member?.id !== member) return current;
       return current.length === 0 ? current : [];
     }
     default:
