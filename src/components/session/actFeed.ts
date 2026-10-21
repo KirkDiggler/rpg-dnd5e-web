@@ -10,13 +10,13 @@
  * ACTS SHARING AN ID ARE ONE DELIVERY UNIT. One record entry can fold into
  * several acts that all carry its id: a rest and the concentrations and
  * conditions it ended, a departure or an ending and the conditions it lifted.
- * (A line and its own answer share only the act tag, not an id.) The server
- * never splits such a run across a page or a lag close. A page's runs are
- * delivered whole; a live run is delivered as it arrives and stays open for
- * the rest of it on the same stream (`deliver`), each call carrying its
- * acts' place in the run. Resuming after an id skips the whole run, and an
- * act at or below the last id held is skipped unless it continues the open
- * live run.
+ * (A line and its own answer share only the act tag, not an id.) Every run is
+ * delivered whole, in one `onRun` call. THE PRODUCER MARKS THE UNIT: the last
+ * act of every run carries `run_end`, so a live run closes on it — never on a
+ * timer, never on the next id. A stream that ends inside a run drops the
+ * unfinished run, and the catch-up after the last id held re-reads it whole.
+ * A page ends only on a run's end, so its runs are whole. An act at or below
+ * the last id held is skipped.
  *
  * CATCH-UP FIRST, THEN LIVE. Every (re)connection first pages GetStory after
  * the last id held, delivered as `catchup`, and only then opens StreamEvents
@@ -46,12 +46,6 @@ export type ActStreamState = 'live' | 'reconnecting' | 'resyncing';
 export interface ActDeliveryMetadata {
   /** `catchup` for a GetStory page, `live` for the stream. */
   source: 'live' | 'catchup';
-  /**
-   * The first act's place in its same-id run: 0 for a run delivered from its
-   * start, N when this call continues a live run already N acts long (see
-   * "A LIVE RUN STAYS OPEN").
-   */
-  startIndex: number;
 }
 
 export interface ActFeedDeps {
@@ -97,48 +91,22 @@ export function startActFeed(deps: ActFeedDeps): ActFeed {
   const controller = new AbortController();
   const signal = controller.signal;
   let lastId = deps.afterId ?? '';
-  // The run lastId names, when it was delivered live on the CURRENT stream
-  // and may still be continued there, and how many acts it holds so far.
-  let openLive = false;
-  let openCount = 0;
 
-  /**
-   * Delivers one run unless this feed already holds its id.
-   *
-   * A LIVE RUN STAYS OPEN. The stream hands a run over back to back, but the
-   * transport may split it across macrotasks, and the burst it ends has no
-   * end marker on the wire. So a live run is delivered as soon as the stream
-   * has nothing more ready (its last act is often the turn's end, which the
-   * table is waiting on), and stays open: more acts of the same id on the
-   * same stream continue it, delivered with their place in the run
-   * (`startIndex`), never dropped as already held. A new id, a page, a lag or
-   * a new stream closes it. Pages never split a run, so catch-up never
-   * continues one.
-   */
+  /** Delivers one whole run unless this feed already holds its id. */
   const deliver = (run: readonly Act[], source: 'live' | 'catchup') => {
     const id = run[0]?.id;
     if (id === undefined) return;
-    if (source === 'live' && openLive && id === lastId) {
-      const startIndex = openCount;
-      openCount += run.length;
-      deps.onRun(run, Object.freeze({ source, startIndex }));
-      return;
-    }
     if (lastId !== '' && id <= lastId) return; // already held, whole
     lastId = id;
-    openLive = source === 'live';
-    openCount = run.length;
-    deps.onRun(run, Object.freeze({ source, startIndex: 0 }));
+    deps.onRun(run, Object.freeze({ source }));
   };
 
   const restart = () => {
     lastId = '';
-    openLive = false;
     deps.onRestarted();
   };
 
   const catchUp = async () => {
-    openLive = false;
     for (;;) {
       const response = await deps.get(lastId, signal);
       if (signal.aborted) return;
@@ -151,24 +119,41 @@ export function startActFeed(deps: ActFeedDeps): ActFeed {
   };
 
   /**
-   * Received acts are held until the stream has nothing more ready (the
-   * next macrotask), then delivered run by run in one synchronous pass, so a
-   * burst reaches the caller in one tick, where its refreshes coalesce.
+   * THE OPEN RUN is the live run whose `run_end` has not arrived yet. On
+   * `run_end` it is complete and joins `pending`.
+   *
+   * Complete runs wait for the stream to have nothing more ready (the next
+   * macrotask), then go out run by run in one synchronous pass, so a burst
+   * reaches the caller in one tick where its refreshes coalesce. That timer
+   * batches complete runs only; it never closes one.
    */
-  let pending: Act[] = [];
+  let open: Act[] = [];
+  let pending: Act[][] = [];
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     clearTimeout(flushTimer);
     flushTimer = undefined;
     if (pending.length === 0) return;
-    const received = pending;
+    const complete = pending;
     pending = [];
     if (signal.aborted) return;
-    for (const run of sameIdRuns(received)) deliver(run, 'live');
+    for (const run of complete) deliver(run, 'live');
   };
-  const receive = (act: Act) => {
-    pending.push(act);
+  /** Ends a stream's intake: complete runs go out, an unfinished one is
+   * dropped for the catch-up to re-read whole. */
+  const endIntake = () => {
+    open = [];
+    flush();
+  };
+  /** Takes one live act; false when the stream broke the run rule. */
+  const receive = (act: Act): boolean => {
+    if (open.length > 0 && open[0]!.id !== act.id) return false;
+    open.push(act);
+    if (!act.runEnd) return true;
+    pending.push(open);
+    open = [];
     if (flushTimer === undefined) flushTimer = setTimeout(flush, 0);
+    return true;
   };
 
   const wait = (delay: number) =>
@@ -200,14 +185,18 @@ export function startActFeed(deps: ActFeedDeps): ActFeed {
         if (signal.aborted) return;
         deps.onState('live');
         retry = 0;
-        openLive = false;
         for await (const message of deps.stream(lastId, streamSignal)) {
           const item = message.item;
           if (item.case === 'act') {
-            receive(item.value);
+            // A new id inside an open run: the producer never does this, so
+            // fail closed — drop the run and catch up rather than guess.
+            if (!receive(item.value)) {
+              reopen = true;
+              break;
+            }
           } else if (item.case === 'restarted') {
             // Retained history follows, not news: re-read it as catch-up.
-            flush();
+            endIntake();
             restart();
             reopen = true;
             break;
@@ -216,9 +205,9 @@ export function startActFeed(deps: ActFeedDeps): ActFeed {
             break;
           }
         }
-        flush();
+        endIntake();
       } catch {
-        flush();
+        endIntake();
         // OUR abort is the only one that stops the loop. A server or proxy
         // Canceled is a dropped connection like any other.
         if (signal.aborted) return;

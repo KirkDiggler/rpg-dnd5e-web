@@ -18,18 +18,20 @@ import {
   type ActStreamState,
 } from './actFeed';
 
-function act(id: string, verb = 'rest'): Act {
+function act(id: string, verb = 'rest', runEnd = true): Act {
   return create(ActSchema, {
     id,
     act: `${verb}:${id}`,
     verb,
     family: Family.ACT,
     session: 'sess-1',
+    runEnd,
   });
 }
-function actMsg(id: string): StreamEventsResponse {
+/** One live act; `runEnd` false marks an act a same-id run continues past. */
+function actMsg(id: string, runEnd = true): StreamEventsResponse {
   return create(StreamEventsResponseSchema, {
-    item: { case: 'act', value: act(id) },
+    item: { case: 'act', value: act(id, 'rest', runEnd) },
   });
 }
 function laggedMsg(lastId: string): StreamEventsResponse {
@@ -93,7 +95,6 @@ function harness(
   const runs: {
     ids: string[];
     source: ActDeliveryMetadata['source'];
-    startIndex: number;
   }[] = [];
   const states: ActStreamState[] = [];
   const onRestarted = vi.fn();
@@ -111,7 +112,6 @@ function harness(
       runs.push({
         ids: run.map((a) => a.id),
         source: metadata.source,
-        startIndex: metadata.startIndex,
       }),
     onRestarted,
     onState: (s) => states.push(s),
@@ -183,7 +183,16 @@ describe('actFeed', () => {
     const h = harness(
       [
         scripted([actMsg('A'), laggedMsg('A')], 'end'),
-        scripted([actMsg('B'), actMsg('C'), actMsg('D')], 'hold'),
+        scripted(
+          [
+            actMsg('B', false),
+            actMsg('B', false),
+            actMsg('B'),
+            actMsg('C'),
+            actMsg('D'),
+          ],
+          'hold'
+        ),
       ],
       async (afterId) => pages[afterId] ?? page([])
     );
@@ -203,7 +212,10 @@ describe('actFeed', () => {
 
   it('delivers a live same-id run as one run', async () => {
     const h = harness([
-      scripted([actMsg('A'), actMsg('B'), actMsg('B'), actMsg('C')], 'hold'),
+      scripted(
+        [actMsg('A'), actMsg('B', false), actMsg('B'), actMsg('C')],
+        'hold'
+      ),
     ]);
     await vi.waitFor(() => expect(h.ids()).toEqual(['A', 'B', 'B', 'C']));
     expect(h.runs.map((r) => r.ids)).toEqual([['A'], ['B', 'B'], ['C']]);
@@ -227,23 +239,58 @@ describe('actFeed', () => {
     expect(h.streamCalls).toEqual(['']);
   });
 
-  it('delivers a same-id run split across macrotasks whole: the tail continues it', async () => {
+  it('holds a live run open until its run_end, across macrotasks, and delivers it whole', async () => {
     // The reviewer's probe: a rest, then its concentration-ended act one
-    // macrotask later. The first is delivered at once (the table may be
-    // waiting on it); the second continues the same run, never dropped.
+    // macrotask later. The producer marks the run's last act; the run closes
+    // there, never on a timer or on the next id.
     const h = harness([
-      splitAcrossMacrotasks([actMsg('R')], [actMsg('R'), actMsg('S')]),
+      splitAcrossMacrotasks([actMsg('R', false)], [actMsg('R'), actMsg('S')]),
     ]);
     await vi.waitFor(() => expect(h.ids()).toEqual(['R', 'R', 'S']));
     expect(h.runs).toEqual([
-      { ids: ['R'], source: 'live', startIndex: 0 },
-      { ids: ['R'], source: 'live', startIndex: 1 },
-      { ids: ['S'], source: 'live', startIndex: 0 },
+      { ids: ['R', 'R'], source: 'live' },
+      { ids: ['S'], source: 'live' },
     ]);
     h.feed.stop();
   });
 
-  it('never continues a run from a page: a page’s copy of a held id is skipped', async () => {
+  it('never delivers a live run the stream ended inside; catch-up re-reads it whole', async () => {
+    const h = harness(
+      [
+        scripted([actMsg('A'), actMsg('B', false)], 'fail'),
+        scripted([], 'hold'),
+      ],
+      async (id) => (id === 'A' ? page(['B', 'B']) : page([]))
+    );
+    await vi.waitFor(() => expect(h.ids()).toEqual(['A', 'B', 'B']));
+    expect(h.runs).toEqual([
+      { ids: ['A'], source: 'live' },
+      { ids: ['B', 'B'], source: 'catchup' },
+    ]);
+    expect(h.getCalls).toEqual(['', 'A']);
+    h.feed.stop();
+  });
+
+  it('a new id inside an open run is a broken stream: drop the run, catch up, reopen', async () => {
+    // The producer never does this; the client fails closed rather than
+    // guess where the run ended.
+    const h = harness(
+      [
+        scripted([actMsg('A'), actMsg('B', false), actMsg('C')], 'hold'),
+        scripted([], 'hold'),
+      ],
+      async (id) => (id === 'A' ? page(['B', 'C']) : page([]))
+    );
+    await vi.waitFor(() => expect(h.ids()).toEqual(['A', 'B', 'C']));
+    expect(h.runs.slice(1).map((r) => r.source)).toEqual([
+      'catchup',
+      'catchup',
+    ]);
+    expect(h.streamCalls).toEqual(['', 'C']);
+    h.feed.stop();
+  });
+
+  it('a page’s copy of a held id is skipped', async () => {
     const pages: Record<string, GetStoryResponse> = {
       '': page(['A']),
       A: page(['A', 'B']),
@@ -266,11 +313,7 @@ describe('actFeed', () => {
     h.feed.refresh();
     await vi.waitFor(() => expect(h.streamCalls).toEqual(['', 'B']));
     expect(h.getCalls).toEqual(['', 'A']);
-    expect(h.runs.at(-1)).toEqual({
-      ids: ['B'],
-      source: 'catchup',
-      startIndex: 0,
-    });
+    expect(h.runs.at(-1)).toEqual({ ids: ['B'], source: 'catchup' });
     expect(h.states).not.toContain('reconnecting');
     h.feed.stop();
   });
