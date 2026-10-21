@@ -13,6 +13,7 @@ import type {
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
+import type { RecordFeedSnapshot } from '../recordFeed';
 import type { OrganizedActionPresentation } from './organizedActionPresentation';
 
 /** Local interaction state. Provider facts remain in generated messages. */
@@ -211,6 +212,10 @@ interface CombatExperienceBaseProps {
   /** Desktop opt-in: temporary released narration and optional history, scoped by caller. */
   storyFeedback?: { scopeKey: string };
   debug: readonly DebugFeedEntry[];
+  /** The session record for the debug panel (rpg-project#628). */
+  record?: RecordFeedSnapshot;
+  /** Told whether the record panel is showing (Debug, expanded). */
+  onRecordShownChange?: (shown: boolean) => void;
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll reaction window is asking about. Null when no
    * such beat is outstanding; the panel still poses the question without it. */

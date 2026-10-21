@@ -1,9 +1,11 @@
 import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
+import type { RecordFeedSnapshot } from '../recordFeed';
 import styles from './CombatExperience.module.css';
 import { DebugEventRow } from './DebugEventRow';
 import { isCombatDebugEnabled } from './diagnostics';
+import { RecordPanel } from './RecordPanel';
 import {
   formatAttackModifierSource,
   formatAttackRollArithmetic,
@@ -18,6 +20,13 @@ import type {
 export interface StoryLogProps {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly DebugFeedEntry[];
+  /**
+   * The session record (rpg-project#628). When given, debug mode reads the
+   * record stream instead of the v1 event lines (event-stream R14).
+   */
+  record?: RecordFeedSnapshot;
+  /** Told whether the record panel is showing: Debug mode, log expanded. */
+  onRecordShownChange?: (shown: boolean) => void;
   mode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   onModeChange: (mode: CombatExperienceLogMode) => void;
@@ -97,6 +106,8 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
 export function StoryLog({
   story,
   debug,
+  record,
+  onRecordShownChange,
   mode,
   streamState,
   onModeChange,
@@ -160,10 +171,21 @@ export function StoryLog({
     story.length,
     result,
     debug.length,
+    record?.rows.length,
     visibleMode,
     pinnedToBottom,
     collapsed,
   ]);
+
+  // THE RECORD STREAMS ONLY WHILE IT IS SHOWN: Debug visible and the log
+  // expanded. A collapsed log on Debug shows nothing, so it holds no stream;
+  // expanding resumes after the last id held.
+  const recordShown = visibleMode === 'debug' && !collapsed;
+  useEffect(() => {
+    onRecordShownChange?.(recordShown);
+    // An unmounted log shows nothing: say so, or the stream outlives it.
+    return () => onRecordShownChange?.(false);
+  }, [recordShown, onRecordShownChange]);
 
   const handleScroll = () => {
     if (collapsed) return;
@@ -209,7 +231,11 @@ export function StoryLog({
             {visibleMode === 'story' ? 'Encounter story' : 'Developer stream'}
           </span>
           <strong>
-            {visibleMode === 'story' ? 'What happened' : 'Every wire fact'}
+            {visibleMode === 'story'
+              ? 'What happened'
+              : record
+                ? 'The record'
+                : 'Every wire fact'}
           </strong>
         </div>
         <div className={styles.logHeaderActions}>
@@ -279,21 +305,25 @@ export function StoryLog({
           aria-label="Raw debug feed"
           aria-live="off"
         >
-          {debug.map((entry, index) =>
-            typeof entry === 'string' ? (
-              <div
-                className={styles.debugDiagnostic}
-                key={`diagnostic-${index}-${entry}`}
-              >
-                {entry}
-              </div>
-            ) : (
-              <DebugEventRow
-                key={entry.id}
-                entry={entry}
-                onInspect={() => setPinnedToBottom(false)}
-                onWiden={() => setJsonWide(true)}
-              />
+          {record ? (
+            <RecordPanel feed={record} />
+          ) : (
+            debug.map((entry, index) =>
+              typeof entry === 'string' ? (
+                <div
+                  className={styles.debugDiagnostic}
+                  key={`diagnostic-${index}-${entry}`}
+                >
+                  {entry}
+                </div>
+              ) : (
+                <DebugEventRow
+                  key={entry.id}
+                  entry={entry}
+                  onInspect={() => setPinnedToBottom(false)}
+                  onWiden={() => setJsonWide(true)}
+                />
+              )
             )
           )}
         </div>

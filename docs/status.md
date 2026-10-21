@@ -12,6 +12,16 @@ let it rot.
 
 ## Active work
 
+**The debug panel reads the record (rpg-project#628)** — In a live session,
+Debug mode reads session v1alpha2's record stream (`recordClient`,
+`useSessionRecordStream`, `recordFeed.ts`) instead of the v1 event lines: one
+row per beat with its id, beat name and act id, narrowed by act id or beat name
+(click a row's act to narrow to it), fields as indented JSON. It streams only
+while Debug is showing, resumes after its last id on reconnect, catches up with
+GetRecord after a `lagged` end, and replaces its rows once when a read
+`restarted`. Story and toasts stay on the v1 stream. Concepts fixtures keep the
+v1 debug lines (`debugLogLine.ts`), which no live surface reads now.
+
 **Automatic discovery local playtest (rpg-project#523)** — Adopts protos
 v0.1.220. The game route removes Search, renders audienced discovery results
 using the actual skill, and exposes the server-supplied per-character sharing

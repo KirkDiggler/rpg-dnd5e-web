@@ -8,6 +8,7 @@ import { AuthoringService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/a
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { SessionPresentationService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
 import { SessionService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import { RecordService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
@@ -166,6 +167,11 @@ export const encounterClient = createClient(EncounterService, transport);
 // so against a default server every call here answers about a session that was
 // never created on this stack. Probe and fall back rather than assuming.
 export const sessionClient = createClient(SessionService, transport);
+
+// The record stream, session v1alpha2 (rpg-project#628): every beat the
+// encounter writes, as written, for the debug panel. Never the player UI's
+// source (event-stream R14).
+export const recordClient = createClient(RecordService, transport);
 
 // Decorative dice coordination remains separate from authoritative SessionService.
 // Published actors use the unary call; visual-only witnesses consume the live stream.
