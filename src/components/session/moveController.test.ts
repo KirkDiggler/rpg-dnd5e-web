@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   beginRoute,
   emptyMovements,
+  facingWhileWalking,
   forgetUnsighted,
+  isWalking,
   movementPainted,
   stepArrived,
 } from './moveController';
@@ -145,5 +147,28 @@ describe('moveController — only what the viewer can actually see', () => {
     expect(back?.route).toEqual([{ x: 9, y: -9, z: 0 }]);
     expect(back?.seq).toBe(1);
     expect(back?.seq).not.toBe(seqWhileSighted);
+  });
+});
+
+describe('isWalking / facingWhileWalking — the end facing waits for the token (rpg-project#630)', () => {
+  const cell = { x: 1, y: -1, z: 0 };
+  it('a token mid-walk takes no wire facing, so it faces its path', () => {
+    const walking = beginRoute(emptyMovements(), 'scout', [cell, cell]).get(
+      'scout'
+    );
+    expect(isWalking(walking)).toBe(true);
+    expect(facingWhileWalking(90, walking)).toBeUndefined();
+  });
+  it('once the walk is painted to its end, the wire facing lands', () => {
+    const begun = beginRoute(emptyMovements(), 'scout', [cell]);
+    const painted = movementPainted(
+      begun,
+      'scout',
+      begun.get('scout')!.seq,
+      1
+    ).get('scout');
+    expect(isWalking(painted)).toBe(false);
+    expect(facingWhileWalking(90, painted)).toBe(90);
+    expect(facingWhileWalking(90, undefined)).toBe(90);
   });
 });

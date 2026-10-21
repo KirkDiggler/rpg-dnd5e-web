@@ -6785,6 +6785,89 @@ describe('the red floor: paint the zones the server sent (sneaking, rpg-project#
     expect(probe.dataset.watchZoneCells).toBe('1,-1,0');
   });
 
+  it('a walking watcher’s zone waits for its token: never ahead of it (rpg-project#630)', async () => {
+    readyScene();
+    const zoneAt = (x: number) => [
+      create(WatchZoneSchema, {
+        watcher: 'scout',
+        cells: [create(PositionSchema, { x, y: 0 })],
+      }),
+    ];
+    let walked = false;
+    // Read at call time, so the view after the walk sees the scout at its end.
+    const sighting = () => ({
+      subject: 'scout',
+      name: 'scout',
+      kind: MemberKind.MONSTER,
+      seen: { position: { x: walked ? 3 : 0, y: 0 }, standing: Standing.UP },
+      passage: Passage.PASS_THROUGH,
+      currentVia: ['sight'],
+    });
+    const base = hoisted.getKnowledgeFn.getMockImplementation()!;
+    hoisted.getKnowledgeFn.mockImplementation(async (...args: unknown[]) => {
+      const snapshot = (await base(...args)) as GetKnowledgeResponse;
+      snapshot.view ??= create(GetViewResponseSchema);
+      snapshot.view.watchZones = zoneAt(walked ? 5 : 1);
+      snapshot.view.sightings = [
+        sighting(),
+      ] as unknown as typeof snapshot.view.sightings;
+      return snapshot;
+    });
+    hoisted.getViewFn.mockImplementation(async () => ({
+      sightings: [sighting()],
+      watchZones: zoneAt(walked ? 5 : 1),
+    }));
+    const walk = deferredActs([
+      walkAct('scout', [
+        { x: 1, y: 0 },
+        { x: 2, y: 0 },
+        { x: 3, y: 0 },
+      ]),
+    ]);
+    renderView();
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+        new Set(['1,-1,0'])
+      )
+    );
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'scout'
+        )
+      ).toBe(true)
+    );
+
+    // The walk lands, and the view it triggers already holds the zone the
+    // scout casts from where it stops.
+    const reads = hoisted.getViewFn.mock.calls.length;
+    walked = true;
+    walk.release();
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(reads)
+    );
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
+      ).toHaveLength(3)
+    );
+    // The token is still walking: the floor keeps the zone it showed.
+    expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+      new Set(['1,-1,0'])
+    );
+
+    // The canvas paints the walk to its end: the new zone lands with it.
+    const seq = hoisted.lastCanvasProps.current!.movements!.get('scout')!.seq;
+    act(() =>
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('scout', seq, 3)
+    );
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.scene?.watchZoneCells).toEqual(
+        new Set(['5,-5,0'])
+      )
+    );
+  });
+
   it('a view with no zones hands the floor none', async () => {
     readyScene();
     watched([]);

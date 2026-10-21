@@ -39,6 +39,7 @@ import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type {
   VendorStockEntry,
+  WatchZone,
   WorldNPCDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Money } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -125,6 +126,7 @@ import type {
   LocalWorldDieWitnessPlan,
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
+import { isWalking } from './moveController';
 import { ObservationMarkers } from './ObservationMarkers';
 import { resolveName } from './participantNames';
 import { cubeToPosition } from './positionBridge';
@@ -149,7 +151,7 @@ import {
 import { useSessionRecordStream } from './useSessionRecordStream';
 import { useSessionWalk } from './useSessionWalk';
 import { VendorPopover } from './vendor/VendorPopover';
-import { watchZoneCells } from './watchZoneCells';
+import { watchZoneCells, zonesBehindWalkers } from './watchZoneCells';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -427,10 +429,31 @@ function SessionEncounterScope({
   // the server sends no zones to a seat that is not sneaking, and an empty
   // list paints nothing. The seat's own cell is not excluded: standing in a
   // zone is where the roll happens, so it shows red too.
-  const zoneCells = useMemo(
-    () => watchZoneCells(knowledgeView.watchZones),
-    [knowledgeView.watchZones]
+  // ONE movement per actor, whoever they are (rpg-dnd5e-web#961). Declared
+  // ahead of the walk hook, which feeds it the local player's route, and of
+  // the red floor, which waits on it.
+  const moves = useMoveController();
+  // A watcher still walking keeps the zone it showed before the walk; its
+  // new zone lands when its token does (see `zonesBehindWalkers`).
+  const walkingMembers = useMemo(() => {
+    const out = new Set<string>();
+    for (const [who, m] of moves.movements) if (isWalking(m)) out.add(who);
+    return out;
+  }, [moves.movements]);
+  const shownZonesRef = useRef<readonly WatchZone[]>(knowledgeView.watchZones);
+  const shownZones = useMemo(
+    () =>
+      zonesBehindWalkers(
+        shownZonesRef.current,
+        knowledgeView.watchZones,
+        walkingMembers
+      ),
+    [knowledgeView.watchZones, walkingMembers]
   );
+  useEffect(() => {
+    shownZonesRef.current = shownZones;
+  }, [shownZones]);
+  const zoneCells = useMemo(() => watchZoneCells(shownZones), [shownZones]);
   const builtScene = sceneBuild?.ok ? sceneBuild.scene : null;
   const scene = useMemo(
     () =>
@@ -539,9 +562,6 @@ function SessionEncounterScope({
     moveAcceptedRef.current();
   }, []);
 
-  // ONE movement per actor, whoever they are (rpg-dnd5e-web#961). Declared
-  // ahead of the walk hook, which feeds it the local player's route.
-  const moves = useMoveController();
   const beginLocalRoute = useCallback(
     (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
     [moves, member]
