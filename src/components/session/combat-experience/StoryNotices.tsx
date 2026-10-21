@@ -1,13 +1,15 @@
 import type { CSSProperties } from 'react';
+import { ActForm } from './forms/ActForm';
+import { FormShell } from './forms/FormShell';
 import styles from './StoryNotices.module.css';
-import type { CombatExperienceStoryExchange } from './types';
-import { STORY_NOTICE_TTL_MS } from './useStoryNotices';
+import type { StoryNotice } from './useStoryNotices';
 
-export function StoryNotices({
-  entries,
-}: {
-  entries: readonly CombatExperienceStoryExchange[];
-}) {
+/**
+ * The toasts: each the toast-size form of its act (#1301), the describer's
+ * one line. A held toast (fired in a fight) shows until the viewer's next
+ * act and does not fade on a timer.
+ */
+export function StoryNotices({ entries }: { entries: readonly StoryNotice[] }) {
   return (
     <section
       className={styles.notices}
@@ -22,15 +24,31 @@ export function StoryNotices({
           className={styles.notice}
           data-notice-id={entry.id}
           data-tone={entry.tone}
+          data-toast-case={entry.toastRule?.case}
+          data-held={entry.notice.held ? 'true' : undefined}
           style={
-            { '--notice-ttl': `${STORY_NOTICE_TTL_MS}ms` } as CSSProperties
+            {
+              '--notice-ttl': `${entry.notice.durationMs}ms`,
+            } as CSSProperties
           }
         >
-          {entry.eyebrow && (
-            <span className={styles.context}>{entry.eyebrow}</span>
+          {entry.act && entry.describeContext ? (
+            <ActForm
+              act={entry.act}
+              size="toast"
+              context={entry.describeContext}
+            />
+          ) : (
+            <FormShell
+              size="toast"
+              kind="story"
+              lines={{
+                eyebrow: entry.eyebrow,
+                headline: entry.headline,
+                outcome: entry.detail || undefined,
+              }}
+            />
           )}
-          <strong>{entry.headline}</strong>
-          {entry.detail && <p>{entry.detail}</p>}
         </article>
       ))}
     </section>

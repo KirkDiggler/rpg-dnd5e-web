@@ -1,11 +1,18 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toastDurationMs, type ToastRule } from './toastPolicy';
 import type {
   CombatExperienceStoryExchange,
   CombatExperienceStreamState,
 } from './types';
-import { STORY_NOTICE_TTL_MS, useStoryNotices } from './useStoryNotices';
+import { STORY_NOTICE_LIMIT, useStoryNotices } from './useStoryNotices';
+
+const LINE = 'Mira moves into the southern aisle.';
+/** The fixture line's time on screen (2.5 s + 60 ms a character). */
+const STORY_NOTICE_TTL_MS = toastDurationMs(LINE);
+const timed: ToastRule = { case: 'own-outcome', hold: false };
+const held: ToastRule = { case: 'done-to-you', hold: true };
 
 const entry = (id: string): CombatExperienceStoryExchange => ({
   id,
@@ -14,6 +21,8 @@ const entry = (id: string): CombatExperienceStoryExchange => ({
   headline: `Mira moves ${id}`,
   detail: 'Reaches the southern aisle.',
   tone: 'neutral',
+  toastRule: timed,
+  toastText: LINE,
 });
 const old = entry('old');
 const props = {
@@ -32,17 +41,74 @@ afterEach(() => {
 });
 
 describe('useStoryNotices', () => {
-  it('toasts only the families the toast policy names (rpg-project#630)', () => {
+  it('toasts only rows the toast policy named a case for (#1301)', () => {
     const view = renderHook(useStoryNotices, { initialProps: props });
     view.rerender({
       ...props,
       story: [
         old,
-        { ...entry('turn'), toast: false },
-        { ...entry('swing'), toast: true },
+        { ...entry('turn'), toastRule: undefined },
+        { ...entry('swing'), toastRule: timed },
       ],
     });
     expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
+  });
+
+  it('duration scales with length', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const short = { ...entry('short'), toastText: 'x'.repeat(20) };
+    const long = { ...entry('long'), toastText: 'x'.repeat(80) };
+    view.rerender({ ...props, story: [old, short, long] });
+    expect(view.result.current.map((n) => n.notice.durationMs)).toEqual([
+      3700, 7300,
+    ]);
+    act(() => vi.advanceTimersByTime(3700));
+    expect(view.result.current.map(({ id }) => id)).toEqual(['long']);
+    act(() => vi.advanceTimersByTime(7300 - 3700));
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('combat toast holds until your next act', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const swing = { ...entry('swing'), toastRule: held };
+    view.rerender({ ...props, story: [old, swing] });
+    expect(view.result.current[0]?.notice.held).toBe(true);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
+    // Another creature's act does not release it.
+    const other = { ...entry('other'), toastRule: undefined };
+    view.rerender({ ...props, story: [old, swing, other] });
+    expect(view.result.current.map(({ id }) => id)).toEqual(['swing']);
+    // The viewer's own act does, and its own toast takes the place.
+    const mine = { ...entry('mine'), byViewer: true, toastRule: held };
+    view.rerender({ ...props, story: [old, swing, other, mine] });
+    expect(view.result.current.map(({ id }) => id)).toEqual(['mine']);
+  });
+
+  it('a held toast runs its timer once the fight ends', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const swing = { ...entry('swing'), toastRule: held };
+    view.rerender({ ...props, story: [old, swing] });
+    const ended = {
+      ...entry('ended'),
+      fightEdge: 'dissolved' as const,
+      toastRule: undefined,
+    };
+    view.rerender({ ...props, story: [old, swing, ended] });
+    expect(view.result.current[0]?.notice.held).toBe(false);
+    act(() => vi.advanceTimersByTime(STORY_NOTICE_TTL_MS));
+    expect(view.result.current).toEqual([]);
+  });
+
+  it('at most three', () => {
+    const view = renderHook(useStoryNotices, { initialProps: props });
+    const burst = ['a', 'b', 'c', 'd'].map((id) => ({
+      ...entry(id),
+      toastRule: held,
+    }));
+    view.rerender({ ...props, story: [old, ...burst] });
+    expect(STORY_NOTICE_LIMIT).toBe(3);
+    expect(view.result.current.map(({ id }) => id)).toEqual(['b', 'c', 'd']);
   });
 
   it('keeps background catch-up and unknown provenance quiet even while the stream is live', () => {

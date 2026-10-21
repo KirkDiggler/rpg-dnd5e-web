@@ -1,0 +1,55 @@
+.toastLine {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.logForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.logForm > span {
+  color: var(--sc-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.logForm > strong {
+  margin: 2px 0;
+  font-size: 12px;
+}
+
+.formula {
+  margin: 0;
+  color: var(--sc-text, inherit);
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.breakdown {
+  margin-top: 2px;
+  color: var(--sc-muted);
+  font-size: 9px;
+}
+
+.breakdown > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.breakdown small {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+}
+
+/* The outcome half of the line reads quieter than who did what. */
+.toastLine > span + span,
+.logForm > strong > span + span {
+  font-weight: 400;
+  opacity: 0.8;
+}

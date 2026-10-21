@@ -1,5 +1,12 @@
 import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import {
@@ -8,7 +15,12 @@ import {
 } from './attackArithmetic';
 import styles from './CombatExperience.module.css';
 import { DebugEventRow } from './DebugEventRow';
+import { partyName } from './describeAct';
 import { isCombatDebugEnabled } from './diagnostics';
+import { foldLogRows, type LogRow } from './foldLogRows';
+import { ActForm } from './forms/ActForm';
+import { FormShell } from './forms/FormShell';
+import { RecentActs } from './RecentActs';
 import { RecordPanel } from './RecordPanel';
 import type {
   CombatExperienceAttackOutcome,
@@ -45,14 +57,66 @@ function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
       className={`${styles.storyEntry} ${styles[`story_${entry.tone}`]}${entry.nested ? ` ${styles.storyNested}` : ''}`}
       data-act={entry.group}
       data-nested={entry.nested ? 'true' : undefined}
+      data-story-id={entry.id}
     >
-      <span>{entry.eyebrow}</span>
-      <strong>{entry.headline}</strong>
-      <p>{entry.detail}</p>
-      {entry.rollBreakdown && (
-        <small className={styles.storyRoll} data-testid="story-roll-breakdown">
-          {entry.rollBreakdown}
-        </small>
+      {entry.act && entry.describeContext ? (
+        <ActForm act={entry.act} size="log" context={entry.describeContext} />
+      ) : (
+        // A row built without an act (a Concept fixture): the same shell.
+        <FormShell
+          size="log"
+          kind="story"
+          lines={{
+            eyebrow: entry.eyebrow,
+            headline: entry.headline,
+            outcome: entry.detail || undefined,
+            breakdown: entry.rollBreakdown,
+          }}
+        />
+      )}
+    </article>
+  );
+}
+
+/**
+ * One creature's out-of-combat walks, folded (R35): "Gate Guard walked 14
+ * cells", expanding to the walks themselves.
+ */
+function WalkFoldEntry({ row }: { row: Extract<LogRow, { kind: 'walks' }> }) {
+  const [open, setOpen] = useState(false);
+  const first = row.walks[0]!;
+  const act = first.act;
+  const mover =
+    act?.body.case === 'walk' && first.describeContext
+      ? partyName(act.body.value.mover, first.describeContext)
+      : row.mover;
+  const regionId = useId();
+  return (
+    <article
+      className={`${styles.storyEntry} ${styles.story_neutral} ${styles.walkFold}`}
+      data-story-id={row.id}
+      data-fold-ids={row.walks.map((walk) => walk.id).join(' ')}
+      data-testid="story-walk-fold"
+    >
+      <span>Move</span>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={regionId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <strong>
+          {mover} walked {row.cells} {row.cells === 1 ? 'cell' : 'cells'}
+        </strong>
+      </button>
+      {open && (
+        <ol id={regionId}>
+          {row.walks.map((walk) => (
+            <li key={walk.id}>
+              <StoryEntry entry={walk} />
+            </li>
+          ))}
+        </ol>
       )}
     </article>
   );
@@ -142,6 +206,24 @@ export function StoryLog({
   // dependency so switching feeds re-pins the newly mounted one.
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const rows = useMemo(() => foldLogRows(story), [story]);
+  const [recentShown, setRecentShown] = useState(false);
+  // The recent panel's click: scroll the log to that act's row, or to the
+  // folded walk row that holds it.
+  const scrollToRow = (id: string) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const target = Array.from(
+      el.querySelectorAll<HTMLElement>('[data-story-id]')
+    ).find(
+      (row) =>
+        row.dataset.storyId === id ||
+        (row.dataset.foldIds ?? '').split(' ').includes(id)
+    );
+    if (!target) return;
+    setPinnedToBottom(false);
+    target.scrollIntoView?.({ block: 'nearest' });
+  };
   const [collapsedChoice, setCollapsed] = useState<boolean | null>(null);
   // Container measurement may enable desktop after mount. Follow its default
   // until the player chooses; subsequent resize never overrides that choice.
@@ -246,6 +328,16 @@ export function StoryLog({
           </strong>
         </div>
         <div className={styles.logHeaderActions}>
+          {visibleMode === 'story' && (
+            <button
+              type="button"
+              aria-label={recentShown ? 'Hide recent acts' : 'Show recent acts'}
+              aria-pressed={recentShown}
+              onClick={() => setRecentShown((shown) => !shown)}
+            >
+              Recent
+            </button>
+          )}
           {visibleMode === 'debug' && (
             <button
               type="button"
@@ -278,6 +370,9 @@ export function StoryLog({
         </div>
       </header>
 
+      {visibleMode === 'story' && recentShown && !collapsed && (
+        <RecentActs story={story} onSelect={scrollToRow} />
+      )}
       {visibleMode === 'story' ? (
         <div
           ref={scrollRef}
@@ -290,11 +385,13 @@ export function StoryLog({
           aria-live={announceUpdates ? 'polite' : 'off'}
           aria-relevant="additions"
         >
-          {story.map((entry) =>
-            result?.attackId === entry.id ? (
-              <ResultEntry key={entry.id} result={result} />
+          {rows.map((row) =>
+            row.kind === 'walks' ? (
+              <WalkFoldEntry key={row.id} row={row} />
+            ) : result?.attackId === row.entry.id ? (
+              <ResultEntry key={row.entry.id} result={result} />
             ) : (
-              <StoryEntry key={entry.id} entry={entry} />
+              <StoryEntry key={row.entry.id} entry={row.entry} />
             )
           )}
           {result && !story.some((entry) => entry.id === result.attackId) && (

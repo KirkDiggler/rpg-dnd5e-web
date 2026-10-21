@@ -1045,9 +1045,11 @@ describe('stream-delivered spell attacks', () => {
       expect(requestCount(state)).toBe(1);
       expect(releaseCount(state)).toBe(1);
       expect(selectVisibleStory(state)).toHaveLength(1);
-      expect(JSON.stringify(selectVisibleStory(state))).toContain(
-        'Guiding Bolt'
-      );
+      expect(
+        selectVisibleStory(state)
+          .map((entry) => `${entry.eyebrow} ${entry.headline} ${entry.detail}`)
+          .join('\n')
+      ).toContain('Guiding Bolt');
       const replay = reduceCombatPresentation(
         state,
         fixture.streamFact('catchup')

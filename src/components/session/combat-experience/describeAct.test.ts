@@ -6,6 +6,7 @@ import {
   ClockMark,
   DamageType,
   Family,
+  InfluenceKind,
   PartyKind,
   RollSchema,
   Sense,
@@ -13,9 +14,9 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
 import {
-  actToasts,
   describeAct,
   formatRollBreakdown,
+  formatRollFormula,
   formatRollShort,
 } from './describeAct';
 
@@ -371,7 +372,7 @@ describe('roll breakdown from Roll', () => {
     expect(formatRollBreakdown(undefined)).toBe('');
     const roll = EVERY_BODY.attack![0].body.value as unknown as { roll: never };
     expect(formatRollBreakdown(roll.roll)).toBe(
-      '[15] + 3 Strength + 2 Proficiency = 20 vs 13 · beaten'
+      '[15] + 3 (Strength) + 2 (Proficiency) = 20 vs 13 · beaten'
     );
     expect(formatRollShort(roll.roll)).toBe('1d20+5 = 20 vs 13');
   });
@@ -389,7 +390,7 @@ describe('roll breakdown from Roll', () => {
       ],
     });
     expect(formatRollBreakdown(roll)).toBe(
-      '1d20 [15] Longsword + 1d4 [3] Bless + 3 Strength = 21 vs 13 · beaten'
+      '1d20 [15] (Longsword) + 1d4 [3] (Bless) + 3 (Strength) = 21 vs 13 · beaten'
     );
   });
 
@@ -402,18 +403,130 @@ describe('roll breakdown from Roll', () => {
   });
 });
 
-describe('toast policy per family', () => {
-  it.each([
-    [Family.ACT, '', true],
-    [Family.REACTION, '', true],
-    [Family.STATE, 'rest', true],
-    [Family.TABLE_ANSWER, 'speak', true],
-    [Family.TABLE_ANSWER, 'end_turn', false],
-    [Family.PERCEPTION, 'move', false],
-    [Family.CLOCK, 'end_turn', false],
-  ])('family %s under verb %s toasts: %s', (family, verb, toasts) => {
-    expect(actToasts(create(ActSchema, { id: 'id-1', family, verb }))).toBe(
-      toasts
+describe('a source is named once (rpg-dnd5e-web#1308)', () => {
+  it('a weapon attack with a d20 term and a flat modifier from the same source', () => {
+    const roll = create(RollSchema, {
+      dice: [3],
+      modifiers: [{ source: 'Longsword', value: 5 }],
+      total: 8,
+      terms: [{ count: 1, dieSize: 20, faces: [3], sourceName: 'Longsword' }],
+    });
+    expect(formatRollBreakdown(roll)).toBe('1d20 [3] + 5 (Longsword) = 8');
+  });
+
+  it('a subtracted term reads with its sign, its source once', () => {
+    const roll = create(RollSchema, {
+      dice: [9, 2],
+      modifiers: [{ source: 'Longsword', value: 5 }],
+      total: 12,
+      terms: [
+        { count: 1, dieSize: 20, faces: [9], sourceName: 'Longsword' },
+        {
+          count: 1,
+          dieSize: 4,
+          faces: [2],
+          subtract: true,
+          sourceName: 'Bane',
+        },
+      ],
+    });
+    expect(formatRollBreakdown(roll)).toBe(
+      '1d20 [9] + 5 (Longsword) - 1d4 [2] (Bane) = 12'
     );
+  });
+});
+
+describe('formula line for check, attack, save, table', () => {
+  it('a check: the skill, the DC and beaten', () => {
+    const sneak = act(Family.ACT, {
+      case: 'sneak',
+      value: {
+        by: alice,
+        watcher: gate,
+        roll: { dice: [9], total: 12, against: 12, beaten: true },
+      },
+    });
+    expect(formatRollFormula(sneak, context)).toBe(
+      'Stealth 12 vs DC 12 — beaten'
+    );
+  });
+
+  it('an attack: the weapon, the AC and the outcome word', () => {
+    const swing = EVERY_BODY.attack![0];
+    expect(formatRollFormula(swing, context)).toBe(
+      'Longsword 20 vs AC 13 — hit'
+    );
+  });
+
+  it('a save: the ability, the DC and the cast outcome word', () => {
+    const cast = act(Family.ACT, {
+      case: 'cast',
+      value: {
+        by: alice,
+        spell: { name: 'Sacred Flame' },
+        results: [
+          {
+            target: gate,
+            outcome: CastOutcome.FAILED,
+            ability: 'Dexterity',
+            save: { dice: [7], total: 9, against: 14, beaten: false },
+          },
+        ],
+      },
+    });
+    expect(formatRollFormula(cast, context)).toBe(
+      'Dexterity save 9 vs DC 14 — failed'
+    );
+  });
+
+  it('a table roll: the die and its face', () => {
+    const pick = act(Family.TABLE_ANSWER, {
+      case: 'tableAnswer',
+      value: { who: gate, word: 'yield', roll: { total: 75, of: 100 } },
+    });
+    expect(formatRollFormula(pick, context)).toBe('d100: 75');
+  });
+
+  it('an act with no roll has no formula', () => {
+    expect(formatRollFormula(EVERY_BODY.walk![0], context)).toBe('');
+  });
+});
+
+describe('influences named', () => {
+  it('advantage and disadvantage follow the formula, each by its name', () => {
+    const swing = act(Family.ACT, {
+      case: 'attack',
+      value: {
+        by: alice,
+        to: gate,
+        attack: { name: 'Longsword' },
+        outcome: AttackOutcome.MISS,
+        roll: {
+          total: 9,
+          against: 13,
+          beaten: false,
+          influences: [
+            { kind: InfluenceKind.ADVANTAGE, name: 'Bless' },
+            {
+              kind: InfluenceKind.DISADVANTAGE,
+              sourceRef: 'dnd5e:conditions:prone',
+            },
+          ],
+        },
+      },
+    });
+    expect(formatRollFormula(swing, context)).toBe(
+      'Longsword 9 vs AC 13 — miss · advantage: Bless · disadvantage: prone'
+    );
+  });
+});
+
+describe('the describer line carries no roll', () => {
+  it('text is the headline and the roll-free outcome', () => {
+    const swing = describeAct(EVERY_BODY.attack![0], context);
+    expect(swing?.text).toBe(
+      'Alice strikes Gate Guard — Longsword: hit, 4 slashing damage'
+    );
+    expect(swing?.detail).toContain('1d20+5 = 20 vs 13');
   });
 });

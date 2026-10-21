@@ -16,12 +16,14 @@
  * The describer reads only the act. It decides no rule and adds nothing up:
  * every number comes from the act's own body and `Roll`.
  */
+import { refId } from '@/utils/refs';
 import {
   AttackOutcome,
   CastOutcome,
   ClockMark,
   DamageType,
   Family,
+  InfluenceKind,
   PartyKind,
   Sense,
   StateKind,
@@ -42,6 +44,14 @@ export interface DescribedAct {
   readonly eyebrow: string;
   readonly headline: string;
   readonly detail: string;
+  /**
+   * The describer's one line — who, what, outcome — with no roll in it
+   * (rpg-dnd5e-web#1301). The toast is this line; the log is this line with
+   * the formula line and the folded breakdown under it.
+   */
+  readonly text: string;
+  /** `text` past the headline: the outcome, with no roll in it. */
+  readonly outcome: string;
   readonly tone: DescribedTone;
   /** The roll that decided the act, for the breakdown. */
   readonly roll?: Roll;
@@ -90,27 +100,65 @@ export function formatRollShort(roll: Roll | undefined): string {
   return `${head}${roll.total}${against}`;
 }
 
+interface RollPart {
+  readonly negative: boolean;
+  readonly text: string;
+  readonly source: string;
+}
+
 /**
- * A roll's parts: each dice term with its kept faces and the source that
- * brought it (`1d4 [3] Bless`, `- 1d4 [2] Bane`), or the bare kept faces when
- * the roll carries no terms, then each flat modifier by its source.
+ * A roll's parts, EACH SOURCE NAMED ONCE (rpg-dnd5e-web#1308): every dice
+ * term with its kept faces and every flat modifier, grouped under the source
+ * that brought them in order of first appearance, the source in parentheses
+ * after its group. A swing's d20 and its +5 both from the Longsword read
+ * `1d20 [3] + 5 (Longsword)`, never `1d20 [3] Longsword + 5 Longsword`;
+ * Bane reads `- 1d4 [2] (Bane)`. A roll with no terms shows its bare kept
+ * faces, which name no source.
  */
 function rollParts(roll: Roll): string[] {
-  const parts: string[] = [];
+  const all: RollPart[] = [];
   if (roll.terms.length > 0) {
     for (const t of roll.terms) {
-      const term =
-        `${t.count}d${t.dieSize} [${t.faces.join(', ')}] ${t.sourceName}`.trim();
-      if (t.subtract) parts.push(`- ${term}`);
-      else parts.push(parts.length === 0 ? term : `+ ${term}`);
+      all.push({
+        negative: t.subtract,
+        text: `${t.count}d${t.dieSize} [${t.faces.join(', ')}]`,
+        source: t.sourceName,
+      });
     }
   } else if (roll.dice.length > 0) {
-    parts.push(`[${roll.dice.join(', ')}]`);
+    all.push({
+      negative: false,
+      text: `[${roll.dice.join(', ')}]`,
+      source: '',
+    });
   }
   for (const m of roll.modifiers) {
-    const sign = m.value < 0 ? '-' : '+';
-    const value = `${Math.abs(m.value)} ${m.source}`.trim();
-    parts.push(parts.length === 0 && m.value >= 0 ? value : `${sign} ${value}`);
+    all.push({
+      negative: m.value < 0,
+      text: `${Math.abs(m.value)}`,
+      source: m.source,
+    });
+  }
+  const groups = new Map<string, RollPart[]>();
+  for (const part of all) {
+    const group = groups.get(part.source);
+    if (group) group.push(part);
+    else groups.set(part.source, [part]);
+  }
+  const sign = (part: RollPart) => (part.negative ? '-' : '+');
+  const parts: string[] = [];
+  for (const [source, group] of groups) {
+    const [first, ...rest] = group;
+    const body = [
+      first!.text,
+      ...rest.map((part) => `${sign(part)} ${part.text}`),
+    ].join(' ');
+    const named = source ? `${body} (${source})` : body;
+    parts.push(
+      parts.length === 0 && !first!.negative
+        ? named
+        : `${sign(first!)} ${named}`
+    );
   }
   return parts;
 }
@@ -167,6 +215,40 @@ export function describeAct(
   act: Act,
   context: DescribeContext
 ): DescribedAct | null {
+  const described = describeWith(act, context, WITH_ROLLS);
+  if (!described) return null;
+  const plain = describeWith(act, context, WITHOUT_ROLLS);
+  const outcome = (plain ?? described).detail;
+  return { ...described, text: describedLine(plain ?? described), outcome };
+}
+
+/** The roll wording a describer pass uses: the log's detail, or none. */
+interface RollWords {
+  readonly withRoll: (text: string, roll: Roll | undefined) => string;
+  readonly short: (roll: Roll | undefined) => string;
+  readonly named: (roll: Roll | undefined) => string;
+}
+const WITH_ROLLS: RollWords = {
+  withRoll,
+  short: formatRollShort,
+  named: formatRollNamed,
+};
+const WITHOUT_ROLLS: RollWords = {
+  withRoll: (text) => text,
+  short: () => '',
+  named: () => '',
+};
+
+/** Headline and roll-free detail as one line: `who what — outcome`. */
+function describedLine(d: Omit<DescribedAct, 'text' | 'outcome'>): string {
+  return d.detail ? `${d.headline} — ${d.detail}` : d.headline;
+}
+
+function describeWith(
+  act: Act,
+  context: DescribeContext,
+  rw: RollWords
+): Omit<DescribedAct, 'text' | 'outcome'> | null {
   const name = (p: Party | undefined) => partyName(p, context);
   if (act.refused) {
     return {
@@ -203,7 +285,7 @@ export function describeAct(
         return {
           eyebrow,
           headline: `${name(a.by)}'s attack on ${name(a.to)} is warded`,
-          detail: withRoll(
+          detail: rw.withRoll(
             `${ward?.ability ? `${ward.ability} save` : 'save'} against ${name(ward?.source)}'s ward`,
             ward?.roll
           ),
@@ -220,7 +302,7 @@ export function describeAct(
         headline: hit
           ? `${name(a.by)} strikes ${name(a.to)}`
           : `${name(a.to)} evades ${name(a.by)}`,
-        detail: `${withRoll(`${weapon}: ${verdict}`, a.roll)}${damage}`,
+        detail: `${rw.withRoll(`${weapon}: ${verdict}`, a.roll)}${damage}`,
         tone:
           hit && a.to?.id === context.viewerMember
             ? 'danger'
@@ -234,7 +316,7 @@ export function describeAct(
       const c = body.value;
       const results = c.results
         .map((r) =>
-          withRoll(
+          rw.withRoll(
             `${name(r.target)} ${CAST_OUTCOME_WORD[r.outcome]}`.trim(),
             r.save
           )
@@ -255,10 +337,10 @@ export function describeAct(
         const what = r.name || authoredWords(r.kind);
         const on = r.target ? ` on ${name(r.target)}` : '';
         const amount = r.amount ? ` (${r.amount})` : '';
-        return withRoll(`${what}${on}${amount}`, r.roll);
+        return rw.withRoll(`${what}${on}${amount}`, r.roll);
       });
       const saves = a.saves.map((s) =>
-        withRoll(`${name(s.saver)} ${s.ability} save`, s.roll)
+        rw.withRoll(`${name(s.saver)} ${s.ability} save`, s.roll)
       );
       return {
         eyebrow: `Activate · ${a.ability?.name || 'Ability'}`,
@@ -277,7 +359,7 @@ export function describeAct(
         eyebrow: `Speak${s.skill ? ` · ${s.skill}` : ''}`,
         headline: `${name(s.by)} to ${name(s.to)}: "${s.line}"`,
         detail:
-          `${withRoll(s.skill ? `${s.skill} check` : '', s.roll)}${answer}`.trim(),
+          `${rw.withRoll(s.skill ? `${s.skill} check` : '', s.roll)}${answer}`.trim(),
         tone: 'neutral',
         roll: s.roll,
       };
@@ -290,7 +372,7 @@ export function describeAct(
         eyebrow: 'Death save',
         headline: `${name(d.by)} rolls a death save`,
         // No authored outcome is no prefix: the tally stands alone.
-        detail: withRoll(outcome ? `${outcome}: ${tally}` : tally, d.roll),
+        detail: rw.withRoll(outcome ? `${outcome}: ${tally}` : tally, d.roll),
         tone: d.dead
           ? 'danger'
           : d.stabilized || d.recovered
@@ -326,7 +408,7 @@ export function describeAct(
       return {
         eyebrow: 'Door',
         headline: `${who}: the ${authoredWords(d.door)} is ${d.state}`,
-        detail: withRoll('', d.roll),
+        detail: rw.withRoll('', d.roll),
         tone: 'neutral',
         roll: d.roll,
       };
@@ -358,7 +440,7 @@ export function describeAct(
       return {
         eyebrow: 'Sneak',
         headline: `${name(s.by)} sneaks${s.watcher ? ` past ${name(s.watcher)}` : ''}`,
-        detail: withRoll(verdict, s.roll),
+        detail: rw.withRoll(verdict, s.roll),
         tone: 'neutral',
         roll: s.roll,
       };
@@ -368,7 +450,7 @@ export function describeAct(
       return {
         eyebrow: 'Rest',
         headline: `${name(r.by)} takes a ${r.kind} rest`,
-        detail: withRoll(
+        detail: rw.withRoll(
           `+${r.hitPointsRestored} HP (${r.hitPoints}), ${plural(r.hitDiceSpent, 'hit die', 'hit dice')} spent`,
           r.roll
         ),
@@ -382,7 +464,7 @@ export function describeAct(
         return {
           eyebrow: 'Temper',
           headline: `${name(t.dealt.faction)} deals ${name(t.who)} ${t.dealt.temper}`,
-          detail: formatRollShort(t.dealt.roll),
+          detail: rw.short(t.dealt.roll),
           tone: 'neutral',
           roll: t.dealt.roll,
         };
@@ -390,7 +472,7 @@ export function describeAct(
       return {
         eyebrow: 'Answer',
         headline: `${name(t.who)}: ${t.say ? `"${t.say}"` : t.word || 'answers'}`,
-        detail: withRoll(t.word, t.roll),
+        detail: rw.withRoll(t.word, t.roll),
         tone: 'neutral',
         roll: t.roll,
       };
@@ -463,7 +545,7 @@ export function describeAct(
           return {
             eyebrow: 'Search',
             headline: `${name(p.observer)} searches`,
-            detail: withRoll(`${verdict} ${check}`.trim(), roll),
+            detail: rw.withRoll(`${verdict} ${check}`.trim(), roll),
             tone: roll?.beaten ? 'success' : 'neutral',
             roll,
           };
@@ -551,8 +633,7 @@ export function describeAct(
             eyebrow: 'Window',
             headline: `${name(c.rollWindow?.audience)} may use ${c.rollWindow?.offer?.name || 'a reaction'}`,
             detail:
-              formatRollNamed(c.rollWindow?.roll) ||
-              formatRollShort(c.rollWindow?.roll),
+              rw.named(c.rollWindow?.roll) || rw.short(c.rollWindow?.roll),
             tone: 'neutral',
             roll: c.rollWindow?.roll,
           };
@@ -569,20 +650,169 @@ export function describeAct(
   }
 }
 
+/** What a formula line's roll was against: an attack meets an AC, the rest a DC. */
+type Against = 'AC' | 'DC' | '';
+
+/** A roll's influences after its formula: `advantage: Bless`. */
+function influenceWords(roll: Roll): string {
+  const named = (kind: InfluenceKind) =>
+    roll.influences
+      .filter((i) => i.kind === kind)
+      .map((i) => i.name || authoredWords(refId(i.sourceRef) ?? i.sourceRef))
+      .filter(Boolean);
+  const advantage = named(InfluenceKind.ADVANTAGE);
+  const disadvantage = named(InfluenceKind.DISADVANTAGE);
+  return [
+    advantage.length ? `advantage: ${advantage.join(', ')}` : '',
+    disadvantage.length ? `disadvantage: ${disadvantage.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /**
- * Which acts toast when they arrive live: a deed (act or reaction), a change
- * of standing, and a speak's own answer. The table's bookkeeping, what one
- * observer perceived, and any other table answer stay in the log only.
+ * One roll as a formula: its label, total, what it was against and the
+ * verdict, then its influences. `Longsword 20 vs AC 13 — hit · advantage:
+ * Bless`. A table roll reads `d100: 75`. The verdict is the caller's outcome
+ * word when it has one (an attack's, a cast's), else the roll's own `beaten`.
  */
-export function actToasts(act: Act): boolean {
-  switch (act.family) {
-    case Family.ACT:
-    case Family.REACTION:
-    case Family.STATE:
-      return true;
-    case Family.TABLE_ANSWER:
-      return act.verb === 'speak';
+function rollFormula(
+  label: string,
+  roll: Roll | undefined,
+  against: Against,
+  outcome = ''
+): string {
+  if (!roll) return '';
+  if (roll.of > 0) return `d${roll.of}: ${roll.total}`;
+  const vs =
+    roll.against !== undefined
+      ? ` vs ${against ? `${against} ` : ''}${roll.against}`
+      : '';
+  const verdict =
+    outcome ||
+    (roll.beaten === undefined ? '' : roll.beaten ? 'beaten' : 'not beaten');
+  const influences = influenceWords(roll);
+  return [
+    `${`${label} ${roll.total}`.trim()}${vs}${verdict ? ` — ${verdict}` : ''}`,
+    influences,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+const CAST_VERDICT: Record<CastOutcome, string> = {
+  [CastOutcome.UNSPECIFIED]: '',
+  [CastOutcome.MISS]: 'missed',
+  [CastOutcome.WARDED]: 'warded',
+  [CastOutcome.SAVED]: 'saved',
+  [CastOutcome.FAILED]: 'failed',
+};
+
+/**
+ * The formula line a form shows under its describer line (R17, R37):
+ * "Stealth 12 vs DC 12 — beaten", "Longsword 20 vs AC 13 — hit",
+ * "Dexterity save 9 vs DC 14 — failed", "d100: 75". The label comes from the
+ * body — the skill on a speak or sneak, the ability on a save or a discovery,
+ * the attack's weapon, the spell — and several rolls on one act join with
+ * `; `, each named by who rolled it. "" when the act carries no roll.
+ *
+ * Reads the act only: every number is the act's, nothing is re-added.
+ */
+export function formatRollFormula(
+  act: Act,
+  context: DescribeContext = { viewerMember: '' }
+): string {
+  const name = (p: Party | undefined) => partyName(p, context);
+  const body = act.body;
+  switch (body.case) {
+    case 'attack': {
+      const a = body.value;
+      if (a.outcome === AttackOutcome.WARDED) {
+        const ward = a.ward;
+        return rollFormula(
+          ward?.ability ? `${ward.ability} save` : 'Save',
+          ward?.roll,
+          'DC',
+          'warded'
+        );
+      }
+      const verdict =
+        a.outcome === AttackOutcome.HIT
+          ? a.critical
+            ? 'critical hit'
+            : 'hit'
+          : a.outcome === AttackOutcome.MISS
+            ? 'miss'
+            : '';
+      return rollFormula(
+        a.attack?.name || a.attack?.ref || 'Attack',
+        a.roll,
+        'AC',
+        verdict
+      );
+    }
+    case 'cast': {
+      const c = body.value;
+      const rolled = c.results.filter((r) => r.save);
+      return rolled
+        .map((r) => {
+          const label = r.ability
+            ? `${r.ability} save`
+            : c.spell?.name || 'Save';
+          const line = rollFormula(
+            label,
+            r.save,
+            'DC',
+            CAST_VERDICT[r.outcome]
+          );
+          return rolled.length > 1 ? `${name(r.target)}: ${line}` : line;
+        })
+        .join('; ');
+    }
+    case 'activate': {
+      const a = body.value;
+      const lines = [
+        ...a.results
+          .filter((r) => r.roll)
+          .map((r) =>
+            rollFormula(r.name || authoredWords(r.kind), r.roll, 'DC')
+          ),
+        ...a.saves.map((s) => {
+          const line = rollFormula(`${s.ability} save`.trim(), s.roll, 'DC');
+          return a.saves.length > 1 ? `${name(s.saver)}: ${line}` : line;
+        }),
+      ];
+      return lines.filter(Boolean).join('; ');
+    }
+    case 'speak':
+      return rollFormula(body.value.skill || 'Check', body.value.roll, 'DC');
+    case 'sneak':
+      return rollFormula('Stealth', body.value.roll, 'DC');
+    case 'deathSave':
+      return rollFormula('Death save', body.value.roll, 'DC');
+    case 'door':
+      return rollFormula(authoredWords(body.value.door), body.value.roll, 'DC');
+    case 'rest':
+      return rollFormula('Hit dice', body.value.roll, 'DC');
+    case 'tableAnswer':
+      return rollFormula(
+        '',
+        body.value.dealt ? body.value.dealt.roll : body.value.roll,
+        'DC'
+      );
+    case 'perception':
+      return body.value.discovery
+        ? rollFormula(
+            body.value.discovery.ability || 'Check',
+            body.value.discovery.roll,
+            'DC'
+          )
+        : '';
+    case 'clock':
+      return body.value.rollWindow
+        ? rollFormula('Roll', body.value.rollWindow.roll, '')
+        : '';
     default:
-      return false;
+      return '';
   }
 }

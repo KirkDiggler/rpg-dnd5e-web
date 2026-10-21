@@ -269,6 +269,8 @@ describe('CombatExperience shared production shell', () => {
         headline: 'Mira casts Bless',
         detail: 'The result waits for the shared presentation gate.',
         tone: 'success' as const,
+        // The policy's verdict rides on the row; this test is the gate's.
+        toastRule: { case: 'own-outcome' as const, hold: false },
       },
     ];
     view.rerender(<CombatExperience {...pending} story={story} />);
