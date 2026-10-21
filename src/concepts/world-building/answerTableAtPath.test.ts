@@ -239,6 +239,16 @@ describe('a route waypoint carries its pause', () => {
     expect(waypoint({ facing: 'se' })).toThrow(
       'on.time[0].toward.path[0].facing: a facing is taken while standing; give the waypoint a wait'
     );
+    // A wait of 0 is no stand, so the facing is still alone (grammar.go:
+    // `word != "" && route[i].wait == 0`).
+    expect(waypoint({ facing: 'se', wait: 0 })).toThrow(
+      'on.time[0].toward.path[0].facing: a facing is taken while standing; give the waypoint a wait'
+    );
+    // Stricter than the engine, deliberately: its grammar skips an empty
+    // word, the studio refuses it as no compass direction.
+    expect(waypoint({ facing: '', wait: 1 })).toThrow(
+      'on.time[0].toward.path[0].facing: "" is not a compass direction'
+    );
     expect(waypoint({ facing: 'up', wait: 1 })).toThrow(
       'on.time[0].toward.path[0].facing: "up" is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw'
     );
@@ -275,6 +285,17 @@ describe('a route waypoint carries its pause', () => {
       ],
     });
     expect(encodeSingleRoomDungeon(decodeSingleRoomDungeon(once))).toBe(once);
+  });
+
+  it('refuses a wait written as a float, as the engine refuses !!float', () => {
+    for (const written of ['2.0', '2e0', '!!float 2']) {
+      const yaml = patrols().replace(/path: \[\{ ?q: -2, r: 0 ?\}/, (m) =>
+        m.replace(/\}$/, `, wait: ${written} }`)
+      );
+      expect(() => decodeSingleRoomDungeon(yaml)).toThrow(
+        "Monster binding for gate-patrol on.time[0].toward.path[0]: a waypoint's wait is a whole number of rounds"
+      );
+    }
   });
 
   it('shows each pause on the route, in words and in the shorthand', () => {

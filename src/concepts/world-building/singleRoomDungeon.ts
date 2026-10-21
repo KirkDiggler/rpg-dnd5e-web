@@ -1,4 +1,13 @@
-import { parse, stringify } from 'yaml';
+import {
+  isMap,
+  isPair,
+  isScalar,
+  isSeq,
+  parseDocument,
+  stringify,
+  visit,
+  type Scalar,
+} from 'yaml';
 import {
   validateMonsterTemplates,
   type SiteTemplates,
@@ -261,10 +270,51 @@ export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
   return { dialect: 'single-room', ...decodeSingleRoomRoot(root) };
 }
 
+/** Whether a number scalar is written as a float: the engine's yaml.v3
+ * resolves `2.0`, `2e0` and `!!float 2` to `!!float`, never `!!int`. */
+function isFloatWritten(node: Scalar): boolean {
+  if (node.tag === 'tag:yaml.org,2002:float') return true;
+  if (node.tag !== undefined || node.format === 'HEX') return false;
+  return /[.eE]/.test(node.source ?? '');
+}
+
+/**
+ * A WAYPOINT'S WAIT IS AN `!!int` (rpg-dnd5e-web#1314 review). The engine's
+ * `decodeWaypoint` judges the YAML tag, so `wait: 2.0` is refused there,
+ * while the parsed value 2 would pass any check on the JS number and save
+ * as `wait: 2` — a file the studio opens that the engine does not play. So
+ * a `wait` on a route waypoint written as a float keeps its written text,
+ * and the waypoint reader refuses it, at its own path, in the engine's
+ * sentence ("a waypoint's wait is a whole number of rounds").
+ */
+function keepFloatWaitsWritten(document: ReturnType<typeof parseDocument>) {
+  visit(document, {
+    Pair(_key, pair, path) {
+      const [route, waypoint] = [path.at(-3), path.at(-1)];
+      if (
+        isScalar(pair.key) &&
+        pair.key.value === 'wait' &&
+        isScalar(pair.value) &&
+        typeof pair.value.value === 'number' &&
+        isFloatWritten(pair.value) &&
+        isMap(waypoint) &&
+        isSeq(path.at(-2)) &&
+        isPair(route) &&
+        isScalar(route.key) &&
+        route.key.value === 'path'
+      )
+        pair.value.value = pair.value.source ?? String(pair.value.value);
+    },
+  });
+}
+
 function parseSingleRoomSource(source: string): Record<string, unknown> {
   let value: unknown;
   try {
-    value = parse(source);
+    const document = parseDocument(source);
+    if (document.errors.length > 0) throw document.errors[0];
+    keepFloatWaitsWritten(document);
+    value = document.toJS();
   } catch (error) {
     throw new Error(
       `Invalid single-room YAML: ${error instanceof Error ? error.message : String(error)}`
