@@ -56,7 +56,19 @@ export function useSessionActStream(
       onState: setState,
       retryDelayMs,
     });
-    return () => feed.stop();
+    // LIVENESS (as v1 had): a returning tab or window re-reads at once, so a
+    // stream left half-open while the page slept never sits stale as `live`.
+    const onFocus = () => feed.refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') feed.refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      feed.stop();
+    };
   }, [session, member]);
 
   return state;
