@@ -183,6 +183,8 @@ export function StoryLog({
   const recordShown = visibleMode === 'debug' && !collapsed;
   useEffect(() => {
     onRecordShownChange?.(recordShown);
+    // An unmounted log shows nothing: say so, or the stream outlives it.
+    return () => onRecordShownChange?.(false);
   }, [recordShown, onRecordShownChange]);
 
   const handleScroll = () => {

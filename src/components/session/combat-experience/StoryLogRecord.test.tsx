@@ -34,6 +34,14 @@ describe('StoryLog record visibility', () => {
     expect(onShown).toHaveBeenLastCalledWith(true);
   });
 
+  it('says the record is no longer shown when the log unmounts', () => {
+    const onShown = vi.fn();
+    const { unmount } = renderLog('debug', onShown);
+    expect(onShown).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(onShown).toHaveBeenLastCalledWith(false);
+  });
+
   it('says it is not shown in Story mode', () => {
     const onShown = vi.fn();
     renderLog('story', onShown);
