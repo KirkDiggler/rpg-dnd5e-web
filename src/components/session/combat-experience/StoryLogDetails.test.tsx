@@ -185,7 +185,8 @@ describe('inline Debug inspection', () => {
       session: 'session-1',
       viewerMember: 'fighter',
     });
-    for (let i = 0; i <= COMBAT_DEBUG_MAX_LINES; i += 1) {
+    // Two past the bound, so an id that tracked position would not survive.
+    for (let i = 0; i <= COMBAT_DEBUG_MAX_LINES + 1; i += 1) {
       state = reduceCombatPresentation(state, {
         type: 'stream-act',
         act: source,
@@ -198,10 +199,10 @@ describe('inline Debug inspection', () => {
     const ids = state.debug.map((entry) =>
       typeof entry === 'string' ? undefined : entry.id
     );
-    // The first receipt (id 0) slid out of the bound; every kept line keeps
+    // The first two receipts (ids 0 and 1) slid out of the bound; every kept line keeps
     // the id it was given, so a row's React key never moves.
-    expect(ids[0]).toBe(1);
-    expect(ids.at(-1)).toBe(COMBAT_DEBUG_MAX_LINES);
+    expect(ids[0]).toBe(2);
+    expect(ids.at(-1)).toBe(COMBAT_DEBUG_MAX_LINES + 1);
     expect(new Set(ids).size).toBe(COMBAT_DEBUG_MAX_LINES);
   });
 
