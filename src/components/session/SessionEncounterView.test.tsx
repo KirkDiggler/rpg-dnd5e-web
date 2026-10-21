@@ -5569,8 +5569,12 @@ describe('SessionEncounterView production combat integration', () => {
       await screen.findByTestId('session-canvas');
       result.release();
       expect(await screen.findByText('Aldric searches')).toBeTruthy();
-      // The server's verdict, not total against `against`.
-      expect(screen.getByText('failed perception check, 8 vs 12')).toBeTruthy();
+      // The server's verdict, not total against `against`: the line says
+      // it, and the formula line carries the roll (#1301).
+      expect(screen.getByText('failed perception check')).toBeTruthy();
+      expect(
+        screen.getByText('perception 8 vs DC 12 — not beaten')
+      ).toBeTruthy();
       expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
       expect(hoisted.searchFn).not.toHaveBeenCalled();
     });

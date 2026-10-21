@@ -404,7 +404,8 @@ describe('answering a post-roll window on your own d20', () => {
         },
       ],
     });
-    const arithmetic = '1d20 [9] + 1d4 [3] Bless - 1d4 [2] Bane = 99';
+    // Each source named once, in parentheses after its parts (#1308).
+    const arithmetic = '1d20 [9] + 1d4 [3] (Bless) - 1d4 [2] (Bane) = 99';
     render(<Harness declarations={[rollWindowDeclaration()]} beat={beat} />);
     await waitFor(() =>
       expect(screen.getByTestId('reaction-window').textContent).toContain(

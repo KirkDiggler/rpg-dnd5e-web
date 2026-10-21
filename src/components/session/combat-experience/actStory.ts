@@ -17,6 +17,7 @@ import {
 import {
   DamageType as ActDamageType,
   AttackOutcome,
+  ClockMark,
   InfluenceKind,
   type Act,
   type Roll,
@@ -24,12 +25,13 @@ import {
 import { damageTypeWord } from '../combatBeat';
 import type { HeardCell } from '../heardBeat';
 import {
-  actToasts,
   describeAct,
   formatRollBreakdown,
   partyName,
   type DescribeContext,
 } from './describeAct';
+import { isIdleHoldPick } from './foldLogRows';
+import { actorOf, fightIncludes, isDeed, toastFor } from './toastPolicy';
 import type {
   CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
@@ -123,15 +125,48 @@ export function buildActStory(
   const seen = new Set<string>();
   const story: CombatExperienceStoryExchange[] = [];
   let lastGroup = '';
+  // Whether the VIEWER is in a formed fight, read from the acts: a fight
+  // that names them forms or dissolves on the clock, and a turn passing to
+  // or from them means theirs is formed. Another fight's edges do not move
+  // this viewer's holds or fold.
+  let inFight = false;
+  // Who spoke each line, by act tag, so a line's own table answer can be
+  // told apart as an answer to the viewer (toast case `answer-to-your-line`).
+  const speakers = new Map<string, string>();
   for (const fact of facts) {
     const id = actStoryId(fact.act, fact.index);
     if (seen.has(id)) continue;
     seen.add(id);
+    const act = fact.act;
+    let fightEdge: 'formed' | 'dissolved' | undefined;
+    if (act.body.case === 'clock' && fightIncludes(act, context.viewerMember)) {
+      const mark = act.body.value.mark;
+      if (mark === ClockMark.FIGHT_FORMED) {
+        inFight = true;
+        fightEdge = 'formed';
+      } else if (mark === ClockMark.FIGHT_DISSOLVED) {
+        inFight = false;
+        fightEdge = 'dissolved';
+      } else if (mark === ClockMark.TURN_ENDED) {
+        inFight = true;
+      }
+    }
+    if (act.body.case === 'speak' && act.act && act.body.value.by?.id) {
+      speakers.set(act.act, act.body.value.by.id);
+    }
     if (!fact.visible) continue;
-    const line = describeAct(fact.act, context);
+    // R36 is proposed: hide the idle hold pick here until the fold drops it.
+    if (isIdleHoldPick(act)) continue;
+    const line = describeAct(act, context);
     if (!line) continue;
-    const group = fact.act.act;
+    const group = act.act;
     const breakdown = formatRollBreakdown(line.roll);
+    const toastRule = toastFor(
+      act,
+      context.viewerMember,
+      inFight,
+      group ? speakers.get(group) : undefined
+    );
     story.push({
       id,
       deliverySource: fact.source,
@@ -139,11 +174,20 @@ export function buildActStory(
       headline: line.headline,
       detail: line.detail,
       tone: line.tone,
-      attack: attackRefOf(fact.act),
+      attack: attackRefOf(act),
       group: group || undefined,
       nested: group !== '' && group === lastGroup,
       rollBreakdown: breakdown || undefined,
-      toast: actToasts(fact.act),
+      act,
+      describeContext: context,
+      toastRule: toastRule ?? undefined,
+      toastText: line.text,
+      byViewer:
+        isDeed(act) &&
+        Boolean(context.viewerMember) &&
+        actorOf(act)?.id === context.viewerMember,
+      inFight,
+      fightEdge,
     });
     lastGroup = group;
   }

@@ -20,6 +20,10 @@
   box-shadow: 0 6px 20px #0005;
   animation: noticeLife var(--notice-ttl) linear both;
 }
+/* Held in a fight until the viewer's next act: it fades in and stays. */
+.notice[data-held='true'] {
+  animation: noticeIn 200ms ease-out both;
+}
 .notice[data-tone='success'] {
   border-left-color: #77cda5;
 }
@@ -59,8 +63,19 @@
     transform: translateY(0);
   }
 }
+@keyframes noticeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .notice {
+  .notice,
+  .notice[data-held='true'] {
     animation: none;
   }
 }

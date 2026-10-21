@@ -49,7 +49,7 @@ describe('roll breakdown from Roll', () => {
         source: 'live' as const,
         visible: true,
       };
-      const breakdown = `[16] + 4 Mace + 2 Bless = 22 vs 13 · ${hit ? 'beaten' : 'not beaten'}`;
+      const breakdown = `[16] + 4 (Mace) + 2 (Bless) = 22 vs 13 · ${hit ? 'beaten' : 'not beaten'}`;
       const story = buildActStory([fact], context);
       const result = buildActAttackOutcome(fact, context);
       const { rerender } = render(
