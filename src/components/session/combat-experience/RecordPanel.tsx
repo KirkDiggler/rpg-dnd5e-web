@@ -29,7 +29,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
           <input
             aria-label="Filter by act id"
             value={filter.act}
-            placeholder="move:01…"
+            placeholder="e.g. move:01…"
             onChange={(e) => setFilter({ ...filter, act: e.target.value })}
           />
         </label>
@@ -38,7 +38,7 @@ export function RecordPanel({ feed }: { feed: RecordFeedSnapshot }) {
           <input
             aria-label="Filter by beat"
             value={filter.beat}
-            placeholder="answered"
+            placeholder="e.g. answered"
             onChange={(e) => setFilter({ ...filter, beat: e.target.value })}
           />
         </label>
