@@ -31,7 +31,7 @@ import {
   type DescribeContext,
 } from './describeAct';
 import { isIdleHoldPick } from './foldLogRows';
-import { actorOf, isDeed, toastFor } from './toastPolicy';
+import { actorOf, fightIncludes, isDeed, toastFor } from './toastPolicy';
 import type {
   CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
@@ -125,8 +125,10 @@ export function buildActStory(
   const seen = new Set<string>();
   const story: CombatExperienceStoryExchange[] = [];
   let lastGroup = '';
-  // Whether a fight is formed, read from the acts themselves: a fight forms
-  // and dissolves on the clock, and a turn passing means one is formed.
+  // Whether the VIEWER is in a formed fight, read from the acts: a fight
+  // that names them forms or dissolves on the clock, and a turn passing to
+  // or from them means theirs is formed. Another fight's edges do not move
+  // this viewer's holds or fold.
   let inFight = false;
   // Who spoke each line, by act tag, so a line's own table answer can be
   // told apart as an answer to the viewer (toast case `answer-to-your-line`).
@@ -137,7 +139,7 @@ export function buildActStory(
     seen.add(id);
     const act = fact.act;
     let fightEdge: 'formed' | 'dissolved' | undefined;
-    if (act.body.case === 'clock') {
+    if (act.body.case === 'clock' && fightIncludes(act, context.viewerMember)) {
       const mark = act.body.value.mark;
       if (mark === ClockMark.FIGHT_FORMED) {
         inFight = true;

@@ -47,7 +47,10 @@ const fightFormed = at('id-f', Family.CLOCK, {
 });
 const fightEnded = at('id-e', Family.CLOCK, {
   case: 'clock',
-  value: { mark: ClockMark.FIGHT_DISSOLVED },
+  value: {
+    mark: ClockMark.FIGHT_DISSOLVED,
+    dissolved: { members: [alice, gate] },
+  },
 });
 const swingAtAlice = (id: string) =>
   at(id, Family.ACT, {
@@ -175,5 +178,47 @@ describe('idle hold pick hidden', () => {
       )
     );
     expect(rows.map((r) => r.headline)).toEqual(['Gate Guard: patrol']);
+  });
+});
+
+describe('in a fight is the viewer’s own fight', () => {
+  it('another fight forming and dissolving does not move the viewer’s', () => {
+    const bob = { kind: PartyKind.MEMBER, id: 'bob' };
+    const wolf = { kind: PartyKind.MEMBER, id: 'wolf' };
+    const rows = story(
+      fightFormed,
+      at('A2', Family.CLOCK, {
+        case: 'clock',
+        value: { mark: ClockMark.FIGHT_FORMED, fight: { order: [bob, wolf] } },
+      }),
+      at('A3', Family.CLOCK, {
+        case: 'clock',
+        value: {
+          mark: ClockMark.FIGHT_DISSOLVED,
+          dissolved: { members: [bob, wolf] },
+        },
+      }),
+      swingAtAlice('A4')
+    );
+    const strike = rows.find((r) => r.act?.id === 'A4');
+    expect(strike?.inFight).toBe(true);
+    expect(strike?.toastRule?.hold).toBe(true);
+    // The other fight's edges are not this viewer's edges, and not news.
+    expect(rows[1]?.fightEdge).toBeUndefined();
+    expect(rows[2]?.fightEdge).toBeUndefined();
+    expect(rows[1]?.toastRule).toBeUndefined();
+    expect(rows[2]?.toastRule).toBeUndefined();
+  });
+
+  it('a fight the viewer is not in leaves them out of combat', () => {
+    const bob = { kind: PartyKind.MEMBER, id: 'bob' };
+    const rows = story(
+      at('B1', Family.CLOCK, {
+        case: 'clock',
+        value: { mark: ClockMark.FIGHT_FORMED, fight: { order: [bob, gate] } },
+      }),
+      swingAtAlice('B2')
+    );
+    expect(rows[1]?.inFight).toBe(false);
   });
 });

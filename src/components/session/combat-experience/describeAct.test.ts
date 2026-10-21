@@ -583,3 +583,39 @@ describe('an influence named as an id reads as words', () => {
     );
   });
 });
+
+describe('the formula verdict is the server’s', () => {
+  // Each roll totals above what it was against, yet the server says it did
+  // not beat it. A formula that recomputed total >= against would say beaten.
+  const lost = { dice: [12], total: 15, against: 14, beaten: false };
+
+  it('a check', () => {
+    const speak = act(Family.ACT, {
+      case: 'speak',
+      value: {
+        by: alice,
+        to: gate,
+        line: 'Stand aside.',
+        skill: 'persuasion',
+        roll: lost,
+      },
+    });
+    expect(formatRollFormula(speak, context)).toBe(
+      'persuasion 15 vs DC 14 — not beaten'
+    );
+  });
+
+  it('an activation save', () => {
+    const fear = act(Family.ACT, {
+      case: 'activate',
+      value: {
+        by: gate,
+        ability: { name: 'Frightful Presence' },
+        saves: [{ saver: alice, ability: 'wis', roll: lost }],
+      },
+    });
+    expect(formatRollFormula(fear, context)).toBe(
+      'wis save 15 vs DC 14 — not beaten'
+    );
+  });
+});

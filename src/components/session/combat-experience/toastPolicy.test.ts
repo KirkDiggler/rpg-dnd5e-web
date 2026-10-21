@@ -97,6 +97,40 @@ describe('toasts a miss against you, not another’s miss', () => {
   });
 });
 
+describe('a save an ability forces on you', () => {
+  const ogre = { kind: PartyKind.MEMBER, id: 'ogre' };
+  it('toasts as done to you, as a spell’s save does', () => {
+    const fear = act(Family.ACT, {
+      case: 'activate',
+      value: {
+        by: ogre,
+        ability: { name: 'Frightful Presence' },
+        saves: [
+          {
+            saver: alice,
+            ability: 'wis',
+            roll: { total: 8, against: 14, beaten: false },
+          },
+        ],
+      },
+    });
+    expect(toastFor(fear, 'alice', true)?.case).toBe('done-to-you');
+    expect(toastFor(fear, 'bob', true)).toBeNull();
+  });
+
+  it('an ability’s result on you toasts as done to you', () => {
+    const heal = act(Family.ACT, {
+      case: 'activate',
+      value: {
+        by: bob,
+        ability: { name: 'Healing Word' },
+        results: [{ target: alice, kind: 'healing', amount: 4 }],
+      },
+    });
+    expect(toastFor(heal, 'alice', false)?.case).toBe('done-to-you');
+  });
+});
+
 describe('toasts your window', () => {
   it('a reaction window offered to you toasts; to another it does not', () => {
     const window = act(Family.CLOCK, {
@@ -124,19 +158,26 @@ describe('toasts your window', () => {
 });
 
 describe('toasts fight formed and dissolved', () => {
-  it('for every member', () => {
-    const formed = act(Family.CLOCK, {
-      case: 'clock',
-      value: { mark: ClockMark.FIGHT_FORMED },
-    });
-    const ended = act(Family.CLOCK, {
-      case: 'clock',
-      value: { mark: ClockMark.FIGHT_DISSOLVED },
-    });
-    for (const member of ['alice', 'bob']) {
-      expect(toastFor(formed, member, true)?.case).toBe('fight-formed');
-      expect(toastFor(ended, member, false)?.case).toBe('fight-ended');
-    }
+  const formed = act(Family.CLOCK, {
+    case: 'clock',
+    value: { mark: ClockMark.FIGHT_FORMED, fight: { order: [alice, captain] } },
+  });
+  const ended = act(Family.CLOCK, {
+    case: 'clock',
+    value: {
+      mark: ClockMark.FIGHT_DISSOLVED,
+      dissolved: { members: [alice, captain] },
+    },
+  });
+
+  it('for a member in the fight', () => {
+    expect(toastFor(formed, 'alice', true)?.case).toBe('fight-formed');
+    expect(toastFor(ended, 'alice', false)?.case).toBe('fight-ended');
+  });
+
+  it('not for a member outside it', () => {
+    expect(toastFor(formed, 'bob', false)).toBeNull();
+    expect(toastFor(ended, 'bob', false)).toBeNull();
   });
 
   it('a turn passing does not toast', () => {

@@ -9,10 +9,13 @@
  * | case                  | checklist box                         |
  * |-----------------------|---------------------------------------|
  * | `own-outcome`         | "your own outcomes"                   |
- * | `done-to-you`         | "things done to you"                  |
+ * | `done-to-you`         | "things done to you": an attack, a    |
+ * |                       | cast or an activation's result aimed  |
+ * |                       | at you, a save forced on you, a state |
+ * |                       | change on you                         |
  * | `your-window`         | "a window opening for you"            |
- * | `fight-formed`        | "a fight forming or ending"           |
- * | `fight-ended`         | "a fight forming or ending"           |
+ * | `fight-formed`        | "a fight forming or ending", the      |
+ * | `fight-ended`         | viewer's own fight only               |
  * | `answer-to-your-line` | "a line spoken to you", as changed by |
  * |                       | the operator: a creature's answer to  |
  * |                       | your own line                         |
@@ -120,6 +123,35 @@ function doneTo(act: Act, member: string): boolean {
       return body.value.to?.id === member;
     case 'cast':
       return body.value.results.some((r) => r.target?.id === member);
+    case 'activate':
+      // A save an ability forces on you (a Frightful Presence), or a result
+      // that lands on you.
+      return (
+        body.value.saves.some((s) => s.saver?.id === member) ||
+        body.value.results.some((r) => r.target?.id === member)
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a fight's forming or ending names `member`: its initiative order
+ * when it forms, its members when it dissolves. A dissolve that names no
+ * members is read as including everyone.
+ */
+export function fightIncludes(act: Act, member: string): boolean {
+  if (act.body.case !== 'clock' || !member) return false;
+  const c = act.body.value;
+  switch (c.mark) {
+    case ClockMark.FIGHT_FORMED:
+      return (c.fight?.order ?? []).some((p) => p.id === member);
+    case ClockMark.FIGHT_DISSOLVED: {
+      const members = c.dissolved?.members ?? [];
+      return members.length === 0 || members.some((p) => p.id === member);
+    }
+    case ClockMark.TURN_ENDED:
+      return c.turn?.member?.id === member || c.turn?.next?.id === member;
     default:
       return false;
   }
@@ -176,8 +208,11 @@ function toastCase(
     case Family.CLOCK: {
       if (act.body.case !== 'clock') return null;
       const mark = act.body.value.mark;
-      if (mark === ClockMark.FIGHT_FORMED) return 'fight-formed';
-      if (mark === ClockMark.FIGHT_DISSOLVED) return 'fight-ended';
+      // Only the viewer's own fight: another fight is not news to them.
+      if (mark === ClockMark.FIGHT_FORMED)
+        return fightIncludes(act, member) ? 'fight-formed' : null;
+      if (mark === ClockMark.FIGHT_DISSOLVED)
+        return fightIncludes(act, member) ? 'fight-ended' : null;
       return windowFor(act, member) ? 'your-window' : null;
     }
     case Family.TABLE_ANSWER:

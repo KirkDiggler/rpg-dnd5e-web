@@ -24,8 +24,16 @@ const walk = (who: string, cells: number) =>
       path: Array.from({ length: cells }, () => ({})),
     },
   });
+// The viewer's own fight: its order and its members name alice.
 const fight = (mark: ClockMark) =>
-  at(Family.CLOCK, { case: 'clock', value: { mark } });
+  at(Family.CLOCK, {
+    case: 'clock',
+    value: {
+      mark,
+      fight: { order: [member('alice'), member('gate-1')] },
+      dissolved: { members: [member('alice'), member('gate-1')] },
+    },
+  });
 const loot = (who: string) =>
   at(Family.ACT, {
     case: 'loot',
@@ -83,6 +91,25 @@ describe('out-of-combat walks fold per creature per stretch', () => {
 });
 
 describe('a fight ends the stretch', () => {
+  it('a creature that walked before the fight starts a new row after it', () => {
+    // gate-2 walks before and after the fight, and does nothing in it: only
+    // the fight forming can end its stretch.
+    const log = rows(
+      walk('gate-2', 3),
+      fight(ClockMark.FIGHT_FORMED),
+      loot('gate-1'),
+      fight(ClockMark.FIGHT_DISSOLVED),
+      walk('gate-2', 5)
+    );
+    expect(shape(log)).toEqual([
+      'gate-2 walked 3 (1)',
+      'A fight begins',
+      'gate-1 loots chest',
+      'The fight ends',
+      'gate-2 walked 5 (1)',
+    ]);
+  });
+
   it('walks in a fight stay a row each; after it, a new stretch folds', () => {
     const log = rows(
       walk('gate-1', 2),
