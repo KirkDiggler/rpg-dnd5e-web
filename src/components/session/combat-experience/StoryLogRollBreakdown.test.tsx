@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActSchema,
   Family,
+  InfluenceKind,
   PartyKind,
   StateKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -159,5 +160,46 @@ describe('rows group by act id', () => {
     );
     expect(story.map((e) => e.nested)).toEqual([false, true, false]);
     expect(story[1]?.headline).toBe('Aldric stops concentrating on Bless');
+  });
+});
+
+describe('attack influences from Roll', () => {
+  it('lists the advantage and disadvantage sources the act carries', () => {
+    const { act } = createAttackAuthorityFixture({ roll: 16, total: 22 });
+    if (act.body.case !== 'attack') throw Error('expected attack');
+    act.body.value.roll!.influences = [
+      {
+        $typeName: 'dnd5e.api.session.v1alpha2.RollInfluence',
+        kind: InfluenceKind.ADVANTAGE,
+        sourceRef: 'dnd5e:conditions:helped',
+        sourceId: 'mira',
+      },
+      {
+        $typeName: 'dnd5e.api.session.v1alpha2.RollInfluence',
+        kind: InfluenceKind.DISADVANTAGE,
+        sourceRef: 'dnd5e:conditions:prone',
+        sourceId: '',
+      },
+    ];
+    const result = buildActAttackOutcome(
+      { act, index: 0, seq: 1n },
+      {
+        viewerMember: 'aldric',
+        memberNames: { aldric: 'Aldric', mira: 'Mira' },
+      }
+    );
+    expect(
+      result?.modifierSources?.map((m) => [
+        m.kind,
+        m.sourceRef,
+        m.sourceMemberName,
+      ])
+    ).toEqual([
+      ['advantage', 'dnd5e:conditions:helped', 'Mira'],
+      ['disadvantage', 'dnd5e:conditions:prone', undefined],
+    ]);
+    render(<StoryLog {...props} story={[]} result={result} />);
+    const list = screen.getByRole('list', { name: 'Attack roll influences' });
+    expect(list.querySelectorAll('li')).toHaveLength(2);
   });
 });

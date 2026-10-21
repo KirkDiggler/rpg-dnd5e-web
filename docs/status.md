@@ -37,8 +37,8 @@ shared-d20 machine (`presentation.ts`) takes its authority from acts: a swing
 and a death save join the actor's verb response by provider token; a roll
 window owns its token's record and the swing after it is its own record; a
 save keys on its act id and place. Minimal rendering until rpg-dnd5e-web#1301:
-per-kind cards collapse to one line, and an attack card no longer lists its
-advantage sources (acts do not carry them).
+per-kind cards collapse to one line. The attack card lists its advantage and
+disadvantage sources from `Roll.influences`.
 
 **The debug panel reads the record (rpg-project#628)** — In a live session,
 Debug mode reads session v1alpha2's record stream (`recordClient`,

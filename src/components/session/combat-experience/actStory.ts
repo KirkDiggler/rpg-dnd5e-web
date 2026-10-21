@@ -8,6 +8,8 @@
  * concentrations a rest ended under the rest, an opportunity attack under the
  * walk it interrupted.
  */
+import { getConditionDisplay } from '@/utils/conditionIcons';
+import { refId } from '@/utils/refs';
 import {
   DamageType,
   type AttackRef,
@@ -15,7 +17,9 @@ import {
 import {
   DamageType as ActDamageType,
   AttackOutcome,
+  InfluenceKind,
   type Act,
+  type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { damageTypeWord } from '../combatBeat';
 import type { HeardCell } from '../heardBeat';
@@ -27,9 +31,55 @@ import {
   type DescribeContext,
 } from './describeAct';
 import type {
+  CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
 } from './types';
+
+/**
+ * A roll's advantage and disadvantage sources (Roll.influences, R17) as the
+ * result card lists them. A source with no ref has no honest label, so it is
+ * left out rather than guessed.
+ */
+function influenceSources(
+  roll: Roll | undefined,
+  attackerId: string,
+  targetId: string,
+  context: DescribeContext
+): CombatExperienceAttackModifierSource[] {
+  const name = (id: string) => context.memberNames?.[id] ?? id;
+  return (roll?.influences ?? []).flatMap((influence) => {
+    if (!influence.sourceRef) return [];
+    if (
+      influence.kind !== InfluenceKind.ADVANTAGE &&
+      influence.kind !== InfluenceKind.DISADVANTAGE
+    ) {
+      return [];
+    }
+    const sourceMemberId = influence.sourceId || undefined;
+    return [
+      Object.freeze({
+        kind:
+          influence.kind === InfluenceKind.ADVANTAGE
+            ? ('advantage' as const)
+            : ('disadvantage' as const),
+        sourceRef: influence.sourceRef,
+        label: getConditionDisplay(
+          refId(influence.sourceRef) ?? influence.sourceRef
+        ).label,
+        sourceMemberId,
+        sourceMemberName: sourceMemberId
+          ? context.memberNames?.[sourceMemberId]
+          : undefined,
+        attackerId,
+        targetId,
+        attackerName: name(attackerId),
+        targetName: name(targetId),
+        sourceIsViewer: sourceMemberId === context.viewerMember,
+      }),
+    ];
+  });
+}
 
 export interface CombatStoryFact {
   readonly act: Act;
@@ -112,6 +162,12 @@ export function buildActAttackOutcome(
   const ref = attackRefOf(act);
   const word = damageTypeWord(ref?.damageType);
   const roll = a.roll;
+  const modifierSources = influenceSources(
+    roll,
+    a.by?.id ?? '',
+    a.to?.id ?? '',
+    context
+  );
   return Object.freeze({
     attackId: actStoryId(act, fact.index),
     session: act.session,
@@ -128,6 +184,8 @@ export function buildActAttackOutcome(
     hit,
     critical: a.critical,
     ...(hit ? { damage: a.damage, damageType: word || undefined } : {}),
+    modifierSources:
+      modifierSources.length > 0 ? Object.freeze(modifierSources) : undefined,
     targetIsViewer: a.to?.id === context.viewerMember,
   });
 }

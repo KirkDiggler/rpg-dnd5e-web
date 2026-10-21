@@ -386,6 +386,7 @@ describe('answering a post-roll window on your own d20', () => {
       modifiers: [],
       total: 99,
       of: 0,
+      influences: [],
     };
     render(<Harness declarations={[rollWindowDeclaration()]} beat={beat} />);
     await waitFor(() =>
