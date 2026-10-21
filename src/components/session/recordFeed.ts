@@ -5,7 +5,8 @@
  * The record stream is not per recipient and has no counting ids: the id is
  * an ordering key (R27), so this feed never infers a missed beat from the
  * numbers. Loss is the transport's to report (R28): a stream that ends with
- * `lagged` is caught up with GetRecord after the last id held, then reopened
+ * `lagged` is caught up with GetRecord pages after the last id held, while
+ * the server says `more`, then reopened
  * from the newest id. A dropped connection reopens after the last id held.
  * A read or a stream that says `restarted` (the id aged out of retention)
  * replaces the buffer and says so.
@@ -114,7 +115,8 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
       if (signal.aborted) return;
       if (response.restarted) restart();
       append(response.events);
-      if (response.events.length < RECORD_PAGE_LIMIT) return;
+      // `more` is the only end signal: a page's length says nothing.
+      if (!response.more || response.events.length === 0) return;
     }
   };
 

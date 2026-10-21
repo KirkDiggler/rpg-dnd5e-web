@@ -10,11 +10,7 @@ import {
   type StreamRecordResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/record_service_pb';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  RECORD_PAGE_LIMIT,
-  startRecordFeed,
-  type RecordFeedSnapshot,
-} from './recordFeed';
+import { startRecordFeed, type RecordFeedSnapshot } from './recordFeed';
 
 function beat(id: string, name = 'moved', act = 'move:01HF'): RecordEvent {
   return create(RecordEventSchema, {
@@ -35,10 +31,15 @@ function laggedMsg(lastId: string): StreamRecordResponse {
     item: { case: 'lagged', value: { lastId } },
   });
 }
-function page(ids: string[], restarted = false): GetRecordResponse {
+function page(
+  ids: string[],
+  restarted = false,
+  more = false
+): GetRecordResponse {
   return create(GetRecordResponseSchema, {
     events: ids.map((id) => beat(id)),
     restarted,
+    more,
   });
 }
 
@@ -110,22 +111,18 @@ describe('recordFeed', () => {
   });
 
   it('lagged re-reads then reopens', async () => {
+    // The first page is short and says `more`: a page's length is not the
+    // end signal, `more` is.
     const pages: Record<string, GetRecordResponse> = {
-      A1: page(
-        Array.from(
-          { length: RECORD_PAGE_LIMIT },
-          (_, i) => `B${String(i).padStart(4, '0')}`
-        )
-      ),
-      [`B${String(RECORD_PAGE_LIMIT - 1).padStart(4, '0')}`]: page(['C1']),
+      A1: page(['B0000', 'B0001', 'B0002'], false, true),
+      B0002: page(['C1']),
     };
     const h = harness(
       [scripted([eventMsg('A1'), laggedMsg('A1')]), scripted([], 'hold')],
       async (after) => pages[after] ?? page([])
     );
     await vi.waitFor(() => expect(h.streamCalls).toHaveLength(2));
-    const lastB = `B${String(RECORD_PAGE_LIMIT - 1).padStart(4, '0')}`;
-    expect(h.getCalls).toEqual(['A1', lastB]);
+    expect(h.getCalls).toEqual(['A1', 'B0002']);
     expect(h.streamCalls).toEqual(['', 'C1']);
     const ids = h.ids();
     expect(ids[ids.length - 1]).toBe('C1');
