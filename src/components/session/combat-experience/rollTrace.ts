@@ -1,13 +1,10 @@
 import type {
-  DamageComponent,
-  DiceKeep,
   DiceTrace,
   RollCalculation,
   RollComponent,
   RollSource,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { KeepRule } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
 type ResolveSourceName = (sourceId: string) => string | undefined;
 
@@ -263,127 +260,4 @@ export function formatRollCalculation(
     )
   );
   return expression ? `${expression} = ${calculation.total}` : undefined;
-}
-
-/**
- * Formats new damage roll components in producer order. Multipliers remain
- * domain facts beside additive inputs rather than becoming roll modifiers;
- * callers append the authoritative damage total and type. Legacy scalar
- * components intentionally do not become fabricated traces.
- */
-export function formatDamageRolls(
-  components: readonly DamageComponent[]
-): string | undefined {
-  if (components.length === 0) return undefined;
-  let text = '';
-  for (const component of components) {
-    if (!component.roll) return undefined;
-    const terms = componentTerms(component.roll);
-    const hasMultiplier = component.multiplier !== undefined;
-    if (terms.length === 0 && !hasMultiplier) return undefined;
-
-    for (const term of terms) text = appendAdditiveTerm(text, term);
-    if (hasMultiplier) {
-      const source = providerText(component.roll.source);
-      text += `${text ? ' ' : ''}× ${component.multiplier}${source ? ` ${source}` : ''}`;
-    }
-  }
-  return text || undefined;
-}
-
-function quoteDebugString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function numberArray(values: readonly number[] | undefined): string {
-  return `[${(values ?? []).join(',')}]`;
-}
-
-function debugRollSource(source: RollSource | undefined): string {
-  if (!source) return 'unset';
-  return (
-    `{ref=${quoteDebugString(source.ref)} ` +
-    `name=${quoteDebugString(source.name)} ` +
-    `label=${quoteDebugString(source.label)}}`
-  );
-}
-
-/**
- * The keep record, rendered where the trace that owns it is rendered
- * (rpg-project#462, R1).
- *
- * ONE PLACE, because a keep belongs to the pool it decided and every debug
- * surface that dumps a calculation should show it: the check beats, the paused
- * window's raw body, the strike. A second renderer keyed off the beat instead
- * of the trace is a parallel spelling that can disagree with the dice it
- * describes, which is the defect this whole slice is about.
- *
- * The RULE is printed by name. "cancelled" is not derivable from the two
- * lists — it has both of them full and is neither advantage nor disadvantage.
- */
-function debugDiceKeep(keep: DiceKeep | undefined): string {
-  if (!keep) return 'unset';
-  const sources = (list: readonly RollSource[] | undefined) =>
-    `[${(list ?? []).map(debugRollSource).join(', ')}]`;
-  return (
-    `{rule=${KeepRule[keep.rule] ?? String(keep.rule)} ` +
-    `granted=${sources(keep.granted)} imposed=${sources(keep.imposed)}}`
-  );
-}
-
-function debugDiceTrace(trace: DiceTrace | undefined): string {
-  if (!trace) return 'unset';
-  const rerolls = (trace.rerolls ?? []).map(
-    (reroll) =>
-      `{index=${reroll.dieIndex} before=${reroll.before} after=${reroll.after} ` +
-      `source=${debugRollSource(reroll.source)}}`
-  );
-  return (
-    `{notation=${quoteDebugString(trace.notation)} die_size=${trace.dieSize} ` +
-    `original_rolls=${numberArray(trace.originalRolls)} ` +
-    `rerolls=[${rerolls.join(', ')}] ` +
-    `final_rolls=${numberArray(trace.finalRolls)} ` +
-    `kept_indices=${numberArray(trace.keptIndices)} subtotal=${trace.subtotal} ` +
-    `keep=${debugDiceKeep(trace.keep)}}`
-  );
-}
-
-function debugRollComponent(component: RollComponent): string {
-  const modifierPresent = component.modifier !== undefined;
-  return (
-    `{source=${debugRollSource(component.source)} ` +
-    `dice=${debugDiceTrace(component.dice)} ` +
-    `modifier.present=${modifierPresent} ` +
-    `modifier=${modifierPresent ? component.modifier : 'unset'}}`
-  );
-}
-
-export function formatDebugRollCalculation(
-  calculation: RollCalculation | undefined
-): string {
-  if (!calculation) return 'unset';
-  return `{components=[${(calculation.components ?? [])
-    .map(debugRollComponent)
-    .join(', ')}] total=${calculation.total}}`;
-}
-
-function debugDamageComponent(component: DamageComponent): string {
-  const multiplierPresent = component.multiplier !== undefined;
-  return (
-    `{source=${quoteDebugString(component.source)} ` +
-    `legacy.ref=${quoteDebugString(component.sourceRef)} ` +
-    `legacy.dice=${quoteDebugString(component.dice)} ` +
-    `legacy.final_rolls=${numberArray(component.finalRolls)} ` +
-    `legacy.flat=${component.flatBonus} ` +
-    `type=${DamageType[component.damageType] ?? String(component.damageType)} ` +
-    `multiplier.present=${multiplierPresent} ` +
-    `multiplier=${multiplierPresent ? component.multiplier : 'unset'} ` +
-    `roll=${component.roll ? debugRollComponent(component.roll) : 'unset'}}`
-  );
-}
-
-export function formatDebugDamageComponents(
-  components: readonly DamageComponent[] | undefined
-): string {
-  return `[${(components ?? []).map(debugDamageComponent).join(', ')}]`;
 }

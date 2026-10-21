@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import {
-  DamageComponentSchema,
   DiceKeepSchema,
   DiceRerollSchema,
   DiceTraceSchema,
@@ -9,12 +8,11 @@ import {
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
-  type DamageComponent,
   type RollCalculation,
+  type RollComponent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
-import { formatDamageRolls, formatRollCalculation } from './rollTrace';
+import { formatRollCalculation } from './rollTrace';
 
 function source(ref: string, name: string, label = '') {
   return create(RollSourceSchema, { ref, name, label });
@@ -26,37 +24,31 @@ function sourced(ref: string, name: string, sourceId: string) {
   return create(RollSourceSchema, { ref, name, sourceId });
 }
 
-function greatswordComponents(): DamageComponent[] {
+/** A greatsword's damage roll as its two components: the dice with a Great
+ * Weapon Fighting reroll, and the Strength modifier. */
+function greatswordComponents(): RollComponent[] {
   return [
-    create(DamageComponentSchema, {
-      source: 'weapon',
-      damageType: DamageType.SLASHING,
-      roll: create(RollComponentSchema, {
-        source: source('provider:weapon:any', 'Greatsword'),
-        dice: create(DiceTraceSchema, {
-          notation: '2d6',
-          dieSize: 6,
-          originalRolls: [1, 5],
-          rerolls: [
-            create(DiceRerollSchema, {
-              dieIndex: 0,
-              before: 1,
-              after: 4,
-              source: source('provider:condition:any', 'Great Weapon Fighting'),
-            }),
-          ],
-          finalRolls: [4, 5],
-          subtotal: 9,
-        }),
+    create(RollComponentSchema, {
+      source: source('provider:weapon:any', 'Greatsword'),
+      dice: create(DiceTraceSchema, {
+        notation: '2d6',
+        dieSize: 6,
+        originalRolls: [1, 5],
+        rerolls: [
+          create(DiceRerollSchema, {
+            dieIndex: 0,
+            before: 1,
+            after: 4,
+            source: source('provider:condition:any', 'Great Weapon Fighting'),
+          }),
+        ],
+        finalRolls: [4, 5],
+        subtotal: 9,
       }),
     }),
-    create(DamageComponentSchema, {
-      source: 'ability',
-      damageType: DamageType.SLASHING,
-      roll: create(RollComponentSchema, {
-        source: source('provider:ability:any', 'Strength'),
-        modifier: 3,
-      }),
+    create(RollComponentSchema, {
+      source: source('provider:ability:any', 'Strength'),
+      modifier: 3,
     }),
   ];
 }
@@ -85,13 +77,11 @@ function secondWindCalculation(): RollCalculation {
 
 describe('roll trace presentation', () => {
   it('renders the exact physical GWF expression without recognizing provider refs', () => {
-    const components = greatswordComponents();
     const calculation = create(RollCalculationSchema, {
-      components: components.map((component) => component.roll!),
+      components: greatswordComponents(),
       total: 12,
     });
 
-    expect(formatDamageRolls(components)).toBe('2d6 [1 → 4, 5] + 3 Strength');
     expect(formatRollCalculation(calculation)).toBe(
       '2d6 [1 → 4, 5] + 3 Strength = 12'
     );
@@ -218,75 +208,9 @@ describe('roll trace presentation', () => {
       String.raw`0 Zero modifier - 2 "Line \"curse\"\nback\\slash" = -44`
     );
     expect(formatRollCalculation(calculation)).not.toContain('\nback\\slash');
-
-    const damage = [
-      ...greatswordComponents(),
-      create(DamageComponentSchema, {
-        source: 'effect',
-        damageType: DamageType.SLASHING,
-        roll: create(RollComponentSchema, {
-          source: source('anything:penalty', 'Penalty'),
-          modifier: -2,
-        }),
-      }),
-    ];
-    expect(formatDamageRolls(damage)).toBe(
-      '2d6 [1 → 4, 5] + 3 Strength - 2 Penalty'
-    );
   });
 
-  it('preserves multiplier presence and provider names without treating them as additive modifiers', () => {
-    const components = [
-      ...greatswordComponents(),
-      create(DamageComponentSchema, {
-        source: 'monster_trait',
-        damageType: DamageType.SLASHING,
-        multiplier: 0,
-        roll: create(RollComponentSchema, {
-          source: source('anything:immunity', 'Provider Immunity'),
-        }),
-      }),
-      create(DamageComponentSchema, {
-        source: 'environment',
-        damageType: DamageType.SLASHING,
-        multiplier: -0.5,
-        roll: create(RollComponentSchema, {
-          source: source('anything:odd', 'Odd multiplier'),
-        }),
-      }),
-    ];
-
-    expect(formatDamageRolls(components)).toBe(
-      '2d6 [1 → 4, 5] + 3 Strength × 0 Provider Immunity × -0.5 Odd multiplier'
-    );
-  });
-
-  it('uses an all-or-nothing fallback for wholly legacy, mixed, and empty new damage components', () => {
-    const legacy = create(DamageComponentSchema, {
-      source: 'weapon',
-      sourceRef: 'legacy:weapon',
-      dice: '2d6',
-      finalRolls: [4, 5],
-      flatBonus: 3,
-      damageType: DamageType.SLASHING,
-    });
-    const emptyNew = create(DamageComponentSchema, {
-      source: 'effect',
-      damageType: DamageType.SLASHING,
-      roll: create(RollComponentSchema, {
-        source: source('anything:empty', 'Empty provider source'),
-      }),
-    });
-
-    expect(formatDamageRolls([legacy])).toBeUndefined();
-    expect(
-      formatDamageRolls([...greatswordComponents(), legacy])
-    ).toBeUndefined();
-    expect(formatDamageRolls([emptyNew])).toBeUndefined();
-    expect(
-      formatDamageRolls([...greatswordComponents(), emptyNew])
-    ).toBeUndefined();
-    expect(formatDamageRolls([])).toBeUndefined();
+  it('renders nothing for an empty or absent calculation', () => {
     expect(
       formatRollCalculation(
         create(RollCalculationSchema, { components: [], total: 73 })
@@ -295,22 +219,6 @@ describe('roll trace presentation', () => {
     expect(
       formatRollCalculation(undefined as unknown as RollCalculation)
     ).toBeUndefined();
-  });
-
-  it('accepts a valid multiplier-only new damage component', () => {
-    const multiplier = create(DamageComponentSchema, {
-      source: 'monster_trait',
-      damageType: DamageType.SLASHING,
-      multiplier: 0,
-      roll: create(RollComponentSchema, {
-        source: source('anything:immunity', 'Provider Immunity'),
-      }),
-    });
-
-    expect(formatDamageRolls([multiplier])).toBe('× 0 Provider Immunity');
-    expect(formatDamageRolls([...greatswordComponents(), multiplier])).toBe(
-      '2d6 [1 → 4, 5] + 3 Strength × 0 Provider Immunity'
-    );
   });
 });
 

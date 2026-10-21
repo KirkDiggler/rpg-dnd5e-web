@@ -286,11 +286,6 @@ const freshTurn: SessionCombatFixture = {
   characterData,
   story,
   attackOutcome,
-  debug: [
-    'seq=18 clock=6 turn_ended member=Mira next=Aldric',
-    'seq=19 clock=6 kind=TURN_STARTED member=Aldric round=2',
-    'afford clock=TURN declarations=3 movement.remaining=25',
-  ],
   fieldSources,
 };
 
@@ -302,11 +297,6 @@ const spentTurn: SessionCombatFixture = {
     'The action is spent, movement is partial, and the separate End Turn declaration remains available.',
   resultVisible: true,
   declarations: declarations(false, true, 10),
-  debug: [
-    ...freshTurn.debug,
-    'seq=20 clock=6 struck attacker=Aldric target=Skeleton Guard roll=12 total=17 against=13 damage=8',
-    'afford clock=TURN declarations=3 action.left=0 movement.remaining=10',
-  ],
 };
 
 const spectating: SessionCombatFixture = {
@@ -351,11 +341,6 @@ const freeRoam: SessionCombatFixture = {
       tone: 'success',
     },
   ],
-  debug: [
-    ...freshTurn.debug,
-    'seq=20 clock=7 fight_ended cause=DISSOLVE_KIND_BY_DEFEAT',
-    'turn clock=WORLD active="" round=0 participants=[]',
-  ],
 };
 
 const deathSaveTurn: SessionCombatFixture = {
@@ -395,10 +380,6 @@ const deathSaveTurn: SessionCombatFixture = {
   characterData: dyingCharacterData,
   resultVisible: false,
   endTurnBlocked: true,
-  debug: [
-    ...freshTurn.debug,
-    'afford clock=TURN declarations=2 verb=DEATH_SAVE life_state=DYING',
-  ],
 };
 
 const reconnected: SessionCombatFixture = {
@@ -419,7 +400,6 @@ const reconnected: SessionCombatFixture = {
       tone: 'success',
     },
   ],
-  debug: [...freshTurn.debug, 'catch_up from_seq=18 entries=3 source=GetStory'],
 };
 
 export const SESSION_COMBAT_FIXTURES: readonly SessionCombatFixture[] =

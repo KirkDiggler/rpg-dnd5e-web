@@ -128,7 +128,10 @@ export function buildActStory(
   // Whether the VIEWER is in a formed fight, read from the acts: a fight
   // that names them forms or dissolves on the clock, and a turn passing to
   // or from them means theirs is formed. Another fight's edges do not move
-  // this viewer's holds or fold.
+  // this viewer's holds or fold. A member who joins a fight already running
+  // is not in its forming order, so they become in-fight at the first turn
+  // end that names them; until then their toasts run timers and their walks
+  // fold.
   let inFight = false;
   // Who spoke each line, by act tag, so a line's own table answer can be
   // told apart as an answer to the viewer (toast case `answer-to-your-line`).

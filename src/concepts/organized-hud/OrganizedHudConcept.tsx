@@ -19,7 +19,6 @@ import type {
   CombatExperiencePresentationState,
   CombatExperienceStoryExchange,
 } from '@/components/session/combat-experience/types';
-import type { DebugFeedEntry } from '@/components/session/debugLogLine';
 import { create } from '@bufbuild/protobuf';
 import {
   ClockKind,
@@ -52,9 +51,8 @@ export interface HudConceptProfile {
   presentation: OrganizedActionPresentation;
   desktopIcons?: Readonly<Record<string, ActionIconPresentation>>;
   storySamples?: readonly Omit<CombatExperienceStoryExchange, 'id'>[];
-  fixtures: readonly (Omit<SessionCombatFixture, 'debug'> & {
+  fixtures: readonly (SessionCombatFixture & {
     authorityFresh?: boolean;
-    debug: readonly DebugFeedEntry[];
   })[];
 }
 
@@ -544,7 +542,6 @@ export function OrganizedHudConcept({
             iconExperiment ? [...fixture.story, ...demoEntries] : fixture.story
           }
           storyFeedback={iconExperiment ? { scopeKey: storyScope } : undefined}
-          debug={fixture.debug}
           diceEvents={[]}
           location={{ name: 'Reference Tomb', area: 'South reliquary' }}
           hoveredTarget={hoveredTarget}

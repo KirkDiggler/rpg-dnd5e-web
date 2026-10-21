@@ -1,38 +1,42 @@
 // @vitest-environment node
 import { create } from '@bufbuild/protobuf';
 import {
-  DroppedSchema,
-  EventKind,
-  EventSchema,
-  ExitedSchema,
-  HeldSchema,
-  type Event as SessionEvent,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+  ActSchema,
+  ClockMark,
+  Family,
+  PartyKind,
+  StateKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { describe, expect, it } from 'vitest';
-import { nextViewerHoldings } from './viewerHoldings';
+import { nextViewerHoldingsFromAct as nextViewerHoldings } from './viewerHoldings';
 
 const ME = 'char-1';
+const member = (id: string) => ({ kind: PartyKind.MEMBER, id });
+const prop = (id: string) => ({ kind: PartyKind.PROP, id });
 
-const held = (holder: string, prop: string): SessionEvent =>
-  create(EventSchema, {
-    kind: EventKind.HELD,
-    body: { case: 'held', value: create(HeldSchema, { holder, prop }) },
+const held = (holder: string, id: string) =>
+  create(ActSchema, {
+    family: Family.ACT,
+    body: { case: 'hold', value: { by: member(holder), prop: prop(id) } },
   });
-const dropped = (member: string, prop: string): SessionEvent =>
-  create(EventSchema, {
-    kind: EventKind.DROPPED,
+const dropped = (by: string, id: string) =>
+  create(ActSchema, {
+    family: Family.ACT,
     body: {
-      case: 'dropped',
-      value: create(DroppedSchema, { member, prop, at: { x: 1, y: 1 } }),
+      case: 'drop',
+      value: { by: member(by), prop: prop(id), cell: { x: 1, y: 1 } },
     },
   });
-const exited = (member: string): SessionEvent =>
-  create(EventSchema, {
-    kind: EventKind.EXITED,
-    body: { case: 'exited', value: create(ExitedSchema, { member }) },
+const exited = (who: string) =>
+  create(ActSchema, {
+    family: Family.CLOCK,
+    body: {
+      case: 'clock',
+      value: { mark: ClockMark.EXITED, departure: { member: member(who) } },
+    },
   });
 
-describe('nextViewerHoldings — what the local member is carrying', () => {
+describe('nextViewerHoldingsFromAct — what the local member is carrying', () => {
   it('takes one up on HELD', () => {
     expect(nextViewerHoldings([], held(ME, 'heirloom'), ME)).toEqual([
       'heirloom',
@@ -74,9 +78,12 @@ describe('nextViewerHoldings — what the local member is carrying', () => {
 
   it('returns the same array when nothing moved, so callers do not re-render', () => {
     const mine = ['heirloom'];
-    const other = create(EventSchema, {
-      kind: EventKind.DOWNED,
-      body: { case: 'downed', value: { member: ME } },
+    const other = create(ActSchema, {
+      family: Family.STATE,
+      body: {
+        case: 'state',
+        value: { party: member(ME), change: StateKind.DOWNED },
+      },
     });
     expect(nextViewerHoldings(mine, other, ME)).toBe(mine);
     // IDENTITY, not equality: `toEqual` here would pass with the
