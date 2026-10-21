@@ -143,6 +143,20 @@ describe('recordFeed', () => {
     h.feed.stop();
   });
 
+  it('a stream that opens restarted replaces the buffer', async () => {
+    const restarted = create(StreamRecordResponseSchema, {
+      item: { case: 'restarted', value: {} },
+    });
+    const h = harness([
+      scripted([eventMsg('A1'), eventMsg('A2')], 'fail'),
+      scripted([restarted, eventMsg('Z1'), eventMsg('Z2')], 'hold'),
+    ]);
+    await vi.waitFor(() => expect(h.ids()).toEqual(['Z1', 'Z2']));
+    expect(h.streamCalls).toEqual(['', 'A2']);
+    expect(h.notice()).toBe('Older beats aged out of the record.');
+    h.feed.stop();
+  });
+
   it('caps the rows it keeps', async () => {
     const many = Array.from({ length: 520 }, (_, i) =>
       eventMsg(`A${String(i).padStart(4, '0')}`)

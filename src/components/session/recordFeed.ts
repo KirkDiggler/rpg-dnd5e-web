@@ -7,8 +7,8 @@
  * numbers. Loss is the transport's to report (R28): a stream that ends with
  * `lagged` is caught up with GetRecord after the last id held, then reopened
  * from the newest id. A dropped connection reopens after the last id held.
- * A read that `restarted` (the id aged out of retention) replaces the buffer
- * and says so once.
+ * A read or a stream that says `restarted` (the id aged out of retention)
+ * replaces the buffer and says so.
  *
  * Pure of React so the reconnect rules are tested without a component.
  */
@@ -101,16 +101,18 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
     if (changed) publish();
   };
 
+  const restart = () => {
+    rows = [];
+    lastId = '';
+    notice = RECORD_AGED_OUT_NOTICE;
+    publish();
+  };
+
   const catchUp = async () => {
     for (;;) {
       const response = await deps.get(lastId, signal);
       if (signal.aborted) return;
-      if (response.restarted) {
-        rows = [];
-        lastId = '';
-        notice = RECORD_AGED_OUT_NOTICE;
-        publish();
-      }
+      if (response.restarted) restart();
       append(response.events);
       if (response.events.length < RECORD_PAGE_LIMIT) return;
     }
@@ -125,6 +127,8 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
           if (message.item.case === 'event') {
             append([message.item.value]);
             attempt = 0;
+          } else if (message.item.case === 'restarted') {
+            restart(); // the replay that follows starts at the oldest beat
           } else if (message.item.case === 'lagged') {
             lagged = true;
             break;
