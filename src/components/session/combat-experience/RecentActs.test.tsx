@@ -71,6 +71,23 @@ describe('recent panel shows newest 10 by filter', () => {
     expect(headlines).not.toContain('gate-1: patrol');
   });
 
+  it('moves are off by default; their chip turns them on', () => {
+    const walked = storyOf(
+      loot('alice'),
+      at(Family.ACT, {
+        case: 'walk',
+        value: { mover: member('keep-2'), path: [{}, {}] },
+      })
+    );
+    expect(selectRecent(walked, RECENT_DEFAULT).map((r) => r.headline)).toEqual(
+      ['alice loots chest']
+    );
+    render(<RecentActs story={walked} onSelect={vi.fn()} />);
+    expect(screen.queryByText(/keep-2 moves/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Moves' }));
+    expect(screen.getByText(/keep-2 moves/)).toBeTruthy();
+  });
+
   it('a chip turns a family on, and a click selects that row', () => {
     const onSelect = vi.fn();
     render(<RecentActs story={story.slice(0, 3)} onSelect={onSelect} />);

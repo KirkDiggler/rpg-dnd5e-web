@@ -14,6 +14,7 @@ export const RECENT_LIMIT = 10;
 /** The filter's chips: a family, with speak answers and fights split out. */
 export type RecentCategory =
   | 'act'
+  | 'moves'
   | 'reaction'
   | 'answer'
   | 'table'
@@ -27,6 +28,7 @@ export const RECENT_CATEGORIES: readonly {
   label: string;
 }[] = [
   { key: 'act', label: 'Acts' },
+  { key: 'moves', label: 'Moves' },
   { key: 'reaction', label: 'Reactions' },
   { key: 'answer', label: 'Answers' },
   { key: 'state', label: 'State' },
@@ -36,7 +38,11 @@ export const RECENT_CATEGORIES: readonly {
   { key: 'clock', label: 'Clock' },
 ];
 
-/** The defaults: acts, reactions, state, a speak's answers and fights. */
+/**
+ * The defaults: acts, reactions, state, a speak's answers and fights. Moves
+ * are off: off-screen patrols walk while a fight is formed and would fill the
+ * panel (a stopgap until the act stream's perception filter, E6).
+ */
 export const RECENT_DEFAULT: ReadonlySet<RecentCategory> = new Set([
   'act',
   'reaction',
@@ -48,7 +54,7 @@ export const RECENT_DEFAULT: ReadonlySet<RecentCategory> = new Set([
 export function recentCategory(act: Act): RecentCategory | null {
   switch (act.family) {
     case Family.ACT:
-      return 'act';
+      return act.body.case === 'walk' ? 'moves' : 'act';
     case Family.REACTION:
       return 'reaction';
     case Family.TABLE_ANSWER:
