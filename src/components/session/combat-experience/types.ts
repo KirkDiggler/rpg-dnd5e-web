@@ -214,6 +214,8 @@ interface CombatExperienceBaseProps {
   debug: readonly DebugFeedEntry[];
   /** The session record for the debug panel (rpg-project#628). */
   record?: RecordFeedSnapshot;
+  /** Told whether the record panel is showing (Debug, expanded). */
+  onRecordShownChange?: (shown: boolean) => void;
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll reaction window is asking about. Null when no
    * such beat is outstanding; the panel still poses the question without it. */

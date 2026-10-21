@@ -1,5 +1,5 @@
 import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import styles from './CombatExperience.module.css';
@@ -25,6 +25,8 @@ export interface StoryLogProps {
    * record stream instead of the v1 event lines (event-stream R14).
    */
   record?: RecordFeedSnapshot;
+  /** Told whether the record panel is showing: Debug mode, log expanded. */
+  onRecordShownChange?: (shown: boolean) => void;
   mode: CombatExperienceLogMode;
   streamState: CombatExperienceStreamState;
   onModeChange: (mode: CombatExperienceLogMode) => void;
@@ -105,6 +107,7 @@ export function StoryLog({
   story,
   debug,
   record,
+  onRecordShownChange,
   mode,
   streamState,
   onModeChange,
@@ -173,6 +176,14 @@ export function StoryLog({
     pinnedToBottom,
     collapsed,
   ]);
+
+  // THE RECORD STREAMS ONLY WHILE IT IS SHOWN: Debug visible and the log
+  // expanded. A collapsed log on Debug shows nothing, so it holds no stream;
+  // expanding resumes after the last id held.
+  const recordShown = visibleMode === 'debug' && !collapsed;
+  useEffect(() => {
+    onRecordShownChange?.(recordShown);
+  }, [recordShown, onRecordShownChange]);
 
   const handleScroll = () => {
     if (collapsed) return;

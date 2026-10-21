@@ -53,6 +53,8 @@ export interface RecordFeedDeps {
   /** Where to resume from; "" is the oldest retained beat. */
   afterId?: string;
   rows?: readonly RecordRow[];
+  /** The notice those rows carried, so a restart's hole stays visible. */
+  notice?: string;
 }
 
 export interface RecordFeed {
@@ -71,20 +73,12 @@ export function toRecordRow(event: RecordEvent): RecordRow {
   };
 }
 
-function isAbort(err: unknown, signal: AbortSignal): boolean {
-  return (
-    signal.aborted ||
-    (err instanceof Error &&
-      (err.name === 'AbortError' || /abort|cancel/i.test(err.message)))
-  );
-}
-
 export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
   const controller = new AbortController();
   const signal = controller.signal;
   let rows: RecordRow[] = [...(deps.rows ?? [])];
   let lastId = deps.afterId ?? rows[rows.length - 1]?.id ?? '';
-  let notice: string | undefined;
+  let notice: string | undefined = deps.notice;
 
   const publish = () => deps.onChange({ rows, notice });
 
@@ -141,18 +135,25 @@ export function startRecordFeed(deps: RecordFeedDeps): RecordFeed {
           attempt = 0;
           continue; // reopen from the newest id at once
         }
-      } catch (err) {
-        if (isAbort(err, signal)) return;
+      } catch {
+        // OUR abort is the only one that stops the loop (as in
+        // useSessionEventStream). A server or proxy Canceled is a dropped
+        // connection like any other: reconnect after the last id.
+        if (signal.aborted) return;
       }
       if (signal.aborted) return;
       const delay = deps.retryDelayMs(attempt);
       attempt += 1;
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, delay);
-        signal.addEventListener('abort', () => {
+        const onAbort = () => {
           clearTimeout(timer);
           resolve();
-        });
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, delay);
+        signal.addEventListener('abort', onAbort, { once: true });
       });
     }
   };

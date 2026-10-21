@@ -1,4 +1,5 @@
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import {
   RecordEventSchema,
   type RecordEvent,
@@ -67,6 +68,7 @@ function harness(
   const streamCalls: string[] = [];
   const getCalls: string[] = [];
   let snapshot: RecordFeedSnapshot = { rows: [], notice: undefined };
+  const snapshots: RecordFeedSnapshot[] = [];
   const feed = startRecordFeed({
     stream: (afterId, signal) => {
       streamCalls.push(afterId);
@@ -79,6 +81,7 @@ function harness(
     },
     onChange: (s) => {
       snapshot = s;
+      snapshots.push({ rows: [...s.rows], notice: s.notice });
     },
     retryDelayMs: () => 0,
   });
@@ -88,6 +91,7 @@ function harness(
     getCalls,
     ids: () => snapshot.rows.map((r) => r.id),
     notice: () => snapshot.notice,
+    snapshots,
   };
 }
 
@@ -137,6 +141,12 @@ describe('recordFeed', () => {
     );
     await vi.waitFor(() => expect(h.ids()).toEqual(['Z1', 'Z2']));
     expect(h.notice()).toBe('Older beats aged out of the record.');
+    // Once: the buffer is emptied by exactly one restart, and the notice
+    // appears at that one moment and is never re-announced.
+    const cleared = h.snapshots.filter((s) => s.rows.length === 0);
+    expect(cleared).toHaveLength(1);
+    const firstNoticed = h.snapshots.findIndex((s) => s.notice !== undefined);
+    expect(h.snapshots[firstNoticed]?.rows).toHaveLength(0);
     h.feed.stop();
   });
 
@@ -152,6 +162,37 @@ describe('recordFeed', () => {
     expect(h.streamCalls).toEqual(['', 'A2']);
     expect(h.notice()).toBe('Older beats aged out of the record.');
     h.feed.stop();
+  });
+
+  it('a server-side Canceled reconnects after the last id', async () => {
+    // The reviewer's probe: only our own abort stops the feed.
+    const canceled = async function* (): AsyncIterable<StreamRecordResponse> {
+      yield eventMsg('A1');
+      throw new ConnectError('stream reset by proxy', Code.Canceled);
+    };
+    const h = harness([() => canceled(), scripted([], 'hold')]);
+    await vi.waitFor(() => expect(h.streamCalls).toEqual(['', 'A1']));
+    h.feed.stop();
+  });
+
+  it('starts from a held notice', async () => {
+    const notice = 'Older beats aged out of the record.';
+    let last: RecordFeedSnapshot | undefined;
+    const feed = startRecordFeed({
+      stream: (_after, signal) => scripted([eventMsg('Z2')], 'hold')(signal),
+      get: async () => page([]),
+      onChange: (s) => {
+        last = s;
+      },
+      retryDelayMs: () => 0,
+      rows: [{ id: 'Z1', at: 1n, act: '', beat: 'moved', fields: undefined }],
+      notice,
+    });
+    await vi.waitFor(() =>
+      expect(last?.rows.map((r) => r.id)).toEqual(['Z1', 'Z2'])
+    );
+    expect(last?.notice).toBe(notice);
+    feed.stop();
   });
 
   it('caps the rows it keeps', async () => {

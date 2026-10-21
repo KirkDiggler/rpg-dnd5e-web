@@ -81,7 +81,6 @@ import {
   hotbarRows,
   type HotbarRows,
 } from './combat-experience/desktopHotbarLayout';
-import { isCombatDebugEnabled } from './combat-experience/diagnostics';
 import { liveActionPresentation } from './combat-experience/liveActionPresentation';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import {
@@ -1294,14 +1293,11 @@ function SessionEncounterScope({
     handleStreamAgedOut
   );
   // THE DEBUG PANEL READS THE RECORD (rpg-project#628, event-stream R14):
-  // streamed only while the panel is showing; the story and toasts stay on
-  // the v1 stream above.
-  const record = useSessionRecordStream(
-    sessionId,
-    member,
-    combat.logMode === 'debug' &&
-      isCombatDebugEnabled(false, import.meta.env.DEV)
-  );
+  // streamed only while the panel is showing — Debug visible and the log
+  // expanded, as StoryLog reports it; the story and toasts stay on the v1
+  // stream above.
+  const [recordShown, setRecordShown] = useState(false);
+  const record = useSessionRecordStream(sessionId, member, recordShown);
 
   // A NEW POSITION RE-READS THE VIEW. This is also how seen-now follows the
   // seat (fog of war, rpg-project#586): the member's own `moved` re-reads
@@ -1948,6 +1944,7 @@ function SessionEncounterScope({
             }
             debug={combat.debug}
             record={record}
+            onRecordShownChange={setRecordShown}
             result={combat.result}
             rollWindow={combat.rollWindow}
             diceEvents={combat.diceEvents}

@@ -58,6 +58,7 @@ export function useSessionRecordStream(
       },
       retryDelayMs,
       rows: prior.rows,
+      notice: prior.notice,
     });
     return () => feed.stop();
   }, [session, member, enabled]);

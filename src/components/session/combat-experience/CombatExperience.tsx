@@ -170,6 +170,7 @@ export function CombatExperience({
   storyFeedback,
   debug,
   record,
+  onRecordShownChange,
   result,
   rollWindow,
   diceEvents,
@@ -581,6 +582,7 @@ export function CombatExperience({
           story={revealedStory}
           debug={debug}
           record={record}
+          onRecordShownChange={onRecordShownChange}
           mode={logMode}
           streamState={streamState}
           onModeChange={onLogModeChange}
