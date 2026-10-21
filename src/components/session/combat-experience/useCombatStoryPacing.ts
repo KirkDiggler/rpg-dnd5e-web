@@ -210,10 +210,8 @@ export function useCombatStoryPacing({
       if (activeTokenRef.current !== token || metadata.source !== 'live') {
         return;
       }
-      const paced = run.flatMap((act, offset) =>
-        needsPacing(act, member)
-          ? [{ act, index: metadata.startIndex + offset }]
-          : []
+      const paced = run.flatMap((act, index) =>
+        needsPacing(act, member) ? [{ act, index }] : []
       );
       if (paced.length === 0) return;
       queueRef.current.push(...paced);

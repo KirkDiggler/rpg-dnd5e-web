@@ -76,8 +76,8 @@ describe('useCombatStoryPacing scope', () => {
     );
 
     act(() => {
-      result.current.acceptActs([oldFirst], { source: 'live', startIndex: 0 });
-      result.current.acceptActs([oldQueued], { source: 'live', startIndex: 0 });
+      result.current.acceptActs([oldFirst], { source: 'live' });
+      result.current.acceptActs([oldQueued], { source: 'live' });
     });
     expect(result.current.story).toEqual([]);
     expect(result.current.notice).toBe("Skeleton Guard's turn.");
@@ -96,9 +96,7 @@ describe('useCombatStoryPacing scope', () => {
     expect(result.current.story).toEqual(nextStory);
     expect(result.current.notice).toBeNull();
 
-    act(() =>
-      result.current.acceptActs([nextEvent], { source: 'live', startIndex: 0 })
-    );
+    act(() => result.current.acceptActs([nextEvent], { source: 'live' }));
     expect(result.current.story).toEqual(oldStory);
     expect(result.current.notice).toBe("Aldric's turn.");
 
@@ -169,7 +167,7 @@ describe('useCombatStoryPacing over whole driven turns', () => {
         swing('id-05', 'goblin'),
         turnEnd('id-06', 'goblin'),
       ]) {
-        result.current.acceptActs([a], { source: 'live', startIndex: 0 });
+        result.current.acceptActs([a], { source: 'live' });
       }
     });
     record();

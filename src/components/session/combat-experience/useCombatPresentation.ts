@@ -185,12 +185,11 @@ export function useCombatPresentation(
       metadata: ActDeliveryMetadata,
       listenerAt?: { readonly x: number; readonly y: number } | null
     ) => {
-      // An act's place is its place in the WHOLE same-id run: a live tail
-      // that continues an open run starts at metadata.startIndex.
-      run.forEach((act, offset) => {
+      // Every run arrives whole, so an act's place in the call is its place
+      // in the run.
+      run.forEach((act, index) => {
         const seq = nextSeq.current;
         nextSeq.current += 1n;
-        const index = metadata.startIndex + offset;
         dispatch({ type: 'stream-act', act, index, seq, metadata, listenerAt });
       });
     },

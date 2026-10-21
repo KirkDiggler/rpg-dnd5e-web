@@ -92,7 +92,7 @@ function accept(
     act,
     index: 0,
     seq: 50n,
-    metadata: { source: 'live', startIndex: 0 },
+    metadata: { source: 'live' },
   });
 }
 

@@ -34,6 +34,7 @@ import {
   ClockMark,
   Family,
   PartyKind,
+  RollSchema,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -248,7 +249,7 @@ function Harness({
 function useDeliverOnce(
   accept: (
     run: readonly Act[],
-    metadata: { source: 'live' | 'catchup'; startIndex: number }
+    metadata: { source: 'live' | 'catchup' }
   ) => void,
   beat: ReturnType<typeof rollWindowBeat> | undefined,
   source: 'live' | 'catchup'
@@ -256,7 +257,7 @@ function useDeliverOnce(
   const [delivered, setDelivered] = useState(false);
   useEffect(() => {
     if (!beat || delivered) return;
-    accept([beat], { source, startIndex: 0 });
+    accept([beat], { source });
     setDelivered(true);
   }, [accept, beat, delivered, source]);
   return delivered;
@@ -378,20 +379,36 @@ describe('answering a post-roll window on your own d20', () => {
   it('shows the act’s own roll in the decision prompt and its Story entry', async () => {
     const beat = rollWindowBeat('fighter-1', 9, 13);
     if (beat.body.case !== 'clock') throw Error('expected window');
-    // The provider total stands even when its parts look inconsistent.
-    beat.body.value.rollWindow!.roll = {
-      $typeName: 'dnd5e.api.session.v1alpha2.Roll',
+    // The provider total stands even when its parts look inconsistent. Each
+    // dice term names the source that brought it (Roll.terms, R17).
+    beat.body.value.rollWindow!.roll = create(RollSchema, {
       expression: '1d20+1d4-1d4',
       dice: [9, 3, 2],
-      modifiers: [],
       total: 99,
-      of: 0,
-      influences: [],
-    };
+      terms: [
+        { count: 1, dieSize: 20, faces: [9] },
+        {
+          count: 1,
+          dieSize: 4,
+          faces: [3],
+          sourceRef: 'dnd5e:spells:bless',
+          sourceName: 'Bless',
+        },
+        {
+          count: 1,
+          dieSize: 4,
+          faces: [2],
+          subtract: true,
+          sourceRef: 'dnd5e:spells:bane',
+          sourceName: 'Bane',
+        },
+      ],
+    });
+    const arithmetic = '1d20 [9] + 1d4 [3] Bless - 1d4 [2] Bane = 99';
     render(<Harness declarations={[rollWindowDeclaration()]} beat={beat} />);
     await waitFor(() =>
       expect(screen.getByTestId('reaction-window').textContent).toContain(
-        'You rolled 1d20+1d4-1d4 = 99'
+        `You rolled ${arithmetic}`
       )
     );
     for (const source of ['live', 'catchup'] as const) {
@@ -399,10 +416,8 @@ describe('answering a post-roll window on your own d20', () => {
         [{ act: beat, index: 0, seq: 1n, source, visible: true }],
         { viewerMember: 'fighter-1' }
       );
-      expect(entry.headline).toBe(
-        'Aldric may use Bardic Inspiration'.replace('Aldric', 'fighter-1')
-      );
-      expect(entry.detail).toBe('1d20+1d4-1d4 = 99');
+      expect(entry.headline).toBe('fighter-1 may use Bardic Inspiration');
+      expect(entry.detail).toBe(arithmetic);
       expect(entry.detail).not.toMatch(/hit|miss|AC/);
     }
   });

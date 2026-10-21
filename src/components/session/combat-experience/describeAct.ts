@@ -91,21 +91,50 @@ export function formatRollShort(roll: Roll | undefined): string {
 }
 
 /**
- * A roll's breakdown: the kept faces, each flat modifier by its source, the
- * total and what it was against. `d20 [15] + 3 Strength + 2 Proficiency =
- * 20 vs 13`. Reads the `Roll` only (R17).
+ * A roll's parts: each dice term with its kept faces and the source that
+ * brought it (`1d4 [3] Bless`, `- 1d4 [2] Bane`), or the bare kept faces when
+ * the roll carries no terms, then each flat modifier by its source.
  */
-export function formatRollBreakdown(roll: Roll | undefined): string {
-  if (!roll) return '';
-  if (roll.of > 0)
-    return `d${roll.of} [${roll.dice.join(', ')}] = ${roll.total}`;
+function rollParts(roll: Roll): string[] {
   const parts: string[] = [];
-  if (roll.dice.length > 0) parts.push(`[${roll.dice.join(', ')}]`);
+  if (roll.terms.length > 0) {
+    for (const t of roll.terms) {
+      const term =
+        `${t.count}d${t.dieSize} [${t.faces.join(', ')}] ${t.sourceName}`.trim();
+      if (t.subtract) parts.push(`- ${term}`);
+      else parts.push(parts.length === 0 ? term : `+ ${term}`);
+    }
+  } else if (roll.dice.length > 0) {
+    parts.push(`[${roll.dice.join(', ')}]`);
+  }
   for (const m of roll.modifiers) {
     const sign = m.value < 0 ? '-' : '+';
     const value = `${Math.abs(m.value)} ${m.source}`.trim();
     parts.push(parts.length === 0 && m.value >= 0 ? value : `${sign} ${value}`);
   }
+  return parts;
+}
+
+/**
+ * A roll with its dice terms named: `1d20 [9] + 1d4 [3] Bless - 1d4 [2] Bane
+ * = 99`. "" when the roll carries no terms, so a caller falls back to the
+ * expression.
+ */
+export function formatRollNamed(roll: Roll | undefined): string {
+  if (!roll || roll.terms.length === 0) return '';
+  return `${rollParts(roll).join(' ')} = ${roll.total}`;
+}
+
+/**
+ * A roll's breakdown: its parts (see `rollParts`), the total and what it was
+ * against. `1d20 [15] Longsword + 3 Strength + 2 Proficiency = 20 vs 13`.
+ * Reads the `Roll` only (R17).
+ */
+export function formatRollBreakdown(roll: Roll | undefined): string {
+  if (!roll) return '';
+  if (roll.of > 0)
+    return `d${roll.of} [${roll.dice.join(', ')}] = ${roll.total}`;
+  const parts = rollParts(roll);
   const against = roll.against !== undefined ? ` vs ${roll.against}` : '';
   const beaten =
     roll.beaten === undefined
@@ -521,7 +550,9 @@ export function describeAct(
           return {
             eyebrow: 'Window',
             headline: `${name(c.rollWindow?.audience)} may use ${c.rollWindow?.offer?.name || 'a reaction'}`,
-            detail: formatRollShort(c.rollWindow?.roll),
+            detail:
+              formatRollNamed(c.rollWindow?.roll) ||
+              formatRollShort(c.rollWindow?.roll),
             tone: 'neutral',
             roll: c.rollWindow?.roll,
           };

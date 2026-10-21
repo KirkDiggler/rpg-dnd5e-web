@@ -191,7 +191,7 @@ describe('inline Debug inspection', () => {
         act: source,
         index: 0,
         seq: BigInt(i + 1),
-        metadata: { source: 'live', startIndex: 0 },
+        metadata: { source: 'live' },
       });
     }
     expect(state.debug).toHaveLength(COMBAT_DEBUG_MAX_LINES);
@@ -225,7 +225,7 @@ describe('inline Debug inspection', () => {
         act: source,
         index: 0,
         seq: 1n,
-        metadata: { source: 'live', startIndex: 0 },
+        metadata: { source: 'live' },
       }
     );
     const before = selectVisibleStory(state);

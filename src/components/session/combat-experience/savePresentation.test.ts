@@ -69,7 +69,7 @@ function accept(
     act,
     index: 0,
     seq: 41n,
-    metadata: { source, startIndex: 0 },
+    metadata: { source },
   });
 }
 

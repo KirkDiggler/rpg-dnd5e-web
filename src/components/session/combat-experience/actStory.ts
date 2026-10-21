@@ -64,9 +64,12 @@ function influenceSources(
             ? ('advantage' as const)
             : ('disadvantage' as const),
         sourceRef: influence.sourceRef,
-        label: getConditionDisplay(
-          refId(influence.sourceRef) ?? influence.sourceRef
-        ).label,
+        // The name the rulebook recorded, as written; only a source with
+        // none takes its label from the ref.
+        label:
+          influence.name ||
+          getConditionDisplay(refId(influence.sourceRef) ?? influence.sourceRef)
+            .label,
         sourceMemberId,
         sourceMemberName: sourceMemberId
           ? context.memberNames?.[sourceMemberId]

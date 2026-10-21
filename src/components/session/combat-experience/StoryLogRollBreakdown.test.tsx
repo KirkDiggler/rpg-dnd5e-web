@@ -173,12 +173,14 @@ describe('attack influences from Roll', () => {
         kind: InfluenceKind.ADVANTAGE,
         sourceRef: 'dnd5e:conditions:helped',
         sourceId: 'mira',
+        name: 'Help from Mira',
       },
       {
         $typeName: 'dnd5e.api.session.v1alpha2.RollInfluence',
         kind: InfluenceKind.DISADVANTAGE,
         sourceRef: 'dnd5e:conditions:prone',
         sourceId: '',
+        name: '',
       },
     ];
     const result = buildActAttackOutcome(
@@ -197,6 +199,12 @@ describe('attack influences from Roll', () => {
     ).toEqual([
       ['advantage', 'dnd5e:conditions:helped', 'Mira'],
       ['disadvantage', 'dnd5e:conditions:prone', undefined],
+    ]);
+    // The recorded name is printed as written; with none the label comes
+    // from the ref.
+    expect(result?.modifierSources?.map((m) => m.label)).toEqual([
+      'Help from Mira',
+      'Prone',
     ]);
     render(<StoryLog {...props} story={[]} result={result} />);
     const list = screen.getByRole('list', { name: 'Attack roll influences' });

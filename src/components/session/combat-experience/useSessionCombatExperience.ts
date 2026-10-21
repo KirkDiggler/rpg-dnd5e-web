@@ -41,7 +41,7 @@ import { wardedCastNotice } from '../wardBeat';
 import { actStoryId } from './actStory';
 import { caughtNotice } from './caughtNotice';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
-import { formatRollShort } from './describeAct';
+import { formatRollNamed, formatRollShort } from './describeAct';
 import {
   isMultiMemberDeclaration,
   toggleMemberTarget,
@@ -2204,8 +2204,7 @@ export function useSessionCombatExperience({
       // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
       // window's audience is exactly one member, and a window naming
       // somebody else is a fact about their decision, not this dock's panel.
-      run.forEach((act, offset) => {
-        const index = metadata.startIndex + offset;
+      run.forEach((act, index) => {
         if (
           act.body.case !== 'clock' ||
           act.body.value.mark !== ClockMark.ROLL_WINDOW_OPENED
@@ -2218,11 +2217,14 @@ export function useSessionCombatExperience({
           presentationId: opened.presentationId || undefined,
           storyId: actStoryId(act, index),
           offerRef: opened.offer?.ref ?? '',
-          // The act's own expression and total; with no expression the dock
-          // draws the bare d20 and total itself.
-          rollArithmetic: opened.roll?.expression
-            ? formatRollShort(opened.roll)
-            : undefined,
+          // The act's own dice, each named by its source (Bless, Bane), and
+          // total; else its expression; with neither the dock draws the
+          // bare d20 and total itself.
+          rollArithmetic:
+            formatRollNamed(opened.roll) ||
+            (opened.roll?.expression
+              ? formatRollShort(opened.roll)
+              : undefined),
           roll: opened.roll?.dice[0] ?? opened.roll?.total ?? 0,
           total: opened.roll?.total ?? 0,
           session: act.session,

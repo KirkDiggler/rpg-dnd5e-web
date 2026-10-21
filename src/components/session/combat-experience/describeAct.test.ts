@@ -7,6 +7,7 @@ import {
   DamageType,
   Family,
   PartyKind,
+  RollSchema,
   Sense,
   StateKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
@@ -373,6 +374,23 @@ describe('roll breakdown from Roll', () => {
       '[15] + 3 Strength + 2 Proficiency = 20 vs 13 · beaten'
     );
     expect(formatRollShort(roll.roll)).toBe('1d20+5 = 20 vs 13');
+  });
+
+  it('names each dice term by the source that brought it', () => {
+    const roll = create(RollSchema, {
+      dice: [15, 3],
+      modifiers: [{ source: 'Strength', value: 3 }],
+      total: 21,
+      against: 13,
+      beaten: true,
+      terms: [
+        { count: 1, dieSize: 20, faces: [15], sourceName: 'Longsword' },
+        { count: 1, dieSize: 4, faces: [3], sourceName: 'Bless' },
+      ],
+    });
+    expect(formatRollBreakdown(roll)).toBe(
+      '1d20 [15] Longsword + 1d4 [3] Bless + 3 Strength = 21 vs 13 · beaten'
+    );
   });
 
   it('a table die reads N of M', () => {

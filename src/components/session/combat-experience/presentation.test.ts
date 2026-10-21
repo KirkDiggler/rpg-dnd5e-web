@@ -112,7 +112,7 @@ function actFact(
     }),
     index: 0,
     seq,
-    metadata: { source: options.source ?? ('live' as const), startIndex: 0 },
+    metadata: { source: options.source ?? ('live' as const) },
   };
 }
 
