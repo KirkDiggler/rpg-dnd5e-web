@@ -472,7 +472,8 @@ function describeWith(
       return {
         eyebrow: 'Answer',
         headline: `${name(t.who)}: ${t.say ? `"${t.say}"` : t.word || 'answers'}`,
-        detail: rw.withRoll(t.word, t.roll),
+        // A pick with no line already says its word in the headline.
+        detail: rw.withRoll(t.say ? t.word : '', t.roll),
         tone: 'neutral',
         roll: t.roll,
       };
@@ -658,7 +659,11 @@ function influenceWords(roll: Roll): string {
   const named = (kind: InfluenceKind) =>
     roll.influences
       .filter((i) => i.kind === kind)
-      .map((i) => i.name || authoredWords(refId(i.sourceRef) ?? i.sourceRef))
+      .map((i) =>
+        // The name the rulebook recorded, or the ref's id when it recorded
+        // none, read as words: `protection_fighting_style` is not a label.
+        authoredWords(i.name || (refId(i.sourceRef) ?? i.sourceRef))
+      )
       .filter(Boolean);
   const advantage = named(InfluenceKind.ADVANTAGE);
   const disadvantage = named(InfluenceKind.DISADVANTAGE);

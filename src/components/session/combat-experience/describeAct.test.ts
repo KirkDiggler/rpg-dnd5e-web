@@ -399,7 +399,8 @@ describe('roll breakdown from Roll', () => {
       case: 'tableAnswer',
       value: { who: gate, word: 'yield', roll: { dice: [4], total: 4, of: 6 } },
     });
-    expect(describeAct(t, context)?.detail).toBe('yield, 4 of 6');
+    expect(describeAct(t, context)?.headline).toBe('Gate Guard: yield');
+    expect(describeAct(t, context)?.detail).toBe('4 of 6');
   });
 });
 
@@ -528,5 +529,57 @@ describe('the describer line carries no roll', () => {
       'Alice strikes Gate Guard — Longsword: hit, 4 slashing damage'
     );
     expect(swing?.detail).toContain('1d20+5 = 20 vs 13');
+  });
+});
+
+describe('a table pick says its word once', () => {
+  it('the headline carries the word; the line does not repeat it', () => {
+    const pick = describeAct(
+      act(Family.TABLE_ANSWER, {
+        case: 'tableAnswer',
+        value: { who: gate, word: 'toward', roll: { total: 20, of: 50 } },
+      }),
+      context
+    );
+    expect(pick?.text).toBe('Gate Guard: toward');
+  });
+
+  it('a spoken answer keeps its word after the line', () => {
+    const said = describeAct(
+      act(Family.TABLE_ANSWER, {
+        case: 'tableAnswer',
+        value: { who: gate, word: 'fact', say: 'You’ll bleed first.' },
+      }),
+      context
+    );
+    expect(said?.text).toBe('Gate Guard: "You’ll bleed first." — fact');
+  });
+});
+
+describe('an influence named as an id reads as words', () => {
+  it('a name the rulebook recorded as an id is not shown with underscores', () => {
+    const swing = act(Family.ACT, {
+      case: 'attack',
+      value: {
+        by: gate,
+        to: alice,
+        attack: { name: 'Longsword' },
+        outcome: AttackOutcome.MISS,
+        roll: {
+          total: 10,
+          against: 12,
+          beaten: false,
+          influences: [
+            {
+              kind: InfluenceKind.DISADVANTAGE,
+              name: 'protection_fighting_style',
+            },
+          ],
+        },
+      },
+    });
+    expect(formatRollFormula(swing, context)).toBe(
+      'Longsword 10 vs AC 12 — miss · disadvantage: protection fighting style'
+    );
   });
 });
