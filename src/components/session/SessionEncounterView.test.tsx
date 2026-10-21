@@ -591,14 +591,17 @@ function actStream() {
         }
       },
     }),
+    // As the server does: the last act of each same-id run in a push carries
+    // run_end, so the feed closes the run there.
     push: (...acts: Act[]) => {
-      for (const a of acts) {
+      acts.forEach((a, i) => {
+        const runEnd = acts[i + 1]?.id !== a.id;
         queue.push(
           create(StreamEventsResponseSchema, {
-            item: { case: 'act', value: a },
+            item: { case: 'act', value: create(ActSchema, { ...a, runEnd }) },
           })
         );
-      }
+      });
       const w = wake;
       wake = null;
       w?.();
