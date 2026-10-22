@@ -256,6 +256,8 @@ interface CombatExperienceBaseProps {
   location: { name: string; area: string };
   /** Caller-owned navigation, laid out beside the location rather than over it. */
   navigationControls?: ReactNode;
+  /** Read-only header content, e.g. the roster's faction legend. */
+  navigationSupplement?: ReactNode;
   /** Readable operation feedback; distinct from action/roll pacing authority. */
   sceneNotice?: ReactNode;
   /** Presentation-only readable pacing notice; authority is already ingested. */

@@ -159,8 +159,8 @@ describe('CombatExperience shared production shell', () => {
     view.rerender(
       <CombatExperience {...props} presentationState={emptyState} />
     );
-    expect(inspection.queryByRole('button', { name: /Inspect/ })).toBeNull();
-    expect(inspection.getByText('Select an action to inspect')).toBeTruthy();
+    expect(screen.queryByTestId('desktop-effects')).toBeNull();
+    expect(screen.queryByText('Select an action to inspect')).toBeNull();
   });
 
   it('moves desktop HP/AC/movement into one fixed status section and restores the original header without opt-in', () => {

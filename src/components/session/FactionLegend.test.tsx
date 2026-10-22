@@ -33,6 +33,24 @@ describe('the sides legend (rpg-project#375 §7: roster coloured by faction)', (
     expect(screen.queryByTestId('faction-legend')).toBeNull();
   });
 
+  it('can join the measured HUD header without retaining an absolute map anchor', () => {
+    render(
+      <FactionLegend
+        inline
+        roster={roster([
+          ['p1', MemberKind.PLAYER, 'party'],
+          ['guard', MemberKind.MONSTER, 'garrison'],
+        ])}
+      />
+    );
+    const legend = screen.getByTestId('faction-legend');
+    expect(legend.style.position).toBe('static');
+    expect(legend.style.top).toBe('');
+    expect(legend.style.left).toBe('');
+    expect(screen.getByTestId('faction-legend-garrison').textContent).toContain(
+      'garrison · 1'
+    );
+  });
   it('shows every side with its swatch and count once a declared faction is on the roster', () => {
     render(
       <FactionLegend

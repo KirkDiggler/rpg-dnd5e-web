@@ -145,6 +145,30 @@ describe('DesktopHotbarConcept', () => {
     expect(firstLeveled()).toHaveAttribute('data-offer-id', 'cure-wounds');
   });
 
+  it('reproduces free-roam navigation and a populated status column without fabricating actions', () => {
+    render(<DesktopHotbarConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Free-roam layout' }));
+    const header = screen.getByTestId('session-location-header');
+    expect(header).toContainElement(screen.getByTestId('faction-legend'));
+    expect(
+      within(header).getByRole('button', { name: 'Short rest' })
+    ).toBeInTheDocument();
+    expect(
+      within(header).getByRole('button', { name: /Sneak/ })
+    ).toBeInTheDocument();
+    const status = screen.getByTestId('desktop-status-section');
+    for (const fact of [
+      'Fighter fixture',
+      '13/13',
+      'Great Weapon Fighting',
+      'Opportunity Attack',
+      'Hit Dice 1/1',
+      'Second Wind 1/1',
+    ])
+      expect(status).toHaveTextContent(fact);
+    expect(screen.queryByTestId('desktop-effects')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Longsword' })).toBeNull();
+  });
   it('debug mode says a fixture has no session record (web#1305)', () => {
     render(<DesktopHotbarConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Just happened' }));

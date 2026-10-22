@@ -34,6 +34,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  DesktopHudFactionFixture,
+  DesktopHudNavigationFixture,
+} from '../desktop-hotbar/DesktopHudNavigationFixture';
 import { SessionCombatMap } from '../session-combat/SessionCombatMap';
 import type { SessionCombatFixture } from '../session-combat/sessionCombatTypes';
 import { ORGANIZED_HUD_PROFILES } from './fixtures';
@@ -486,6 +490,19 @@ export function OrganizedHudConcept({
       >
         <CombatExperience
           layout="fill-parent"
+          navigationControls={
+            iconExperiment ? (
+              <DesktopHudNavigationFixture
+                world={fixture.clock === ClockKind.WORLD}
+                onPreview={(label) =>
+                  setIntent(`${label} preview only — no intent sent`)
+                }
+              />
+            ) : undefined
+          }
+          navigationSupplement={
+            iconExperiment ? <DesktopHudFactionFixture /> : undefined
+          }
           actionPresentation={{
             mode: 'organized-hud',
             ...profile.presentation,

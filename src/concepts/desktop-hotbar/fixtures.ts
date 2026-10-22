@@ -26,6 +26,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { ORGANIZED_HUD_PROFILES } from '../organized-hud/fixtures';
 import type { HudConceptProfile } from '../organized-hud/OrganizedHudConcept';
+import { SESSION_COMBAT_FIXTURES } from '../session-combat/fixtures';
 
 const base = ORGANIZED_HUD_PROFILES[0].fixtures[0]!;
 const refused = (text: string) =>
@@ -412,5 +413,62 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       dash: CLERIC_ICONS.dash!,
       dodge: CLERIC_ICONS.dodge!,
     },
+  },
+  {
+    ...martial,
+    id: 'live-world-layout',
+    label: 'Free-roam layout',
+    desktopIcons: {},
+    fixtures: [
+      {
+        ...SESSION_COMBAT_FIXTURES.find(
+          (fixture) => fixture.id === 'free-roam'
+        )!,
+        id: 'live-world-layout',
+        label: 'Live layout regression',
+        description:
+          'Free-roam navigation and a populated status column. Layout fixture only; no live commands.',
+        viewerName: 'Fighter fixture',
+        viewerClassRefId: 'fighter',
+        authorityFresh: true,
+        characterData: create(CharacterDataSchema, {
+          level: 1,
+          hitPoints: { current: 13, max: 13 },
+          armorClassDetail: { total: 11, note: 'Supplied fixture AC' },
+          baseSpeedFeet: 30,
+          features: [
+            {
+              ref: { module: 'dnd5e', type: 'features', id: 'second_wind' },
+              name: 'Second Wind',
+              detail: 'Supplied feature detail',
+            },
+          ],
+          conditions: [
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'fighting_style_great_weapon_fighting',
+              },
+              name: 'Great Weapon Fighting',
+              detail: 'Supplied fighting-style detail',
+            },
+            {
+              ref: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'opportunity_attack',
+              },
+              name: 'Opportunity Attack',
+              detail: 'Supplied condition detail',
+            },
+          ],
+          resources: [
+            { key: 'hit_dice', name: 'Hit Dice', current: 1, maximum: 1 },
+            { key: 'second_wind', name: 'Second Wind', current: 1, maximum: 1 },
+          ],
+        }),
+      },
+    ],
   },
 ];

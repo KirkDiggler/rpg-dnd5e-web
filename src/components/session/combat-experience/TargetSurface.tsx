@@ -6,7 +6,7 @@ import {
   Verb,
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ActionInformationContent } from './ActionInformationContent';
 import {
   buildActionTooltip,
@@ -48,6 +48,9 @@ export interface TargetSurfaceProps {
   memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
   navigationControls?: React.ReactNode;
+  navigationSupplement?: React.ReactNode;
+  /** Presentation geometry only: bottom edge of the complete header stack. */
+  onHeaderBottomChange?: (bottom: number) => void;
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
   /** Who an armed Speak is aimed at, once picked (rpg-project#569). */
@@ -83,6 +86,8 @@ export function TargetSurface({
   memberNames,
   location,
   navigationControls,
+  navigationSupplement,
+  onHeaderBottomChange,
   renderMap,
   onTargetClick,
   speakTarget,
@@ -92,6 +97,18 @@ export function TargetSurface({
   onCancelSelection,
   hoveredTarget,
 }: TargetSurfaceProps) {
+  const header = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = header.current;
+    if (!node || !onHeaderBottomChange) return;
+    const measure = (): void =>
+      onHeaderBottomChange(node.offsetTop + node.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onHeaderBottomChange]);
   const declaration = selection?.declaration;
   // SPEAK HAS ITS OWN TWO STEPS (rpg-project#569): who, then which line. Its
   // targets and lines come from `speak_options`, which can name a prop — a
@@ -300,6 +317,8 @@ export function TargetSurface({
       )}
       <div className={styles.mapVignette} aria-hidden="true" />
       <div
+        ref={header}
+        data-testid="session-location-header"
         className={`${styles.roomLabel} ${navigationControls ? styles.roomLabelWithNavigation : ''}`}
       >
         {navigationControls && (
@@ -309,6 +328,7 @@ export function TargetSurface({
           <span title={location.name}>{location.name}</span>
           <small>{location.area}</small>
         </div>
+        {navigationSupplement}
       </div>
       {pacingNotice && (
         <div className={styles.contextPrompt} data-phase="pacing">

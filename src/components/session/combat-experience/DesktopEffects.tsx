@@ -13,12 +13,14 @@ export function DesktopEffects({
   targetName,
   authorityFresh,
   icons,
+  hideWhenEmpty = false,
 }: {
   declaration?: Declaration;
   targetMember?: string | null;
   targetName?: string;
   authorityFresh: boolean;
   icons?: Readonly<Record<string, ActionIconPresentation>>;
+  hideWhenEmpty?: boolean;
 }) {
   const root = useRef<HTMLElement>(null);
   // UI keys are separate from provider IDs: an effect named "action" cannot
@@ -83,6 +85,7 @@ export function DesktopEffects({
       setHovered(null);
     },
   });
+  if (hideWhenEmpty && !declaration) return null;
   return (
     <section
       ref={root}

@@ -1902,6 +1902,11 @@ function SessionEncounterScope({
                 )}
               </>
             }
+            navigationSupplement={
+              desktopHotbar ? (
+                <FactionLegend roster={roster} inline />
+              ) : undefined
+            }
             sceneNotice={
               <>
                 {walking && <span>Walking…</span>}
@@ -1986,7 +1991,7 @@ function SessionEncounterScope({
               <>
                 {/* Which colour is which side (rpg-project#375 §7). Renders
                     nothing until a declared faction is on the roster. */}
-                <FactionLegend roster={roster} />
+                {!desktopHotbar && <FactionLegend roster={roster} />}
                 {scenePresentationError ? (
                   // THE REFUSED CANONICAL PRESENTATION IS AN INTEGRITY
                   // ERROR, not a transient load. The map area says so by

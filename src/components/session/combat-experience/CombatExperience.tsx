@@ -7,7 +7,7 @@ import {
   TargetKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { propLabel } from '../holdingAffordances';
 import {
   authoredWords as exitWords,
@@ -180,6 +180,7 @@ export function CombatExperience({
   localWorldDieSettledPresentationId,
   location,
   navigationControls,
+  navigationSupplement,
   sceneNotice,
   pacingNotice,
   renderMap,
@@ -221,6 +222,7 @@ export function CombatExperience({
     null
   );
   const [targetingHeight, setTargetingHeight] = useState(0);
+  const [headerBottom, setHeaderBottom] = useState(0);
   const scrollInitiative = (direction: -1 | 1) => {
     const order = initiativeScroll.current;
     if (order)
@@ -424,6 +426,13 @@ export function CombatExperience({
       data-layout={layout}
       data-action-presentation={actionPresentation?.mode}
       data-desktop-hotbar={desktopHotbar ? 'true' : undefined}
+      style={
+        desktopHotbar
+          ? ({
+              '--hud-story-top': `${Math.max(120, headerBottom + 14)}px`,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
@@ -470,6 +479,8 @@ export function CombatExperience({
             memberNames={memberNames}
             location={location}
             navigationControls={navigationControls}
+            navigationSupplement={navigationSupplement}
+            onHeaderBottomChange={desktopHotbar ? setHeaderBottom : undefined}
             renderMap={renderMap}
             hoveredTarget={hoveredTarget}
             onTargetClick={onTargetClick}
@@ -774,6 +785,7 @@ export function CombatExperience({
                   {statuses.length > 0 && (
                     <div
                       className={styles.desktopCharacterEffects}
+                      tabIndex={0}
                       role="group"
                       aria-label="Effects and resources"
                     >
@@ -783,6 +795,7 @@ export function CombatExperience({
                     </div>
                   )}
                   <DesktopEffects
+                    hideWhenEmpty
                     declaration={effectSource}
                     targetMember={
                       effectSource?.id === presentationState.armedDeclarationId
