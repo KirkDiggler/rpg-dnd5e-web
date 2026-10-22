@@ -271,10 +271,12 @@ export function readSingleRoomDungeon(source: string): SingleRoomDungeonRead {
 }
 
 /** Whether a number scalar is written as a float: the engine's yaml.v3
- * resolves `2.0`, `2e0` and `!!float 2` to `!!float`, never `!!int`. */
+ * resolves `2.0` and `2e0` to `!!float`, never `!!int`. A tagged `!!float 2`
+ * needs no case: yaml 2.9 loads it as the string "2", which the waypoint
+ * reader already refuses, and every NUMBER under that tag has a `.` or an
+ * exponent in its source. */
 function isFloatWritten(node: Scalar): boolean {
-  if (node.tag === 'tag:yaml.org,2002:float') return true;
-  if (node.tag !== undefined || node.format === 'HEX') return false;
+  if (node.format === 'HEX') return false;
   return /[.eE]/.test(node.source ?? '');
 }
 

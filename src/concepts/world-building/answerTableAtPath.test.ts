@@ -298,6 +298,12 @@ describe('a route waypoint carries its pause', () => {
     }
   });
 
+  it('refuses malformed YAML whole, never as a partial draft', () => {
+    expect(() => decodeSingleRoomDungeon('key: [unclosed')).toThrow(
+      /^Invalid single-room YAML: /
+    );
+  });
+
   it('shows each pause on the route, in words and in the shorthand', () => {
     expect(wordPhrase(GUARD, 'it')).toBe(
       'walks a route through 4 cells, standing 2 rounds facing se at {q: -7, r: 9}, 2 rounds facing sw at {q: -1, r: 9} and 1 round at {q: -9, r: 12}'
