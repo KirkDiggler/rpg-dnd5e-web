@@ -1,48 +1,20 @@
 /**
- * holdingBeat — the sentences the loot/hold/drop/leave beats read as, in
- * ONE place (rpg-project#368 §4.1).
+ * holdingBeat — the authored words a holding is told in (rpg-project#368
+ * §4.1), and who carried what out through an exit.
  *
- * # A verb is named by what the record will say
+ * The v1 beat sentences that lived here ("Aldric looted the skeleton
+ * captain") left with the v1 stream (rpg-dnd5e-web#1305); the act stream's
+ * describer (`combat-experience/describeAct.ts`) tells loot, hold, drop and
+ * leave now, with these words.
  *
- * That is the design's naming rule, and it is why this module exists at
- * all rather than four string templates spread across the two surfaces
- * that narrate a beat (`combatBeat.ts`'s single evolving line and
- * `story.ts`'s log). Both must say the same words about the same event,
- * and the words are the design's, not each surface's.
- *
- * Three of them are past-tense statements — "looted", "dropped", "left" —
- * because that is what the record says happened. The fourth is present
- * tense on purpose: design R10 named the pick-up verb **hold**, not
- * *take*, precisely because *take* is the word reserved for a thing
- * landing in a character's inventory, and this one only ever writes a
- * run-scoped `holds:` fact. So the beat reads "Aldric holds the heirloom",
- * a state, and no line this module produces ever says "took". The wire
- * agrees: `EVENT_KIND_HELD` carries `Held{holder, prop}`, and `Taken` is
- * freed for the merchant lane.
- *
- * # Nothing here is a rule
- *
- * Every fact comes off a typed event body. Ids are rendered through the
- * caller's own name resolvers, and a prop or exit id is rendered as the
- * author's own word for the thing (`heirloom` -> "the heirloom"), never
- * looked up against anything — a held prop is ABSENT from the atlas, so
- * there is nothing to look it up in (`Exited.holding`'s own doc comment).
+ * Nothing here is a rule: a prop or exit id is rendered as the author's own
+ * word for the thing (`heirloom` -> "the heirloom"), never looked up — a
+ * held prop is ABSENT from the atlas, so there is nothing to look it up in.
  */
-import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   ClockMark,
   type Act,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
-
-/** How the caller spells a member id in prose. `combatBeat.ts` resolves
- * the local player as "You"/"you"; `story.ts` uses the roster name in
- * both positions. This module never chooses. */
-export interface BeatNames {
-  /** Sentence-initial form. */
-  subject: (id: string) => string;
-  /** Mid-sentence form. */
-  object: (id: string) => string;
-}
 
 /**
  * An authored id as prose: hyphens and underscores become spaces, and the
@@ -73,64 +45,6 @@ export function holdingPhrase(ids: readonly string[]): string {
     .join(', ')} and the ${last}`;
 }
 
-/**
- * The beat's sentence, or `null` for an event this module does not narrate.
- *
- * `exited` is narrated here rather than left to the callers because a
- * departure is now four different statements depending on two typed
- * fields, and having each surface work that out separately is how they
- * come to disagree.
- */
-export function formatHoldingBeat(
-  event: SessionEvent,
-  names: BeatNames
-): string | null {
-  switch (event.body?.case) {
-    case 'looted': {
-      const l = event.body.value;
-      // NOTHING OF WHAT MOVED (design P3, and `Looted`'s own doc comment):
-      // looter and body, and the sentence is identical whether the body
-      // held the way into the vault or nothing at all.
-      return `${names.subject(l.looter)} looted ${names.object(l.body)}.`;
-    }
-    case 'held': {
-      const h = event.body.value;
-      return `${names.subject(h.holder)} holds ${describe(h.prop)}.`;
-    }
-    case 'dropped': {
-      const d = event.body.value;
-      return `${names.subject(d.member)} dropped ${describe(d.prop)}.`;
-    }
-    case 'exited': {
-      const e = event.body.value;
-      const who = names.subject(e.member);
-      const carried = holdingPhrase(e.holding);
-      // `exit` is EMPTY for a departure from anywhere the author did not
-      // name as a way out — the lobby's abandon, a disconnect, walking out
-      // mid-room. Empty is the truth that no authored exit was used, not
-      // "unknown", so the sentence simply does not claim one.
-      if (e.exit) {
-        const through = `through the ${authoredWords(e.exit)}`;
-        return carried
-          ? `${who} left ${through} with ${carried}.`
-          : `${who} left ${through}.`;
-      }
-      return carried ? `${who} left with ${carried}.` : `${who} left.`;
-    }
-    default:
-      return null;
-  }
-}
-
-/** "the heirloom" — or the bare id when the author named none, which the
- * server never sends for these beats (a prop that can be picked up has to
- * be nameable) but which must still read as something rather than as "the
- * ". */
-function describe(id: string): string {
-  const words = authoredWords(id);
-  return words ? `the ${words}` : 'it';
-}
-
 /** Who carried what out through which authored exit, or `null` for any
  * other departure.
  *
@@ -140,20 +54,6 @@ function describe(id: string): string {
  * a member who left THROUGH AN AUTHORED EXIT while HOLDING something. Both
  * halves are required: a departure from elsewhere drops what it held (R9),
  * and a departure carrying nothing ends nobody's run.
- */
-export function exitCarrier(
-  event: SessionEvent
-): { member: string; exit: string; holding: readonly string[] } | null {
-  if (event.body?.case !== 'exited') return null;
-  const e = event.body.value;
-  if (!e.exit || e.holding.length === 0) return null;
-  return { member: e.member, exit: e.exit, holding: [...e.holding] };
-}
-
-/**
- * `exitCarrier` for the act stream (rpg-project#630): the departure clock
- * entry's member, exit and holding, under the same rule — null unless the
- * member left through an authored exit carrying something.
  */
 export function exitCarrierFromAct(
   act: Act

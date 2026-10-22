@@ -36,7 +36,6 @@ import {
   type SetStateAction,
 } from 'react';
 import type { ActDeliveryMetadata } from '../actFeed';
-import type { DebugFeedEntry } from '../debugLogLine';
 import { wardedCastNotice } from '../wardBeat';
 import { actStoryId } from './actStory';
 import { caughtNotice } from './caughtNotice';
@@ -127,7 +126,6 @@ export interface UseSessionCombatExperienceResult {
   showTurnNotice: boolean;
   logMode: CombatExperienceLogMode;
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly DebugFeedEntry[];
   result?: CombatExperienceAttackOutcome;
   /** The roll an open post-roll window is asking about, and the offer it was
    * recorded against. Null when no such beat is outstanding. */
@@ -2248,7 +2246,6 @@ export function useSessionCombatExperience({
       showTurnNotice,
       logMode,
       story: pacing.story,
-      debug: presentation.debug,
       result: pacing.result,
       rollWindow,
       pendingDeathSaveResponse,
@@ -2312,7 +2309,6 @@ export function useSessionCombatExperience({
       presentation.blocksManualEndTurn,
       presentation.concealedDeathSavePresentationKey,
       presentation.concealsDeathSaveTruth,
-      presentation.debug,
       presentation.diceEvents,
       presentation.diceRollerName,
       presentation.diceWitnessRole,

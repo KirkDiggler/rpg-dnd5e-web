@@ -174,15 +174,15 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     }
   });
 
-  it('keeps player Story separate from the raw Debug feed', () => {
+  it('keeps player Story separate from Debug, which has no record in a fixture (web#1305)', () => {
     render(<SessionCombatConcept />);
 
     expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
-    expect(screen.queryByText(/seq=18 clock=6/)).toBeNull();
+    expect(screen.queryByText('No session record for this view.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    expect(screen.getByText(/seq=18 clock=6/)).toBeTruthy();
-    expect(screen.getByText(/afford clock=TURN/)).toBeTruthy();
+    expect(screen.getByText('No session record for this view.')).toBeTruthy();
+    expect(screen.queryByText('Aldric turns the blow aside')).toBeNull();
   });
 
   it('truthfully labels generated wire and presentation ownership', () => {
@@ -257,14 +257,12 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.queryByRole('button', { name: 'End turn' })).toBeNull();
   });
 
-  it('shows caught-up Story and Debug history after reconnect', () => {
+  it('shows caught-up Story after reconnect', () => {
     render(<SessionCombatConcept />);
     fireEvent.click(screen.getByRole('button', { name: 'Reconnected' }));
 
     expect(screen.getByText('Caught up')).toBeTruthy();
     expect(screen.getByText('You are caught up')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    expect(screen.getByText(/catch_up from_seq=18 entries=3/)).toBeTruthy();
   });
 
   it('resets phase, selection, dice, turn notice, and log mode together on a scenario transition', () => {
@@ -277,7 +275,7 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
 
     expect(screen.getByText('Attack declared')).toBeTruthy();
     expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
-    expect(screen.getByText(/seq=18 clock=6/)).toBeTruthy();
+    expect(screen.getByText('No session record for this view.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Spent turn' }));
 
@@ -292,7 +290,7 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(
       screen.getByRole('button', { name: 'Story' }).getAttribute('aria-pressed')
     ).toBe('true');
-    expect(screen.queryByText(/seq=18 clock=6/)).toBeNull();
+    expect(screen.queryByText('No session record for this view.')).toBeNull();
     expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
   });
 

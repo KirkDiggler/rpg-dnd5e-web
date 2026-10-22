@@ -1,15 +1,11 @@
 import { create } from '@bufbuild/protobuf';
-import {
-  ConcealmentRevealedSchema,
-  RegionRevealedSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { GetAtlasResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   PropPresentationSchema,
   PropSightingSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
-import { applyConcealmentRevealed, applyRegionRevealed } from './applyReveal';
+import { applyCellsRevealed, applyConcealmentRevealed } from './applyReveal';
 import { buildScene3D } from './atlasToScene3D';
 import {
   applyPropPresentations,
@@ -17,6 +13,7 @@ import {
   assertPropSightings,
   propPresentationItem,
 } from './propPresentations';
+import { cellsPatch, secretPatch } from './revealPatches.test-fixtures';
 
 const row = () =>
   create(PropPresentationSchema, {
@@ -63,16 +60,13 @@ describe('permitted prop renderer input', () => {
   it('applies both reveal paths atomically and owns records', () => {
     const atlas = create(GetAtlasResponseSchema);
     const p = row();
-    const room = applyRegionRevealed(
+    const room = applyCellsRevealed(
       atlas,
-      create(RegionRevealedSchema, {
-        region: { id: 'r' },
-        propPresentations: [p],
-      })
+      cellsPatch({ regions: [{ id: 'r' }], propPresentations: [p] })
     );
     const secret = applyConcealmentRevealed(
       atlas,
-      create(ConcealmentRevealedSchema, { propPresentations: [p] })
+      secretPatch({ propPresentations: [p] })
     );
     expect(room.propPresentations).toEqual(secret.propPresentations);
     expect(atlas.propPresentations).toEqual([]);
@@ -81,10 +75,7 @@ describe('permitted prop renderer input', () => {
     const bad = row();
     bad.heightScale = 0;
     expect(() =>
-      applyConcealmentRevealed(
-        room,
-        create(ConcealmentRevealedSchema, { propPresentations: [bad] })
-      )
+      applyConcealmentRevealed(room, secretPatch({ propPresentations: [bad] }))
     ).toThrow(/height scale/);
     expect(room.propPresentations[0].heightScale).toBe(1.2);
     const replacement = row();

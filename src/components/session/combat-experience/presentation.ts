@@ -25,13 +25,11 @@ import {
   AttackOutcome,
   CastOutcome,
   ClockMark,
-  Family,
   Sense,
   type Act,
   type Roll,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { ActDeliveryMetadata } from '../actFeed';
-import type { DebugFeedEntry } from '../debugLogLine';
 import {
   actStoryId,
   attackRefOf,
@@ -263,9 +261,6 @@ export interface CombatPresentationState {
   readonly pendingLocalKeys: readonly string[];
   readonly diceEvents: readonly DicePresentationEvent[];
   /** Typed raw stream formatting occurs before Story reconciliation. */
-  readonly debug: readonly DebugFeedEntry[];
-  /** Monotonic UI keys survive trimming and duplicate wire receipts. */
-  readonly nextDebugId: number;
   readonly diagnostics: readonly string[];
   readonly nextOrder: number;
 }
@@ -296,8 +291,6 @@ export function emptyPresentation(
     otherStory: Object.freeze([]),
     pendingLocalKeys: Object.freeze([]),
     diceEvents: Object.freeze([]),
-    debug: Object.freeze([]),
-    nextDebugId: 0,
     diagnostics: Object.freeze([]),
     nextOrder: 0,
   });
@@ -893,16 +886,6 @@ function diceEventsFor(
   return Object.freeze(events);
 }
 
-export const COMBAT_DEBUG_MAX_LINES = 500;
-
-function appendDebugLine(
-  debug: readonly DebugFeedEntry[],
-  line: DebugFeedEntry
-): readonly DebugFeedEntry[] {
-  const start = Math.max(0, debug.length - COMBAT_DEBUG_MAX_LINES + 1);
-  return Object.freeze([...debug.slice(start), line]);
-}
-
 function diagnose(
   state: CombatPresentationState,
   message: string
@@ -911,24 +894,6 @@ function diagnose(
   return Object.freeze({
     ...state,
     diagnostics: Object.freeze([...state.diagnostics, diagnostic]),
-    debug: appendDebugLine(state.debug, diagnostic),
-  });
-}
-
-function appendRawDebug(
-  state: CombatPresentationState,
-  fact: CombatStreamFact
-): CombatPresentationState {
-  const act = fact.act;
-  const family = Family[act.family]?.toLowerCase() ?? String(act.family);
-  const entry: DebugFeedEntry = Object.freeze({
-    id: state.nextDebugId,
-    text: `act ${act.id} ${family} ${act.act || '-'}${act.refused ? ` refused: ${act.refusal}` : ''} source=${fact.metadata.source}`,
-  });
-  return Object.freeze({
-    ...state,
-    nextDebugId: state.nextDebugId + 1,
-    debug: appendDebugLine(state.debug, entry),
   });
 }
 
@@ -1443,10 +1408,9 @@ function acceptStoryAct(
 }
 
 function acceptStreamAct(
-  original: CombatPresentationState,
+  state: CombatPresentationState,
   fact: CombatStreamFact
 ): CombatPresentationState {
-  const state = appendRawDebug(original, fact);
   if (!inSession(state, fact.act.session)) {
     return diagnose(state, `act outside session ${state.session} ignored`);
   }

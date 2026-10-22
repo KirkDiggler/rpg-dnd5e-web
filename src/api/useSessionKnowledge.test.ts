@@ -1,8 +1,5 @@
+import type { MessageInitShape } from '@bufbuild/protobuf';
 import { create } from '@bufbuild/protobuf';
-import {
-  EventKind,
-  EventSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetKnowledgeResponseSchema,
   GetViewResponseSchema,
@@ -13,6 +10,10 @@ import {
   AtlasStructuralWallSchema,
   PropPresentationSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  CellsLearnedSchema,
+  SecretRevealedSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import {
   ActSchema,
   ClockMark,
@@ -103,27 +104,62 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const observer = { kind: PartyKind.MEMBER, id: 'a' };
+let nextActId = 100;
+
+/**
+ * The act fixtures take their rows loosely: the walls, doors and
+ * presentations here are the snapshot's v1alpha1 records, and an act's
+ * geometry names the same rows field for field (`actGeometry.ts`).
+ */
+type Rows = Record<string, unknown>;
+
+/** A perception act: cells this member newly learned. */
+function cellsAct(cells: Rows) {
+  return create(ActSchema, {
+    session: 'run',
+    id: `id-${++nextActId}`,
+    family: Family.PERCEPTION,
+    body: {
+      case: 'perception',
+      value: {
+        observer,
+        sense: Sense.CELLS,
+        cells: cells as MessageInitShape<typeof CellsLearnedSchema>,
+      },
+    },
+  });
+}
+
+/** A perception act: a secret this member found. */
+function revealAct(revealed: Rows) {
+  return create(ActSchema, {
+    session: 'run',
+    id: `id-${++nextActId}`,
+    family: Family.PERCEPTION,
+    body: {
+      case: 'perception',
+      value: {
+        observer,
+        sense: Sense.REVEAL,
+        revealed: revealed as MessageInitShape<typeof SecretRevealedSchema>,
+      },
+    },
+  });
+}
+
+/** A revealed secret that replaces one wall's openings, with its doors. */
 function openingPatch(
-  seq: bigint,
   ids: string[],
   wallId = 'w',
   doors: ReturnType<typeof doorRecord>[] = []
 ) {
-  return create(EventSchema, {
-    session: 'run',
-    recipient: 'a',
-    seq,
-    kind: EventKind.CONCEALMENT_REVEALED,
-    body: {
-      case: 'concealmentRevealed',
-      value: {
-        concealment: 'secret',
-        structuralDoors: doors,
-        structuralWallOpeningsReplacements: [
-          { wallId, openings: wallRecord(wallId, ids).openings },
-        ],
-      },
-    },
+  return revealAct({
+    concealment: 'secret',
+    structuralDoors: doors,
+    structuralWallOpeningsReplacements: [
+      { wallId, openings: wallRecord(wallId, ids).openings },
+    ],
   });
 }
 
@@ -152,16 +188,10 @@ describe('supplied prop presentation', () => {
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() =>
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          body: {
-            case: 'roomRevealed',
-            value: {
-              region: { id: 'r' },
-              propPresentations: [presentation('p')],
-            },
-          },
+      result.current.acceptAct(
+        cellsAct({
+          regions: [{ id: 'r' }],
+          propPresentations: [presentation('p')],
         })
       )
     );
@@ -265,24 +295,17 @@ describe('supplied structural layout', () => {
     ]);
   });
 
-  it('upserts a CHANGED wall on room reveal — the known cut is updated, not appended', async () => {
+  it('upserts a CHANGED wall on cells learned — the known cut is updated, not appended', async () => {
     client.getKnowledge.mockResolvedValue(
       structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
     );
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() => {
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          kind: EventKind.ROOM_REVEALED,
-          body: {
-            case: 'roomRevealed',
-            value: {
-              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
-              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
-            },
-          },
+      result.current.acceptAct(
+        cellsAct({
+          regions: [{ id: 'crypt', cells: [{ x: 1, y: 0 }] }],
+          structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
         })
       );
     });
@@ -299,18 +322,11 @@ describe('supplied structural layout', () => {
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() => {
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          kind: EventKind.CONCEALMENT_REVEALED,
-          body: {
-            case: 'concealmentRevealed',
-            value: {
-              concealment: 'hidden',
-              cells: [{ x: 1, y: 0 }],
-              structuralDoors: [doorRecord('hidden-door')],
-            },
-          },
+      result.current.acceptAct(
+        revealAct({
+          concealment: 'hidden',
+          cells: [{ x: 1, y: 0 }],
+          structuralDoors: [doorRecord('hidden-door')],
         })
       );
     });
@@ -319,74 +335,33 @@ describe('supplied structural layout', () => {
     ]);
   });
 
-  it('fences a REPLAYED event below the snapshot cutoff, so a known cut cannot be reverted', async () => {
-    client.getKnowledge.mockResolvedValue(
-      structuralSnapshot(10n, [wallRecord('w', ['cut-1', 'cut-2'])])
-    );
-    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => {
-      // An old event (below the snapshot seq) that names only the earlier cut.
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 9n,
-          kind: EventKind.ROOM_REVEALED,
-          body: {
-            case: 'roomRevealed',
-            value: {
-              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
-              structuralWalls: [wallRecord('w', ['cut-1'])],
-            },
-          },
-        })
-      );
-    });
-    expect(
-      result.current.atlas?.structuralWalls[0]!.openings.map((o) => o.id)
-    ).toEqual(['cut-1', 'cut-2']);
-  });
-
   it('duplicate application is idempotent', async () => {
     client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    const event = create(EventSchema, {
-      seq: 11n,
-      kind: EventKind.ROOM_REVEALED,
-      body: {
-        case: 'roomRevealed',
-        value: {
-          region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
-          structuralWalls: [wallRecord('w', ['cut-1'])],
-        },
-      },
+    const learned = cellsAct({
+      regions: [{ id: 'crypt', cells: [{ x: 1, y: 0 }] }],
+      structuralWalls: [wallRecord('w', ['cut-1'])],
     });
     act(() => {
-      result.current.acceptEvent(event);
-      result.current.acceptEvent(event);
+      result.current.acceptAct(learned);
+      result.current.acceptAct(learned);
     });
     expect(result.current.atlas?.structuralWalls).toHaveLength(1);
   });
 
-  it('event-applied state equals a fresh reload of the same world', async () => {
+  it('act-applied state equals a fresh reload of the same world', async () => {
     client.getKnowledge.mockResolvedValue(
       structuralSnapshot(10n, [wallRecord('w', ['cut-1'])])
     );
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() => {
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          kind: EventKind.ROOM_REVEALED,
-          body: {
-            case: 'roomRevealed',
-            value: {
-              region: { id: 'crypt', cells: [{ x: 1, y: 0 }] },
-              structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
-              structuralDoors: [doorRecord('d')],
-            },
-          },
+      result.current.acceptAct(
+        cellsAct({
+          regions: [{ id: 'crypt', cells: [{ x: 1, y: 0 }] }],
+          structuralWalls: [wallRecord('w', ['cut-1', 'cut-2'])],
+          structuralDoors: [doorRecord('d')],
         })
       );
     });
@@ -412,40 +387,18 @@ describe('supplied structural layout', () => {
 });
 
 describe('component patch ordering and recovery', () => {
-  it('advances the applied sequence and ignores duplicate/older replacements', async () => {
-    client.getKnowledge.mockResolvedValue(
-      structuralSnapshot(10n, [wallRecord('w', [])])
-    );
-    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => {
-      result.current.acceptEvent(openingPatch(11n, ['one']));
-      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
-      result.current.acceptEvent(openingPatch(11n, ['one']));
-      result.current.acceptEvent(openingPatch(12n, ['one', 'two']));
-    });
-    expect(
-      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
-    ).toEqual(['one', 'two']);
-    expect(result.current.snapshot?.seq).toBe(12n);
-    expect(client.getKnowledge).toHaveBeenCalledTimes(1);
-  });
-
-  it('buffers component patches during initial hydration above the snapshot cutoff', async () => {
+  it('buffers component patches during initial hydration and replays them', async () => {
     const hydration = deferred<GetKnowledgeResponse>();
     client.getKnowledge.mockReturnValueOnce(hydration.promise);
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledOnce());
     act(() =>
-      result.current.acceptEvent(
-        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
-      )
+      result.current.acceptAct(openingPatch(['one'], 'w', [doorRecord('d')]))
     );
     await act(async () =>
       hydration.resolve(structuralSnapshot(10n, [wallRecord('w', [])]))
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.snapshot?.seq).toBe(11n);
     expect(
       result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
     ).toEqual(['one']);
@@ -454,7 +407,7 @@ describe('component patch ordering and recovery', () => {
     ]);
   });
 
-  it('coalesces missing-baseline recovery and atomically preserves subsequent events', async () => {
+  it('coalesces missing-baseline recovery and atomically preserves subsequent acts', async () => {
     const recovery = deferred<GetKnowledgeResponse>();
     client.getKnowledge
       .mockResolvedValueOnce(structuralSnapshot(10n, []))
@@ -462,16 +415,14 @@ describe('component patch ordering and recovery', () => {
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() =>
-      result.current.acceptEvent(
-        openingPatch(11n, ['one'], 'w', [doorRecord('d1')])
-      )
+      result.current.acceptAct(openingPatch(['one'], 'w', [doorRecord('d1')]))
     );
     expect(result.current.atlas?.structuralWalls).toEqual([]);
     expect(result.current.atlas?.structuralDoors).toEqual([]);
     await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
     act(() => {
-      result.current.acceptEvent(
-        openingPatch(12n, ['one', 'two'], 'w', [doorRecord('d2')])
+      result.current.acceptAct(
+        openingPatch(['one', 'two'], 'w', [doorRecord('d2')])
       );
       void result.current.refetch();
       void result.current.refetch();
@@ -482,10 +433,11 @@ describe('component patch ordering and recovery', () => {
         structuralSnapshot(11n, [wallRecord('w', ['one'])], [doorRecord('d1')])
       )
     );
-    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
-    expect(
-      result.current.atlas?.structuralWalls[0].openings.map((o) => o.id)
-    ).toEqual(['one', 'two']);
+    await waitFor(() =>
+      expect(
+        result.current.atlas?.structuralWalls[0]?.openings.map((o) => o.id)
+      ).toEqual(['one', 'two'])
+    );
     expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
       'd1',
       'd2',
@@ -500,14 +452,12 @@ describe('component patch ordering and recovery', () => {
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() =>
-      result.current.acceptEvent(
-        openingPatch(11n, ['one'], 'w', [doorRecord('d')])
-      )
+      result.current.acceptAct(openingPatch(['one'], 'w', [doorRecord('d')]))
     );
     await waitFor(() =>
       expect(result.current.error?.message).toContain('offline')
     );
-    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
+    act(() => result.current.acceptAct(openingPatch(['one', 'two'])));
     await act(async () => {
       await result.current.refetchView();
     });
@@ -525,7 +475,6 @@ describe('component patch ordering and recovery', () => {
       await result.current.refetch();
     });
     expect(result.current.error).toBeNull();
-    expect(result.current.snapshot?.seq).toBe(12n);
     expect(result.current.atlas?.structuralDoors.map((d) => d.id)).toEqual([
       'd',
     ]);
@@ -537,13 +486,13 @@ describe('component patch ordering and recovery', () => {
     );
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    const bad = openingPatch(11n, ['bad'], 'w', [doorRecord('d')]);
-    if (bad.body.case !== 'concealmentRevealed') throw new Error('fixture');
-    bad.body.value.structuralWallOpeningsReplacements[0].openings[0].width = -1;
-    act(() => result.current.acceptEvent(bad));
+    const bad = openingPatch(['bad'], 'w', [doorRecord('d')]);
+    if (bad.body.case !== 'perception') throw new Error('fixture');
+    bad.body.value.revealed!.structuralWallOpeningsReplacements[0]!.openings[0]!.width =
+      -1;
+    act(() => result.current.acceptAct(bad));
     expect(result.current.error).not.toBeNull();
     expect(result.current.atlas?.structuralDoors).toEqual([]);
-    expect(result.current.snapshot?.seq).toBe(10n);
     await act(async () => {
       await result.current.refetchView();
     });
@@ -551,36 +500,16 @@ describe('component patch ordering and recovery', () => {
     expect(client.getKnowledge).toHaveBeenCalledTimes(1);
   });
 
-  it('recovers a delivery gap through Knowledge rather than applying an incomplete event history', async () => {
-    const recovery = deferred<GetKnowledgeResponse>();
-    client.getKnowledge
-      .mockResolvedValueOnce(structuralSnapshot(10n, [wallRecord('w', [])]))
-      .mockReturnValueOnce(recovery.promise);
-    const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.acceptEvent(openingPatch(12n, ['one', 'two'])));
-    expect(result.current.snapshot?.seq).toBe(10n);
-    await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
-    await act(async () =>
-      recovery.resolve(
-        structuralSnapshot(12n, [wallRecord('w', ['one', 'two'])])
-      )
-    );
-    await waitFor(() => expect(result.current.snapshot?.seq).toBe(12n));
-    expect(result.current.error).toBeNull();
-  });
-
   it('reports a recovery snapshot that still lacks the baseline without looping', async () => {
     client.getKnowledge.mockResolvedValue(structuralSnapshot(10n, []));
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.acceptEvent(openingPatch(11n, ['one'])));
+    act(() => result.current.acceptAct(openingPatch(['one'])));
     await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(result.current.error?.message).toContain('missing baseline wall')
     );
     expect(result.current.atlas?.structuralWalls).toEqual([]);
-    expect(result.current.snapshot?.seq).toBe(10n);
   });
 
   it('fences a late snapshot from the previous member without blocking the new scope', async () => {
@@ -601,12 +530,6 @@ describe('component patch ordering and recovery', () => {
       old.resolve(structuralSnapshot(100n, [wallRecord('a-wall', [])]))
     );
     expect(result.current.snapshot?.seq).toBe(50n);
-    expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
-      'b-wall',
-    ]);
-    act(() =>
-      result.current.acceptEvent(openingPatch(101n, ['old'], 'a-wall'))
-    );
     expect(result.current.atlas?.structuralWalls.map((w) => w.id)).toEqual([
       'b-wall',
     ]);
@@ -631,7 +554,7 @@ describe('session knowledge delivery', () => {
     expect(client.getRoster).not.toHaveBeenCalled();
   });
 
-  it('buffers room additions during hydration and preserves the snapshot cutoff', async () => {
+  it('buffers cells learned during hydration and holds view reads behind it', async () => {
     let finish!: (value: GetKnowledgeResponse) => void;
     client.getKnowledge.mockReturnValue(
       new Promise<GetKnowledgeResponse>((resolve) => {
@@ -641,24 +564,10 @@ describe('session knowledge delivery', () => {
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(client.getKnowledge).toHaveBeenCalledOnce());
     act(() => {
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 9n,
-          kind: EventKind.HELD,
-          body: { case: 'held', value: { holder: 'a', prop: 'obsolete' } },
-        })
-      );
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          kind: EventKind.ROOM_REVEALED,
-          body: {
-            case: 'roomRevealed',
-            value: {
-              region: { id: 'room', cells: [{ x: 1, y: 0 }] },
-              scenery: [{ x: 1, y: 1 }],
-            },
-          },
+      result.current.acceptAct(
+        cellsAct({
+          regions: [{ id: 'room', cells: [{ x: 1, y: 0 }] }],
+          scenery: [{ x: 1, y: 1 }],
         })
       );
     });
@@ -721,28 +630,20 @@ describe('session knowledge delivery', () => {
 describe('fog of war cell delivery (rpg-project#586)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('a cellsRevealed event patches the atlas by region id and advances seq', async () => {
+  it('cells learned patch the atlas by region id', async () => {
     client.getKnowledge.mockResolvedValue(snapshot(10n));
     const { result } = renderHook(() => useSessionKnowledge('run', 'a'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     act(() => {
-      result.current.acceptEvent(
-        create(EventSchema, {
-          seq: 11n,
-          kind: EventKind.CELLS_REVEALED,
-          body: {
-            case: 'cellsRevealed',
-            value: {
-              regions: [
-                { id: 'entry', cells: [{ x: 1, y: 0 }] },
-                { id: 'cell', cells: [{ x: 2, y: 0 }] },
-              ],
-            },
-          },
+      result.current.acceptAct(
+        cellsAct({
+          regions: [
+            { id: 'entry', cells: [{ x: 1, y: 0 }] },
+            { id: 'cell', cells: [{ x: 2, y: 0 }] },
+          ],
         })
       );
     });
-    expect(result.current.snapshot?.seq).toBe(11n);
     const atlas = result.current.atlas!;
     expect(atlas.cells.map((c) => `${c.x},${c.y}`).sort()).toEqual([
       '0,0',
@@ -805,14 +706,7 @@ describe('seen-now across a reveal patch (fog of war walk, rpg-project#586)', ()
       },
     });
   const reveal = () =>
-    create(EventSchema, {
-      seq: 11n,
-      kind: EventKind.CELLS_REVEALED,
-      body: {
-        case: 'cellsRevealed',
-        value: { regions: [{ id: 'cell', cells: [{ x: 2, y: 0 }] }] },
-      },
-    });
+    cellsAct({ regions: [{ id: 'cell', cells: [{ x: 2, y: 0 }] }] });
 
   it('a reveal patch arriving before the next view never turns a seen cell remembered', async () => {
     client.getKnowledge.mockResolvedValue(seeingBoth());
@@ -829,7 +723,7 @@ describe('seen-now across a reveal patch (fog of war walk, rpg-project#586)', ()
       inFlight = result.current.refetchView();
     });
     await waitFor(() => expect(client.getView).toHaveBeenCalledTimes(1));
-    act(() => result.current.acceptEvent(reveal()));
+    act(() => result.current.acceptAct(reveal()));
     // The patch alone keeps every seen cell seen.
     expect(keysOf(result.current.view.visibleCells)).toEqual(['0,0', '1,0']);
     await act(async () => {

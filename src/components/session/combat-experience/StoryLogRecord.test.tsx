@@ -8,7 +8,6 @@ function renderLog(mode: 'story' | 'debug', onShown: (shown: boolean) => void) {
   return render(
     <StoryLog
       story={[]}
-      debug={[]}
       record={record}
       onRecordShownChange={onShown}
       mode={mode}

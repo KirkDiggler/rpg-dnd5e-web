@@ -32,9 +32,10 @@
  * does not exist is reported, not swallowed.
  */
 
-import { sessionClient } from '@/api/client';
+import { sessionClient, storyClient } from '@/api/client';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { Family } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildScene,
@@ -207,11 +208,20 @@ export function SessionTombConcept() {
     setStreaming(true);
     say('stream: listening');
     try {
-      for await (const event of sessionClient.streamEvents(
+      // The act stream (rpg-project#630); the v1 event stream left with
+      // rpg-dnd5e-web#1305.
+      for await (const message of storyClient.streamEvents(
         { session, member },
         { signal: ctrl.signal }
       )) {
-        say(`event: kind=${event.kind} seq=${event.seq}`);
+        const item = message.item;
+        if (item.case === 'act') {
+          say(
+            `act: ${item.value.verb || Family[item.value.family]} id=${item.value.id}`
+          );
+        } else if (item.case) {
+          say(`stream: ${item.case}`);
+        }
       }
       // Reached when the SERVER closes the stream, which is an ordinary end
       // rather than a failure -- said out loud so a silently-dropped

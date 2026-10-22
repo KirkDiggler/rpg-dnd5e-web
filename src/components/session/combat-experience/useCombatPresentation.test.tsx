@@ -28,10 +28,7 @@ import { StrictMode, type PropsWithChildren } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { isCombatDebugEnabled } from './diagnostics';
 import { DiceDrawer } from './DiceDrawer';
-import {
-  createAttackAuthorityFixture,
-  debugText,
-} from './presentation.test-fixtures';
+import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 import { StoryLog } from './StoryLog';
 import { useCombatPresentation } from './useCombatPresentation';
 
@@ -169,7 +166,6 @@ describe('useCombatPresentation', () => {
     );
 
     expect(result.current.state.presentations[0]?.eventAccepted).toBe(true);
-    expect(debugText(result.current.debug[0])).toContain(facts.act.act);
     expect(result.current.story).toEqual([]);
     expect(result.current.result).toBeUndefined();
     expect(result.current.liveAnnouncement).toBeNull();
@@ -559,18 +555,15 @@ describe('useCombatPresentation', () => {
       })
     );
     const staleAccept = result.current.acceptStreamActs;
-    expect(result.current.debug).not.toEqual([]);
     expect(result.current.diceEvents).not.toEqual([]);
 
     rerender({ session: 'next-run', viewerMember: 'aldric' });
     expect(result.current.state.session).toBe('next-run');
     expect(result.current.story).toEqual([]);
-    expect(result.current.debug).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
     expect(result.current.result).toBeUndefined();
 
     act(() => staleAccept([oldFacts.act], { source: 'live' }));
-    expect(result.current.debug).toEqual([]);
     expect(result.current.state.presentations).toEqual([]);
 
     act(() =>
@@ -584,7 +577,6 @@ describe('useCombatPresentation', () => {
     rerender({ session: 'next-run', viewerMember: 'skeleton-guard' });
     expect(result.current.state.viewerMember).toBe('skeleton-guard');
     expect(result.current.story).toEqual([]);
-    expect(result.current.debug).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
     act(() => staleNextAccept([nextFacts.act], { source: 'catchup' }));
@@ -613,7 +605,6 @@ describe('StoryLog developer diagnostics gate', () => {
               tone: 'neutral',
             },
           ]}
-          debug={['RAW RESULT MUST NOT RENDER']}
           mode="debug"
           streamState="live"
           onModeChange={vi.fn()}
@@ -621,7 +612,7 @@ describe('StoryLog developer diagnostics gate', () => {
       );
 
       expect(screen.queryByRole('button', { name: 'Debug' })).toBeNull();
-      expect(screen.queryByText('RAW RESULT MUST NOT RENDER')).toBeNull();
+      expect(screen.queryByText('No session record for this view.')).toBeNull();
       expect(screen.getByText('Typed Story remains')).toBeTruthy();
     } finally {
       vi.unstubAllEnvs();
@@ -641,7 +632,6 @@ describe('StoryLog developer diagnostics gate', () => {
             tone: 'neutral',
           },
         ]}
-        debug={['RAW EARLY RESULT roll=3 total=8']}
         mode="story"
         streamState="live"
         diagnosticsEnabled
@@ -650,8 +640,7 @@ describe('StoryLog developer diagnostics gate', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Debug' })).toBeTruthy();
-    expect(screen.queryByText('RAW EARLY RESULT roll=3 total=8')).toBeNull();
-    expect(screen.getByRole('log').textContent).not.toContain('RAW EARLY');
+    expect(screen.queryByText('No session record for this view.')).toBeNull();
   });
 
   it('renders one exchange when typed Story and visible verdict share an attack sequence', () => {
@@ -666,7 +655,6 @@ describe('StoryLog developer diagnostics gate', () => {
             tone: 'success',
           },
         ]}
-        debug={[]}
         mode="story"
         streamState="live"
         diagnosticsEnabled
@@ -696,7 +684,6 @@ describe('StoryLog developer diagnostics gate', () => {
     const { rerender } = render(
       <StoryLog
         story={[]}
-        debug={['seq=23 struck roll=12']}
         mode="story"
         streamState="live"
         diagnosticsEnabled
@@ -709,7 +696,6 @@ describe('StoryLog developer diagnostics gate', () => {
     rerender(
       <StoryLog
         story={[]}
-        debug={['seq=23 struck roll=12']}
         mode="debug"
         streamState="live"
         diagnosticsEnabled

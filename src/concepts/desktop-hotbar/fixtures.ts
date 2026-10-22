@@ -1,10 +1,6 @@
 import type { ActionIconPresentation } from '@/components/session/combat-experience/organizedActionPresentation';
 import { create } from '@bufbuild/protobuf';
 import {
-  EventKind,
-  EventSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import {
   AbilityRefSchema,
   ActionInformationSchema,
   AttackRefSchema,
@@ -321,22 +317,6 @@ export const DESKTOP_HOTBAR_PROFILES: readonly HudConceptProfile[] = [
       viewerName: 'Cleric fixture',
       viewerClassRefId: undefined,
       authorityFresh: id !== 'stale-authority',
-      debug: [
-        {
-          id: 1,
-          summary: 'Fixture turn ended · inspect JSON',
-          text: 'Fixture-only retained event; no live stream or game execution.',
-          event: create(EventSchema, {
-            seq: 1n,
-            at: 40n,
-            kind: EventKind.TURN_ENDED,
-            body: {
-              case: 'turnEnded',
-              value: { member: 'aldric', next: 'skeleton-archer' },
-            },
-          }),
-        },
-      ],
       participants: base.participants.map((participant) => ({
         ...participant,
         active:

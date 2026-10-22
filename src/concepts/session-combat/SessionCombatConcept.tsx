@@ -266,7 +266,6 @@ export function SessionCombatConcept() {
         logMode={logMode}
         streamState={fixture.streamState}
         story={fixture.story}
-        debug={fixture.debug}
         result={
           fixture.resultVisible || phase === 'settled'
             ? fixture.attackOutcome

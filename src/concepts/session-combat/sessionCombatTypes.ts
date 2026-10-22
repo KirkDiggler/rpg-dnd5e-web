@@ -32,6 +32,5 @@ export interface SessionCombatFixture {
   characterData: CharacterData;
   story: readonly CombatExperienceStoryExchange[];
   attackOutcome: CombatExperienceAttackOutcome;
-  debug: readonly string[];
   fieldSources: Record<string, SessionCombatFieldSource>;
 }

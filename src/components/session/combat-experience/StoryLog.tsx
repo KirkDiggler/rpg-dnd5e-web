@@ -7,14 +7,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { DebugFeedEntry } from '../debugLogLine';
 import type { RecordFeedSnapshot } from '../recordFeed';
 import {
   formatAttackModifierSource,
   formatAttackRollArithmetic,
 } from './attackArithmetic';
 import styles from './CombatExperience.module.css';
-import { DebugEventRow } from './DebugEventRow';
 import { partyName } from './describeAct';
 import { isCombatDebugEnabled } from './diagnostics';
 import { foldLogRows, type LogRow } from './foldLogRows';
@@ -31,10 +29,9 @@ import type {
 
 export interface StoryLogProps {
   story: readonly CombatExperienceStoryExchange[];
-  debug: readonly DebugFeedEntry[];
   /**
-   * The session record (rpg-project#628). When given, debug mode reads the
-   * record stream instead of the v1 event lines (event-stream R14).
+   * The session record (rpg-project#628): what debug mode shows (event-stream
+   * R14). A log with no record, such as a Concept's, says so in debug mode.
    */
   record?: RecordFeedSnapshot;
   /** Told whether the record panel is showing: Debug mode, log expanded. */
@@ -176,7 +173,6 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
 
 export function StoryLog({
   story,
-  debug,
   record,
   onRecordShownChange,
   mode,
@@ -259,7 +255,6 @@ export function StoryLog({
   }, [
     story.length,
     result,
-    debug.length,
     record?.rows.length,
     visibleMode,
     pinnedToBottom,
@@ -320,11 +315,7 @@ export function StoryLog({
             {visibleMode === 'story' ? 'Encounter story' : 'Developer stream'}
           </span>
           <strong>
-            {visibleMode === 'story'
-              ? 'What happened'
-              : record
-                ? 'The record'
-                : 'Every wire fact'}
+            {visibleMode === 'story' ? 'What happened' : 'The record'}
           </strong>
         </div>
         <div className={styles.logHeaderActions}>
@@ -412,30 +403,9 @@ export function StoryLog({
           {record ? (
             <RecordPanel feed={record} />
           ) : (
-            debug.map((entry, index) =>
-              typeof entry === 'string' ? (
-                <div
-                  className={styles.debugDiagnostic}
-                  key={`diagnostic-${index}-${entry}`}
-                >
-                  {entry}
-                </div>
-              ) : !('event' in entry) ? (
-                <div
-                  className={styles.debugDiagnostic}
-                  key={`line-${entry.id}`}
-                >
-                  {entry.text}
-                </div>
-              ) : (
-                <DebugEventRow
-                  key={entry.id}
-                  entry={entry}
-                  onInspect={() => setPinnedToBottom(false)}
-                  onWiden={() => setJsonWide(true)}
-                />
-              )
-            )
+            <div className={styles.debugDiagnostic}>
+              No session record for this view.
+            </div>
           )}
         </div>
       )}

@@ -17,12 +17,6 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha2/act_pb';
 import type { AttackResponseFact, CombatStreamFact } from './presentation';
 
-export function debugText(
-  entry: import('../debugLogLine').DebugFeedEntry | undefined
-): string | undefined {
-  return typeof entry === 'string' ? entry : entry?.text;
-}
-
 export interface AttackAuthorityFixtureOptions {
   session?: string;
   seq?: bigint;

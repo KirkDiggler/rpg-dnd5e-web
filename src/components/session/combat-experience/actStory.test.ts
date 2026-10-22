@@ -222,3 +222,44 @@ describe('in a fight is the viewer’s own fight', () => {
     expect(rows[1]?.inFight).toBe(false);
   });
 });
+
+describe('a member joining a running fight', () => {
+  it('becomes in-fight at the first turn end that names them', () => {
+    const bob = { kind: PartyKind.MEMBER, id: 'bob' };
+    const rows = story(
+      at('J1', Family.CLOCK, {
+        case: 'clock',
+        value: { mark: ClockMark.FIGHT_FORMED, fight: { order: [gate, bob] } },
+      }),
+      at('J2', Family.CLOCK, {
+        case: 'clock',
+        value: { mark: ClockMark.JOINED, member: alice },
+      }),
+      swingAtAlice('J3'),
+      at('J4', Family.CLOCK, {
+        case: 'clock',
+        value: {
+          mark: ClockMark.TURN_ENDED,
+          turn: { member: gate, next: bob },
+        },
+      }),
+      swingAtAlice('J5'),
+      at('J6', Family.CLOCK, {
+        case: 'clock',
+        value: {
+          mark: ClockMark.TURN_ENDED,
+          turn: { member: bob, next: alice },
+        },
+      }),
+      swingAtAlice('J7')
+    );
+    const inFight = (id: string) => rows.find((r) => r.act?.id === id)?.inFight;
+    // Joining names no turn: not yet in the fight.
+    expect(inFight('J3')).toBe(false);
+    // A turn passing between others still does not name her.
+    expect(inFight('J5')).toBe(false);
+    // The first turn end that names her puts her in it.
+    expect(inFight('J7')).toBe(true);
+    expect(rows.find((r) => r.act?.id === 'J7')?.toastRule?.hold).toBe(true);
+  });
+});

@@ -180,6 +180,15 @@ describe('toasts fight formed and dissolved', () => {
     expect(toastFor(ended, 'bob', false)).toBeNull();
   });
 
+  it('a dissolve naming no members counts for everyone', () => {
+    const unnamed = act(Family.CLOCK, {
+      case: 'clock',
+      value: { mark: ClockMark.FIGHT_DISSOLVED },
+    });
+    expect(toastFor(unnamed, 'alice', false)?.case).toBe('fight-ended');
+    expect(toastFor(unnamed, 'bob', false)?.case).toBe('fight-ended');
+  });
+
   it('a turn passing does not toast', () => {
     const turn = act(Family.CLOCK, {
       case: 'clock',

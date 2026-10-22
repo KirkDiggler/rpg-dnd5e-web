@@ -8,8 +8,6 @@
  * the wiring (does the effect actually fire, on the right container, and does
  * a scroll-up really release the pin) can only be asserted here.
  */
-import { create } from '@bufbuild/protobuf';
-import { EventSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { StoryLog, type StoryLogProps } from './StoryLog';
@@ -83,7 +81,6 @@ function props(
 ): StoryLogProps {
   return {
     story,
-    debug: [],
     mode: 'story',
     streamState: 'live',
     onModeChange: () => {},
@@ -97,9 +94,7 @@ function feed() {
 
 describe('StoryLog auto-follow', () => {
   it('collapses without losing the selected feed, reading position or arriving entries', () => {
-    const { rerender } = render(
-      <StoryLog {...props([], { mode: 'debug', debug: ['first'] })} />
-    );
+    const { rerender } = render(<StoryLog {...props([exchange('first')])} />);
     const originalFeed = feed();
     originalFeed.scrollTop = 120;
     fireEvent.scroll(originalFeed);
@@ -116,43 +111,15 @@ describe('StoryLog auto-follow', () => {
       screen.getByRole('button', { name: 'Expand combat log' })
     );
     originalFeed.scrollTop = 0;
-    rerender(
-      <StoryLog {...props([], { mode: 'debug', debug: ['first', 'second'] })} />
-    );
+    rerender(<StoryLog {...props([exchange('first'), exchange('second')])} />);
     fireEvent.click(screen.getByRole('button', { name: 'Expand combat log' }));
     expect(feed()).toBe(originalFeed);
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Collapse combat log' })
     );
     expect(feed().scrollTop).toBe(120);
-    expect(screen.getByLabelText('Raw debug feed')).toBeTruthy();
-    expect(screen.getByText('second')).toBeTruthy();
-  });
-
-  it('does not pull an expanded event away when new receipts arrive', async () => {
-    const first = {
-      id: 1,
-      summary: 'first event',
-      text: 'first event',
-      event: create(EventSchema),
-    };
-    const { rerender } = render(
-      <StoryLog {...props([], { mode: 'debug', debug: [first] })} />
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Inspect event first event' })
-    );
-    await screen.findByRole('button', { name: 'Copy JSON' });
-    feed().scrollTop = 120;
-    rerender(
-      <StoryLog
-        {...props([], {
-          mode: 'debug',
-          debug: [first, { ...first, id: 2, summary: 'second event' }],
-        })}
-      />
-    );
-    expect(feed().scrollTop).toBe(120);
+    expect(screen.getByRole('log')).toBeTruthy();
+    expect(screen.getByText('beat second')).toBeTruthy();
   });
 
   it('pins to the newest beat as events arrive', () => {

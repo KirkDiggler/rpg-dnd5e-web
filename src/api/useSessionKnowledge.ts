@@ -1,11 +1,7 @@
-import {
-  cellsRevealedOf,
-  concealmentRevealedOf,
-} from '@/components/session/actGeometry';
+import { cellsPatchOf, secretPatchOf } from '@/components/session/actGeometry';
 import {
   applyCellsRevealed,
   applyConcealmentRevealed,
-  applyRegionRevealed,
   MissingStructuralWallError,
 } from '@/components/session/applyReveal';
 import {
@@ -13,12 +9,8 @@ import {
   assertPropSightings,
 } from '@/components/session/propPresentations';
 import { assertStructuralLayoutIntegrity } from '@/components/session/structuralLayout';
-import {
-  nextViewerHoldings,
-  nextViewerHoldingsFromAct,
-} from '@/components/session/viewerHoldings';
+import { nextViewerHoldingsFromAct } from '@/components/session/viewerHoldings';
 import { clone, create } from '@bufbuild/protobuf';
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetViewResponseSchema,
   type GetKnowledgeResponse,
@@ -31,13 +23,6 @@ import { sessionClient } from './client';
 const EMPTY_VIEW = create(GetViewResponseSchema);
 const EMPTY_HOLDING: string[] = [];
 
-class KnowledgeSequenceGapError extends Error {
-  constructor(expected: bigint, received: bigint) {
-    super(`knowledge stream gap: expected ${expected}, received ${received}`);
-    this.name = 'KnowledgeSequenceGapError';
-  }
-}
-
 /** One snapshot restores knowledge; subsequent view reads replace only mutable
  * observations. Existing stream recovery still owns delivery and narration. */
 export function useSessionKnowledge(session: string, member: string) {
@@ -46,7 +31,6 @@ export function useSessionKnowledge(session: string, member: string) {
   const [error, setError] = useState<Error | null>(null);
   const generation = useRef(0);
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const pending = useRef<Event[]>([]);
   const pendingActs = useRef<Act[]>([]);
   // This ref is the same cache exposed as React state, updated synchronously at
   // the event boundary. Reducers stay pure; recovery never runs inside a React
@@ -101,58 +85,14 @@ export function useSessionKnowledge(session: string, member: string) {
     []
   );
 
-  const applyEvent = useCallback(
-    (state: GetKnowledgeResponse, event: Event): GetKnowledgeResponse => {
-      if (event.seq <= state.seq) return state;
-      if (event.seq !== state.seq + 1n)
-        throw new KnowledgeSequenceGapError(state.seq + 1n, event.seq);
-      const reveal =
-        event.body.case === 'roomRevealed' ||
-        event.body.case === 'cellsRevealed' ||
-        event.body.case === 'concealmentRevealed'
-          ? event.body.value
-          : undefined;
-      if (
-        !state.atlas &&
-        reveal &&
-        (reveal.structuralWalls.length ||
-          reveal.structuralDoors.length ||
-          reveal.structuralWallOpeningsReplacements.length ||
-          reveal.propPresentations?.length)
-      )
-        throw new MissingStructuralWallError('(atlas absent)');
-      // Every reveal route uses the same atomic structural reducer. Other
-      // legacy refresh behavior and mutable observations retain their owners.
-      // CELLS_REVEALED (fog of war, rpg-project#586) is the live route: it
-      // unions partial regions by id. ROOM_REVEALED is deprecated and no
-      // longer produced; its arm stays for a server that still sends it.
-      let atlas =
-        event.body.case === 'roomRevealed' && state.atlas
-          ? applyRegionRevealed(state.atlas, event.body.value)
-          : state.atlas;
-      if (event.body.case === 'cellsRevealed' && atlas) {
-        atlas = applyCellsRevealed(atlas, event.body.value);
-      }
-      if (event.body.case === 'concealmentRevealed' && atlas) {
-        atlas = applyConcealmentRevealed(atlas, event.body.value);
-      }
-      return {
-        ...state,
-        seq: event.seq,
-        atlas,
-        holding: [...nextViewerHoldings(state.holding, event, member)],
-      };
-    },
-    [member]
-  );
-
   /**
-   * THE ACT STREAM'S INTAKE (rpg-project#630). A perception act's cells and
-   * revealed secret patch the atlas through the same reducers the v1 reveal
-   * beats use, and a hold, a drop or a departure moves the viewer's holdings.
+   * THE ACT STREAM'S INTAKE (rpg-project#630), and the only one since the v1
+   * event stream left (rpg-dnd5e-web#1305). A perception act's cells and
+   * revealed secret patch the atlas (`applyReveal.ts`), and a hold, a drop or
+   * a departure moves the viewer's holdings.
    *
-   * ACTS CARRY NO SEQ, so unlike `applyEvent` this cannot fence an act
-   * against the snapshot's cutoff: GetKnowledge names its cutoff as a v1
+   * ACTS CARRY NO SEQ, so this cannot fence an act against the snapshot's
+   * cutoff: GetKnowledge names its cutoff as a v1
    * seq, which an act does not have. It does not need to. Every patch here
    * is a union or an upsert by id (`applyReveal.ts`), and a holding is
    * last-writer-wins per prop, so replaying an act the snapshot already
@@ -164,10 +104,10 @@ export function useSessionKnowledge(session: string, member: string) {
       const perceived =
         act.body.case === 'perception' ? act.body.value : undefined;
       const cells = perceived?.cells
-        ? cellsRevealedOf(perceived.cells)
+        ? cellsPatchOf(perceived.cells)
         : undefined;
       const revealed = perceived?.revealed
-        ? concealmentRevealedOf(perceived.revealed)
+        ? secretPatchOf(perceived.revealed)
         : undefined;
       const reveal = cells ?? revealed;
       if (
@@ -199,7 +139,6 @@ export function useSessionKnowledge(session: string, member: string) {
         if (current()) {
           install(null);
           needsSnapshot.current = false;
-          pending.current = [];
           pendingActs.current = [];
           setLoading(false);
         }
@@ -225,16 +164,10 @@ export function useSessionKnowledge(session: string, member: string) {
       );
       let restored = response;
       // Transport owns catch-up; this is only the finite hydration buffer.
-      for (const event of [...pending.current].sort((a, b) =>
-        a.seq < b.seq ? -1 : a.seq > b.seq ? 1 : 0
-      )) {
-        restored = applyEvent(restored, event);
-      }
       // Acts arrive in id order and are replayed in it (see applyAct).
       for (const act of pendingActs.current) restored = applyAct(restored, act);
       install(restored);
       releaseHeld(readTicket);
-      pending.current = [];
       pendingActs.current = [];
       needsSnapshot.current = false;
       setLoading(false);
@@ -244,7 +177,7 @@ export function useSessionKnowledge(session: string, member: string) {
       if (snapshotTask.current === task) snapshotTask.current = null;
     });
     return task;
-  }, [session, member, enqueue, applyEvent, applyAct, install]);
+  }, [session, member, enqueue, applyAct, install]);
 
   const refetchView = useCallback(
     () =>
@@ -295,45 +228,6 @@ export function useSessionKnowledge(session: string, member: string) {
     [session, member, enqueue, install]
   );
 
-  const acceptEvent = useCallback(
-    (event: Event) => {
-      if (
-        (event.session && event.session !== session) ||
-        (event.recipient && event.recipient !== member)
-      )
-        return;
-      if (needsSnapshot.current || !currentSnapshot.current) {
-        pending.current.push(event);
-        return;
-      }
-      try {
-        const before = currentSnapshot.current;
-        install(applyEvent(before, event));
-        if (event.body.case === 'cellsRevealed') {
-          const after = ++ticket.current;
-          const seen = before.view?.visibleCells ?? [];
-          setHeld((prev) => ({
-            cells: prev ? [...prev.cells, ...seen] : [...seen],
-            after,
-          }));
-        }
-      } catch (reason) {
-        needsSnapshot.current = true;
-        pending.current.push(event);
-        setError(reason instanceof Error ? reason : new Error(String(reason)));
-        if (
-          reason instanceof MissingStructuralWallError ||
-          reason instanceof KnowledgeSequenceGapError
-        ) {
-          // At most one automatic recovery. A failed request stays fenced; later
-          // events are buffered until an explicit retry, not a retry loop.
-          void refetch();
-        }
-      }
-    },
-    [applyEvent, install, member, refetch, session]
-  );
-
   const acceptAct = useCallback(
     (act: Act) => {
       if (act.session && act.session !== session) return;
@@ -347,7 +241,7 @@ export function useSessionKnowledge(session: string, member: string) {
         if (after === before) return;
         install(after);
         if (act.body.case === 'perception' && act.body.value.cells) {
-          // SEEN-NOW SURVIVES A REVEAL PATCH, as on CELLS_REVEALED above.
+          // SEEN-NOW SURVIVES A REVEAL PATCH (see `ticket`).
           const patched = ++ticket.current;
           const seen = before.view?.visibleCells ?? [];
           setHeld((prev) => ({
@@ -372,7 +266,6 @@ export function useSessionKnowledge(session: string, member: string) {
     queue.current = Promise.resolve();
     snapshotTask.current = null;
     needsSnapshot.current = false;
-    pending.current = [];
     pendingActs.current = [];
     setHeld(null);
     void refetch();
@@ -455,7 +348,6 @@ export function useSessionKnowledge(session: string, member: string) {
     refetchView,
     refetchWhere,
     refetchRoster,
-    acceptEvent,
     acceptAct,
   };
 }
