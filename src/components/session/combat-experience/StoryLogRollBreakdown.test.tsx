@@ -35,11 +35,17 @@ describe('roll breakdown from Roll', () => {
           $typeName: 'dnd5e.api.session.v1alpha2.RollModifier',
           source: 'Mace',
           value: 4,
+          sourceRef: '',
+          sourceId: '',
+          sourceLabel: '',
         },
         {
           $typeName: 'dnd5e.api.session.v1alpha2.RollModifier',
           source: 'Bless',
           value: 2,
+          sourceRef: '',
+          sourceId: '',
+          sourceLabel: '',
         },
       ];
       const fact = {
@@ -174,6 +180,7 @@ describe('attack influences from Roll', () => {
         sourceRef: 'dnd5e:conditions:helped',
         sourceId: 'mira',
         name: 'Help from Mira',
+        sourceLabel: '',
       },
       {
         $typeName: 'dnd5e.api.session.v1alpha2.RollInfluence',
@@ -181,6 +188,7 @@ describe('attack influences from Roll', () => {
         sourceRef: 'dnd5e:conditions:prone',
         sourceId: '',
         name: '',
+        sourceLabel: '',
       },
     ];
     const result = buildActAttackOutcome(
